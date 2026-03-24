@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-electron/
+renderer/node_modules/
+renderer/dist/
+out/
+web-browser/
+*.log

@@ -1,0 +1,251 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { getAppPaths } from './index.js';
+import { slugify, loadConfig } from './config.js';
+
+function getModelsDir() {
+  try {
+    const cfg = loadConfig();
+    return cfg?.llm?.local?.models_dir || getAppPaths().localModelsRoot;
+  } catch {
+    return getAppPaths().localModelsRoot;
+  }
+}
+
+// Minimal GGUF header parser for metadata extraction
+const GGUF_MAGIC = 0x46475547; // "GGUF"
+
+function readGgufMetadata(filePath) {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const headerBuf = Buffer.alloc(24);
+    fs.readSync(fd, headerBuf, 0, 24, 0);
+
+    const magic = headerBuf.readUInt32LE(0);
+    if (magic !== GGUF_MAGIC) {
+      throw new Error('Not a GGUF file');
+    }
+
+    const version = headerBuf.readUInt32LE(4);
+    const tensorCount = Number(headerBuf.readBigUInt64LE(8));
+    const metadataKvCount = Number(headerBuf.readBigUInt64LE(16));
+
+    // For a full parser we'd read all KV pairs, but for the Electron port
+    // we provide sensible defaults and parse what we can from the filename
+    const fileName = path.basename(filePath);
+    const stat = fs.statSync(filePath);
+
+    return {
+      architecture: guessArchitecture(fileName),
+      context_length: guessContextLength(fileName),
+      parameter_count: 0,
+      block_count: 0,
+      size_label: formatSizeLabel(stat.size),
+      quantization: guessQuantization(fileName),
+      head_count: 0,
+      head_count_kv: 0,
+      embedding_length: 0,
+      file_size_bytes: stat.size,
+      quantization_name: guessQuantization(fileName),
+      chat_template_uses_tools: false
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function guessArchitecture(fileName) {
+  const lower = fileName.toLowerCase();
+  if (lower.includes('llama')) return 'llama';
+  if (lower.includes('qwen')) return 'qwen2';
+  if (lower.includes('mistral')) return 'mistral';
+  if (lower.includes('gemma')) return 'gemma';
+  if (lower.includes('phi')) return 'phi';
+  return 'unknown';
+}
+
+function guessContextLength(fileName) {
+  const m = fileName.match(/(\d+)k/i);
+  if (m) return parseInt(m[1], 10) * 1024;
+  return 4096;
+}
+
+function guessQuantization(fileName) {
+  const m = fileName.match(/(Q\d+_K_[SMLX]|Q\d+_[01]|IQ\d+_[SMLX]{1,2}|F16|F32|BF16)/i);
+  return m ? m[1].toUpperCase() : 'unknown';
+}
+
+function formatSizeLabel(bytes) {
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 ** 2);
+  return `${mb.toFixed(0)} MB`;
+}
+
+export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified', order = 'desc' } = {}) {
+  const modelsDir = getModelsDir();
+
+  if (!fs.existsSync(modelsDir)) {
+    fs.mkdirSync(modelsDir, { recursive: true });
+    return { models: [], total: 0, offset, limit };
+  }
+
+  const allModels = [];
+  const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.gguf')) continue;
+    const fullPath = path.join(modelsDir, entry.name);
+    const stat = fs.statSync(fullPath);
+
+    try {
+      const meta = readGgufMetadata(fullPath);
+      allModels.push({
+        id: slugify(path.basename(entry.name, '.gguf')),
+        name: entry.name,
+        path: fullPath,
+        size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
+        modified: stat.mtimeMs,
+        architecture: meta.architecture,
+        parameter_count: meta.parameter_count,
+        size_label: meta.size_label,
+        quantization_name: meta.quantization_name,
+        context_length: meta.context_length,
+        block_count: meta.block_count,
+        chat_template_uses_tools: meta.chat_template_uses_tools
+      });
+    } catch {
+      allModels.push({
+        id: slugify(path.basename(entry.name, '.gguf')),
+        name: entry.name,
+        path: fullPath,
+        size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
+        modified: stat.mtimeMs
+      });
+    }
+  }
+
+  allModels.sort((a, b) => {
+    let cmp = 0;
+    switch (sort) {
+      case 'name':
+        cmp = String(a.name || '').localeCompare(String(b.name || ''));
+        break;
+      case 'size':
+        cmp = (b.size_gb || 0) - (a.size_gb || 0);
+        break;
+      case 'modified':
+      default:
+        cmp = (b.modified || 0) - (a.modified || 0);
+    }
+    return order === 'asc' ? -cmp : cmp;
+  });
+
+  const total = allModels.length;
+  const paginated = allModels.slice(offset, offset + limit);
+
+  return { models: paginated, total, offset, limit };
+}
+
+export async function getGgufMetadata(filePath) {
+  return readGgufMetadata(filePath);
+}
+
+export async function deleteLocalModel(modelPath) {
+  if (fs.existsSync(modelPath)) {
+    fs.unlinkSync(modelPath);
+  }
+}
+
+export async function getModelsDirPath() {
+  return getModelsDir();
+}
+
+// Model index cache
+let modelIndexCache = [];
+
+export async function getIndexedModels() {
+  return modelIndexCache;
+}
+
+export async function refreshModelIndex() {
+  const { models } = await getLocalModels({ limit: 10000 });
+  modelIndexCache = models.map(m => ({
+    id: m.id,
+    name: m.name,
+    path: m.path,
+    size_gb: m.size_gb,
+    modified_time: m.modified,
+    architecture: m.architecture,
+    context_length: m.context_length,
+    parameter_count: m.parameter_count,
+    size_label: m.size_label,
+    quantization_name: m.quantization_name,
+    block_count: m.block_count,
+    chat_template_uses_tools: m.chat_template_uses_tools,
+    indexed_at: Date.now(),
+    cache_key: `${m.path}:${m.modified}`
+  }));
+  return modelIndexCache.length;
+}
+
+export async function invalidateModelCache(modelPath) {
+  modelIndexCache = modelIndexCache.filter(m => m.path !== modelPath);
+}
+
+/**
+ * Import an existing GGUF file from an arbitrary path into the app's model registry.
+ * If copy_to_managed is true, copies the file to the managed models directory first.
+ */
+export async function importLocalModel({ filePath, copy_to_managed = false }) {
+  const { loadConfig, saveConfig, slugify } = await import('./config.js');
+  if (!filePath || typeof filePath !== 'string') throw new Error('filePath is required');
+  if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
+  if (!filePath.toLowerCase().endsWith('.gguf')) throw new Error('File must be a .gguf model');
+
+  const cfg = loadConfig();
+  let finalPath = filePath;
+
+  if (copy_to_managed) {
+    const modelsDir = getModelsDir();
+    fs.mkdirSync(modelsDir, { recursive: true });
+    const target = path.join(modelsDir, path.basename(filePath));
+    if (filePath !== target) fs.copyFileSync(filePath, target);
+    finalPath = target;
+  }
+
+  const id = slugify(path.basename(finalPath, path.extname(finalPath)));
+  const stat = fs.statSync(finalPath);
+  const meta = readGgufMetadata(finalPath);
+
+  const record = {
+    id,
+    name: path.basename(finalPath),
+    filename: path.basename(finalPath),
+    path: finalPath,
+    source: 'import',
+    size_bytes: stat.size,
+    sha256: '',
+    architecture: meta?.architecture || guessArchitecture(path.basename(finalPath)),
+    context_length: meta?.context_length || guessContextLength(path.basename(finalPath)),
+    quantization_name: meta?.quantization_name || guessQuantization(path.basename(finalPath)),
+    size_label: formatSizeLabel(stat.size),
+    modified: stat.mtimeMs
+  };
+
+  if (!cfg.llm) cfg.llm = {};
+  if (!cfg.llm.local) cfg.llm.local = {};
+  if (!cfg.llm.local.models) cfg.llm.local.models = [];
+
+  const existing = cfg.llm.local.models.findIndex(m => m.id === id);
+  if (existing >= 0) cfg.llm.local.models[existing] = record;
+  else cfg.llm.local.models.push(record);
+
+  if (!cfg.llm.local.active_model_id) cfg.llm.local.active_model_id = id;
+  if (!cfg.llm.local.default_model_id) cfg.llm.local.default_model_id = id;
+
+  saveConfig(cfg);
+  await refreshModelIndex();
+
+  return { success: true, model: record };
+}
