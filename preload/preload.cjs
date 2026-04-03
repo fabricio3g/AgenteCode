@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
-  'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close',
+  'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
   'get_hardware_limits', 'get_desktop_capabilities',
   'get_config', 'save_config', 'update_config',
   'get_local_models', 'get_gguf_metadata', 'delete_local_model', 'get_models_dir_path',
@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowToggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
   windowIsMaximized: () => ipcRenderer.invoke('window:is-maximized'),
   windowClose: () => ipcRenderer.invoke('window:close'),
+  windowRequestClose: () => ipcRenderer.invoke('window:request-close'),
+  windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
 
   // Platform info
   platform: process.platform,

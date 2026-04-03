@@ -233,15 +233,15 @@ function getDefaultConfig() {
       providers: {
         openai: {
           type: 'openai_compat', base_url: 'https://api.openai.com/v1',
-          api_key: '', model: 'gpt-4o-mini', default_params: { temperature: 0.7 }
+          api_key: '', model: '', default_params: { temperature: 0.7 }
         },
         openrouter: {
           type: 'openai_compat', base_url: 'https://openrouter.ai/api/v1',
-          api_key: '', model: 'openai/gpt-4o-mini', default_params: { temperature: 0.7 }
+          api_key: '', model: '', default_params: { temperature: 0.7 }
         },
         lmstudio: {
           type: 'openai_compat', base_url: 'http://localhost:1234/v1',
-          api_key: '', model: 'local-model', default_params: { temperature: 0.7 }
+          api_key: '', model: '', default_params: { temperature: 0.7 }
         }
       }
     },
@@ -356,9 +356,20 @@ function migrateConfig(cfg) {
     kokoro_multi_v1: 'kokoro_82m_v1'
   };
   const providers = cfg?.llm?.providers ?? {};
+  const legacyDefaultModels = new Set([
+    'gpt-4o-mini',
+    'openai/gpt-4o-mini',
+    'local-model',
+    'default-model'
+  ]);
   for (const [key, provider] of Object.entries(providers)) {
     if (provider?.base_url && urlFixes[provider.base_url]) {
       providers[key].base_url = urlFixes[provider.base_url];
+      dirty = true;
+    }
+    const model = String(provider?.model || '').trim();
+    if (legacyDefaultModels.has(model)) {
+      providers[key].model = '';
       dirty = true;
     }
   }

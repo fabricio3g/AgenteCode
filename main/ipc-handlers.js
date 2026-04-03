@@ -1,5 +1,5 @@
 import { ipcMain, shell, net } from 'electron';
-import { getMainWindow, createWebviewerWindow } from './index.js';
+import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './index.js';
 import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.js';
 import { getHardwareLimits } from './hardware.js';
 import {
@@ -65,7 +65,15 @@ export function registerIpcHandlers() {
   });
 
   ipcMain.handle('window:close', () => {
-    getMainWindow()?.close();
+    return requestMainWindowClose();
+  });
+
+  ipcMain.handle('window:request-close', () => {
+    return requestMainWindowClose();
+  });
+
+  ipcMain.handle('window:set-active-work', (_e, payload) => {
+    return setActiveWorkState(payload || {});
   });
 
   // ── Hardware ──

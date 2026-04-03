@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpcHandlers } from './ipc-handlers.js';
@@ -13,6 +13,7 @@ const RENDERER_PROD_PATH = path.join(__dirname, '..', 'renderer', 'dist', 'index
 let mainWindow = null;
 let tray = null;
 let webviewerWindow = null;
+let activeWorkState = { active: false, reasons: [] };
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -98,6 +99,45 @@ export function createWebviewerWindow(url, title = 'Web Viewer') {
 
 export function getMainWindow() {
   return mainWindow;
+}
+
+export function setActiveWorkState(state = {}) {
+  const active = !!state.active;
+  const reasons = Array.isArray(state.reasons)
+    ? state.reasons.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  activeWorkState = { active, reasons };
+  return activeWorkState;
+}
+
+export async function requestMainWindowClose() {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return { closed: false, prompted: false };
+  if (!activeWorkState.active) {
+    win.close();
+    return { closed: true, prompted: false };
+  }
+
+  const reasonText = activeWorkState.reasons.length
+    ? `Active tasks: ${activeWorkState.reasons.join(', ')}`
+    : 'An operation is still running.';
+  const result = await dialog.showMessageBox(win, {
+    type: 'warning',
+    buttons: ['Cancel', 'Quit'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Quit TalamoLM?',
+    message: 'Work is still in progress.',
+    detail: `${reasonText}\n\nIf you quit now, in-progress work may be interrupted.`
+  });
+
+  if (result.response === 1) {
+    win.close();
+    return { closed: true, prompted: true };
+  }
+
+  return { closed: false, prompted: true };
 }
 
 export function getAppPaths() {

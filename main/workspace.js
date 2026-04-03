@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
+import extract from 'extract-zip';
+import * as tar from 'tar';
 import { shell, dialog } from 'electron';
 import { getAppPaths } from './index.js';
 
@@ -297,12 +299,34 @@ export async function downloadRuntime({ download_url, asset_name, release_tag },
 
   emit(80, 'extracting');
 
-  // Extract based on file type
-  const { execSync } = await import('node:child_process');
+  const ensureSafeEntryPath = (entryPath) => {
+    const normalized = path.normalize(String(entryPath || ''));
+    if (!normalized || path.isAbsolute(normalized)) {
+      throw new Error(`Unsafe archive entry path: ${entryPath}`);
+    }
+    if (normalized.split(path.sep).includes('..')) {
+      throw new Error(`Unsafe archive entry path: ${entryPath}`);
+    }
+  };
+
   if (asset_name.endsWith('.tar.gz') || asset_name.endsWith('.tgz')) {
-    execSync(`tar xzf "${archivePath}" -C "${destDir}"`, { stdio: 'ignore' });
+    await tar.x({
+      file: archivePath,
+      cwd: destDir,
+      strict: true,
+      preservePaths: false,
+      filter: (entryPath) => {
+        ensureSafeEntryPath(entryPath);
+        return true;
+      }
+    });
   } else if (asset_name.endsWith('.zip')) {
-    execSync(`unzip -o "${archivePath}" -d "${destDir}"`, { stdio: 'ignore' });
+    await extract(archivePath, {
+      dir: destDir,
+      onEntry: (entry) => ensureSafeEntryPath(entry.fileName)
+    });
+  } else {
+    throw new Error(`Unsupported runtime archive format: ${asset_name}`);
   }
 
   emit(95, 'finalizing');

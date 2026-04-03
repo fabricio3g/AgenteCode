@@ -16,13 +16,15 @@
   },
   "dependencies": {
     "electron-store": "^10.0.0",
+    "extract-zip": "^2.0.1",
     "mammoth": "^1.8.0",
     "pdf-parse": "^1.1.1",
-    "pptxgenjs": "^3.12.0"
+    "pptxgenjs": "^3.12.0",
+    "tar": "^7.5.13"
   },
   "optionalDependencies": {
-    "sherpa-onnx-node": "^1.10.30",
-    "puppeteer": "^23.0.0"
+    "puppeteer": "^23.0.0",
+    "sherpa-onnx-node": "^1.10.30"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
@@ -46,24 +48,35 @@
       {
         "from": "../models",
         "to": "models",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../assets",
         "to": "assets",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Education"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "build/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "build/icon.icns"
     }
   }
