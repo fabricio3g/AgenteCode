@@ -1,13 +1,14 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import AppShell from '$lib/components/layout/AppShell.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
 
   let startupBypassed = $state(false);
+  let activeWorkSyncInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
     const bypassTimer = window.setTimeout(() => {
@@ -19,6 +20,10 @@
 
     themeStore.set(themeStore.current);
     deepResearchStore.init();
+    activeWorkSyncInterval = setInterval(() => {
+      void appStore.syncWindowActiveWork();
+    }, 900);
+    void appStore.syncWindowActiveWork();
     void appStore.init().catch((error) => {
       console.error('[App] init failed', error);
       appStore.error = String((error as Error)?.message || error || 'Failed to initialize');
@@ -26,6 +31,13 @@
     }).finally(() => {
       window.clearTimeout(bypassTimer);
     });
+  });
+
+  onDestroy(() => {
+    if (activeWorkSyncInterval) {
+      clearInterval(activeWorkSyncInterval);
+      activeWorkSyncInterval = null;
+    }
   });
 </script>
 

@@ -2307,7 +2307,7 @@
                       {/if}
                     </div>
                   {:else}
-                    <input class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]" bind:value={providerModel} placeholder="gpt-4o-mini" />
+                    <input class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]" bind:value={providerModel} placeholder="No model" />
                   {/if}
                   <button
                     class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"

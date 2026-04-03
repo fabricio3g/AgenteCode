@@ -10,7 +10,7 @@ function resolveProvider(config: AppConfig) {
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {
     base_url: 'https://api.openai.com/v1',
-    model: 'default-model'
+    model: ''
   };
   console.log('[chat-api] resolveProvider:', { 
     providerName, 
@@ -168,7 +168,7 @@ export async function loadChatConfig(): Promise<AppConfig> {
         ...(config.llm?.providers || {}),
         openai: {
           base_url: 'https://api.openai.com/v1',
-          model: 'default-model',
+          model: '',
           has_api_key: false,
           ...(config.llm?.providers?.openai || {})
         }

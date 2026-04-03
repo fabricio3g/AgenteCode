@@ -571,7 +571,7 @@
           </p>
         {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
           <p class="text-sm text-[var(--text-muted)]">
-            No provider configured.
+            No model.
             <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('providers')}>
               Configure a provider
               <ArrowRight class="h-3 w-3" />
@@ -617,6 +617,11 @@
           {#if appStore.currentRagDocuments.length > 0}
             <span class="rounded-full bg-[var(--text)] px-1 py-0 text-[9px] font-bold text-[var(--surface)]">{appStore.currentRagDocuments.length}</span>
           {/if}
+        </button>
+
+        <button class="composer-attach-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--text-secondary)] transition" aria-label="Source search" onclick={() => (appStore.searchSidebarOpen = !appStore.searchSidebarOpen)}>
+          <Search class="h-4 w-4" />
+          <span class={compactComposer ? '' : 'hidden sm:inline'}>Sources</span>
         </button>
 
         {#if appStore.composerMode !== 'agent'}

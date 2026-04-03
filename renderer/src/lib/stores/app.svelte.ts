@@ -1,5 +1,5 @@
 import type { AgentArtifact, AgentStep, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceContext, WorkspaceFile } from '$lib/types/chat';
-import type { IndexedDocument } from '$lib/types/tauri';
+import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runAgentTask } from '$lib/services/agent';
 import { startManagedAgentTask, updateManagedAgentTask, cancelManagedAgentTask } from '$lib/services/agent-runtime';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -283,6 +283,9 @@ class AppStore {
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
   chatSearchOpen = $state(false);
+  searchSidebarOpen = $state(false);
+  searchResults = $state<SearchResult[]>([]);
+  searchLoading = $state(false);
   downloadsOpen = $state(false);
   voiceModeActive = $state(false);
   loading = $state(false);
@@ -321,6 +324,7 @@ class AppStore {
   localModelLoading = $state(false);
   localModelActive = $state<{ name: string; path: string; hasMmproj: boolean } | null>(null);
   userName = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem(USER_NAME_KEY) || '') : '');
+  private closeWorkFingerprint = '';
 
   get currentChat() {
     return this.chats.find((chat) => chat.id === this.currentChatId) || null;
@@ -340,9 +344,37 @@ class AppStore {
 
   get activeModelLabel() {
     if (this.backendMode === 'local') {
-      return this.config.llm?.local?.model || 'Select a local model';
+      return this.config.llm?.local?.model || 'No model';
     }
-    return this.activeProvider?.model || 'Select a model';
+    return this.activeProvider?.model || 'No model';
+  }
+
+  get hasActiveWork() {
+    return this.loading || this.localModelLoading || downloadsStore.hasActive;
+  }
+
+  get activeWorkReasons() {
+    const reasons: string[] = [];
+    if (this.loading) reasons.push('chat generation');
+    if (this.localModelLoading) reasons.push('model loading');
+    if (downloadsStore.hasActive) reasons.push('downloads');
+    return reasons;
+  }
+
+  async syncWindowActiveWork() {
+    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.windowSetActiveWork) return;
+    const payload = {
+      active: this.hasActiveWork,
+      reasons: this.activeWorkReasons
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (fingerprint === this.closeWorkFingerprint) return;
+    this.closeWorkFingerprint = fingerprint;
+    try {
+      await window.electronAPI.windowSetActiveWork(payload.active, payload.reasons);
+    } catch {
+      // no-op for close guard sync failures
+    }
   }
 
   get selectedLocalModelPath() {
@@ -942,6 +974,30 @@ Design rules:
 
   setSearchMode(mode: 'chat' | 'search' | 'deep' | 'max') {
     this.searchMode = this.searchMode === mode ? 'chat' : mode;
+  }
+
+  async performWebSearch(query: string) {
+    const trimmed = String(query || '').trim();
+    if (!trimmed) {
+      this.searchResults = [];
+      return;
+    }
+
+    this.searchLoading = true;
+    try {
+      const response = await webSearch({ query: trimmed, deep: false, mode: 'search' });
+      this.searchResults = Array.isArray(response.results) ? response.results : [];
+    } catch (error) {
+      this.searchResults = [];
+      toastStore.error(String((error as Error)?.message || error || 'Search failed'));
+    } finally {
+      this.searchLoading = false;
+    }
+  }
+
+  openSearchSidebarWithResults(results: SearchResult[]) {
+    this.searchResults = Array.isArray(results) ? results : [];
+    this.searchSidebarOpen = true;
   }
 
   setComposerMode(mode: 'chat' | 'slides' | 'agent') {

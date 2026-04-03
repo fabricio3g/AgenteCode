@@ -9,6 +9,8 @@ type ElectronAPI = {
   windowToggleMaximize: () => Promise<void>;
   windowIsMaximized: () => Promise<boolean>;
   windowClose: () => Promise<void>;
+  windowRequestClose: () => Promise<{ closed: boolean; prompted: boolean }>;
+  windowSetActiveWork: (active: boolean, reasons?: string[]) => Promise<unknown>;
   platform: string;
   isElectron: boolean;
 };

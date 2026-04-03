@@ -20,6 +20,7 @@
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
+  import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import { Plus, Search, Boxes, Cpu, Settings2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -237,6 +238,10 @@
 
 {#if appStore.chatSearchOpen}
   <ChatSearchModal />
+{/if}
+
+{#if appStore.searchSidebarOpen}
+  <SearchSidebar />
 {/if}
 
 {#if showShortcutsHelp}

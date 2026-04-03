@@ -77,7 +77,7 @@
       ? (runtimeStatus?.active_model || appStore.config.llm?.local?.model || null)
       : appStore.activeProvider?.model || null
   );
-  const activeModelShort = $derived(activeModel ? (activeModel.split('/').pop() || activeModel).replace(/\.gguf$/i, '') : '—');
+  const activeModelShort = $derived(activeModel ? (activeModel.split('/').pop() || activeModel).replace(/\.gguf$/i, '') : 'No model');
   const runtimeRunning = $derived.by(() => {
     const state = String(runtimeStatus?.state || '');
     return state === 'ready' || state === 'model_ready';

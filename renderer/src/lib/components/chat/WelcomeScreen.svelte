@@ -111,7 +111,7 @@
       {:else if apiProviderLabel && hasApiKey}
         {apiProviderLabel}{appStore.activeModelLabel ? ` · ${appStore.activeModelLabel}` : ''}
       {:else}
-        No provider configured
+        No model
       {/if}
     </p>
 

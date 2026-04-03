@@ -147,7 +147,7 @@
       {isAnyModelLoaded ? loadedModelFilename : localLoading ? 'Loading...' : 'No model'}
     </span>
   {:else}
-    <span class="truncate text-[13px] text-[var(--text-secondary)]">{displayLabel || 'Select model'}</span>
+    <span class="truncate text-[13px] text-[var(--text-secondary)]">{displayLabel || 'No model'}</span>
   {/if}
   <ChevronDown class="h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150 {appStore.modelMenuOpen ? 'rotate-180' : ''}" />
 </button>

@@ -17,6 +17,10 @@ export const appWindow = {
   },
   async close() {
     if (!isElectron()) return;
+    if (window.electronAPI?.windowRequestClose) {
+      await window.electronAPI.windowRequestClose();
+      return;
+    }
     await window.electronAPI!.windowClose();
   }
 };
