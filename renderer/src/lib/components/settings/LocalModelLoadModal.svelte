@@ -26,13 +26,17 @@
   const target = $derived(appStore.localModelLoadTarget);
   const isAnyModelLoaded = $derived(Boolean(modelsStore.status?.active_model));
   const loadedModelLabel = $derived(
-    String(modelsStore.status?.active_model || '').split('/').pop()?.split('\\').pop() || ''
+    String(modelsStore.status?.active_model || '').split(/[\\/]/).pop() || ''
   );
   const maxContext = $derived(Math.max(512, Number(metadata?.context_length || target?.context_length || 4096)));
   const blockCount = $derived(Math.max(0, Number(metadata?.block_count || 0)));
   const parameterCount = $derived(Number(metadata?.parameter_count || 0));
   const fileSizeBytes = $derived(Number(metadata?.file_size_bytes || 0));
-  const gpuLayersMax = $derived(Math.max(0, blockCount || Number(appStore.localModelLoadGpuLayers || 0)));
+  const gpuLayersMax = $derived.by(() => {
+    const current = Number(appStore.localModelLoadGpuLayers || 0);
+    if (blockCount > 0) return Math.max(blockCount, current);
+    return Math.max(80, current);
+  });
   const cpuThreadsMax = $derived(Math.max(1, Number(hardware?.cpu_threads || navigator.hardwareConcurrency || 4)));
 
   // Local slider state — decoupled from store to avoid re-renders on every tick
@@ -108,6 +112,7 @@
   const toolSupport = $derived.by(() => {
     if (metadata?.chat_template_uses_tools === true) return { label: 'Supported', tone: 'text-neutral-700 dark:text-neutral-300' };
     if (metadata?.chat_template_uses_tools === false) return { label: 'Not supported', tone: 'text-neutral-600 dark:text-neutral-400' };
+    if (!loadingMeta) return { label: 'Not supported', tone: 'text-neutral-600 dark:text-neutral-400' };
     return { label: 'Unknown', tone: 'text-neutral-600 dark:text-neutral-400' };
   });
 
@@ -156,7 +161,7 @@
     void Promise.allSettled([
       getGgufMetadata(model.path),
       getHardwareLimits(),
-      getRecommendedSettings(model.path, ctx, gpu)
+      getRecommendedSettings(model.path, ctx, gpu, appStore.localModelLoadRuntimePath || appStore.config?.llm?.local?.runtime_path)
     ]).then((results) => {
       const [metaResult, hardwareResult, recommendedResult] = results;
       if (metaResult.status === 'fulfilled') metadata = metaResult.value;
@@ -288,6 +293,9 @@
   inputmode="numeric"
   />
   </div>
+  {#if metadata?.context_length_source === 'filename_guess'}
+  <div class="mt-1.5 text-[11px] text-[var(--text-tertiary)]">Context is estimated from filename; verify model metadata if this looks wrong.</div>
+  {/if}
   </section>
 
   <!-- Recommended preset button -->
@@ -361,9 +369,13 @@
   </div>
   <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
   <div class="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]"><Gauge class="h-3 w-3" /> GPU</div>
-  <div class="truncate text-xs font-medium text-[var(--text)]">{hardware ? `${hardware.gpu_name || 'CPU only'}${hardware.vram_gb > 0 ? ` · ${hardware.vram_gb.toFixed(1)}G` : ''}` : '…'}</div>
+  <div class="truncate text-xs font-medium text-[var(--text)]">{hardware ? `${hardware.gpu_name || 'CPU only'}${hardware.vram_gb > 0 ? ` · ${hardware.vram_estimated ? '~' : ''}${hardware.vram_gb.toFixed(1)}G` : ''}` : '…'}</div>
   </div>
   </div>
+
+  {#if hardware?.vram_estimated}
+  <div class="-mt-1 mb-2 text-[11px] text-[var(--text-tertiary)]">GPU memory is estimated for integrated graphics; adjust GPU layers if startup fails.</div>
+  {/if}
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
   <button class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
@@ -676,7 +688,11 @@
   <section class="rounded-xl border border-[var(--border)] p-3">
   <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Summary</div>
   <div class="space-y-1.5 text-xs text-[var(--text-secondary)]">
+  <div class="flex items-center justify-between gap-3"><span>Model max context</span><span class="font-medium text-[var(--text)]">{maxContext.toLocaleString()}</span></div>
   <div class="flex items-center justify-between gap-3"><span>Context</span><span class="font-medium text-[var(--text)]">{contextLength.toLocaleString()}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Backend</span><span class="font-medium text-[var(--text)]">{recommended?.backend || hardware?.gpu_backend || 'cpu'}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Device</span><span class="font-medium text-[var(--text)]">{recommended?.selected_device || 'auto'}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Binary backends</span><span class="font-medium text-[var(--text)]">{recommended?.available_backends?.join(', ') || 'unknown'}</span></div>
   <div class="flex items-center justify-between gap-3"><span>GPU layers</span><span class="font-medium text-[var(--text)]">{gpuLayers}</span></div>
   <div class="flex items-center justify-between gap-3"><span>CPU threads</span><span class="font-medium text-[var(--text)]">{cpuThreads}</span></div>
   <div class="flex items-center justify-between gap-3"><span>Batch size</span><span class="font-medium text-[var(--text)]">{batchSize}</span></div>

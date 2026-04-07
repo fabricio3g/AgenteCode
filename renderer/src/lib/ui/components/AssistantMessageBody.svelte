@@ -46,21 +46,59 @@
     const task = deepResearchStore.activeTask;
     return !!task && task.messageId === message.id;
   });
+
+  const hasAgentRuntime = $derived(
+    message.mode === 'agent' ||
+    message.status === 'streaming' ||
+    !!message.agentTaskId ||
+    !!message.agentSteps?.length ||
+    !!message.artifact ||
+    !!message.workContext
+  );
+
+  const hasSources = $derived((message.sources?.length || 0) > 0);
+  const hasSearchStatus = $derived(
+    !!displaySearchMeta && (
+      !!displaySearchMeta.searchRequested ||
+      !!displaySearchMeta.searchError ||
+      !!displaySearchMeta.searchFallbackReason ||
+      !!displaySearchMeta.providerWarnings?.length
+    )
+  );
+
+  const hasContextBadges = $derived(!!message.workContext || (message.ragDocuments?.length || 0) > 0);
 </script>
 
-<DeepResearchWidget messageId={message.id} />
-<AgentRuntimeBlock
-  mode={message.mode}
-  messageStatus={message.status}
-  agentTaskId={message.agentTaskId}
-  stepCount={message.agentSteps?.length || 0}
-  hasArtifact={!!message.artifact}
-  workspaceBound={!!message.workContext}
-/>
-<AgentTimeline steps={message.agentSteps} managed={!!message.agentTaskId} />
-<SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} />
-<SearchStatusBlock meta={displaySearchMeta} />
-<ContextBadges workContext={message.workContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
+{#if hasActiveDeepResearch}
+  <DeepResearchWidget messageId={message.id} />
+{/if}
+
+{#if hasAgentRuntime}
+  <AgentRuntimeBlock
+    mode={message.mode}
+    messageStatus={message.status}
+    agentTaskId={message.agentTaskId}
+    stepCount={message.agentSteps?.length || 0}
+    hasArtifact={!!message.artifact}
+    workspaceBound={!!message.workContext}
+  />
+{/if}
+
+{#if message.agentSteps?.length}
+  <AgentTimeline steps={message.agentSteps} managed={!!message.agentTaskId} />
+{/if}
+
+{#if hasSources}
+  <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} />
+{/if}
+
+{#if hasSearchStatus}
+  <SearchStatusBlock meta={displaySearchMeta} />
+{/if}
+
+{#if hasContextBadges}
+  <ContextBadges workContext={message.workContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
+{/if}
 
 {#if enableThinking && displayReasoning}
   <ReasoningBlock reasoning={displayReasoning} status={message.status} timing={displayMetadata?.timing || 0} />

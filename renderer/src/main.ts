@@ -1,4 +1,5 @@
 import './app.css';
+import '$lib/i18n/index';
 import App from './App.svelte';
 import { mount } from 'svelte';
 

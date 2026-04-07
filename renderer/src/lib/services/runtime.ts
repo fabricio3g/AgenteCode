@@ -45,18 +45,23 @@ export async function unloadModel(modelId: string): Promise<void> {
 export async function getRecommendedSettings(
   modelPath: string,
   userContext?: number,
-  userGpuLayers?: number
+  userGpuLayers?: number,
+  runtimePath?: string
 ): Promise<RecommendedSettings> {
   return invoke<RecommendedSettings>('get_recommended_settings', {
     modelPath,
     userContext,
-    userGpuLayers
+    userGpuLayers,
+    runtimePath
   });
 }
 
 export async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {
   const startedAt = Date.now();
   const modelsUrl = `${resolveLocalBaseUrl({ llm: { local: { base_url: baseUrl } } })}/models`;
+
+  let interval = 400;
+  const MAX_INTERVAL = 4000;
 
   while (Date.now() - startedAt < timeoutMs) {
     if (signal?.aborted) throw new Error('Aborted');
@@ -67,7 +72,8 @@ export async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, si
       if (signal?.aborted) throw new Error('Aborted');
       // keep polling
     }
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, interval));
+    interval = Math.min(interval * 1.5, MAX_INTERVAL);
   }
 
   throw new Error('Local runtime did not become ready in time');
@@ -91,12 +97,14 @@ export async function ensureLocalRuntime(config: AppConfig): Promise<string> {
   const settings = await getRecommendedSettings(
     modelPath,
     config.llm?.local?.context_length,
-    config.llm?.local?.gpu_layers
+    config.llm?.local?.gpu_layers,
+    config.llm?.local?.runtime_path
   );
   const { host, port } = parseHostPort(baseUrl);
 
   await startLlama({
     model_path: modelPath,
+    backend_mode: settings.backend,
     host,
     port,
     context_length: settings.context_length,
@@ -145,12 +153,14 @@ export async function loadLocalModel(args: {
   const settings = await getRecommendedSettings(
     args.modelPath,
     args.contextLength ?? args.config.llm?.local?.context_length,
-    args.gpuLayers ?? args.config.llm?.local?.gpu_layers
+    args.gpuLayers ?? args.config.llm?.local?.gpu_layers,
+    args.runtimePath || args.config.llm?.local?.runtime_path
   );
   const { host, port } = parseHostPort(baseUrl);
 
   const baseStartConfig: LlamaConfig = {
     model_path: args.modelPath,
+    backend_mode: settings.backend,
     host,
     port,
     context_length: args.contextLength ?? settings.context_length,
@@ -209,8 +219,8 @@ export async function loadLocalModel(args: {
         gpu_offload: Math.max(0, Math.floor(Number(baseStartConfig.gpu_offload || 0) * 0.5)),
         offload_kv_cache: false,
         batch_size: Math.min(Number(baseStartConfig.batch_size || settings.batch_size || 512), 128),
-        cache_type_k: 'q4_0',
-        cache_type_v: 'q4_0'
+        cache_type_k: 'f16',
+        cache_type_v: 'f16'
       };
       await stopLlama().catch(() => {});
       await startWithConfig(saferConfig);
@@ -233,8 +243,8 @@ export async function loadLocalModel(args: {
       offload_kv_cache: false,
       keep_in_memory: false,
       mmap: true,
-      cache_type_k: 'q4_0',
-      cache_type_v: 'q4_0'
+      cache_type_k: 'f16',
+      cache_type_v: 'f16'
     };
     await stopLlama().catch(() => {});
     await startWithConfig(cpuSafeConfig);

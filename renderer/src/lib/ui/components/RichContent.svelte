@@ -3,7 +3,7 @@
 <script lang="ts">
   import type { ChatMessage } from '$lib/types/chat';
   import type { ActionEvent } from '$lib/ui';
-  import { renderMarkdown } from '$lib/utils/markdown';
+  import { renderMarkdown, observeLazyHighlight } from '$lib/utils/markdown';
   import { parseContentSegments, sanitizeAssistantArtifacts, stripChartBlocks } from '$lib/utils/charts';
   import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
   import Renderer from '../Renderer.svelte';
@@ -26,7 +26,8 @@
   const contentSegments = $derived(parseContentSegments(sanitizedContent));
   const hasCharts = $derived(contentSegments.some((segment) => segment.kind === 'chart'));
   const rendersUI = $derived(hasUIContent(sanitizedContent));
-  const markdownHtml = $derived(renderMarkdown(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent));
+  const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
+  const markdownHtml = $derived(renderMarkdown(markdownSource));
 
   function replaceCitations(container: HTMLElement, refs: NonNullable<ChatMessage['sources']>) {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -82,7 +83,7 @@
 
   $effect(() => {
     if (!contentEl || rendersUI) return;
-    void markdownHtml;
+    void markdownSource;
     const pres = contentEl.querySelectorAll('pre');
     for (const pre of pres) {
       if (pre.querySelector('.copy-btn')) continue;
@@ -101,6 +102,13 @@
       });
       pre.appendChild(btn);
     }
+  });
+
+  $effect(() => {
+    if (!contentEl || rendersUI) return;
+    void markdownSource;
+    const cleanup = observeLazyHighlight(contentEl);
+    return cleanup;
   });
 </script>
 

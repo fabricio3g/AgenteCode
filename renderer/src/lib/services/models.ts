@@ -39,3 +39,11 @@ export async function importLocalModel(
     copy_to_managed
   });
 }
+
+export async function pickModelFile(): Promise<string | null> {
+  try {
+    return await invoke<string>('pick_model_file');
+  } catch {
+    return null;
+  }
+}

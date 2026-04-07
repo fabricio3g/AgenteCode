@@ -1,7 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
+  import { t } from 'svelte-i18n';
+  import { ArrowDown } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 
@@ -13,26 +15,72 @@
 
   let container = $state<HTMLDivElement | undefined>(undefined);
   let showTopFade = $state(false);
+  let showJumpToLatest = $state(false);
+  let scrollRafId = 0;
+  let previousChatId = $state<string | null>(null);
+  let previousMessageCount = $state(0);
+  let scrollTicket = 0;
   const messages = $derived(appStore.currentChat?.messages || []);
   const hasMessages = $derived(messages.length > 0);
   const contentBottomInset = $derived(Math.max(composerInset + 24, 320));
+  const jumpButtonBottom = $derived(Math.max(composerInset + 48, 124));
+  const BOTTOM_THRESHOLD_PX = 96;
+
+  function isNearBottom(): boolean {
+    if (!container) return true;
+    const distance = container.scrollHeight - (container.scrollTop + container.clientHeight);
+    return distance <= BOTTOM_THRESHOLD_PX;
+  }
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
-    container?.scrollTo({ top: container.scrollHeight, behavior });
+    cancelAnimationFrame(scrollRafId);
+    scrollRafId = requestAnimationFrame(() => {
+      container?.scrollTo({ top: container.scrollHeight, behavior });
+    });
   }
 
   function handleScroll() {
     if (!container) return;
     const scrollTop = container.scrollTop;
+    const nearBottom = isNearBottom();
     showTopFade = scrollTop > 40;
+    showJumpToLatest = !nearBottom;
+  }
+
+  function jumpToLatest() {
+    scrollToBottom('smooth');
+    showJumpToLatest = false;
   }
 
   $effect(() => {
-    messages.length;
-    tick().then(() => scrollToBottom(messages.at(-1)?.status === 'streaming' ? 'auto' : 'smooth'));
-  });
+    const chatId = appStore.currentChatId;
+    const messageCount = messages.length;
+    const isStreaming = messages.at(-1)?.status === 'streaming';
+    const ticket = ++scrollTicket;
 
-  onMount(() => {});
+    tick().then(() => {
+      if (ticket !== scrollTicket || !container) return;
+
+      const chatChanged = chatId !== previousChatId;
+      const countChanged = messageCount !== previousMessageCount;
+      const nearBottom = isNearBottom();
+
+      if (chatChanged) {
+        scrollToBottom('auto');
+        showJumpToLatest = false;
+      } else if (countChanged) {
+        if (nearBottom || isStreaming) {
+          scrollToBottom(isStreaming ? 'auto' : 'smooth');
+          showJumpToLatest = false;
+        } else {
+          showJumpToLatest = true;
+        }
+      }
+
+      previousChatId = chatId;
+      previousMessageCount = messageCount;
+    });
+  });
 </script>
 
 <div class="relative flex-1 min-h-0 overflow-hidden" style="background:var(--chat-bg)">
@@ -54,6 +102,19 @@
       </div>
       <div class="message-list-fade message-list-fade-top pointer-events-none" class:visible={showTopFade}></div>
       <div class="message-list-fade message-list-fade-bottom pointer-events-none"></div>
+
+      {#if showJumpToLatest}
+        <button
+          type="button"
+          class="jump-latest-btn"
+          style={`bottom:${jumpButtonBottom}px;`}
+          onclick={jumpToLatest}
+          aria-label={$t('chat.jumpToLatest')}
+        >
+          <ArrowDown class="h-4 w-4" />
+          <span>{$t('chat.jumpToLatest')}</span>
+        </button>
+      {/if}
     </div>
   {/if}
 </div>
@@ -61,6 +122,7 @@
 <style>
   .message-list-wrapper {
     position: relative;
+    contain: layout style;
   }
 
   .message-list-fade {
@@ -101,5 +163,31 @@
       color-mix(in srgb, var(--chat-bg, var(--background)) 20%, transparent) 75%,
       transparent 100%
     );
+  }
+
+  .jump-latest-btn {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    color: var(--text-secondary);
+    padding: 0.35rem 0.65rem;
+    font-size: 11px;
+    font-weight: 600;
+    box-shadow: var(--shadow-m);
+    backdrop-filter: blur(6px);
+    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  }
+
+  .jump-latest-btn:hover {
+    background: var(--surface-highlight);
+    color: var(--text);
+    transform: translateX(-50%) translateY(-1px);
   }
 </style>

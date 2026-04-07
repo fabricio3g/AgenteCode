@@ -12,6 +12,7 @@ class ModelsStore {
   unloading = $state(false);
   lastRefresh = $state<number>(0);
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private idleCount = 0;
 
   get availableModels() {
     if (this.indexedModels.length) {
@@ -61,7 +62,7 @@ class ModelsStore {
   get activeModelName() {
     const active = this.status?.active_model;
     if (!active) return null;
-    return String(active).split('/').pop()?.split('\\').pop() || active;
+    return String(active).split(/[\\/]/).pop() || active;
   }
 
   async refresh() {
@@ -127,9 +128,24 @@ class ModelsStore {
   }
 
   startPolling(intervalMs = 3000) {
-    if (this.pollInterval) return;
+    if (this.pollInterval) {
+      // Reset idle counter when explicitly restarting
+      this.idleCount = 0;
+      return;
+    }
+    this.idleCount = 0;
     this.pollInterval = setInterval(() => {
       void this.refreshStatus();
+      // Auto-stop polling after 2 consecutive idle/error checks
+      const state = this.status?.state;
+      if (state === 'idle' || state === 'error' || !state) {
+        this.idleCount++;
+        if (this.idleCount >= 2) {
+          this.stopPolling();
+        }
+      } else {
+        this.idleCount = 0;
+      }
     }, intervalMs);
   }
 

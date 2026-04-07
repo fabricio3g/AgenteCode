@@ -13,6 +13,7 @@
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@fontsource/urbanist": "^5.2.7",
+    "@lancedb/lancedb": "^0.27.2",
     "d3": "^7.9.0",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
@@ -21,6 +22,7 @@
     "marked": "^16.3.0",
     "pdfjs-dist": "^5.5.207",
     "svelte": "^5.53.7",
+    "svelte-i18n": "^4.0.1",
     "tesseract.js": "^7.0.0",
     "zod": "^4.1.11"
   },

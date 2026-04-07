@@ -6,11 +6,14 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/services/tauri';
+  import { t } from 'svelte-i18n';
   import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
   import RenameChatModal from './RenameChatModal.svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
+  let debouncedSearch = $state('');
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let renamingChatId = $state<string | null>(null);
   let renamingChatTitle = $state('');
   let renameValue = $state('');
@@ -26,16 +29,14 @@
     const now = startOfDay(Date.now());
     const day = startOfDay(ts);
     const diff = Math.floor((now - day) / 86400000);
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    if (diff <= 6) return 'This week';
-    return 'Older';
+    if (diff === 0) return $t('sidebar.today') || 'Today';
+    if (diff === 1) return $t('sidebar.yesterday') || 'Yesterday';
+    if (diff <= 6) return $t('sidebar.thisWeek') || 'This week';
+    return $t('sidebar.older') || 'Older';
   }
 
-  const GROUP_ORDER = ['Today', 'Yesterday', 'This week', 'Older'];
-
   const filteredChats = $derived.by(() => {
-    const query = search.trim().toLowerCase();
+    const query = debouncedSearch.trim().toLowerCase();
     if (!query) return appStore.chats;
     return appStore.chats.filter((chat) => {
       return (
@@ -45,14 +46,43 @@
     });
   });
 
+  $effect(() => {
+    const current = search;
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      debouncedSearch = current;
+    }, 150);
+  });
+
   const groupedChats = $derived.by(() => {
-    const groups: Record<string, typeof filteredChats> = {};
+    // Group into stable buckets to avoid duplicate translated labels
+    // (e.g. multiple day-diffs sharing "This week").
+    type ChatGroup = { key: number; label: string; chats: (typeof filteredChats)[number][] };
+    const groups: ChatGroup[] = [];
+    const groupMap = new Map<number, ChatGroup>();
+
     for (const chat of filteredChats) {
-      const label = groupLabel(chat.updatedAt || chat.createdAt);
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(chat);
+      const now = startOfDay(Date.now());
+      const day = startOfDay(chat.updatedAt || chat.createdAt);
+      const diff = Math.floor((now - day) / 86400000);
+      const bucket = diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : 3;
+      if (!groupMap.has(bucket)) {
+        groupMap.set(bucket, {
+          key: bucket,
+          label: groupLabel(chat.updatedAt || chat.createdAt),
+          chats: []
+        });
+      }
+      groupMap.get(bucket)!.chats.push(chat);
     }
-    return GROUP_ORDER.filter((g) => groups[g]?.length).map((g) => ({ label: g, chats: groups[g] }));
+
+    // Sort groups: Today (0), Yesterday (1), This week (2), Older (3)
+    const sortedKeys = Array.from(groupMap.keys()).sort((a, b) => a - b);
+    for (const key of sortedKeys) {
+      const entry = groupMap.get(key)!;
+      if (entry.chats.length) groups.push(entry);
+    }
+    return groups;
   });
 
   const isSearching = $derived(search.trim().length > 0);
@@ -119,14 +149,14 @@
     <!-- Top actions row: New Chat + Search toggle -->
     <div class="flex items-center gap-1 px-1 pb-2">
       <button
-        class="new-chat-btn flex flex-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition"
+        class="new-chat-btn flex flex-1 items-center gap-2 rounded-[var(--radius-s)] px-2.5 py-1.5 text-[13px] font-medium transition"
         onclick={() => appStore.createChat()}
       >
         <Plus class="h-4 w-4" />
-        New Chat
+        {$t('sidebar.newChat')}
       </button>
       <button
-        class="sidebar-icon-btn flex h-8 w-8 items-center justify-center rounded-lg transition"
+        class="sidebar-icon-btn flex h-8 w-8 items-center justify-center rounded-[var(--radius-s)] transition"
         onclick={() => (appStore.chatSearchOpen = true)}
         aria-label="Search chats"
         title="Search conversations (Ctrl+Shift+K)"
@@ -144,9 +174,9 @@
             bind:value={search}
             onfocus={() => (searchFocused = true)}
             onblur={() => (searchFocused = false)}
-            class="search-input w-full rounded-lg py-1.5 pl-8 pr-8 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
+            class="search-input w-full rounded-[var(--radius-s)] py-1.5 pl-8 pr-8 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
             class:focused={searchFocused}
-            placeholder="Search chats..."
+            placeholder={$t('sidebar.searchPlaceholder')}
             type="text"
           />
           {#if isSearching}
@@ -171,15 +201,15 @@
     <!-- Chat list -->
     <div class="chat-list flex-1 overflow-y-auto px-0.5">
       {#if groupedChats.length}
-        {#each groupedChats as group (group.label)}
-          <div class="mb-1">
+        {#each groupedChats as group (group.key)}
+          <div class="mb-2">
             <div class="group-label px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
               {group.label}
             </div>
-            <div class="space-y-px">
+            <div class="space-y-0.5">
               {#each group.chats as chat (chat.id)}
                 <div
-                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
+                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between rounded-[var(--radius-s)] px-2.5 py-2 text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
                   role="button"
                   tabindex="0"
                   onclick={() => appStore.selectChat(chat.id)}
@@ -192,12 +222,11 @@
                   }}
                 >
                   <div class="min-w-0 flex-1 pr-1">
-                    <div class="chat-title truncate text-[13px] font-medium">{chat.title}</div>
-                    <div class="chat-date mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{new Date(chat.updatedAt || chat.createdAt).toLocaleDateString()}</div>
+                    <div class="chat-title truncate text-[13px]">{chat.title}</div>
                   </div>
                   <button
                     type="button"
-                    class="menu-btn ml-0.5 rounded-md p-1 opacity-0 transition group-hover:opacity-100"
+                    class="menu-btn ml-0.5 rounded-[var(--radius-s)] p-1 opacity-0 transition group-hover:opacity-100"
                     onclick={(e) => {
                       e.stopPropagation();
                       openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
@@ -209,7 +238,7 @@
 
                   {#if openMenuChatId === chat.id}
                     <div
-                      class="chat-menu absolute right-0 top-10 z-30 w-40 rounded-lg"
+                      class="chat-menu absolute right-0 top-10 z-30 w-40 rounded-[var(--radius-m)]"
                       role="menu"
                       tabindex="-1"
                       onclick={(e) => e.stopPropagation()}
@@ -248,7 +277,7 @@
         {/each}
       {:else}
         <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
-          <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-lg">
+          <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-s)]">
             <MessageSquare class="h-4 w-4 text-[var(--text-muted)]" />
           </div>
           {#if isSearching}
@@ -264,7 +293,7 @@
     <!-- Footer: Model Hub, Runtime, Settings -->
     <div class="sidebar-footer space-y-px px-0.5 py-1.5">
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
         onclick={() => (appStore.modelManagerOpen = true)}
         title="Manage models"
       >
@@ -273,7 +302,7 @@
       </button>
       {#if isTauri()}
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition"
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
           onclick={() => (appStore.runtimeManagerOpen = true)}
           title="Manage local runtime"
         >
@@ -282,7 +311,7 @@
         </button>
       {/if}
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
         onclick={() => (appStore.settingsOpen = true)}
         title="Settings"
       >
@@ -304,6 +333,7 @@
 <style>
   .sidebar {
     background: var(--chat-bg, var(--background));
+    border-right: 1px solid var(--border);
   }
 
   .new-chat-btn {
@@ -366,6 +396,7 @@
 
   .chat-item.is-active .chat-title {
     color: var(--text);
+    font-weight: 500;
   }
 
   .menu-btn {
@@ -387,7 +418,7 @@
 
   .menu-item {
     color: var(--text);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
   }
 
   .menu-item:hover {

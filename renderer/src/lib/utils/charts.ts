@@ -99,6 +99,18 @@ export function parseContentSegments(content: string): ContentSegment[] {
 
   markers.sort((a, b) => a.start - b.start);
 
+  if (!markers.length) {
+    const wholeChart = parseChartData(sanitized);
+    if (wholeChart) {
+      return [{
+        kind: 'chart',
+        type: inferChartType(sanitized, wholeChart),
+        title: inferChartTitle(sanitized),
+        raw: sanitized
+      }];
+    }
+  }
+
   const segments: ContentSegment[] = [];
   let lastIndex = 0;
   for (const marker of markers) {

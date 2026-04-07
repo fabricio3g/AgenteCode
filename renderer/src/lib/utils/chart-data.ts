@@ -71,6 +71,92 @@ function normalizeChartData(value: unknown): ChartData | null {
   return { labels, datasets };
 }
 
+function extractJsonObjects(input: string): string[] {
+  const out: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+      continue;
+    }
+
+    if (ch === '}' && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        out.push(input.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+
+  return out;
+}
+
+function mergeChartFragments(fragments: unknown[]): ChartData | null {
+  const merged: ChartData = { labels: [], datasets: [] };
+
+  for (const fragment of fragments) {
+    const normalized = normalizeChartData(fragment);
+    if (normalized) return normalized;
+    if (!fragment || typeof fragment !== 'object') continue;
+    const record = fragment as Record<string, unknown>;
+
+    if (!merged.labels.length) {
+      const labels = Array.isArray(record.labels)
+        ? record.labels.map((label) => String(label))
+        : Array.isArray(record.x)
+          ? record.x.map((label) => String(label))
+          : null;
+      if (labels?.length) merged.labels = labels;
+    }
+
+    if (!merged.datasets.length) {
+      if (Array.isArray(record.datasets)) {
+        merged.datasets = record.datasets
+          .map((entry, index) => normalizeDataset(entry, `Series ${index + 1}`))
+          .filter((entry): entry is Dataset => !!entry);
+      } else if (Array.isArray(record.series)) {
+        merged.datasets = record.series
+          .map((entry, index) => normalizeDataset(entry, `Series ${index + 1}`))
+          .filter((entry): entry is Dataset => !!entry);
+      } else if (Array.isArray(record.values) || Array.isArray(record.data) || Array.isArray(record.y)) {
+        const single = normalizeDataset({
+          label: record.label || record.series || record.name || 'Series 1',
+          data: record.values || record.data || record.y
+        }, 'Series 1');
+        if (single) merged.datasets = [single];
+      }
+    }
+  }
+
+  return merged.labels.length && merged.datasets.length ? merged : null;
+}
+
 function candidateJsonStrings(input: string): string[] {
   const trimmed = input.trim();
   const candidates = new Set<string>();
@@ -107,6 +193,35 @@ export function parseChartData(input: string): ChartData | null {
     } catch {
     }
   }
+
+  const jsonFragments = extractJsonObjects(input);
+  if (jsonFragments.length > 1) {
+    const parsedFragments: unknown[] = [];
+    for (const fragment of jsonFragments) {
+      try {
+        parsedFragments.push(JSON.parse(fragment));
+      } catch {
+      }
+    }
+    const merged = mergeChartFragments(parsedFragments);
+    if (merged) return merged;
+  }
+
+  const stitched = input
+    .replace(/}\s*{/g, '},{')
+    .replace(/}\s*$/g, '}')
+    .trim();
+  if (stitched !== input.trim()) {
+    for (const candidate of candidateJsonStrings(stitched)) {
+      try {
+        const parsedValue = JSON.parse(candidate);
+        const normalized = normalizeChartData(parsedValue);
+        if (normalized) return normalized;
+      } catch {
+      }
+    }
+  }
+
   return null;
 }
 

@@ -5,8 +5,11 @@ export interface HardwareInfo {
   cpu_threads: number;
   cpu_model: string;
   vram_gb: number;
+  vram_estimated?: boolean;
   gpu_name: string;
   gpu_backend: 'cuda' | 'vulkan' | 'metal' | 'cpu' | string;
+  os_platform: string;
+  os_arch: string;
 }
 
 export interface DesktopCapabilities {
@@ -60,6 +63,7 @@ export interface ManagedAgentTask {
 export interface GgufMeta {
   architecture: string;
   context_length: number;
+  context_length_source?: string;
   parameter_count: number;
   block_count: number;
   size_label: string;
@@ -163,6 +167,9 @@ export interface SupervisorEvent {
 export interface RecommendedSettings {
   context_length: number;
   gpu_layers: number;
+  backend?: string;
+  selected_device?: string | null;
+  available_backends?: string[];
   batch_size: number;
   ubatch_size: number;
   cpu_threads: number;
@@ -176,6 +183,7 @@ export interface RecommendedSettings {
 
 export interface LlamaConfig {
   model_path: string;
+  backend_mode?: string;
   host?: string;
   port?: number;
   context_length?: number;

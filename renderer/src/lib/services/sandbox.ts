@@ -8,6 +8,7 @@ export async function sandboxExec(args: {
   args?: string[];
   shell?: boolean;
   timeout_ms?: number;
+  preserve?: boolean;
 }): Promise<SandboxExecResult> {
   return invoke<SandboxExecResult>('sandbox_exec', {
     projectName: args.project_name,
@@ -15,6 +16,7 @@ export async function sandboxExec(args: {
     command: args.command,
     args: args.args ?? [],
     shell: args.shell,
-    timeoutMs: args.timeout_ms
+    timeoutMs: args.timeout_ms,
+    preserve: args.preserve
   });
 }

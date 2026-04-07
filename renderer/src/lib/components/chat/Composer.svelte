@@ -8,9 +8,12 @@
   import { isTauri } from '$lib/services/tauri';
   import { sttTranscribe } from '$lib/services/stt';
   import { onDestroy } from 'svelte';
+  import { t } from 'svelte-i18n';
   import ComposerModes from './composer/ComposerModes.svelte';
-  import AttachmentCards from './composer/AttachmentCards.svelte';
+  import ModeSelector from './composer/ModeSelector.svelte';
+  import SearchModeSelector from './composer/SearchModeSelector.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
+  import AttachmentCards from './composer/AttachmentCards.svelte';
 
   interface Props {
     onHeightChange?: (height: number) => void;
@@ -31,7 +34,6 @@
   };
 
   let textarea: HTMLTextAreaElement | undefined;
-  let showRagPanel = $state(false);
   let fileInput: HTMLInputElement | undefined;
   let isListening = $state(false);
   let recognition: InstanceType<RecognitionCtor> | null = null;
@@ -165,7 +167,6 @@
     if (!files.length) return;
     await appStore.addFiles(files);
     input.value = '';
-    showRagPanel = true;
   }
 
   function onKeydown(event: KeyboardEvent) {
@@ -460,7 +461,6 @@
     const files = Array.from(event.dataTransfer?.files || []);
     if (files.length > 0) {
       void appStore.addFiles(files);
-      showRagPanel = true;
     }
   }
 
@@ -524,25 +524,8 @@
     <div class="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border-strong)] bg-[var(--surface-highlight)]">
       <div class="text-center">
         <Paperclip class="mx-auto mb-2 h-8 w-8 text-[var(--text-tertiary)]" />
-        <p class="text-sm font-medium text-[var(--text-secondary)]">Drop files here</p>
-        <p class="text-xs text-[var(--text-tertiary)]">Images, PDFs, documents</p>
-      </div>
-    </div>
-  {/if}
-
-  {#if showRagPanel && appStore.currentRagDocuments.length > 0}
-    <div class="pointer-events-auto mx-auto z-40 mb-2 max-w-[55rem]">
-      <div class="openui-card flex flex-wrap items-center gap-2 px-3 py-2">
-        <span class="text-xs font-medium text-[var(--text-secondary)]">Documents</span>
-        {#each appStore.currentRagDocuments as doc (doc.id)}
-          <span class="openui-muted-pill inline-flex items-center gap-1.5 px-2 py-1 text-[12px] text-[var(--text-secondary)]">
-            {doc.source}
-            <button class="openui-icon-button rounded-md" style="--openui-icon-button-color: var(--text-muted); --openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => appStore.removeRagDoc(doc.id)} aria-label="Remove">
-              <X class="h-3 w-3" />
-            </button>
-          </span>
-        {/each}
-        <button class="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => { appStore.clearRag(); showRagPanel = false; }}>Clear all</button>
+        <p class="text-sm font-medium text-[var(--text-secondary)]">{$t('composer.dropFiles')}</p>
+        <p class="text-xs text-[var(--text-tertiary)]">{$t('composer.dropHint')}</p>
       </div>
     </div>
   {/if}
@@ -553,27 +536,27 @@
         {#if isModelLoading}
           <p class="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
             <LoaderCircle class="h-4 w-4 animate-spin" />
-            Loading model...
+            {$t('welcome.loadingModel')}
           </p>
         {:else if appStore.backendMode === 'local' && !activeModel}
           <p class="text-sm text-[var(--text-muted)]">
-            No model loaded.
+            {$t('welcome.noModelLoaded')}
             <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('explore')}>
-              Browse models
+              {$t('welcome.browseAll')}
               <ArrowRight class="h-3 w-3" />
             </button>
           </p>
           <p class="mt-1.5 text-xs text-[var(--text-muted)]">
-            A runtime is auto-selected for your system.
+            {$t('welcome.runtimeAutoSelected')}
             <button class="text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('runtime')}>
-              Change runtime
+              {$t('welcome.changeRuntime')}
             </button>
           </p>
         {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
           <p class="text-sm text-[var(--text-muted)]">
-            No model.
+            {$t('welcome.noModel')}
             <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('providers')}>
-              Configure a provider
+              {$t('welcome.configureProvider')}
               <ArrowRight class="h-3 w-3" />
             </button>
           </p>
@@ -601,7 +584,7 @@
       <textarea
         bind:this={textarea}
         class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-        placeholder="Message TalamoLM..."
+        placeholder={$t('chat.placeholder')}
         rows="1"
         value={appStore.composer}
         oninput={onInput}
@@ -611,36 +594,17 @@
 
     <div class={`px-3 pb-2 pt-1 ${compactComposer ? 'space-y-1.5' : 'flex items-center justify-between'}`}>
       <div class={`flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
-        <button class="composer-attach-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--text-secondary)] transition" aria-label="Attach files" onclick={() => fileInput?.click()}>
+        <ModeSelector />
+
+        <button class="composer-attach-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--text-secondary)] transition" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
           <Paperclip class="h-4 w-4" />
-          <span class={compactComposer ? '' : 'hidden sm:inline'}>Attach</span>
-          {#if appStore.currentRagDocuments.length > 0}
-            <span class="rounded-full bg-[var(--text)] px-1 py-0 text-[9px] font-bold text-[var(--surface)]">{appStore.currentRagDocuments.length}</span>
-          {/if}
+          <span class={compactComposer ? '' : 'hidden sm:inline'}>{$t('composer.attach')}</span>
         </button>
 
-        <button class="composer-attach-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--text-secondary)] transition" aria-label="Source search" onclick={() => (appStore.searchSidebarOpen = !appStore.searchSidebarOpen)}>
-          <Search class="h-4 w-4" />
-          <span class={compactComposer ? '' : 'hidden sm:inline'}>Sources</span>
-        </button>
+        <div class="composer-divider h-4 w-[1px] bg-[var(--border)]"></div>
 
         {#if appStore.composerMode !== 'agent'}
-          <div class="composer-divider h-4 w-[1px] bg-[var(--border)]"></div>
-
-          <div class="composer-search-modes flex items-center gap-0.5">
-            <button class={`search-mode-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition ${appStore.searchMode === 'search' ? 'is-active' : ''}`} onclick={() => appStore.setSearchMode('search')} aria-label="Web search">
-              <Search class="h-4 w-4" />
-              <span class={compactComposer ? 'hidden' : ''}>Search</span>
-            </button>
-            <button class={`search-mode-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition ${appStore.searchMode === 'deep' ? 'is-active' : ''}`} onclick={() => appStore.setSearchMode('deep')} aria-label="Deep search">
-              <Globe class="h-4 w-4" />
-              <span class={compactComposer ? 'hidden' : ''}>Deep</span>
-            </button>
-            <button class={`search-mode-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] transition ${appStore.searchMode === 'max' ? 'is-active' : ''}`} onclick={() => appStore.setSearchMode('max')} aria-label="Max search">
-              <Database class="h-4 w-4" />
-              <span class={compactComposer ? 'hidden' : ''}>Max</span>
-            </button>
-          </div>
+          <SearchModeSelector />
         {/if}
       </div>
 
@@ -662,7 +626,7 @@
           class={`send-btn flex items-center justify-center rounded-full transition ${compactComposer ? 'h-8 min-w-[2rem] px-2.5' : 'h-8 w-8'}`}
           onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}
           disabled={!appStore.loading && (!appStore.composer.trim() || !backendReady)}
-          aria-label={appStore.loading ? 'Stop response' : 'Send message'}
+          aria-label={appStore.loading ? $t('chat.stop') : $t('chat.send')}
         >
           {#if appStore.loading}
             <Square class="h-3.5 w-3.5 fill-current" />
@@ -678,7 +642,7 @@
 
     <div class="pointer-events-auto mt-1.5 text-center">
       <span class="hint-text inline-flex max-w-full px-2 py-0.5 text-[10px]">
-        Enter to send · Shift+Enter for newline · Mode and search settings apply per message
+        {$t('composer.hintText')}
       </span>
     </div>
   </div>
@@ -726,21 +690,6 @@
 
   .composer-divider {
     opacity: 0.6;
-  }
-
-  .search-mode-btn {
-    color: var(--text-tertiary);
-    background: transparent;
-  }
-
-  .search-mode-btn:hover {
-    color: var(--text-secondary);
-    background: var(--surface-highlight);
-  }
-
-  .search-mode-btn.is-active {
-    color: var(--text);
-    background: var(--surface-highlight);
   }
 
   .voice-btn {

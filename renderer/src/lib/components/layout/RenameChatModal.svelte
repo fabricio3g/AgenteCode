@@ -3,6 +3,7 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
   import { flyAndScale } from '$lib/utils/transitions';
+  import { t } from 'svelte-i18n';
   import { Pencil, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
 
@@ -57,13 +58,13 @@
         <div class="modal-icon">
           <Pencil class="h-4 w-4" />
         </div>
-        <h2 class="modal-title">Rename chat</h2>
+        <h2 class="modal-title">{$t('sidebar.rename')}</h2>
       </div>
       <button
         type="button"
         class="close-btn"
         onclick={onClose}
-        aria-label="Close"
+        aria-label={$t('common.close')}
       >
         <X class="h-4 w-4" />
       </button>
@@ -72,7 +73,7 @@
     <!-- Body -->
     <div class="modal-body">
       <label class="input-label" for="rename-chat-input">
-        Chat name
+        {$t('chat.chatName')}
       </label>
       <input
         id="rename-chat-input"
@@ -80,7 +81,7 @@
         bind:value
         type="text"
         maxlength="120"
-        placeholder="Enter a name…"
+        placeholder={$t('chat.enterNamePlaceholder')}
         class="input-field"
       />
       <p class="char-count">{value.length}/120</p>
@@ -92,13 +93,13 @@
         type="button"
         class="btn btn-secondary"
         onclick={onClose}
-      >Cancel</button>
+      >{$t('chat.cancel')}</button>
       <button
         type="button"
         class="btn btn-primary"
         onclick={commit}
         disabled={!value.trim()}
-      >Rename</button>
+      >{$t('sidebar.rename')}</button>
     </div>
   </div>
 </div>
@@ -129,8 +130,8 @@
     width: 2rem;
     height: 2rem;
     border-radius: 0.5rem;
-    color: var(--work-accent);
-    background: var(--work-accent-soft);
+    color: var(--text-secondary);
+    background: var(--surface-highlight);
   }
 
   .modal-title {
@@ -185,7 +186,7 @@
   }
 
   .input-field:focus {
-    border-color: var(--work-accent);
+    border-color: var(--border-strong);
   }
 
   .char-count {
@@ -225,9 +226,9 @@
   }
 
   .btn-primary {
-    color: white;
-    background: var(--work-accent);
-    border: none;
+    color: var(--primary-fg);
+    background: var(--primary);
+    border: 1px solid var(--primary);
   }
 
   .btn-primary:hover {

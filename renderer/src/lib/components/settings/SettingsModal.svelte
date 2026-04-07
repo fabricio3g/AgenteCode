@@ -4,13 +4,14 @@
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
   import { flyAndScale } from '$lib/utils/transitions';
-  import { X, Settings, Cpu, Search, MonitorCheck } from 'lucide-svelte';
+  import { X, Settings, Cpu, Search, MonitorCheck, Sparkles } from 'lucide-svelte';
   import GeneralSettings from './GeneralSettings.svelte';
   import SearchSettings from './SearchSettings.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
+  import { t } from 'svelte-i18n';
 
   type Tab = 'General' | 'Search' | 'Runtime' | 'Hardware';
 
@@ -136,25 +137,33 @@
     <!-- Sidebar -->
     <div class="modal-sidebar flex w-60 flex-col">
       <div class="px-5 py-5">
-        <h2 class="sidebar-title text-sm font-semibold">Settings</h2>
+        <h2 class="sidebar-title text-sm font-semibold">{$t('settings.title')}</h2>
       </div>
       <nav class="nav-list flex-1 space-y-1 overflow-y-auto px-3">
         <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'General' ? 'is-active' : ''}`} onclick={() => activeTab = 'General'}>
           <Settings class="h-4 w-4" />
-          General
+          {$t('settings.general')}
         </button>
         <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Search' ? 'is-active' : ''}`} onclick={() => activeTab = 'Search'}>
           <Search class="h-4 w-4" />
-          Search
+          {$t('settings.search')}
         </button>
         <div class="nav-divider my-2"></div>
         <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Runtime' ? 'is-active' : ''}`} onclick={() => activeTab = 'Runtime'}>
           <Cpu class="h-4 w-4" />
-          Runtime
+          {$t('settings.runtime')}
         </button>
         <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Hardware' ? 'is-active' : ''}`} onclick={() => { activeTab = 'Hardware'; void hardwareStore.refresh(); }}>
           <MonitorCheck class="h-4 w-4" />
-          Hardware
+          {$t('settings.hardware')}
+        </button>
+        <div class="nav-divider my-2"></div>
+        <button
+          class="nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition"
+          onclick={() => { appStore.settingsOpen = false; appStore.onboardingOpen = true; }}
+        >
+          <Sparkles class="h-4 w-4" />
+          {$t('settings.rerunSetup')}
         </button>
       </nav>
     </div>
@@ -163,7 +172,7 @@
     <div class="modal-main flex min-w-0 flex-1 flex-col">
       <div class="modal-header flex items-center justify-between px-6 py-4">
         <h2 class="modal-heading text-lg font-semibold">{activeTab}</h2>
-        <button class="close-btn flex h-9 w-9 items-center justify-center rounded-xl" aria-label="Close settings" onclick={() => (appStore.settingsOpen = false)}>
+        <button class="close-btn flex h-9 w-9 items-center justify-center rounded-xl" aria-label={$t('settings.close')} onclick={() => (appStore.settingsOpen = false)}>
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -197,11 +206,11 @@
         {#if activeTab === 'Runtime'}
           <div class="space-y-4">
             <div class="info-card rounded-xl p-4">
-              <div class="text-sm font-medium">Runtime management has been moved into the native runtime modal.</div>
-              <div class="mt-1 text-xs text-[var(--text-muted)]">Open it from here to inspect installed runtimes, supervisor status, and runtime installs.</div>
+              <div class="text-sm font-medium">{$t('settings.runtimeMoved')}</div>
+              <div class="mt-1 text-xs text-[var(--text-muted)]">{$t('settings.runtimeMovedDesc')}</div>
             </div>
             <button class="primary-btn rounded-xl px-4 py-2.5 text-sm font-medium" onclick={() => { appStore.settingsOpen = false; appStore.runtimeManagerOpen = true; }}>
-              Open runtime manager
+              {$t('settings.openRuntime')}
             </button>
           </div>
         {/if}
@@ -209,10 +218,10 @@
 
       <div class="modal-footer flex items-center justify-end gap-2 px-6 py-4">
         <button class="btn secondary rounded-xl px-4 py-2 text-sm font-medium" onclick={() => (appStore.settingsOpen = false)}>
-          Cancel
+          {$t('settings.cancel')}
         </button>
         <button class="btn primary rounded-xl px-4 py-2 text-sm font-medium" onclick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? $t('settings.saving') : $t('settings.save')}
         </button>
       </div>
     </div>

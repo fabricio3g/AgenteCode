@@ -22,9 +22,9 @@ export function createUIContext(args: {
   initialState?: Record<string, any>;
   renderNode: (value: unknown) => unknown;
 }) {
-  let state = structuredClone(args.initialState || {});
+  let state = JSON.parse(JSON.stringify(args.initialState || {}));
   const isStreaming = writable(!!args.isStreaming);
-  const persist = () => args.onStateUpdate?.(structuredClone(state));
+  const persist = () => args.onStateUpdate?.(JSON.parse(JSON.stringify(state)));
   const ctx: UIContextValue = {
     library: args.library,
     isStreaming,
@@ -35,7 +35,7 @@ export function createUIContext(args: {
         params: action?.params || {},
         humanFriendlyMessage,
         formName,
-        formState: formName ? structuredClone(state[formName] || {}) : undefined
+        formState: formName ? JSON.parse(JSON.stringify(state[formName] || {})) : undefined
       });
     },
     getFieldValue(formName, name) {

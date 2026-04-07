@@ -142,12 +142,14 @@ export interface ModelOption {
   details?: string;
 }
 
+export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'mistral' | 'openai_compat' | 'local';
+
 export interface ProviderConfig {
   base_url: string;
   api_key?: string;
   has_api_key?: boolean;
   model: string;
-  type?: string;
+  type?: ProviderType | string;
   // Generation params (optional)
   temperature?: number;
   max_tokens?: number;
@@ -257,5 +259,9 @@ export interface AppConfig {
     workspace_mode?: 'legacy' | 'modern';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
+  };
+  onboarding?: {
+    completed?: boolean;
+    completed_at?: number | null;
   };
 }

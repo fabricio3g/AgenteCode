@@ -1,7 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import * as d3 from 'd3';
+  import { select } from 'd3-selection';
+  import { scaleBand, scaleLinear } from 'd3-scale';
+  import { axisLeft, axisBottom } from 'd3-axis';
+  import { line, curveMonotoneX, pie as d3pie, arc as d3arc } from 'd3-shape';
+  import type { NumberValue } from 'd3-scale';
+  import type { PieArcDatum } from 'd3-shape';
+  import type { Selection } from 'd3-selection';
   import { Download } from 'lucide-svelte';
   import { parseChartData, type ChartData } from '$lib/utils/chart-data';
 
@@ -39,6 +45,8 @@
       nextError = 'Invalid chart data';
     } else if (!nextParsed.labels.length || !nextParsed.datasets.length) {
       nextError = 'Missing labels or datasets';
+    } else if (nextParsed.datasets.some((dataset) => dataset.data.length !== nextParsed.labels.length)) {
+      nextError = 'Chart labels and data length do not match';
     }
 
     parsed = nextParsed;
@@ -48,7 +56,7 @@
   $effect(() => {
     if (!svgEl) return;
     if (!parsed || error) {
-      d3.select(svgEl).selectAll('*').remove();
+      select(svgEl).selectAll('*').remove();
       if (!parsed) {
         tooltip = { visible: false, x: 0, y: 0, label: '', value: '', series: '' };
       }
@@ -59,7 +67,7 @@
 
   function draw() {
     if (!svgEl || !parsed) return;
-    const svg = d3.select(svgEl);
+    const svg = select(svgEl);
     svg.selectAll('*').remove();
 
     const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
@@ -72,19 +80,19 @@
     }
   }
 
-  function drawCartesian(svg: d3.Selection<SVGSVGElement, unknown, null, undefined>, g: d3.Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
+  function drawCartesian(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
     if (!parsed) return;
 
     const allValues = parsed.datasets.flatMap(d => d.data);
     const yMin = Math.min(0, ...allValues);
     const yMax = Math.max(...allValues);
 
-    const xScale = d3.scaleBand()
+    const xScale = scaleBand()
       .domain(parsed.labels)
       .range([0, iw])
       .padding(type === 'bar' ? 0.2 : 0.1);
 
-    const yScale = d3.scaleLinear()
+    const yScale = scaleLinear()
       .domain([yMin, yMax * 1.1])
       .range([ih, 0])
       .nice();
@@ -92,7 +100,7 @@
     // Grid lines
     g.append('g')
       .attr('class', 'grid')
-      .call(d3.axisLeft(yScale).tickSize(-iw).tickFormat('' as unknown as (d: d3.NumberValue) => string))
+      .call(axisLeft(yScale).tickSize(-iw).tickFormat('' as unknown as (d: NumberValue) => string))
       .call(gg => {
         gg.select('.domain').remove();
         gg.selectAll('.tick line')
@@ -104,7 +112,7 @@
     // Axes
     g.append('g')
       .attr('transform', `translate(0,${ih})`)
-      .call(d3.axisBottom(xScale).tickSizeOuter(0))
+      .call(axisBottom(xScale).tickSizeOuter(0))
       .call(gg => {
         gg.select('.domain').attr('stroke', 'rgba(156,163,175,0.4)');
         gg.selectAll('.tick text')
@@ -114,7 +122,7 @@
       });
 
     g.append('g')
-      .call(d3.axisLeft(yScale).ticks(5).tickSizeOuter(0))
+      .call(axisLeft(yScale).ticks(5).tickSizeOuter(0))
       .call(gg => {
         gg.select('.domain').attr('stroke', 'rgba(156,163,175,0.4)');
         gg.selectAll('.tick text')
@@ -144,17 +152,17 @@
           .on('mousemove', (event, d) => showTip(event, parsed!.labels[ds.data.indexOf(d)] ?? '', d, nSeries > 1 ? ds.label : undefined))
           .on('mouseleave', hideTip);
       } else {
-        const line = d3.line<number>()
+        const lineGen = line<number>()
           .x((_, i) => (xScale(parsed!.labels[i]) ?? 0) + bandWidth / 2)
           .y(d => yScale(d))
-          .curve(d3.curveMonotoneX);
+          .curve(curveMonotoneX);
 
         g.append('path')
           .datum(ds.data)
           .attr('fill', 'none')
           .attr('stroke', color)
           .attr('stroke-width', 2.5)
-          .attr('d', line);
+          .attr('d', lineGen);
 
         g.selectAll(`.dot-${si}`)
           .data(ds.data)
@@ -215,7 +223,7 @@
     }
   }
 
-  function drawPie(svg: d3.Selection<SVGSVGElement, unknown, null, undefined>, g: d3.Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
+  function drawPie(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
     if (!parsed) return;
     const radius = Math.min(iw, ih) / 2 - 10;
     const cx = iw / 2;
@@ -223,17 +231,17 @@
     const data = parsed.datasets[0].data;
     const labels = parsed.labels;
 
-    const pie = d3.pie<number>().sort(null)(data);
-    const arc = d3.arc<d3.PieArcDatum<number>>()
+    const pieData = d3pie<number>().sort(null)(data);
+    const arc = d3arc<PieArcDatum<number>>()
       .innerRadius(type === 'donut' ? radius * 0.55 : 0)
       .outerRadius(radius);
-    const labelArc = d3.arc<d3.PieArcDatum<number>>()
+    const labelArc = d3arc<PieArcDatum<number>>()
       .innerRadius(radius * 0.75)
       .outerRadius(radius * 0.75);
 
     const pieG = g.append('g').attr('transform', `translate(${cx},${cy})`);
 
-    pie.forEach((slice, i) => {
+    pieData.forEach((slice, i) => {
       pieG.append('path')
         .attr('d', arc(slice) ?? '')
         .attr('fill', colors[i % colors.length])

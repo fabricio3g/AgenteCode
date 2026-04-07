@@ -4,6 +4,7 @@
   import { ArrowRight, Brain, LoaderCircle, Moon, Sparkles, Sun, Sunset, Zap } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
+  import { t } from 'svelte-i18n';
 
   const PROVIDER_LABELS: Record<string, string> = {
     openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic',
@@ -70,10 +71,10 @@
 
   function getGreeting(): { text: string; icon: 'sun' | 'sunset' | 'moon' } {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return { text: 'Good morning', icon: 'sun' };
-    if (hour >= 12 && hour < 18) return { text: 'Good afternoon', icon: 'sun' };
-    if (hour >= 18 && hour < 21) return { text: 'Good evening', icon: 'sunset' };
-    return { text: 'Good night', icon: 'moon' };
+    if (hour >= 5 && hour < 12) return { text: $t('welcome.goodMorning'), icon: 'sun' };
+    if (hour >= 12 && hour < 18) return { text: $t('welcome.goodAfternoon'), icon: 'sun' };
+    if (hour >= 18 && hour < 21) return { text: $t('welcome.goodEvening'), icon: 'sunset' };
+    return { text: $t('welcome.goodNight'), icon: 'moon' };
   }
 
   const greeting = $derived(getGreeting());

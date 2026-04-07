@@ -15,7 +15,7 @@ import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, fetchModels, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
-import { loadChatState, saveChatState, saveAppConfig } from '$lib/utils/storage';
+import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 
 interface PersistedState {
   chats: ChatSession[];
@@ -164,6 +164,15 @@ function writeRememberedLocalModelSettings(store: Record<string, Record<string, 
   } catch {
     // ignore local storage failures
   }
+}
+
+function pickNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
 }
 
 function getAssistantActiveVersion(message: Partial<ChatMessage>): MessageVersion | null {
@@ -323,6 +332,8 @@ class AppStore {
   localModelLoadPhase = $state('');
   localModelLoading = $state(false);
   localModelActive = $state<{ name: string; path: string; hasMmproj: boolean } | null>(null);
+  onboardingOpen = $state(false);
+  onboardingCompleted = $state(false);
   userName = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem(USER_NAME_KEY) || '') : '');
   private closeWorkFingerprint = '';
 
@@ -437,15 +448,42 @@ class AppStore {
     this.localModelLoadMmprojPath = await this.detectMmprojForModel(model.path);
     const remembered = readRememberedLocalModelSettings()[model.id] || {};
     try {
+      const hasRememberedContext = Object.prototype.hasOwnProperty.call(remembered, 'context_length');
+      const hasRememberedGpu = Object.prototype.hasOwnProperty.call(remembered, 'gpu_offload');
+      const recommendedContextHint = hasRememberedContext ? pickNumber(remembered.context_length) : undefined;
+      const recommendedGpuHint = hasRememberedGpu ? pickNumber(remembered.gpu_offload) : undefined;
       const settings = await getRecommendedSettings(
         model.path,
-        this.config.llm?.local?.context_length,
-        this.config.llm?.local?.gpu_layers
+        recommendedContextHint,
+        recommendedGpuHint,
+        this.localModelLoadRuntimePath || this.config.llm?.local?.runtime_path
       );
-      this.localModelLoadContextLength = String(Number(remembered.context_length || this.config.llm?.local?.context_length || settings.context_length || model.context_length || 4096));
-      this.localModelLoadGpuLayers = String(Number(remembered.gpu_offload || this.config.llm?.local?.gpu_layers || settings.gpu_layers || 0));
-      this.localModelLoadCpuThreads = String(Number(remembered.cpu_threads || this.config.llm?.local?.cpu_threads || settings.cpu_threads || navigator.hardwareConcurrency || 4));
-      this.localModelLoadBatchSize = String(Number(remembered.batch_size || this.config.llm?.local?.batch_size || settings.batch_size || 512));
+      this.localModelLoadContextLength = String(pickNumber(
+        remembered.context_length,
+        settings.context_length,
+        model.context_length,
+        this.config.llm?.local?.context_length,
+        4096
+      ) ?? 4096);
+      this.localModelLoadGpuLayers = String(pickNumber(
+        remembered.gpu_offload,
+        settings.gpu_layers,
+        this.config.llm?.local?.gpu_layers,
+        0
+      ) ?? 0);
+      this.localModelLoadCpuThreads = String(pickNumber(
+        remembered.cpu_threads,
+        settings.cpu_threads,
+        this.config.llm?.local?.cpu_threads,
+        navigator.hardwareConcurrency,
+        4
+      ) ?? 4);
+      this.localModelLoadBatchSize = String(pickNumber(
+        remembered.batch_size,
+        settings.batch_size,
+        this.config.llm?.local?.batch_size,
+        512
+      ) ?? 512);
       this.localModelLoadFlashAttention = remembered.flash_attention != null ? Boolean(remembered.flash_attention) : (this.config.llm?.local?.flash_attention ?? settings.flash_attention ?? true);
       this.localModelLoadOffloadKvCache = remembered.offload_kv_cache != null ? Boolean(remembered.offload_kv_cache) : (this.config.llm?.local?.offload_kv_cache ?? settings.offload_kv ?? true);
       this.localModelLoadKeepInMemory = remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (this.config.llm?.local?.keep_in_memory ?? true);
@@ -458,10 +496,28 @@ class AppStore {
       this.localModelLoadCacheTypeV = String(remembered.cache_type_v || this.config.llm?.local?.cache_type_v || 'f16');
       this.localModelRememberSettings = Object.keys(remembered).length > 0;
     } catch {
-      this.localModelLoadContextLength = String(Number(remembered.context_length || this.config.llm?.local?.context_length || model.context_length || 4096));
-      this.localModelLoadGpuLayers = String(Number(remembered.gpu_offload || this.config.llm?.local?.gpu_layers || 0));
-      this.localModelLoadCpuThreads = String(Number(remembered.cpu_threads || this.config.llm?.local?.cpu_threads || navigator.hardwareConcurrency || 4));
-      this.localModelLoadBatchSize = String(Number(remembered.batch_size || this.config.llm?.local?.batch_size || 512));
+      this.localModelLoadContextLength = String(pickNumber(
+        remembered.context_length,
+        this.config.llm?.local?.context_length,
+        model.context_length,
+        4096
+      ) ?? 4096);
+      this.localModelLoadGpuLayers = String(pickNumber(
+        remembered.gpu_offload,
+        this.config.llm?.local?.gpu_layers,
+        0
+      ) ?? 0);
+      this.localModelLoadCpuThreads = String(pickNumber(
+        remembered.cpu_threads,
+        this.config.llm?.local?.cpu_threads,
+        navigator.hardwareConcurrency,
+        4
+      ) ?? 4);
+      this.localModelLoadBatchSize = String(pickNumber(
+        remembered.batch_size,
+        this.config.llm?.local?.batch_size,
+        512
+      ) ?? 512);
       this.localModelLoadFlashAttention = remembered.flash_attention != null ? Boolean(remembered.flash_attention) : (this.config.llm?.local?.flash_attention ?? true);
       this.localModelLoadOffloadKvCache = remembered.offload_kv_cache != null ? Boolean(remembered.offload_kv_cache) : (this.config.llm?.local?.offload_kv_cache ?? true);
       this.localModelLoadKeepInMemory = remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (this.config.llm?.local?.keep_in_memory ?? true);
@@ -484,14 +540,30 @@ class AppStore {
 
   async detectMmprojForModel(modelPath: string): Promise<string> {
     if (!modelPath) return '';
-    const dir = modelPath.replace(/[/\\][^/\\]+$/, '');
+    let dir = modelPath.replace(/[/\\][^/\\]+$/, '');
+    try {
+      const direct = await pathExists(modelPath);
+      if (direct && !/\.gguf$/i.test(modelPath)) {
+        dir = modelPath;
+      }
+    } catch {
+      // ignore path probing errors
+    }
+    const normalizedDir = dir.replace(/\\/g, '/');
+    const windowsDir = dir.replace(/\//g, '\\');
     const candidates = ['mmproj-BF16.gguf', 'mmproj-F16.gguf', 'mmproj-F32.gguf'];
     for (const name of candidates) {
-      const sep = modelPath.includes('\\') ? '\\' : '/';
-      const fullPath = `${dir}${sep}${name}`;
+      const fullPathCandidates = Array.from(new Set([
+        `${normalizedDir}/${name}`,
+        `${windowsDir}\\${name}`,
+        `${dir}/${name}`,
+        `${dir}\\${name}`
+      ]));
       try {
-        const exists = await pathExists(fullPath);
-        if (exists) return fullPath;
+        for (const fullPath of fullPathCandidates) {
+          const exists = await pathExists(fullPath);
+          if (exists) return fullPath;
+        }
       } catch { /* ignore */ }
     }
     return '';
@@ -519,7 +591,7 @@ class AppStore {
       });
       await this.updateLocalSettings({
         context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-        gpu_layers: this.localModelLoadGpuLayers ? Number(this.localModelLoadGpuLayers) : undefined,
+        gpu_layers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
         cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
         batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
         flash_attention: this.localModelLoadFlashAttention,
@@ -539,7 +611,7 @@ class AppStore {
       if (this.localModelRememberSettings) {
         remembered[this.localModelLoadTarget.id] = {
           context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-          gpu_offload: this.localModelLoadGpuLayers ? Number(this.localModelLoadGpuLayers) : undefined,
+          gpu_offload: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
           cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
           batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
           flash_attention: this.localModelLoadFlashAttention,
@@ -571,7 +643,7 @@ class AppStore {
               selected_model_path: this.localModelLoadTarget.path,
               model: this.localModelLoadTarget.name,
               context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-              gpu_layers: this.localModelLoadGpuLayers ? Number(this.localModelLoadGpuLayers) : undefined,
+              gpu_layers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
               cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
               batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
               flash_attention: this.localModelLoadFlashAttention,
@@ -592,7 +664,7 @@ class AppStore {
         modelPath: this.localModelLoadTarget.path,
         runtimePath: this.localModelLoadRuntimePath || undefined,
         contextLength: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-        gpuLayers: this.localModelLoadGpuLayers ? Number(this.localModelLoadGpuLayers) : undefined,
+        gpuLayers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
         cpuThreads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
         batchSize: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
         flashAttention: this.localModelLoadFlashAttention,
@@ -639,10 +711,28 @@ class AppStore {
       } else {
         this.config = configResult;
       }
-      const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
-      this.chats = Array.isArray(persisted.chats) ? persisted.chats.map((chat, index) => normalizeChat(chat, index)) : [];
-      this.folders = Array.isArray(persisted.folders) ? persisted.folders.map((folder, index) => normalizeFolder(folder, index)) : [];
-      this.currentChatId = persisted.currentChatId;
+      // In Electron: load from SQLite (primary). Falls back to localStorage migration.
+      const dbResult = await loadChatStateFromDb();
+      let chats: ChatSession[];
+      let folders: ChatFolder[];
+      let currentChatId: string | null;
+
+      if (dbResult && dbResult.chats.length > 0) {
+        chats = dbResult.chats;
+        folders = dbResult.folders;
+        // Restore currentChatId from localStorage (not stored in DB)
+        const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
+        currentChatId = persisted.currentChatId;
+      } else {
+        const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
+        chats = Array.isArray(persisted.chats) ? persisted.chats : [];
+        folders = Array.isArray(persisted.folders) ? persisted.folders : [];
+        currentChatId = persisted.currentChatId;
+      }
+
+      this.chats = chats.map((chat, index) => normalizeChat(chat, index));
+      this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
+      this.currentChatId = currentChatId;
 
       if (!this.chats.length) {
         this.createChat();
@@ -668,6 +758,24 @@ class AppStore {
       ]);
       modelsStore.startPolling(3000);
     }
+
+    // Check first-run onboarding
+    if (isTauri()) {
+      void this.checkOnboarding();
+    }
+  }
+
+  private async checkOnboarding() {
+    try {
+      const { checkIsFirstRun } = await import('$lib/services/onboarding');
+      const isFirstRun = await checkIsFirstRun();
+      if (isFirstRun) {
+        this.onboardingOpen = true;
+      }
+      this.onboardingCompleted = !isFirstRun;
+    } catch {
+      // ignore — onboarding is optional
+    }
   }
 
   persist() {
@@ -676,6 +784,10 @@ class AppStore {
       folders: this.folders,
       currentChatId: this.currentChatId
     });
+    // Also persist current chat to SQLite
+    if (this.currentChat) {
+      saveChatStateToDb(this.currentChat);
+    }
   }
 
   createChat() {
@@ -740,6 +852,7 @@ class AppStore {
     }
     if (!this.chats.length) this.createChat();
     this.persist();
+    deleteChatFromDb(chatId).catch(() => {});
     toastStore.info(`Chat deleted${title ? `: ${title}` : ''}`, 2500);
   }
 
@@ -1655,6 +1768,29 @@ Design rules:
         ? [{ role: 'system', content: systemPrompt }, ...requestMessages]
         : requestMessages;
 
+      // Context window budget check (local mode only)
+      if (this.backendMode === 'local' && isTauri()) {
+        try {
+          const budget = await (window as any).electronAPI.invoke('build_context_budget', {
+            config: { context_length: this.config.llm?.local?.context_length || 4096, max_tokens: this.config.llm?.local?.max_tokens },
+            messages: outboundMessages
+          });
+          if (budget?.isOverflow) {
+            const truncated = await (window as any).electronAPI.invoke('truncate_messages', {
+              messages: outboundMessages,
+              budget
+            });
+            if (Array.isArray(truncated) && truncated.length < outboundMessages.length) {
+              const removed = outboundMessages.length - truncated.length;
+              (outboundMessages as RequestMessage[]).splice(0, outboundMessages.length, ...truncated);
+              toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
+            }
+          }
+        } catch {
+          // Silently continue if budget check fails
+        }
+      }
+
       if (activeComposerMode === 'agent' && targetChatId) {
         if (isTauri()) {
           try {
@@ -2315,6 +2451,10 @@ Design rules:
     system_prompt?: string;
   }) {
     const existing: import('$lib/types/chat').ProviderConfig = this.config.llm?.providers?.[partial.provider] || { base_url: '', model: '' };
+    const hasApiKeyField = Object.prototype.hasOwnProperty.call(partial, 'api_key');
+    const nextApiKey = hasApiKeyField
+      ? (partial.api_key && partial.api_key.trim() ? partial.api_key : undefined)
+      : (existing.api_key || undefined);
     const next: AppConfig = {
       ...this.config,
       llm: {
@@ -2325,9 +2465,8 @@ Design rules:
           [partial.provider]: {
             ...existing,
             base_url: partial.base_url ?? existing.base_url,
-            // Use new key if provided; otherwise use existing key if it's a real value (not empty string)
-            api_key: partial.api_key || (existing.api_key || undefined),
-            has_api_key: !!(partial.api_key || existing.api_key || existing.has_api_key),
+            api_key: nextApiKey,
+            has_api_key: !!(nextApiKey || existing.has_api_key),
             model: partial.model ?? existing.model,
             ...(Number.isFinite(partial.temperature) ? { temperature: partial.temperature } : partial.temperature === undefined ? {} : { temperature: undefined }),
             ...(partial.max_tokens !== undefined ? { max_tokens: partial.max_tokens || undefined } : {}),

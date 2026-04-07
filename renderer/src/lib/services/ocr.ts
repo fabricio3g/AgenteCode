@@ -1,8 +1,6 @@
 // TalamoLM - OCR Engine (Tesseract.js + PDF.js)
 // Ported from legacy web/components/ocr.js
 
-import Tesseract from 'tesseract.js';
-
 interface OcrResult {
   text: string;
   confidence: number;
@@ -116,7 +114,7 @@ async function extractZipImages(
 }
 
 class OcrEngine {
-  private worker: Tesseract.Worker | null = null;
+  private worker: any | null = null;
   private ready = false;
   private busy = false;
   private lang = 'eng';
@@ -128,6 +126,7 @@ class OcrEngine {
       this.lang = lang;
       return;
     }
+    const Tesseract = await import('tesseract.js');
     this.worker = await Tesseract.createWorker(lang);
     this.lang = lang;
     this.ready = true;

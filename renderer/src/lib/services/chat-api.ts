@@ -12,13 +12,6 @@ function resolveProvider(config: AppConfig) {
     base_url: 'https://api.openai.com/v1',
     model: ''
   };
-  console.log('[chat-api] resolveProvider:', { 
-    providerName, 
-    hasProvider: !!providers[providerName],
-    hasApiKey: !!(provider as any).api_key,
-    hasApiKeyFlag: !!(provider as any).has_api_key,
-    availableProviders: Object.keys(providers)
-  });
   return { providerName, provider };
 }
 
@@ -560,6 +553,361 @@ function readCompletionWithTools(payload: any): CompletionResult {
   };
 }
 
+// ── Phase 5: Structured Output ─────────────────────────────────────────────
+// JSON Schema definition for structured extraction requests.
+export interface JsonSchemaProperty {
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+  description?: string;
+  enum?: string[];
+  items?: JsonSchemaProperty;
+  properties?: Record<string, JsonSchemaProperty>;
+  required?: string[];
+}
+
+export interface JsonSchemaDefinition {
+  name: string;
+  description?: string;
+  schema: {
+    type: 'object';
+    properties: Record<string, JsonSchemaProperty>;
+    required?: string[];
+  };
+  strict?: boolean;
+}
+
+export interface StructuredExtractionResult<T = Record<string, unknown>> {
+  data: T | null;
+  raw: string;
+  parsed: boolean;
+  error?: string;
+}
+
+/**
+ * Extract JSON from a raw LLM response string.
+ * Handles markdown code fences, leading/trailing whitespace, and partial JSON.
+ */
+export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string): StructuredExtractionResult<T> {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) {
+    return { data: null, raw: trimmed, parsed: false, error: 'Empty response' };
+  }
+
+  // Attempt 1: Try direct JSON parse
+  try {
+    const data = JSON.parse(trimmed) as T;
+    return { data, raw: trimmed, parsed: true };
+  } catch {
+    // Continue to extraction strategies
+  }
+
+  // Attempt 2: Extract from markdown code fences
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  if (codeBlockMatch) {
+    try {
+      const data = JSON.parse(codeBlockMatch[1].trim()) as T;
+      return { data, raw: trimmed, parsed: true };
+    } catch {
+      // Continue
+    }
+  }
+
+  // Attempt 3: Find first '{' to last '}' substring
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      const data = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)) as T;
+      return { data, raw: trimmed, parsed: true };
+    } catch {
+      // Continue
+    }
+  }
+
+  // Attempt 4: Find first '[' to last ']' substring (for array responses)
+  const firstBracket = trimmed.indexOf('[');
+  const lastBracket = trimmed.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      const data = JSON.parse(trimmed.slice(firstBracket, lastBracket + 1)) as T;
+      return { data, raw: trimmed, parsed: true };
+    } catch {
+      // Continue
+    }
+  }
+
+  return { data: null, raw: trimmed, parsed: false, error: 'Could not extract valid JSON from response' };
+}
+
+/**
+ * Build a system prompt that instructs the LLM to produce JSON conforming
+ * to the given schema. Used as a fallback for providers that don't support
+ * native response_format / json_schema.
+ */
+export function buildJsonSystemPrompt(schema: JsonSchemaDefinition): string {
+  const propertiesDesc = Object.entries(schema.schema.properties)
+    .map(([key, prop]) => {
+      let desc = `  "${key}" (${prop.type})`;
+      if (prop.description) desc += `: ${prop.description}`;
+      if (prop.enum) desc += `. Allowed values: ${prop.enum.map(v => `"${v}"`).join(', ')}`;
+      if (prop.type === 'array' && prop.items) {
+        desc += `. Items: { type: "${prop.items.type}"${prop.items.description ? `, description: "${prop.items.description}"` : ''} }`;
+      }
+      if (prop.type === 'object' && prop.properties) {
+        const nestedFields = Object.entries(prop.properties)
+          .map(([k, v]) => `"${k}": ${v.type}`)
+          .join(', ');
+        desc += `. Fields: { ${nestedFields} }`;
+      }
+      return desc;
+    })
+    .join('\n');
+
+  const requiredFields = schema.schema.required?.length
+    ? `\nRequired fields: ${schema.schema.required.join(', ')}`
+    : '';
+
+  return [
+    `You are a structured data extraction assistant.`,
+    schema.description ? `Task: ${schema.description}` : '',
+    `You MUST respond with a valid JSON object matching this schema:`,
+    `{`,
+    propertiesDesc,
+    `}`,
+    requiredFields,
+    ``,
+    `IMPORTANT: Respond ONLY with the JSON object. No markdown, no explanation, no code fences.`,
+    `The response must be valid JSON that can be parsed directly.`
+  ].filter(Boolean).join('\n');
+}
+
+/**
+ * Request a structured JSON extraction from the LLM using native
+ * `response_format` (OpenAI JSON mode / structured outputs) when available,
+ * with a prompt-based fallback for unsupported providers.
+ */
+export async function extractStructured<T = Record<string, unknown>>(args: {
+  messages: RequestMessage[];
+  schema: JsonSchemaDefinition;
+  signal?: AbortSignal;
+}): Promise<StructuredExtractionResult<T>> {
+  const config = await loadChatConfig();
+  const { provider, providerName } = resolveProvider(config);
+
+  // Build the system message with schema instructions
+  const schemaPrompt = buildJsonSystemPrompt(args.schema);
+
+  // Prepend or replace system message
+  const messagesWithSystem: RequestMessage[] = [
+    { role: 'system', content: schemaPrompt },
+    ...args.messages.filter((m) => m.role !== 'system')
+  ];
+
+  const bodyBase: Record<string, unknown> = {
+    model: provider.model,
+    stream: false,
+    messages: toRequestMessages(messagesWithSystem, provider.model)
+  };
+
+  // Try native structured output (response_format with json_schema) for supported providers
+  const isLocalMode = config.llm?.backend_mode === 'local' && isTauri();
+  const supportsNativeJson =
+    !isLocalMode &&
+    (/\bgpt-4o\b|\bgpt-4\.1\b|\bclaude-3\b|\bgemini\b|\bo1\b|\bo3\b|\bo4\b/i.test(provider.model || '') ||
+     providerName === 'openai' ||
+     providerName === 'openrouter');
+
+  if (supportsNativeJson) {
+    try {
+      const nativeBody = {
+        ...bodyBase,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: args.schema.name,
+            description: args.schema.description || '',
+            schema: args.schema.schema,
+            strict: args.schema.strict ?? true
+          }
+        }
+      };
+
+      const result = await completeAssistantReply({
+        messages: messagesWithSystem,
+        signal: args.signal
+      });
+
+      if (result.content) {
+        const extracted = extractJsonFromResponse<T>(result.content);
+        if (extracted.parsed) return extracted;
+      }
+    } catch {
+      // Fall through to prompt-based approach
+    }
+  }
+
+  // Fallback: Prompt-based JSON extraction (works with all providers)
+  const result = await completeAssistantReply({
+    messages: messagesWithSystem,
+    signal: args.signal
+  });
+
+  return extractJsonFromResponse<T>(result.content);
+}
+
+/**
+ * Validate extracted data against a JsonSchemaDefinition at runtime.
+ * Returns an object with `valid: true` and the (potentially coerced) data,
+ * or `valid: false` with an array of validation errors.
+ */
+export function validateStructuredOutput<T = Record<string, unknown>>(
+  data: unknown,
+  schema: JsonSchemaDefinition
+): { valid: true; data: T } | { valid: false; errors: string[] } {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    return { valid: false, errors: ['Root must be a JSON object'] };
+  }
+
+  const errors: string[] = [];
+  const obj = data as Record<string, unknown>;
+  const required = schema.schema.required || [];
+
+  for (const field of required) {
+    if (!(field in obj) || obj[field] === undefined || obj[field] === null) {
+      errors.push(`Missing required field: "${field}"`);
+    }
+  }
+
+  for (const [key, propSchema] of Object.entries(schema.schema.properties)) {
+    if (!(key in obj)) continue;
+    const value = obj[key];
+    const typeError = checkType(value, propSchema, key);
+    if (typeError) errors.push(typeError);
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors };
+  }
+
+  return { valid: true, data: data as T };
+}
+
+function checkType(value: unknown, prop: JsonSchemaProperty, path: string): string | null {
+  if (value === undefined || value === null) {
+    // null/undefined is ok for non-required fields
+    return null;
+  }
+
+  switch (prop.type) {
+    case 'string':
+      if (typeof value !== 'string') return `"${path}" must be a string`;
+      if (prop.enum && !prop.enum.includes(value)) {
+        return `"${path}" must be one of: ${prop.enum.join(', ')}`;
+      }
+      return null;
+    case 'number':
+      if (typeof value !== 'number') return `"${path}" must be a number`;
+      return null;
+    case 'integer':
+      if (typeof value !== 'number' || !Number.isInteger(value)) return `"${path}" must be an integer`;
+      return null;
+    case 'boolean':
+      if (typeof value !== 'boolean') return `"${path}" must be a boolean`;
+      return null;
+    case 'array':
+      if (!Array.isArray(value)) return `"${path}" must be an array`;
+      if (prop.items) {
+        for (let i = 0; i < value.length; i++) {
+          const err = checkType(value[i], prop.items, `${path}[${i}]`);
+          if (err) return err;
+        }
+      }
+      return null;
+    case 'object':
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return `"${path}" must be an object`;
+      }
+      if (prop.properties) {
+        const nested = value as Record<string, unknown>;
+        for (const [k, subSchema] of Object.entries(prop.properties)) {
+          if (k in nested) {
+            const err = checkType(nested[k], subSchema, `${path}.${k}`);
+            if (err) return err;
+          }
+        }
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Convenience helper: extract structured data, validate it, and retry once
+ * with an error-correction message if validation fails.
+ */
+export async function extractStructuredWithRetry<T = Record<string, unknown>>(args: {
+  messages: RequestMessage[];
+  schema: JsonSchemaDefinition;
+  signal?: AbortSignal;
+  maxRetries?: number;
+}): Promise<StructuredExtractionResult<T>> {
+  const maxRetries = Math.min(Math.max(args.maxRetries ?? 1, 0), 3);
+  let lastResult: StructuredExtractionResult<T> = {
+    data: null,
+    raw: '',
+    parsed: false,
+    error: 'No attempts made'
+  };
+
+  let currentMessages = [...args.messages];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const result = await extractStructured<T>({
+      messages: currentMessages,
+      schema: args.schema,
+      signal: args.signal
+    });
+    lastResult = result;
+
+    if (!result.parsed || !result.data) {
+      // Append error context and retry
+      currentMessages = [
+        ...currentMessages,
+        {
+          role: 'assistant',
+          content: result.raw || '[no response]'
+        },
+        {
+          role: 'user',
+          content: 'Your previous response was not valid JSON. Please respond with ONLY the JSON object, no markdown or explanation.'
+        }
+      ];
+      continue;
+    }
+
+    // Validate
+    const validation = validateStructuredOutput<T>(result.data, args.schema);
+    if (validation.valid) {
+      return { ...result, data: validation.data };
+    }
+
+    // Validation failed -- retry with correction prompt
+    currentMessages = [
+      ...currentMessages,
+      {
+        role: 'assistant',
+        content: result.raw
+      },
+      {
+        role: 'user',
+        content: `The JSON had validation errors: ${validation.errors.join('; ')}. Please fix and return the corrected JSON object only.`
+      }
+    ];
+  }
+
+  return lastResult;
+}
+
 // Complete a request with native tool definitions (OpenAI tool_calls format).
 // Only works for API mode — returns null for local mode so caller can fall back to XML.
 export async function completeWithTools(args: {
@@ -617,4 +965,51 @@ export async function completeWithTools(args: {
   if (!response.ok) return null;
   const payload = await response.json();
   return readCompletionWithTools(payload);
+}
+
+/** Send messages with a JSON schema constraint for structured output. */
+export async function completeStructuredOutput<T>(
+  args: {
+    messages: RequestMessage[];
+    schema: Record<string, unknown>;
+    signal?: AbortSignal;
+  },
+  config?: AppConfig
+): Promise<T | null> {
+  const cfg = config || await loadChatConfig();
+  const { providerName, provider } = resolveProvider(cfg);
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
+
+  const url = resolveChatUrl(provider.base_url);
+  const body: Record<string, unknown> = {
+    model: provider.model,
+    stream: false,
+    messages: toRequestMessages(args.messages, provider.model),
+    response_format: {
+      type: 'json_schema',
+      json_schema: args.schema
+    }
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      signal: args.signal,
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) return null;
+    try {
+      return JSON.parse(content) as T;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
 }

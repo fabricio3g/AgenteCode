@@ -1,8 +1,9 @@
-import type { AppConfig } from '$lib/types/chat';
+import type { AppConfig, ChatSession, ChatFolder } from '$lib/types/chat';
 
 const APP_CONFIG_KEY = 'talamolm_app_config';
 const CHAT_STATE_KEY = 'talamolm_chat_state_v2';
 const THEME_KEY = 'talamolm_theme';
+const DB_MIGRATED_KEY = 'talamolm_db_migrated';
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -53,6 +54,53 @@ export function loadChatState<T>(fallback: T): T {
 
 export function saveChatState<T>(value: T): void {
   localStorage.setItem(CHAT_STATE_KEY, JSON.stringify(value));
+}
+
+export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; folders: ChatFolder[]; migrated: boolean } | null> {
+  if (!isElectronEnv()) return null;
+  try {
+    const chats = await (window as any).electronAPI.invoke('chat_db_load_all') as ChatSession[];
+    const folders = await (window as any).electronAPI.invoke('chat_db_load_folders') as ChatFolder[];
+
+    // If DB is empty, try migration from localStorage
+    if ((!chats || chats.length === 0) && !localStorage.getItem(DB_MIGRATED_KEY)) {
+      const localState = loadChatState<{ chats: ChatSession[]; folders: ChatFolder[] }>({ chats: [], folders: [] });
+      if (localState.chats?.length > 0 || localState.folders?.length > 0) {
+        const migrated = await (window as any).electronAPI.invoke('chat_db_migrate', { persistedState: localState }) as number;
+        console.log(`[chat-db] Migrated ${migrated} chats from localStorage to SQLite`);
+        localStorage.setItem(DB_MIGRATED_KEY, '1');
+        const migratedChats = await (window as any).electronAPI.invoke('chat_db_load_all') as ChatSession[];
+        const migratedFolders = await (window as any).electronAPI.invoke('chat_db_load_folders') as ChatFolder[];
+        return { chats: migratedChats || [], folders: migratedFolders || [], migrated: true };
+      }
+      localStorage.setItem(DB_MIGRATED_KEY, '1');
+    }
+
+    if (!chats || chats.length === 0) return null;
+    return { chats, folders: folders || [], migrated: false };
+  } catch (err) {
+    console.error('[loadChatStateFromDb] Failed:', err);
+    return null;
+  }
+}
+
+export async function saveChatStateToDb(session: ChatSession): Promise<void> {
+  if (!isElectronEnv()) return;
+  try {
+    const plain = JSON.parse(JSON.stringify(session));
+    await (window as any).electronAPI.invoke('chat_db_save_session', { session: plain });
+  } catch (err) {
+    console.error('[saveChatStateToDb] Failed:', err);
+  }
+}
+
+export async function deleteChatFromDb(chatId: string): Promise<void> {
+  if (!isElectronEnv()) return;
+  try {
+    await (window as any).electronAPI.invoke('chat_db_delete', { chatId });
+  } catch (err) {
+    console.error('[deleteChatFromDb] Failed:', err);
+  }
 }
 
 export function loadTheme(): 'light' | 'dark' | null {

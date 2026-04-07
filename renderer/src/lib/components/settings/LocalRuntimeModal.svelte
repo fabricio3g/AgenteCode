@@ -11,26 +11,14 @@
   import { getSupervisorStatus, stopLlama } from '$lib/services/runtime';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { listen } from '$lib/services/tauri';
+  import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
 
-  // ---------- platform detection ----------
-  function detectPlatform(): { os: 'linux' | 'macos' | 'windows'; arch: 'x64' | 'arm64' } {
-    const ua = navigator.userAgent.toLowerCase();
-    const plat = navigator.platform.toLowerCase();
-    let os: 'linux' | 'macos' | 'windows' = 'linux';
-    if (plat.startsWith('win') || ua.includes('windows')) os = 'windows';
-    else if (plat.startsWith('mac') || ua.includes('macintosh')) os = 'macos';
-    const cpuModel = (hardwareStore.info?.cpu_model || '').toLowerCase();
-    const arch: 'x64' | 'arm64' =
-      (cpuModel.includes('apple') || cpuModel.includes('m1') || cpuModel.includes('m2') || cpuModel.includes('m3') ||
-       plat.includes('arm') || ua.includes('aarch64'))
-        ? 'arm64'
-        : 'x64';
-    return { os, arch };
-  }
+  // ---------- platform detection (from main process) ----------
+  let platformInfo = $state<RuntimeRecommendations>({ platform: 'linux', arch: 'x64', gpu_backend: 'cpu', has_gpu: false, recommended_variant: 'cpu' });
 
-  const platform = $derived(detectPlatform());
-  const hasGpu = $derived((hardwareStore.info?.vram_gb ?? 0) > 0);
-  const gpuBackend = $derived((hardwareStore.info?.gpu_backend || 'cpu').toLowerCase());
+  const platform = $derived({ os: platformInfo.platform, arch: platformInfo.arch });
+  const hasGpu = $derived(platformInfo.has_gpu);
+  const gpuBackend = $derived(platformInfo.gpu_backend.toLowerCase());
 
   // ---------- llama.cpp release assets ----------
   type ReleaseAsset = { name: string; url: string; tag: string; label: string; variant: 'recommended' | 'gpu' | 'cpu'; description: string };
@@ -213,6 +201,7 @@
   onMount(async () => {
     await refresh();
     await hardwareStore.refresh();
+    try { platformInfo = await getRuntimeRecommendations(); } catch { /* use defaults */ }
     void fetchLatestRelease();
     unlisten = await listen('runtime-download-progress', (event: any) => {
       downloadProgress = Number(event?.progress ?? event?.payload?.progress ?? 0);

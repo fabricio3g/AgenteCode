@@ -667,7 +667,8 @@ async function executeTool(
           command: String(args.command || ''),
           args: Array.isArray(args.args) ? args.args.map(String) : [],
           shell: true,
-          timeout_ms: Math.min(Number(args.timeout) || 30000, 120000)
+          timeout_ms: Math.min(Number(args.timeout) || 30000, 120000),
+          preserve: true
         });
         if (result.files) Object.assign(ctx.files, result.files);
         return ok({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exit_code, timedOut: result.timed_out });

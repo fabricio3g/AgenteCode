@@ -22,6 +22,10 @@ class TtsStore {
       // already stopped
     }
     this.currentSource = null;
+    if (this.audioCtx && this.audioCtx.state !== 'closed') {
+      this.audioCtx.close();
+      this.audioCtx = null;
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -160,6 +164,10 @@ class TtsStore {
       if (this.currentMessageId === messageId) {
         this.playing = false;
         this.currentMessageId = null;
+        if (this.audioCtx && this.audioCtx.state !== 'closed') {
+          this.audioCtx.close();
+          this.audioCtx = null;
+        }
         this.onPlaybackEnd?.();
       }
     };

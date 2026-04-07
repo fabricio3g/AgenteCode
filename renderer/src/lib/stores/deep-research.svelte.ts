@@ -362,6 +362,14 @@ class DeepResearchStore {
     if (!this.activeTaskId) return;
     this.cancelTask(this.activeTaskId);
   }
+
+  destroy() {
+    if (this.unlisten) {
+      this.unlisten();
+      this.unlisten = null;
+    }
+    this.initialized = false;
+  }
 }
 
 export const deepResearchStore = new DeepResearchStore();

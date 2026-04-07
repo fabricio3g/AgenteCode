@@ -765,7 +765,7 @@
     fetchingProviderModels = true;
     providerApiModels = [];
     try {
-      const keyToSend = (providerApiKey && providerApiKey !== '••••••••') ? providerApiKey : undefined;
+      const keyToSend = (providerApiKey && providerApiKey !== '••••••••') ? String(providerApiKey) : undefined;
       const models = await invoke<string[]>('fetch_provider_models', { baseUrl: providerBaseUrl, apiKey: keyToSend, providerName });
       providerApiModels = models ?? [];
       if (!providerApiModels.length) toastStore.info('No models returned from provider.');
@@ -780,7 +780,7 @@
     testingProviderConnection = true;
     providerConnectionStatus = 'idle';
     try {
-      const keyToSend = (providerApiKey && providerApiKey !== '••••••••') ? providerApiKey : undefined;
+      const keyToSend = (providerApiKey && providerApiKey !== '••••••••') ? String(providerApiKey) : undefined;
       await invoke('fetch_provider_models', { baseUrl: providerBaseUrl, apiKey: keyToSend, providerName });
       providerConnectionStatus = 'ok';
       toastStore.success('Connected successfully');
@@ -849,7 +849,7 @@
           <h1 id="model-hub-title" class="text-sm font-semibold text-[var(--text)]">Model Hub</h1>
           <button
             type="button"
-            class="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-white/5 dark:hover:text-neutral-300"
+            class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
             onclick={close}
             aria-label="Close model hub"
           >
@@ -860,7 +860,7 @@
         <nav class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5" aria-label="Model hub navigation">
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'models' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'models' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'models')}
             aria-current={activeSection === 'models' ? 'page' : undefined}
           >
@@ -873,7 +873,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'providers' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'providers' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'providers')}
             aria-current={activeSection === 'providers' ? 'page' : undefined}
           >
@@ -888,7 +888,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'explore' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'explore' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'explore')}
             aria-current={activeSection === 'explore' ? 'page' : undefined}
           >
@@ -900,7 +900,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'voices' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'voices' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'voices')}
             aria-current={activeSection === 'voices' ? 'page' : undefined}
           >
@@ -913,7 +913,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'whisper' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'whisper' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'whisper')}
             aria-current={activeSection === 'whisper' ? 'page' : undefined}
           >
@@ -926,7 +926,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'search' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'search' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'search')}
             aria-current={activeSection === 'search' ? 'page' : undefined}
           >
@@ -938,7 +938,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
             onclick={() => { close(); appStore.downloadsOpen = true; }}
           >
             <Download class="h-4 w-4 shrink-0 opacity-70" />
@@ -952,7 +952,7 @@
 
           <button
             type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'runtime' ? 'bg-neutral-100 dark:bg-white/[0.06] text-[var(--text)]' : 'text-neutral-600 dark:text-neutral-400 hover:bg-[var(--surface-highlight)] hover:text-neutral-900 dark:hover:text-white'}"
+            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'runtime' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
             onclick={() => (activeSection = 'runtime')}
             aria-current={activeSection === 'runtime' ? 'page' : undefined}
           >
@@ -1023,7 +1023,7 @@
               {#each (['date', 'name', 'size'] as const) as opt}
                 <button
                   type="button"
-                  class="rounded-md px-2.5 py-1 text-xs font-medium transition {sortBy === opt ? 'bg-white dark:bg-white/10 text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-neutral-700 dark:hover:text-neutral-200'}"
+                  class="rounded-md px-2.5 py-1 text-xs font-medium transition {sortBy === opt ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                   onclick={() => (sortBy = opt)}
                 >
                   {opt === 'date' ? 'Recent' : opt === 'name' ? 'Name' : 'Size'}
@@ -1070,7 +1070,7 @@
               </div>
               <button
                 type="button"
-                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-white dark:bg-white/10 px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
                 onclick={unloadModel}
                 disabled={unloading || isLoading}
               >
@@ -1084,7 +1084,7 @@
             {#if installedModels.length === 0}
               <div class="flex flex-col items-center justify-center py-20 text-center">
                 <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-highlight)]">
-                  <Box class="h-8 w-8 text-neutral-300 dark:text-neutral-600" />
+                  <Box class="h-8 w-8 text-[var(--text-muted)]" />
                 </div>
                 <p class="text-base font-medium text-[var(--text-secondary)]">No local models</p>
                 <p class="mt-1 text-sm text-[var(--text-muted)]">Browse Explore to download models</p>
@@ -1105,7 +1105,7 @@
                   {@const fit = vramFit(model)}
                   {@const tools = toolSupported(model)}
                   <article
-                    class="group relative flex h-[180px] flex-col rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-lg dark:bg-[#161616] {loaded
+                    class="group relative flex h-[180px] flex-col rounded-xl border bg-[var(--surface)] p-4 transition-all duration-200 hover:shadow-lg {loaded
                       ? 'border-emerald-200 dark:border-emerald-800/40 ring-1 ring-emerald-100 dark:ring-emerald-900/20'
                       : selected
                         ? 'border-neutral-300 dark:border-neutral-600 ring-1 ring-neutral-100 dark:ring-neutral-800'
@@ -1113,7 +1113,7 @@
                   >
                     <!-- Top: icon + name + badges -->
                     <div class="flex items-start gap-3 min-h-0">
-                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-highlight)] transition group-hover:bg-neutral-200 dark:group-hover:bg-white/[0.06]">
+                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-highlight)] transition group-hover:bg-[var(--surface-strong)]">
                         <Cpu class="h-5 w-5 text-[var(--text-muted)]" />
                       </div>
                       <div class="min-w-0 flex-1">
@@ -1126,7 +1126,7 @@
                             </span>
                           {/if}
                           {#if selected && !loaded}
-                            <span class="rounded-full bg-neutral-200 dark:bg-white/10 px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
+                            <span class="rounded-full bg-[var(--surface-strong)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
                           {/if}
                           {#if tools}
                             <span class="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">Tools</span>
@@ -1135,7 +1135,7 @@
                       </div>
                       <button
                         type="button"
-                        class="rounded-lg p-1.5 text-neutral-300 dark:text-neutral-600 transition hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100"
                         onclick={() => model.path && removeModel(model.path)}
                         title="Delete model"
                         aria-label="Delete {model.name}"
@@ -1216,14 +1216,14 @@
             <div class="flex items-center rounded-lg bg-[var(--surface-highlight)] p-0.5">
               <button
                 type="button"
-                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'recommended' ? 'bg-white dark:bg-white/10 text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-neutral-700 dark:hover:text-neutral-200'}"
+                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'recommended' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => (exploreSubTab = 'recommended')}
               >
                 Recommended
               </button>
               <button
                 type="button"
-                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'search' ? 'bg-white dark:bg-white/10 text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-neutral-700 dark:hover:text-neutral-200'}"
+                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'search' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => (exploreSubTab = 'search')}
               >
                 Search
@@ -1234,7 +1234,7 @@
               <div class="flex-1 max-w-md">
                 <SearchBar bind:value={exploreQuery} placeholder="Search Hugging Face..." />
               </div>
-              <select bind:value={hfSort} class="rounded-lg border border-[var(--border)] bg-white dark:bg-white/[0.04] px-3 py-1.5 text-xs text-[var(--text-secondary)] outline-none">
+              <select bind:value={hfSort} class="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs text-[var(--text-secondary)] outline-none">
                 <option value="trending">Trending</option>
                 <option value="downloads">Downloads</option>
                 <option value="likes">Likes</option>
@@ -1250,21 +1250,21 @@
               {#if !showTokenInput}
                 <button
                   type="button"
-                  class="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+                  class="text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
                   onclick={() => (showTokenInput = true)}
                 >
                   Token
                 </button>
               {:else}
                 <div class="flex items-center gap-1.5">
-                  <Key class="h-3 w-3 text-neutral-400" />
+                  <Key class="h-3 w-3 text-[var(--text-muted)]" />
                   <input
                     type="password"
                     bind:value={hfToken}
                     placeholder="hf_..."
-                    class="w-28 rounded-lg border border-[var(--border)] bg-white dark:bg-white/[0.04] px-2 py-1 text-xs outline-none dark:text-white"
+                    class="w-28 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none text-[var(--text)]"
                   />
-                  <button type="button" class="text-xs text-neutral-400 hover:text-red-500" onclick={() => { showTokenInput = false; hfToken = ''; }}>
+                  <button type="button" class="text-xs text-[var(--text-muted)] hover:text-red-500" onclick={() => { showTokenInput = false; hfToken = ''; }}>
                     <X class="h-3 w-3" />
                   </button>
                 </div>
@@ -1476,7 +1476,7 @@
                       </div>
                     {:else if searchResults.length === 0}
                       <div class="flex flex-col items-center justify-center py-16 text-center">
-                        <Search class="mb-3 h-8 w-8 text-neutral-200 dark:text-neutral-700" />
+                        <Search class="mb-3 h-8 w-8 text-[var(--text-muted)]" />
                         <p class="text-sm text-[var(--text-tertiary)]">Search models</p>
                         <p class="mt-0.5 text-xs text-[var(--text-muted)]">Try "llama", "qwen", "mistral"</p>
                       </div>
@@ -1485,7 +1485,7 @@
                         {#each searchResults as result (result.repo_id)}
                           <button
                             type="button"
-                            class="w-full rounded-lg px-3 py-2.5 text-left transition {selectedRepo?.repo_id === result.repo_id ? 'bg-neutral-100 dark:bg-white/[0.06]' : 'hover:bg-[var(--surface-highlight)]'}"
+                            class="w-full rounded-lg px-3 py-2.5 text-left transition {selectedRepo?.repo_id === result.repo_id ? 'bg-[var(--surface-highlight)]' : 'hover:bg-[var(--surface-highlight)]'}"
                             onclick={() => openRepo(result.repo_id)}
                           >
                             <div class="text-xs font-medium text-[var(--text-secondary)] truncate">{result.repo_id}</div>
@@ -1502,7 +1502,7 @@
                 <div class="flex-1 overflow-y-auto p-4">
                   {#if !selectedRepo}
                     <div class="flex h-full flex-col items-center justify-center text-center">
-                      <Box class="mb-3 h-10 w-10 text-neutral-200 dark:text-neutral-700" />
+                      <Box class="mb-3 h-10 w-10 text-[var(--text-muted)]" />
                       <p class="text-sm text-[var(--text-tertiary)]">Select a repository</p>
                       <p class="mt-0.5 text-xs text-[var(--text-muted)]">Choose a model to browse GGUF variants</p>
                     </div>
@@ -1539,13 +1539,13 @@
                                     <span>{job.progress.toFixed(0)}%</span>
                                     <span>{speed && speed.speedBps > 0 ? (speed.speedBps >= 1048576 ? `${(speed.speedBps / 1048576).toFixed(1)} MB/s` : `${(speed.speedBps / 1024).toFixed(0)} KB/s`) : ''}</span>
                                   </div>
-                                  <div class="h-1 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-white/10">
+                                  <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
                                     <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {job.progress}%"></div>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  class="rounded-lg p-1.5 text-neutral-400 transition hover:bg-red-500/10 hover:text-red-500"
+                                  class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-500"
                                   onclick={async () => { await cancelDownloadJob(job.id); await downloadsStore.refresh(); }}
                                   aria-label="Cancel download"
                                   title="Cancel"
@@ -1567,7 +1567,7 @@
                               </div>
                             {:else if job && job.status === 'cancelled'}
                               <div class="flex items-center gap-2">
-                                <span class="text-xs text-neutral-400">Cancelled</span>
+                                <span class="text-xs text-[var(--text-muted)]">Cancelled</span>
                                 <button
                                   type="button"
                                   class="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90"
@@ -1685,14 +1685,14 @@
                                 Downloading {activeJobs.length}/{totalFiles} files
                               </div>
                               {#if activeJobs[0]}
-                                <div class="h-1 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-white/10">
+                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
                                   <div class="h-full rounded-full bg-[var(--primary)] transition-all animate-pulse" style="width: {activeJobs[0].progress}%"></div>
                                 </div>
                               {/if}
                             </div>
                             <button
                               type="button"
-                              class="rounded-lg p-1.5 text-neutral-400 transition hover:bg-red-500/10 hover:text-red-500"
+                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-500"
                               onclick={async () => {
                                 for (const j of activeJobs) { await cancelDownloadJob(j.id); }
                                 downloadingVoice = null;
@@ -1974,14 +1974,14 @@
                                 Downloading {doneJobs.length + activeJobs.length}/{whisperFiles.length} files
                               </div>
                               {#if activeJobs[0]}
-                                <div class="h-1 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-white/10">
+                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
                                   <div class="h-full rounded-full bg-[var(--primary)] transition-all animate-pulse" style="width: {activeJobs[0].progress}%"></div>
                                 </div>
                               {/if}
                             </div>
                             <button
                               type="button"
-                              class="rounded-lg p-1.5 text-neutral-400 transition hover:bg-red-500/10 hover:text-red-500"
+                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-red-500/10 hover:text-red-500"
                               onclick={async () => {
                                 for (const j of activeJobs) { await cancelDownloadJob(j.id); }
                                 downloadingWhisper = null;
@@ -2096,18 +2096,18 @@
               {/if}
             </div>
 
-            <div class="mt-4 rounded-xl border border-[var(--border)] bg-neutral-50 dark:bg-white/[0.02] p-4">
+            <div class="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] p-4">
               <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-2">About llama.cpp</h4>
               <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
-                llama.cpp is a high-performance inference engine for running large language models locally. 
-                It supports GPU acceleration (CUDA, Metal, Vulkan), quantized models, and various optimization techniques 
+                llama.cpp is a high-performance inference engine for running large language models locally.
+                It supports GPU acceleration (CUDA, Metal, Vulkan), quantized models, and various optimization techniques
                 for efficient memory usage on consumer hardware.
               </p>
               <a
                 href="https://github.com/ggerganov/llama.cpp"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="mt-3 inline-flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-neutral-700 dark:hover:text-neutral-200"
+                class="mt-3 inline-flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-[var(--text)]"
               >
                 <ExternalLink class="h-3 w-3" />
                 Learn more on GitHub
@@ -2141,7 +2141,7 @@
               </button>
             </div>
 
-            <div class="mt-5 rounded-xl border border-[var(--border)] bg-neutral-50 dark:bg-white/[0.02] p-4">
+            <div class="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] p-4">
               <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-3">Search Modes</h4>
               <div class="space-y-3">
                 <div>
@@ -2241,7 +2241,7 @@
               <div class="space-y-1.5 text-sm">
                 <div class="flex items-center justify-between">
                   <span class="font-medium text-[var(--text-secondary)]">API Key</span>
-                  {#if appStore.activeProvider?.has_api_key && providerName === appStore.activeProviderName}
+                  {#if appStore.config.llm?.providers?.[providerName]?.has_api_key}
                     <span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                       <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Saved
                     </span>
@@ -2250,7 +2250,7 @@
                 <input
                   class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
                   bind:value={providerApiKey}
-                  placeholder={appStore.activeProvider?.has_api_key && providerName === appStore.activeProviderName ? '••••••••• (leave blank to keep)' : 'Enter API key…'}
+                  placeholder={appStore.config.llm?.providers?.[providerName]?.has_api_key ? '••••••••• (leave blank to keep)' : 'Enter API key…'}
                   type="password"
                   onfocus={() => { if (providerApiKey === '••••••••') providerApiKey = ''; }}
                 />
@@ -2277,7 +2277,6 @@
                             modelDropdownOpen = false;
                             modelSearchQuery = '';
                             e.currentTarget.blur();
-                            void appStore.updateProvider({ provider: providerName, model: providerModel });
                           }
                         }}
                       />
@@ -2296,7 +2295,6 @@
                                   providerModel = m;
                                   modelDropdownOpen = false;
                                   modelSearchQuery = '';
-                                  void appStore.updateProvider({ provider: providerName, model: m });
                                 }}
                               >
                                 {m}

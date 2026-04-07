@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob: filesystem: https: http: ws: wss:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; media-src 'self' data: blob: https: http:; frame-src 'self' https: http:;"
+    />
     <title>TalamoLM</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +16,7 @@
       rel="stylesheet"
     />
   </head>
-  <body class="h-full overflow-hidden bg-white text-black dark:bg-[#0d0d0d] dark:text-white">
+  <body class="h-full overflow-hidden bg-[var(--surface)] text-[var(--text)]">
     <div id="app" class="h-full"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
