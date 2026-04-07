@@ -1,7 +1,7 @@
 import { ipcMain, shell, net } from 'electron';
 import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './index.js';
 import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.js';
-import { getHardwareLimits } from './hardware.js';
+import { getHardwareLimits, getSystemInfo } from './system-info.js';
 import {
   getLocalModels, getGgufMetadata, deleteLocalModel, getModelsDirPath,
   getIndexedModels, refreshModelIndex, invalidateModelCache, importLocalModel
@@ -9,7 +9,8 @@ import {
 import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
   getSupervisorStatus, supervisorHealthCheck, getLoadedModels,
-  unloadModel, getRecommendedSettings
+  unloadModel, getRecommendedSettings,
+  startEmbeddingServer, stopEmbeddingServer, getEmbeddingStatus
 } from './llm-runner.js';
 import { generateTts, unloadTts, checkEspeakData } from './tts-engine.js';
 import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.js';
@@ -34,7 +35,8 @@ import {
 } from './workspace.js';
 import {
   agentStartTask, agentUpdateTask, agentCancelTask,
-  agentGetTask, agentListTasks, agentDeleteTask, agentClearHistory
+  agentGetTask, agentListTasks, agentDeleteTask, agentClearHistory,
+  agentRunner
 } from './agent-manager.js';
 import { sandboxExec } from './sandbox.js';
 import {
@@ -44,7 +46,10 @@ import {
 import {
   generatePptx, savePptx, parseSlidesFromMarkdown, slidesToMarkdown
 } from './slides.js';
-import { completeChatRequest, startChatStream, cancelChatStream } from './chat-ipc.js';
+import { completeChatRequest, startChatStream, cancelChatStream, resolveApiKey } from './chat-ipc.js';
+import { resolveProvider } from './providers/registry.js';
+import { saveChatSession, loadAllChats, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder } from './chat-db.js';
+import { countTokens, buildContextBudget, truncateMessages } from './token-counter.js';
 
 export function registerIpcHandlers() {
   // ── Window controls ──
@@ -78,6 +83,31 @@ export function registerIpcHandlers() {
 
   // ── Hardware ──
   ipcMain.handle('get_hardware_limits', () => getHardwareLimits());
+
+  // ── First-run check ──
+  ipcMain.handle('is_first_run', () => {
+    const cfg = loadConfig();
+    return !cfg?.onboarding?.completed;
+  });
+
+  ipcMain.handle('get_runtime_recommendations', async () => {
+    const info = await getSystemInfo();
+    const platform = info.os_platform;
+    const arch = info.os_arch;
+    let osLabel = 'linux';
+    if (platform === 'darwin') osLabel = 'macos';
+    else if (platform === 'win32') osLabel = 'windows';
+    return {
+      platform: osLabel,
+      arch: arch === 'arm64' ? 'arm64' : 'x64',
+      gpu_backend: info.gpu_backend,
+      has_gpu: info.vram_gb > 0,
+      recommended_variant: info.gpu_backend === 'cuda' ? 'cuda'
+        : info.gpu_backend === 'metal' ? 'metal'
+        : info.gpu_backend === 'vulkan' ? 'vulkan'
+        : 'cpu'
+    };
+  });
 
   // ── Desktop capabilities ──
   ipcMain.handle('get_desktop_capabilities', () => ({
@@ -138,8 +168,13 @@ export function registerIpcHandlers() {
   ipcMain.handle('supervisor_health_check', () => supervisorHealthCheck());
   ipcMain.handle('get_loaded_models', () => getLoadedModels());
   ipcMain.handle('unload_model', (_e, { modelId }) => unloadModel(modelId, getMainWindow()));
-  ipcMain.handle('get_recommended_settings', (_e, { modelPath, userContext, userGpuLayers }) =>
-    getRecommendedSettings(modelPath, userContext, userGpuLayers));
+  ipcMain.handle('get_recommended_settings', (_e, { modelPath, userContext, userGpuLayers, runtimePath }) =>
+    getRecommendedSettings(modelPath, userContext, userGpuLayers, runtimePath));
+
+  // ── Embedding server ──
+  ipcMain.handle('start_embedding_server', (_e, { config }) => startEmbeddingServer(config, getMainWindow()));
+  ipcMain.handle('stop_embedding_server', () => stopEmbeddingServer());
+  ipcMain.handle('get_embedding_status', () => getEmbeddingStatus());
 
   // ── Runtimes ──
   ipcMain.handle('get_installed_runtimes', () => getInstalledRuntimes());
@@ -156,50 +191,37 @@ export function registerIpcHandlers() {
   ipcMain.handle('get_stt_status', () => getSttStatus());
   ipcMain.handle('unload_whisper', () => unloadWhisper());
 
-  // ── Provider model list (main process fetch avoids renderer CORS) ──
+  // ── Provider model list (delegated to provider registry) ──
   ipcMain.handle('fetch_provider_models', async (_e, { baseUrl, apiKey, providerName }) => {
-    // Resolve real API key from disk config.
-    // Prefer lookup by providerName (exact), fall back to URL matching.
-    let realKey = apiKey;
-    if (!realKey) {
-      const diskConfig = loadConfigFromDisk();
-      const providers = diskConfig?.llm?.providers || {};
-      if (providerName && providers[providerName]?.api_key) {
-        realKey = providers[providerName].api_key;
-      } else {
-        // Fallback: try default provider
-        const defaultProvider = diskConfig?.llm?.provider;
-        if (defaultProvider && defaultProvider !== providerName && providers[defaultProvider]?.api_key) {
-          realKey = providers[defaultProvider].api_key;
-        } else {
-          // Fallback: match by base_url (strip trailing slashes for comparison)
-          const normalizedBase = String(baseUrl || '').replace(/\/+$/, '');
-          for (const provider of Object.values(providers)) {
-            if (String(provider.base_url || '').replace(/\/+$/, '') === normalizedBase && provider.api_key) {
-              realKey = provider.api_key;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (!realKey) {
+    const provider = resolveProvider(providerName, baseUrl);
+    const realKey = resolveApiKey(apiKey, baseUrl, providerName);
+    if (!realKey && provider.name !== 'local') {
       throw new Error(`No API key configured for ${providerName || 'the selected provider'}. Please add your API key in Settings > LLM Providers.`);
     }
-    const url = `${String(baseUrl || '').replace(/\/+$/, '')}/models`;
-    const headers = { 'Accept': 'application/json' };
-    if (realKey) headers['Authorization'] = `Bearer ${realKey}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const list = data?.data ?? data?.models ?? [];
-    return list.map((m) => m.id).filter(Boolean).sort();
+    return provider.fetchModels(realKey, baseUrl);
   });
 
   // ── Chat (main-process network for API key safety) ──
   ipcMain.handle('chat_complete', (_e, args) => completeChatRequest(args));
   ipcMain.handle('chat_stream_start', (_e, args) => startChatStream(args, getMainWindow()));
   ipcMain.handle('chat_stream_cancel', (_e, args) => cancelChatStream(args));
+
+  // ── Chat DB (SQLite persistence) ──
+  ipcMain.handle('chat_db_save_session', (_e, { session }) => saveChatSession(session));
+  ipcMain.handle('chat_db_load_all', () => loadAllChats());
+  ipcMain.handle('chat_db_delete', async (_e, { chatId }) => {
+    await deleteChatFromDb(chatId);
+    clearRagDocuments(chatId).catch(() => {});
+  });
+  ipcMain.handle('chat_db_migrate', (_e, { persistedState }) => migrateFromLocalStorage(persistedState));
+  ipcMain.handle('chat_db_load_folders', () => loadAllFolders());
+  ipcMain.handle('chat_db_save_folder', (_e, { folder }) => saveFolder(folder));
+  ipcMain.handle('chat_db_delete_folder', (_e, { folderId }) => deleteFolder(folderId));
+
+  // ── Token counting / context budget ──
+  ipcMain.handle('count_tokens', (_e, { text, baseUrl }) => countTokens(text, baseUrl));
+  ipcMain.handle('build_context_budget', (_e, { config, messages }) => buildContextBudget(config, messages));
+  ipcMain.handle('truncate_messages', (_e, { messages, budget }) => truncateMessages(messages, budget));
 
   // ── Downloads ──
   ipcMain.handle('start_download_hf', (_e, args) => startDownloadHf(args));
@@ -306,9 +328,8 @@ export function registerIpcHandlers() {
   ipcMain.handle('agent_update_task', (_e, args) => agentUpdateTask(args));
   ipcMain.handle('agent_cancel_task', (_e, { taskId }) => agentCancelTask(taskId));
   ipcMain.handle('agent_get_task', (_e, { taskId }) => agentGetTask(taskId));
-  ipcMain.handle('agent_list_tasks', (_e, { chatId }) => agentListTasks(chatId));
-  ipcMain.handle('agent_delete_task', (_e, { taskId }) => agentDeleteTask(taskId));
-  ipcMain.handle('agent_clear_history', (_e, { chatId }) => agentClearHistory(chatId));
+  ipcMain.handle('agent_list_tools', () => agentRunner.listTools());
+  ipcMain.handle('agent_toggle_tool', (_e, { toolName, enabled }) => agentRunner.toggleTool(toolName, enabled));
 
   // ── Sandbox ──
   ipcMain.handle('sandbox_exec', (_e, args) => sandboxExec(args));

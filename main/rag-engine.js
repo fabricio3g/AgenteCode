@@ -2,6 +2,25 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './index.js';
+import { getEmbedding, getEmbeddings, cosineSimilarity } from './embedding-client.js';
+import { rerankChunks } from './reranker.js';
+import { vectorStore } from './vector-store.js';
+import {
+  saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
+  deleteRagDocumentsByChat
+} from './chat-db.js';
+
+let vectorStoreReady = false;
+
+async function ensureVectorStore() {
+  if (vectorStoreReady) return;
+  try {
+    await vectorStore.init();
+    vectorStoreReady = true;
+  } catch (err) {
+    console.warn('[RAG] LanceDB init failed, falling back to JSON store:', err?.message || err);
+  }
+}
 
 const chatDocuments = new Map();
 let storeLoaded = false;
@@ -12,20 +31,97 @@ function getStorePath() {
   return path.join(cacheRoot, 'rag-store-v2.json');
 }
 
-function chunkText(text, chunkSize = 512, overlap = 64) {
-  const safeChunkSize = Math.max(128, Number(chunkSize) || 512);
-  const safeOverlap = Math.max(0, Math.min(Number(overlap) || 64, safeChunkSize - 1));
-  const chunks = [];
-  let start = 0;
+function chunkTextSemantic(text, chunkSize = 512) {
+  const targetSize = Math.max(128, Number(chunkSize) || 512);
 
-  while (start < text.length) {
-    const end = Math.min(start + safeChunkSize, text.length);
-    chunks.push(text.slice(start, end));
-    if (end >= text.length) break;
-    start = Math.max(0, end - safeOverlap);
+  // Phase 1: Split on structural boundaries
+  const structuralParts = splitByStructure(text);
+
+  // Phase 2: Split each structural part on paragraph boundaries
+  const paragraphs = [];
+  for (const part of structuralParts) {
+    if (part.length <= targetSize) {
+      paragraphs.push(part);
+    } else {
+      const subParts = part.split(/\n\n+/).filter(p => p.trim());
+      for (const sp of subParts) {
+        paragraphs.push(sp.trim());
+      }
+    }
   }
 
-  return chunks;
+  // Phase 3: Merge paragraphs up to target chunk size
+  const chunks = [];
+  let current = '';
+  for (const para of paragraphs) {
+    if (!para.trim()) continue;
+    if (current.length + para.length + 2 > targetSize && current.length > 0) {
+      chunks.push(current.trim());
+      current = para;
+    } else {
+      current = current ? `${current}\n\n${para}` : para;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+
+  // Phase 4: Split any remaining oversized chunks on sentence boundaries
+  const finalChunks = [];
+  for (const chunk of chunks) {
+    if (chunk.length <= targetSize) {
+      finalChunks.push(chunk);
+    } else {
+      const sentences = chunk.split(/(?<=[.!?])\s+/);
+      let subChunk = '';
+      for (const sentence of sentences) {
+        if (subChunk.length + sentence.length + 1 > targetSize && subChunk.length > 0) {
+          finalChunks.push(subChunk.trim());
+          subChunk = sentence;
+        } else {
+          subChunk = subChunk ? `${subChunk} ${sentence}` : sentence;
+        }
+      }
+      if (subChunk.trim()) finalChunks.push(subChunk.trim());
+    }
+  }
+
+  return finalChunks.length > 0 ? finalChunks : [text.slice(0, targetSize)];
+}
+
+function splitByStructure(text) {
+  const parts = [];
+  let current = '';
+  let inCodeBlock = false;
+
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.trimStart().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      current += (current ? '\n' : '') + line;
+      if (!inCodeBlock) {
+        parts.push(current.trim());
+        current = '';
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      current += (current ? '\n' : '') + line;
+      continue;
+    }
+
+    const isHeader = /^#{1,6}\s/.test(line.trimStart());
+    const isHr = /^(---+|\*\*\*+|___+)\s*$/.test(line.trim());
+
+    if (isHeader || isHr) {
+      if (current.trim()) parts.push(current.trim());
+      current = line;
+    } else {
+      current += (current ? '\n' : '') + line;
+    }
+  }
+
+  if (current.trim()) parts.push(current.trim());
+  return parts.filter(p => p.length > 0);
 }
 
 function tokenize(text) {
@@ -178,9 +274,9 @@ function makeDocumentFingerprint(source, text, fileType) {
     .digest('hex');
 }
 
-function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size, overlap }) {
+function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
   const normalizedText = String(text || '').trim();
-  const chunks = chunkText(normalizedText, chunk_size || 512, overlap || 64);
+  const chunks = chunkTextSemantic(normalizedText, chunk_size || 512);
   const docId = randomUUID();
   const fingerprint = makeDocumentFingerprint(source, normalizedText, file_type);
   const now = Date.now();
@@ -206,16 +302,39 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size, ove
   };
 }
 
-function ingestTextInternal({ source, text, chat_id, file_type, chunk_size, overlap }) {
+async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size }) {
   ensureStoreLoaded();
   const store = ensureChatStore(chat_id);
-  const record = buildDocumentRecord({ source, text, chat_id, file_type, chunk_size, overlap });
+  const record = buildDocumentRecord({ source, text, chat_id, file_type, chunk_size });
   store.set(record.doc.id, record);
   persistStore();
+
+  // Save metadata to SQLite
+  try {
+    saveRagDocument(record.doc);
+  } catch (err) {
+    console.warn('[RAG] Failed to save doc metadata to SQLite:', err?.message || err);
+  }
+
+  // Generate embeddings and store in LanceDB
+  const chunkTexts = record.chunks.map(c => c.text).filter(t => t.trim());
+  if (chunkTexts.length > 0) {
+    const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
+
+    // Store vectors in LanceDB if available
+    if (embeddings && vectorStoreReady) {
+      try {
+        await vectorStore.addChunks(chat_id, record.doc, record.chunks, embeddings);
+      } catch (err) {
+        console.warn('[RAG] LanceDB addChunks failed:', err?.message || err);
+      }
+    }
+  }
+
   return record.doc;
 }
 
-export async function ingestDocument({ file_path, chat_id, chunk_size, overlap }) {
+export async function ingestDocument({ file_path, chat_id, chunk_size }) {
   const fileName = path.basename(file_path);
   const { text, fileType } = await extractText(file_path);
   return ingestTextInternal({
@@ -223,13 +342,12 @@ export async function ingestDocument({ file_path, chat_id, chunk_size, overlap }
     text,
     chat_id,
     file_type: fileType,
-    chunk_size,
-    overlap
+    chunk_size
   });
 }
 
-export async function ingestText({ source, text, chat_id, file_type, chunk_size, overlap }) {
-  return ingestTextInternal({ source, text, chat_id, file_type, chunk_size, overlap });
+export async function ingestText({ source, text, chat_id, file_type, chunk_size }) {
+  return ingestTextInternal({ source, text, chat_id, file_type, chunk_size });
 }
 
 export async function queryDocuments({ query, chat_id, top_k }) {
@@ -281,6 +399,128 @@ export async function queryDocuments({ query, chat_id, top_k }) {
   };
 }
 
+export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
+  await ensureVectorStore().catch(() => {});
+  ensureStoreLoaded();
+  const store = ensureChatStore(chat_id);
+  const k = Math.max(1, Number(top_k) || 5);
+  const queryTokens = tokenize(query);
+  const allChunks = [];
+
+  // Gather all chunks from in-memory store
+  for (const { doc, chunks } of store.values()) {
+    for (const chunk of chunks) {
+      allChunks.push({ chunk, doc, text: chunk.text });
+    }
+  }
+
+  if (!allChunks.length) {
+    return { results: [], context: '' };
+  }
+
+  // Try LanceDB vector search first
+  let vectorResults = [];
+  const queryEmbedding = await getEmbedding(query);
+  if (vectorStoreReady && queryEmbedding) {
+    try {
+      vectorResults = await vectorStore.search(chat_id, queryEmbedding, k * 3);
+    } catch (err) {
+      console.warn('[RAG] LanceDB search failed, using in-memory scoring:', err?.message || err);
+    }
+  }
+
+  // If LanceDB returned results, use them for vector scoring
+  const scored = [];
+  const vectorResultMap = new Map();
+  for (const vr of vectorResults) {
+    vectorResultMap.set(vr.id, vr._distance != null ? 1 - vr._distance : 0);
+  }
+
+  // Batch-compute chunk embeddings only if LanceDB is not available
+  let chunkEmbeddings = [];
+  if (queryEmbedding && vectorResults.length === 0) {
+    const chunkTexts = allChunks.map(e => e.text);
+    chunkEmbeddings = await getEmbeddings(chunkTexts);
+  }
+
+  // Score each chunk with hybrid scoring
+  for (let i = 0; i < allChunks.length; i++) {
+    const entry = allChunks[i];
+    const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
+    let vectorScore = 0;
+
+    if (vectorResultMap.has(entry.chunk.id)) {
+      vectorScore = vectorResultMap.get(entry.chunk.id);
+    } else if (queryEmbedding && chunkEmbeddings[i]) {
+      vectorScore = cosineSimilarity(queryEmbedding, chunkEmbeddings[i]);
+    }
+
+    const hasVector = queryEmbedding !== null;
+    const hybridScore = hasVector
+      ? (keywordScore * 0.4) + (vectorScore * 10 * 0.6)
+      : keywordScore;
+
+    scored.push({
+      chunk: entry.chunk,
+      doc: entry.doc,
+      score: hybridScore,
+      keywordScore,
+      vectorScore
+    });
+  }
+
+  scored.sort((left, right) => right.score - left.score);
+
+  // Rerank top candidates if reranker available
+  const topCandidates = scored.slice(0, Math.min(k * 3, scored.length));
+  let finalRanked = topCandidates;
+  try {
+    const reranked = await rerankChunks(query, topCandidates.map(c => c.text), k);
+    if (reranked.length > 0 && reranked[0].rerankScore != null) {
+      const rerankMap = new Map();
+      for (const r of reranked) {
+        rerankMap.set(r.text, r.rerankScore);
+      }
+      for (const entry of topCandidates) {
+        if (rerankMap.has(entry.text)) {
+          entry.rerankScore = rerankMap.get(entry.text);
+        }
+      }
+      finalRanked = topCandidates.sort((a, b) => {
+        if (a.rerankScore != null && b.rerankScore != null) return b.rerankScore - a.rerankScore;
+        return b.score - a.score;
+      });
+    }
+  } catch {
+    // Reranker unavailable, use hybrid scores
+  }
+
+  const perDocCount = new Map();
+  const selected = [];
+  for (const entry of finalRanked) {
+    const docId = entry.chunk.doc_id;
+    const seenCount = perDocCount.get(docId) || 0;
+    if (seenCount >= 2) continue;
+    perDocCount.set(docId, seenCount + 1);
+    selected.push(entry);
+    if (selected.length >= k) break;
+  }
+
+  return {
+    results: selected.map((entry) => ({
+      chunk: entry.chunk,
+      score: entry.score,
+      document: entry.doc
+    })),
+    context: selected
+      .map((entry) => {
+        const header = entry.doc?.source ? `### ${entry.doc.source}` : '### Document';
+        return [header, entry.chunk.text].join('\n');
+      })
+      .join('\n\n---\n\n')
+  };
+}
+
 export async function listRagDocuments(chatId) {
   ensureStoreLoaded();
   const store = ensureChatStore(chatId);
@@ -291,7 +531,15 @@ export async function removeRagDocument(docId, chatId) {
   ensureStoreLoaded();
   const store = ensureChatStore(chatId);
   const removed = store.delete(docId);
-  if (removed) persistStore();
+  if (removed) {
+    persistStore();
+    // Clean up LanceDB
+    if (vectorStoreReady) {
+      try { await vectorStore.deleteDocument(chatId, docId); } catch {}
+    }
+    // Clean up SQLite
+    try { deleteRagDocumentDb(docId); } catch {}
+  }
   return removed;
 }
 
@@ -299,7 +547,15 @@ export async function clearRagDocuments(chatId) {
   ensureStoreLoaded();
   const key = String(chatId || 'default');
   const removed = chatDocuments.delete(key);
-  if (removed) persistStore();
+  if (removed) {
+    persistStore();
+    // Clean up LanceDB
+    if (vectorStoreReady) {
+      try { await vectorStore.deleteChat(chatId); } catch {}
+    }
+    // Clean up SQLite
+    try { deleteRagDocumentsByChat(chatId); } catch {}
+  }
   return removed;
 }
 
@@ -307,4 +563,49 @@ export async function hasRagDocuments(chatId) {
   ensureStoreLoaded();
   const store = chatDocuments.get(String(chatId || 'default'));
   return !!store && store.size > 0;
+}
+
+/**
+ * One-time migration: reads the legacy JSON store and bulk-inserts
+ * all chunks into LanceDB with embeddings, plus metadata into SQLite.
+ * Called once at startup if a migration marker file is absent.
+ */
+export async function migrateFromJsonStore() {
+  const storePath = getStorePath();
+  if (!fs.existsSync(storePath)) return;
+
+  await ensureVectorStore();
+  if (!vectorStoreReady) {
+    console.warn('[RAG] Skipping migration — LanceDB not available');
+    return;
+  }
+
+  const markerPath = storePath + '.migrated';
+  if (fs.existsSync(markerPath)) return;
+
+  console.log('[RAG] Migrating JSON store to LanceDB...');
+  ensureStoreLoaded();
+
+  let migrated = 0;
+  for (const [chatId, docs] of chatDocuments.entries()) {
+    for (const { doc, chunks } of docs.values()) {
+      const chunkTexts = chunks.map(c => c.text).filter(t => t.trim());
+      if (chunkTexts.length === 0) continue;
+
+      const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
+      if (!embeddings) continue;
+
+      try {
+        await vectorStore.addChunks(chatId, doc, chunks, embeddings);
+        saveRagDocument(doc);
+        migrated++;
+      } catch (err) {
+        console.warn(`[RAG] Migration failed for doc ${doc.id}:`, err?.message || err);
+      }
+    }
+  }
+
+  // Mark migration as done (backup old file, don't delete)
+  fs.writeFileSync(markerPath, JSON.stringify({ migrated, at: new Date().toISOString() }));
+  console.log(`[RAG] Migration complete: ${migrated} documents migrated to LanceDB`);
 }

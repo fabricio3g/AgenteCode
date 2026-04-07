@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpcHandlers } from './ipc-handlers.js';
@@ -141,7 +142,10 @@ export async function requestMainWindowClose() {
 }
 
 export function getAppPaths() {
-  const appData = path.join(app.getPath('home'), '.talamolm');
+  const envOverride = String(process.env.TALAMOLM_HOME || '').trim();
+  const legacyAppData = path.join(app.getPath('home'), '.talamolm');
+  const platformAppData = path.join(app.getPath('appData'), 'TalamoLM');
+  const appData = envOverride || (fs.existsSync(legacyAppData) ? legacyAppData : platformAppData);
   const projectRoot = IS_DEV
     ? path.resolve(__dirname, '..', '..')
     : path.dirname(app.getPath('exe'));
@@ -197,5 +201,9 @@ app.on('before-quit', async () => {
   try {
     const { cleanupLlm } = await import('./llm-runner.js');
     cleanupLlm();
+  } catch { /* ignore cleanup errors */ }
+  try {
+    const { closeDb } = await import('./chat-db.js');
+    closeDb();
   } catch { /* ignore cleanup errors */ }
 });

@@ -7,15 +7,15 @@ const SANDBOX_ROOT = path.join(os.tmpdir(), 'talamolm-sandbox');
 
 const ALLOWED_COMMANDS = new Set([
   'node', 'nodejs', 'npm', 'npx', 'python', 'python3', 'python2', 'pip', 'pip3',
-  'ruby', 'ruby', 'gem', 'cargo', 'rustc', 'go', 'java', 'javac', 'c', 'cc', 'cpp',
+  'ruby', 'gem', 'cargo', 'rustc', 'go', 'java', 'javac', 'c', 'cc', 'cpp',
   'gcc', 'g++', 'make', 'cmake', 'bash', 'sh', 'dash', 'zsh', 'powershell',
-  'pwsh', 'perl', 'php', 'lua', 'ruby', 'R', 'rscript',
+  'pwsh', 'perl', 'php', 'lua', 'R', 'rscript',
   'docker', 'docker-compose', 'podman',
   'git', 'curl', 'wget', 'zip', 'unzip', 'tar', 'gzip', 'gunzip',
   'cat', 'head', 'tail', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'wc',
   'jq', 'xmllint', 'iconv', 'base64', 'xxd', 'hexdump', 'md5sum', 'sha1sum', 'sha256sum',
   'pandoc', 'latex', 'pdflatex', 'xelatex', 'lualatex',
-  'fdisk', 'lsblk', 'mount', 'umount', 'chmod', 'chown', 'cp', 'mv', 'rm', 'mkdir', 'rmdir'
+  'lsblk', 'cp', 'mv', 'mkdir', 'rmdir'
 ]);
 
 function isCommandAllowed(cmd) {
@@ -25,7 +25,9 @@ function isCommandAllowed(cmd) {
   return ALLOWED_COMMANDS.has(cmd.toLowerCase());
 }
 
-export async function sandboxExec({ projectName, files, command, args: execArgs, shell: useShell, timeoutMs }) {
+export async function sandboxExec({ projectName, files, command, args: execArgs, shell: useShell, timeoutMs, preserve }) {
+  const projectDir = path.join(SANDBOX_ROOT, projectName || `sandbox-${Date.now()}`);
+
   if (!isCommandAllowed(command)) {
     return {
       cwd: projectDir,
@@ -38,9 +40,9 @@ export async function sandboxExec({ projectName, files, command, args: execArgs,
     };
   }
 
-  const projectDir = path.join(SANDBOX_ROOT, projectName || `sandbox-${Date.now()}`);
-
-  try { fs.rmSync(projectDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  if (!preserve) {
+    try { fs.rmSync(projectDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
   fs.mkdirSync(projectDir, { recursive: true });
 
   // Write files

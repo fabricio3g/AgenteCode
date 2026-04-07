@@ -1,41 +1,33 @@
 import crypto from 'node:crypto';
 import { loadConfigFromDisk } from './config.js';
+import { resolveProvider } from './providers/registry.js';
 
 const activeStreams = new Map();
+
+// ── Helpers ──
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').trim().replace(/\/+$/, '');
 }
 
-function resolveChatUrl(baseUrl) {
-  const normalized = normalizeBaseUrl(baseUrl);
-  if (!normalized) return 'https://api.openai.com/v1/chat/completions';
-  return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
-}
-
 // Resolve the real API key: use the provided key if present, otherwise look it up
 // from the on-disk config by providerName first, then by matching base_url.
-// Throws a clear error if no API key can be resolved.
-function resolveApiKey(apiKey, baseUrl, providerName) {
+export function resolveApiKey(apiKey, baseUrl, providerName) {
   if (apiKey) return apiKey;
   const cfg = loadConfigFromDisk();
   const providers = cfg?.llm?.providers || {};
   const defaultProvider = cfg?.llm?.provider;
-  
-  // Prefer exact name lookup (avoids URL mismatch issues)
+
   if (providerName && providers[providerName]?.api_key) {
     return providers[providerName].api_key;
   }
-  // If requested provider exists but has no key, check if default provider is different
   if (providerName && defaultProvider && defaultProvider !== providerName && providers[defaultProvider]?.api_key) {
     console.log(`[chat-ipc] Provider "${providerName}" has no key, using default provider "${defaultProvider}" key`);
     return providers[defaultProvider].api_key;
   }
-  // Try default provider if no specific provider requested
   if (!providerName && defaultProvider && providers[defaultProvider]?.api_key) {
     return providers[defaultProvider].api_key;
   }
-  // Fallback: URL matching
   const normalizedBase = normalizeBaseUrl(baseUrl);
   for (const [name, provider] of Object.entries(providers)) {
     if (normalizeBaseUrl(provider.base_url) === normalizedBase && provider.api_key) {
@@ -43,39 +35,49 @@ function resolveApiKey(apiKey, baseUrl, providerName) {
       return provider.api_key;
     }
   }
-  // No API key found - return empty to let the request fail with a clear error
   console.log(`[chat-ipc] No API key found. Requested: "${providerName}", Default: "${defaultProvider}", BaseURL: "${baseUrl}"`);
   return '';
 }
 
-function parseSseDelta(line) {
-  const trimmed = String(line || '').trim();
-  if (!trimmed.startsWith('data:')) return null;
+// ── Anthropic SSE stateful parsing helper ──
 
-  const payload = trimmed.slice(5).trim();
-  if (!payload || payload === '[DONE]') return null;
+function createAnthropicStreamParser(emit) {
+  let pendingEventType = null;
 
-  try {
-    const parsed = JSON.parse(payload);
-    const delta = parsed?.choices?.[0]?.delta || parsed?.choices?.[0]?.message || {};
-    const rawContent = delta.content;
-    const rawReasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-    const content = rawContent != null ? String(rawContent) : '';
-    const reasoning = rawReasoning != null ? String(rawReasoning) : '';
-    if (!content && !reasoning) return null;
-    return { content, reasoning };
-  } catch {
-    return null;
-  }
+  return {
+    processLine(line) {
+      const provider = resolveProvider('anthropic', 'https://api.anthropic.com');
+      const parsed = provider.parseStreamDelta(line);
+      if (!parsed) return;
+
+      if (parsed._eventType) {
+        pendingEventType = parsed._eventType;
+        return;
+      }
+
+      if (parsed._data) {
+        const data = parsed._data;
+        const evtType = pendingEventType;
+        pendingEventType = null;
+
+        if (evtType === 'content_block_delta') {
+          const delta = data?.delta || {};
+          const content = delta?.text || '';
+          const reasoning = delta?.thinking || '';
+          if (content || reasoning) {
+            emit({ type: 'delta', content, reasoning });
+          }
+        }
+        // message_delta, message_stop, message_start, content_block_start — nothing to stream
+      }
+    }
+  };
 }
 
-function makeHeaders(apiKey) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  return headers;
-}
+// ── Public API ──
 
 export async function completeChatRequest({ baseUrl, apiKey, providerName, body }) {
+  const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
   if (!realKey) {
     const cfg = loadConfigFromDisk();
@@ -83,10 +85,22 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
     throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`);
   }
-  const response = await fetch(resolveChatUrl(baseUrl), {
+
+  // Gemini uses a different URL pattern
+  let url;
+  if (provider.name === 'gemini') {
+    url = provider.resolveNonStreamUrl(baseUrl, realKey, body.model);
+  } else {
+    url = provider.resolveUrl(baseUrl);
+  }
+
+  const headers = provider.name === 'gemini' ? provider.buildHeaders(realKey) : provider.buildHeaders(realKey);
+  const requestBody = provider.transformBody({ ...body, stream: false });
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: makeHeaders(realKey),
-    body: JSON.stringify({ ...(body || {}), stream: false })
+    headers,
+    body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
@@ -98,19 +112,20 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
 }
 
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
-  console.log('[chat-ipc] startChatStream received:', { 
-    baseUrl, 
-    hasApiKey: !!apiKey, 
+  console.log('[chat-ipc] startChatStream received:', {
+    baseUrl,
+    hasApiKey: !!apiKey,
     providerName,
-    model: body?.model 
+    model: body?.model
   });
+  const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
   if (!realKey) {
     const cfg = loadConfigFromDisk();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
     const errorMsg = `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`;
-    
+
     const streamId = crypto.randomUUID();
     const emit = (payload) => {
       try {
@@ -128,6 +143,14 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
   const abortController = new AbortController();
   activeStreams.set(streamId, abortController);
 
+  // Safety timeout: abort and clean up stale streams after 10 minutes
+  const streamTimeout = setTimeout(() => {
+    if (activeStreams.has(streamId)) {
+      abortController.abort();
+      activeStreams.delete(streamId);
+    }
+  }, 10 * 60 * 1000);
+
   const emit = (payload) => {
     try {
       win?.webContents?.send('chat-stream-event', { streamId, ...payload });
@@ -138,11 +161,22 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
 
   (async () => {
     try {
-      const response = await fetch(resolveChatUrl(baseUrl), {
+      // Gemini uses a different URL pattern that includes the model name and API key
+      let url;
+      if (provider.name === 'gemini') {
+        url = provider.resolveUrl(baseUrl, realKey, body.model);
+      } else {
+        url = provider.resolveUrl(baseUrl);
+      }
+
+      const headers = provider.buildHeaders(realKey);
+      const requestBody = provider.transformBody({ ...body, stream: true });
+
+      const response = await fetch(url, {
         method: 'POST',
-        headers: makeHeaders(realKey),
+        headers,
         signal: abortController.signal,
-        body: JSON.stringify({ ...(body || {}), stream: true })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -156,23 +190,56 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       const decoder = new TextDecoder();
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Anthropic uses a stateful SSE parser (event type + data on separate lines)
+      if (provider.name === 'anthropic') {
+        const parser = createAnthropicStreamParser(emit);
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        for (const line of lines) {
-          const delta = parseSseDelta(line);
-          if (!delta) continue;
-          emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          // Prevent unbounded buffer growth from oversized chunks
+          if (buffer.length > 1_000_000) {
+            parser.processLine(buffer);
+            buffer = '';
+          }
+
+          for (const line of lines) {
+            parser.processLine(line);
+          }
         }
+      } else {
+        // OpenAI-compatible SSE format (works for OpenAI, Groq, Mistral, local, etc.)
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          // Prevent unbounded buffer growth from oversized chunks
+          if (buffer.length > 1_000_000) {
+            const delta = provider.parseStreamDelta(buffer);
+            if (delta && !delta._eventType && !delta._data) emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
+            buffer = '';
+          }
+
+          for (const line of lines) {
+            const delta = provider.parseStreamDelta(line);
+            if (!delta || delta._eventType || delta._data) continue;
+            emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
+          }
+        }
+
+        const tail = provider.parseStreamDelta(buffer);
+        if (tail && !tail._eventType && !tail._data) emit({ type: 'delta', content: tail.content, reasoning: tail.reasoning });
       }
 
-      const tail = parseSseDelta(buffer);
-      if (tail) emit({ type: 'delta', content: tail.content, reasoning: tail.reasoning });
       emit({ type: 'done' });
     } catch (error) {
       if (abortController.signal.aborted) {
@@ -181,6 +248,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         emit({ type: 'error', error: String(error?.message || error || 'Chat stream failed') });
       }
     } finally {
+      clearTimeout(streamTimeout);
       activeStreams.delete(streamId);
     }
   })();

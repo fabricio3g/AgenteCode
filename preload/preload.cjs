@@ -2,16 +2,21 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
-  'get_hardware_limits', 'get_desktop_capabilities',
+  'get_hardware_limits', 'get_desktop_capabilities', 'get_runtime_recommendations', 'is_first_run',
   'get_config', 'save_config', 'update_config',
+  'chat_db_save_session', 'chat_db_load_all', 'chat_db_delete', 'chat_db_migrate',
+  'chat_db_load_folders', 'chat_db_save_folder', 'chat_db_delete_folder',
   'get_local_models', 'get_gguf_metadata', 'delete_local_model', 'get_models_dir_path',
   'get_indexed_models', 'refresh_model_index', 'invalidate_model_cache', 'import_local_model',
   'start_llama', 'stop_llama', 'get_supervisor_status', 'supervisor_health_check',
+  'start_embedding_server', 'stop_embedding_server', 'get_embedding_status',
   'get_loaded_models', 'unload_model', 'get_recommended_settings',
+  'ingest_workspace_files',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'unload_tts', 'check_espeak_data',
-  'stt_transcribe', 'get_stt_status', 'fetch_provider_models',
+  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
+  'count_tokens', 'build_context_budget', 'truncate_messages',
   'start_download_hf', 'get_download_jobs', 'cancel_download_job',
   'pause_download_job', 'clear_finished_downloads', 'remove_download_job',
   'ingest_document', 'ingest_text', 'query_documents', 'list_rag_documents',
@@ -25,10 +30,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'reset_media_permissions',
   'agent_start_task', 'agent_update_task', 'agent_cancel_task', 'agent_get_task',
   'agent_list_tasks', 'agent_delete_task', 'agent_clear_history',
+  'agent_list_tools', 'agent_toggle_tool',
   'sandbox_exec',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
-  'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown'
+  'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
+  'fetch_url_content'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

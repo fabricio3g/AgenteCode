@@ -86,23 +86,23 @@ const WHISPER_QUALITY_CATALOG = {
 };
 
 const LOCAL_GGUF_CATALOG = {
-  llama_32_3b_instruct_q4_k_m: {
-    label: 'Llama 3.2 3B Instruct Q4_K_M',
-    filename: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-    url: 'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf',
-    size_bytes: 2147483648
+  qwen35_2b_q4_k_m: {
+    label: 'Qwen 3.5 2B Q4_K_M',
+    filename: 'Qwen3.5-2B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf',
+    size_bytes: 1610612736
   },
-  qwen25_3b_instruct_q4_k_m: {
-    label: 'Qwen2.5 3B Instruct Q4_K_M',
-    filename: 'Qwen2.5-3B-Instruct-Q4_K_M.gguf',
-    url: 'https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf',
-    size_bytes: 2432696320
+  qwen35_4b_q4_k_m: {
+    label: 'Qwen 3.5 4B Q4_K_M',
+    filename: 'Qwen3.5-4B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf',
+    size_bytes: 3006479104
   },
-  mistral_7b_instruct_v03_q4_k_m: {
-    label: 'Mistral 7B Instruct v0.3 Q4_K_M',
-    filename: 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
-    url: 'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
-    size_bytes: 4666167296
+  qwen35_08b_q4_k_m: {
+    label: 'Qwen 3.5 0.8B Q4_K_M',
+    filename: 'Qwen3.5-0.8B-Q4_K_M.gguf',
+    url: 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf',
+    size_bytes: 643000000
   }
 };
 
@@ -248,6 +248,10 @@ function getDefaultConfig() {
     stt: {
       provider: 'local', model: 'whisper-1',
       whisper_quality: 'base',
+    },
+    onboarding: {
+      completed: false,
+      completed_at: null,
     }
   };
 }
@@ -402,6 +406,11 @@ function migrateConfig(cfg) {
       cfg.tts.model = desiredModel;
       dirty = true;
     }
+  }
+  // Ensure onboarding key exists for older configs
+  if (!cfg.onboarding) {
+    cfg.onboarding = { completed: false, completed_at: null };
+    dirty = true;
   }
   if (dirty) saveConfig(cfg);
   return cfg;
