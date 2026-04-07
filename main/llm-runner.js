@@ -1,334 +1,198 @@
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
+import { getHardwareLimits } from './system-info.js';
+import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs } from './process-manager.js';
+import {
+  resolveRuntimeBinary, listRuntimeBinaries, clearRuntimeSelectionFromConfig
+} from './runtime-resolver.js';
 import { getAppPaths } from './index.js';
-import { loadConfig, saveConfig } from './config.js';
-import { getHardwareLimits } from './hardware.js';
+import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-resolver.js';
 
-let llamaProcess = null;
-let llamaStatus = { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null };
+// ── Managed process instances ──
 
-function emitStatus(win, status) {
-  llamaStatus = { ...llamaStatus, ...status };
+const llama = new ManagedProcess({
+  initialStatus: { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null },
+  onStatusChange(status) { llamaStatus = { ...llamaStatus, ...status }; }
+});
+
+const embedding = new ManagedProcess({
+  initialStatus: { state: 'idle', port: null },
+  onStatusChange(status) { embeddingStatus = { ...embeddingStatus, ...status }; }
+});
+
+let llamaStatus = llama.status;
+let embeddingStatus = embedding.status;
+
+function isMmprojFileName(fileName) {
+  return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
+}
+
+function resolveModelPath(inputPath) {
+  if (!inputPath) return inputPath;
+  if (!fs.existsSync(inputPath)) return inputPath;
+
+  let stat;
+  try {
+    stat = fs.statSync(inputPath);
+  } catch {
+    return inputPath;
+  }
+
+  if (stat.isFile()) return inputPath;
+  if (!stat.isDirectory()) return inputPath;
+
+  const candidates = [];
+  const stack = [inputPath];
+
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.toLowerCase().endsWith('.gguf')) continue;
+      if (isMmprojFileName(entry.name)) continue;
+
+      try {
+        const size = fs.statSync(fullPath).size;
+        candidates.push({ fullPath, size });
+      } catch {
+        // ignore stat failures
+      }
+    }
+  }
+
+  if (!candidates.length) return inputPath;
+  candidates.sort((a, b) => b.size - a.size);
+  return candidates[0].fullPath;
+}
+
+function emitStatus(win, patch) {
+  llama.setStatus(patch);
   if (win && !win.isDestroyed()) {
     win.webContents.send('supervisor-event', {
       type: 'state_change',
       from: llamaStatus.state,
-      to: status.state || llamaStatus.state,
-      ...status
+      to: patch.state || llamaStatus.state,
+      ...patch
     });
   }
 }
 
-function inferRuntimeVariant(runtimePath) {
-  const value = String(runtimePath || '').toLowerCase();
-  if (value.includes('cuda')) return 'cuda';
-  if (value.includes('vulkan')) return 'vulkan';
-  if (value.includes('rocm') || value.includes('hip')) return 'rocm';
-  if (value.includes('sycl')) return 'sycl';
-  if (value.includes('cpu')) return 'cpu';
-  return 'unknown';
-}
-
-function runtimeCandidatesFromDirectory(dirPath) {
-  const candidates = ['llama-server', 'llama-server.exe', 'server'];
-  return candidates.map((bin) => path.join(dirPath, bin)).filter((candidate) => fs.existsSync(candidate));
-}
-
-function resolveRuntimeCandidate(candidate) {
-  if (!candidate || !fs.existsSync(candidate)) return null;
-  const stat = fs.statSync(candidate);
-  if (stat.isDirectory()) {
-    return runtimeCandidatesFromDirectory(candidate)[0] || null;
-  }
-  return candidate;
-}
-
-function listRuntimeBinaries() {
-  const paths = getAppPaths();
-  const cfg = loadConfig();
-  const activeRuntimePath = cfg.llm?.local?.runtime_path || cfg.llm?.local?.binary?.path || '';
-  const resolvedActiveRuntimePath = resolveRuntimeCandidate(activeRuntimePath) || activeRuntimePath;
-  const activeRuntimeId = cfg.llm?.local?.binary?.active_runtime_id || '';
-  const runtimes = [];
-  const versionsDir = paths.localBinVersionsRoot;
-
-  if (fs.existsSync(versionsDir)) {
-    const entries = fs.readdirSync(versionsDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const dirPath = path.join(versionsDir, entry.name);
-      for (const binPath of runtimeCandidatesFromDirectory(dirPath)) {
-        const stat = fs.statSync(binPath);
-        const selected = resolvedActiveRuntimePath ? resolvedActiveRuntimePath === binPath : activeRuntimeId ? activeRuntimeId === entry.name : false;
-        runtimes.push({
-          id: entry.name,
-          name: entry.name,
-          path: binPath,
-          variant: inferRuntimeVariant(entry.name || binPath),
-          size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
-          modified: stat.mtimeMs,
-          is_active: selected
-        });
-        break;
-      }
-    }
-  }
-
-  const directBin = path.join(paths.localBinRoot, process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
-  if (fs.existsSync(directBin)) {
-    const stat = fs.statSync(directBin);
-    runtimes.push({
-      id: 'default',
-      name: 'default',
-      path: directBin,
-      variant: inferRuntimeVariant(directBin),
-      size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
-      modified: stat.mtimeMs,
-      is_active: resolvedActiveRuntimePath ? resolvedActiveRuntimePath === directBin : false
-    });
-  }
-
-  return runtimes.sort((left, right) => {
-    if (!!right.is_active !== !!left.is_active) return Number(!!right.is_active) - Number(!!left.is_active);
-    if ((right.modified || 0) !== (left.modified || 0)) return (right.modified || 0) - (left.modified || 0);
-    return String(left.name || '').localeCompare(String(right.name || ''));
-  });
-}
-
-function resolveRuntimeBinary(explicitPath = '') {
-  const cfg = loadConfig();
-  const candidates = [];
-  if (explicitPath) candidates.push(explicitPath);
-  if (cfg.llm?.local?.runtime_path) candidates.push(cfg.llm.local.runtime_path);
-  if (cfg.llm?.local?.binary?.path) candidates.push(cfg.llm.local.binary.path);
-
-  for (const runtime of listRuntimeBinaries()) {
-    candidates.push(runtime.path);
-  }
-
-  const seen = new Set();
-  for (const candidate of candidates) {
-    if (!candidate || seen.has(candidate)) continue;
-    seen.add(candidate);
-    const resolved = resolveRuntimeCandidate(candidate);
-    if (resolved) return resolved;
-  }
-
-  return null;
-}
-
-function clearRuntimeSelectionFromConfig(binPath) {
-  const cfg = loadConfig();
-  const next = structuredClone(cfg);
-  let dirty = false;
-  const resolvedSelection = resolveRuntimeCandidate(next.llm?.local?.runtime_path || next.llm?.local?.binary?.path || '');
-  if (resolvedSelection && resolvedSelection === binPath) {
-    next.llm.local.runtime_path = '';
-    dirty = true;
-  }
-  if (next.llm?.local?.binary?.path && resolveRuntimeCandidate(next.llm.local.binary.path) === binPath) {
-    next.llm.local.binary.path = '';
-    dirty = true;
-  }
-  if (next.llm?.local?.binary?.active_runtime_id && next.llm.local.binary.path === '') {
-    next.llm.local.binary.active_runtime_id = '';
-    dirty = true;
-  }
-  if (dirty) saveConfig(next);
-}
+// ── LLM server ──
 
 export async function startLlama(config, win) {
-  if (llamaProcess) {
-    await stopLlama(win);
-  }
-
   const runtimePath = resolveRuntimeBinary(config.runtime_path);
   if (!runtimePath || !fs.existsSync(runtimePath)) {
     throw new Error('llama-server binary not found. Install a runtime first.');
   }
-
-  if (!config.model_path || !fs.existsSync(config.model_path)) {
+  const resolvedModelPath = resolveModelPath(config.model_path);
+  if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
     throw new Error(`Model file not found: ${config.model_path}`);
   }
 
-  const args = [
-    '--model', config.model_path,
-    '--host', config.host || '127.0.0.1',
-    '--port', String(config.port || 11435),
-    '--ctx-size', String(config.context_length || 4096),
-    '--n-gpu-layers', String(config.gpu_offload || 0),
-    '--threads', String(config.cpu_threads || Math.max(1, os.cpus().length - 1)),
-    '--batch-size', String(config.batch_size || 512)
-  ];
+  const launchConfig = resolvedModelPath === config.model_path
+    ? config
+    : { ...config, model_path: resolvedModelPath };
 
-  if (config.flash_attention) args.push('--flash-attn');
-  if (config.mmap === false) args.push('--no-mmap');
-  if (config.keep_in_memory) args.push('--mlock');
-  if (config.seed != null) args.push('--seed', String(config.seed));
-  if (config.parallel) args.push('--parallel', String(config.parallel));
-  if (config.rope_freq_base) args.push('--rope-freq-base', String(config.rope_freq_base));
-  if (config.rope_freq_scale) args.push('--rope-freq-scale', String(config.rope_freq_scale));
-  if (config.cache_type_k) args.push('--cache-type-k', config.cache_type_k);
-  if (config.cache_type_v) args.push('--cache-type-v', config.cache_type_v);
-  if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
+  // Get system info for runtime config resolution
+  const systemInfo = await getHardwareLimits();
+
+  const port = launchConfig.port || 11435;
+  const args = buildLlamaArgs(launchConfig, runtimePath, systemInfo);
+
+  // Override the default onStatusChange to emit IPC events
+  llama._onStatusChange = (status) => {
+    llamaStatus = { ...llamaStatus, ...status };
+  };
 
   emitStatus(win, {
     state: 'starting',
-    model_id: path.basename(config.model_path),
-    model_path: config.model_path,
+    model_id: path.basename(launchConfig.model_path),
+    model_path: launchConfig.model_path,
     runtime_path: runtimePath
   });
 
-  return new Promise((resolve, reject) => {
-    try {
-      llamaProcess = spawn(runtimePath, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env }
-      });
-    } catch (err) {
-      emitStatus(win, { state: 'error', message: err.message });
-      reject(err);
-      return;
-    }
-
-    let resolved = false;
-    const startupTimeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        const port = config.port || 11435;
-        const healthCheckInterval = setInterval(async () => {
-          try {
-            const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2000) });
-            if (resp.ok) {
-              clearInterval(healthCheckInterval);
-              emitStatus(win, {
-                state: 'ready',
-                port,
-                model_id: path.basename(config.model_path),
-                model_path: config.model_path,
-                runtime_path: runtimePath
-              });
-              resolve('started');
-            }
-          } catch {
-            // Server not ready yet, continue checking
-          }
-        }, 1000);
-        setTimeout(() => {
-          clearInterval(healthCheckInterval);
-          if (!resolved) {
-            resolved = true;
-            emitStatus(win, {
-              state: 'ready',
-              port,
-              model_id: path.basename(config.model_path),
-              model_path: config.model_path,
-              runtime_path: runtimePath
-            });
-            resolve('started');
-          }
-        }, 20000);
-      }
-    }, 30000);
-
-    llamaProcess.stdout.on('data', (data) => {
-      const line = data.toString();
-      if (!resolved && (
-        line.includes('server is listening') ||
-        line.includes('HTTP server listening') ||
-        line.includes('listening at')
-      )) {
-        resolved = true;
-        clearTimeout(startupTimeout);
-        emitStatus(win, {
-          state: 'ready',
-          port: config.port || 11435,
-          model_id: path.basename(config.model_path),
-          model_path: config.model_path,
-          runtime_path: runtimePath
-        });
-        resolve('started');
+  try {
+    await llama.start({
+      binaryPath: runtimePath,
+      args,
+      healthPort: port,
+      statusFields: {
+        port,
+        model_id: path.basename(launchConfig.model_path),
+        model_path: launchConfig.model_path,
+        runtime_path: runtimePath
       }
     });
-
-    llamaProcess.stderr.on('data', (data) => {
-      const line = data.toString();
-      if (!resolved && (
-        line.includes('server is listening') ||
-        line.includes('HTTP server listening') ||
-        line.includes('listening at')
-      )) {
-        resolved = true;
-        clearTimeout(startupTimeout);
-        emitStatus(win, {
-          state: 'ready',
-          port: config.port || 11435,
-          model_id: path.basename(config.model_path),
-          model_path: config.model_path,
-          runtime_path: runtimePath
-        });
-        resolve('started');
-      }
-    });
-
-    llamaProcess.on('error', (err) => {
-      clearTimeout(startupTimeout);
-      emitStatus(win, { state: 'error', message: err.message });
-      if (!resolved) {
-        resolved = true;
-        reject(err);
-      }
-    });
-
-    llamaProcess.on('exit', (code, signal) => {
-      clearTimeout(startupTimeout);
-      llamaProcess = null;
-      emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
-      if (!resolved) {
-        resolved = true;
-        if (code !== 0) {
-          reject(new Error(`llama-server exited with code ${code}, signal ${signal}`));
-        } else {
-          resolve('exited');
-        }
-      }
-    });
-  });
+    emitStatus(win, { state: 'ready', port, model_id: path.basename(launchConfig.model_path), model_path: launchConfig.model_path, runtime_path: runtimePath });
+    return 'started';
+  } catch (err) {
+    emitStatus(win, { state: 'error', message: err.message });
+    throw err;
+  }
 }
 
 export async function stopLlama(win) {
-  if (llamaProcess) {
-    emitStatus(win, { state: 'stopping' });
-    llamaProcess.kill('SIGTERM');
-    await new Promise(resolve => {
-      const t = setTimeout(() => {
-        if (llamaProcess) llamaProcess.kill('SIGKILL');
-        resolve();
-      }, 5000);
-      if (llamaProcess) {
-        llamaProcess.on('exit', () => { clearTimeout(t); resolve(); });
-      } else {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    llamaProcess = null;
-    emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
+  await llama.stop({ runtime_path: null, model_path: null, model_id: null, port: null });
+  emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
+}
+
+// ── Embedding server ──
+
+export async function startEmbeddingServer(config, win) {
+  const runtimePath = resolveRuntimeBinary(config.runtime_path);
+  if (!runtimePath || !fs.existsSync(runtimePath)) {
+    throw new Error('llama-server binary not found for embedding server.');
   }
+  if (!config.embedding_model_path || !fs.existsSync(config.embedding_model_path)) {
+    throw new Error(`Embedding model file not found: ${config.embedding_model_path}`);
+  }
+
+  // Get system info for runtime config resolution
+  const systemInfo = await getHardwareLimits();
+
+  const port = config.embedding_port || 11436;
+  const args = buildEmbeddingArgs(config, systemInfo, runtimePath);
+
+  await embedding.start({
+    binaryPath: runtimePath,
+    args,
+    healthPort: port,
+    statusFields: { state: 'starting', port }
+  });
+  return 'started';
+}
+
+export async function stopEmbeddingServer() {
+  await embedding.stop({ port: null });
+}
+
+export function getEmbeddingStatus() {
+  return { ...embedding.status };
 }
 
 export function getLlamaStatus() {
   return llamaStatus;
 }
 
+// ── Cleanup / status ──
+
 export function cleanupLlm() {
-  if (llamaProcess) {
-    llamaProcess.kill('SIGKILL');
-    llamaProcess = null;
-  }
+  llama.kill();
+  embedding.kill();
   llamaStatus = { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null };
+  embeddingStatus = { state: 'idle', port: null };
 }
 
 export async function getInstalledRuntimes() {
@@ -362,12 +226,12 @@ export async function getSupervisorStatus() {
     port: llamaStatus.port || null,
     uptime_secs: null,
     memory_mb: null,
-    sessions_count: llamaProcess ? 1 : 0
+    sessions_count: llama.isRunning() ? 1 : 0
   };
 }
 
 export async function supervisorHealthCheck() {
-  if (!llamaProcess) return false;
+  if (!llama.isRunning()) return false;
   try {
     const port = llamaStatus.port || 11435;
     const resp = await fetch(`http://127.0.0.1:${port}/health`);
@@ -378,61 +242,94 @@ export async function supervisorHealthCheck() {
 }
 
 export async function getLoadedModels() {
-  if (!llamaProcess || !llamaStatus.model_id) return [];
-  return [{
-    id: llamaStatus.model_id,
-    model_id: llamaStatus.model_id,
-    model_path: llamaStatus.model_path || '',
-    port: llamaStatus.port || 11435,
-    is_embedding: false
-  }];
+  const models = [];
+  if (llama.isRunning() && llamaStatus.model_id) {
+    models.push({
+      id: llamaStatus.model_id,
+      model_id: llamaStatus.model_id,
+      model_path: llamaStatus.model_path || '',
+      port: llamaStatus.port || 11435,
+      is_embedding: false
+    });
+  }
+  if (embedding.isRunning() && embeddingStatus.port) {
+    models.push({
+      id: 'embedding-server',
+      model_id: 'embedding-server',
+      model_path: '',
+      port: embeddingStatus.port,
+      is_embedding: true
+    });
+  }
+  return models;
 }
 
 export async function unloadModel(_modelId, win) {
   await stopLlama(win);
 }
 
-export async function getRecommendedSettings(modelPath, userContext, userGpuLayers) {
+export async function getRecommendedSettings(modelPath, userContext, userGpuLayers, runtimePath) {
+  const resolvedModelPath = resolveModelPath(modelPath);
+  if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
+    throw new Error(`Model file not found: ${modelPath}`);
+  }
+
   const hw = await getHardwareLimits();
-  const stat = fs.statSync(modelPath);
+  const stat = fs.statSync(resolvedModelPath);
   const fileSizeGb = stat.size / (1024 ** 3);
-
-  const totalRamGb = hw.total_ram_gb;
   const vramGb = hw.vram_gb;
+  const effectiveRuntimePath = resolveRuntimeBinary(runtimePath);
 
-  // Estimate parameters from file size
-  const bitsPerParam = 4.5; // rough average for Q4 quant
-  const paramCount = (stat.size * 8) / bitsPerParam / 1e9;
+  const resolved = resolveRuntimeConfig({
+    modelPath: resolvedModelPath,
+    runtimePath: effectiveRuntimePath,
+    userBackend: 'auto',
+    userGpuLayers,
+    userContextSize: userContext,
+    systemInfo: hw
+  });
 
-  // Context length estimation
-  let contextLength = userContext || 4096;
-  if (fileSizeGb > 10) contextLength = Math.min(contextLength, 8192);
-  if (fileSizeGb > 20) contextLength = Math.min(contextLength, 4096);
+  const ggufFields = readGgufMetadataFields(resolvedModelPath);
+  const practicalContextCap = hw.total_ram_gb <= 16 ? 8192 : hw.total_ram_gb <= 32 ? 16384 : 32768;
+  let contextLength = Math.min(resolved.contextSize, practicalContextCap);
+  let gpuLayers = resolved.gpuLayers;
 
-  // GPU layers
-  let gpuLayers = userGpuLayers ?? 0;
-  if (userGpuLayers == null && vramGb > 0) {
-    if (fileSizeGb < vramGb * 0.8) gpuLayers = 999; // full offload
-    else if (fileSizeGb < vramGb * 1.2) gpuLayers = Math.floor(32 * (vramGb / fileSizeGb));
-    else gpuLayers = 0;
+  if (Number(ggufFields?.block_count || 0) > 0 && gpuLayers > Number(ggufFields.block_count)) {
+    gpuLayers = Number(ggufFields.block_count);
   }
 
   const cpuThreads = Math.max(2, Math.min(hw.physical_cores, hw.cpu_threads - 1));
   const batchSize = gpuLayers > 0 ? 512 : 256;
   const flashAttention = gpuLayers > 0;
   const offloadKv = gpuLayers > 20 && vramGb > fileSizeGb * 1.5;
+  const warnings = [];
+
+  if (resolved.contextSize > contextLength) {
+    warnings.push(`Context capped to ${contextLength} for system stability (model max is higher).`);
+  }
+
+  for (const reason of resolved.reasonLog || []) {
+    if (reason.startsWith('context_clamped')) warnings.push(`Context reduced: ${reason}`);
+    if (reason.startsWith('gpu_layers=0(file_too_large')) warnings.push('GPU offload disabled because model is larger than available VRAM.');
+  }
 
   return {
     context_length: contextLength,
     gpu_layers: gpuLayers,
+    backend: resolved.backend,
+    selected_device: resolved.selectedDevice || null,
+    available_backends: resolved.availableBackends || [],
     batch_size: batchSize,
     ubatch_size: Math.min(batchSize, 512),
     cpu_threads: cpuThreads,
     flash_attention: flashAttention,
     offload_kv: offloadKv,
     use_mmap: true,
+    fit_vram: gpuLayers > 0,
+    cache_type_k: gpuLayers > 0 ? 'q8_0' : 'f16',
+    cache_type_v: 'f16',
     estimated_memory_gb: Math.round(fileSizeGb * 1.2 * 100) / 100,
     fits_in_vram: fileSizeGb < vramGb * 0.8,
-    warnings: []
+    warnings
   };
 }

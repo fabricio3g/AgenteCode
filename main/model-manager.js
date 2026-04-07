@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './index.js';
 import { slugify, loadConfig } from './config.js';
+import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.js';
 
 function getModelsDir() {
   try {
@@ -12,8 +13,41 @@ function getModelsDir() {
   }
 }
 
+function isMmprojFile(fileName) {
+  return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
+}
+
+function collectGgufFilesRecursive(rootDir) {
+  const out = [];
+  const stack = [rootDir];
+
+  while (stack.length) {
+    const current = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.toLowerCase().endsWith('.gguf')) continue;
+      if (isMmprojFile(entry.name)) continue;
+      out.push(fullPath);
+    }
+  }
+
+  return out;
+}
+
 // Minimal GGUF header parser for metadata extraction
-const GGUF_MAGIC = 0x46475547; // "GGUF"
+const GGUF_MAGIC = 0x46554747; // "GGUF"
 
 function readGgufMetadata(filePath) {
   const fd = fs.openSync(filePath, 'r');
@@ -30,24 +64,30 @@ function readGgufMetadata(filePath) {
     const tensorCount = Number(headerBuf.readBigUInt64LE(8));
     const metadataKvCount = Number(headerBuf.readBigUInt64LE(16));
 
-    // For a full parser we'd read all KV pairs, but for the Electron port
-    // we provide sensible defaults and parse what we can from the filename
+    // Use the proper GGUF metadata parser
+    const ggufContext = readGgufContextLength(filePath);
+    const ggufFields = readGgufMetadataFields(filePath);
+    const contextLength = ggufContext?.context_length || guessContextLength(path.basename(filePath));
+
     const fileName = path.basename(filePath);
     const stat = fs.statSync(filePath);
 
     return {
-      architecture: guessArchitecture(fileName),
-      context_length: guessContextLength(fileName),
-      parameter_count: 0,
-      block_count: 0,
+      architecture: ggufFields?.architecture || guessArchitecture(fileName),
+      context_length: contextLength,
+      context_length_source: ggufContext ? 'gguf' : 'filename_guess',
+      parameter_count: Number(ggufFields?.parameter_count || 0),
+      block_count: Number(ggufFields?.block_count || 0),
       size_label: formatSizeLabel(stat.size),
       quantization: guessQuantization(fileName),
-      head_count: 0,
-      head_count_kv: 0,
-      embedding_length: 0,
+      head_count: Number(ggufFields?.head_count || 0),
+      head_count_kv: Number(ggufFields?.head_count_kv || 0),
+      embedding_length: Number(ggufFields?.embedding_length || 0),
       file_size_bytes: stat.size,
       quantization_name: guessQuantization(fileName),
-      chat_template_uses_tools: false
+      chat_template_uses_tools: typeof ggufFields?.chat_template_uses_tools === 'boolean'
+        ? ggufFields.chat_template_uses_tools
+        : false
     };
   } finally {
     fs.closeSync(fd);
@@ -91,18 +131,18 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
   }
 
   const allModels = [];
-  const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
+  const ggufFiles = collectGgufFilesRecursive(modelsDir);
 
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith('.gguf')) continue;
-    const fullPath = path.join(modelsDir, entry.name);
+  for (const fullPath of ggufFiles) {
+    const fileName = path.basename(fullPath);
     const stat = fs.statSync(fullPath);
+    const relativePath = path.relative(modelsDir, fullPath);
 
     try {
       const meta = readGgufMetadata(fullPath);
       allModels.push({
-        id: slugify(path.basename(entry.name, '.gguf')),
-        name: entry.name,
+        id: slugify(relativePath.replace(/\.gguf$/i, '')),
+        name: fileName,
         path: fullPath,
         size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
         modified: stat.mtimeMs,
@@ -116,8 +156,8 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
       });
     } catch {
       allModels.push({
-        id: slugify(path.basename(entry.name, '.gguf')),
-        name: entry.name,
+        id: slugify(relativePath.replace(/\.gguf$/i, '')),
+        name: fileName,
         path: fullPath,
         size_gb: Math.round(stat.size / (1024 ** 3) * 100) / 100,
         modified: stat.mtimeMs
@@ -148,7 +188,33 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
 }
 
 export async function getGgufMetadata(filePath) {
-  return readGgufMetadata(filePath);
+  try {
+    return readGgufMetadata(filePath);
+  } catch {
+    const fileName = path.basename(filePath || '');
+    let fileSize = 0;
+    try {
+      fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    } catch {
+      fileSize = 0;
+    }
+
+    return {
+      architecture: guessArchitecture(fileName),
+      context_length: guessContextLength(fileName),
+      context_length_source: 'filename_guess',
+      parameter_count: 0,
+      block_count: 0,
+      size_label: formatSizeLabel(fileSize),
+      quantization: guessQuantization(fileName),
+      head_count: 0,
+      head_count_kv: 0,
+      embedding_length: 0,
+      file_size_bytes: fileSize,
+      quantization_name: guessQuantization(fileName),
+      chat_template_uses_tools: false
+    };
+  }
 }
 
 export async function deleteLocalModel(modelPath) {
