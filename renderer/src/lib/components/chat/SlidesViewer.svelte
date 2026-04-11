@@ -38,14 +38,14 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="mt-4 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
+<div class="mt-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
   <!-- Header bar -->
   <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
     <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
       Presentation · {total} slide{total === 1 ? '' : 's'}
     </span>
     <button
-      class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 active:scale-95"
+      class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
       onclick={onDownload}
     >
       <Download class="h-3.5 w-3.5" />

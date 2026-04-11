@@ -4,8 +4,8 @@ import { runAgentTask } from '$lib/services/agent';
 import { startManagedAgentTask, updateManagedAgentTask, cancelManagedAgentTask } from '$lib/services/agent-runtime';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
-import { clearRagDocuments, ingestDocument, ingestText, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
-import { webSearch, ingestSearchContext } from '$lib/services/search';
+import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
+import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, stopLlama } from '$lib/services/runtime';
 import { isTauri } from '$lib/services/tauri';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -66,6 +66,40 @@ const WORKSPACE_TEXT_EXTENSIONS = new Set([
 const WORKSPACE_MAX_FILES = 120;
 const WORKSPACE_MAX_FILE_SIZE_BYTES = 512 * 1024;
 const WORKSPACE_MAX_TEXT_CHARS = 120_000;
+
+const WEB_RAG_MIN_ANSWER_CHARS = 200;
+const WEB_RAG_MAX_SOURCES = 12;
+
+function normalizeText(value: unknown) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildWebRagPayload({ query, answer, sources }: { query: string; answer: string; sources: SearchResult[] }) {
+  const sourceBlocks = (sources || [])
+    .slice(0, WEB_RAG_MAX_SOURCES)
+    .map((source, index) => {
+      const title = normalizeText(source?.title || source?.url || `Source ${index + 1}`);
+      const url = normalizeText(source?.url || '');
+      const snippet = normalizeText(source?.snippet || source?.full_content || '');
+      const provider = normalizeText(source?.provider || '');
+      return [
+        `# Source ${index + 1}`,
+        `Title: ${title}`,
+        url ? `URL: ${url}` : null,
+        provider ? `Provider: ${provider}` : null,
+        snippet ? `Snippet: ${snippet.slice(0, 1000)}` : null
+      ].filter(Boolean).join('\n');
+    })
+    .join('\n\n---\n\n');
+
+  const sections = [
+    normalizeText(query) ? `User question:\n${normalizeText(query).slice(0, 3000)}` : '',
+    normalizeText(answer) ? `Assistant answer:\n${normalizeText(answer).slice(0, 16000)}` : '',
+    sourceBlocks ? `Sources:\n${sourceBlocks}` : ''
+  ].filter(Boolean);
+
+  return sections.join('\n\n');
+}
 
 function getWorkspacePath(file: File) {
   return file.webkitRelativePath || file.name;
@@ -386,6 +420,30 @@ class AppStore {
     } catch {
       // no-op for close guard sync failures
     }
+  }
+
+  private queueWebAnswerRagIngest(params: { chatId: string; query: string; answer: string; sources: SearchResult[] }) {
+    if (!isTauri()) return;
+    const normalizedAnswer = normalizeText(params.answer);
+    if (normalizedAnswer.length < WEB_RAG_MIN_ANSWER_CHARS) return;
+
+    const text = buildWebRagPayload({
+      query: params.query,
+      answer: normalizedAnswer,
+      sources: params.sources || []
+    });
+    if (!text) return;
+
+    const sourceLabel = normalizeText(params.query).slice(0, 80) || 'web-answer';
+    void ingestTextFast({
+      source: `web_answer:${sourceLabel}`,
+      text,
+      chat_id: params.chatId,
+      file_type: 'web_answer',
+      chunk_size: 900
+    }).catch((error) => {
+      console.warn('[RAG] Background web answer ingest failed', error);
+    });
   }
 
   get selectedLocalModelPath() {
@@ -1646,7 +1704,9 @@ Design rules:
                 results: task.results,
                 provider_used: task.providerUsed || 'auto',
                 researchTaskId: task.id,
-                researchSummary: task.summary
+                researchSummary: task.summary,
+                researchStatus: task.status,
+                researchStats: task.crawlStats || null
               }))
             : await webSearch({
                 query: content,
@@ -1663,19 +1723,14 @@ Design rules:
             requestedProvider: this.config.search?.provider || 'auto',
             providerUsed: searchResponse.provider_used || null,
             researchTaskId: 'researchTaskId' in searchResponse ? String(searchResponse.researchTaskId || '') || null : null,
-            researchStatus: 'researchSummary' in searchResponse ? 'completed' : null,
+            researchStatus: 'researchStatus' in searchResponse ? (searchResponse.researchStatus as SearchMeta['researchStatus']) : ('researchSummary' in searchResponse ? 'completed' : null),
             researchSummary: 'researchSummary' in searchResponse ? String(searchResponse.researchSummary || '') || null : null,
+            researchStats: 'researchStats' in searchResponse ? (searchResponse.researchStats as SearchMeta['researchStats']) : null,
             searchFallbackReason: '',
             providerWarnings: [],
             searchError: ''
           };
 
-          // Ingest search context into per-chat RAG for follow-up queries
-          if (targetChatId && searchContext) {
-            try {
-              await ingestSearchContext(targetChatId, searchContext, sources);
-            } catch (_) { /* non-critical */ }
-          }
         } catch (error) {
           searchMeta = {
             searchRequested: true,
@@ -1687,6 +1742,7 @@ Design rules:
             researchTaskId: null,
             researchStatus: activeSearchMode === 'deep' || activeSearchMode === 'max' ? 'failed' : null,
             researchSummary: null,
+            researchStats: null,
             searchFallbackReason: '',
             providerWarnings: [],
             searchError: String((error as Error)?.message || error || 'Search did not return a result')
@@ -1694,7 +1750,7 @@ Design rules:
         }
       }
 
-      if (isTauri() && targetChatId && this.currentRagDocuments.length) {
+      if (isTauri() && targetChatId && this.currentRagDocuments.length && activeSearchMode === 'chat') {
         const ragResponse = await queryDocuments({
           query: content,
           chat_id: targetChatId,
@@ -1972,6 +2028,18 @@ Design rules:
         } catch {
           // ignore slide parse failures
         }
+      }
+
+      const responseSources = ((assistantMessage.sources && assistantMessage.sources.length)
+        ? assistantMessage.sources
+        : sources) as SearchResult[];
+      if (targetChatId && responseSources.length > 0) {
+        this.queueWebAnswerRagIngest({
+          chatId: targetChatId,
+          query: content,
+          answer: assistantMessage.content,
+          sources: responseSources
+        });
       }
 
       // ── Work mode file writing ──────────────────────────────────────

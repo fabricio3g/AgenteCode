@@ -17,11 +17,23 @@ export interface SttStatus {
  * Transcribe audio via the main process (calls OpenAI Whisper API or compatible endpoint).
  */
 export async function sttTranscribe(
-  audioBase64: string,
+  audioData: string | Uint8Array | ArrayBuffer,
   mimeType = 'audio/webm'
 ): Promise<SttTranscribeResult> {
+  // Normalize to Uint8Array if ArrayBuffer
+  const bytes = audioData instanceof ArrayBuffer && !(audioData instanceof Uint8Array)
+    ? new Uint8Array(audioData)
+    : audioData;
+
+  if (bytes instanceof Uint8Array) {
+    return invoke<SttTranscribeResult>('stt_transcribe', {
+      audio_bytes: bytes,
+      mime_type: mimeType
+    });
+  }
+
   return invoke<SttTranscribeResult>('stt_transcribe', {
-    audio_base64: audioBase64,
+    audio_base64: bytes,
     mime_type: mimeType
   });
 }

@@ -39,6 +39,8 @@
     background: var(--surface);
     border-color: var(--border);
     color: var(--text);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
   }
   .toast-success {
     border-color: var(--success-border);

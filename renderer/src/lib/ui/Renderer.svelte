@@ -65,11 +65,11 @@
   :global(.ui-panel) {
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: 1rem;
+    border-radius: var(--radius-m);
     padding: 1rem;
   }
   :global(.ui-chat-card) {
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    background: var(--surface-secondary);
   }
   :global(.ui-title) {
     margin: 0;
@@ -77,6 +77,7 @@
     line-height: 1.3;
     color: var(--text);
     font-weight: 700;
+    letter-spacing: -0.01em;
   }
   :global(.ui-title-sm) {
     margin: 0;
@@ -96,19 +97,19 @@
     line-height: 1.5;
   }
   :global(.ui-callout) {
-    border-radius: 0.9rem;
+    border-radius: var(--radius-m);
     padding: 0.85rem 1rem;
     border: 1px solid var(--border);
     background: var(--surface-highlight);
   }
   :global(.ui-callout-info) {
-    border-color: color-mix(in srgb, var(--work-accent) 35%, var(--border));
+    border-color: var(--info-border);
   }
   :global(.ui-callout-success) {
-    border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+    border-color: var(--success-border);
   }
   :global(.ui-callout-warning) {
-    border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+    border-color: var(--warning-border);
   }
   :global(.ui-callout-neutral) {
     border-color: var(--border);
@@ -121,7 +122,7 @@
   :global(.ui-image-block img), :global(.ui-gallery-image) {
     width: 100%;
     display: block;
-    border-radius: 0.8rem;
+    border-radius: var(--radius-m);
     object-fit: cover;
     border: 1px solid var(--border);
     background: var(--surface-highlight);
@@ -161,7 +162,7 @@
   }
   :global(.ui-tag) {
     padding: 0.35rem 0.7rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--surface-highlight);
     color: var(--text-secondary);
     font-size: 0.82rem;
@@ -169,23 +170,30 @@
   }
   :global(.ui-button) {
     border: 0;
-    border-radius: 0.8rem;
-    padding: 0.7rem 1rem;
+    border-radius: var(--radius-s);
+    padding: 0.65rem 1rem;
     font: inherit;
     cursor: pointer;
-    transition: opacity 0.18s ease;
+    transition: transform 0.1s ease, opacity 0.12s ease;
   }
   :global(.ui-button:hover) {
-    opacity: 0.92;
+    opacity: 0.88;
+  }
+  :global(.ui-button:active) {
+    transform: scale(0.98);
   }
   :global(.ui-button-primary) {
     background: var(--primary);
     color: var(--primary-fg);
   }
   :global(.ui-button-secondary), :global(.ui-button-tertiary) {
-    background: var(--surface-highlight);
+    background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
+  }
+  :global(.ui-button-secondary:hover), :global(.ui-button-tertiary:hover) {
+    background: var(--surface-highlight);
+    border-color: var(--border-strong);
   }
   :global(.ui-form), :global(.ui-field) {
     display: flex;
@@ -199,12 +207,17 @@
   }
   :global(.ui-input), :global(.ui-textarea) {
     width: 100%;
-    border-radius: 0.8rem;
+    border-radius: var(--radius-m);
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
     padding: 0.75rem 0.85rem;
     font: inherit;
+    transition: border-color 0.15s ease;
+  }
+  :global(.ui-input:focus), :global(.ui-textarea:focus) {
+    outline: none;
+    border-color: var(--border-strong);
   }
   :global(.ui-range) {
     width: 100%;
@@ -228,10 +241,15 @@
     border: 1px solid var(--border);
     background: var(--surface-highlight);
     color: var(--text-secondary);
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     padding: 0.45rem 0.8rem;
     cursor: pointer;
     font: inherit;
+    transition: all 0.12s ease;
+  }
+  :global(.ui-tab-trigger:hover) {
+    background: var(--surface-secondary);
+    color: var(--text);
   }
   :global(.ui-tab-trigger.active) {
     background: var(--primary);
@@ -261,7 +279,7 @@
     height: 2rem;
     display: grid;
     place-items: center;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--primary);
     color: var(--primary-fg);
     font-weight: 700;
@@ -288,10 +306,15 @@
     gap: 0.2rem;
     border: 1px solid var(--border);
     background: var(--surface-highlight);
-    border-radius: 0.9rem;
+    border-radius: var(--radius-m);
     padding: 0.85rem 1rem;
     cursor: pointer;
     font: inherit;
+    transition: all 0.15s ease;
+  }
+  :global(.ui-list-item:hover) {
+    background: var(--surface-secondary);
+    border-color: var(--border-strong);
   }
   :global(.ui-list-label) {
     color: var(--text);
@@ -314,8 +337,8 @@
   }
   :global(.ui-chart-bar) {
     height: 0.85rem;
-    border-radius: 999px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--primary) 75%, white), var(--primary));
+    border-radius: var(--radius-full);
+    background: var(--primary);
   }
   :global(.ui-debug) {
     white-space: pre-wrap;

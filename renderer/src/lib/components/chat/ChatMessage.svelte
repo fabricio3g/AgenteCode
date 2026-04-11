@@ -100,7 +100,7 @@
   }
 </script>
 
-<article class={`group flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
+<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
   {#if message.role === 'user'}
     <div class="max-w-[min(46rem,84%)] space-y-3">
       <div class="openui-user-bubble px-5 py-3.5 text-base leading-7">

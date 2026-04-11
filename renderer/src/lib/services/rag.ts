@@ -21,6 +21,17 @@ export async function ingestText(payload: {
   return invoke<IndexedDocument>('ingest_text', { payload });
 }
 
+export async function ingestTextFast(payload: {
+  source: string;
+  text: string;
+  chat_id: string;
+  file_type?: string;
+  chunk_size?: number;
+  overlap?: number;
+}): Promise<IndexedDocument> {
+  return invoke<IndexedDocument>('ingest_text_fast', { payload });
+}
+
 export async function queryDocuments(payload: {
   query: string;
   chat_id: string;

@@ -261,8 +261,9 @@
 
       <!-- System prompt -->
       <div>
-        <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">System prompt</label>
+        <label for="llm-system-prompt" class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">System prompt</label>
         <textarea
+          id="llm-system-prompt"
           bind:value={systemPrompt}
           rows="5"
           class="w-full rounded-xl border border-[var(--border)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text)] outline-none transition focus:border-[var(--border-strong)] placeholder:text-[var(--text-muted)] resize-none"
@@ -293,11 +294,14 @@
 <style>
   .runtime-status {
     color: var(--text-tertiary);
-    background: var(--border);
+    background: var(--surface-highlight);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-s);
   }
   .runtime-status.running {
     color: var(--status-success);
     background: var(--success-bg);
+    border-color: var(--success-border);
   }
   :global(.dark) .runtime-status.running {
     color: var(--status-success-dark);
@@ -309,9 +313,10 @@
     background: var(--status-success-dark);
   }
   .ram-bar {
-    background: var(--status-success);
+    background: var(--success);
+    border-radius: var(--radius-full);
   }
   :global(.dark) .ram-bar {
-    background: var(--status-success);
+    background: var(--success);
   }
 </style>

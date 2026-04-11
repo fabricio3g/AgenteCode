@@ -87,7 +87,7 @@
 
 <div class="flex h-full flex-col items-center justify-end pointer-events-none px-4 pb-8">
   <div class="pointer-events-auto text-center max-w-md">
-    <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-secondary)]">
+    <div class="scroll-animate mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--surface)] border border-[var(--border)]">
       {#if greeting.icon === 'sun'}
         <Sun class="h-5 w-5 text-[var(--text-secondary)]" />
       {:else if greeting.icon === 'sunset'}
@@ -96,10 +96,10 @@
         <Moon class="h-5 w-5 text-[var(--text-secondary)]" />
       {/if}
     </div>
-    <h1 class="text-xl font-semibold tracking-tight text-[var(--text)]">
+    <h1 class="scroll-animate scroll-animate-delay-1 text-2xl font-semibold tracking-tight text-[var(--text)] font-serif">
       {greeting.text}
     </h1>
-    <p class="mt-1.5 text-sm text-[var(--text-muted)]">
+    <p class="scroll-animate scroll-animate-delay-2 mt-2 text-sm text-[var(--text-muted)]">
       {#if isLoading}
         <span class="inline-flex items-center gap-1.5">
           <LoaderCircle class="h-3.5 w-3.5 animate-spin" />

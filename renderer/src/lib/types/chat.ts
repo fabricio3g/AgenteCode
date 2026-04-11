@@ -39,8 +39,14 @@ export interface SearchMeta {
   providerWarnings?: string[];
   searchError?: string;
   researchTaskId?: string | null;
-  researchStatus?: 'queued' | 'searching' | 'synthesizing' | 'completed' | 'failed' | 'cancelled' | null;
+  researchStatus?: 'queued' | 'awaiting_input' | 'searching' | 'crawling' | 'synthesizing' | 'completed' | 'failed' | 'cancelled' | null;
   researchSummary?: string | null;
+  researchStats?: {
+    pagesCrawled?: number;
+    pagesDiscovered?: number;
+    maxDepthReached?: number;
+    truncated?: boolean;
+  } | null;
 }
 
 export interface WorkspaceFile {

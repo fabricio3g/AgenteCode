@@ -135,30 +135,37 @@
   .selector-trigger {
     color: var(--text-secondary);
     background: transparent;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .selector-trigger:hover {
     background: var(--surface-highlight);
     color: var(--text);
+    border-color: var(--border-light);
   }
 
   .selector-dropdown {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: var(--shadow-l);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
   }
 
   .selector-option {
     color: var(--text);
     background: transparent;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .selector-option:hover {
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .selector-option.selected {
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
+    border-color: var(--border);
   }
 </style>

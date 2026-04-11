@@ -236,7 +236,7 @@
   .modal-surface {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 1.25rem;
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
   }
 
@@ -252,21 +252,25 @@
 
   .nav-item {
     color: var(--text-secondary);
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .nav-item:hover {
     color: var(--text);
     background: var(--surface);
+    border-color: var(--border-light);
   }
 
   .nav-item.is-active {
     color: var(--text);
     background: var(--surface);
+    border-color: var(--border);
     font-weight: 500;
   }
 
   .nav-divider {
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-light);
   }
 
   .modal-header {
@@ -275,32 +279,43 @@
 
   .modal-heading {
     color: var(--text);
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
   }
 
   .close-btn {
     color: var(--text-muted);
     transition: color 0.12s, background 0.12s;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .close-btn:hover {
     color: var(--text);
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .info-card {
     background: var(--surface-highlight);
     border: 1px solid var(--border);
     color: var(--text);
+    border-radius: var(--radius-m);
   }
 
   .primary-btn {
     background: var(--primary);
     color: var(--primary-fg);
-    transition: opacity 0.12s;
+    border-radius: var(--radius-s);
+    transition: opacity 0.12s, transform 0.1s;
   }
 
   .primary-btn:hover {
     opacity: 0.9;
+  }
+
+  .primary-btn:active {
+    transform: scale(0.98);
   }
 
   .modal-footer {
@@ -309,6 +324,7 @@
 
   .btn {
     transition: all 0.12s;
+    border-radius: var(--radius-s);
   }
 
   .btn.secondary {
@@ -330,11 +346,19 @@
   }
 
   .btn.primary:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+
+  .btn.primary:active {
+    transform: scale(0.98);
   }
 
   .btn.primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .btn.primary:disabled:active {
+    transform: none;
   }
 </style>

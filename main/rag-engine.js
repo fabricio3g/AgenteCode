@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './index.js';
-import { getEmbedding, getEmbeddings, cosineSimilarity } from './embedding-client.js';
+import { getEmbedding, getEmbeddings } from './embedding-client.js';
 import { rerankChunks } from './reranker.js';
 import { vectorStore } from './vector-store.js';
 import {
@@ -25,6 +25,66 @@ async function ensureVectorStore() {
 const chatDocuments = new Map();
 let storeLoaded = false;
 let storeMtime = 0;
+const queryEmbeddingCache = new Map();
+const QUERY_EMBEDDING_CACHE_TTL_MS = 2 * 60 * 1000;
+const QUERY_EMBEDDING_CACHE_MAX = 200;
+const SMALL_DATASET_FAST_PATH_CHUNKS = 80;
+
+function queryEmbeddingCacheKey(query, chatId) {
+  return `${String(chatId || 'default')}:${String(query || '').trim().toLowerCase()}`;
+}
+
+function setQueryEmbeddingCache(key, embedding) {
+  if (!embedding) return;
+  if (queryEmbeddingCache.size >= QUERY_EMBEDDING_CACHE_MAX) {
+    const oldestKey = queryEmbeddingCache.keys().next().value;
+    if (oldestKey) queryEmbeddingCache.delete(oldestKey);
+  }
+  queryEmbeddingCache.set(key, {
+    embedding,
+    expires: Date.now() + QUERY_EMBEDDING_CACHE_TTL_MS
+  });
+}
+
+function getQueryEmbeddingCache(key) {
+  const cached = queryEmbeddingCache.get(key);
+  if (!cached) return null;
+  if (Date.now() > cached.expires) {
+    queryEmbeddingCache.delete(key);
+    return null;
+  }
+  queryEmbeddingCache.delete(key);
+  queryEmbeddingCache.set(key, cached);
+  return cached.embedding;
+}
+
+async function getCachedQueryEmbedding(query, chatId) {
+  const key = queryEmbeddingCacheKey(query, chatId);
+  const fromCache = getQueryEmbeddingCache(key);
+  if (fromCache) return fromCache;
+  const embedding = await getEmbedding(query);
+  if (embedding) setQueryEmbeddingCache(key, embedding);
+  return embedding;
+}
+
+async function indexRecordEmbeddings(chatId, record) {
+  const chunkTexts = record.chunks.map((chunk) => chunk.text).filter((text) => text.trim());
+  if (chunkTexts.length === 0) return;
+
+  const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
+  if (!embeddings) return;
+
+  if (!vectorStoreReady) {
+    await ensureVectorStore().catch(() => {});
+  }
+  if (!vectorStoreReady) return;
+
+  try {
+    await vectorStore.addChunks(chatId, record.doc, record.chunks, embeddings);
+  } catch (err) {
+    console.warn('[RAG] LanceDB addChunks failed:', err?.message || err);
+  }
+}
 
 function getStorePath() {
   const { cacheRoot } = getAppPaths();
@@ -302,7 +362,7 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
   };
 }
 
-async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size }) {
+async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background = false }) {
   ensureStoreLoaded();
   const store = ensureChatStore(chat_id);
   const record = buildDocumentRecord({ source, text, chat_id, file_type, chunk_size });
@@ -316,19 +376,13 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
     console.warn('[RAG] Failed to save doc metadata to SQLite:', err?.message || err);
   }
 
-  // Generate embeddings and store in LanceDB
-  const chunkTexts = record.chunks.map(c => c.text).filter(t => t.trim());
-  if (chunkTexts.length > 0) {
-    const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
-
-    // Store vectors in LanceDB if available
-    if (embeddings && vectorStoreReady) {
-      try {
-        await vectorStore.addChunks(chat_id, record.doc, record.chunks, embeddings);
-      } catch (err) {
-        console.warn('[RAG] LanceDB addChunks failed:', err?.message || err);
-      }
-    }
+  const indexTask = indexRecordEmbeddings(chat_id, record);
+  if (background) {
+    void indexTask.catch((err) => {
+      console.warn('[RAG] Background indexing failed:', err?.message || err);
+    });
+  } else {
+    await indexTask;
   }
 
   return record.doc;
@@ -350,53 +404,12 @@ export async function ingestText({ source, text, chat_id, file_type, chunk_size 
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size });
 }
 
+export async function ingestTextFast({ source, text, chat_id, file_type, chunk_size }) {
+  return ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background: true });
+}
+
 export async function queryDocuments({ query, chat_id, top_k }) {
-  ensureStoreLoaded();
-  const store = ensureChatStore(chat_id);
-  const k = Math.max(1, Number(top_k) || 5);
-  const queryTokens = tokenize(query);
-  const allChunks = [];
-
-  for (const { doc, chunks } of store.values()) {
-    for (const chunk of chunks) {
-      allChunks.push({
-        chunk,
-        doc,
-        score: scoreChunk(queryTokens, chunk.text) + scoreChunk(queryTokens, doc.source) * 0.5
-      });
-    }
-  }
-
-  if (!allChunks.length) {
-    return { results: [], context: '' };
-  }
-
-  allChunks.sort((left, right) => right.score - left.score);
-  const perDocCount = new Map();
-  const selected = [];
-
-  for (const entry of allChunks) {
-    const docId = entry.chunk.doc_id;
-    const seenCount = perDocCount.get(docId) || 0;
-    if (seenCount >= 2) continue;
-    perDocCount.set(docId, seenCount + 1);
-    selected.push(entry);
-    if (selected.length >= k) break;
-  }
-
-  return {
-    results: selected.map((entry) => ({
-      chunk: entry.chunk,
-      score: entry.score,
-      document: entry.doc
-    })),
-    context: selected
-      .map((entry) => {
-        const header = entry.doc?.source ? `### ${entry.doc.source}` : '### Document';
-        return [header, entry.chunk.text].join('\n');
-      })
-      .join('\n\n---\n\n')
-  };
+  return queryDocumentsHybrid({ query, chat_id, top_k });
 }
 
 export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
@@ -418,12 +431,46 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
     return { results: [], context: '' };
   }
 
+  // Fast path for smaller datasets: keyword scoring only
+  if (allChunks.length <= SMALL_DATASET_FAST_PATH_CHUNKS) {
+    const scored = allChunks.map((entry) => ({
+      chunk: entry.chunk,
+      doc: entry.doc,
+      score: scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5
+    }));
+    scored.sort((left, right) => right.score - left.score);
+    const perDocCount = new Map();
+    const selected = [];
+    for (const entry of scored) {
+      const docId = entry.chunk.doc_id;
+      const seenCount = perDocCount.get(docId) || 0;
+      if (seenCount >= 2) continue;
+      perDocCount.set(docId, seenCount + 1);
+      selected.push(entry);
+      if (selected.length >= k) break;
+    }
+
+    return {
+      results: selected.map((entry) => ({
+        chunk: entry.chunk,
+        score: entry.score,
+        document: entry.doc
+      })),
+      context: selected
+        .map((entry) => {
+          const header = entry.doc?.source ? `### ${entry.doc.source}` : '### Document';
+          return [header, entry.chunk.text].join('\n');
+        })
+        .join('\n\n---\n\n')
+    };
+  }
+
   // Try LanceDB vector search first
   let vectorResults = [];
-  const queryEmbedding = await getEmbedding(query);
+  const queryEmbedding = await getCachedQueryEmbedding(query, chat_id);
   if (vectorStoreReady && queryEmbedding) {
     try {
-      vectorResults = await vectorStore.search(chat_id, queryEmbedding, k * 3);
+      vectorResults = await vectorStore.search(chat_id, queryEmbedding, Math.max(k * 2, 8));
     } catch (err) {
       console.warn('[RAG] LanceDB search failed, using in-memory scoring:', err?.message || err);
     }
@@ -436,13 +483,6 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
     vectorResultMap.set(vr.id, vr._distance != null ? 1 - vr._distance : 0);
   }
 
-  // Batch-compute chunk embeddings only if LanceDB is not available
-  let chunkEmbeddings = [];
-  if (queryEmbedding && vectorResults.length === 0) {
-    const chunkTexts = allChunks.map(e => e.text);
-    chunkEmbeddings = await getEmbeddings(chunkTexts);
-  }
-
   // Score each chunk with hybrid scoring
   for (let i = 0; i < allChunks.length; i++) {
     const entry = allChunks[i];
@@ -451,11 +491,9 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
 
     if (vectorResultMap.has(entry.chunk.id)) {
       vectorScore = vectorResultMap.get(entry.chunk.id);
-    } else if (queryEmbedding && chunkEmbeddings[i]) {
-      vectorScore = cosineSimilarity(queryEmbedding, chunkEmbeddings[i]);
     }
 
-    const hasVector = queryEmbedding !== null;
+    const hasVector = vectorResultMap.size > 0;
     const hybridScore = hasVector
       ? (keywordScore * 0.4) + (vectorScore * 10 * 0.6)
       : keywordScore;
@@ -472,27 +510,29 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   scored.sort((left, right) => right.score - left.score);
 
   // Rerank top candidates if reranker available
-  const topCandidates = scored.slice(0, Math.min(k * 3, scored.length));
+  const topCandidates = scored.slice(0, Math.min(Math.max(k * 2, 6), scored.length));
   let finalRanked = topCandidates;
-  try {
-    const reranked = await rerankChunks(query, topCandidates.map(c => c.text), k);
-    if (reranked.length > 0 && reranked[0].rerankScore != null) {
-      const rerankMap = new Map();
-      for (const r of reranked) {
-        rerankMap.set(r.text, r.rerankScore);
-      }
-      for (const entry of topCandidates) {
-        if (rerankMap.has(entry.text)) {
-          entry.rerankScore = rerankMap.get(entry.text);
+  if (topCandidates.length > 1) {
+    try {
+      const reranked = await rerankChunks(query, topCandidates.map(c => c.text), Math.min(k, topCandidates.length));
+      if (reranked.length > 0 && reranked[0].rerankScore != null) {
+        const rerankMap = new Map();
+        for (const r of reranked) {
+          rerankMap.set(r.text, r.rerankScore);
         }
+        for (const entry of topCandidates) {
+          if (rerankMap.has(entry.text)) {
+            entry.rerankScore = rerankMap.get(entry.text);
+          }
+        }
+        finalRanked = topCandidates.sort((a, b) => {
+          if (a.rerankScore != null && b.rerankScore != null) return b.rerankScore - a.rerankScore;
+          return b.score - a.score;
+        });
       }
-      finalRanked = topCandidates.sort((a, b) => {
-        if (a.rerankScore != null && b.rerankScore != null) return b.rerankScore - a.rerankScore;
-        return b.score - a.score;
-      });
+    } catch {
+      // Reranker unavailable, use hybrid scores
     }
-  } catch {
-    // Reranker unavailable, use hybrid scores
   }
 
   const perDocCount = new Map();

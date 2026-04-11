@@ -14,7 +14,21 @@ export class WebSearchTool extends AgentTool {
   };
 
   async execute({ query, max_results }) {
-    const results = await webSearch({ query, maxResults: max_results || 5 });
-    return (results || []).map(r => ({ title: r.title, url: r.url, snippet: r.snippet }));
+    const response = await webSearch({
+      query,
+      mode: 'search',
+      options: {
+        max_results: max_results || 5
+      }
+    });
+    return {
+      query: response?.query || query,
+      provider_used: response?.provider_used || 'none',
+      results: (response?.results || []).map((item) => ({
+        title: item.title,
+        url: item.url,
+        snippet: item.snippet
+      }))
+    };
   }
 }

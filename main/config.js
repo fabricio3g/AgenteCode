@@ -407,6 +407,18 @@ function migrateConfig(cfg) {
       dirty = true;
     }
   }
+
+  // Migrate legacy STT provider names (e.g. "openai") to explicit modes.
+  const legacySttProviders = new Set([
+    'openai', 'openrouter', 'lmstudio', 'groq', 'mistral', 'anthropic', 'gemini', 'perplexity', 'xai'
+  ]);
+  const sttProvider = String(cfg?.stt?.provider || '').trim().toLowerCase();
+  if (legacySttProviders.has(sttProvider)) {
+    cfg.stt = cfg.stt || {};
+    cfg.stt.provider = 'local';
+    dirty = true;
+  }
+
   // Ensure onboarding key exists for older configs
   if (!cfg.onboarding) {
     cfg.onboarding = { completed: false, completed_at: null };

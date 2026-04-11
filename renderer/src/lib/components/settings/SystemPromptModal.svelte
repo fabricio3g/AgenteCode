@@ -29,8 +29,8 @@
 </script>
 
 <div class="modal-backdrop fixed inset-0 z-[61] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
- <div class="modal-surface w-full max-w-2xl rounded-2xl bg-[var(--surface)] shadow-2xl dark:ring-1 dark:ring-white/10" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
- <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-4">
+ <div class="modal-surface w-full max-w-2xl rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-xl" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
+ <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
  <div class="flex items-center gap-2">
  {#if isLocal}
  <Cpu class="h-4 w-4" />
@@ -38,11 +38,11 @@
  <Brain class="h-4 w-4" />
  {/if}
  <div>
- <div class="text-base font-semibold text-[var(--text)]">{isLocal ? 'Local system prompt' : 'API system prompt'}</div>
+ <div class="text-base font-semibold text-[var(--text)] font-serif tracking-tight">{isLocal ? 'Local system prompt' : 'API system prompt'}</div>
  <div class="text-xs text-[var(--text-tertiary)]">{isLocal ? 'Used for local runtime conversations.' : 'Used for API-provider conversations.'}</div>
  </div>
  </div>
- <button class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={() => (appStore.promptConfigOpen = false)} aria-label="Close prompt settings">
+ <button class="rounded-lg p-2 text-[var(--text-muted)] border border-transparent transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)] hover:border-[var(--border-light)]" onclick={() => (appStore.promptConfigOpen = false)} aria-label="Close prompt settings">
  <X class="h-4 w-4" />
  </button>
  </div>
@@ -50,13 +50,13 @@
  <div class="space-y-4 p-5">
  <label class="block space-y-2 text-sm">
  <span class="font-medium text-[var(--text-secondary)]">{isLocal ? 'Fallback shared system prompt' : 'System prompt'}</span>
-  <textarea bind:value={systemPrompt} rows="6" class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--primary)]" placeholder="You are TalamoLM. Answer clearly and accurately."></textarea>
+  <textarea bind:value={systemPrompt} rows="6" class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]" placeholder="You are TalamoLM. Answer clearly and accurately."></textarea>
  </label>
 
  {#if isLocal}
  <label class="block space-y-2 text-sm">
  <span class="font-medium text-[var(--text-secondary)]">Local runtime prompt</span>
- <textarea bind:value={localSystemPrompt} rows="6" class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--primary)]" placeholder="Instructions specific to the local model."></textarea>
+ <textarea bind:value={localSystemPrompt} rows="6" class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]" placeholder="Instructions specific to the local model."></textarea>
  </label>
  {:else}
  <label class="block space-y-2 text-sm">
@@ -64,16 +64,16 @@
  <MessageSquareText class="h-4 w-4" />
  User prompt prefix
  </span>
- <textarea bind:value={userPrompt} rows="4" class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--primary)]" placeholder="Optional instruction prefix for API conversations."></textarea>
+ <textarea bind:value={userPrompt} rows="4" class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]" placeholder="Optional instruction prefix for API conversations."></textarea>
  </label>
  {/if}
  </div>
 
- <div class="flex items-center justify-end gap-2 border-t border-[var(--border-light)] px-5 py-4">
- <button class="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={() => (appStore.promptConfigOpen = false)}>
+ <div class="flex items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-4">
+ <button class="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)] hover:border-[var(--border-strong)]" onclick={() => (appStore.promptConfigOpen = false)}>
  Cancel
  </button>
- <button class="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={save} disabled={saving}>
+ <button class="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98] disabled:opacity-50" onclick={save} disabled={saving}>
  {saving ? 'Saving…' : 'Save'}
  </button>
  </div>

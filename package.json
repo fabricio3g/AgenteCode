@@ -13,16 +13,22 @@
     "build": "npm run build:renderer && electron-builder",
     "start": "electron . --no-sandbox",
     "check": "cd renderer && npx svelte-check --tsconfig ./tsconfig.json",
-    "onboarding:reset": "node scripts/reset-onboarding.mjs"
+    "onboarding:reset": "node scripts/reset-onboarding.mjs",
+    "test:crawler": "node --test tests/crawler/*.test.js"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.27.2",
+    "@mozilla/readability": "^0.6.0",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "better-sqlite3": "^11.10.0",
     "electron-store": "^10.0.0",
     "extract-zip": "^2.0.1",
+    "linkedom": "^0.18.12",
+    "lucide-svelte": "^1.0.1",
     "mammoth": "^1.8.0",
     "pdf-parse": "^1.1.1",
     "pptxgenjs": "^3.12.0",
+    "svelte-i18n": "^4.0.1",
     "tar": "^7.5.13"
   },
   "optionalDependencies": {

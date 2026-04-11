@@ -1018,7 +1018,7 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
   if (searchMode !== 'search') {
     const deepLimit = Math.min(
       mergedResults.length,
-      Math.max(1, Number(options?.deep_limit) || (searchMode === 'max' ? 6 : 3))
+      searchMode === 'max' ? 6 : 3
     );
     emit('deep_fetching', `Fetching full content from top ${deepLimit} pages...`);
     const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, options || {});
@@ -1061,7 +1061,8 @@ export async function ingestSearchContext(chatId, context, sources) {
     .join('\n\n---\n\n');
 
   const fullText = String(context || '').trim() || sourceText;
-  await ragEngine.ingestText({
+  const ingest = typeof ragEngine.ingestTextFast === 'function' ? ragEngine.ingestTextFast : ragEngine.ingestText;
+  await ingest({
     source: 'web_search',
     text: fullText,
     chat_id: normalizedChatId,

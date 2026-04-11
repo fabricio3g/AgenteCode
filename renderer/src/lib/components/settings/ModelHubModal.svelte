@@ -204,9 +204,14 @@
       const selectedWhisper = appStore.config.stt?.whisper_quality || '';
 
       const ttsCatalog: Record<string, any> = {};
-      const rawTts = { ...VOICE_TTS_FALLBACK_CATALOG, ...remoteTts };
-      for (const [key, fallback] of Object.entries(rawTts)) {
-        const meta: any = { ...(fallback as object), ...((remoteTts[key] || {}) as object) };
+      const ttsKeys = Array.from(new Set([
+        ...Object.keys(VOICE_TTS_FALLBACK_CATALOG),
+        ...Object.keys(remoteTts || {})
+      ]));
+      for (const key of ttsKeys) {
+        const fallback: any = VOICE_TTS_FALLBACK_CATALOG[key] || {};
+        const remoteMeta: any = (remoteTts?.[key] || {}) as object;
+        const meta: any = { ...fallback, ...remoteMeta };
         const repoId = String(meta.repo_id || meta.repo || '');
         const dir = String(meta.dir || key);
         const size_mb = normalizeSizeMb(meta) ?? normalizeSizeMb(fallback);
@@ -235,9 +240,14 @@
       voiceModels = ttsCatalog;
 
       const whisperCatalog: Record<string, any> = {};
-      const rawWhisper = { ...VOICE_WHISPER_FALLBACK_CATALOG, ...remoteWhisper };
-      for (const [key, fallback] of Object.entries(rawWhisper)) {
-        const meta: any = { ...(fallback as object), ...((remoteWhisper[key] || {}) as object) };
+      const whisperKeys = Array.from(new Set([
+        ...Object.keys(VOICE_WHISPER_FALLBACK_CATALOG),
+        ...Object.keys(remoteWhisper || {})
+      ]));
+      for (const key of whisperKeys) {
+        const fallback: any = VOICE_WHISPER_FALLBACK_CATALOG[key] || {};
+        const remoteMeta: any = (remoteWhisper?.[key] || {}) as object;
+        const meta: any = { ...fallback, ...remoteMeta };
         const repoId = String(meta.repo_id || meta.repo || `csukuangfj/sherpa-onnx-whisper-${key}.en`);
         const dir = String(meta.dir || `sherpa-onnx-whisper-${key}.en`);
         const files: string[] = Array.isArray(meta.files) && meta.files.length

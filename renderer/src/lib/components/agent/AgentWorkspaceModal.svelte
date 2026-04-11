@@ -89,8 +89,8 @@
   aria-modal="true"
   transition:fade={{ duration: 150 }}
 >
-  <div
-    class={`modal-surface flex overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl ring-1 ring-[var(--border)] transition-all ${fullscreen ? 'h-screen w-screen rounded-none' : 'h-[88vh] w-full max-w-6xl'}`}
+<div
+  class={`modal-surface flex overflow-hidden rounded-xl bg-[var(--surface)] shadow-xl border border-[var(--border)] transition-all ${fullscreen ? 'h-screen w-screen rounded-none' : 'h-[88vh] w-full max-w-6xl'}`}
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
   >
     <!-- File tree -->

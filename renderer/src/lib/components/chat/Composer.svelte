@@ -7,6 +7,7 @@
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isTauri } from '$lib/services/tauri';
   import { sttTranscribe } from '$lib/services/stt';
+  import { toastStore } from '$lib/stores/toast.svelte';
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
   import ComposerModes from './composer/ComposerModes.svelte';
@@ -104,6 +105,9 @@
   }
 
   const hasSpeechRecognition = $derived.by(() => {
+    // In Electron, force local Whisper path and avoid browser Web Speech API
+    // (which can trigger Chromium network uploads and related chunked errors).
+    if (isTauri()) return false;
     if (typeof window === 'undefined') return false;
     const w = window as Window & { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
     return !!(w.SpeechRecognition || w.webkitSpeechRecognition);
@@ -189,6 +193,11 @@
   }
 
   function startListening(autoSend = false) {
+    if (isTauri()) {
+      void toggleWhisperRecording(autoSend);
+      return;
+    }
+
     const Ctor = getRecognitionCtor();
     if (!Ctor) return;
 
@@ -276,10 +285,10 @@
   }
 
   function toggleSpeech() {
-    if (hasSpeechRecognition) {
-      startListening(false);
-    } else if (isTauri()) {
+    if (isTauri()) {
       void toggleWhisperRecording(false);
+    } else if (hasSpeechRecognition) {
+      startListening(false);
     }
   }
 
@@ -315,6 +324,7 @@
         : 'audio/webm';
 
       whisperRecorder = new MediaRecorder(stream, { mimeType });
+      const recordingStartedAt = Date.now();
 
       whisperRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) whisperChunks.push(e.data);
@@ -329,14 +339,16 @@
 
         try {
           const blob = new Blob(whisperChunks, { type: mimeType });
-          const reader = new FileReader();
-          const base64 = await new Promise<string>((resolve, reject) => {
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-
-          const result = await sttTranscribe(base64, mimeType.split(';')[0]);
+          const elapsedMs = Date.now() - recordingStartedAt;
+          if (!blob.size || elapsedMs < 250) {
+            interimTranscript = '';
+            toastStore.warning('Recording too short. Please speak a bit longer.');
+            return;
+          }
+          const arrayBuf = await blob.arrayBuffer();
+          const audioBytes = new Uint8Array(arrayBuf);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result = await sttTranscribe(audioBytes as any, mimeType.split(';')[0]);
           interimTranscript = '';
 
           if (result.text?.trim()) {
@@ -345,9 +357,13 @@
             if (autoSend && !appStore.loading) {
               void appStore.sendCurrentMessage();
             }
+          } else {
+            toastStore.info('No speech detected. Try speaking closer to the microphone.');
           }
-        } catch {
+        } catch (err) {
           interimTranscript = '';
+          const message = err instanceof Error ? err.message : 'Transcription failed. Please try again.';
+          toastStore.error(message);
         }
       };
 
@@ -357,19 +373,22 @@
         interimTranscript = '';
         stopPulse();
         _stopAnalyser();
+        toastStore.error('Microphone recording failed. Please check device permissions.');
       };
 
-      whisperRecorder.start();
+      whisperRecorder.start(200);
 
-      // Auto-stop after 60s
+      // Auto-stop after 30s to keep STT payload small
       setTimeout(() => {
         if (whisperRecorder && whisperRecorder.state !== 'inactive') whisperRecorder.stop();
-      }, 60_000);
-    } catch {
+      }, 30_000);
+    } catch (err) {
       isWhisperListening = false;
       interimTranscript = '';
       stopPulse();
       _stopAnalyser();
+      const message = err instanceof Error ? err.message : 'Unable to access microphone.';
+      toastStore.error(message);
     }
   }
 
@@ -390,12 +409,21 @@
       if (destroyed) return;
       if (appStore.voiceModeActive && !appStore.loading) {
         setTimeout(() => {
-          if (!destroyed && appStore.voiceModeActive) startListening(true);
+          if (destroyed || !appStore.voiceModeActive) return;
+          if (isTauri()) {
+            void toggleWhisperRecording(true);
+          } else {
+            startListening(true);
+          }
         }, 400);
       }
     };
 
-    startListening(true);
+    if (isTauri()) {
+      void toggleWhisperRecording(true);
+    } else {
+      startListening(true);
+    }
   }
 
   function exitVoiceMode() {
@@ -423,10 +451,10 @@
 
     const timer = setTimeout(() => {
       if (appStore.voiceModeActive && !appStore.loading && !ttsStore.playing && !isListening && !isWhisperListening) {
-        if (hasSpeechRecognition) {
-          startListening(true);
-        } else if (isTauri()) {
+        if (isTauri()) {
           void toggleWhisperRecording(true);
+        } else if (hasSpeechRecognition) {
+          startListening(true);
         }
       }
     }, 600);
@@ -651,7 +679,7 @@
 <style>
   .composer-blur-wrapper {
     position: relative;
-    border-radius: 1.5rem;
+    border-radius: var(--radius-xl);
     overflow: visible;
   }
 
@@ -659,21 +687,25 @@
     content: '';
     position: absolute;
     inset: -12px;
-    background: var(--chat-bg, var(--background));
+    background: var(--chat-bg);
     border-radius: inherit;
     filter: blur(30px);
     -webkit-filter: blur(30px);
     z-index: -1;
+    opacity: 0.9;
   }
 
   .composer-shell {
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: var(--shadow-m);
+    box-shadow: var(--shadow-l);
+    border-radius: var(--radius-xl);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .composer-shell:focus-within {
     border-color: var(--border-strong);
+    box-shadow: var(--shadow-xl);
   }
 
   .composer-textarea {
@@ -683,46 +715,75 @@
     line-height: 1.6;
   }
 
+  .composer-attach-btn {
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    transition: all 0.12s ease;
+  }
+
   .composer-attach-btn:hover {
     background: var(--surface-highlight);
     color: var(--text);
+    border-color: var(--border-light);
   }
 
   .composer-divider {
-    opacity: 0.6;
+    opacity: 0.5;
   }
 
   .voice-btn {
-    color: var(--text-muted);
-    background: transparent;
+    color: var(--text-secondary);
+    background: var(--surface-highlight);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-s);
+    transition: all 0.12s ease;
   }
 
   .voice-btn:hover {
-    color: var(--text-secondary);
-    background: var(--surface-highlight);
+    color: var(--text);
+    background: var(--surface-secondary);
+    border-color: var(--border);
   }
 
   .voice-btn.is-listening {
     color: var(--primary-fg);
     background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  .voice-btn.is-listening:hover {
+    opacity: 0.9;
   }
 
   .send-btn {
     color: var(--primary-fg);
     background: var(--primary);
+    border: none;
+    border-radius: var(--radius-s);
+    transition: transform 0.1s ease, opacity 0.12s ease;
   }
 
   .send-btn:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+
+  .send-btn:active {
+    transform: scale(0.96);
   }
 
   .send-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: not-allowed;
   }
 
+  .send-btn:disabled:active {
+    transform: none;
+  }
+
   .hint-text {
-    color: var(--text-tertiary);
+    color: var(--text-muted);
   }
 
   @media (max-width: 640px) {

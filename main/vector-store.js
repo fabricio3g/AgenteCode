@@ -6,6 +6,7 @@ class VectorStore {
   constructor() {
     this.db = null;
     this.tables = new Map();
+    this.indexState = new Map();
   }
 
   async init() {
@@ -26,9 +27,30 @@ class VectorStore {
     try {
       const table = await this.db.openTable(tableName);
       this.tables.set(tableName, table);
+      await this.ensureVectorIndex(tableName, table);
       return table;
     } catch {
       return null;
+    }
+  }
+
+  async ensureVectorIndex(tableName, table) {
+    if (!table) return;
+    if (this.indexState.get(tableName) === true) return;
+    if (this.indexState.get(tableName) === 'building') return;
+
+    this.indexState.set(tableName, 'building');
+    try {
+      const indices = await table.listIndices().catch(() => []);
+      const hasVectorIndex = Array.isArray(indices)
+        && indices.some((idx) => Array.isArray(idx?.columns) && idx.columns.includes('vector'));
+      if (!hasVectorIndex) {
+        await table.createIndex('vector');
+      }
+      this.indexState.set(tableName, true);
+    } catch (err) {
+      console.warn('[RAG] Could not ensure vector index:', err?.message || err);
+      this.indexState.set(tableName, false);
     }
   }
 
@@ -47,6 +69,7 @@ class VectorStore {
     if (records.length > 0 && records[0].vector.length > 0) {
       const table = await this.db.createTable(tableName, records, { mode: 'append' });
       this.tables.set(tableName, table);
+      await this.ensureVectorIndex(tableName, table);
     }
   }
 
@@ -60,6 +83,7 @@ class VectorStore {
     const tableName = this._tableName(chatId);
     try { await this.db.dropTable(tableName); } catch {}
     this.tables.delete(tableName);
+    this.indexState.delete(tableName);
   }
 
   async deleteDocument(chatId, docId) {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SearchMeta } from '$lib/types/chat';
-  import { Globe } from 'lucide-svelte';
+  import { ChevronDown, ChevronUp, Globe } from 'lucide-svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { getSearchStatus, providerLabel } from '../message-utils';
 
@@ -17,19 +17,42 @@
     return label.toLowerCase() === 'auto' ? '' : label;
   });
   const sourceCount = $derived(Number(meta?.sourceCount || 0));
+  const crawlPages = $derived(Number(meta?.researchStats?.pagesCrawled || 0));
+  const crawlDepth = $derived(Number(meta?.researchStats?.maxDepthReached || 0));
+  let expanded = $state(false);
 </script>
 
 {#if status}
   {#if researchSummary}
     <div class="research-summary mb-4">
-      <div class="markdown-body">{@html summaryHtml}</div>
-      {#if provider || sourceCount > 0}
-        <div class="research-meta">
-          {#if provider}
-            <span class="meta-item"><Globe class="h-3 w-3" />{provider}</span>
-          {/if}
-          {#if sourceCount > 0}
-            <span class="meta-item">{sourceCount} {sourceCount === 1 ? 'source' : 'sources'}</span>
+      <button class="summary-trigger" onclick={() => (expanded = !expanded)}>
+        <span class="summary-title">Research result</span>
+        <span class="summary-meta">
+          {#if sourceCount > 0}{sourceCount} src{/if}
+          {#if crawlPages > 0} · {crawlPages} pages{/if}
+          {#if crawlDepth > 0} · d{crawlDepth}{/if}
+        </span>
+        {#if expanded}
+          <ChevronUp class="h-3.5 w-3.5" />
+        {:else}
+          <ChevronDown class="h-3.5 w-3.5" />
+        {/if}
+      </button>
+      {#if expanded}
+        <div class="summary-modal">
+          <div class="markdown-body">{@html summaryHtml}</div>
+          {#if provider || sourceCount > 0}
+            <div class="research-meta">
+              {#if provider}
+                <span class="meta-item"><Globe class="h-3 w-3" />{provider}</span>
+              {/if}
+              {#if sourceCount > 0}
+                <span class="meta-item">{sourceCount} {sourceCount === 1 ? 'source' : 'sources'}</span>
+              {/if}
+              {#if crawlPages > 0}
+                <span class="meta-item">{crawlPages} pages crawled</span>
+              {/if}
+            </div>
           {/if}
         </div>
       {/if}
@@ -46,8 +69,42 @@
 
 <style>
   .research-summary {
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .summary-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: var(--radius-s);
+    color: var(--text-secondary);
+    padding: 0.45rem 0.65rem;
+    max-width: fit-content;
+    font-size: 0.77rem;
+  }
+
+  .summary-trigger:hover {
+    color: var(--text);
+    background: var(--surface-highlight);
+    border-color: var(--border-light);
+  }
+
+  .summary-title {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .summary-meta {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+
+  .summary-modal {
     border-left: 2px solid var(--border);
-    padding-left: 1rem;
+    padding-left: 0.9rem;
   }
 
   .research-summary :global(.markdown-body) {

@@ -130,7 +130,7 @@
 </script>
 
 {#if appStore.sidebarOpen}
-<div bind:clientWidth={width} class="openui-card pointer-events-auto relative z-20 mb-3 rounded-2xl px-3 py-2">
+<div bind:clientWidth={width} class="openui-card pointer-events-auto relative z-20 mb-3 rounded-xl px-3 py-2">
   {#if canScrollLeft}
     <button
       type="button"

@@ -119,10 +119,12 @@
 <RichContent content={displayContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
 
 {#if message.status === 'streaming' && !displayContent && !displayReasoning && !message.agentSteps?.length}
-  <div class="thinking-indicator flex items-center gap-2.5 py-2">
-    <MorphingHexagon size={20} />
-    <span class="thinking-label text-sm">Thinking...</span>
-  </div>
+  {#if !hasActiveDeepResearch}
+    <div class="thinking-indicator flex items-center gap-2.5 py-2">
+      <MorphingHexagon size={20} />
+      <span class="thinking-label text-sm">Thinking...</span>
+    </div>
+  {/if}
 {/if}
 
 <SlidesBlock slides={message.slides} mode={message.mode} onDownload={onDownloadSlides} />

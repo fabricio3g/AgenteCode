@@ -15,9 +15,13 @@ export function providerLabel(provider?: string | null) {
 export function getSearchStatus(meta: SearchMeta | null): SearchStatusInfo | null {
   if (!meta?.searchRequested) return null;
   if (meta.researchSummary) {
+    const crawl = meta.researchStats;
+    const crawlDetail = crawl?.pagesCrawled
+      ? ` Crawled ${crawl.pagesCrawled} pages` + (crawl.maxDepthReached != null ? ` (depth ${crawl.maxDepthReached})` : '') + '.'
+      : '';
     return {
       title: meta.researchStatus === 'completed' ? 'Deep research summary ready' : 'Deep research in progress',
-      detail: meta.researchSummary.trim()
+      detail: `${meta.researchSummary.trim()}${crawlDetail}`.trim()
     };
   }
   const failed = meta.searchSucceeded === false;

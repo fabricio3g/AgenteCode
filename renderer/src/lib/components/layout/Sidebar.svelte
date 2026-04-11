@@ -332,18 +332,20 @@
 
 <style>
   .sidebar {
-    background: var(--chat-bg, var(--background));
+    background: var(--chat-bg);
     border-right: 1px solid var(--border);
   }
 
   .new-chat-btn {
     color: var(--text-secondary);
     background: transparent;
+    border: 1px solid transparent;
   }
 
   .new-chat-btn:hover {
     color: var(--text);
     background: var(--surface-highlight);
+    border-color: var(--border);
   }
 
   .sidebar-icon-btn {
@@ -382,16 +384,19 @@
 
   .chat-item {
     color: var(--text-secondary);
+    border: 1px solid transparent;
   }
 
   .chat-item:hover {
     background: var(--surface-highlight);
     color: var(--text);
+    border-color: var(--border-light);
   }
 
   .chat-item.is-active {
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
     color: var(--text);
+    border-color: var(--border);
   }
 
   .chat-item.is-active .chat-title {
@@ -433,29 +438,24 @@
     background: var(--error-bg);
   }
 
-  :global(.dark) .menu-item.danger {
-    color: var(--error);
-  }
-
-  :global(.dark) .menu-item.danger:hover {
-    background: var(--error-bg);
-  }
-
   .empty-icon {
     background: var(--surface-highlight);
+    border: 1px solid var(--border-light);
   }
 
   .sidebar-footer {
-    border-top: none;
+    border-top: 1px solid var(--border-light);
   }
 
   .sidebar-btn {
     color: var(--text-secondary);
     background: transparent;
+    border: 1px solid transparent;
   }
 
   .sidebar-btn:hover {
     color: var(--text);
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 </style>

@@ -107,7 +107,7 @@
   onkeydown={handleKeydown}
 >
   <div
-    class="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)] overflow-hidden"
+    class="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)] overflow-hidden"
     role="dialog"
     aria-modal="true"
     onclick={(e) => e.stopPropagation()}
@@ -138,7 +138,9 @@
     <div bind:this={resultsContainer} class="max-h-[50vh] overflow-y-auto p-2">
       {#if results.length === 0}
         <div class="flex flex-col items-center justify-center py-10 text-center">
-          <MessageSquare class="mb-2 h-5 w-5 text-[var(--text-muted)]" />
+          <div class="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)] border border-[var(--border-light)]">
+            <MessageSquare class="h-5 w-5 text-[var(--text-muted)]" />
+          </div>
           <p class="text-sm text-[var(--text-muted)]">
             {query ? 'No matching conversations' : 'No conversations yet'}
           </p>
@@ -147,7 +149,7 @@
         {#each results as chat, i (chat.id)}
           <button
             type="button"
-            class="chat-result flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
+            class="chat-result flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition border border-transparent"
             class:is-selected={i === selectedIndex}
             class:is-active={appStore.currentChatId === chat.id}
             data-selected={i === selectedIndex}
@@ -176,9 +178,11 @@
   .chat-result:hover,
   .chat-result.is-selected {
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .chat-result.is-active {
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
+    border-color: var(--border);
   }
 </style>

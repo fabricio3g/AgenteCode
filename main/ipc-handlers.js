@@ -1,4 +1,4 @@
-import { ipcMain, shell, net } from 'electron';
+import { ipcMain, shell } from 'electron';
 import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './index.js';
 import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.js';
 import { getHardwareLimits, getSystemInfo } from './system-info.js';
@@ -19,13 +19,15 @@ import {
   pauseDownloadJob, clearFinishedDownloads, removeDownloadJob
 } from './download-manager.js';
 import {
-  ingestDocument, ingestText, queryDocuments,
+  ingestDocument, ingestText, ingestTextFast, queryDocuments,
   listRagDocuments, removeRagDocument, clearRagDocuments, hasRagDocuments
 } from './rag-engine.js';
 import {
   webSearch, ingestSearchContext, fetchModelCatalog,
   searchHfModels, hfRepoGguf
 } from './search-engine.js';
+import { scrapeUrlStructured } from './web-scraper.js';
+import { crawlWeb } from './web-crawler.js';
 import {
   pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile,
   indexWorkspaceFolder, writeWorkspaceFile, readWorkspaceFile,
@@ -187,7 +189,21 @@ export function registerIpcHandlers() {
   ipcMain.handle('check_espeak_data', (_e, { modelsDir }) => checkEspeakData(modelsDir));
 
   // ── STT (speech-to-text) ──
-  ipcMain.handle('stt_transcribe', (_e, args) => transcribeAudio(args));
+  ipcMain.handle('stt_transcribe', (_e, args) => {
+    // IPC transfers TypedArrays as plain objects; force a fresh copy to avoid "External buffers" errors
+    const reconstructedArgs = { ...args };
+    if (args?.audio_bytes && typeof args.audio_bytes === 'object' && !Buffer.isBuffer(args.audio_bytes)) {
+      // Get length and allocate fresh Buffer, then copy byte-by-byte
+      const src = args.audio_bytes;
+      const len = src.length !== undefined ? src.length : Object.keys(src).filter(k => /^\d+$/.test(k)).length;
+      const copy = Buffer.alloc(len);
+      for (let i = 0; i < len; i++) {
+        copy[i] = src[i] ?? 0;
+      }
+      reconstructedArgs.audio_bytes = copy;
+    }
+    return transcribeAudio(reconstructedArgs);
+  });
   ipcMain.handle('get_stt_status', () => getSttStatus());
   ipcMain.handle('unload_whisper', () => unloadWhisper());
 
@@ -234,6 +250,7 @@ export function registerIpcHandlers() {
   // ── RAG ──
   ipcMain.handle('ingest_document', (_e, { payload }) => ingestDocument(payload));
   ipcMain.handle('ingest_text', (_e, { payload }) => ingestText(payload));
+  ipcMain.handle('ingest_text_fast', (_e, { payload }) => ingestTextFast(payload));
   ipcMain.handle('query_documents', (_e, { payload }) => queryDocuments(payload));
   ipcMain.handle('list_rag_documents', (_e, { payload }) => listRagDocuments(payload.chat_id));
   ipcMain.handle('remove_rag_document', (_e, { docId, payload }) => removeRagDocument(docId, payload.chat_id));
@@ -264,40 +281,17 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('fetch_url_content', async (_e, { url, maxBytes }) => {
     try {
-      const targetUrl = String(url || '');
-      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        return { url: targetUrl, content: '', error: 'Invalid URL scheme', status: 400 };
-      }
-      const request = net.request(targetUrl);
-      request.setHeader('User-Agent', 'Mozilla/5.0 (compatible; TalamoLM/1.0)');
-      request.setHeader('Accept', 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8');
-      return new Promise((resolve) => {
-        let body = '';
-        let status = 0;
-        const maxLen = Math.min(Math.max(Number(maxBytes) || 50000, 1000), 200000);
-        request.on('response', (response) => {
-          status = response.statusCode;
-          response.on('data', (chunk) => {
-            if (body.length < maxLen) body += chunk.toString('utf8');
-          });
-          response.on('end', () => {
-            const content = body.slice(0, maxLen);
-            resolve({ url: targetUrl, content, status, truncated: body.length > maxLen });
-          });
-        });
-        request.on('error', (err) => {
-          resolve({ url: targetUrl, content: '', error: err.message, status: 0 });
-        });
-        setTimeout(() => {
-          request.abort();
-          resolve({ url: targetUrl, content: '', error: 'Request timed out', status: 408 });
-        }, 15000);
-        request.end();
+      return await scrapeUrlStructured({
+        url,
+        maxLength: maxBytes,
+        timeoutMs: 15000,
+        maxLinks: 150
       });
     } catch (err) {
       return { url: String(url), content: '', error: err instanceof Error ? err.message : String(err), status: 0 };
     }
   });
+  ipcMain.handle('crawl_web', (_e, args) => crawlWeb(args));
 
   // ── Workspace / filesystem ──
   ipcMain.handle('path_exists', (_e, { path }) => pathExists(path));

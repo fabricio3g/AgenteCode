@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { LoaderCircle, Square } from 'lucide-svelte';
+  import { ArrowRight, LoaderCircle, SkipForward, Square } from 'lucide-svelte';
   import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
 
   interface Props {
@@ -16,6 +16,20 @@
     return task.messageId === messageId ? task : null;
   });
 
+  let answers = $state<Record<string, string>>({});
+
+  $effect(() => {
+    if (!activeTask || activeTask.status !== 'awaiting_input') {
+      answers = {};
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const question of activeTask.questions || []) {
+      next[question.id] = activeTask.answers?.[question.id] || '';
+    }
+    answers = next;
+  });
+
   function stopActiveTask() {
     if (!activeTask) return;
     cancelDeepResearchTask(activeTask.id);
@@ -25,27 +39,69 @@
     switch (step) {
       case 'queued':
         return 'Queued';
+      case 'awaiting_input':
+        return 'Needs input';
       case 'searching':
         return 'Searching';
+      case 'crawling':
+        return 'Crawling';
       case 'synthesizing':
         return 'Writing summary';
       default:
         return step.replace(/_/g, ' ');
     }
   }
+
+  function setAnswer(id: string, value: string) {
+    answers = { ...answers, [id]: value };
+  }
+
+  function submitAnswers(skip = false) {
+    if (!activeTask) return;
+    deepResearchStore.submitTaskAnswers(activeTask.id, answers, skip);
+  }
 </script>
 
 {#if activeTask}
   <div class="research-row mb-4">
-    <div class="research-indicator">
-      <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-    </div>
     <div class="research-content">
       <span class="research-label">
-        {activeTask.mode === 'max' ? 'Searching all sources' : 'Searching'}
+        <LoaderCircle class="h-3.5 w-3.5 animate-spin text-[var(--text-muted)]" />
+        {activeTask.mode === 'max' ? 'Max research' : 'Deep research'}
         <span class="research-phase">{phaseLabel(activeTask.currentStep)}</span>
       </span>
       <span class="research-query">{activeTask.query}</span>
+
+      {#if activeTask.status === 'awaiting_input' && activeTask.questions?.length}
+        <div class="question-box">
+          {#each activeTask.questions as question (question.id)}
+            <label class="question-field" for={`research-question-${question.id}`}>
+              <span class="question-label">{question.question}</span>
+              {#if question.hint}
+                <span class="question-hint">{question.hint}</span>
+              {/if}
+              <input
+                id={`research-question-${question.id}`}
+                type="text"
+                class="question-input"
+                value={answers[question.id] || ''}
+                oninput={(event) => setAnswer(question.id, (event.currentTarget as HTMLInputElement).value)}
+                placeholder="Optional"
+              />
+            </label>
+          {/each}
+          <div class="question-actions">
+            <button class="question-btn" onclick={() => submitAnswers(true)}>
+              <SkipForward class="h-3.5 w-3.5" />
+              Skip & search
+            </button>
+            <button class="question-btn primary" onclick={() => submitAnswers(false)}>
+              <ArrowRight class="h-3.5 w-3.5" />
+              Apply answers
+            </button>
+          </div>
+        </div>
+      {/if}
     </div>
     <button class="stop-btn" onclick={stopActiveTask} aria-label="Stop" title="Stop">
       <Square class="h-3 w-3 fill-current" />
@@ -60,16 +116,6 @@
     gap: 0.625rem;
   }
 
-  .research-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    margin-top: 0.125rem;
-    color: var(--text-muted);
-  }
-
   .research-content {
     display: flex;
     flex-direction: column;
@@ -79,6 +125,9 @@
   }
 
   .research-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     font-size: 0.8125rem;
     font-weight: 500;
     color: var(--text);
@@ -114,6 +163,76 @@
 
   .stop-btn:hover {
     background: var(--surface-highlight);
+    color: var(--text);
+  }
+
+  .question-box {
+    margin-top: 0.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 0.65rem;
+    padding: 0.65rem;
+    display: grid;
+    gap: 0.55rem;
+  }
+
+  .question-field {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .question-label {
+    font-size: 0.76rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .question-hint {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+  }
+
+  .question-input {
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.76rem;
+    color: var(--text);
+    background: var(--surface-secondary);
+    outline: none;
+  }
+
+  .question-input:focus {
+    border-color: var(--border-strong);
+  }
+
+  .question-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+
+  .question-btn {
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    padding: 0.35rem 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .question-btn:hover {
+    color: var(--text);
+    border-color: var(--border-light);
+    background: var(--surface-highlight);
+  }
+
+  .question-btn.primary {
+    background: var(--surface);
+    border-color: var(--border-strong);
     color: var(--text);
   }
 </style>

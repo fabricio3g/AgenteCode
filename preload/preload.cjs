@@ -19,7 +19,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'count_tokens', 'build_context_budget', 'truncate_messages',
   'start_download_hf', 'get_download_jobs', 'cancel_download_job',
   'pause_download_job', 'clear_finished_downloads', 'remove_download_job',
-  'ingest_document', 'ingest_text', 'query_documents', 'list_rag_documents',
+  'ingest_document', 'ingest_text', 'ingest_text_fast', 'query_documents', 'list_rag_documents',
   'remove_rag_document', 'clear_rag_documents', 'has_rag_documents',
   'web_search', 'ingest_search_context', 'fetch_model_catalog',
   'search_hf_models', 'hf_repo_gguf', 'open_url_window', 'open_webviewer',
@@ -35,7 +35,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
   'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
-  'fetch_url_content'
+  'fetch_url_content', 'crawl_web'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

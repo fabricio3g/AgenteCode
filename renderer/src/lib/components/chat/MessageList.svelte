@@ -141,9 +141,7 @@
     background: linear-gradient(
       to bottom,
       var(--background) 0%,
-      color-mix(in srgb, var(--background) 70%, transparent) 40%,
-      color-mix(in srgb, var(--background) 20%, transparent) 70%,
-      transparent 100%
+      rgba(0,0,0,0) 100%
     );
   }
 
@@ -157,10 +155,7 @@
     opacity: 1;
     background: linear-gradient(
       to top,
-      var(--chat-bg, var(--background)) 0%,
-      color-mix(in srgb, var(--chat-bg, var(--background)) 85%, transparent) 25%,
-      color-mix(in srgb, var(--chat-bg, var(--background)) 50%, transparent) 50%,
-      color-mix(in srgb, var(--chat-bg, var(--background)) 20%, transparent) 75%,
+      var(--chat-bg) 0%,
       transparent 100%
     );
   }
@@ -173,15 +168,15 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    background: var(--surface);
     color: var(--text-secondary);
-    padding: 0.35rem 0.65rem;
+    padding: 0.4rem 0.75rem;
     font-size: 11px;
     font-weight: 600;
     box-shadow: var(--shadow-m);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(8px);
     transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
   }
 

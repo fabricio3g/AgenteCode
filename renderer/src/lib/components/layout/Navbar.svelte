@@ -111,26 +111,26 @@
 
 <style>
   .navbar {
-    background: transparent;
-  }
-
-  :global(.dark) .navbar {
     background: var(--background);
+    border-bottom: 1px solid var(--border-light);
   }
 
   .nav-btn {
     color: var(--text-muted);
     background: transparent;
-    transition: color 0.12s, background 0.12s;
+    border: 1px solid transparent;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
   }
 
   .nav-btn:hover {
     color: var(--text);
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .nav-btn.is-active {
     color: var(--text);
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
+    border-color: var(--border);
   }
 </style>

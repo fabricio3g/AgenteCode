@@ -79,10 +79,17 @@ export async function openWebviewer(url: string, title?: string): Promise<OpenWe
 
 export interface FetchUrlResult {
   url: string;
+  title?: string;
+  excerpt?: string;
   content: string;
+  links?: Array<{ text: string; url: string; domain: string; sameSite: boolean }>;
+  site_name?: string;
+  og_image?: string;
+  length?: number;
   status: number;
   error?: string;
   truncated?: boolean;
+  warning?: string;
 }
 
 export async function fetchUrlContent(url: string, maxBytes?: number): Promise<FetchUrlResult> {

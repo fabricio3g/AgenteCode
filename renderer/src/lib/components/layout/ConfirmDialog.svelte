@@ -37,7 +37,7 @@
     transition:fade={{ duration: 150 }}
   >
     <div
-      class="modal-surface w-full max-w-sm rounded-[1.5rem] border border-[var(--border)] p-5"
+      class="modal-surface w-full max-w-sm rounded-xl border border-[var(--border)] p-5"
       style="background:var(--surface); box-shadow:var(--shadow-xl);"
       transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
       role="dialog"
@@ -47,7 +47,7 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2 id="confirm-title" class="text-lg font-semibold text-[var(--text)]">
+      <h2 id="confirm-title" class="text-base font-semibold text-[var(--text)] font-serif tracking-tight">
         {confirmStore.options.title}
       </h2>
       <p class="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
@@ -56,7 +56,7 @@
       <div class="mt-5 flex justify-end gap-2">
         <button
           type="button"
-          class="cancel-btn rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-medium transition"
+          class="cancel-btn rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium transition"
           onclick={() => confirmStore.cancel()}
         >
           {confirmStore.options.cancelLabel || 'Cancel'}
@@ -64,7 +64,7 @@
         <button
           type="button"
           bind:this={confirmBtnEl}
-          class={`confirm-btn rounded-xl px-4 py-2 text-sm font-medium transition ${confirmStore.options.danger ? 'danger' : ''}`}
+          class={`confirm-btn rounded-lg px-4 py-2 text-sm font-medium transition ${confirmStore.options.danger ? 'danger' : ''}`}
           onclick={() => confirmStore.confirm()}
         >
           {confirmStore.options.confirmLabel || 'Confirm'}
@@ -78,23 +78,32 @@
   .cancel-btn {
     background: var(--surface);
     color: var(--text-secondary);
+    border-radius: var(--radius-s);
   }
   .cancel-btn:hover {
     background: var(--surface-highlight);
     color: var(--text);
+    border-color: var(--border-strong);
   }
   .confirm-btn {
     background: var(--primary);
     color: var(--primary-fg);
+    border-radius: var(--radius-s);
   }
   .confirm-btn:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+  .confirm-btn:active {
+    transform: scale(0.98);
   }
   .confirm-btn.danger {
     background: var(--error);
     color: white;
   }
   .confirm-btn.danger:hover {
-    background: color-mix(in srgb, var(--error) 85%, black);
+    opacity: 0.88;
+  }
+  .confirm-btn.danger:active {
+    transform: scale(0.98);
   }
 </style>

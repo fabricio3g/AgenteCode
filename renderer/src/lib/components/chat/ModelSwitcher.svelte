@@ -384,36 +384,46 @@
 <style>
   .model-trigger {
     background: transparent;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .model-trigger:hover {
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .model-dropdown {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow: var(--shadow-l);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xl);
   }
 
   .refresh-btn {
     color: var(--text-muted);
     background: transparent;
-    transition: color 0.12s, background 0.12s;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    transition: all 0.12s;
   }
 
   .refresh-btn:hover {
     color: var(--text);
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .mode-toggle {
     background: var(--surface-highlight);
+    border-radius: var(--radius-m);
+    padding: 2px;
+    border: 1px solid var(--border-light);
   }
 
   .mode-btn {
     color: var(--text-tertiary);
+    border-radius: var(--radius-s);
   }
 
   .mode-btn:hover {
@@ -428,26 +438,36 @@
 
   .loading-indicator {
     background: var(--surface-highlight);
+    border-radius: var(--radius-m);
+    border: 1px solid var(--border-light);
   }
 
   .confirm-card {
     background: var(--surface-highlight);
     border: 1px solid var(--border);
+    border-radius: var(--radius-m);
   }
 
   .confirm-btn.primary {
     background: var(--primary);
     color: var(--primary-fg);
+    border-radius: var(--radius-s);
+    transition: opacity 0.12s, transform 0.1s;
   }
 
   .confirm-btn.primary:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+
+  .confirm-btn.primary:active {
+    transform: scale(0.98);
   }
 
   .confirm-btn.secondary {
     background: var(--surface);
     color: var(--text-secondary);
     border: 1px solid var(--border);
+    border-radius: var(--radius-s);
   }
 
   .confirm-btn.secondary:hover {
@@ -458,6 +478,7 @@
   .search-wrapper .search-input {
     background: var(--surface-highlight);
     border: 1px solid var(--border);
+    border-radius: var(--radius-m);
   }
 
   .search-wrapper .search-input:focus {
@@ -474,32 +495,45 @@
 
   .empty-icon {
     background: var(--surface-highlight);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-m);
   }
 
   .empty-btn {
     background: var(--primary);
     color: var(--primary-fg);
+    border-radius: var(--radius-s);
+    transition: opacity 0.12s, transform 0.1s;
   }
 
   .empty-btn:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+
+  .empty-btn:active {
+    transform: scale(0.98);
   }
 
   .model-item {
     background: transparent;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
   }
 
   .model-item:hover {
     background: var(--surface-highlight);
+    border-color: var(--border-light);
   }
 
   .model-item.is-loaded {
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
+    border-color: var(--border);
   }
 
   .live-badge {
     color: var(--live-indicator);
     background: var(--success-bg);
+    border-radius: var(--radius-sm);
   }
 
   :global(.dark) .live-badge {
@@ -511,6 +545,7 @@
     background: var(--surface);
     color: var(--text-secondary);
     border: 1px solid var(--border);
+    border-radius: var(--radius-s);
     transition: all 0.12s;
   }
 
@@ -534,12 +569,15 @@
   .hub-btn {
     background: var(--surface-highlight);
     color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-s);
     transition: all 0.12s;
   }
 
   .hub-btn:hover {
     background: var(--primary);
     color: var(--primary-fg);
+    border-color: var(--primary);
   }
 
   :global(.dark) .status-ping {

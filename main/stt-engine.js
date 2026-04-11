@@ -4,15 +4,46 @@ import os from 'node:os';
 import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.js';
 import { getAppPaths } from './index.js';
 
+const MAX_STT_AUDIO_BYTES = 8 * 1024 * 1024; // 8MB input cap
+const FFMPEG_TIMEOUT_MS = 45_000;
+const STT_PROVIDER_MODES = new Set(['local', 'api', 'auto']);
+const LEGACY_API_PROVIDER_NAMES = new Set([
+  'openai', 'openrouter', 'lmstudio', 'groq', 'mistral', 'anthropic', 'gemini', 'perplexity', 'xai'
+]);
+
+function resolveSttProviderMode(cfg, localAvailable) {
+  const raw = String(cfg?.stt?.provider || '').trim().toLowerCase();
+  if (STT_PROVIDER_MODES.has(raw)) return raw;
+
+  // Legacy configs stored provider names (e.g. "openai") in stt.provider.
+  // Prefer local when a local Whisper model exists, otherwise fall back to API.
+  if (LEGACY_API_PROVIDER_NAMES.has(raw)) {
+    return localAvailable ? 'local' : 'api';
+  }
+
+  return localAvailable ? 'local' : 'api';
+}
+
 // ── Lazy sherpa-onnx import (optional native dep) ───────────────────────────
 let _sherpa = null;
 
 async function getSherpa() {
   if (_sherpa) return _sherpa;
   try {
-    _sherpa = await import('sherpa-onnx-node');
+    const mod = await import('sherpa-onnx-node');
+    const resolved = (mod?.default && (mod.default.OfflineRecognizer || mod.default.readWave))
+      ? mod.default
+      : mod;
+
+    if (!resolved?.OfflineRecognizer) {
+      console.error('[stt-engine] sherpa-onnx-node loaded but OfflineRecognizer is missing');
+      return null;
+    }
+
+    _sherpa = resolved;
     return _sherpa;
-  } catch {
+  } catch (err) {
+    console.error('[stt-engine] Failed to load sherpa-onnx-node:', err?.message || err);
     return null; // graceful fallback if native module is missing
   }
 }
@@ -81,15 +112,33 @@ function checkLocalWhisper(quality) {
   const catalog = WHISPER_QUALITY_CATALOG[quality];
   if (!catalog) return { available: false };
 
+  const cfg = loadConfig();
   const paths = getAppPaths();
-  const modelDir = path.join(paths.modelsRoot, 'whisper', catalog.dir);
+  const configuredModelsDir = String(cfg?.llm?.local?.models_dir || '').trim();
+  const candidateDirs = [
+    configuredModelsDir ? path.join(configuredModelsDir, 'whisper', catalog.dir) : '',
+    configuredModelsDir ? path.join(configuredModelsDir, catalog.dir) : '', // legacy location
+    path.join(paths.modelsRoot, 'whisper', catalog.dir),
+    path.join(paths.modelsRoot, catalog.dir) // legacy location
+  ].filter(Boolean);
 
-  const encoderPath = path.join(modelDir, catalog.encoder);
-  const decoderPath = path.join(modelDir, catalog.decoder);
-  const tokensPath = path.join(modelDir, catalog.tokens);
+  for (const modelDir of candidateDirs) {
+    const encoderPath = path.join(modelDir, catalog.encoder);
+    const decoderPath = path.join(modelDir, catalog.decoder);
+    const tokensPath = path.join(modelDir, catalog.tokens);
 
-  const available = fs.existsSync(encoderPath) && fs.existsSync(decoderPath) && fs.existsSync(tokensPath);
-  return { available, modelDir, catalog };
+    const available = fs.existsSync(encoderPath) && fs.existsSync(decoderPath) && fs.existsSync(tokensPath);
+    if (available) {
+      return { available: true, modelDir, catalog, searchedDirs: candidateDirs };
+    }
+  }
+
+  return {
+    available: false,
+    modelDir: candidateDirs[0] || path.join(paths.modelsRoot, 'whisper', catalog.dir),
+    catalog,
+    searchedDirs: candidateDirs
+  };
 }
 
 /**
@@ -103,8 +152,9 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
-  const inputFile = path.join(tmpDir, `input-${Date.now()}.${ext}`);
-  const outputFile = path.join(tmpDir, `output-${Date.now()}.wav`);
+  const token = `${Date.now()}-${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
+  const inputFile = path.join(tmpDir, `input-${token}.${ext}`);
+  const outputFile = path.join(tmpDir, `output-${token}.wav`);
 
   try {
     fs.writeFileSync(inputFile, audioBytes);
@@ -117,7 +167,7 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
       '-f', 'wav',
       '-y',
       outputFile
-    ], { stdio: 'pipe', timeout: 30000 });
+    ], { stdio: 'pipe', timeout: FFMPEG_TIMEOUT_MS });
 
     // Read the WAV file using sherpa-onnx's readWave (which returns Float32 samples)
     const sherpa = await getSherpa();
@@ -129,10 +179,45 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
     // Fallback: manually parse WAV
     const wavBuffer = fs.readFileSync(outputFile);
     return parseWavToFloat32(wavBuffer);
+  } catch (err) {
+    if (ext === 'wav') {
+      try {
+        return parseWavToFloat32(audioBytes);
+      } catch {
+        // ignored - handled below with detailed ffmpeg error
+      }
+    }
+    const stderr = err?.stderr ? String(err.stderr) : '';
+    const detail = stderr.trim() || err?.message || 'unknown ffmpeg decode failure';
+    throw new Error(`Unable to decode recorded audio (${mimeType}). ${detail}`);
   } finally {
     try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
     try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
   }
+}
+
+function normalizeAudioBytes({ audio_base64, audio_bytes }) {
+  if (typeof audio_base64 === 'string' && audio_base64.length > 0) {
+    return Buffer.from(audio_base64, 'base64');
+  }
+
+  if (audio_bytes instanceof Uint8Array || audio_bytes instanceof ArrayBuffer || Buffer.isBuffer(audio_bytes)) {
+    // Force a JS-owned copy to avoid Electron "External buffers are not allowed" errors.
+    // IPC-transferred Uint8Arrays use external backing stores that Node fs.writeFileSync
+    // cannot access directly. We allocate a fresh Buffer and memcpy the data.
+    const view = audio_bytes instanceof Uint8Array
+      ? audio_bytes
+      : (audio_bytes instanceof ArrayBuffer ? new Uint8Array(audio_bytes) : new Uint8Array(audio_bytes.buffer, audio_bytes.byteOffset, audio_bytes.byteLength));
+    const copy = Buffer.alloc(view.byteLength);
+    copy.set(view);
+    return copy;
+  }
+
+  if (Array.isArray(audio_bytes)) {
+    return Buffer.from(audio_bytes);
+  }
+
+  throw new Error('audio_base64 or audio_bytes is required');
 }
 
 /**
@@ -207,26 +292,14 @@ async function transcribeApi(audioBytes, mimeType) {
 
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
 
-  const boundary = `----talamolm-stt-${Date.now().toString(16)}`;
-  const preamble = Buffer.from(
-    `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="model"\r\n\r\n` +
-    `${sttModel}\r\n` +
-    `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="file"; filename="recording.${ext}"\r\n` +
-    `Content-Type: ${mimeType}\r\n\r\n`
-  );
-  const closing = Buffer.from(`\r\n--${boundary}--\r\n`);
-  const body = Buffer.concat([preamble, audioBytes, closing]);
+  const form = new FormData();
+  form.append('model', sttModel);
+  form.append('file', new Blob([audioBytes], { type: mimeType }), `recording.${ext}`);
 
   const resp = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      ...headers,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      'Content-Length': String(body.length)
-    },
-    body
+    headers,
+    body: form
   });
 
   if (!resp.ok) {
@@ -247,33 +320,57 @@ async function transcribeApi(audioBytes, mimeType) {
  * Prefers local Whisper model if available; falls back to API.
  *
  * @param {object} args
- * @param {string} args.audio_base64  - Base64-encoded audio data
+ * @param {string} [args.audio_base64]  - Base64-encoded audio data
+ * @param {Uint8Array|ArrayBuffer|number[]} [args.audio_bytes] - Raw audio bytes
  * @param {string} [args.mime_type]   - MIME type (default: 'audio/webm')
  * @returns {Promise<{ text: string }>}
  */
-export async function transcribeAudio({ audio_base64, mime_type = 'audio/webm' }) {
-  if (!audio_base64 || typeof audio_base64 !== 'string') {
-    throw new Error('audio_base64 is required');
+export async function transcribeAudio(args = {}) {
+  const mime_type = args?.mime_type || 'audio/webm';
+  const audioBytes = normalizeAudioBytes(args);
+  if (!audioBytes?.length) {
+    throw new Error('Recorded audio is empty');
+  }
+  if (audioBytes.length > MAX_STT_AUDIO_BYTES) {
+    throw new Error('Recording is too long. Please keep voice messages under about 30 seconds.');
   }
 
   const cfg = loadConfig();
   const quality = cfg.stt?.whisper_quality || 'base';
-  const audioBytes = Buffer.from(audio_base64, 'base64');
 
-  // Try local Whisper first
-  const { available } = checkLocalWhisper(quality);
-  if (available) {
+  const localWhisper = checkLocalWhisper(quality);
+  const { available } = localWhisper;
+  const sttProvider = resolveSttProviderMode(cfg, available);
+  const sherpa = await getSherpa();
+
+  if (sttProvider === 'local') {
+    if (!available) {
+      const lookedIn = (localWhisper.searchedDirs || []).slice(0, 3).join(', ');
+      throw new Error(`Local Whisper model "${quality}" is not downloaded. Open Model Hub → Whisper to install it.${lookedIn ? ` Looked in: ${lookedIn}` : ''}`);
+    }
+    if (!sherpa) {
+      throw new Error('Local Whisper runtime is unavailable (sherpa-onnx-node failed to load). Run npm install/rebuild and restart the app.');
+    }
     try {
-      const sherpa = await getSherpa();
-      if (sherpa) {
-        return await transcribeLocal(audioBytes, mime_type, quality);
-      }
+      return await transcribeLocal(audioBytes, mime_type, quality);
+    } catch (err) {
+      throw new Error(`Local transcription failed: ${err?.message || err}`);
+    }
+  }
+
+  if (sttProvider === 'api') {
+    return await transcribeApi(audioBytes, mime_type);
+  }
+
+  // auto mode: prefer local, then fallback to API
+  if (available && sherpa) {
+    try {
+      return await transcribeLocal(audioBytes, mime_type, quality);
     } catch (err) {
       console.error('[stt-engine] Local transcription failed, falling back to API:', err?.message || err);
     }
   }
 
-  // Fall back to API transcription
   return await transcribeApi(audioBytes, mime_type);
 }
 
@@ -284,15 +381,23 @@ export function getSttStatus() {
   const cfg = loadConfig();
   const quality = cfg.stt?.whisper_quality || 'base';
   const { available } = checkLocalWhisper(quality);
+  const sttProvider = resolveSttProviderMode(cfg, available);
 
   const providerName = cfg.llm?.provider || 'openai';
   const provider = cfg.llm?.providers?.[providerName] || {};
   const hasApiKey = !!(provider.api_key && provider.api_key !== '***');
 
+  const usingLocal = sttProvider === 'local' || (sttProvider === 'auto' && available);
+  const ready = sttProvider === 'api'
+    ? hasApiKey
+    : sttProvider === 'local'
+      ? available
+      : (available || hasApiKey);
+
   return {
-    provider: available ? 'local' : providerName,
-    model: available ? `whisper-${quality}` : (cfg.stt?.model || 'whisper-1'),
-    ready: available || hasApiKey,
+    provider: usingLocal ? 'local' : providerName,
+    model: usingLocal ? `whisper-${quality}` : (cfg.stt?.model || 'whisper-1'),
+    ready,
     whisper_quality: quality,
     local_available: available,
     loaded: !!_recognizer,

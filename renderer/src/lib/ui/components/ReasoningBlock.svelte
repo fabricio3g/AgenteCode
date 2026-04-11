@@ -44,7 +44,7 @@
 {#if reasoning}
   <div class="reasoning-block mb-4 w-full">
     <button
-      class="reasoning-toggle flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition"
+      class="reasoning-toggle flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition"
       onclick={toggle}
     >
       <Brain class={`h-4 w-4 shrink-0 ${status === 'streaming' ? 'animate-pulse' : ''}`} />
@@ -60,7 +60,7 @@
     </button>
 
     {#if open}
-      <div class="reasoning-content mt-1 overflow-hidden rounded-xl" transition:slide={{ duration: 200, easing: quintOut }}>
+      <div class="reasoning-content mt-1 overflow-hidden rounded-lg" transition:slide={{ duration: 200, easing: quintOut }}>
         <div bind:this={reasoningLiveEl} class="max-h-64 overflow-y-auto px-4 py-3">
           <p class="whitespace-pre-wrap text-sm leading-relaxed">{reasoning}</p>
         </div>
@@ -74,15 +74,18 @@
     color: var(--text-secondary);
     background: var(--surface);
     border: 1px solid var(--border);
+    border-radius: var(--radius-m);
   }
 
   .reasoning-toggle:hover {
     background: var(--surface-highlight);
+    border-color: var(--border-strong);
   }
 
   .reasoning-content {
     background: var(--surface-highlight);
     border: 1px solid var(--border);
+    border-radius: var(--radius-m);
   }
 
   .reasoning-content p {

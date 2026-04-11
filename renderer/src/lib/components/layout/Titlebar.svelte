@@ -18,7 +18,7 @@
 </script>
 
 <div
-  class="titlebar flex h-9 shrink-0 select-none items-center justify-between"
+  class="titlebar flex h-9 shrink-0 select-none items-center justify-between border-b border-[var(--border-light)]"
   style="-webkit-app-region: drag; background: var(--background);"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"

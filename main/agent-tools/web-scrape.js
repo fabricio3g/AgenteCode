@@ -1,21 +1,24 @@
 import { AgentTool } from './base.js';
+import { scrapeUrlStructured } from '../web-scraper.js';
 
 export class WebScrapeTool extends AgentTool {
   name = 'web_scrape';
-  description = 'Scrape a URL and return text content';
+  description = 'Scrape a URL and return clean text with link metadata for crawling';
   parameters = {
     type: 'object',
     properties: {
       url: { type: 'string', description: 'The URL to scrape' },
-      max_length: { type: 'number', description: 'Maximum content length' }
+      max_length: { type: 'number', description: 'Maximum content length' },
+      max_links: { type: 'number', description: 'Maximum links returned for crawling' }
     },
     required: ['url']
   };
 
-  async execute({ url, max_length }) {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return { error: `HTTP ${res.status}` };
-    const text = await res.text();
-    return { content: max_length ? text.slice(0, max_length) : text };
+  async execute({ url, max_length, max_links }) {
+    return scrapeUrlStructured({
+      url,
+      maxLength: max_length,
+      maxLinks: max_links
+    });
   }
 }

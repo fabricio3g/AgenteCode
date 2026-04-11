@@ -502,14 +502,19 @@ async function executeTool(
         if (isTauri()) {
           const res = await fetchUrlContent(url, 50000);
           if (res.error) return fail(res.error);
-          let content = res.content || '';
-          const htmlText = content.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-          content = htmlText.slice(0, 12000);
-          return ok({ url: res.url, content, status: res.status, truncated: res.truncated });
+          const content = String(res.content || '').slice(0, 12000);
+          return ok({
+            url: res.url,
+            title: res.title,
+            excerpt: res.excerpt,
+            content,
+            links: (res.links || []).slice(0, 80),
+            site_name: res.site_name,
+            og_image: res.og_image,
+            status: res.status,
+            truncated: res.truncated,
+            warning: res.warning
+          });
         }
         const res = await webSearch({ query: url, deep: true, mode: 'deep' });
         const content = (res.results || []).filter(r => r.url === url || r.snippet)

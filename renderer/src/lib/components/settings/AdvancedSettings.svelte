@@ -56,15 +56,15 @@
   <!-- Backend mode pill toggle -->
   <div class="space-y-1.5">
     <span class="text-sm font-medium text-[var(--text-secondary)]">Backend mode</span>
-    <div class="flex w-full rounded-xl bg-[var(--surface-highlight)] p-1">
+    <div class="flex w-full rounded-lg bg-[var(--surface-highlight)] p-1 border border-[var(--border-light)]">
       <button
-        class={`flex-1 rounded-lg py-2 text-sm font-medium transition ${backendMode === 'api' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+        class={`flex-1 rounded-md py-2 text-sm font-medium transition ${backendMode === 'api' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
         onclick={() => (backendMode = 'api')}
       >
         API Provider
       </button>
       <button
-        class={`flex-1 rounded-lg py-2 text-sm font-medium transition ${backendMode === 'local' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'} ${!isTauri() ? 'cursor-not-allowed opacity-40' : ''}`}
+        class={`flex-1 rounded-md py-2 text-sm font-medium transition ${backendMode === 'local' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'} ${!isTauri() ? 'cursor-not-allowed opacity-40' : ''}`}
         onclick={() => isTauri() && (backendMode = 'local')}
         title={!isTauri() ? 'Requires desktop app' : ''}
       >
