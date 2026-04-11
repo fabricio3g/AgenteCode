@@ -739,8 +739,7 @@ class AppStore {
       });
       this.localModelLoadProgress = 88;
       this.localModelLoadPhase = 'Refreshing local model state';
-      await Promise.all([modelsStore.refresh(), this.refreshModels()]);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await modelsStore.refreshIndex();
       await modelsStore.refreshStatus();
       this.localModelLoadProgress = 100;
       this.localModelLoadPhase = 'Model ready';
@@ -810,11 +809,14 @@ class AppStore {
     void withTimeout(this.refreshModels(), 2500, undefined);
     if (isTauri()) {
       void Promise.allSettled([
-        withTimeout(modelsStore.refresh(), 2500, undefined),
+        withTimeout(modelsStore.refreshIndex(), 2500, undefined),
+        withTimeout(modelsStore.refreshStatus(), 2500, undefined),
         withTimeout(downloadsStore.refresh(), 2500, undefined),
         withTimeout(this.refreshRagDocuments(), 2500, undefined)
       ]);
-      modelsStore.startPolling(3000);
+      void modelsStore.initPushEvents().then(() => {
+        modelsStore.startPolling(3000);
+      });
     }
 
     // Check first-run onboarding
@@ -1652,20 +1654,30 @@ Design rules:
 
     this.appendMessage(assistantMessage);
 
-    // SVELTE 5 REACTIVITY FIX: assistantMessage is a plain JS object. After appendMessage()
-    // puts it in the $state array, Svelte wraps it in a reactive proxy — but the LOCAL
-    // variable still points to the original unwrapped object. Mutations via
-    // `assistantMessage.prop = value` bypass the proxy, so the UI never updates.
-    // Solution: after every mutation, REPLACE the slot in the reactive array with a fresh
-    // spread copy. This creates a new object reference that Svelte 5 detects as changed.
+    const SYNC_INTERVAL_MS = 50;
+    let lastSyncTime = 0;
+    let pendingSync = false;
     const syncMsg = () => {
+      const now = Date.now();
+      if (now - lastSyncTime < SYNC_INTERVAL_MS) {
+        pendingSync = true;
+        return;
+      }
+      pendingSync = false;
+      lastSyncTime = now;
       const chat = this.findChat(targetChatId);
       if (!chat) return;
       const idx = chat.messages.findIndex((m) => m.id === assistantMessage.id);
       if (idx >= 0) {
         chat.messages[idx] = { ...assistantMessage };
         chat.updatedAt = Date.now();
-        this.touchChats();
+      }
+    };
+    const flushPendingSync = () => {
+      if (pendingSync) {
+        pendingSync = false;
+        lastSyncTime = 0;
+        syncMsg();
       }
     };
 
@@ -1995,6 +2007,7 @@ Design rules:
 
       assistantMessage.done = true;
       assistantMessage.status = 'idle';
+      flushPendingSync();
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       assistantMessage.metadata = {
@@ -2548,7 +2561,7 @@ Design rules:
     await saveAppConfig(next);
     await this.refreshModels();
     if (isTauri() && next.llm?.backend_mode === 'local') {
-      await modelsStore.refresh();
+      await modelsStore.refreshStatus();
     }
   }
 
@@ -2568,7 +2581,7 @@ Design rules:
     await saveAppConfig(next);
     await this.refreshModels();
     if (isTauri()) {
-      await modelsStore.refresh();
+      await modelsStore.refreshStatus();
     }
   }
 
@@ -2590,7 +2603,7 @@ Design rules:
     await saveAppConfig(next);
     await this.refreshModels();
     if (isTauri()) {
-      await modelsStore.refresh();
+      await modelsStore.refreshStatus();
     }
   }
 
@@ -2629,7 +2642,7 @@ Design rules:
     this.config = next;
     await saveAppConfig(next);
     if (isTauri()) {
-      await modelsStore.refresh();
+      await modelsStore.refreshStatus();
     }
   }
 
@@ -2638,7 +2651,7 @@ Design rules:
     await stopLlama();
     this.localModelActive = null;
     await new Promise((resolve) => setTimeout(resolve, 300));
-    await modelsStore.refresh();
+    await modelsStore.refreshStatus();
     await this.refreshModels();
   }
 

@@ -21,12 +21,34 @@
   let { content, status = 'idle', metadataError = false, sources = [], onAction }: Props = $props();
 
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
+  const RENDER_THROTTLE_MS = 60;
+  let displayedContent = $state(content);
+  let pendingContent = $state(content);
+  let renderTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const sanitizedContent = $derived(sanitizeAssistantArtifacts(content));
+  $effect(() => {
+    pendingContent = content;
+    if (status !== 'streaming') {
+      if (renderTimer !== undefined) {
+        clearTimeout(renderTimer);
+        renderTimer = undefined;
+      }
+      displayedContent = content;
+      return;
+    }
+    if (renderTimer !== undefined) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = undefined;
+      displayedContent = pendingContent;
+    }, RENDER_THROTTLE_MS);
+  });
+
+  const sanitizedContent = $derived(sanitizeAssistantArtifacts(displayedContent));
   const contentSegments = $derived(parseContentSegments(sanitizedContent));
   const hasCharts = $derived(contentSegments.some((segment) => segment.kind === 'chart'));
   const rendersUI = $derived(hasUIContent(sanitizedContent));
   const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
+
   const markdownHtml = $derived(renderMarkdown(markdownSource));
 
   function replaceCitations(container: HTMLElement, refs: NonNullable<ChatMessage['sources']>) {
@@ -81,9 +103,10 @@
     replaceCitations(contentEl, sources);
   });
 
+  const readyForPostRender = $derived(status !== 'streaming' && markdownSource.length > 0);
+
   $effect(() => {
-    if (!contentEl || rendersUI) return;
-    void markdownSource;
+    if (!contentEl || rendersUI || !readyForPostRender) return;
     const pres = contentEl.querySelectorAll('pre');
     for (const pre of pres) {
       if (pre.querySelector('.copy-btn')) continue;
@@ -105,8 +128,7 @@
   });
 
   $effect(() => {
-    if (!contentEl || rendersUI) return;
-    void markdownSource;
+    if (!contentEl || rendersUI || !readyForPostRender) return;
     const cleanup = observeLazyHighlight(contentEl);
     return cleanup;
   });
@@ -116,15 +138,7 @@
   {#if rendersUI}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
   {:else if hasCharts}
-    {#each contentSegments as segment, index (index)}
-      {#if segment.kind === 'text'}
-        {#if segment.content.trim()}
-          <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html renderMarkdown(segment.content)}</div>
-        {/if}
-      {:else if segment.kind === 'chart'}
-        <ChartBlock type={segment.type} title={segment.title} xlabel={segment.xlabel} ylabel={segment.ylabel} raw={segment.raw} />
-      {/if}
-    {/each}
+    <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html markdownHtml}</div>
   {:else if content}
     <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html markdownHtml}</div>
   {/if}

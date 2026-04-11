@@ -1,5 +1,5 @@
 import type { SearchResult } from '$lib/types/tauri';
-import { completeAssistantReply, extractJsonFromResponse, type RequestMessage, validateStructuredOutput } from '$lib/services/chat-api';
+import { completeAssistantReply, extractJsonFromResponse, type RequestMessage } from '$lib/services/chat-api';
 import { listen, invoke, isTauri } from '$lib/services/tauri';
 import { webSearch } from '$lib/services/search';
 
@@ -9,6 +9,8 @@ export interface ResearchQuestion {
   id: string;
   question: string;
   hint?: string;
+  suggestedAnswer?: string;
+  suggestedAnswerSource?: 'ai' | 'fallback';
 }
 
 export interface DeepResearchTask {
@@ -42,30 +44,7 @@ export interface DeepResearchTask {
 
 const STORAGE_KEY = 'talamolm_deep_research_tasks_v2';
 
-const QUESTION_SCHEMA = {
-  name: 'research_questions',
-  description: 'Generate clarifying questions before deep research.',
-  schema: {
-    type: 'object',
-    properties: {
-      questions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            question: { type: 'string' },
-            hint: { type: 'string' }
-          },
-          required: ['question']
-        }
-      }
-    },
-    required: ['questions']
-  }
-} as const;
-
-const QUESTION_TIMEOUT_MS = 1800;
-const QUESTION_TOKEN_THRESHOLD = 14;
+const QUESTION_TIMEOUT_MS = 3200;
 const questionCache = new Map<string, { questions: ResearchQuestion[]; expires: number }>();
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -91,19 +70,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Pr
   });
 }
 
-function tokenCount(text: string) {
-  return normalizeWhitespace(text).toLowerCase().match(/[a-z0-9]+/g)?.length || 0;
-}
-
-function shouldAskClarifyingQuestions(query: string, mode: 'deep' | 'max') {
-  const tokens = tokenCount(query);
-  if (tokens === 0) return false;
-  // Keep UX fast: ask only when query is broad/short.
-  if (tokens > QUESTION_TOKEN_THRESHOLD) return false;
-  if (mode === 'max') return true;
-  return tokens <= 10;
-}
-
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -120,6 +86,40 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 function normalizeWhitespace(text: unknown) {
   return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function parseGeneratedQuestions(data: unknown): ResearchQuestion[] {
+  const entries = Array.isArray((data as any)?.questions) ? (data as any).questions : [];
+  return entries
+    .map((entry: any, index: number) => ({
+      id: `rq_${index + 1}`,
+      question: normalizeWhitespace(entry?.q ?? entry?.question),
+      hint: normalizeWhitespace(entry?.h ?? entry?.hint),
+      suggestedAnswer: normalizeWhitespace(entry?.a ?? entry?.answer ?? entry?.suggested_answer ?? entry?.suggestedAnswer),
+      suggestedAnswerSource: 'ai' as const
+    }))
+    .filter((entry: ResearchQuestion) => entry.question && entry.suggestedAnswer)
+    .slice(0, 3);
+}
+
+function fallbackQuestionsFromQuery(query: string): ResearchQuestion[] {
+  const topic = normalizeWhitespace(query).slice(0, 100) || 'this topic';
+  return [
+    {
+      id: 'rq_1',
+      question: 'What angle should we prioritize?',
+      hint: 'e.g., overview, technical depth, business impact',
+      suggestedAnswer: `Start with an overview of ${topic}`,
+      suggestedAnswerSource: 'fallback'
+    },
+    {
+      id: 'rq_2',
+      question: 'What time scope should we focus on?',
+      hint: 'e.g., latest 12 months, historical background',
+      suggestedAnswer: 'Focus on recent developments with brief historical context',
+      suggestedAnswerSource: 'fallback'
+    }
+  ];
 }
 
 function persistTasks(tasks: DeepResearchTask[]) {
@@ -210,58 +210,38 @@ async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max'): Prom
 }
 
 async function generateQuestions(mainQuery: string, mode: 'deep' | 'max'): Promise<ResearchQuestion[]> {
-  if (!shouldAskClarifyingQuestions(mainQuery, mode)) return [];
-
   const cacheKey = `${mode}:${normalizeWhitespace(mainQuery).toLowerCase()}`;
   const cached = questionCache.get(cacheKey);
-  if (cached && Date.now() < cached.expires) {
-    return cached.questions;
-  }
+  if (cached && Date.now() < cached.expires) return cached.questions;
 
-  const messages: RequestMessage[] = [
-    {
-      role: 'system',
-      content: [
-        'Generate 1-3 concise clarifying questions before deep web research.',
-        'Focus on scope, timeframe, geography, constraints, or comparison criteria.',
-        'If query is specific, ask at most one optional refinement question.',
-        'Return JSON only: {"questions":[{"question":"...","hint":"..."}]}'
-      ].join(' ')
-    },
-    {
-      role: 'user',
-      content: `Mode: ${mode}\nQuery: ${mainQuery}`
-    }
-  ];
-
-  try {
-    const completion = await withTimeout(completeAssistantReply({ messages }), QUESTION_TIMEOUT_MS, {
-      content: '',
-      reasoning: ''
-    });
+  async function request(prompt: string): Promise<ResearchQuestion[]> {
+    const messages: RequestMessage[] = [
+      { role: 'system', content: prompt },
+      { role: 'user', content: `Mode: ${mode}\nQuery: ${mainQuery}` }
+    ];
+    const completion = await withTimeout(completeAssistantReply({ messages }), QUESTION_TIMEOUT_MS, { content: '', reasoning: '' });
     if (!completion?.content) return [];
     const parsed = extractJsonFromResponse(completion.content || '');
     if (!parsed.parsed || !parsed.data) return [];
-    const validated = validateStructuredOutput<{ questions: Array<{ question: string; hint?: string }> }>(parsed.data, QUESTION_SCHEMA as any);
-    if (!validated.valid) return [];
-    const questionEntries = Array.isArray(validated.data?.questions) ? validated.data.questions : [];
-    const generated = questionEntries
-      .map((entry: any, index: number) => ({
-        id: `rq_${index + 1}`,
-        question: normalizeWhitespace(entry?.question),
-        hint: normalizeWhitespace(entry?.hint)
-      }))
-      .filter((entry: ResearchQuestion) => entry.question)
-      .slice(0, 3);
+    return parseGeneratedQuestions(parsed.data);
+  }
+
+  try {
+    const generated = await request('Generate 2-3 clarifying questions for the query. For each question provide a query-specific suggested answer. Return JSON only: {"questions":[{"q":"...","h":"...","a":"..."}]}');
     if (generated.length) {
-      questionCache.set(cacheKey, {
-        questions: generated,
-        expires: Date.now() + (5 * 60 * 1000)
-      });
+      questionCache.set(cacheKey, { questions: generated, expires: Date.now() + (5 * 60 * 1000) });
+      return generated;
     }
-    return generated;
+
+    const retry = await request('Retry with strict format. Output JSON only, no markdown, no extra text: {"questions":[{"q":"...","h":"...","a":"..."}]}. Ensure each answer is tailored to the user query.');
+    if (retry.length) {
+      questionCache.set(cacheKey, { questions: retry, expires: Date.now() + (5 * 60 * 1000) });
+      return retry;
+    }
+
+    return fallbackQuestionsFromQuery(mainQuery);
   } catch {
-    return [];
+    return fallbackQuestionsFromQuery(mainQuery);
   }
 }
 
@@ -388,6 +368,7 @@ class DeepResearchStore {
     this.init();
 
     const questions = await generateQuestions(args.query, args.mode);
+    const isAwaitingInput = questions.length > 0;
     const task: DeepResearchTask = {
       id: createId('research'),
       chatId: args.chatId,
@@ -395,14 +376,14 @@ class DeepResearchStore {
       chatTitle: args.chatTitle,
       query: args.query,
       mode: args.mode,
-      status: questions.length ? 'awaiting_input' : 'queued',
+      status: isAwaitingInput ? 'awaiting_input' : 'queued',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      currentStep: questions.length ? 'awaiting_input' : 'queued',
-      detail: questions.length ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
+      currentStep: isAwaitingInput ? 'awaiting_input' : 'queued',
+      detail: isAwaitingInput ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
       progressLog: [{
-        step: questions.length ? 'awaiting_input' : 'queued',
-        detail: questions.length ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
+        step: isAwaitingInput ? 'awaiting_input' : 'queued',
+        detail: isAwaitingInput ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
         at: Date.now()
       }],
       providerUsed: null,
@@ -417,6 +398,7 @@ class DeepResearchStore {
     };
 
     this.tasks = [task, ...this.tasks].slice(0, 20);
+    if (isAwaitingInput) this.activeTaskId = task.id;
     persistTasks(this.tasks);
 
     const promise = new Promise<DeepResearchTask>((resolve, reject) => {
@@ -429,10 +411,15 @@ class DeepResearchStore {
   }
 
   private async processQueue() {
-    if (this.activeTaskId || !this.queue.length) return;
-    const taskId = this.queue.shift();
-    if (!taskId) return;
-    this.activeTaskId = taskId;
+    if (this.queue.length === 0) return;
+    
+    let taskId = this.activeTaskId;
+    if (!taskId) {
+      const next = this.queue.shift();
+      if (!next) return;
+      taskId = next;
+      this.activeTaskId = taskId;
+    }
 
     try {
       let task = this.getTask(taskId);
@@ -440,10 +427,10 @@ class DeepResearchStore {
 
       if (task.status === 'awaiting_input') {
         await this.waitForTaskInput(taskId);
+        task = this.getTask(taskId);
+        if (!task || task.status === 'cancelled') return;
+        if (task.status !== 'searching') return;
       }
-
-      task = this.getTask(taskId);
-      if (!task || task.status === 'cancelled') return;
 
       this.updateTask(taskId, (entry) => ({
         ...entry,

@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { ArrowRight, LoaderCircle, SkipForward, Square } from 'lucide-svelte';
-  import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
+  import { cancelDeepResearchTask, deepResearchStore, type ResearchQuestion } from '$lib/stores/deep-research.svelte';
 
   interface Props {
     messageId?: string | null;
@@ -25,7 +25,7 @@
     }
     const next: Record<string, string> = {};
     for (const question of activeTask.questions || []) {
-      next[question.id] = activeTask.answers?.[question.id] || '';
+      next[question.id] = activeTask.answers?.[question.id] || question.suggestedAnswer || '';
     }
     answers = next;
   });
@@ -60,6 +60,10 @@
     if (!activeTask) return;
     deepResearchStore.submitTaskAnswers(activeTask.id, answers, skip);
   }
+
+  function isAiSuggested(question: ResearchQuestion) {
+    return question.suggestedAnswerSource === 'ai' && !!question.suggestedAnswer;
+  }
 </script>
 
 {#if activeTask}
@@ -76,18 +80,23 @@
         <div class="question-box">
           {#each activeTask.questions as question (question.id)}
             <label class="question-field" for={`research-question-${question.id}`}>
-              <span class="question-label">{question.question}</span>
+              <span class="question-header">
+                <span class="question-label">{question.question}</span>
+                {#if isAiSuggested(question)}
+                  <span class="suggestion-badge">AI suggested</span>
+                {/if}
+              </span>
               {#if question.hint}
                 <span class="question-hint">{question.hint}</span>
               {/if}
-              <input
+              <textarea
                 id={`research-question-${question.id}`}
-                type="text"
                 class="question-input"
+                rows={2}
                 value={answers[question.id] || ''}
-                oninput={(event) => setAnswer(question.id, (event.currentTarget as HTMLInputElement).value)}
+                oninput={(event) => setAnswer(question.id, (event.currentTarget as HTMLTextAreaElement).value)}
                 placeholder="Optional"
-              />
+              ></textarea>
             </label>
           {/each}
           <div class="question-actions">
@@ -187,6 +196,24 @@
     font-weight: 600;
   }
 
+  .question-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .suggestion-badge {
+    font-size: 0.62rem;
+    line-height: 1;
+    color: var(--text-muted);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    padding: 0.2rem 0.45rem;
+    background: var(--surface-secondary);
+    white-space: nowrap;
+  }
+
   .question-hint {
     font-size: 0.7rem;
     color: var(--text-muted);
@@ -200,6 +227,10 @@
     color: var(--text);
     background: var(--surface-secondary);
     outline: none;
+    width: 100%;
+    min-height: 2.3rem;
+    resize: vertical;
+    line-height: 1.35;
   }
 
   .question-input:focus {

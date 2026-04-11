@@ -93,19 +93,6 @@ class VectorStore {
     return true;
   }
 
-  async listDocuments(chatId) {
-    const table = await this.getTable(chatId);
-    if (!table) return [];
-    const rows = await table.query().select(['doc_id', 'source', 'file_type']).limit(10000).toArray();
-    const docs = new Map();
-    for (const row of rows) {
-      if (!docs.has(row.doc_id)) {
-        docs.set(row.doc_id, { id: row.doc_id, source: row.source, file_type: row.file_type, chunk_count: 0 });
-      }
-      docs.get(row.doc_id).chunk_count++;
-    }
-    return Array.from(docs.values());
-  }
 }
 
 export const vectorStore = new VectorStore();

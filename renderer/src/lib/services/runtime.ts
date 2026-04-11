@@ -3,6 +3,7 @@ import type { LlamaConfig, ModelSession, RecommendedSettings, SupervisorEvent, S
 import { invoke, listen } from './tauri';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
+let lastLocalLoadSignature: string | null = null;
 
 export function resolveLocalBaseUrl(config?: AppConfig): string {
   const raw = config?.llm?.local?.base_url?.trim() || DEFAULT_LOCAL_BASE_URL;
@@ -24,6 +25,30 @@ export async function startLlama(config: LlamaConfig): Promise<string> {
 
 export async function stopLlama(): Promise<void> {
   await invoke<void>('stop_llama');
+  lastLocalLoadSignature = null;
+}
+
+function buildLocalLoadSignature(config: LlamaConfig): string {
+  return JSON.stringify({
+    model_path: config.model_path,
+    runtime_path: config.runtime_path || null,
+    backend_mode: config.backend_mode || 'auto',
+    context_length: config.context_length ?? null,
+    gpu_offload: config.gpu_offload ?? null,
+    cpu_threads: config.cpu_threads ?? null,
+    batch_size: config.batch_size ?? null,
+    flash_attention: config.flash_attention ?? null,
+    offload_kv_cache: config.offload_kv_cache ?? null,
+    mmap: config.mmap ?? null,
+    keep_in_memory: config.keep_in_memory ?? null,
+    seed: config.seed ?? null,
+    parallel: config.parallel ?? null,
+    rope_freq_base: config.rope_freq_base ?? null,
+    rope_freq_scale: config.rope_freq_scale ?? null,
+    cache_type_k: config.cache_type_k ?? null,
+    cache_type_v: config.cache_type_v ?? null,
+    mmproj_path: config.mmproj_path ?? null
+  });
 }
 
 export async function getSupervisorStatus(): Promise<SupervisorStatus> {
@@ -144,12 +169,6 @@ export async function loadLocalModel(args: {
 }): Promise<string> {
   const baseUrl = resolveLocalBaseUrl(args.config);
 
-  try {
-    await stopLlama();
-  } catch {
-    // ignore stop failures before restart
-  }
-
   const settings = await getRecommendedSettings(
     args.modelPath,
     args.contextLength ?? args.config.llm?.local?.context_length,
@@ -157,7 +176,6 @@ export async function loadLocalModel(args: {
     args.runtimePath || args.config.llm?.local?.runtime_path
   );
   const { host, port } = parseHostPort(baseUrl);
-
   const baseStartConfig: LlamaConfig = {
     model_path: args.modelPath,
     backend_mode: settings.backend,
@@ -180,6 +198,23 @@ export async function loadLocalModel(args: {
     runtime_path: args.runtimePath || args.config.llm?.local?.runtime_path,
     mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined
   };
+  const desiredSignature = buildLocalLoadSignature(baseStartConfig);
+
+  try {
+    const currentStatus = await getSupervisorStatus() as any;
+    const currentModelPath = currentStatus?.model_path || null;
+    if (currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
+      return baseUrl;
+    }
+  } catch {
+    // proceed with load if status check fails
+  }
+
+  try {
+    await stopLlama();
+  } catch {
+    // ignore stop failures before restart
+  }
 
   function isGpuOrRuntimeError(error: unknown) {
     const value = String((error as Error)?.message || error || '').toLowerCase();
@@ -194,6 +229,7 @@ export async function loadLocalModel(args: {
   let lastError: unknown = null;
   try {
     await startWithConfig(baseStartConfig);
+    lastLocalLoadSignature = desiredSignature;
     return baseUrl;
   } catch (error) {
     lastError = error;
@@ -205,6 +241,7 @@ export async function loadLocalModel(args: {
       delete retryConfig.runtime_path;
       await stopLlama().catch(() => {});
       await startWithConfig(retryConfig);
+      lastLocalLoadSignature = buildLocalLoadSignature(retryConfig);
       return baseUrl;
     } catch (error) {
       lastError = error;
@@ -224,6 +261,7 @@ export async function loadLocalModel(args: {
       };
       await stopLlama().catch(() => {});
       await startWithConfig(saferConfig);
+      lastLocalLoadSignature = buildLocalLoadSignature(saferConfig);
       return baseUrl;
     } catch (error) {
       lastError = error;
@@ -248,6 +286,7 @@ export async function loadLocalModel(args: {
     };
     await stopLlama().catch(() => {});
     await startWithConfig(cpuSafeConfig);
+    lastLocalLoadSignature = buildLocalLoadSignature(cpuSafeConfig);
     return baseUrl;
   }
 

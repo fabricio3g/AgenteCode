@@ -46,10 +46,19 @@ function collectGgufFilesRecursive(rootDir) {
   return out;
 }
 
-// Minimal GGUF header parser for metadata extraction
-const GGUF_MAGIC = 0x46554747; // "GGUF"
+const ggufMetaCache = new Map();
+const GGUF_META_CACHE_MAX = 500;
+const GGUF_MAGIC = 0x46554747;
+
+function getGgufMetaCacheKey(filePath, mtime) {
+  return `${filePath}:${mtime}`;
+}
 
 function readGgufMetadata(filePath) {
+  const stat = fs.statSync(filePath);
+  const cacheKey = getGgufMetaCacheKey(filePath, stat.mtimeMs);
+  if (ggufMetaCache.has(cacheKey)) return ggufMetaCache.get(cacheKey);
+
   const fd = fs.openSync(filePath, 'r');
   try {
     const headerBuf = Buffer.alloc(24);
@@ -70,9 +79,8 @@ function readGgufMetadata(filePath) {
     const contextLength = ggufContext?.context_length || guessContextLength(path.basename(filePath));
 
     const fileName = path.basename(filePath);
-    const stat = fs.statSync(filePath);
 
-    return {
+    const result = {
       architecture: ggufFields?.architecture || guessArchitecture(fileName),
       context_length: contextLength,
       context_length_source: ggufContext ? 'gguf' : 'filename_guess',
@@ -89,6 +97,13 @@ function readGgufMetadata(filePath) {
         ? ggufFields.chat_template_uses_tools
         : false
     };
+
+    if (ggufMetaCache.size >= GGUF_META_CACHE_MAX) {
+      const firstKey = ggufMetaCache.keys().next().value;
+      if (firstKey) ggufMetaCache.delete(firstKey);
+    }
+    ggufMetaCache.set(cacheKey, result);
+    return result;
   } finally {
     fs.closeSync(fd);
   }
@@ -229,12 +244,35 @@ export async function getModelsDirPath() {
 
 // Model index cache
 let modelIndexCache = [];
+let modelIndexSignature = '';
+
+function buildModelIndexSignature(modelsDir) {
+  const ggufFiles = collectGgufFilesRecursive(modelsDir);
+  let newestMtime = 0;
+  let totalSize = 0;
+  for (const fullPath of ggufFiles) {
+    try {
+      const stat = fs.statSync(fullPath);
+      newestMtime = Math.max(newestMtime, Number(stat.mtimeMs || 0));
+      totalSize += Number(stat.size || 0);
+    } catch {
+      // ignore unreadable entries in signature pass
+    }
+  }
+  return `${modelsDir}:${ggufFiles.length}:${Math.floor(newestMtime)}:${Math.floor(totalSize / 1024)}`;
+}
 
 export async function getIndexedModels() {
   return modelIndexCache;
 }
 
-export async function refreshModelIndex() {
+export async function refreshModelIndex({ force = false } = {}) {
+  const modelsDir = getModelsDir();
+  const signature = buildModelIndexSignature(modelsDir);
+  if (!force && modelIndexCache.length && signature === modelIndexSignature) {
+    return modelIndexCache.length;
+  }
+
   const { models } = await getLocalModels({ limit: 10000 });
   modelIndexCache = models.map(m => ({
     id: m.id,
@@ -252,11 +290,13 @@ export async function refreshModelIndex() {
     indexed_at: Date.now(),
     cache_key: `${m.path}:${m.modified}`
   }));
+  modelIndexSignature = signature;
   return modelIndexCache.length;
 }
 
 export async function invalidateModelCache(modelPath) {
   modelIndexCache = modelIndexCache.filter(m => m.path !== modelPath);
+  modelIndexSignature = '';
 }
 
 /**

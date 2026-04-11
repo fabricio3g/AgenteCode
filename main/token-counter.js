@@ -1,5 +1,4 @@
 import { getLlamaStatus } from './llm-runner.js';
-import { calculateContextPressure } from './runtime-config-resolver.js';
 
 export async function countTokens(text, baseUrl) {
   const url = baseUrl || `http://127.0.0.1:${getLlamaStatus().port || 11435}`;
@@ -74,15 +73,3 @@ export function truncateMessages(messages, budget) {
   return [...systemMessages, ...kept];
 }
 
-export function getContextPressure(messages, config) {
-  const pressure = calculateContextPressure(messages, {
-    contextSize: config.context_length || 4096,
-    maxTokens: config.max_tokens
-  });
-
-  return {
-    ...pressure,
-    action: pressure.isOverflow ? 'truncate' : 'ok',
-    warning: pressure.isOverflow ? 'context_truncated' : null
-  };
-}

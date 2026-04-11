@@ -147,7 +147,7 @@
   async function stopRuntime() {
     await stopLlama();
     await refresh();
-    await modelsStore.refresh();
+    await modelsStore.refreshStatus();
   }
 
   function useRuntime(path: string) {

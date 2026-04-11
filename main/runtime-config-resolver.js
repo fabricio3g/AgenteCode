@@ -9,6 +9,8 @@ const DEFAULT_CONTEXT_FALLBACK = 4096;
 const CONTEXT_DOWNSCALE_STEP = 0.5;
 const MIN_CONTEXT_SIZE = 512;
 const RUNTIME_PROBE_CACHE = new Map();
+const GGUF_FIELDS_CACHE = new Map();
+const GGUF_FIELDS_CACHE_MAX = 500;
 
 // ── GGUF Metadata Reader ──
 
@@ -144,6 +146,8 @@ export function readGgufMetadataFields(filePath) {
 
   try {
     const stat = fs.statSync(filePath);
+    const cacheKey = `${filePath}:${stat.mtimeMs}:${stat.size}`;
+    if (GGUF_FIELDS_CACHE.has(cacheKey)) return GGUF_FIELDS_CACHE.get(cacheKey);
     const fd = fs.openSync(filePath, 'r');
     try {
       const headerBuf = Buffer.alloc(24);
@@ -225,6 +229,11 @@ export function readGgufMetadataFields(filePath) {
         if (offset > METADATA_READ_LIMIT) break;
       }
 
+      if (GGUF_FIELDS_CACHE.size >= GGUF_FIELDS_CACHE_MAX) {
+        const firstKey = GGUF_FIELDS_CACHE.keys().next().value;
+        if (firstKey) GGUF_FIELDS_CACHE.delete(firstKey);
+      }
+      GGUF_FIELDS_CACHE.set(cacheKey, out);
       return out;
     } finally {
       fs.closeSync(fd);
@@ -411,7 +420,6 @@ function probeRuntimeCapabilities(runtimePath) {
     source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
   };
 
-  RUNTIME_PROBE_CACHE.clear();
   RUNTIME_PROBE_CACHE.set(cacheKey, parsed);
   return parsed;
 }

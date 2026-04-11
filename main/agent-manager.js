@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { getMainWindow } from './index.js';
 import { AgentRunner } from './agent-runner.js';
 import { allTools } from './agent-tools/index.js';
-import { loadConfig } from './config.js';
 
 const agentRunner = new AgentRunner();
 agentRunner.tools = allTools;
@@ -104,65 +103,6 @@ export async function agentClearHistory(chatId) {
   } else {
     agentTasks.clear();
   }
-}
-
-/**
- * Execute an agent task using the agent runner loop.
- * Updates task status in place and emits progress events.
- */
-export async function agentRunTask(taskId) {
-  const task = agentTasks.get(taskId);
-  if (!task) throw new Error(`Task not found: ${taskId}`);
-
-  // Update to running
-  task.status = 'running';
-  task.started_at = Date.now();
-  task.updated_at = Date.now();
-  emitTaskUpdate(task);
-
-  try {
-    const cfg = loadConfig();
-    const activeProvider = cfg?.llm?.activeProvider;
-    const providerCfg = cfg?.llm?.providers?.[activeProvider] || {};
-
-    const enabledTools = agentRunner.tools.filter(t => agentRunner.enabledTools.has(t.name));
-    const messages = [{ role: 'user', content: task.prompt }];
-
-    if (task.work_context) {
-      messages.unshift({ role: 'system', content: task.work_context });
-    }
-
-    const result = await agentRunner.runAgentLoop({
-      chatId: task.chat_id,
-      messages,
-      tools: enabledTools,
-      providerName: activeProvider,
-      baseUrl: providerCfg.baseUrl,
-      apiKey: providerCfg.apiKey,
-      config: {
-        model: providerCfg.model || cfg?.llm?.model,
-      },
-      onStep: (updatedSteps) => {
-        task.steps = updatedSteps;
-        task.updated_at = Date.now();
-        emitTaskUpdate(task);
-      },
-    });
-
-    task.content = result.content;
-    task.steps = result.steps || [];
-    task.status = 'completed';
-    task.completed_at = Date.now();
-    task.updated_at = Date.now();
-  } catch (err) {
-    task.status = 'failed';
-    task.error = err?.message || String(err);
-    task.completed_at = Date.now();
-    task.updated_at = Date.now();
-  }
-
-  emitTaskUpdate(task);
-  return task;
 }
 
 export { agentRunner };

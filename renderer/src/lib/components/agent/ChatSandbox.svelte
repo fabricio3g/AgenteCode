@@ -2,13 +2,14 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { AlertCircle, Check, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, Pencil, Play, RefreshCw, X } from 'lucide-svelte';
+  import { AlertCircle, Check, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, Pencil, Play, Plus, RefreshCw, Trash2, X, FilePlus } from 'lucide-svelte';
   import JSZip from 'jszip';
   import hljs from 'highlight.js';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { sandboxExec } from '$lib/services/sandbox';
   import { isTauri } from '$lib/services/tauri';
+  import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
 
   type TreeNode = { name: string; path: string; type: 'file' | 'folder'; children?: TreeNode[]; expanded?: boolean };
   type PreviewLog = { level: 'log' | 'warn' | 'error'; text: string };
@@ -48,6 +49,21 @@
   let terminalEl = $state<HTMLDivElement | undefined>(undefined);
   let previewMessages = $state<PreviewLog[]>([]);
   let previewRefreshKey = $state(0);
+
+  let showNewFileModal = $state(false);
+  let showNewFolderModal = $state(false);
+  let showDeleteConfirm = $state(false);
+  let pendingDeletePath = $state<string | null>(null);
+  let pendingDeleteType = $state<'file' | 'folder'>('file');
+  let newItemName = $state('');
+  let newItemParent = $state('');
+  let newItemInput = $state<HTMLInputElement | undefined>(undefined);
+
+  let showRenameModal = $state(false);
+  let pendingRenamePath = $state<string | null>(null);
+  let pendingRenameType = $state<'file' | 'folder'>('file');
+  let renameValue = $state('');
+  let renameInput = $state<HTMLInputElement | undefined>(undefined);
 
   const artifact = $derived(appStore.currentArtifact);
   const files = $derived(artifact?.files || {});
@@ -446,6 +462,194 @@
     editing = false;
   }
 
+  function openNewFileModal(parentPath = '') {
+    newItemName = '';
+    newItemParent = parentPath;
+    showNewFileModal = true;
+    setTimeout(() => newItemInput?.focus(), 50);
+  }
+
+  function openNewFolderModal(parentPath = '') {
+    newItemName = '';
+    newItemParent = parentPath;
+    showNewFolderModal = true;
+    setTimeout(() => newItemInput?.focus(), 50);
+  }
+
+  function closeNewItemModal() {
+    showNewFileModal = false;
+    showNewFolderModal = false;
+    newItemName = '';
+    newItemParent = '';
+  }
+
+  function createFile() {
+    if (!newItemName.trim() || !artifact) return;
+    const cleanName = newItemName.trim();
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanName)) {
+      toastStore.error('Invalid file name. Use letters, numbers, dots, underscores, hyphens.');
+      return;
+    }
+    const fullPath = newItemParent ? `${newItemParent}/${cleanName}` : cleanName;
+    if (files[fullPath]) {
+      toastStore.error(`File already exists: ${fullPath}`);
+      return;
+    }
+    const ext = cleanName.split('.').pop()?.toLowerCase() || '';
+    let content = '';
+    if (['html', 'htm'].includes(ext)) {
+      content = `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>${cleanName}</title>\n</head>\n<body>\n  \n</body>\n</html>`;
+    } else if (['js', 'mjs'].includes(ext)) {
+      content = `// ${cleanName}\n`;
+    } else if (ext === 'ts') {
+      content = `// ${cleanName}\n`;
+    } else if (ext === 'css') {
+      content = `/* ${cleanName} */\n`;
+    } else if (ext === 'json') {
+      content = '{\n  \n}';
+    } else if (ext === 'md') {
+      content = `# ${cleanName.replace(/\.md$/, '')}\n\n`;
+    }
+    appStore.setCurrentArtifact({
+      ...artifact,
+      files: { ...artifact.files, [fullPath]: content }
+    }, appStore.currentArtifactMessageId, appStore.sandboxOpen);
+    closeNewItemModal();
+    openTab(fullPath);
+  }
+
+  function createFolder() {
+    if (!newItemName.trim() || !artifact) return;
+    const cleanName = newItemName.trim().replace(/[/\\:*?"<>|]/g, '-');
+    if (!cleanName) {
+      toastStore.error('Invalid folder name.');
+      return;
+    }
+    const fullPath = newItemParent ? `${newItemParent}/${cleanName}` : cleanName;
+    if (files[fullPath]) {
+      toastStore.error(`Name already exists: ${fullPath}`);
+      return;
+    }
+    const markerPath = `${fullPath}/.keep`;
+    appStore.setCurrentArtifact({
+      ...artifact,
+      files: { ...artifact.files, [markerPath]: '' }
+    }, appStore.currentArtifactMessageId, appStore.sandboxOpen);
+    treeExpanded[fullPath] = true;
+    closeNewItemModal();
+  }
+
+  function requestDelete(path: string, type: 'file' | 'folder') {
+    pendingDeletePath = path;
+    pendingDeleteType = type;
+    showDeleteConfirm = true;
+  }
+
+  function confirmDelete() {
+    if (!pendingDeletePath || !artifact) {
+      showDeleteConfirm = false;
+      return;
+    }
+    const newFiles = { ...artifact.files };
+    if (pendingDeleteType === 'folder') {
+      const prefix = pendingDeletePath + '/';
+      for (const key of Object.keys(newFiles)) {
+        if (key === pendingDeletePath || key.startsWith(prefix)) {
+          delete newFiles[key];
+        }
+      }
+    } else {
+      delete newFiles[pendingDeletePath];
+    }
+    appStore.setCurrentArtifact({
+      ...artifact,
+      files: newFiles
+    }, appStore.currentArtifactMessageId, appStore.sandboxOpen);
+    if (openTabs.includes(pendingDeletePath)) {
+      closeTab(pendingDeletePath);
+    }
+    if (selectedPath === pendingDeletePath || selectedPath.startsWith(pendingDeletePath + '/')) {
+      selectedPath = Object.keys(newFiles)[0] || '';
+    }
+    showDeleteConfirm = false;
+    pendingDeletePath = null;
+  }
+
+  function cancelDelete() {
+    showDeleteConfirm = false;
+    pendingDeletePath = null;
+  }
+
+  function requestRename(path: string, type: 'file' | 'folder') {
+    pendingRenamePath = path;
+    pendingRenameType = type;
+    const name = path.split('/').pop() || '';
+    renameValue = type === 'folder' ? name : name;
+    showRenameModal = true;
+    setTimeout(() => {
+      renameInput?.focus();
+      const dotIndex = type === 'file' ? renameValue.lastIndexOf('.') : -1;
+      renameInput?.setSelectionRange(0, dotIndex > 0 ? dotIndex : renameValue.length);
+    }, 50);
+  }
+
+  function confirmRename() {
+    if (!pendingRenamePath || !artifact || !renameValue.trim()) {
+      showRenameModal = false;
+      return;
+    }
+    const cleanName = renameValue.trim().replace(/[/\\:*?"<>|]/g, '-');
+    if (!cleanName) {
+      toastStore.error('Invalid name.');
+      return;
+    }
+    const parentPath = pendingRenamePath.split('/').slice(0, -1).join('/');
+    const newPath = parentPath ? `${parentPath}/${cleanName}` : cleanName;
+    if (newPath === pendingRenamePath) {
+      showRenameModal = false;
+      return;
+    }
+    if (Object.keys(files).includes(newPath)) {
+      toastStore.error(`Name already exists: ${newPath}`);
+      return;
+    }
+    const oldPrefix = pendingRenamePath + '/';
+    const newFiles: Record<string, string> = {};
+    for (const [key, value] of Object.entries(artifact.files)) {
+      if (key === pendingRenamePath) {
+        newFiles[newPath] = value;
+      } else if (key.startsWith(oldPrefix)) {
+        newFiles[newPath + key.slice(pendingRenamePath.length)] = value;
+      } else {
+        newFiles[key] = value;
+      }
+    }
+    appStore.setCurrentArtifact({
+      ...artifact,
+      files: newFiles
+    }, appStore.currentArtifactMessageId, appStore.sandboxOpen);
+    const oldTabs = [...openTabs];
+    const tabRemap: Record<string, string> = { [pendingRenamePath]: newPath };
+    if (pendingRenameType === 'folder') {
+      for (const t of oldTabs) {
+        if (t === pendingRenamePath) tabRemap[t] = newPath;
+        else if (t.startsWith(oldPrefix)) tabRemap[t] = newPath + t.slice(pendingRenamePath.length);
+      }
+    }
+    if (pendingRenamePath === selectedPath) {
+      selectedPath = tabRemap[pendingRenamePath] || newPath;
+    }
+    openTabs = oldTabs.map(t => tabRemap[t] ?? t);
+    showRenameModal = false;
+    pendingRenamePath = null;
+  }
+
+  function cancelRename() {
+    showRenameModal = false;
+    pendingRenamePath = null;
+    renameValue = '';
+  }
+
   function getFileIcon(path: string) {
     const ext = path.split('.').pop() || '';
     const icons: Record<string, string> = {
@@ -604,11 +808,38 @@
   </div>
 
   <div class="flex min-h-0 flex-1 overflow-hidden">
-    {#if fileList.length > 0 && activePane !== 'terminal'}
-      <div class="flex w-48 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)] py-1.5">
-        {#each renderTree(fileTree) as node}
-          {@render renderTreeNode(node, 0)}
-        {/each}
+    {#if (fileList.length > 0 || true) && activePane !== 'terminal'}
+      <div class="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
+        <div class="flex items-center justify-between px-2.5 py-2 border-b border-[var(--border)]">
+          <span class="text-[11px] font-medium text-[var(--text-secondary)]">Files</span>
+          <div class="flex items-center gap-0.5">
+            <button
+              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+              onclick={() => openNewFileModal()}
+              title="New file"
+            >
+              <FilePlus class="h-3.5 w-3.5" />
+            </button>
+            <button
+              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+              onclick={() => openNewFolderModal()}
+              title="New folder"
+            >
+              <Folder class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        <div class="flex-1 overflow-y-auto py-1.5">
+          {#if fileList.length === 0}
+            <div class="px-3 py-4 text-center text-[11px] text-[var(--text-tertiary)]">
+              No files yet
+            </div>
+          {:else}
+            {#each renderTree(fileTree) as node}
+              {@render renderTreeNode(node, 0)}
+            {/each}
+          {/if}
+        </div>
       </div>
     {/if}
 
@@ -630,8 +861,8 @@
               </button>
               <button
                 type="button"
-                class="mr-1.5 ml-0.5 flex shrink-0 items-center rounded p-0.5 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-highlight)]"
-                onclick={(e) => closeTab(tab, e)}
+                class="mr-1.5 ml-0.5 flex shrink-0 items-center rounded p-0.5 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+                onclick={(e) => { e.stopPropagation(); closeTab(tab); }}
                 aria-label="Close {tab}"
               >
                 <X class="h-3 w-3" />
@@ -673,24 +904,25 @@
                 >Cancel</button>
               </div>
             </div>
-            <textarea
-              class="flex-1 resize-none bg-[var(--surface-highlight)] p-4 font-mono text-xs leading-relaxed text-[var(--text)] outline-none"
-              bind:value={editBuffer}
-              spellcheck="false"
-            ></textarea>
+            <div class="min-h-0 flex-1">
+              <CodeEditor
+                value={editBuffer}
+                language={selectedPath.split('.').pop() || 'plaintext'}
+                onchange={(v) => (editBuffer = v)}
+              />
+            </div>
           </div>
         {:else}
           <div class="flex h-full flex-col">
             <div class="flex h-8 shrink-0 items-center border-b border-[var(--border)] px-4">
               <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath}</span>
             </div>
-            <div class="sandbox-code flex min-h-0 flex-1 overflow-auto">
-              <div class="line-numbers shrink-0 select-none border-r border-[var(--border)] bg-[var(--surface-highlight)] px-2 py-4 text-right text-[10px] leading-relaxed font-mono text-[var(--text-tertiary)]">
-                {#each Array.from({ length: lineCount }, (_, i) => i + 1) as num}
-                  <div>{num}</div>
-                {/each}
-              </div>
-              <pre class="min-h-0 flex-1 overflow-auto p-4 text-xs leading-relaxed font-mono"><code class="hljs">{@html highlightedCode}</code></pre>
+            <div class="min-h-0 flex-1">
+              <CodeEditor
+                value={selectedContent}
+                language={selectedPath.split('.').pop() || 'plaintext'}
+                readOnly={true}
+              />
             </div>
           </div>
         {/if}
@@ -793,22 +1025,149 @@
   </div>
 </div>
 
+{#if showNewFileModal}
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-[var(--text)]">New File</h3>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+      {#if newItemParent}
+        <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
+      {/if}
+      <input
+        bind:this={newItemInput}
+        bind:value={newItemName}
+        type="text"
+        placeholder="filename.ext"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') closeNewItemModal(); }}
+      />
+      <div class="flex justify-end gap-2">
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={createFile}>Create</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showNewFolderModal}
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-[var(--text)]">New Folder</h3>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+      {#if newItemParent}
+        <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
+      {/if}
+      <input
+        bind:this={newItemInput}
+        bind:value={newItemName}
+        type="text"
+        placeholder="folder-name"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        onkeydown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') closeNewItemModal(); }}
+      />
+      <div class="flex justify-end gap-2">
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={createFolder}>Create</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showDeleteConfirm}
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={cancelDelete} role="dialog" aria-modal="true">
+    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-[var(--text)]">Confirm Delete</h3>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={cancelDelete}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+      <p class="mb-4 text-sm text-[var(--text-secondary)]">
+        Delete {pendingDeleteType} "<span class="font-mono text-[var(--text)]">{pendingDeletePath}</span>"?
+        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-amber-500">This will delete all files inside.</span>{/if}
+      </p>
+      <div class="flex justify-end gap-2">
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelDelete}>Cancel</button>
+        <button class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-500" onclick={confirmDelete}>Delete</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showRenameModal}
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={cancelRename} role="dialog" aria-modal="true">
+    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-[var(--text)]">Rename {pendingRenameType === 'folder' ? 'Folder' : 'File'}</h3>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+      <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">Current: {pendingRenamePath}</p>
+      <input
+        bind:this={renameInput}
+        bind:value={renameValue}
+        type="text"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        onkeydown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') cancelRename(); }}
+      />
+      <div class="flex justify-end gap-2">
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>Cancel</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 {#snippet renderTreeNode(node: TreeNode, depth: number)}
   {#if node.type === 'folder'}
-    <div>
-      <button
-        class="flex w-full items-center gap-1 px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-highlight)]"
-        style="padding-left: {8 + depth * 12}px"
-        onclick={() => toggleFolder(node.path)}
-      >
-        <ChevronRight class={`h-3 w-3 shrink-0 text-[var(--text-tertiary)] transition-transform duration-150 ${treeExpanded[node.path] ? 'rotate-90' : ''}`} />
-        {#if treeExpanded[node.path]}
-          <FolderOpen class="h-3.5 w-3.5 shrink-0 text-amber-500" />
-        {:else}
-          <Folder class="h-3.5 w-3.5 shrink-0 text-amber-500" />
-        {/if}
-        <span class="truncate text-[11px] font-medium text-[var(--text-secondary)]">{node.name}</span>
-      </button>
+    <div class="group/folder">
+      <div class="flex items-center">
+        <button
+          class="flex flex-1 items-center gap-1 px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-highlight)]"
+          style="padding-left: {8 + depth * 12}px"
+          onclick={() => toggleFolder(node.path)}
+        >
+          <ChevronRight class={`h-3 w-3 shrink-0 text-[var(--text-tertiary)] transition-transform duration-150 ${treeExpanded[node.path] ? 'rotate-90' : ''}`} />
+          {#if treeExpanded[node.path]}
+            <FolderOpen class="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          {:else}
+            <Folder class="h-3.5 w-3.5 shrink-0 text-amber-500" />
+          {/if}
+          <span class="truncate text-[11px] font-medium text-[var(--text-secondary)]">{node.name}</span>
+        </button>
+        <div class="flex items-center gap-0.5 px-1 opacity-0 group-hover/folder:opacity-100 transition">
+          <button
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+            onclick={(e) => { e.stopPropagation(); openNewFileModal(node.path); }}
+            title="New file in folder"
+          >
+            <FilePlus class="h-3 w-3" />
+          </button>
+          <button
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+            onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'folder'); }}
+            title="Rename folder"
+          >
+            <Pencil class="h-3 w-3" />
+          </button>
+          <button
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--surface-highlight)]"
+            onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'folder'); }}
+            title="Delete folder"
+          >
+            <Trash2 class="h-3 w-3" />
+          </button>
+        </div>
+      </div>
       {#if treeExpanded[node.path] && node.children}
         {#each node.children as child}
           {@render renderTreeNode(child, depth + 1)}
@@ -816,14 +1175,30 @@
       {/if}
     </div>
   {:else}
-    <button
-      class={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition ${selectedPath === node.path ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}`}
-      style="padding-left: {20 + depth * 12}px"
-      onclick={() => selectFile(node.path)}
-    >
-      <span class="w-4 shrink-0 text-center text-[11px] uppercase">{getFileIcon(node.path)}</span>
-      <span class="truncate text-[11px]">{node.name}</span>
-    </button>
+    <div class="group/file flex items-center">
+      <button
+        class="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left transition {selectedPath === node.path ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}"
+        style="padding-left: {20 + depth * 12}px"
+        onclick={() => selectFile(node.path)}
+      >
+        <span class="w-4 shrink-0 text-center text-[11px] uppercase">{getFileIcon(node.path)}</span>
+        <span class="truncate text-[11px]">{node.name}</span>
+      </button>
+      <button
+        class="rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+        onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'file'); }}
+        title="Rename file"
+      >
+        <Pencil class="h-3 w-3" />
+      </button>
+      <button
+        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-red-400 hover:bg-[var(--surface-highlight)]"
+        onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'file'); }}
+        title="Delete file"
+      >
+        <Trash2 class="h-3 w-3" />
+      </button>
+    </div>
   {/if}
 {/snippet}
 

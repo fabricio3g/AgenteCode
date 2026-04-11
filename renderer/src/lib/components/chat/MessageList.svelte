@@ -55,14 +55,14 @@
   $effect(() => {
     const chatId = appStore.currentChatId;
     const messageCount = messages.length;
+    const chatChanged = chatId !== previousChatId;
+    const countChanged = messageCount !== previousMessageCount;
+    if (!chatChanged && !countChanged) return;
     const isStreaming = messages.at(-1)?.status === 'streaming';
     const ticket = ++scrollTicket;
 
     tick().then(() => {
       if (ticket !== scrollTicket || !container) return;
-
-      const chatChanged = chatId !== previousChatId;
-      const countChanged = messageCount !== previousMessageCount;
       const nearBottom = isNearBottom();
 
       if (chatChanged) {

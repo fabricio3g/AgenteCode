@@ -294,7 +294,7 @@
       }
     }
     if (needsRefresh) {
-      void modelsStore.refresh();
+      void modelsStore.refreshStatus();
       void appStore.refreshModels();
     }
   });
@@ -352,7 +352,7 @@
   async function removeModel(path: string) {
     try {
       await deleteLocalModel(path);
-      await Promise.all([modelsStore.refresh(), appStore.refreshModels()]);
+      await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
       toastStore.success('Model deleted');
     } catch (error) {
       console.error('Failed to delete model:', error);
@@ -368,7 +368,7 @@
       const filePath = await pickModelFile();
       if (!filePath) return;
       await importLocalModel(filePath, false);
-      await Promise.all([modelsStore.refresh(), appStore.refreshModels()]);
+      await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
       toastStore.success('Model imported successfully');
     } catch (error) {
       toastStore.error(`Import failed: ${(error as Error)?.message || error}`);
@@ -1015,7 +1015,7 @@
           <button
             type="button"
             class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)]"
-            onclick={() => { void modelsStore.refresh(); void appStore.refreshModels(); }}
+            onclick={() => { void modelsStore.refreshIndex(); void appStore.refreshModels(); }}
           >
             <RefreshCw class="h-3.5 w-3.5 shrink-0" />
             <span>Refresh</span>

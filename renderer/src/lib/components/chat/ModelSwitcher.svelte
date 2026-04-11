@@ -167,7 +167,7 @@
       </span>
       <button
         class="refresh-btn rounded-lg p-1.5"
-        onclick={() => { appStore.refreshModels(); modelsStore.refresh(); }}
+        onclick={() => { appStore.refreshModels(); modelsStore.refreshStatus(); }}
         aria-label="Refresh"
       >
         <RefreshCw class="h-3.5 w-3.5" />

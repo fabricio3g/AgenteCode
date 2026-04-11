@@ -89,6 +89,17 @@ function emitStatus(win, patch) {
   }
 }
 
+async function clearEmbeddingCacheSafe() {
+  try {
+    const embeddingClient = await import('./embedding-client.js');
+    if (typeof embeddingClient.clearEmbeddingCache === 'function') {
+      embeddingClient.clearEmbeddingCache();
+    }
+  } catch {
+    // ignore cache clear failures
+  }
+}
+
 // ── LLM server ──
 
 export async function startLlama(config, win) {
@@ -151,6 +162,7 @@ export async function stopLlama(win) {
 // ── Embedding server ──
 
 export async function startEmbeddingServer(config, win) {
+  await clearEmbeddingCacheSafe();
   const runtimePath = resolveRuntimeBinary(config.runtime_path);
   if (!runtimePath || !fs.existsSync(runtimePath)) {
     throw new Error('llama-server binary not found for embedding server.');
@@ -176,6 +188,7 @@ export async function startEmbeddingServer(config, win) {
 
 export async function stopEmbeddingServer() {
   await embedding.stop({ port: null });
+  await clearEmbeddingCacheSafe();
 }
 
 export function getEmbeddingStatus() {
@@ -191,6 +204,7 @@ export function getLlamaStatus() {
 export function cleanupLlm() {
   llama.kill();
   embedding.kill();
+  void clearEmbeddingCacheSafe();
   llamaStatus = { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null };
   embeddingStatus = { state: 'idle', port: null };
 }
