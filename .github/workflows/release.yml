@@ -44,11 +44,18 @@ jobs:
         run: npm ci
         working-directory: renderer
 
+      - name: Inject Linux maintainer metadata (CI only)
+        if: matrix.name == 'linux'
+        run: |
+          npm pkg set author.name="TalamoLM"
+          npm pkg set author.email="ci@local.invalid"
+          npm pkg set "build.linux.maintainer=TalamoLM <ci@local.invalid>"
+
       - name: Build Electron app
-        run: npm run build
+        run: npm run build:renderer && npx electron-builder --publish=never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          ELECTRON_BUILDER_DEB_MAINTAINER: 'TalamoLM <ci@local.invalid>'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
