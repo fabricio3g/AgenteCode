@@ -150,48 +150,34 @@
   });
 </script>
 
-<div class="flex flex-1 flex-col gap-6 px-8">
-  <div class="flex items-center gap-3">
-    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)]">
-      <Cpu class="h-5 w-5" />
-    </div>
-    <div>
-      <h2 class="text-lg font-semibold text-[var(--text)] font-serif tracking-tight">{$t('onboarding.runtime')}</h2>
-      <p class="text-sm text-[var(--text-secondary)]">
-        {#if hasInstalledRuntime}
-          {$t('onboarding.runtimeInstalledReady')}
-        {:else}
-          {$t('onboarding.runtimeDownloadDesc')}
-        {/if}
-      </p>
-    </div>
+<div class="flex flex-1 flex-col gap-5 px-6">
+  <div class="flex items-center gap-2">
+    <Cpu class="h-4 w-4 text-[var(--text-secondary)]" />
+    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.runtime')}</span>
   </div>
 
   {#if loading}
-    <div class="flex items-center justify-center py-12 text-[var(--text-muted)]">
-      <LoaderCircle class="h-6 w-6 animate-spin" />
+    <div class="flex items-center justify-center py-8 text-[var(--text-muted)]">
+      <LoaderCircle class="h-5 w-5 animate-spin" />
     </div>
   {:else if hasInstalledRuntime}
-    <div class="flex items-center gap-3 rounded-lg border border-[var(--success-border)] bg-[var(--success-bg)] px-4 py-3 text-sm text-[var(--success)]">
-      <CheckCircle2 class="h-5 w-5 shrink-0" />
+    <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+      <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
       <span>{$t('onboarding.runtimeInstalledReady')}</span>
     </div>
   {:else if releaseAssets.length > 0}
-    <div class="space-y-2">
+    <div class="space-y-1.5">
       {#each releaseAssets as asset}
         <button
-          class="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left transition hover:border-[var(--border-strong)]"
+          class="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left transition hover:border-[var(--text)]"
           onclick={() => installAsset(asset)}
           disabled={installing}
         >
-          {#if asset.variant === 'recommended'}
-            <span class="shrink-0 rounded-full bg-[var(--success-bg)] border border-[var(--success-border)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--success)]">{$t('onboarding.recommended')}</span>
-          {:else}
-            <span class="shrink-0 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--text-muted)]">{asset.variant}</span>
-          {/if}
           <span class="flex-1 text-sm text-[var(--text)]">{asset.description}</span>
           {#if installing && selectedAsset?.name === asset.name}
-            <LoaderCircle class="h-4 w-4 shrink-0 animate-spin text-[var(--primary)]" />
+            <LoaderCircle class="h-4 w-4 shrink-0 animate-spin" />
+          {:else if asset.variant === 'recommended'}
+            <span class="rounded-full border border-[var(--text)] px-2 py-0.5 text-[10px] font-medium">{$t('onboarding.recommended')}</span>
           {:else}
             <Download class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
           {/if}
@@ -200,44 +186,30 @@
     </div>
 
     {#if installing}
-      <div class="flex items-center gap-3">
-        <div class="flex-1 space-y-2">
-          <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
-            <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {installProgress}%"></div>
-          </div>
-          <p class="text-xs text-[var(--text-muted)]">{$t('onboarding.downloadingRuntime')} {Math.round(installProgress)}%</p>
+      <div class="space-y-1.5">
+        <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
+          <div class="h-full bg-[var(--text)] transition-all" style="width: {installProgress}%"></div>
         </div>
-        <button
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--error-bg)] hover:text-[var(--error)] hover:border-[var(--error-border)]"
-          onclick={() => { installing = false; installError = ''; installProgress = 0; selectedAsset = null; }}
-          title={$t('onboarding.cancelDownload')}
-          aria-label={$t('onboarding.cancelDownload')}
-        >
-          <Ban class="h-4 w-4" />
-        </button>
+        <p class="text-xs text-[var(--text-muted)]">{$t('onboarding.downloadingRuntime')} {Math.round(installProgress)}%</p>
       </div>
     {/if}
 
     {#if installError}
-      <div class="flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
-        <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5" />
-        <span>{installError}</span>
-      </div>
+      <p class="text-xs text-[var(--error)]">{installError}</p>
     {/if}
   {:else}
     <p class="text-sm text-[var(--text-muted)]">{$t('onboarding.noRuntimeAvailable')}</p>
   {/if}
 
-  <div class="flex items-center justify-between pt-4">
+  <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition hover:bg-[var(--surface-highlight)]"
       onclick={onBack}
     >
       <ArrowLeft class="h-4 w-4" />
-      {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+      class="inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-5 py-2 text-sm font-medium text-[var(--surface)] transition hover:opacity-90 disabled:opacity-50"
       onclick={() => {
         const path = installedRuntimes[0]?.path || '';
         onNext(path);
@@ -245,7 +217,6 @@
       disabled={!hasInstalledRuntime}
     >
       {$t('onboarding.next')}
-      <ArrowRight class="h-4 w-4" />
     </button>
   </div>
 </div>

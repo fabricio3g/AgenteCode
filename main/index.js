@@ -49,6 +49,10 @@ function createWindow() {
     shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
+  });
 }
 
 function createTray() {
@@ -179,6 +183,21 @@ app.whenReady().then(async () => {
     delete headers['content-security-policy'];
     delete headers['Content-Security-Policy'];
     callback({ responseHeaders: headers });
+  });
+
+  // Grant microphone and camera permissions for media devices (getUserMedia)
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media' || permission === 'microphone' || permission === 'camera') {
+      return true;
+    }
+    return null;
+  });
+
+  session.defaultSession.setDevicePermissionHandler((details) => {
+    if (details.deviceType === 'camera' || details.deviceType === 'microphone') {
+      return true;
+    }
+    return false;
   });
 
   registerIpcHandlers();

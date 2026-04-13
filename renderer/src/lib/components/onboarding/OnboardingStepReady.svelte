@@ -69,48 +69,32 @@
   }
 </script>
 
-<div class="flex flex-1 flex-col gap-6 px-8">
-  <div class="flex items-center gap-3">
-    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
-      <MessageSquare class="h-5 w-5" />
-    </div>
-    <div>
-      <h2 class="text-lg font-semibold text-[var(--text)]">{$t('onboarding.readyToChat')}</h2>
-      <p class="text-sm text-[var(--text-secondary)]">
-        {#if success}
-          {$t('onboarding.modelLoadedSuccess')}
-        {:else}
-          {$t('onboarding.readyDesc')}
-        {/if}
-      </p>
-    </div>
+<div class="flex flex-1 flex-col gap-5 px-6">
+  <div class="flex items-center gap-2">
+    <MessageSquare class="h-4 w-4 text-[var(--text-secondary)]" />
+    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.readyToChat')}</span>
   </div>
 
   {#if success}
-    <div class="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-400">
-      <CheckCircle2 class="h-5 w-5 shrink-0" />
+    <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+      <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
       <span>{$t('onboarding.modelLoadedReady')}</span>
     </div>
   {:else if loadError}
-    <div class="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
-      <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5" />
-      <div class="space-y-1">
-        <span>{loadError}</span>
-        <button
-          class="text-xs underline hover:no-underline"
-          onclick={loadAndFinish}
-          disabled={loading}
-        >
-          {$t('chat.retry')}
-        </button>
-      </div>
+    <div class="space-y-2">
+      <p class="text-sm text-[var(--error)]">{loadError}</p>
+      <button
+        class="text-xs underline hover:no-underline"
+        onclick={loadAndFinish}
+        disabled={loading}
+      >
+        {$t('chat.retry')}
+      </button>
     </div>
   {:else}
-    <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <p class="text-sm text-[var(--text-secondary)]">
-        {$t('onboarding.readyHint')}
-      </p>
-    </div>
+    <p class="text-sm text-[var(--text-secondary)]">
+      {$t('onboarding.readyDesc')}
+    </p>
   {/if}
 
   {#if loading}
@@ -120,17 +104,16 @@
     </div>
   {/if}
 
-  <div class="flex items-center justify-between pt-4">
+  <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--surface)]"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition hover:bg-[var(--surface-highlight)]"
       onclick={onBack}
       disabled={loading}
     >
       <ArrowLeft class="h-4 w-4" />
-      {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+      class="inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-5 py-2 text-sm font-medium text-[var(--surface)] transition hover:opacity-90 disabled:opacity-50"
       onclick={handleFinish}
       disabled={loading}
     >
@@ -139,7 +122,6 @@
       {:else}
         {$t('onboarding.loadModelAndChat')}
       {/if}
-      <MessageSquare class="h-4 w-4" />
     </button>
   </div>
 </div>

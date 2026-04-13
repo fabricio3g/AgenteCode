@@ -58,22 +58,22 @@
 
 <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50" transition:fade={{ duration: 150 }}>
   <div
-    class="flex h-full max-h-[640px] w-full max-w-xl flex-col rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+    class="flex h-full max-h-[560px] w-full max-w-lg flex-col rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
     transition:fly={{ y: 20, duration: 200 }}
     role="dialog"
     aria-modal="true"
   >
-    <!-- Header with step indicator and skip -->
-    <div class="flex items-center justify-between border-b border-[var(--border)] px-6 py-3">
-      <div class="flex items-center gap-2">
+    <!-- Header with step indicator -->
+    <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-3">
+      <div class="flex items-center gap-1.5">
         {#each STEPS as s, i}
           <div
-            class="h-1.5 rounded-full transition-all {i <= STEP_INDEX ? 'w-6 bg-[var(--primary)]' : 'w-3 bg-[var(--surface-highlight)]'}"
+            class="h-1 w-6 rounded-full transition-all {i <= STEP_INDEX ? 'bg-[var(--text)]' : 'bg-[var(--surface-highlight)]'}"
           ></div>
         {/each}
       </div>
       <button
-        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface)] hover:text-[var(--text)]"
+        class="rounded-full p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
         onclick={handleSkip}
         title={$t('onboarding.skipSetup')}
       >
@@ -82,7 +82,7 @@
     </div>
 
     <!-- Step content -->
-    <div class="flex flex-1 overflow-y-auto py-6">
+    <div class="flex flex-1 overflow-y-auto py-4">
       {#if step === 'welcome'}
         <OnboardingStepWelcome onNext={goNext} />
       {:else if step === 'runtime'}

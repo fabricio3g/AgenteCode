@@ -138,9 +138,13 @@
   // Sync local slider values when target model changes (i.e., a new dialog opens)
   $effect(() => {
     void target; // track target changes
-    localContextLength = Number(appStore.localModelLoadContextLength || 4096);
-    localGpuLayers = Number(appStore.localModelLoadGpuLayers || 0);
-    localCpuThreads = Number(appStore.localModelLoadCpuThreads || 4);
+    const storedCtx = appStore.localModelLoadContextLength;
+    const storedGpu = appStore.localModelLoadGpuLayers;
+    const storedCpu = appStore.localModelLoadCpuThreads;
+    localContextLength = Number(storedCtx || 4096);
+    // Default to all GPU layers (blockCount) in simple mode if no preference stored
+    localGpuLayers = storedGpu ? Number(storedGpu) : gpuLayersMax;
+    localCpuThreads = Number(storedCpu || 4);
   });
 
   // Commit local values to store (called on slider change / input blur)
@@ -215,26 +219,26 @@
  {/if}
  </div>
  </div>
- <button class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={() => appStore.closeLocalModelLoadDialog()} aria-label="Close load dialog">
+ <button class="rounded-full p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={() => appStore.closeLocalModelLoadDialog()} aria-label="Close load dialog">
  <X class="h-4 w-4" />
  </button>
  </div>
 
  <!-- Runtime missing warning -->
  {#if hasRuntime === false}
- <div class="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/8">
- <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
- <div class="flex-1 min-w-0">
- <p class="text-[13px] font-medium text-amber-800 dark:text-amber-200">Runtime not installed</p>
- <p class="mt-0.5 text-[12px] text-amber-600 dark:text-amber-400">The llama.cpp runtime is required to run local models. Install it first.</p>
- </div>
- <button
- class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-amber-500"
- onclick={() => { appStore.closeLocalModelLoadDialog(); appStore.runtimeManagerOpen = true;}}
- >
- Install Runtime
- </button>
- </div>
+  <div class="mb-4 flex items-start gap-3 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3">
+  <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+  <div class="flex-1 min-w-0">
+  <p class="text-[13px] font-medium text-[var(--text)]">Runtime not installed</p>
+  <p class="mt-0.5 text-[12px] text-[var(--text-secondary)]">The llama.cpp runtime is required to run local models. Install it first.</p>
+  </div>
+   <button
+   class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-3 py-1.5 text-[12px] font-semibold text-[var(--surface)] transition hover:opacity-80"
+   onclick={() => { appStore.closeLocalModelLoadDialog(); appStore.runtimeManagerOpen = true;}}
+   >
+  Install Runtime
+  </button>
+  </div>
  {/if}
 
    <!-- View mode toggle -->
@@ -256,118 +260,107 @@
 
   {#if viewMode === 'simple'}
   <!-- ==================== SIMPLE VIEW ==================== -->
-  <div class="simple-view space-y-3">
-  <!-- Context length presets -->
-  <section class="rounded-xl border border-[var(--border)] p-3">
-  <div class="mb-2 text-xs font-medium text-[var(--text-secondary)]">Context length</div>
-  <div class="mb-2.5 flex flex-wrap gap-1.5">
-  {#each contextPresets as preset}
-  {#if preset <= maxContext}
-  <button
-  class={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${contextLength === preset ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-fg)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}`}
-  onclick={() => { localContextLength = preset; commitContext();}}
-  >
-  {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
-  </button>
-  {/if}
-  {/each}
-  </div>
-  <div class="flex items-center gap-3">
-  <input
-  type="range"
-  min="512"
-  max={maxContext}
-  value={localContextLength}
-  oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitContext}
-  class="flex-1 accent-black dark:accent-white"
-  />
-  <input
-  class="w-20 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1 text-xs text-right outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]"
-  type="number"
-  value={localContextLength}
-  min="512"
-  max={maxContext}
-  oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitContext}
-  inputmode="numeric"
-  />
-  </div>
-  {#if metadata?.context_length_source === 'filename_guess'}
-  <div class="mt-1.5 text-[11px] text-[var(--text-tertiary)]">Context is estimated from filename; verify model metadata if this looks wrong.</div>
-  {/if}
-  </section>
+  <div class="simple-view space-y-4">
 
-  <!-- Recommended preset button -->
-  <div class="flex flex-wrap items-center gap-2">
-  <button class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
-  <Sparkles class="h-3.5 w-3.5" />
-  Apply recommended
-  </button>
-  <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={resetToSavedDefaults}>
-  <RotateCcw class="h-3.5 w-3.5" />
-  Reset
-  </button>
-  </div>
+    <!-- GPU layers -->
+    <div class="flex items-center gap-4">
+      <span class="text-xs text-[var(--text-secondary)] w-20">GPU</span>
+      <div class="flex items-center gap-1.5 p-0.5 bg-[var(--surface-highlight)] rounded-full border border-[var(--border-light)]">
+        <button
+          class={`px-3 py-1 text-xs rounded-full transition ${gpuLayers === gpuLayersMax ? 'bg-[var(--text)] text-[var(--surface)]' : 'hover:bg-[var(--surface-highlight)] text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          onclick={() => { localGpuLayers = gpuLayersMax; commitGpuLayers(); }}
+        >
+          All ({gpuLayersMax})
+        </button>
+        <button
+          class={`px-3 py-1 text-xs rounded-full transition ${gpuLayers === 0 ? 'bg-[var(--text)] text-[var(--surface)]' : 'hover:bg-[var(--surface-highlight)] text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          onclick={() => { localGpuLayers = 0; commitGpuLayers(); }}
+        >
+          CPU
+        </button>
+      </div>
+      <input
+        type="range"
+        min="0"
+        max={gpuLayersMax}
+        value={localGpuLayers}
+        oninput={(e) => { localGpuLayers = Number((e.target as HTMLInputElement).value);}}
+        onchange={commitGpuLayers}
+        class="flex-1 h-1 bg-[var(--border)] rounded-full appearance-none cursor-pointer accent-black dark:accent-white"
+      />
+      <span class="text-xs text-[var(--text-secondary)] w-10 text-right">{gpuLayers}</span>
+    </div>
 
-  <!-- Memory warnings (if any) -->
-  {#if memoryEstimate.warnings.length}
-  <div class={`rounded-xl border px-3 py-2 text-sm ${memoryEstimate.compatible ? 'border-amber-300/50 bg-amber-50/70 text-amber-950 dark:border-amber-300/15 dark:bg-amber-500/10 dark:text-amber-100' : 'border-red-300/50 bg-red-50/70 text-red-950 dark:border-red-300/15 dark:bg-red-500/10 dark:text-red-100'}`}>
-  <div class="mb-1 flex items-center gap-2 font-medium">
-  <AlertTriangle class="h-4 w-4" />
-  {memoryEstimate.compatible ? 'Load may be tight' : 'Memory may be insufficient'}
-  </div>
-  <div class="space-y-1 text-xs">
-  {#each memoryEstimate.warnings as warning}
-  <div>{warning}</div>
-  {/each}
-  </div>
-  </div>
-  {/if}
+    <!-- Context length -->
+    <div class="flex items-center gap-4">
+      <span class="text-xs text-[var(--text-secondary)] w-20">Context</span>
+      <div class="flex items-center gap-1.5 p-0.5 bg-[var(--surface-highlight)] rounded-full border border-[var(--border-light)]">
+        {#each contextPresets as preset}
+          {#if preset <= maxContext}
+            <button
+              class={`px-3 py-1 text-xs rounded-full transition ${contextLength === preset ? 'bg-[var(--text)] text-[var(--surface)]' : 'hover:bg-[var(--surface-highlight)] text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+              onclick={() => { localContextLength = preset; commitContext();}}
+            >
+              {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
+            </button>
+          {/if}
+        {/each}
+      </div>
+      <input
+        type="range"
+        min="512"
+        max={maxContext}
+        value={localContextLength}
+        oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
+        onchange={commitContext}
+        class="flex-1 h-1 bg-[var(--border)] rounded-full appearance-none cursor-pointer accent-black dark:accent-white"
+      />
+      <span class="text-xs text-[var(--text-secondary)] w-12 text-right">{localContextLength >= 1024 ? `${Math.round(localContextLength/1024)}k` : localContextLength}</span>
+    </div>
 
-  <!-- Remember settings -->
-  <section class="rounded-xl border border-[var(--border)] p-3">
-  <label class="flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
-  <input type="checkbox" class="mt-0.5" bind:checked={appStore.localModelRememberSettings} />
-  <span>
-  <span class="block font-medium text-[var(--text)]">Remember settings</span>
-  <span class="text-[var(--text-tertiary)]">Reuse this profile next time.</span>
-  </span>
-  </label>
-  </section>
+    <!-- Memory info -->
+    <div class="text-xs text-[var(--text-muted)]">
+      {memoryEstimate.ramNeededGb.toFixed(1)}G RAM{gpuLayers > 0 ? ` + ${memoryEstimate.gpuGb.toFixed(1)}G GPU` : ''}
+    </div>
 
-  <!-- Loading progress -->
-  {#if appStore.localModelLoading}
-  <section class="rounded-xl border border-[var(--border)] p-3">
-  <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--text)]">
-  <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-  Loading model…
-  </div>
-  <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
-  <div class="h-full rounded-full bg-[var(--primary)] transition-all" style={`width: ${Math.max(8, appStore.localModelLoadProgress)}%`}></div>
-  </div>
-  {#if appStore.localModelLoadPhase}
-  <div class="mt-1.5 text-[11px] text-[var(--text-tertiary)]">{appStore.localModelLoadPhase}</div>
-  {/if}
-  </section>
-  {/if}
+    <!-- Quick actions -->
+    <div class="flex items-center gap-2">
+      <button
+        class="px-3 py-1.5 text-xs border border-[var(--border)] rounded-full transition hover:bg-[var(--surface-highlight)]"
+        onclick={applyRecommendedPreset}
+        disabled={!recommended}
+      >
+        Recommended
+      </button>
+    </div>
+
+    <!-- Loading progress -->
+    {#if appStore.localModelLoading}
+      <div class="flex items-center gap-3">
+        <div class="h-1 flex-1 overflow-hidden rounded-full bg-[var(--border)]">
+          <div class="h-full bg-[var(--text)] transition-all" style={`width: ${Math.max(8, appStore.localModelLoadProgress)}%`}></div>
+        </div>
+        <span class="text-xs text-[var(--text-secondary)]">{appStore.localModelLoadProgress}%</span>
+      </div>
+    {/if}
+
   </div>
   {:else}
   <!-- ==================== ADVANCED VIEW ==================== -->
   <div class="mb-3 grid gap-2 grid-cols-4">
-  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
+  <div class="rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
   <div class="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]"><Layers3 class="h-3 w-3" /> Context</div>
   <div class="text-xs font-medium text-[var(--text)]">{maxContext.toLocaleString()}t</div>
   </div>
-  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
+  <div class="rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
   <div class="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> CPU</div>
   <div class="text-xs font-medium text-[var(--text)]">{hardware ? `${hardware.physical_cores}C / ${hardware.cpu_threads}T` : '…'}</div>
   </div>
-  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
+  <div class="rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
   <div class="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]"><MemoryStick class="h-3 w-3" /> RAM</div>
   <div class="text-xs font-medium text-[var(--text)]">{hardware ? `${hardware.total_ram_gb.toFixed(0)} GB` : '…'}</div>
   </div>
-  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
+  <div class="rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2">
   <div class="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]"><Gauge class="h-3 w-3" /> GPU</div>
   <div class="truncate text-xs font-medium text-[var(--text)]">{hardware ? `${hardware.gpu_name || 'CPU only'}${hardware.vram_gb > 0 ? ` · ${hardware.vram_estimated ? '~' : ''}${hardware.vram_gb.toFixed(1)}G` : ''}` : '…'}</div>
   </div>
@@ -378,11 +371,11 @@
   {/if}
 
   <div class="mb-3 flex flex-wrap items-center gap-2">
-  <button class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
+  <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-3 py-1.5 text-xs font-semibold text-[var(--surface)] transition hover:opacity-80 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
   <Sparkles class="h-3.5 w-3.5" />
   Apply recommended
   </button>
-  <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={resetToSavedDefaults}>
+  <button class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={resetToSavedDefaults}>
   <RotateCcw class="h-3.5 w-3.5" />
   Reset
   </button>
@@ -390,17 +383,17 @@
 
   <div class="grid gap-3 lg:grid-cols-[1.35fr_0.65fr]">
   <div class="space-y-3">
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--text)] uppercase tracking-[0.12em]">
   <SlidersHorizontal class="h-3.5 w-3.5" />
   Core settings
   </div>
 
-  <div class="mb-2.5 flex flex-wrap gap-1.5">
+  <div class="mb-2.5 flex flex-wrap gap-1.5 p-0.5 bg-[var(--surface-highlight)] rounded-full border border-[var(--border-light)]">
   {#each contextPresets as preset}
   {#if preset <= maxContext}
   <button
-  class={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${contextLength === preset ? 'border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-fg)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}`}
+  class={`rounded-full px-3 py-1.5 text-xs font-medium transition ${contextLength === preset ? 'bg-[var(--text)] text-[var(--surface)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}`}
   onclick={() => { localContextLength = preset; commitContext();}}
   >
   {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
@@ -491,7 +484,7 @@
   </div>
   </section>
 
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--text)] uppercase tracking-[0.12em]">
   <HardDrive class="h-3.5 w-3.5" />
   Memory estimate
@@ -527,7 +520,7 @@
   <span>System RAM</span>
   <span>{totalRam.toFixed(1)} GB</span>
   </div>
-  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {overflows ? 'bg-red-100 dark:bg-red-500/10' : 'bg-[var(--surface-highlight)]'}">
+  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {overflows ? 'bg-[var(--surface-secondary)] dark:bg-red-500/10' : 'bg-[var(--surface-highlight)]'}">
   {#if gpuUsage > 0}
   <div
   class="absolute inset-y-0 left-0 rounded-l-lg bg-[var(--text-secondary)]"
@@ -540,28 +533,28 @@
   ></div>
   {#if overflows}
   <div
-  class="absolute inset-y-0 border-r-2 border-dashed border-red-400 dark:border-red-500"
-  style="left: {(totalRam / barMax) * 100}%"
-  ></div>
+   class="absolute inset-y-0 border-r-2 border-dashed border-[var(--text-muted)]"
+   style="left: {(totalRam / barMax) * 100}%"
+   ></div>
   {/if}
   </div>
   <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--text-tertiary)]">
   {#if gpuUsage > 0}
   <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-sm bg-[var(--text-secondary)]"></span>
+  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--text-secondary)]"></span>
   GPU: {gpuUsage.toFixed(2)} GB
   </span>
   {/if}
   <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-sm bg-[var(--text-tertiary)]"></span>
+  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--text-tertiary)]"></span>
   RAM: {ramUsage.toFixed(2)} GB
   </span>
   <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-sm bg-[var(--surface-highlight)]"></span>
+  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--surface-highlight)]"></span>
   Free: {freeGb.toFixed(2)} GB
   </span>
   {#if overflows}
-  <span class="text-red-500 font-medium">⚠ Exceeds by {(usedTotal - totalRam).toFixed(2)} GB</span>
+   <span class="font-medium text-[var(--text)]">⚠ Exceeds by {(usedTotal - totalRam).toFixed(2)} GB</span>
   {/if}
   </div>
   </div>
@@ -576,7 +569,7 @@
   <span>VRAM</span>
   <span>{gpuUsage.toFixed(2)} / {totalVram.toFixed(1)} GB ({vramUsedPct.toFixed(0)}%)</span>
   </div>
-  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {vramOverflows ? 'bg-red-100 dark:bg-red-500/10' : 'bg-[var(--surface-highlight)]'}">
+  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {vramOverflows ? 'bg-[var(--surface-secondary)]' : 'bg-[var(--surface-highlight)]'}">
   <div
   class="absolute inset-y-0 left-0 rounded-l-lg bg-[var(--text-secondary)] {vramUsedPct >= 100 ? 'rounded-r-lg' : ''}"
   style="width: {vramUsedPct}%"
@@ -587,7 +580,7 @@
   {/if}
 
   {#if memoryEstimate.warnings.length}
-  <div class={`mt-3 rounded-xl border px-3 py-2 text-sm ${memoryEstimate.compatible ? 'border-amber-300/50 bg-amber-50/70 text-amber-950 dark:border-amber-300/15 dark:bg-amber-500/10 dark:text-amber-100' : 'border-red-300/50 bg-red-50/70 text-red-950 dark:border-red-300/15 dark:bg-red-500/10 dark:text-red-100'}`}>
+   <div class={`mt-3 rounded-lg border px-3 py-2 text-sm ${memoryEstimate.compatible ? 'border-[var(--border)] bg-[var(--surface-highlight)] text-[var(--text)]' : 'border-[var(--border-strong)] bg-[var(--surface-secondary)] text-[var(--text)]'}`}>
   <div class="mb-1 flex items-center gap-2 font-medium">
   <AlertTriangle class="h-4 w-4" />
   {memoryEstimate.compatible ? 'Load may be tight' : 'Memory may be insufficient'}
@@ -601,7 +594,7 @@
   {/if}
   </section>
 
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <button class="flex w-full items-center justify-between gap-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
   <span class="inline-flex items-center gap-2">
   <BrainCircuit class="h-3.5 w-3.5" />
@@ -685,7 +678,7 @@
   </div>
 
   <div class="space-y-3">
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Summary</div>
   <div class="space-y-1.5 text-xs text-[var(--text-secondary)]">
   <div class="flex items-center justify-between gap-3"><span>Model max context</span><span class="font-medium text-[var(--text)]">{maxContext.toLocaleString()}</span></div>
@@ -699,7 +692,7 @@
   </div>
   </section>
 
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <label class="flex items-start gap-2.5 text-xs text-[var(--text-secondary)]">
   <input type="checkbox" class="mt-0.5" bind:checked={appStore.localModelRememberSettings} />
   <span>
@@ -710,7 +703,7 @@
   </section>
 
   {#if appStore.localModelLoading}
-  <section class="rounded-xl border border-[var(--border)] p-3">
+  <section class="rounded-lg border border-[var(--border)] p-3">
   <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--text)]">
   <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
   Loading model…
@@ -727,29 +720,42 @@
   </div>
   {/if}
 
-  <div class="mt-4 flex items-center justify-between gap-2">
- <div>
- {#if isAnyModelLoaded}
- <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:hover:bg-red-500/8 dark:hover:border-red-500/20 dark:hover:text-red-400 disabled:opacity-40"
- onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
- disabled={appStore.localModelLoading}
- >
- <PowerOff class="h-3.5 w-3.5" />
- Unload{loadedModelLabel ? `"${loadedModelLabel}"` : ''}
- </button>
- {/if}
- </div>
- <div class="flex items-center gap-2">
- <button class="rounded-lg border border-[var(--border)] px-4 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={() => appStore.closeLocalModelLoadDialog()} disabled={appStore.localModelLoading}>
- Cancel
- </button>
- <button class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-1.5 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={() => appStore.confirmLocalModelLoad()} disabled={appStore.localModelLoading || !memoryEstimate.compatible}>
- <SlidersHorizontal class="h-4 w-4" />
- {appStore.localModelLoading ? 'Loading…' : 'Load model'}
- </button>
- </div>
- </div>
+  <div class="mt-5 flex items-center justify-between gap-3">
+    <div>
+      {#if isAnyModelLoaded && !appStore.localModelLoading}
+        <button
+          class="px-3 py-1.5 text-xs border border-[var(--border)] rounded-full transition hover:bg-[var(--surface-highlight)]"
+          onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
+        >
+          Unload
+        </button>
+      {/if}
+    </div>
+    <div class="flex items-center gap-2">
+      {#if appStore.localModelLoading}
+        <button
+          class="px-3 py-1.5 text-xs border border-[var(--border)] rounded-full transition bg-[var(--text)] text-[var(--surface)]"
+          onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
+        >
+          Stop
+        </button>
+      {:else}
+        <button
+          class="px-3 py-1.5 text-xs border border-[var(--border)] rounded-full transition hover:bg-[var(--surface-highlight)]"
+          onclick={() => appStore.closeLocalModelLoadDialog()}
+        >
+          Cancel
+        </button>
+        <button
+          class="px-4 py-1.5 text-xs rounded-full transition bg-[var(--text)] text-[var(--surface)] hover:opacity-80"
+          onclick={() => appStore.confirmLocalModelLoad()}
+          disabled={!memoryEstimate.compatible}
+        >
+          Load
+        </button>
+      {/if}
+    </div>
+  </div>
  </div>
  </div>
 {/if}

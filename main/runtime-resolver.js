@@ -18,13 +18,25 @@ export function inferRuntimeVariant(runtimePath) {
 }
 
 export function runtimeCandidatesFromDirectory(dirPath) {
-  const candidateNames = ['llama-server', 'llama-server.exe', 'server'];
-  // Check top level first, then search recursively (llama.cpp archives often
-  // extract into a nested subdirectory like build/llama-server).
-  for (const bin of candidateNames) {
+  // Priority order: llama-server first (preferred for server mode),
+  // then llama-cli (works for probing --list-devices)
+  const priorityCandidates = ['llama-server', 'llama-server.exe'];
+  const fallbackCandidates = ['llama-cli', 'llama-cli.exe', 'server'];
+
+  // Check top level first for priority candidates
+  for (const bin of priorityCandidates) {
     const top = path.join(dirPath, bin);
     if (fs.existsSync(top)) return [top];
   }
+
+  // Check top level for fallback candidates
+  for (const bin of fallbackCandidates) {
+    const top = path.join(dirPath, bin);
+    if (fs.existsSync(top)) return [top];
+  }
+
+  // Search recursively
+  const allCandidates = [...priorityCandidates, ...fallbackCandidates];
   const found = [];
   function walk(dir) {
     let entries;
@@ -33,7 +45,7 @@ export function runtimeCandidatesFromDirectory(dirPath) {
       if (found.length) return;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
-      if (candidateNames.includes(entry.name)) found.push(full);
+      if (allCandidates.includes(entry.name)) found.push(full);
     }
   }
   walk(dirPath);

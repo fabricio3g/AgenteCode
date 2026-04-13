@@ -127,17 +127,10 @@
   });
 </script>
 
-<div class="flex flex-1 flex-col gap-6 px-8">
-  <div class="flex items-center gap-3">
-    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)]">
-      <Boxes class="h-5 w-5" />
-    </div>
-    <div>
-      <h2 class="text-lg font-semibold text-[var(--text)] font-serif tracking-tight">{$t('onboarding.downloadModel')}</h2>
-      <p class="text-sm text-[var(--text-secondary)]">
-        {$t('onboarding.modelDownloadDesc')}
-      </p>
-    </div>
+<div class="flex flex-1 flex-col gap-5 px-6">
+  <div class="flex items-center gap-2">
+    <Boxes class="h-4 w-4 text-[var(--text-secondary)]" />
+    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.downloadModel')}</span>
   </div>
 
   {#if checkingLocal}
@@ -145,44 +138,39 @@
       <LoaderCircle class="h-5 w-5 animate-spin" />
     </div>
   {:else}
-    <div class="space-y-2">
+    <div class="space-y-1.5">
       {#each models as model}
         {@const isLocal = isModelLocal(model)}
         {@const isSelected = selectedId === model.id}
         {@const isDownloading = downloading && selectedId === model.id}
         <button
-          class="flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition
-            {isSelected ? 'border-[var(--primary)] bg-[var(--surface-secondary)]' : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-strong)]'}"
+          class="flex w-full items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition
+            {isSelected ? 'border-[var(--text)] bg-[var(--surface-secondary)]' : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text)]'}"
           onclick={() => { selectedId = model.id; if (!isLocal) downloadModel(model); }}
           disabled={downloading && !isDownloading}
         >
-          <div class="flex-1">
+          <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="text-sm font-medium text-[var(--text)]">{model.label}</span>
+              <span class="text-sm font-medium text-[var(--text)] truncate">{model.label}</span>
               {#if model.recommended}
-                <span class="rounded-full bg-[var(--success-bg)] border border-[var(--success-border)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--success)]">{$t('onboarding.recommended')}</span>
+                <span class="rounded-full border border-[var(--text)] px-2 py-0.5 text-[10px] font-medium shrink-0">{$t('onboarding.recommended')}</span>
               {/if}
               {#if isLocal}
-                <span class="flex items-center gap-1 text-[var(--success)]">
-                  <CheckCircle2 class="h-3.5 w-3.5" />
-                  <span class="text-[10px] font-medium">{$t('onboarding.downloaded')}</span>
-                </span>
+                <CheckCircle2 class="h-3.5 w-3.5 shrink-0 text-[var(--success)]" />
               {/if}
             </div>
-            <div class="mt-1 flex items-center gap-3 text-xs text-[var(--text-muted)]">
+            <div class="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-muted)]">
               <span>{model.sizeLabel}</span>
-              <span>·</span>
-              <span>{$t('onboarding.minRam', { values: { gb: model.minRamGb } })}</span>
               {#if model.tags.length}
                 <span>·</span>
-                {#each model.tags as tag}
-                  <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px]">{tag}</span>
+                {#each model.tags.slice(0, 2) as tag}
+                  <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5">{tag}</span>
                 {/each}
               {/if}
             </div>
           </div>
           {#if isDownloading}
-            <LoaderCircle class="h-4 w-4 shrink-0 animate-spin text-[var(--primary)]" />
+            <LoaderCircle class="h-4 w-4 shrink-0 animate-spin" />
           {:else if !isLocal}
             <Download class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
           {/if}
@@ -191,42 +179,28 @@
     </div>
 
     {#if downloading}
-      <div class="flex items-center gap-3">
-        <div class="flex-1 space-y-2">
-          <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
-            <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {downloadProgress}%"></div>
-          </div>
-          <p class="text-xs text-[var(--text-muted)]">{$t('onboarding.downloadingModel', { values: { model: selectedModel?.label || $t('onboarding.model').toLowerCase() } })} {Math.round(downloadProgress)}%</p>
+      <div class="space-y-1">
+        <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
+          <div class="h-full bg-[var(--text)] transition-all" style="width: {downloadProgress}%"></div>
         </div>
-        <button
-          class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--error-bg)] hover:text-[var(--error)] hover:border-[var(--error-border)]"
-          onclick={cancelDownload}
-          title={$t('onboarding.cancelDownload')}
-          aria-label={$t('onboarding.cancelDownload')}
-        >
-          <Ban class="h-4 w-4" />
-        </button>
+        <p class="text-xs text-[var(--text-muted)]">{Math.round(downloadProgress)}%</p>
       </div>
     {/if}
 
     {#if downloadError}
-      <div class="flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)]">
-        <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5" />
-        <span>{downloadError}</span>
-      </div>
+      <p class="text-xs text-[var(--error)]">{downloadError}</p>
     {/if}
   {/if}
 
-  <div class="flex items-center justify-between pt-4">
+  <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition hover:bg-[var(--surface-highlight)]"
       onclick={onBack}
     >
       <ArrowLeft class="h-4 w-4" />
-      {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
+      class="inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-5 py-2 text-sm font-medium text-[var(--surface)] transition hover:opacity-90 disabled:opacity-50"
       onclick={() => {
         const local = models.find(m => isModelLocal(m));
         if (local) onNext(local.filename);
@@ -234,7 +208,6 @@
       disabled={!hasLocalModel}
     >
       {$t('onboarding.next')}
-      <ArrowRight class="h-4 w-4" />
     </button>
   </div>
 </div>

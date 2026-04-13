@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.27.2",
+    "@lancedb/lancedb-win32-x64-msvc": "^0.27.2",
     "@mozilla/readability": "^0.6.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "better-sqlite3": "^11.10.0",
@@ -53,6 +54,11 @@
       "preload/**/*",
       "renderer/dist/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/apache-arrow/**/*",
+      "node_modules/@lancedb/**/*",
+      "node_modules/better-sqlite3/**/*"
+    ],
     "extraResources": [
       {
         "from": "../models",
@@ -80,7 +86,8 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "mac": {
       "target": [

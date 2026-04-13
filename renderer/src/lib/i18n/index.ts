@@ -1,4 +1,4 @@
-import { init, register, locale } from 'svelte-i18n';
+import { init, register, locale, waitLocale } from 'svelte-i18n';
 
 register('en', () => import('../locales/en.json'));
 register('es', () => import('../locales/es.json'));
@@ -20,7 +20,6 @@ export function normalizeLocaleCode(value: string | null | undefined): (typeof S
   if (lower.startsWith('zh')) return 'zh';
   if (lower.startsWith('fr')) return 'fr';
   if (lower.startsWith('de')) return 'de';
-  if (lower.startsWith('ja')) return 'ja';
   if (lower.startsWith('en')) return 'en';
 
   return 'en';
@@ -49,5 +48,7 @@ init({
     }
   })(),
 });
+
+export const i18nReady = waitLocale();
 
 export { locale };

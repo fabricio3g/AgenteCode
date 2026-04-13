@@ -20,8 +20,9 @@
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
-import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
-import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
+  import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
+  import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Plus, Search, Boxes, Cpu, Settings2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -133,49 +134,54 @@ import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte
       {:else}
         <!-- Collapsed sidebar icon strip -->
         <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 bg-[var(--chat-bg,var(--background))] py-3">
-          <button
-            class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-xl transition"
-            onclick={() => appStore.createChat()}
-            aria-label="New chat"
-            title="New chat"
-          >
-            <Plus class="h-5 w-5" />
-          </button>
-          <button
-            class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-xl transition"
-            onclick={() => (appStore.chatSearchOpen = true)}
-            aria-label="Search chats"
-            title="Search conversations"
-          >
-            <Search class="h-5 w-5" />
-          </button>
-          <button
-            class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-xl transition"
-            onclick={() => { appStore.modelManagerOpen = true; appStore.modelManagerOpenSection = 'models'; }}
-            aria-label="Model Hub"
-            title="Model Hub"
-          >
-            <Boxes class="h-5 w-5" />
-          </button>
-          {#if isTauri()}
+          <Tooltip label="New chat">
             <button
-              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-xl transition"
-              onclick={() => (appStore.runtimeManagerOpen = true)}
-              aria-label="Runtime"
-              title="Runtime"
+              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              onclick={() => appStore.createChat()}
+              aria-label="New chat"
             >
-              <Cpu class="h-5 w-5" />
+              <Plus class="h-5 w-5" />
             </button>
+          </Tooltip>
+          <Tooltip label="Search conversations">
+            <button
+              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              onclick={() => (appStore.chatSearchOpen = true)}
+              aria-label="Search chats"
+            >
+              <Search class="h-5 w-5" />
+            </button>
+          </Tooltip>
+          <Tooltip label="Model Hub">
+            <button
+              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              onclick={() => { appStore.modelManagerOpen = true; appStore.modelManagerOpenSection = 'models'; }}
+              aria-label="Model Hub"
+            >
+              <Boxes class="h-5 w-5" />
+            </button>
+          </Tooltip>
+          {#if isTauri()}
+            <Tooltip label="Runtime">
+              <button
+                class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+                onclick={() => (appStore.runtimeManagerOpen = true)}
+                aria-label="Runtime"
+              >
+                <Cpu class="h-5 w-5" />
+              </button>
+            </Tooltip>
           {/if}
           <div class="flex-1"></div>
-          <button
-            class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-xl transition"
-            onclick={() => (appStore.settingsOpen = true)}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings2 class="h-5 w-5" />
-          </button>
+          <Tooltip label="Settings">
+            <button
+              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              onclick={() => (appStore.settingsOpen = true)}
+              aria-label="Settings"
+            >
+              <Settings2 class="h-5 w-5" />
+            </button>
+          </Tooltip>
         </div>
       {/if}
 

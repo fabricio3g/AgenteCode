@@ -22,7 +22,7 @@
       <LoaderCircle class="h-4 w-4 animate-spin" />Detecting hardware…
     </div>
   {:else if hardwareStore.error}
-    <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-800/30 dark:bg-red-900/10 dark:text-red-400">
+    <div class="rounded-lg border border-[var(--border-strong)] bg-[var(--surface-highlight)] p-3 text-sm text-[var(--text)]">
       {hardwareStore.error}
     </div>
   {:else if !hardwareStore.info}

@@ -6,11 +6,14 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import { i18nReady } from '$lib/i18n';
 
   let startupBypassed = $state(false);
   let activeWorkSyncInterval: ReturnType<typeof setInterval> | null = null;
 
-  onMount(() => {
+  onMount(async () => {
+    await i18nReady;
+
     const bypassTimer = window.setTimeout(() => {
       startupBypassed = true;
       if (!appStore.chats.length) {

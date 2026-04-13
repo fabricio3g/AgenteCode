@@ -216,12 +216,12 @@
  <div class="modal-surface flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl dark:ring-1 dark:ring-white/10" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
 
  <!-- Header -->
- <div class="flex items-center justify-between border-b border-black/5 px-5 py-3.5">
+ <div class="modal-header">
  <div>
  <h3 class="text-sm font-semibold text-[var(--text)]">Runtime Manager</h3>
  <p class="text-[12px] text-[var(--text-muted)]">llama.cpp — the engine that runs local models</p>
  </div>
- <button class="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)]" onclick={() => (appStore.runtimeManagerOpen = false)}>
+ <button class="close-btn" onclick={() => (appStore.runtimeManagerOpen = false)}>
  <X class="h-4 w-4" />
  </button>
  </div>
@@ -230,11 +230,11 @@
 
  <!-- No-runtime warning banner -->
  {#if runtimes.length === 0}
- <div class="mx-4 mt-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/8">
- <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+ <div class="info-card mx-4 mt-4 px-4 py-3">
+ <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
  <div>
- <p class="text-[13px] font-medium text-amber-800 dark:text-amber-200">No runtime installed</p>
- <p class="mt-0.5 text-[12px] text-amber-600 dark:text-amber-400">Download and install the llama.cpp runtime below to load local models.</p>
+ <p class="text-[13px] font-medium text-[var(--text)]">No runtime installed</p>
+ <p class="mt-0.5 text-[12px] text-[var(--text-secondary)]">Download and install the llama.cpp runtime below to load local models.</p>
  </div>
  </div>
  {/if}
@@ -255,7 +255,7 @@
  {#if releaseTag}
  <span class="text-[11px] text-[var(--text-muted)]">{releaseTag}</span>
  {/if}
- <button class="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)]" onclick={fetchLatestRelease} disabled={loadingRelease}>
+ <button class="refresh-btn" onclick={fetchLatestRelease} disabled={loadingRelease}>
  <RefreshCw class={`h-3 w-3 ${loadingRelease ? 'animate-spin' : ''}`} />
  {loadingRelease ? '' : 'Refresh'}
  </button>
@@ -263,9 +263,8 @@
  </div>
 
  {#if releaseError}
- <!-- Show as amber warning (not red) when it's just a fallback notice -->
  {@const isFallback = releaseError.includes('rate-limited') || releaseError.includes('known release') || releaseError.includes('Could not reach')}
- <div class={`rounded-lg border px-3 py-2 text-[12px] ${isFallback ? 'border-amber-200 bg-amber-50/70 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/8 dark:text-amber-300' : 'border-red-200 bg-red-50 text-red-600 dark:border-red-800/30 dark:bg-red-900/10 dark:text-red-400'}`}>{releaseError}</div>
+ <div class={`info-card px-3 py-2 text-[12px] ${isFallback ? '' : 'border-[var(--border-strong)]'}`}>{releaseError}</div>
  {/if}
 
  {#if loadingRelease}
@@ -276,30 +275,30 @@
  <div class="space-y-2">
  {#each releaseAssets as asset}
  {@const isDownloading = downloading === asset.name}
- <div class={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 transition ${asset.variant === 'recommended' ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/40 dark:bg-emerald-900/8' : 'border-[var(--border)] bg-[var(--surface)]'}`}>
+ <div class="asset-card">
  <div class="min-w-0 flex-1">
  <div class="flex flex-wrap items-center gap-1.5">
  {#if asset.variant === 'recommended'}
- <span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"><Zap class="h-2.5 w-2.5" />Recommended</span>
+ <span class="badge-recommended"><Zap class="h-2.5 w-2.5" />Recommended</span>
  {:else if asset.variant === 'gpu'}
- <span class="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300"><Zap class="h-2.5 w-2.5" />GPU</span>
+ <span class="badge-gpu"><Zap class="h-2.5 w-2.5" />GPU</span>
  {:else}
- <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"><Cpu class="h-2.5 w-2.5" />CPU</span>
+ <span class="badge-cpu"><Cpu class="h-2.5 w-2.5" />CPU</span>
  {/if}
  <span class="text-[12px] font-medium text-[var(--text-secondary)]">{asset.label}</span>
  </div>
  <p class="mt-0.5 text-[11px] text-[var(--text-muted)]">{asset.description}</p>
  {#if isDownloading}
  <div class="mt-1.5 space-y-1">
- <div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-highlight)]">
- <div class="h-full rounded-full bg-[var(--accent)] transition-all" style="width:{downloadProgress}%"></div>
+ <div class="progress-bar">
+ <div class="progress-fill" style="width:{downloadProgress}%"></div>
  </div>
  <p class="text-[10px] text-[var(--text-muted)]">{downloadPhase === 'extracting' ? 'Extracting…' : `Downloading… ${downloadProgress.toFixed(0)}%`}</p>
  </div>
  {/if}
  </div>
  <button
- class={`shrink-0 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-50 ${asset.variant === 'recommended' ? 'bg-[var(--primary)] text-[var(--primary-fg)] hover:opacity-90' : 'border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}`}
+ class={`install-btn ${asset.variant === 'recommended' ? 'is-primary' : ''}`}
  onclick={() => installAsset(asset)}
  disabled={!!downloading}
  >
@@ -318,7 +317,7 @@
  {/if}
 
  {#if downloadError}
- <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-800/30 dark:bg-red-900/10 dark:text-red-400">{downloadError}</div>
+ <div class="info-card border-[var(--border-strong)] px-3 py-2 text-[12px]">{downloadError}</div>
  {/if}
 
  <!-- Advanced: manual URL -->
@@ -327,11 +326,11 @@
  Custom / manual URL
  </button>
  {#if showAdvanced}
- <div class="space-y-2 rounded-xl border border-[var(--border)] p-3">
- <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] text-[var(--text)] outline-none focus:border-[var(--border-strong)]" />
- <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] text-[var(--text)] outline-none focus:border-[var(--border-strong)]" />
- <input bind:value={customUrl} placeholder="Direct download URL" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] text-[var(--text)] outline-none focus:border-[var(--border-strong)]" />
- <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50" onclick={installCustom} disabled={!!downloading || !customUrl.trim()}>
+ <div class="advanced-card space-y-2 px-3 py-2">
+ <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="text-input" />
+ <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="text-input" />
+ <input bind:value={customUrl} placeholder="Direct download URL" class="text-input" />
+ <button class="secondary-btn" onclick={installCustom} disabled={!!downloading || !customUrl.trim()}>
  <Download class="h-3.5 w-3.5" />Install from URL
  </button>
  </div>
@@ -339,27 +338,27 @@
  </div>
 
  <!-- Installed runtimes -->
- <div class="border-t border-black/5 p-4">
+ <div class="section-divider p-4">
  <div class="mb-3 flex items-center justify-between">
  <p class="text-[13px] font-semibold text-[var(--text)]">Installed runtimes</p>
- <button class="flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)]" onclick={refresh}>
+ <button class="refresh-btn" onclick={refresh}>
  <RefreshCw class="h-3 w-3" />Refresh
  </button>
  </div>
 
  {#if !runtimes.length}
- <div class="rounded-xl border border-dashed border-black/8 px-4 py-6 text-center text-[13px] text-[var(--text-muted)]">
+ <div class="empty-state">
  No runtime binaries installed yet.
  </div>
  {:else}
   <div class="space-y-2">
   {#each runtimes as rt}
  {@const isActive = rt.is_active ?? (appStore.config?.llm?.local?.runtime_path === rt.path)}
- <div class={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 ${isActive ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/40 dark:bg-emerald-900/8' : 'border-[var(--border)]'}`}>
+ <div class={`runtime-card ${isActive ? 'is-active' : ''}`}>
  <div class="min-w-0 flex-1">
  <div class="flex items-center gap-1.5">
  {#if isActive}
- <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+ <span class="active-dot"></span>
  {/if}
  <span class="truncate text-[13px] font-medium text-[var(--text-secondary)]">{rt.name}</span>
  </div>
@@ -367,13 +366,13 @@
  </div>
  <div class="flex shrink-0 items-center gap-1.5">
  {#if !isActive}
- <button class="rounded-lg border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={() => useRuntime(rt.path)}>
+ <button class="secondary-btn" onclick={() => useRuntime(rt.path)}>
  Use
  </button>
  {:else}
- <span class="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">Active</span>
+ <span class="active-label">Active</span>
  {/if}
- <button class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400" onclick={() => removeRuntime(rt.path)} title="Delete">
+ <button class="delete-btn" onclick={() => removeRuntime(rt.path)} title="Delete">
  <Trash2 class="h-3.5 w-3.5" />
  </button>
  </div>
@@ -385,17 +384,17 @@
 
  <!-- Supervisor status -->
  {#if supervisor}
- <div class="border-t border-black/5 p-4">
+ <div class="section-divider p-4">
  <div class="flex items-center justify-between">
  <div>
- <p class="text-[12px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Runtime process</p>
+ <p class="section-label">Runtime process</p>
  <p class="mt-0.5 text-[13px] font-medium text-[var(--text-secondary)]">
  {supervisor.state || 'unknown'}
  {#if supervisor.active_model}· <span class="text-[var(--text-muted)]">{supervisor.active_model.split(/[\\/]/).pop()}</span>{/if}
  </p>
  </div>
  {#if supervisor.state !== 'idle' && supervisor.state !== 'unknown'}
- <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={stopRuntime}>
+ <button class="secondary-btn" onclick={stopRuntime}>
  <Square class="h-3 w-3" />Stop
  </button>
  {/if}
@@ -406,3 +405,266 @@
  </div>
  </div>
 </div>
+
+<style>
+ .modal-backdrop {
+ background: rgba(0, 0, 0, 0.5);
+ }
+
+ .modal-surface {
+ background: var(--surface);
+ border: 1px solid var(--border);
+ border-radius: var(--radius-xl);
+ box-shadow: var(--shadow-xl);
+ }
+
+ .modal-header {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ border-bottom: 1px solid var(--border);
+ padding: 14px 20px;
+ }
+
+ .close-btn {
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ width: 32px;
+ height: 32px;
+ border-radius: var(--radius-s);
+ color: var(--text-muted);
+ transition: color 0.12s, background 0.12s;
+ border: 1px solid transparent;
+ }
+
+ .close-btn:hover {
+ color: var(--text);
+ background: var(--surface-highlight);
+ border-color: var(--border-light);
+ }
+
+ .info-card {
+ display: flex;
+ align-items: flex-start;
+ gap: 12px;
+ border-radius: var(--radius-m);
+ border: 1px solid var(--border);
+ background: var(--surface-highlight);
+ color: var(--text);
+ }
+
+ .refresh-btn {
+ display: flex;
+ align-items: center;
+ gap: 6px;
+ border-radius: var(--radius-s);
+ border: 1px solid var(--border);
+ padding: 4px 8px;
+ font-size: 11px;
+ color: var(--text-tertiary);
+ transition: all 0.12s;
+ }
+
+ .refresh-btn:hover {
+ color: var(--text-secondary);
+ background: var(--surface-highlight);
+ }
+
+ .asset-card {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ padding: 12px 14px;
+ border-radius: var(--radius-m);
+ border: 1px solid var(--border);
+ background: var(--surface);
+ transition: border-color 0.12s;
+ }
+
+ .asset-card:has(.badge-recommended) {
+ border-color: var(--border-strong);
+ background: var(--surface-highlight);
+ }
+
+ .badge-recommended,
+ .badge-gpu,
+ .badge-cpu {
+ display: inline-flex;
+ align-items: center;
+ gap: 4px;
+ border-radius: 9999px;
+ padding: 2px 6px;
+ font-size: 10px;
+ font-weight: 600;
+ }
+
+ .badge-recommended {
+ background: var(--primary);
+ color: var(--primary-fg);
+ }
+
+ .badge-gpu {
+ background: var(--surface-secondary);
+ border: 1px solid var(--border);
+ color: var(--text-secondary);
+ }
+
+ .badge-cpu {
+ background: var(--surface-highlight);
+ color: var(--text-tertiary);
+ }
+
+ .progress-bar {
+ width: 100%;
+ height: 6px;
+ overflow: hidden;
+ border-radius: 9999px;
+ background: var(--surface-secondary);
+ }
+
+ .progress-fill {
+ height: 100%;
+ border-radius: 9999px;
+ background: var(--primary);
+ transition: width 0.2s;
+ }
+
+ .install-btn {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ border-radius: var(--radius-s);
+ padding: 6px 12px;
+ font-size: 12px;
+ font-weight: 500;
+ transition: all 0.12s;
+ border: 1px solid var(--border);
+ color: var(--text-secondary);
+ background: transparent;
+ }
+
+ .install-btn:hover {
+ background: var(--surface-highlight);
+ }
+
+ .install-btn.is-primary {
+ background: var(--primary);
+ color: var(--primary-fg);
+ border-color: transparent;
+ }
+
+ .install-btn.is-primary:hover {
+ opacity: 0.9;
+ }
+
+ .install-btn:disabled {
+ opacity: 0.5;
+ cursor: not-allowed;
+ }
+
+ .advanced-card {
+ border-radius: var(--radius-m);
+ border: 1px solid var(--border);
+ background: var(--surface-highlight);
+ }
+
+ .text-input {
+ width: 100%;
+ border-radius: var(--radius-s);
+ border: 1px solid var(--border);
+ background: transparent;
+ padding: 6px 12px;
+ font-size: 13px;
+ color: var(--text);
+ outline: none;
+ transition: border-color 0.12s;
+ }
+
+ .text-input:focus {
+ border-color: var(--border-strong);
+ }
+
+ .secondary-btn {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ border-radius: var(--radius-s);
+ border: 1px solid var(--border);
+ padding: 4px 10px;
+ font-size: 12px;
+ font-weight: 500;
+ color: var(--text-secondary);
+ background: transparent;
+ transition: all 0.12s;
+ }
+
+ .secondary-btn:hover {
+ background: var(--surface-highlight);
+ border-color: var(--border-strong);
+ color: var(--text);
+ }
+
+ .section-divider {
+ border-top: 1px solid var(--border-light);
+ }
+
+ .section-label {
+ font-size: 11px;
+ font-weight: 600;
+ text-transform: uppercase;
+ letter-spacing: 0.1em;
+ color: var(--text-muted);
+ }
+
+ .empty-state {
+ border-radius: var(--radius-m);
+ border: 1px dashed var(--border);
+ padding: 24px 16px;
+ text-align: center;
+ font-size: 13px;
+ color: var(--text-muted);
+ }
+
+ .runtime-card {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 12px;
+ padding: 10px 14px;
+ border-radius: var(--radius-m);
+ border: 1px solid var(--border);
+ background: var(--surface);
+ }
+
+ .runtime-card.is-active {
+ border-color: var(--border-strong);
+ background: var(--surface-highlight);
+ }
+
+ .active-dot {
+ width: 6px;
+ height: 6px;
+ border-radius: 50%;
+ background: var(--primary);
+ }
+
+ .active-label {
+ font-size: 11px;
+ font-weight: 500;
+ color: var(--text-secondary);
+ }
+
+ .delete-btn {
+ border-radius: var(--radius-s);
+ padding: 6px;
+ color: var(--text-muted);
+ transition: all 0.12s;
+ }
+
+ .delete-btn:hover {
+ background: var(--surface-secondary);
+ color: var(--text);
+ }
+</style>

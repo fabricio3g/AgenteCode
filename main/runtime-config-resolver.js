@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { resolveRuntimeBinary } from './runtime-resolver.js';
 
 // ── Constants ──
 
@@ -355,7 +357,10 @@ function parseRuntimeListDevicesOutput(output) {
   const availableBackends = new Set(['cpu']);
   const devices = [];
 
-  for (const line of String(output || '').split('\n')) {
+  for (const rawLine of String(output || '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
     const loadedMatch = line.match(/loaded\s+([A-Za-z0-9_+-]+)\s+backend/i);
     if (loadedMatch) {
       const backend = normalizeBackendName(loadedMatch[1]);
@@ -363,7 +368,7 @@ function parseRuntimeListDevicesOutput(output) {
       continue;
     }
 
-    const deviceMatch = line.match(/^\s*([A-Za-z]+\d+)\s*:\s*(.+)$/);
+    const deviceMatch = line.match(/^([A-Za-z]+\d+)\s*:\s*(.+)$/);
     if (!deviceMatch) continue;
     const id = deviceMatch[1].trim();
     const label = deviceMatch[2].trim();
@@ -409,16 +414,22 @@ function probeRuntimeCapabilities(runtimePath) {
     source: 'probe_failed'
   };
 
-  const result = spawnSync(runtimePath, ['--list-devices'], {
-    timeout: 10000,
-    encoding: 'utf8'
-  });
-  const combined = `${String(result.stdout || '')}\n${String(result.stderr || '')}`;
-  parsed = {
-    runtimePath,
-    ...parseRuntimeListDevicesOutput(combined),
-    source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
-  };
+  try {
+    const result = spawnSync(runtimePath, ['--list-devices'], {
+      timeout: 10000,
+      encoding: 'utf8'
+    });
+    const combined = `${String(result.stdout || '')}\n${String(result.stderr || '')}`;
+    parsed = {
+      runtimePath,
+      ...parseRuntimeListDevicesOutput(combined),
+      source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
+    };
+    console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
+  } catch (err) {
+    console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} error=${String(err)}`);
+    parsed.source = 'probe_exception';
+  }
 
   RUNTIME_PROBE_CACHE.set(cacheKey, parsed);
   return parsed;
@@ -451,40 +462,86 @@ export function resolveRuntimeConfig(options = {}) {
 
   const reasonLog = [];
   const osArch = detectOsArch();
-  const runtimeCaps = probeRuntimeCapabilities(runtimePath);
-  const runtimeBackends = new Set((runtimeCaps.availableBackends || []).map(normalizeBackendName));
-  const ggufFields = modelPath ? readGgufMetadataFields(modelPath) : null;
+  let ggufFields = null;
+  if (modelPath) {
+    try { ggufFields = readGgufMetadataFields(modelPath); } catch { /* ignore */ }
+  }
 
-  // 1. Backend resolution
+  // 1. Resolve runtime path - try multiple strategies
+  let effectiveRuntimePath = runtimePath;
+  let runtimeSource = 'explicit';
+  if (!effectiveRuntimePath || !fs.existsSync(effectiveRuntimePath)) {
+    // Try to auto-discover runtime from config or system
+    const autoResolved = resolveRuntimeBinary('');
+    if (autoResolved && fs.existsSync(autoResolved)) {
+      effectiveRuntimePath = autoResolved;
+      runtimeSource = 'auto_discovered';
+    }
+  }
+
+  // Probe the resolved runtime
+  const runtimeCaps = probeRuntimeCapabilities(effectiveRuntimePath);
+  const runtimeBackends = new Set((runtimeCaps.availableBackends || []).map(normalizeBackendName));
+
+  console.log(`[resolveRuntimeConfig] model=${modelPath ? path.basename(modelPath) : 'none'} runtime=${effectiveRuntimePath ? path.basename(effectiveRuntimePath) : 'null'} runtimeSource=${runtimeSource} runtimeBackends=${JSON.stringify(runtimeCaps.availableBackends)} userBackend=${userBackend}`);
+
+  // 2. Backend resolution
   let backend = normalizeBackendName(userBackend || 'auto');
   let detectedBackend = null;
   let selectedDevice = null;
 
-  if (backend === 'auto') {
+  // Helper to perform auto-detection using current runtime capabilities
+  function doAutoDetection(currentRuntimeBackends, currentRuntimeCaps) {
     const autoOrder = pickAutoBackendOrder(osArch.platform);
     for (const candidate of autoOrder) {
       if (candidate === 'cpu') {
-        backend = 'cpu';
-        reasonLog.push('auto_detected=cpu(no_gpu_device_found)');
-        break;
+        reasonLog.push('auto_detected=cpu(no_gpu_in_runtime)');
+        return 'cpu';
       }
-      if (listHasAnyBackend(candidate, runtimeBackends)) {
-        const candidateDevice = pickDeviceForBackend(candidate, runtimeCaps);
-        if (candidateDevice) {
-          backend = candidate;
-          selectedDevice = candidateDevice;
-          reasonLog.push(`auto_detected=${backend}(device=${selectedDevice})`);
-          break;
+      if (listHasAnyBackend(candidate, currentRuntimeBackends)) {
+        const device = pickDeviceForBackend(candidate, currentRuntimeCaps);
+        if (device) {
+          reasonLog.push(`auto_detected=${candidate}(device=${device})`);
+          return { backend: candidate, device };
         }
       }
     }
+    // Fall back to system detection
+    const sysBackend = detectAvailableBackend();
+    reasonLog.push(`auto_detected=${sysBackend.backend}(${sysBackend.reason})`);
+    return { backend: sysBackend.backend, device: null };
+  }
 
-    if (backend === 'auto') {
-      detectedBackend = detectAvailableBackend();
-      backend = normalizeBackendName(detectedBackend.backend);
-      reasonLog.push(`auto_detected=${backend} (${detectedBackend.reason})`);
+  // Handle 'api' or invalid backend - switch to 'auto' when we have a runtime
+  if ((backend === 'api' || !BACKENDS.includes(backend)) && effectiveRuntimePath && fs.existsSync(effectiveRuntimePath) && modelPath) {
+    if (!BACKENDS.includes(backend)) {
+      reasonLog.push(`invalid_backend=${backend},switching_to_auto`);
+    } else {
+      reasonLog.push(`api_mode_with_local_runtime=switching_to_auto`);
     }
-  } else {
+    backend = 'auto';
+  }
+
+  // If user requested 'cpu' but we have a runtime with GPU backends, switch to 'auto'
+  // This handles the case where getRecommendedSettings couldn't find a runtime (returned cpu)
+  // but buildLlamaArgs now has access to a valid runtime
+  if (backend === 'cpu' && effectiveRuntimePath && fs.existsSync(effectiveRuntimePath)) {
+    const hasGpuBackends = runtimeCaps.availableBackends.some(b => b !== 'cpu');
+    if (hasGpuBackends) {
+      reasonLog.push(`user_requested=cpu_but_runtime_has_gpu,reconsidering`);
+      backend = 'auto';
+    }
+  }
+
+  if (backend === 'auto') {
+    const result = doAutoDetection(runtimeBackends, runtimeCaps);
+    if (typeof result === 'string') {
+      backend = result;
+    } else {
+      backend = result.backend;
+      selectedDevice = result.device;
+    }
+  } else if (BACKENDS.includes(backend)) {
     reasonLog.push(`user_requested=${backend}`);
   }
 
@@ -509,7 +566,7 @@ export function resolveRuntimeConfig(options = {}) {
     backend = 'cpu';
   }
 
-  // 2. GGUF context length
+  // 3. GGUF context length
   let ggufContextLength = null;
   if (isFinitePositiveInt(Number(ggufFields?.context_length))) {
     ggufContextLength = Number(ggufFields.context_length);
