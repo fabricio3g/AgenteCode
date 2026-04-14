@@ -14,7 +14,6 @@ export type ContentSegment =
 
 const CHART_TAG = /<chart([^>]*)>([\s\S]*?)<\/chart>/gi;
 const CODE_FENCE = /```([^\n`]*)\n([\s\S]*?)```/g;
-const SYSTEM_REMINDER_TAG = /<system-reminder>[\s\S]*?<\/system-reminder>/gi;
 
 function attr(attrs: string, name: string): string | undefined {
   const m = attrs.match(new RegExp(`${name}="([^"]*)"`, 'i'));
@@ -23,7 +22,6 @@ function attr(attrs: string, name: string): string | undefined {
 
 export function sanitizeAssistantArtifacts(content: string): string {
   return String(content || '')
-    .replace(SYSTEM_REMINDER_TAG, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
