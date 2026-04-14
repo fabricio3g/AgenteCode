@@ -841,7 +841,7 @@
 
 <div
   role="presentation"
-  class="modal-backdrop fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-black/50"
+  class="modal-backdrop fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-overlay"
   transition:fade={{ duration: 200 }}
   onclick={(e) => { if (e.target === e.currentTarget) close(); }}
 >
@@ -890,7 +890,7 @@
             <Key class="h-4 w-4 shrink-0 opacity-70" />
             <span class="flex-1 text-sm font-medium">API Providers</span>
             {#if appStore.activeProvider?.has_api_key}
-              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
                 <span class="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span>
               </span>
             {/if}
@@ -954,7 +954,7 @@
             <Download class="h-4 w-4 shrink-0 opacity-70" />
             <span class="flex-1 text-sm font-medium">Downloads</span>
             {#if downloadsStore.activeCount > 0}
-              <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-hornero-500 px-1.5 text-[10px] font-semibold text-white">{downloadsStore.activeCount}</span>
+              <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-hornero-500 px-1.5 text-[10px] font-semibold text-primary-fg">{downloadsStore.activeCount}</span>
             {:else if downloadsStore.jobs.length > 0}
               <span class="text-xs text-[var(--text-muted)] tabular-nums">{downloadsStore.jobs.length}</span>
             {/if}
@@ -969,7 +969,7 @@
             <Server class="h-4 w-4 shrink-0 opacity-70" />
             <span class="flex-1 text-sm font-medium">Runtime</span>
             {#if hasRuntime === true}
-              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
                 <span class="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span>
               </span>
             {:else if hasRuntime === false}
@@ -1043,12 +1043,12 @@
           </header>
 
           {#if hasRuntime === false}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3 dark:border-[var(--border)] dark:bg-[var(--surface-highlight)]" transition:fly={{ y: -10, duration: 200 }}>
-              <AlertTriangle class="h-4 w-4 shrink-0 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
-              <p class="flex-1 text-sm text-[var(--text)] dark:text-[var(--text)]">No runtime installed — models cannot be loaded.</p>
+            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3" transition:fly={{ y: -10, duration: 200 }}>
+              <AlertTriangle class="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+              <p class="flex-1 text-sm text-[var(--text)]">No runtime installed — models cannot be loaded.</p>
               <button
                 type="button"
-                class="shrink-0 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--surface-secondary)]"
+                class="shrink-0 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-[var(--surface-secondary)]"
                 onclick={() => (activeSection = 'runtime')}
               >
                 Install
@@ -1059,19 +1059,19 @@
           <!-- Active model status banner -->
           {#if appStore.localModelActive}
             {@const isLoading = appStore.localModelLoading}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 {!isLoading ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)] dark:border-[var(--border)] dark:bg-[var(--surface-highlight)]' : 'border-[var(--border-strong)] bg-[var(--surface-highlight)] dark:border-[var(--border)] dark:bg-[var(--surface-highlight)]'}" transition:fly={{ y: -10, duration: 200 }}>
+            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 {!isLoading ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)]' : 'border-[var(--border-strong)] bg-[var(--surface-highlight)]'}" transition:fly={{ y: -10, duration: 200 }}>
               <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {!isLoading ? 'bg-[var(--surface-secondary)]' : 'bg-[var(--surface-secondary)]'}">
                 {#if isLoading}
-                  <Activity class="h-4 w-4 text-[var(--text-secondary)] dark:text-[var(--text-secondary)] animate-pulse" />
+                  <Activity class="h-4 w-4 text-[var(--text-secondary)] animate-pulse" />
                 {:else}
-                  <Activity class="h-4 w-4 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
+                  <Activity class="h-4 w-4 text-[var(--text-secondary)]" />
                 {/if}
               </div>
               <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium {!isLoading ? 'text-[var(--text)] dark:text-[var(--text)]' : 'text-[var(--text)] dark:text-[var(--text)]'}">
+                <p class="text-sm font-medium {!isLoading ? 'text-[var(--text)]' : 'text-[var(--text)]'}">
                   {isLoading ? 'Loading model…' : 'Model running'}
                 </p>
-                <p class="truncate text-xs {!isLoading ? 'text-[var(--text-secondary)]/80 dark:text-[var(--text-secondary)]/70' : 'text-[var(--text-secondary)]/80 dark:text-[var(--text-secondary)]/70'}">
+                <p class="truncate text-xs {!isLoading ? 'text-[var(--text-secondary)] opacity-80' : 'text-[var(--text-secondary)] opacity-70'}">
                   {appStore.localModelActive.name}
                   {#if appStore.localModelActive.hasMmproj}
                     {' '}· Vision
@@ -1080,7 +1080,7 @@
               </div>
               <button
                 type="button"
-                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-[var(--border-strong)] dark:border-[var(--border)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] dark:hover:bg-[var(--surface-highlight)]' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
                 onclick={unloadModel}
                 disabled={unloading || isLoading}
               >
@@ -1116,10 +1116,10 @@
                   {@const tools = toolSupported(model)}
                   <article
                     class="group relative flex h-[180px] flex-col rounded-xl border bg-[var(--surface)] p-4 transition-all duration-200 hover:shadow-lg {loaded
-                      ? 'border-[var(--border-strong)] dark:border-[var(--border)] ring-1 ring-[var(--border-light)] dark:ring-[var(--border)]'
+                      ? 'border-[var(--border-strong)] ring-1 ring-[var(--border-light)]'
                       : selected
-                        ? 'border-neutral-300 dark:border-neutral-600 ring-1 ring-neutral-100 dark:ring-neutral-800'
-                        : 'border-[var(--border)] hover:border-neutral-200 dark:hover:border-white/10'}"
+                        ? 'border-border-str ring-1 ring-border-lt'
+                        : 'border-[var(--border)] hover:border-border-lt'}"
                   >
                     <!-- Top: icon + name + badges -->
                     <div class="flex items-start gap-3 min-h-0">
@@ -1130,7 +1130,7 @@
                         <h3 class="text-sm font-semibold text-[var(--text)] truncate" title={model.name}>{model.name}</h3>
                         <div class="mt-1 flex flex-wrap items-center gap-1">
                           {#if loaded}
-                            <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text)] dark:text-[var(--text-secondary)]">
+                            <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
                               <span class="h-1 w-1 rounded-full bg-[var(--primary)] animate-pulse"></span>
                               Running
                             </span>
@@ -1139,13 +1139,13 @@
                             <span class="rounded-full bg-[var(--surface-strong)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
                           {/if}
                           {#if tools}
-                            <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">Tools</span>
+                            <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>
                           {/if}
                         </div>
                       </div>
                       <button
                         type="button"
-                        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] dark:hover:bg-[var(--surface-secondary)] hover:text-[var(--text-secondary)] dark:hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100"
                         onclick={() => model.path && removeModel(model.path)}
                         title="Delete model"
                         aria-label="Delete {model.name}"
@@ -1169,15 +1169,15 @@
                         <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{Math.round(model.context_length / 1024)}K</span>
                       {/if}
                       {#if fit === 'vram'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <Zap class="h-2.5 w-2.5" />GPU
                         </span>
                       {:else if fit === 'partial'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <AlertTriangle class="h-2.5 w-2.5" />Partial
                         </span>
                       {:else if fit === 'ram'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <MemoryStick class="h-2.5 w-2.5" />CPU
                         </span>
                       {/if}
@@ -1188,7 +1188,7 @@
                       {#if loaded}
                         <button
                           type="button"
-                          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-highlight)] dark:hover:border-[var(--border)] dark:hover:bg-[var(--surface-secondary)] hover:text-[var(--text-secondary)] dark:hover:text-[var(--text-secondary)] disabled:opacity-50"
+                          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)] disabled:opacity-50"
                           onclick={unloadModel}
                           disabled={unloading}
                         >
@@ -1482,7 +1482,7 @@
                   <div class="p-2">
                     {#if searching}
                       <div class="flex items-center justify-center py-16">
-                        <div class="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-600 dark:border-white/10 dark:border-t-white/60"></div>
+                        <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
                       </div>
                     {:else if searchResults.length === 0}
                       <div class="flex flex-col items-center justify-center py-16 text-center">
@@ -1534,7 +1534,7 @@
                             {#if job && job.status === 'done'}
                               <button
                                 type="button"
-                                class="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-highlight)] px-3 py-1.5 text-xs font-medium text-[var(--text)] dark:text-[var(--text-secondary)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                                class="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-highlight)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
                                 onclick={() => downloaded && appStore.openLocalModelLoadDialog(downloaded)}
                                 disabled={!downloaded}
                               >
@@ -1617,7 +1617,7 @@
 
             {#if voiceCatalogLoading}
               <div class="flex items-center justify-center py-16">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-600 dark:border-white/10 dark:border-t-white/60"></div>
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
               </div>
             {:else if !Object.keys(voiceModels).length}
               <div class="rounded-xl border border-[var(--border)] p-8 text-center text-sm text-[var(--text-muted)]">
@@ -1634,13 +1634,13 @@
                   {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
                   {@const totalFiles = Array.isArray(item.files) ? item.files.length : 0}
                   {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'done')}
-                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)] dark:ring-[var(--border)]' : ''}">
+                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)]' : ''}">
                     <div class="flex items-start justify-between gap-4">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
                           <h3 class="text-sm font-semibold text-[var(--text)]">{item.label || key}</h3>
                           {#if item.is_active}
-                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-white">Active</span>
+                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-primary-fg">Active</span>
                           {/if}
                         </div>
                         <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">
@@ -1682,7 +1682,7 @@
                         {#if item.is_active}
                           <button
                             type="button"
-                            class="rounded-lg border border-[var(--border-strong)] dark:border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] dark:hover:bg-[var(--surface-secondary)]"
+                            class="rounded-lg border border-[var(--border-strong)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
                             onclick={() => unloadTts()}
                           >
                             Unload
@@ -1769,12 +1769,12 @@
                       </div>
                     </div>
                     {#if doneJobs.length > 0 && doneJobs.length >= totalFiles && !item.downloaded}
-                      <div class="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                        <div class="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
                         <Check class="h-3.5 w-3.5" />
                         <span>Download complete — refresh to see model</span>
                         <button
                           type="button"
-                          class="rounded-lg px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-black/5 dark:hover:bg-white/5"
+                          class="rounded-lg px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-overlay-light"
                           onclick={() => loadVoiceModelCatalog()}
                         >
                           Refresh
@@ -1878,7 +1878,7 @@
                 <span class="text-sm font-semibold text-[var(--text)]">Microphone</span>
               </div>
               {#if micPermission === 'denied'}
-                <p class="text-xs text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                <p class="text-xs text-[var(--text-secondary)]">
                   Microphone access was denied. Grant permission in your browser/system settings to select a device.
                 </p>
               {:else if audioInputDevices.length === 0}
@@ -1911,7 +1911,7 @@
 
             {#if voiceCatalogLoading}
               <div class="flex items-center justify-center py-16">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-600 dark:border-white/10 dark:border-t-white/60"></div>
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
               </div>
             {:else}
               <div class="grid gap-3 sm:grid-cols-2">
@@ -1923,13 +1923,13 @@
                   {@const isDownloading = activeJobs.length > 0 || downloadingWhisper === key}
                   {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
                   {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && whisperFiles.includes(j.file) && j.status === 'done')}
-                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)] dark:ring-[var(--border)]' : ''}">
+                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)]' : ''}">
                     <div class="flex items-start justify-between gap-4">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
                           <h3 class="text-sm font-semibold text-[var(--text)]">{item.label || key}</h3>
                           {#if item.is_active}
-                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-white">Active</span>
+                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-primary-fg">Active</span>
                           {/if}
                         </div>
                         <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">{item.description}</p>
@@ -1961,7 +1961,7 @@
                         {#if item.is_active}
                           <button
                             type="button"
-                            class="rounded-lg border border-[var(--border-strong)] dark:border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] dark:hover:bg-[var(--surface-secondary)]"
+                            class="rounded-lg border border-[var(--border-strong)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
                             onclick={async () => {
                               try {
                                 await unloadWhisper();
@@ -2073,8 +2073,8 @@
             <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
               {#if hasRuntime === true}
                 <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)] dark:bg-[var(--surface-secondary)]">
-                    <Check class="h-5 w-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
+                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)]">
+                    <Check class="h-5 w-5 text-[var(--text-secondary)]" />
                   </div>
                   <div>
                     <h3 class="text-sm font-semibold text-[var(--text)]">Runtime installed</h3>
@@ -2083,8 +2083,8 @@
                 </div>
               {:else if hasRuntime === false}
                 <div class="flex items-start gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)] dark:bg-[var(--surface-secondary)]">
-                    <AlertTriangle class="h-5 w-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
+                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)]">
+                    <AlertTriangle class="h-5 w-5 text-[var(--text-secondary)]" />
                   </div>
                   <div class="flex-1">
                     <h3 class="text-sm font-semibold text-[var(--text)]">Runtime not installed</h3>
@@ -2101,7 +2101,7 @@
                 </div>
               {:else}
                 <div class="flex items-center justify-center py-4">
-                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-600 dark:border-white/10 dark:border-t-white/60"></div>
+                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
                 </div>
               {/if}
             </div>
@@ -2252,7 +2252,7 @@
                 <div class="flex items-center justify-between">
                   <span class="font-medium text-[var(--text-secondary)]">API Key</span>
                   {#if appStore.config.llm?.providers?.[providerName]?.has_api_key}
-                    <span class="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
+                    <span class="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
                       <span class="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span> Saved
                     </span>
                   {/if}
@@ -2397,7 +2397,7 @@
                   {/if}
                 </button>
                 {#if providerConnectionStatus !== 'idle'}
-                  <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${providerConnectionStatus === 'ok' ? 'bg-[var(--surface-highlight)] text-[var(--text)] dark:text-[var(--text-secondary)]' : 'bg-[var(--surface-highlight)] text-[var(--text)] dark:text-[var(--text-secondary)]'}`}>
+                  <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${providerConnectionStatus === 'ok' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'bg-[var(--surface-highlight)] text-[var(--text)]'}`}>
                     {providerConnectionStatus === 'ok' ? '● Connected' : '● Failed'}
                   </span>
                 {/if}

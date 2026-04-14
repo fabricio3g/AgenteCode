@@ -84,7 +84,7 @@
 </script>
 
 <div
-  class={`modal-backdrop fixed inset-0 z-[62] flex items-center justify-center bg-black/50 px-4`}
+  class={`modal-backdrop fixed inset-0 z-[62] flex items-center justify-center bg-overlay px-4`}
   role="dialog"
   aria-modal="true"
   transition:fade={{ duration: 150 }}
@@ -148,7 +148,7 @@
             class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
             onclick={copyContent}
             title="Copy file contents"
-          >{#if copied}<Check class="h-3.5 w-3.5 text-emerald-500" />{:else}<Copy class="h-3.5 w-3.5" />{/if}</button>
+                      >{#if copied}<Check class="h-3.5 w-3.5 text-success" />{:else}<Copy class="h-3.5 w-3.5" />{/if}</button>
           <button
             class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
             onclick={() => (fullscreen = !fullscreen)}
@@ -168,7 +168,7 @@
           <pre class="h-full p-4 text-[13px] leading-relaxed font-mono text-[var(--text)] bg-[var(--surface)]"><code class="hljs">{@html highlightedCode || selectedContent}</code></pre>
         {:else if isHtml}
           <iframe
-            class="h-full w-full border-0 bg-white"
+            class="h-full w-full border-0 bg-bg"
             srcdoc={previewSrc}
             sandbox="allow-scripts allow-same-origin"
             title="HTML preview"

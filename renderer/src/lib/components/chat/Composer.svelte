@@ -684,15 +684,7 @@
   }
 
   .composer-blur-wrapper::before {
-    content: '';
-    position: absolute;
-    inset: -12px;
-    background: var(--chat-bg);
-    border-radius: inherit;
-    filter: blur(30px);
-    -webkit-filter: blur(30px);
-    z-index: -1;
-    opacity: 0.9;
+    content: none;
   }
 
   .composer-shell {

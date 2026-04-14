@@ -105,12 +105,12 @@
 {/if}
 
 {#if message.status === 'error'}
-  <div class="openui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm text-red-900 dark:text-red-200" style="--openui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --openui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
-    <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
+  <div class="openui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm" style="--openui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --openui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
+    <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-error" />
     <div>
       <div class="font-semibold">Generation failed</div>
       {#if displayContent && displayMetadata?.error}
-        <div class="mt-0.5 text-xs text-red-700/80 dark:text-red-200/70">{displayContent}</div>
+        <div class="mt-0.5 text-xs text-error opacity-70">{displayContent}</div>
       {/if}
     </div>
   </div>
@@ -132,7 +132,7 @@
 <ArtifactBlock artifact={message.artifact} onOpen={onOpenArtifact} />
 
 {#if !enableThinking && displayReasoning}
-  <details class="openui-card mt-3 px-3 py-2 text-sm text-neutral-600 dark:text-neutral-300" style="--openui-card-bg: var(--surface-highlight);">
+  <details class="openui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--openui-card-bg: var(--surface-highlight);">
     <summary class="cursor-pointer font-medium">Reasoning</summary>
     <div class="mt-2 whitespace-pre-wrap">{displayReasoning}</div>
   </details>

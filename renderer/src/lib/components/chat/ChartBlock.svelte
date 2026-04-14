@@ -357,7 +357,7 @@
   {/if}
 
   {#if error}
-    <div class="px-4 py-3 text-sm text-red-400">{error}</div>
+    <div class="px-4 py-3 text-sm text-error">{error}</div>
   {:else}
     <div class="chart-container relative flex justify-center p-2 pb-3">
       <svg bind:this={svgEl} width={W} height={H} viewBox="0 0 {W} {H}" class="text-[var(--text)]" style="max-width:100%;height:auto;"></svg>

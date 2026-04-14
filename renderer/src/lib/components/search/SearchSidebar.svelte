@@ -29,7 +29,7 @@
 
 <div class="fixed inset-0 z-[260]">
   <button
-    class="absolute inset-0 h-full w-full bg-black/35"
+    class="absolute inset-0 h-full w-full bg-overlay"
     aria-label="Close source search"
     transition:fade={{ duration: 160 }}
     onclick={closeSidebar}

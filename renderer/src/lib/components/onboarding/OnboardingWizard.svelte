@@ -56,7 +56,7 @@
   });
 </script>
 
-<div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50" transition:fade={{ duration: 150 }}>
+<div   class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay" transition:fade={{ duration: 150 }}>
   <div
     class="flex h-full max-h-[560px] w-full max-w-lg flex-col rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
     transition:fly={{ y: 20, duration: 200 }}

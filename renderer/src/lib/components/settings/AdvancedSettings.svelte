@@ -108,8 +108,8 @@
       <div class="flex items-center justify-between">
         <span class="font-medium text-[var(--text-secondary)]">API key</span>
         {#if hasApiKey}
-          <span class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Saved
+          <span class="inline-flex items-center gap-1 text-[11px] font-medium text-success">
+            <span class="h-1.5 w-1.5 rounded-full bg-success"></span> Saved
           </span>
         {/if}
       </div>
@@ -242,14 +242,14 @@
         <span class="text-xs font-medium text-[var(--text-secondary)]">Runtime status</span>
         {#if modelsStore.status}
           {@const state = typeof modelsStore.status.state === 'string' ? modelsStore.status.state : 'unknown'}
-          <span class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${state === 'ready' || state === 'Ready' ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' : state === 'idle' || state === 'Idle' ? 'bg-neutral-500/10 text-[var(--text-secondary)]' : 'bg-amber-500/12 text-amber-700 dark:text-amber-300'}`}>
-            <span class={`h-1.5 w-1.5 rounded-full ${state === 'ready' || state === 'Ready' ? 'bg-emerald-500' : state === 'idle' || state === 'Idle' ? 'bg-neutral-400' : 'bg-amber-500 animate-pulse'}`}></span>
+          <span class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${state === 'ready' || state === 'Ready' ? 'bg-success-bg text-success' : state === 'idle' || state === 'Idle' ? 'bg-surface-hl text-fg-secondary' : 'bg-warning-bg text-warning'}`}>
+            <span class={`h-1.5 w-1.5 rounded-full ${state === 'ready' || state === 'Ready' ? 'bg-success' : state === 'idle' || state === 'Idle' ? 'bg-fg-muted' : 'bg-warning animate-pulse'}`}></span>
             {modelsStore.statusLabel}
             {#if modelsStore.status.active_model}· {modelsStore.status.active_model}{/if}
           </span>
         {:else}
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-neutral-500/10 px-2.5 py-1 text-[11px] font-medium text-[var(--text-tertiary)]">
-            <span class="h-1.5 w-1.5 rounded-full bg-neutral-400"></span>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-hl px-2.5 py-1 text-[11px] font-medium text-fg-muted">
+            <span class="h-1.5 w-1.5 rounded-full bg-fg-muted"></span>
             Unavailable
           </span>
         {/if}
@@ -306,7 +306,7 @@
       {/if}
     </button>
     {#if connectionStatus !== 'idle'}
-      <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${connectionStatus === 'ok' ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' : 'bg-red-500/12 text-red-700 dark:text-red-300'}`}>
+      <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${connectionStatus === 'ok' ? 'bg-success-bg text-success' : 'bg-error-bg text-error'}`}>
         {connectionStatus === 'ok' ? '● Connected' : '● Failed'}
       </span>
     {/if}

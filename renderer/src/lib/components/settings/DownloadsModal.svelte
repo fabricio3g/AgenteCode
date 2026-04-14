@@ -59,16 +59,16 @@
   }
 
   function statusColor(status: string) {
-    if (status === 'completed' || status === 'done') return 'text-emerald-500';
-    if (status === 'error' || status === 'cancelled') return 'text-red-500';
-    if (status === 'paused') return 'text-amber-500';
+    if (status === 'completed' || status === 'done') return 'text-success';
+    if (status === 'error' || status === 'cancelled') return 'text-error';
+    if (status === 'paused') return 'text-warning';
     return 'text-hornero-500';
   }
 
   function progressBarColor(status: string) {
-    if (status === 'completed' || status === 'done') return 'bg-emerald-500';
-    if (status === 'error' || status === 'cancelled') return 'bg-red-500';
-    if (status === 'paused') return 'bg-amber-400';
+    if (status === 'completed' || status === 'done') return 'bg-success';
+    if (status === 'error' || status === 'cancelled') return 'bg-error';
+    if (status === 'paused') return 'bg-warning';
     return 'bg-hornero-500';
   }
 
@@ -81,7 +81,7 @@
   const hasFinished = $derived(downloadsStore.jobs.some((j) => !['starting', 'running'].includes(j.status)));
 </script>
 
-<div class="modal-backdrop fixed inset-0 z-[61] flex items-center justify-center bg-black/40 px-4" transition:fade={{ duration: 150}}>
+<div class="modal-backdrop fixed inset-0 z-[61] flex items-center justify-center bg-overlay px-4" transition:fade={{ duration: 150}}>
  <div class="modal-surface flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <!-- Header -->
  <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-4">
@@ -93,7 +93,7 @@
  Downloads
  {/if}
  {#if activeCount > 0}
- <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[11px] font-semibold text-white">{activeCount}</span>
+  <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[11px] font-semibold text-primary-fg">{activeCount}</span>
  {/if}
  </h3>
  <button
@@ -131,7 +131,7 @@
  <!-- Job list -->
  <div class="flex-1 space-y-3 overflow-y-auto p-4">
  {#if !downloadsStore.jobs.length}
- <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-black/10 px-4 py-14">
+  <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-lt px-4 py-14">
  <Download class="h-8 w-8 text-[var(--text-muted)]" />
  <p class="text-sm text-[var(--text-tertiary)]">No active downloads</p>
  </div>
@@ -195,7 +195,7 @@
  {/if}
  {#if job.status === 'error' || job.status === 'cancelled'}
  <button
- class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400"
+  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-success-bg hover:text-success"
  onclick={() => retry(job.id)}
  aria-label="Retry download"
  title="Retry"
@@ -205,8 +205,8 @@
  {/if}
  {#if job.status === 'running' || job.status === 'starting'}
  <button
- class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-red-500/10 hover:text-red-500"
- onclick={() => cancel(job.id)}
+  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
+  onclick={() => cancel(job.id)}
  aria-label="Cancel download"
  title="Cancel"
  >
@@ -215,8 +215,8 @@
  {/if}
  {#if !['running', 'starting'].includes(job.status)}
  <button
- class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-red-500/10 hover:text-red-500"
- onclick={() => remove(job.id)}
+  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
+  onclick={() => remove(job.id)}
  aria-label="Remove from list"
  title="Remove"
  >
@@ -235,13 +235,13 @@
  </div>
 
  {#if job.error}
- <div class="mt-2 flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-500/10 px-3 py-2">
- <XCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
- <div class="min-w-0 flex-1">
- <p class="text-xs font-medium text-red-600 dark:text-red-400">Download failed</p>
- <p class="mt-0.5 text-xs text-red-500/80 dark:text-red-400/70 break-all">{job.error}</p>
- </div>
- </div>
+  <div class="mt-2 flex items-start gap-2 rounded-lg bg-error-bg px-3 py-2">
+  <XCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+  <div class="min-w-0 flex-1">
+  <p class="text-xs font-medium text-error">Download failed</p>
+  <p class="mt-0.5 text-xs text-error break-all opacity-70">{job.error}</p>
+  </div>
+  </div>
  {/if}
  </div>
  {/each}

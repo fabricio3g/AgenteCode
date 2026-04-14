@@ -259,7 +259,7 @@
 {#if showShortcutsHelp}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 px-4" onclick={() => (showShortcutsHelp = false)}>
+  <div class="fixed inset-0 z-[300] flex items-center justify-center bg-overlay px-4" onclick={() => (showShortcutsHelp = false)}>
     <div
       class="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6"
       role="dialog" aria-modal="true" tabindex="-1"

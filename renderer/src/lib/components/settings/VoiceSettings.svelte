@@ -65,7 +65,7 @@
       </div>
       <div class="h-2 w-full overflow-hidden rounded-full bg-[var(--surface-secondary)]">
         <div
-          class={`h-full rounded-full transition-all ${hardwareStore.ramUsedPercent > 85 ? 'bg-red-500' : hardwareStore.ramUsedPercent > 65 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          class={`h-full rounded-full transition-all ${hardwareStore.ramUsedPercent > 85 ? 'bg-error' : hardwareStore.ramUsedPercent > 65 ? 'bg-warning' : 'bg-success'}`}
           style="width:{Math.min(100, hardwareStore.ramUsedPercent)}%"
         ></div>
       </div>
@@ -95,7 +95,7 @@
           </div>
           <div class="flex justify-between">
             <span class="text-[var(--text-muted)]">Backend</span>
-            <span class="inline-flex items-center rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">{hardwareStore.backendLabel}</span>
+            <span class="inline-flex items-center rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-semibold text-success">{hardwareStore.backendLabel}</span>
           </div>
         </div>
       {:else}
@@ -108,15 +108,15 @@
       <p class="mb-2 text-[12px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Model compatibility guide</p>
       <div class="space-y-2 text-[13px]">
         <div class="flex items-center gap-2">
-          <span class="inline-flex items-center rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">VRAM</span>
+          <span class="inline-flex items-center rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-semibold text-success">VRAM</span>
           <span class="text-[var(--text-tertiary)]">Model fits entirely in GPU VRAM — fastest inference</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="inline-flex items-center rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">Partial</span>
+          <span class="inline-flex items-center rounded-full bg-warning-bg px-2 py-0.5 text-[11px] font-semibold text-warning">Partial</span>
           <span class="text-[var(--text-tertiary)]">Partial GPU offload — some layers on CPU RAM</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400">RAM only</span>
+          <span class="inline-flex items-center rounded-full bg-error-bg px-2 py-0.5 text-[11px] font-semibold text-error">RAM only</span>
           <span class="text-[var(--text-tertiary)]">No GPU offload — CPU only, slower inference</span>
         </div>
       </div>

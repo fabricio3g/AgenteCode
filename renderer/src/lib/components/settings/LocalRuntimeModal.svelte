@@ -212,8 +212,8 @@
   onDestroy(() => { unlisten?.(); });
 </script>
 
-<div class="modal-backdrop fixed inset-0 z-[62] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
- <div class="modal-surface flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl dark:ring-1 dark:ring-white/10" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
+<div class="modal-backdrop fixed inset-0 z-[62] flex items-center justify-center bg-overlay px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
+ <div class="modal-surface flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl ring-1 ring-border" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
 
  <!-- Header -->
  <div class="modal-header">

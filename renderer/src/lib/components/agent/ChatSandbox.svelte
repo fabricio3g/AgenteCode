@@ -793,7 +793,7 @@
       {/if}
       {#if activePane === 'code'}
         <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
-          {#if copied}<Check class="h-3.5 w-3.5 text-emerald-500" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
+          {#if copied}<Check class="h-3.5 w-3.5 text-success" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
         </button>
       {/if}
       {#if activePane === 'preview' && previewSrc}
@@ -895,7 +895,7 @@
               <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath} (editing)</span>
               <div class="flex items-center gap-1.5">
                 <button
-                  class="rounded-lg bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white transition hover:bg-emerald-500"
+                  class="rounded-lg bg-success px-3 py-1 text-[11px] font-medium text-primary-fg transition hover:opacity-90"
                   onclick={saveEdit}
                 >Save</button>
                 <button
@@ -927,19 +927,19 @@
           </div>
         {/if}
       {:else if activePane === 'preview' && previewSrc}
-        <div class="flex h-full w-full flex-col overflow-hidden bg-white">
-          <div class="flex shrink-0 items-center justify-between gap-3 border-b border-black/8 px-3 py-2 text-[11px] text-neutral-700">
+        <div class="flex h-full w-full flex-col overflow-hidden bg-bg">
+          <div class="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2 text-[11px] text-fg">
             <div class="min-w-0 flex-1 truncate font-medium">{previewLabel}</div>
             <div class="flex items-center gap-2">
               {#if previewExternalRefs.length}
-                <span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                <span class="inline-flex items-center gap-1 rounded-full border border-warning bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning">
                   <AlertCircle class="h-3 w-3" /> {previewExternalRefs.length} external
                 </span>
               {/if}
-              <button class="rounded-md p-1 text-neutral-500 transition hover:bg-black/5 hover:text-neutral-900" onclick={openPreviewInNewWindow} title="Open in new window">
+              <button class="rounded-md p-1 text-fg-ter transition hover:bg-overlay-light hover:text-fg" onclick={openPreviewInNewWindow} title="Open in new window">
                 <ExternalLink class="h-3.5 w-3.5" />
               </button>
-              <button class="rounded-md p-1 text-neutral-500 transition hover:bg-black/5 hover:text-neutral-900" onclick={() => (previewRefreshKey += 1)} title="Reload preview">
+              <button class="rounded-md p-1 text-fg-ter transition hover:bg-overlay-light hover:text-fg" onclick={() => (previewRefreshKey += 1)} title="Reload preview">
                 <RefreshCw class="h-3.5 w-3.5" />
               </button>
             </div>
@@ -955,17 +955,17 @@
             {/key}
           </div>
           {#if previewExternalRefs.length || previewMessages.length}
-            <div class="max-h-36 shrink-0 overflow-auto border-t border-black/8 bg-neutral-50 px-3 py-2 font-mono text-[11px]">
+            <div class="max-h-36 shrink-0 overflow-auto border-t border-border bg-surface px-3 py-2 font-mono text-[11px]">
               {#if previewExternalRefs.length}
-                <div class="mb-2 text-neutral-600">Remote assets stay linked for preview:</div>
+                <div class="mb-2 text-fg-secondary">Remote assets stay linked for preview:</div>
                 {#each previewExternalRefs as ref}
-                  <div class="truncate text-neutral-500">{ref}</div>
+                  <div class="truncate text-fg-ter">{ref}</div>
                 {/each}
               {/if}
               {#if previewMessages.length}
-                <div class={`space-y-1 ${previewExternalRefs.length ? 'mt-3 border-t border-black/6 pt-2' : ''}`}>
+                <div class={`space-y-1 ${previewExternalRefs.length ? 'mt-3 border-t border-border-lt pt-2' : ''}`}>
                   {#each previewMessages as log}
-                    <div class={`${log.level === 'error' ? 'text-red-600' : log.level === 'warn' ? 'text-amber-700' : 'text-neutral-700'} whitespace-pre-wrap break-words`}>{log.text}</div>
+                    <div class={`${log.level === 'error' ? 'text-error' : log.level === 'warn' ? 'text-warning' : 'text-fg'} whitespace-pre-wrap break-words`}>{log.text}</div>
                   {/each}
                 </div>
               {/if}
@@ -973,47 +973,47 @@
           {/if}
         </div>
       {:else if activePane === 'preview'}
-        <div class="flex h-full flex-col items-center justify-center gap-3 bg-white px-6 text-center text-neutral-500">
+        <div class="flex h-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-fg-ter">
           <span class="text-4xl opacity-20">&lt;/&gt;</span>
-          <p class="text-sm font-medium text-neutral-800">No previewable page yet</p>
+          <p class="text-sm font-medium text-fg">No previewable page yet</p>
           <p class="text-xs">Generate an HTML artifact or use the agent's report and preview tools to create one.</p>
         </div>
       {:else if activePane === 'terminal'}
-        <div class="flex h-full flex-col bg-[#0a0a0a]">
+        <div class="flex h-full flex-col bg-code-terminal-bg">
           <div bind:this={terminalEl} class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
             {#if terminalOutput.length === 0}
-              <div class="text-neutral-500">
+              <div class="text-code-terminal-dim">
                 <p>Sandbox terminal - files written to project folder.</p>
-                <p class="mt-1 text-neutral-600">Run any command: <span class="text-neutral-400">ls, python, node, etc.</span></p>
+                <p class="mt-1">Run any command: <span class="text-code-terminal-dim">ls, python, node, etc.</span></p>
               </div>
             {/if}
             {#each terminalOutput as entry}
               <div class="mb-3">
-                <div class="text-emerald-400"><span class="text-neutral-600">$</span> {entry.cmd}</div>
-                {#if entry.stdout}<pre class="mt-1 whitespace-pre-wrap text-neutral-300">{entry.stdout}</pre>{/if}
-                {#if entry.stderr}<pre class="mt-1 whitespace-pre-wrap text-red-400">{entry.stderr}</pre>{/if}
-                {#if entry.timedOut}<div class="mt-1 text-[11px] text-amber-400">Timed out</div>{/if}
-                {#if entry.code !== null && entry.code !== 0 && !entry.timedOut}<div class="text-[11px] text-neutral-600">exit {entry.code}</div>{/if}
+                <div class="text-code-terminal-prompt"><span class="text-code-terminal-dim">$</span> {entry.cmd}</div>
+                {#if entry.stdout}<pre class="mt-1 whitespace-pre-wrap text-code-terminal-text">{entry.stdout}</pre>{/if}
+                {#if entry.stderr}<pre class="mt-1 whitespace-pre-wrap text-code-terminal-error">{entry.stderr}</pre>{/if}
+                {#if entry.timedOut}<div class="mt-1 text-[11px] text-code-terminal-warn">Timed out</div>{/if}
+                {#if entry.code !== null && entry.code !== 0 && !entry.timedOut}<div class="text-[11px] text-code-terminal-dim">exit {entry.code}</div>{/if}
               </div>
             {/each}
           </div>
-          <div class="flex items-center gap-2 border-t border-white/6 px-4 py-2">
-            <span class="text-xs font-mono text-emerald-500">$</span>
+          <div class="flex items-center gap-2 border-t border-code-terminal-dim/40 px-4 py-2">
+            <span class="text-xs font-mono text-code-terminal-prompt">$</span>
             <input
               type="text"
               bind:value={terminalCommand}
               onkeydown={handleTerminalKeydown}
               placeholder="command..."
               disabled={terminalRunning}
-              class="flex-1 bg-transparent font-mono text-xs text-neutral-200 outline-none placeholder:text-neutral-600 disabled:opacity-50"
+              class="flex-1 bg-transparent font-mono text-xs text-code-terminal-text outline-none placeholder:text-code-terminal-dim disabled:opacity-50"
             />
             <button
-              class="rounded p-1.5 text-neutral-500 transition hover:text-white disabled:opacity-30"
+              class="rounded p-1.5 text-code-terminal-dim transition hover:text-primary-fg disabled:opacity-30"
               onclick={runCommand}
               disabled={terminalRunning || !terminalCommand.trim()}
             >
               {#if terminalRunning}
-                <span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-neutral-600 border-t-neutral-300"></span>
+                <span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-code-terminal-dim border-t-code-terminal-dim"></span>
               {:else}
                 <Play class="h-3.5 w-3.5" />
               {/if}
@@ -1026,7 +1026,7 @@
 </div>
 
 {#if showNewFileModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New File</h3>
@@ -1047,14 +1047,14 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={createFile}>Create</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showNewFolderModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New Folder</h3>
@@ -1075,14 +1075,14 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={createFolder}>Create</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showDeleteConfirm}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={cancelDelete} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelDelete} role="dialog" aria-modal="true">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Confirm Delete</h3>
@@ -1092,18 +1092,18 @@
       </div>
       <p class="mb-4 text-sm text-[var(--text-secondary)]">
         Delete {pendingDeleteType} "<span class="font-mono text-[var(--text)]">{pendingDeletePath}</span>"?
-        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-amber-500">This will delete all files inside.</span>{/if}
+        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-warning">This will delete all files inside.</span>{/if}
       </p>
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelDelete}>Cancel</button>
-        <button class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-500" onclick={confirmDelete}>Delete</button>
+        <button class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmDelete}>Delete</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showRenameModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onclick={cancelRename} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelRename} role="dialog" aria-modal="true">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Rename {pendingRenameType === 'folder' ? 'Folder' : 'File'}</h3>
@@ -1121,7 +1121,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
       </div>
     </div>
   </div>
@@ -1138,9 +1138,9 @@
         >
           <ChevronRight class={`h-3 w-3 shrink-0 text-[var(--text-tertiary)] transition-transform duration-150 ${treeExpanded[node.path] ? 'rotate-90' : ''}`} />
           {#if treeExpanded[node.path]}
-            <FolderOpen class="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <FolderOpen class="h-3.5 w-3.5 shrink-0 text-warning" />
           {:else}
-            <Folder class="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <Folder class="h-3.5 w-3.5 shrink-0 text-warning" />
           {/if}
           <span class="truncate text-[11px] font-medium text-[var(--text-secondary)]">{node.name}</span>
         </button>
@@ -1160,7 +1160,7 @@
             <Pencil class="h-3 w-3" />
           </button>
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--surface-highlight)]"
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-error hover:bg-[var(--surface-highlight)]"
             onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'folder'); }}
             title="Delete folder"
           >
@@ -1192,7 +1192,7 @@
         <Pencil class="h-3 w-3" />
       </button>
       <button
-        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-red-400 hover:bg-[var(--surface-highlight)]"
+        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-error hover:bg-[var(--surface-highlight)]"
         onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'file'); }}
         title="Delete file"
       >

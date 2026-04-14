@@ -31,7 +31,7 @@
 
 {#if confirmStore.open && confirmStore.options}
   <div
-    class="modal-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-black/25 px-4"
+    class="modal-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-overlay-light px-4"
     role="presentation"
     onclick={() => confirmStore.cancel()}
     transition:fade={{ duration: 150 }}

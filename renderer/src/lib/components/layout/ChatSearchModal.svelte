@@ -102,7 +102,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="fixed inset-0 z-[250] flex items-start justify-center bg-black/40 px-4 pt-[15vh]"
+  class="fixed inset-0 z-[250] flex items-start justify-center bg-overlay px-4 pt-[15vh]"
   onclick={close}
   onkeydown={handleKeydown}
 >

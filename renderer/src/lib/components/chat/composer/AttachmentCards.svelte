@@ -23,7 +23,7 @@
         </div>
       {:else}
         <div class="openui-card group relative flex items-center gap-2 px-3 py-2" style="--openui-card-bg: var(--surface-highlight);">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/10 dark:bg-white/10">
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-overlay-light">
             {#if file.status === 'processing'}
               <div class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-transparent"></div>
             {:else}
@@ -34,7 +34,7 @@
             <div class="text-xs font-medium text-[var(--text)] line-clamp-1 max-w-[140px]">{file.name}</div>
             <div class="text-[10px] text-[var(--text-muted)]">
               {#if file.status === 'error'}
-                <span class="text-red-500">Error</span>
+                <span class="text-error">Error</span>
               {:else if file.status === 'processing'}
                 Indexing...
               {:else}

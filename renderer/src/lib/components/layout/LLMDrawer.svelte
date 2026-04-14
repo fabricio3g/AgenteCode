@@ -94,7 +94,7 @@
 <!-- Backdrop -->
 {#if appStore.llmDrawerOpen}
   <div
-    class="modal-backdrop fixed inset-0 z-[55] bg-black/20"
+    class="modal-backdrop fixed inset-0 z-[55] bg-overlay-light"
     role="presentation"
     onclick={() => (appStore.llmDrawerOpen = false)}
     transition:fade={{ duration: 150 }}
@@ -280,7 +280,7 @@
   <!-- ── Footer ─────────────────────────────────────────────────── -->
   <div class="shrink-0 border-t border-[var(--border)] px-4 py-3">
     <button
-      class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+      class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-primary-fg transition hover:opacity-90 disabled:opacity-50"
       style="background:var(--primary)"
       onclick={save}
       disabled={saving}

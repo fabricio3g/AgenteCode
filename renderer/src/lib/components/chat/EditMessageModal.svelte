@@ -12,7 +12,7 @@
   }
 </script>
 
-<div class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150 }}>
+  <div class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-overlay px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150 }}>
   <div class="modal-surface w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-xl" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}>
     <div class="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
       <h2 class="text-base font-semibold text-[var(--text)] font-serif tracking-tight">{$t('chat.editMessageTitle')}</h2>

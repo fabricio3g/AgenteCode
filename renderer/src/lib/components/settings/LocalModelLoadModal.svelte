@@ -110,10 +110,10 @@
   });
 
   const toolSupport = $derived.by(() => {
-    if (metadata?.chat_template_uses_tools === true) return { label: 'Supported', tone: 'text-neutral-700 dark:text-neutral-300' };
-    if (metadata?.chat_template_uses_tools === false) return { label: 'Not supported', tone: 'text-neutral-600 dark:text-neutral-400' };
-    if (!loadingMeta) return { label: 'Not supported', tone: 'text-neutral-600 dark:text-neutral-400' };
-    return { label: 'Unknown', tone: 'text-neutral-600 dark:text-neutral-400' };
+    if (metadata?.chat_template_uses_tools === true) return { label: 'Supported', tone: 'text-fg' };
+    if (metadata?.chat_template_uses_tools === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
+    if (!loadingMeta) return { label: 'Not supported', tone: 'text-fg-secondary' };
+    return { label: 'Unknown', tone: 'text-fg-secondary' };
   });
 
   function applyRecommendedPreset() {
@@ -184,8 +184,8 @@
 </script>
 
 {#if target}
- <div class="modal-backdrop fixed inset-0 z-[64] flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
- <div class="modal-surface max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-[var(--surface)] p-5 shadow-2xl dark:ring-1 dark:ring-white/10" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
+  <div   class="modal-backdrop fixed inset-0 z-[64] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
+  <div class="modal-surface max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-[var(--surface)] p-5 shadow-2xl ring-1 ring-border" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <div class="mb-3 flex items-start justify-between gap-3">
  <div class="min-w-0">
  <div class="text-sm font-semibold text-[var(--text)]">Load local model</div>
@@ -520,7 +520,7 @@
   <span>System RAM</span>
   <span>{totalRam.toFixed(1)} GB</span>
   </div>
-  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {overflows ? 'bg-[var(--surface-secondary)] dark:bg-red-500/10' : 'bg-[var(--surface-highlight)]'}">
+  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {overflows ? 'bg-error-bg' : 'bg-[var(--surface-highlight)]'}">
   {#if gpuUsage > 0}
   <div
   class="absolute inset-y-0 left-0 rounded-l-lg bg-[var(--text-secondary)]"

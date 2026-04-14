@@ -138,7 +138,7 @@
           </div>
         </div>
       {/if}
-      <div class={`flex justify-end gap-0.5 text-neutral-400 transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+      <div class={`flex justify-end gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           <button class="openui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy message">
             <Copy class="h-3.5 w-3.5" />
           </button>
@@ -146,9 +146,9 @@
           <Pencil class="h-3.5 w-3.5" />
         </button>
         {#if confirmDeleteUser}
-          <div class="inline-flex items-center gap-1.5 rounded-lg border border-red-300/40 bg-red-50/80 px-2 py-1 text-[12px] dark:border-red-500/20 dark:bg-red-500/10">
-            <span class="text-red-700 dark:text-red-300">Delete?</span>
-            <button class="font-medium text-red-600 hover:underline dark:text-red-300" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteUser = false; }}>Yes</button>
+          <div class="inline-flex items-center gap-1.5 rounded-lg border border-error-border bg-error-bg px-2 py-1 text-[12px]">
+            <span class="text-error">Delete?</span>
+            <button class="font-medium text-error hover:underline" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteUser = false; }}>Yes</button>
             <span class="text-[var(--text-muted)]">·</span>
             <button class="text-[var(--text-secondary)] hover:underline" onclick={() => (confirmDeleteUser = false)}>No</button>
           </div>
@@ -196,7 +196,7 @@
         </div>
       {/if}
 
-      <div class={`mt-2 flex items-center gap-0.5 text-neutral-400 transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
+      <div class={`mt-2 flex items-center gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           {#if displayMetadata?.tokens}
             <span class="openui-pill mr-1 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
               {displayMetadata.tokens} tok
@@ -227,9 +227,9 @@
             <RefreshCcw class="h-3.5 w-3.5" />
           </button>
           {#if confirmDeleteMsg}
-            <div class="inline-flex items-center gap-1.5 rounded-lg border border-red-300/40 bg-red-50/80 px-2 py-1 text-[12px] dark:border-red-500/20 dark:bg-red-500/10">
-              <span class="text-red-700 dark:text-red-300">Delete?</span>
-              <button class="font-medium text-red-600 hover:underline dark:text-red-300" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteMsg = false; }}>Yes</button>
+            <div class="inline-flex items-center gap-1.5 rounded-lg border border-error-border bg-error-bg px-2 py-1 text-[12px]">
+              <span class="text-error">Delete?</span>
+              <button class="font-medium text-error hover:underline" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteMsg = false; }}>Yes</button>
               <span class="text-[var(--text-muted)]">·</span>
               <button class="text-[var(--text-secondary)] hover:underline" onclick={() => (confirmDeleteMsg = false)}>No</button>
             </div>

@@ -50,7 +50,7 @@
 
 {#if !appStore.ready && !startupBypassed}
   <div class="flex h-full items-center justify-center">
-    <div class="surface-panel rounded-[1.7rem] px-6 py-5 text-sm text-neutral-500 dark:text-neutral-300">
+    <div class="surface-panel rounded-[1.7rem] px-6 py-5 text-sm text-fg-ter">
       {appStore.error ? `Recovering from startup issue: ${appStore.error}` : 'Loading TalamoLM...'}
     </div>
   </div>

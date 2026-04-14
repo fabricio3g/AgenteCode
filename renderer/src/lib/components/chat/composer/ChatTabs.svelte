@@ -222,7 +222,7 @@
       </button>
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 transition hover:bg-red-500/10 dark:text-red-400"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-error transition hover:bg-error-bg"
         onclick={() => deleteChat(activeChat.id)}
       >
         <Trash2 class="h-3.5 w-3.5" />
