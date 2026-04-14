@@ -669,7 +669,7 @@
   </div>
 
     <div class="pointer-events-auto mt-1.5 text-center">
-      <span class="hint-text inline-flex max-w-full px-2 py-0.5 text-[10px]">
+      <span class="hint-text inline-flex max-w-full px-2 py-0.5 text-xs">
         {$t('composer.hintText')}
       </span>
     </div>
