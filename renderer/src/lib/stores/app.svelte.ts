@@ -2592,6 +2592,8 @@ Design rules:
   }
 
   async setBackendMode(mode: 'local' | 'api') {
+    const current = this.config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+    if (current === mode) return;
     const next: AppConfig = {
       ...this.config,
       llm: {
