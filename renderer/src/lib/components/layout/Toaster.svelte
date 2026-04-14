@@ -20,15 +20,15 @@
 >
   {#each toastStore.toasts as toast (toast.id)}
     <div
-      class="toast pointer-events-auto flex items-center gap-3 rounded-full border px-4 py-2.5"
+      class="toast pointer-events-auto flex items-center justify-center gap-2.5 border px-4 py-2"
       style="color: {COLOR_MAP[toast.type]}"
       role="alert"
       in:fly={{ y: 12, duration: 200 }}
       out:fade={{ duration: 150 }}
     >
-      <span class="text-[13px] font-medium">{toast.message}</span>
+      <span class="text-[13px] font-medium leading-none">{toast.message}</span>
       <button
-        class="flex shrink-0 items-center justify-center rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100"
+        class="flex shrink-0 items-center justify-center rounded p-0.5 opacity-60 transition-opacity hover:opacity-100"
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss"
       >
@@ -41,9 +41,9 @@
 <style>
   .toast {
     background: var(--surface);
-    border-color: var(--border);
-    box-shadow: var(--shadow-l);
-    min-width: 16rem;
+    border-color: var(--border-light);
+    box-shadow: var(--shadow-m);
+    border-radius: var(--radius-s);
     max-width: 18rem;
   }
 </style>
