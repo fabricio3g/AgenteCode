@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { flyAndScale } from '$lib/utils/transitions';
   import {
@@ -742,9 +742,7 @@
 
   $effect(() => {
     if (activeSection !== 'providers') return;
-    // Do NOT reset form fields while a save is in progress — setBackendMode
-    // triggers a config change which would wipe the user's unsaved key entry.
-    if (savingProvider) return;
+    if (untrack(() => savingProvider)) return;
     const saved = appStore.config.llm?.providers?.[providerName];
     if (saved?.base_url) {
       providerBaseUrl = saved.base_url;
