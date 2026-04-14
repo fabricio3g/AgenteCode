@@ -314,6 +314,8 @@ class AppStore {
   currentChatId = $state<string | null>(null);
   composer = $state('');
   models = $state<ModelOption[]>([]);
+  modelsRefreshing = $state(false);
+  _apiModelsCache = new Map<string, ModelOption[]>();
   modelMenuOpen = $state(false);
   settingsOpen = $state(false);
   promptConfigOpen = $state(false);
@@ -2513,11 +2515,35 @@ Design rules:
     this.persist();
   }
 
-  async refreshModels() {
+  private _apiModelsCacheKey(): string | null {
+    const isLocal = this.config.llm?.backend_mode === 'local' && isTauri();
+    if (isLocal) return null;
+    const providerName = this.config.llm?.provider || 'openai';
+    const provider = this.config.llm?.providers?.[providerName];
+    const baseUrl = provider?.base_url || '';
+    return `${providerName}:${baseUrl}`;
+  }
+
+  async refreshModels(force?: boolean) {
+    const cacheKey = this._apiModelsCacheKey();
+    if (cacheKey && !force) {
+      const cached = this._apiModelsCache.get(cacheKey);
+      if (cached) {
+        this.models = cached;
+        return;
+      }
+    }
+    this.modelsRefreshing = true;
     try {
-      this.models = await fetchModels(this.config);
+      const data = await fetchModels(this.config);
+      this.models = data;
+      if (cacheKey && data.length > 0) {
+        this._apiModelsCache.set(cacheKey, data);
+      }
     } catch {
       this.models = [];
+    } finally {
+      this.modelsRefreshing = false;
     }
   }
 

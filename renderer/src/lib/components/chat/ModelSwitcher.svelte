@@ -165,13 +165,15 @@
       <span class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
         {appStore.backendMode === 'local' ? 'Local Models' : 'Models'}
       </span>
-      <button
-        class="refresh-btn rounded-lg p-1.5"
-        onclick={() => { appStore.refreshModels(); modelsStore.refreshStatus(); }}
-        aria-label="Refresh"
-      >
-        <RefreshCw class="h-3.5 w-3.5" />
-      </button>
+      {#if appStore.backendMode === 'api'}
+        <button
+          class="refresh-btn rounded-lg p-1.5"
+          onclick={() => { appStore.refreshModels(true); modelsStore.refreshStatus(); }}
+          aria-label="Refresh"
+        >
+          <RefreshCw class="h-3.5 w-3.5" />
+        </button>
+      {/if}
     </div>
 
     <!-- API / Local mode toggle -->
@@ -370,14 +372,27 @@
     </div>
 
     <!-- Footer -->
-    {#if appStore.backendMode === 'local'}
-      <div class="dropdown-footer border-t border-[var(--border)] px-4 py-2.5">
+    <div class="dropdown-footer border-t border-[var(--border)] px-4 py-2.5 space-y-1.5">
+      <button
+        class="refresh-footer-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium"
+        onclick={() => { appStore.refreshModels(true); modelsStore.refreshStatus(); if (isTauri()) modelsStore.refreshIndex(); }}
+        disabled={appStore.modelsRefreshing}
+      >
+        {#if appStore.modelsRefreshing}
+          <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
+          Refreshing...
+        {:else}
+          <RefreshCw class="h-3.5 w-3.5" />
+          Refresh models
+        {/if}
+      </button>
+      {#if appStore.backendMode === 'local'}
         <button
           class="hub-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium"
           onclick={() => { appStore.modelMenuOpen = false; appStore.modelManagerOpen = true; }}
         >Browse Model Hub</button>
-      </div>
-    {/if}
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -564,6 +579,25 @@
     background: var(--primary);
     border-color: var(--primary);
     color: var(--primary-fg);
+  }
+
+  .refresh-footer-btn {
+    background: var(--surface-highlight);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-s);
+    transition: all 0.12s;
+  }
+
+  .refresh-footer-btn:hover:not(:disabled) {
+    background: var(--primary);
+    color: var(--primary-fg);
+    border-color: var(--primary);
+  }
+
+  .refresh-footer-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .hub-btn {
