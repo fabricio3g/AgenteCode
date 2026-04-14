@@ -102,9 +102,9 @@
   --surface-secondary: rgba(255, 255, 255, 0.06);
   --surface-strong: rgba(255, 255, 255, 0.10);
   --text: #ECECEC;
-  --text-secondary: rgba(236, 236, 236, 0.72);
-  --text-tertiary: rgba(236, 236, 236, 0.52);
-  --text-muted: rgba(236, 236, 236, 0.38);
+  --text-secondary: #B0B0B0;
+  --text-tertiary: #8A8A8A;
+  --text-muted: #707070;
   --border: rgba(255, 255, 255, 0.09);
   --border-light: rgba(255, 255, 255, 0.05);
   --border-strong: rgba(255, 255, 255, 0.16);
