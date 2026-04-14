@@ -20,7 +20,7 @@
   let saving = $state(false);
 
   $effect(() => {
-    if (appStore.llmDrawerOpen) {
+    if (appStore.llmDrawerOpen && !saving) {
       mode = currentMode as 'api' | 'local';
       const cfg = appStore.config;
       if (mode === 'api') {
