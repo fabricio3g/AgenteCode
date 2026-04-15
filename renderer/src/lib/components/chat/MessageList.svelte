@@ -22,8 +22,8 @@
   let scrollTicket = 0;
   const messages = $derived(appStore.currentChat?.messages || []);
   const hasMessages = $derived(messages.length > 0);
-  const contentBottomInset = $derived(Math.max(composerInset + 24, 320));
-  const jumpButtonBottom = $derived(Math.max(composerInset + 48, 124));
+  const contentBottomInset = $derived(Math.max(composerInset + 24, 200));
+  const jumpButtonBottom = $derived(Math.max(composerInset + 48, 176));
   const BOTTOM_THRESHOLD_PX = 96;
 
   function isNearBottom(): boolean {
@@ -168,20 +168,19 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-m);
     border: 1px solid var(--border);
-    background: var(--surface);
+    background: #FFFFFF;
     color: var(--text-secondary);
     padding: 0.4rem 0.75rem;
     font-size: 11px;
     font-weight: 600;
     box-shadow: var(--shadow-m);
-    backdrop-filter: blur(8px);
     transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
   }
 
   .jump-latest-btn:hover {
-    background: var(--surface-highlight);
+    background: #FFFFFF;
     color: var(--text);
     transform: translateX(-50%) translateY(-1px);
   }
