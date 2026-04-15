@@ -52,7 +52,7 @@
   <div class="flex gap-1.5 px-2 pt-1.5">
     <div class="flex flex-wrap items-center gap-1 px-1">
       {#each activeCapabilityChips as chip}
-        <span class={`openui-pill inline-flex items-center border px-2 py-0.5 text-[11px] font-medium ${chipClass(chip.tone)}`}>
+        <span class={`openui-pill inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${chipClass(chip.tone)}`}>
           {chip.label}
         </span>
       {/each}
