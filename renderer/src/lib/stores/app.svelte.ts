@@ -1814,6 +1814,11 @@ Design rules:
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
         : (this.activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
 
+      if (this.userName?.trim()) {
+        const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
+        systemPrompt = systemPrompt ? `${userIdentity}\n\n${systemPrompt}` : userIdentity;
+      }
+
       // Augment system prompt for search-grounded responses
       if (searchContext) {
         const searchSystemPrefix = 'You are a helpful assistant with access to real-time web search results. ' +

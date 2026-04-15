@@ -37,8 +37,8 @@
     transition:fade={{ duration: 150 }}
   >
     <div
-      class="modal-surface w-full max-w-sm rounded-xl border border-[var(--border)] p-5"
-      style="background:var(--surface); box-shadow:var(--shadow-xl);"
+      class="modal-surface w-full max-w-sm rounded-xl border border-[var(--border)] p-6"
+      style="background:var(--surface); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);"
       transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
       role="dialog"
       aria-modal="true"
@@ -47,7 +47,7 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2 id="confirm-title" class="text-base font-semibold text-[var(--text)] font-serif tracking-tight">
+      <h2 id="confirm-title" class="text-lg font-semibold text-[var(--text)]">
         {confirmStore.options.title}
       </h2>
       <p class="mt-2 text-sm leading-6 text-[var(--text-secondary)]">

@@ -6,10 +6,10 @@
   import { locale } from 'svelte-i18n';
   const languages = [
     { code: 'en', label: 'English' },
-    { code: 'es', label: 'Espanol' },
-    { code: 'pt-BR', label: 'Portugues (Brasil)' },
+    { code: 'es', label: 'Español' },
+    { code: 'pt-BR', label: 'Português (Brasil)' },
     { code: 'zh', label: '中文' },
-    { code: 'fr', label: 'Francais' },
+    { code: 'fr', label: 'Français' },
     { code: 'de', label: 'Deutsch' },
     { code: 'ja', label: '日本語' }
   ];

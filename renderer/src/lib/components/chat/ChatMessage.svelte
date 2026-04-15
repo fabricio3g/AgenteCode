@@ -7,6 +7,7 @@
   import { stripChartBlocks } from '$lib/utils/charts';
   import { generatePptx } from '$lib/services/slides';
   import { appStore } from '$lib/stores/app.svelte';
+  import { confirmStore } from '$lib/stores/confirm.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import AssistantMessageBody from '$lib/ui/components/AssistantMessageBody.svelte';
@@ -20,8 +21,6 @@
   let { message }: Props = $props();
 
   let hovering = $state(false);
-  let confirmDeleteUser = $state(false);
-  let confirmDeleteMsg = $state(false);
 
   const activeVersionIndex = $derived(typeof message.activeVersion === 'number' ? Math.max(0, Math.min(message.activeVersion, (message.versions?.length || 1) - 1)) : 0);
   const activeVersion = $derived(message.versions?.[activeVersionIndex] || null);
@@ -145,18 +144,9 @@
         <button class="openui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message">
           <Pencil class="h-3.5 w-3.5" />
         </button>
-        {#if confirmDeleteUser}
-          <div class="inline-flex items-center gap-1.5 rounded-lg border border-error-border bg-error-bg px-2 py-1 text-[12px]">
-            <span class="text-error">Delete?</span>
-            <button class="font-medium text-error hover:underline" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteUser = false; }}>Yes</button>
-            <span class="text-[var(--text-muted)]">·</span>
-            <button class="text-[var(--text-secondary)] hover:underline" onclick={() => (confirmDeleteUser = false)}>No</button>
-          </div>
-        {:else}
-          <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => (confirmDeleteUser = true)} aria-label="Delete message">
-            <Trash2 class="h-3.5 w-3.5" />
-          </button>
-        {/if}
+        <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message">
+          <Trash2 class="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   {:else}
@@ -226,18 +216,9 @@
           <button class="openui-icon-button rounded-lg p-1.5 disabled:opacity-40" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
             <RefreshCcw class="h-3.5 w-3.5" />
           </button>
-          {#if confirmDeleteMsg}
-            <div class="inline-flex items-center gap-1.5 rounded-lg border border-error-border bg-error-bg px-2 py-1 text-[12px]">
-              <span class="text-error">Delete?</span>
-              <button class="font-medium text-error hover:underline" onclick={() => { appStore.deleteMessage(message.id); confirmDeleteMsg = false; }}>Yes</button>
-              <span class="text-[var(--text-muted)]">·</span>
-              <button class="text-[var(--text-secondary)] hover:underline" onclick={() => (confirmDeleteMsg = false)}>No</button>
-            </div>
-          {:else}
-            <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => (confirmDeleteMsg = true)} aria-label="Delete" title="Delete">
-              <Trash2 class="h-3.5 w-3.5" />
-            </button>
-          {/if}
+          <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
+            <Trash2 class="h-3.5 w-3.5" />
+          </button>
       </div>
       </div>
     </div>

@@ -97,7 +97,7 @@
       {/if}
     </div>
     <h1 class="scroll-animate scroll-animate-delay-1 text-2xl font-semibold tracking-tight text-[var(--text)] font-serif">
-      {greeting.text}
+      {greeting.text}{appStore.userName ? `, ${appStore.userName}` : ''}
     </h1>
     <p class="scroll-animate scroll-animate-delay-2 mt-2 text-sm text-[var(--text-muted)]">
       {#if isLoading}
