@@ -15,6 +15,7 @@
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
+  import ContextUsageRing from './composer/ContextUsageRing.svelte';
 
   interface Props {
     onHeightChange?: (height: number) => void;
@@ -41,10 +42,13 @@
   let dragOver = $state(false);
   let windowDragActive = $state(false);
   let interimTranscript = $state('');
+  let ocrProgress = $state<{ phase: 'rendering' | 'recognizing' | 'done'; page: number; total: number } | null>(null);
+  let ocrProgressHideTimer: ReturnType<typeof setTimeout> | null = null;
   let voicePulse = $state(0);
   let pulseInterval: ReturnType<typeof setInterval> | null = null;
   let composerWidth = $state(0);
   let composerHeight = $state(0);
+  let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Whisper API recording state (fallback when Web Speech API unavailable)
   let whisperRecorder: MediaRecorder | null = null;
@@ -118,13 +122,10 @@
   const activelyListening = $derived(isListening || isWhisperListening);
 
   const voiceMode = $derived(appStore.voiceModeActive);
-  const visionReady = $derived(
-    appStore.backendMode === 'api' ||
-    !!(appStore.config?.llm?.local?.mmproj_path) ||
-    !!(appStore.localModelActive?.hasMmproj)
-  );
   const composerBusy = $derived(appStore.loading || appStore.workspaceIndexing);
   const compactComposer = $derived(composerWidth > 0 && composerWidth < 640);
+  const contextBudget = $derived(appStore.contextBudget);
+  const showContextUsage = $derived(appStore.backendMode === 'local');
 
   // Welcome hint state (shown above composer when centered / no messages)
   const PROVIDER_LABELS: Record<string, string> = {
@@ -162,6 +163,7 @@
   }
 
   function submit() {
+    clearOcrProgress();
     void appStore.sendCurrentMessage();
   }
 
@@ -169,6 +171,7 @@
     const input = event.currentTarget as HTMLInputElement;
     const files = Array.from(input.files || []);
     if (!files.length) return;
+    clearOcrProgress();
     await appStore.addFiles(files);
     input.value = '';
   }
@@ -503,6 +506,56 @@
     if (!related || !container.contains(related)) dragOver = false;
   }
 
+  function clearOcrProgress() {
+    if (ocrProgressHideTimer) {
+      clearTimeout(ocrProgressHideTimer);
+      ocrProgressHideTimer = null;
+    }
+    ocrProgress = null;
+  }
+
+  function onOcrProgress(event: Event) {
+    const customEvent = event as CustomEvent<{ page?: number; total?: number; phase?: 'rendering' | 'recognizing' | 'done' }>;
+    const detail = customEvent.detail;
+    if (!detail) return;
+
+    if (ocrProgressHideTimer) {
+      clearTimeout(ocrProgressHideTimer);
+      ocrProgressHideTimer = null;
+    }
+
+    const phase = detail.phase || 'recognizing';
+    const page = Number.isFinite(detail.page) ? Number(detail.page) : 0;
+    const total = Number.isFinite(detail.total) ? Number(detail.total) : 0;
+
+    if (phase === 'done') {
+      ocrProgress = { phase, page, total };
+      ocrProgressHideTimer = setTimeout(() => {
+        ocrProgress = null;
+        ocrProgressHideTimer = null;
+      }, 900);
+      return;
+    }
+
+    ocrProgress = { phase, page, total };
+  }
+
+  const ocrProgressLabel = $derived.by(() => {
+    if (!ocrProgress) return '';
+    const page = Math.max(0, ocrProgress.page || 0);
+    const total = Math.max(0, ocrProgress.total || 0);
+    const progressText = total > 0 ? `${Math.min(page, total)}/${total}` : '…';
+
+    if (ocrProgress.phase === 'rendering') return `OCR · preparing ${progressText}`;
+    if (ocrProgress.phase === 'recognizing') return `OCR · reading ${progressText}`;
+    return 'OCR · complete';
+  });
+
+  $effect(() => {
+    void appStore.currentChatId;
+    clearOcrProgress();
+  });
+
   // Detect file drags anywhere in the window so we can enable pointer-events on the drop zone
   let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -525,10 +578,12 @@
     document.addEventListener('dragenter', onWindowDragEnter);
     document.addEventListener('dragleave', onWindowDragLeave);
     document.addEventListener('drop', onWindowDrop);
+    window.addEventListener('ocr-progress', onOcrProgress as EventListener);
     return () => {
       document.removeEventListener('dragenter', onWindowDragEnter);
       document.removeEventListener('dragleave', onWindowDragLeave);
       document.removeEventListener('drop', onWindowDrop);
+      window.removeEventListener('ocr-progress', onOcrProgress as EventListener);
       if (dragLeaveTimer) clearTimeout(dragLeaveTimer);
     };
   });
@@ -537,16 +592,46 @@
     destroyed = true;
     exitVoiceMode();
     stopPulse();
+    clearOcrProgress();
   });
 
   $effect(() => {
     composerHeight;
     onHeightChange?.(composerHeight);
   });
+
+  $effect(() => {
+    void appStore.currentChatId;
+    void appStore.composer;
+    void appStore.pendingAttachments.length;
+    void appStore.currentRagDocuments.length;
+    void appStore.currentChat?.messages.length;
+    void appStore.searchMode;
+    void appStore.composerMode;
+    void appStore.currentContextMode;
+    void appStore.backendMode;
+    void appStore.config.llm?.local?.context_length;
+    void appStore.config.llm?.local?.max_tokens;
+    void appStore.config.llm?.local?.system_prompt;
+    void appStore.config.llm?.system_prompt;
+    void appStore.userName;
+
+    if (contextBudgetTimer) clearTimeout(contextBudgetTimer);
+    contextBudgetTimer = setTimeout(() => {
+      void appStore.refreshContextBudgetPreview();
+    }, 140);
+
+    return () => {
+      if (contextBudgetTimer) {
+        clearTimeout(contextBudgetTimer);
+        contextBudgetTimer = null;
+      }
+    };
+  });
 </script>
 
 <div class={`${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} z-20 ${centered ? 'flex items-center justify-center absolute inset-0 px-6 md:px-12' : 'absolute inset-x-0 bottom-2 px-3 pb-2 pt-4 md:bottom-3 md:px-6'}`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
-  <input bind:this={fileInput} class="hidden" type="file" multiple accept={visionReady ? "image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" : ".pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub"} oninput={onFilesSelected} />
+  <input bind:this={fileInput} class="hidden" type="file" multiple accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" oninput={onFilesSelected} />
 
   {#if dragOver}
     <div class="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border-strong)] bg-[var(--surface-highlight)]">
@@ -606,6 +691,15 @@
       <div class={`composer-shell pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
     <ComposerModes />
 
+    {#if ocrProgressLabel}
+      <div class="px-3 pt-1">
+        <div class="openui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--openui-pill-border:var(--border)] [--openui-pill-bg:var(--surface-highlight)]">
+          <span class={`h-1.5 w-1.5 rounded-[2px] bg-[var(--text-tertiary)] ${ocrProgress?.phase === 'done' ? '' : 'animate-pulse'}`}></span>
+          <span>{ocrProgressLabel}</span>
+        </div>
+      </div>
+    {/if}
+
     <AttachmentCards />
 
     <div class="px-3 pb-0.5 pt-2">
@@ -650,10 +744,16 @@
             <Mic class="h-3.5 w-3.5" />
           {/if}
         </button>
+        {#if showContextUsage}
+          <ContextUsageRing
+            usedTokens={contextBudget?.usedTokens ?? 0}
+            maxTokens={contextBudget?.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
+          />
+        {/if}
         <button
           class={`send-btn flex items-center justify-center rounded-full transition ${compactComposer ? 'h-8 min-w-[2rem] px-2.5' : 'h-8 w-8'}`}
           onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}
-          disabled={!appStore.loading && (!appStore.composer.trim() || !backendReady)}
+          disabled={!appStore.loading && ((!appStore.composer.trim() && appStore.pendingAttachments.length === 0) || !backendReady)}
           aria-label={appStore.loading ? $t('chat.stop') : $t('chat.send')}
         >
           {#if appStore.loading}

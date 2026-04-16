@@ -89,6 +89,17 @@ function isVisionModel(modelName: string): boolean {
   return /\b(vl|vision|llava|multimodal|gemma[\s-]?3|qwen[\s-]?3[\s._-]?[0-9]|qwen[\s-]?vl)\b|gpt-4o|gpt-4\.1|gemini|claude-3/i.test(modelName);
 }
 
+async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
+  const mmprojPath = String(config.llm?.local?.mmproj_path || '').trim();
+  if (!mmprojPath) return false;
+  if (!isTauri()) return true;
+  try {
+    return await invoke<boolean>('path_exists', { path: mmprojPath });
+  } catch {
+    return false;
+  }
+}
+
 function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
   // Local mode: hasMmproj is explicitly passed (true/false) — only mmproj determines vision
   // API mode: hasMmproj is undefined — fall back to model name heuristic
@@ -275,6 +286,7 @@ async function streamLocalReply(args: {
 }): Promise<void> {
   const config = await loadChatConfig();
   const baseUrl = await ensureLocalRuntime(config);
+  const hasVisionModel = await hasLocalVisionModel(config);
 
   const response = await fetch(resolveChatUrl(resolveLocalBaseUrl({
     llm: {
@@ -291,7 +303,7 @@ async function streamLocalReply(args: {
     body: JSON.stringify({
       model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
       stream: true,
-      messages: toRequestMessages(args.messages, config.llm?.local?.model, !!(config.llm?.local?.mmproj_path)),
+      messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel),
       ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
       ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
     })
@@ -469,6 +481,7 @@ export async function completeAssistantReply(args: {
 
   if (config.llm?.backend_mode === 'local' && isTauri()) {
     const baseUrl = await ensureLocalRuntime(config);
+    const hasVisionModel = await hasLocalVisionModel(config);
     const response = await fetch(resolveChatUrl(resolveLocalBaseUrl({
       llm: {
         local: {
@@ -484,7 +497,7 @@ export async function completeAssistantReply(args: {
       body: JSON.stringify({
         model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
         stream: false,
-        messages: toRequestMessages(args.messages)
+        messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel)
       })
     });
 

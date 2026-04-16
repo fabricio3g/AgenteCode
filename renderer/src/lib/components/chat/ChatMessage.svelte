@@ -111,7 +111,7 @@
             {#if attachment.kind === 'image' && (attachment.preview || attachment.base64)}
               <!-- Image as standalone thumbnail -->
               <img
-                src={attachment.preview || attachment.base64}
+                src={attachment.base64 || attachment.preview}
                 alt={attachment.name}
                 class="max-h-48 max-w-[280px] rounded-2xl border border-[var(--border)] object-cover"
                 title={attachment.name}

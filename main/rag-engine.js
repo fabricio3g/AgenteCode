@@ -301,16 +301,26 @@ function ensureStoreLoaded() {
 async function extractText(filePath) {
   const ext = path.extname(filePath).toLowerCase();
 
+  function hasUsablePdfText(text) {
+    const normalized = String(text || '').replace(/\u0000/g, ' ').trim();
+    if (normalized.length < 80) return false;
+    const wordMatches = normalized.match(/[\p{L}\p{N}]{2,}/gu) || [];
+    return wordMatches.length >= 20;
+  }
+
   if (ext === '.pdf') {
     try {
       const pdfParse = (await import('pdf-parse')).default;
       const buffer = fs.readFileSync(filePath);
       const data = await pdfParse(buffer);
-      return { text: data.text, fileType: 'pdf' };
-    } catch {
-      const raw = fs.readFileSync(filePath, 'latin1');
-      const text = raw.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s{3,}/g, '\n').trim();
+      const text = String(data?.text || '').replace(/\u0000/g, ' ').trim();
+      if (!hasUsablePdfText(text)) {
+        throw new Error('PDF parser returned insufficient readable text');
+      }
       return { text, fileType: 'pdf' };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err || 'unknown parser error');
+      throw new Error(`Could not parse PDF text: ${reason}`);
     }
   }
 

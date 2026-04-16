@@ -26,6 +26,9 @@ interface DocxOcrResult {
   fullText: string;
 }
 
+const TESSERACT_WORKER_PATH = new URL('tesseract.js/dist/worker.min.js', import.meta.url).href;
+const TESSERACT_CORE_PATH = new URL('tesseract.js-core/tesseract-core.wasm.js', import.meta.url).href;
+
 type OcrProgressPhase = 'rendering' | 'recognizing' | 'done';
 
 function emitProgress(page: number, total: number, phase: OcrProgressPhase) {
@@ -127,7 +130,11 @@ class OcrEngine {
       return;
     }
     const Tesseract = await import('tesseract.js');
-    this.worker = await Tesseract.createWorker(lang);
+    this.worker = await Tesseract.createWorker(lang, undefined, {
+      workerBlobURL: false,
+      workerPath: TESSERACT_WORKER_PATH,
+      corePath: TESSERACT_CORE_PATH,
+    });
     this.lang = lang;
     this.ready = true;
   }
@@ -275,7 +282,7 @@ export const ocrEngine = new OcrEngine();
 /**
  * Process a file for text extraction — auto-selects best method:
  * - Images → OCR
- * - PDFs → text extraction, then OCR if scanned
+ * - PDFs → parser text extraction
  * - DOCX → OCR embedded images
  * - Text files → direct read
  */
@@ -303,14 +310,9 @@ export async function extractTextFromFile(file: File): Promise<string> {
     return result.text;
   }
 
-  // PDFs → try text extraction first, OCR if scanned
+  // PDFs → parser only (no OCR fallback)
   if (type === 'application/pdf' || name.endsWith('.pdf')) {
-    const { text, pageCount } = await ocrEngine.extractPdfText(file);
-    if (ocrEngine.isScannedPdf(text, pageCount)) {
-      console.log('[OCR] Detected scanned PDF, running OCR...');
-      const ocrResult = await ocrEngine.ocrPdfPages(file);
-      return ocrResult.fullText;
-    }
+    const { text } = await ocrEngine.extractPdfText(file);
     return text;
   }
 

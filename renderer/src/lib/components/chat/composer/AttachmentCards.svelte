@@ -10,7 +10,7 @@
     {#each appStore.pendingAttachments as file (file.id)}
       {#if file.kind === 'image' && (file.preview || file.base64)}
         <div class="group relative">
-          <img src={file.preview || file.base64} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-s)]" />
+          <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-s)]" />
           <button
             aria-label="Remove image"
             class="openui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"

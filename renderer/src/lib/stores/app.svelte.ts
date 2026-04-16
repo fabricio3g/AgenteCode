@@ -23,6 +23,15 @@ interface PersistedState {
   currentChatId: string | null;
 }
 
+interface ContextBudget {
+  maxContext: number;
+  usedTokens: number;
+  remaining: number;
+  usagePercent: number;
+  isOverflow: boolean;
+  reservedForCompletion: number;
+}
+
 const LOCAL_MODEL_SETTINGS_KEY = 'talamolm_model_load_settings_by_model';
 const USER_NAME_KEY = 'talamolm_user_name';
 
@@ -138,6 +147,11 @@ function buildWorkspacePrompt(workspace: WorkspaceContext) {
   ].join('\n');
 
   return `${summary}\nFiles:\n${visibleFiles.join('\n')}`;
+}
+
+function isAbortLikeError(value: unknown): boolean {
+  const text = String(value || '').toLowerCase();
+  return text.includes('abort') || text.includes('cancel');
 }
 
 /**
@@ -343,6 +357,7 @@ class AppStore {
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
+  contextBudget = $state<ContextBudget | null>(null);
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
   activeManagedAgentTaskId = $state<string | null>(null);
@@ -372,6 +387,7 @@ class AppStore {
   onboardingCompleted = $state(false);
   userName = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem(USER_NAME_KEY) || '') : '');
   private closeWorkFingerprint = '';
+  private contextBudgetRequestId = 0;
 
   get currentChat() {
     return this.chats.find((chat) => chat.id === this.currentChatId) || null;
@@ -467,6 +483,87 @@ class AppStore {
   get currentRagDocuments() {
     if (!this.currentChatId) return [];
     return this.ragDocumentsByChat[this.currentChatId] || [];
+  }
+
+  async refreshContextBudgetPreview() {
+    if (!isTauri() || this.backendMode !== 'local' || typeof window === 'undefined' || !window.electronAPI?.invoke) {
+      this.contextBudget = null;
+      return;
+    }
+
+    const chat = this.currentChat;
+    if (!chat) {
+      this.contextBudget = null;
+      return;
+    }
+
+    const requestId = ++this.contextBudgetRequestId;
+    const requestMessages = buildRequestMessagesFromHistory(chat.messages);
+    const draftContent = this.composer.trim();
+    const workspaceContext = this.currentContextMode === 'work' && this.currentWorkspace
+      ? buildWorkspacePrompt(this.currentWorkspace)
+      : '';
+
+    if (draftContent || this.pendingAttachments.length > 0) {
+      requestMessages.push({
+        role: 'user',
+        content: this.buildContextualPrompt({
+          content: draftContent,
+          workspaceContext,
+          mode: this.composerMode,
+          searchMode: this.searchMode
+        }),
+        attachments: this.pendingAttachments
+      });
+    }
+
+    let systemPrompt = this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '';
+    if (this.userName?.trim()) {
+      const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
+      systemPrompt = systemPrompt ? `${userIdentity}\n\n${systemPrompt}` : userIdentity;
+    }
+
+    const chartHint = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
+      '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
+      '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
+      '</chart>\n' +
+      'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
+    systemPrompt = systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
+
+    const outboundMessages: RequestMessage[] = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...requestMessages]
+      : requestMessages;
+
+    try {
+      const budget = await (window as any).electronAPI.invoke('build_context_budget', {
+        config: {
+          context_length: this.config.llm?.local?.context_length || 4096,
+          max_tokens: this.config.llm?.local?.max_tokens
+        },
+        messages: outboundMessages
+      });
+
+      if (requestId !== this.contextBudgetRequestId) return;
+
+      if (!budget || typeof budget !== 'object') {
+        this.contextBudget = null;
+        return;
+      }
+
+      const value = budget as Partial<ContextBudget>;
+      this.contextBudget = {
+        maxContext: Number(value.maxContext) || 4096,
+        usedTokens: Math.max(0, Number(value.usedTokens) || 0),
+        remaining: Math.max(0, Number(value.remaining) || 0),
+        usagePercent: Math.min(100, Math.max(0, Number(value.usagePercent) || 0)),
+        isOverflow: Boolean(value.isOverflow),
+        reservedForCompletion: Math.max(0, Number(value.reservedForCompletion) || 0)
+      };
+    } catch {
+      if (requestId === this.contextBudgetRequestId) {
+        this.contextBudget = null;
+      }
+    }
   }
 
   private syncArtifactState(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {
@@ -611,7 +708,7 @@ class AppStore {
     }
     const normalizedDir = dir.replace(/\\/g, '/');
     const windowsDir = dir.replace(/\//g, '\\');
-    const candidates = ['mmproj-BF16.gguf', 'mmproj-F16.gguf', 'mmproj-F32.gguf'];
+    const candidates = ['mmproj-BF16.gguf', 'mmproj-F16.gguf', 'mmproj-F32.gguf', 'mmproj.gguf'];
     for (const name of candidates) {
       const fullPathCandidates = Array.from(new Set([
         `${normalizedDir}/${name}`,
@@ -626,6 +723,32 @@ class AppStore {
         }
       } catch { /* ignore */ }
     }
+
+    const modelBase = (modelPath.split(/[/\\]/).pop() || '').replace(/\.gguf$/i, '');
+    if (modelBase) {
+      const dynamicCandidates = Array.from(new Set([
+        `mmproj-${modelBase}.gguf`,
+        `${modelBase}-mmproj.gguf`,
+        `${modelBase}.mmproj.gguf`,
+        `${modelBase}.projector.gguf`,
+        `projector-${modelBase}.gguf`
+      ]));
+      for (const name of dynamicCandidates) {
+        const fullPathCandidates = Array.from(new Set([
+          `${normalizedDir}/${name}`,
+          `${windowsDir}\\${name}`,
+          `${dir}/${name}`,
+          `${dir}\\${name}`
+        ]));
+        try {
+          for (const fullPath of fullPathCandidates) {
+            const exists = await pathExists(fullPath);
+            if (exists) return fullPath;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
     return '';
   }
 
@@ -874,6 +997,14 @@ class AppStore {
   selectChat(chatId: string) {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
+
+    for (const attachment of this.pendingAttachments) {
+      if (attachment.preview?.startsWith('blob:')) {
+        URL.revokeObjectURL(attachment.preview);
+      }
+    }
+    this.pendingAttachments = [];
+
     this.currentChatId = chatId;
     this.composer = match.draft || '';
     // Restore artifact from the selected chat's last agent message, or clear
@@ -1305,6 +1436,18 @@ Design rules:
       } catch (error) {
         // Backend RAG failed — try client-side text extraction (OCR/PDF.js)
         console.warn('[addFiles] Backend ingest failed, trying client-side extraction:', error);
+
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        const errorMessage = String((error as Error)?.message || error || 'Failed to process file');
+        const parserFailed = isPdf && /could not parse pdf text|pdf parser returned insufficient readable text/i.test(errorMessage);
+
+        if (parserFailed) {
+          attachment.status = 'error';
+          attachment.error = 'PDF parser could not extract readable text. Please upload a text-based PDF export.';
+          nextAttachments.push(attachment);
+          continue;
+        }
+
         try {
           const { extractTextFromFile } = await import('$lib/services/ocr');
           const text = await extractTextFromFile(file);
@@ -1579,7 +1722,7 @@ Design rules:
 
   async sendCurrentMessage() {
     const content = this.composer.trim();
-    if (!content || !this.currentChat || this.loading) return;
+    if ((!content && this.pendingAttachments.length === 0) || !this.currentChat || this.loading) return;
 
     // Guard: local mode with no model loaded
     if (this.backendMode === 'local') {
@@ -2115,13 +2258,14 @@ Design rules:
       void this.generateChatTitle();
     } catch (error) {
       const errorMsg = String((error as Error)?.message || error || 'Request failed');
+      const aborted = isAbortLikeError(errorMsg);
       // Don't show toast for user-initiated abort
-      if (!errorMsg.includes('abort') && !errorMsg.includes('AbortError') && !errorMsg.toLowerCase().includes('cancel')) {
+      if (!aborted) {
         toastStore.error(errorMsg.length > 80 ? errorMsg.slice(0, 80) + '…' : errorMsg);
       }
       assistantMessage.done = true;
-      assistantMessage.status = 'error';
-      assistantMessage.content = assistantMessage.content || errorMsg;
+      assistantMessage.status = aborted ? 'idle' : 'error';
+      assistantMessage.content = aborted ? (assistantMessage.content || '') : (assistantMessage.content || errorMsg);
       const timing = typeof startTime === 'number' ? (Date.now() - startTime) / 1000 : 0;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       assistantMessage.metadata = {
@@ -2129,7 +2273,7 @@ Design rules:
         tokens: tokenCount,
         timing,
         tokensPerSecond,
-        error: true
+        ...(aborted ? {} : { error: true })
       };
       assistantMessage.model = this.activeModelLabel;
       assistantMessage.versions = [{
@@ -2141,14 +2285,17 @@ Design rules:
       if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
         assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
           if (index === all.length - 1) {
+            if (aborted) {
+              return { ...step, status: 'done', detail: 'Stopped by user' };
+            }
             return { ...step, status: 'error', detail: assistantMessage.content };
           }
           return step;
         });
       }
-      this.error = assistantMessage.content;
+      this.error = aborted ? null : assistantMessage.content;
       userMessage.attachments = sentAttachments;
-      if (assistantMessage.agentTaskId) {
+      if (!aborted && assistantMessage.agentTaskId) {
         await updateManagedAgentTask({
           taskId: assistantMessage.agentTaskId,
           status: 'failed',
@@ -2179,6 +2326,23 @@ Design rules:
   stopStreaming() {
     this.abortController?.abort();
     this.loading = false;
+    const chat = this.currentChat;
+    if (chat) {
+      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && message.status === 'streaming');
+      if (streamingAssistant) {
+        streamingAssistant.status = 'idle';
+        streamingAssistant.done = true;
+        if (streamingAssistant.mode === 'agent' && streamingAssistant.agentSteps?.length) {
+          streamingAssistant.agentSteps = streamingAssistant.agentSteps.map((step, index, all) => {
+            if (index === all.length - 1 && step.status === 'running') {
+              return { ...step, status: 'done', detail: 'Stopped by user' };
+            }
+            return step;
+          });
+        }
+        this.touchChats();
+      }
+    }
     deepResearchStore.cancelActiveTask();
     if (this.activeManagedAgentTaskId && isTauri()) {
       void cancelManagedAgentTask(this.activeManagedAgentTaskId).catch((error) => {
@@ -2464,21 +2628,22 @@ Design rules:
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       const failure = String((error as Error)?.message || error || 'Request failed');
-      nextVersion.content = nextVersion.content || failure;
+      const aborted = isAbortLikeError(failure);
+      nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
       nextVersion.metadata = {
         modelName: this.activeModelLabel,
         tokens: tokenCount,
         timing,
         tokensPerSecond,
-        error: true
+        ...(aborted ? {} : { error: true })
       };
       message.content = nextVersion.content;
       message.reasoning = nextVersion.reasoning || '';
       message.metadata = nextVersion.metadata;
       message.done = true;
-      message.status = 'error';
-      this.error = failure;
-      if (message.agentTaskId) {
+      message.status = aborted ? 'idle' : 'error';
+      this.error = aborted ? null : failure;
+      if (!aborted && message.agentTaskId) {
         await updateManagedAgentTask({
           taskId: message.agentTaskId,
           status: 'failed',
@@ -2494,6 +2659,14 @@ Design rules:
           }
         }).catch((managedTaskError) => {
           console.warn('[agent-runtime] Failed to mark regenerated managed task as failed', managedTaskError);
+        });
+      }
+      if (aborted && message.mode === 'agent' && message.agentSteps?.length) {
+        message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
+          if (stepIndex === all.length - 1 && step.status === 'running') {
+            return { ...step, status: 'done', detail: 'Stopped by user' };
+          }
+          return step;
         });
       }
       this.touchChats();
