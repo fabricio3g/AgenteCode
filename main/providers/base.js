@@ -40,4 +40,9 @@ export class BaseProvider {
   async fetchModels(apiKey, baseUrl) { // eslint-disable-line no-unused-vars
     return [];
   }
+
+  /** Fetch a single model's metadata (returns { context_window } or null) */
+  async fetchModelMetadata(apiKey, baseUrl, modelId) { // eslint-disable-line no-unused-vars
+    return null;
+  }
 }

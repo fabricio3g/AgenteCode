@@ -358,6 +358,7 @@ class AppStore {
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
   contextBudget = $state<ContextBudget | null>(null);
+  apiModelContextWindows = $state<Record<string, number>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
   activeManagedAgentTaskId = $state<string | null>(null);
@@ -486,7 +487,7 @@ class AppStore {
   }
 
   async refreshContextBudgetPreview() {
-    if (!isTauri() || this.backendMode !== 'local' || typeof window === 'undefined' || !window.electronAPI?.invoke) {
+    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       this.contextBudget = null;
       return;
     }
@@ -498,14 +499,15 @@ class AppStore {
     }
 
     const requestId = ++this.contextBudgetRequestId;
-    const requestMessages = buildRequestMessagesFromHistory(chat.messages);
+
     const draftContent = this.composer.trim();
     const workspaceContext = this.currentContextMode === 'work' && this.currentWorkspace
       ? buildWorkspacePrompt(this.currentWorkspace)
       : '';
 
+    const currentMessages = buildRequestMessagesFromHistory(chat.messages);
     if (draftContent || this.pendingAttachments.length > 0) {
-      requestMessages.push({
+      currentMessages.push({
         role: 'user',
         content: this.buildContextualPrompt({
           content: draftContent,
@@ -517,7 +519,128 @@ class AppStore {
       });
     }
 
-    let systemPrompt = this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '';
+    let systemPrompt = this.getSystemPrompt();
+    const outboundMessages: RequestMessage[] = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...currentMessages]
+      : currentMessages;
+
+    try {
+      if (this.backendMode === 'local') {
+        const budget = await (window as any).electronAPI.invoke('build_context_budget', {
+          config: {
+            context_length: this.config.llm?.local?.context_length || 4096,
+            max_tokens: this.config.llm?.local?.max_tokens
+          },
+          messages: outboundMessages
+        });
+
+        if (requestId !== this.contextBudgetRequestId) return;
+
+        if (!budget || typeof budget !== 'object') {
+          this.contextBudget = null;
+          return;
+        }
+
+        const value = budget as Partial<ContextBudget>;
+        this.contextBudget = {
+          maxContext: Number(value.maxContext) || 4096,
+          usedTokens: Math.max(0, Number(value.usedTokens) || 0),
+          remaining: Math.max(0, Number(value.remaining) || 0),
+          usagePercent: Math.min(100, Math.max(0, Number(value.usagePercent) || 0)),
+          isOverflow: Boolean(value.isOverflow),
+          reservedForCompletion: Math.max(0, Number(value.reservedForCompletion) || 0)
+        };
+      } else {
+        const provider = this.activeProvider;
+        const model = provider?.model;
+        if (!provider || !model) {
+          this.contextBudget = null;
+          return;
+        }
+
+        const cacheKey = `${this.activeProviderName}:${model}`;
+        let contextWindow: number | null = this.apiModelContextWindows[cacheKey] ?? null;
+
+        if (contextWindow === null || contextWindow === undefined) {
+          contextWindow = await this.fetchApiModelContextWindow(this.activeProviderName, model);
+        }
+
+        if (requestId !== this.contextBudgetRequestId) return;
+
+        if (!contextWindow) {
+          this.contextBudget = null;
+          return;
+        }
+
+        let totalTokens = 0;
+        for (const msg of outboundMessages) {
+          const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          const tokens = await (window as any).electronAPI.invoke('count_tokens', { text });
+          totalTokens += typeof tokens === 'number' ? tokens : 0;
+        }
+
+        if (requestId !== this.contextBudgetRequestId) return;
+
+        const maxTokensSetting = provider?.max_tokens || 4096;
+        const reserved = Math.min(maxTokensSetting, contextWindow * 0.1);
+        const effectiveMax = contextWindow - reserved;
+        const usagePercent = Math.min(100, Math.round((totalTokens / effectiveMax) * 100));
+        const remaining = Math.max(0, effectiveMax - totalTokens);
+        const isOverflow = totalTokens > effectiveMax;
+
+        this.contextBudget = {
+          maxContext: contextWindow,
+          usedTokens: totalTokens,
+          remaining,
+          usagePercent,
+          isOverflow,
+          reservedForCompletion: reserved
+        };
+      }
+    } catch {
+      if (requestId === this.contextBudgetRequestId) {
+        this.contextBudget = null;
+      }
+    }
+  }
+
+  private async fetchApiModelContextWindow(providerName: string, model: string): Promise<number | null> {
+    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
+      return null;
+    }
+
+    const cacheKey = `${providerName}:${model}`;
+    const cached = this.apiModelContextWindows[cacheKey];
+    if (cached) return cached;
+
+    const provider = this.activeProvider;
+    if (!provider) return null;
+
+    try {
+      const result = await (window as any).electronAPI.invoke('get_api_model_context', {
+        providerName,
+        baseUrl: provider.base_url || '',
+        apiKey: provider.api_key || '',
+        modelId: model
+      });
+
+      if (result && typeof result === 'object' && typeof result.context_window === 'number') {
+        const contextWindow = result.context_window;
+        this.apiModelContextWindows = { ...this.apiModelContextWindows, [cacheKey]: contextWindow };
+        return contextWindow;
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
+  }
+
+  private getSystemPrompt(): string {
+    const localPrompt = this.config.llm?.local?.system_prompt?.trim() || '';
+    const providerPrompt = this.config.llm?.providers?.[this.activeProviderName]?.system_prompt?.trim() || '';
+    let systemPrompt = this.backendMode === 'local' ? localPrompt : providerPrompt;
+
     if (this.userName?.trim()) {
       const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
       systemPrompt = systemPrompt ? `${userIdentity}\n\n${systemPrompt}` : userIdentity;
@@ -528,42 +651,7 @@ class AppStore {
       '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
       '</chart>\n' +
       'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
-    systemPrompt = systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
-
-    const outboundMessages: RequestMessage[] = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...requestMessages]
-      : requestMessages;
-
-    try {
-      const budget = await (window as any).electronAPI.invoke('build_context_budget', {
-        config: {
-          context_length: this.config.llm?.local?.context_length || 4096,
-          max_tokens: this.config.llm?.local?.max_tokens
-        },
-        messages: outboundMessages
-      });
-
-      if (requestId !== this.contextBudgetRequestId) return;
-
-      if (!budget || typeof budget !== 'object') {
-        this.contextBudget = null;
-        return;
-      }
-
-      const value = budget as Partial<ContextBudget>;
-      this.contextBudget = {
-        maxContext: Number(value.maxContext) || 4096,
-        usedTokens: Math.max(0, Number(value.usedTokens) || 0),
-        remaining: Math.max(0, Number(value.remaining) || 0),
-        usagePercent: Math.min(100, Math.max(0, Number(value.usagePercent) || 0)),
-        isOverflow: Boolean(value.isOverflow),
-        reservedForCompletion: Math.max(0, Number(value.reservedForCompletion) || 0)
-      };
-    } catch {
-      if (requestId === this.contextBudgetRequestId) {
-        this.contextBudget = null;
-      }
-    }
+    return systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
   }
 
   private syncArtifactState(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {

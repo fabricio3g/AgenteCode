@@ -14,7 +14,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'ingest_workspace_files',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'unload_tts', 'check_espeak_data',
-  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models',
+  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models', 'get_api_model_context',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
   'count_tokens', 'build_context_budget', 'truncate_messages',
   'start_download_hf', 'get_download_jobs', 'cancel_download_job',

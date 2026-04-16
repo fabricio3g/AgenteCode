@@ -125,7 +125,9 @@
   const composerBusy = $derived(appStore.loading || appStore.workspaceIndexing);
   const compactComposer = $derived(composerWidth > 0 && composerWidth < 640);
   const contextBudget = $derived(appStore.contextBudget);
-  const showContextUsage = $derived(appStore.backendMode === 'local');
+  const showContextUsage = $derived(
+    appStore.backendMode === 'local' || (appStore.backendMode === 'api' && appStore.contextBudget !== null)
+  );
 
   // Welcome hint state (shown above composer when centered / no messages)
   const PROVIDER_LABELS: Record<string, string> = {

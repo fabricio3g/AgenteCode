@@ -217,6 +217,13 @@ export function registerIpcHandlers() {
     return provider.fetchModels(realKey, baseUrl);
   });
 
+  ipcMain.handle('get_api_model_context', async (_e, { baseUrl, apiKey, providerName, modelId }) => {
+    const provider = resolveProvider(providerName, baseUrl);
+    const realKey = resolveApiKey(apiKey, baseUrl, providerName);
+    const result = await provider.fetchModelMetadata(realKey, baseUrl, modelId);
+    return result;
+  });
+
   // ── Chat (main-process network for API key safety) ──
   ipcMain.handle('chat_complete', (_e, args) => completeChatRequest(args));
   ipcMain.handle('chat_stream_start', (_e, args) => startChatStream(args, getMainWindow()));

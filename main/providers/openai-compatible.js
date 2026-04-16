@@ -75,6 +75,20 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const list = data?.data ?? data?.models ?? [];
     return list.map((m) => m.id).filter(Boolean).sort();
   }
+
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
+    const normalized = normalizeBaseUrl(baseUrl);
+    if (!normalized) return null;
+    const url = `${normalized}/models/${modelId}`;
+    const headers = { 'Accept': 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const contextWindow = data?.context_window ?? data?.max_tokens ?? null;
+    if (!contextWindow) return null;
+    return { context_window: contextWindow };
+  }
 }
 
 function normalizeBaseUrl(baseUrl) {
