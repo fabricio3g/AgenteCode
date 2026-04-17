@@ -4,11 +4,25 @@
   interface Props {
     usedTokens: number;
     maxTokens: number;
+    reservedTokens?: number;
+    promptCostPerMillionUsd?: number;
+    completionCostPerMillionUsd?: number;
+    estimatedInputCostUsd?: number;
     size?: number;
     strokeWidth?: number;
   }
 
-  let { usedTokens, maxTokens, size = 18, strokeWidth = 2 }: Props = $props();
+  let {
+    usedTokens,
+    maxTokens,
+    reservedTokens = 0,
+    promptCostPerMillionUsd,
+    completionCostPerMillionUsd,
+    estimatedInputCostUsd,
+    size = 22,
+    strokeWidth = 2.25
+  }: Props = $props();
+  let hover = $state(false);
 
   const safeMax = $derived.by(() => {
     const value = Number(maxTokens);
@@ -31,18 +45,35 @@
   const circumference = $derived.by(() => 2 * Math.PI * radius);
   const dashOffset = $derived.by(() => circumference * (1 - usagePercent / 100));
 
-  const strokeColor = $derived.by(() => {
-    if (usagePercent >= 85) return 'var(--error)';
-    if (usagePercent >= 60) return 'var(--warning)';
-    return 'var(--success)';
-  });
+  const strokeColor = $derived('var(--text-secondary)');
 
   const usageLabel = $derived.by(() => `${formatTokenCount(safeUsed)} / ${formatTokenCount(safeMax)} tokens (${usagePercent}%)`);
+  const reserveLabel = $derived.by(() => reservedTokens > 0 ? `Reserved: ${formatTokenCount(reservedTokens)} tokens` : '');
+  const pricingLabel = $derived.by(() => {
+    const parts: string[] = [];
+    if (promptCostPerMillionUsd && promptCostPerMillionUsd > 0) {
+      parts.push(`In $${formatUsd(promptCostPerMillionUsd)}/1M`);
+    }
+    if (completionCostPerMillionUsd && completionCostPerMillionUsd > 0) {
+      parts.push(`Out $${formatUsd(completionCostPerMillionUsd)}/1M`);
+    }
+    return parts.join(' · ');
+  });
+  const estimatedCostLabel = $derived.by(() => {
+    if (!estimatedInputCostUsd || estimatedInputCostUsd <= 0) return '';
+    return `Est. input cost: $${formatUsd(estimatedInputCostUsd)}`;
+  });
 
   function formatTokenCount(value: number) {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
     if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
     return String(value);
+  }
+
+  function formatUsd(value: number) {
+    if (value >= 1) return value.toFixed(2);
+    if (value >= 0.01) return value.toFixed(4);
+    return value.toFixed(6);
   }
 </script>
 
@@ -50,7 +81,8 @@
   class="context-ring"
   role="img"
   aria-label={usageLabel}
-  title={usageLabel}
+  onmouseenter={() => (hover = true)}
+  onmouseleave={() => (hover = false)}
 >
   <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
     <circle
@@ -69,6 +101,15 @@
       style={`stroke:${strokeColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
     ></circle>
   </svg>
+
+  {#if hover}
+    <div class="context-tooltip">
+      <div>{usageLabel}</div>
+      {#if reserveLabel}<div>{reserveLabel}</div>{/if}
+      {#if pricingLabel}<div>{pricingLabel}</div>{/if}
+      {#if estimatedCostLabel}<div>{estimatedCostLabel}</div>{/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -76,13 +117,14 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.85rem;
+    height: 1.85rem;
+    position: relative;
   }
 
   .context-ring-track {
     fill: none;
-    stroke: var(--border-light);
+    stroke: color-mix(in srgb, var(--text-muted) 36%, transparent);
   }
 
   .context-ring-progress {
@@ -91,5 +133,24 @@
     transform: rotate(-90deg);
     transform-origin: center;
     transition: stroke-dashoffset 140ms ease, stroke 140ms ease;
+  }
+
+  .context-tooltip {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    display: grid;
+    gap: 2px;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    border-radius: var(--radius-m);
+    box-shadow: var(--shadow-m);
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+    z-index: 60;
+    pointer-events: none;
   }
 </style>

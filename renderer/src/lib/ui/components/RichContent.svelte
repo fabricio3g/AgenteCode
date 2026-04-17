@@ -138,7 +138,23 @@
   {#if rendersUI}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
   {:else if hasCharts}
-    <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html markdownHtml}</div>
+    <div bind:this={contentEl} class="space-y-3" class:stream-caret={status === 'streaming' && !!content}>
+      {#each contentSegments as segment}
+        {#if segment.kind === 'text'}
+          {#if segment.content.trim()}
+            <div class="markdown-body">{@html renderMarkdown(segment.content)}</div>
+          {/if}
+        {:else}
+          <ChartBlock
+            type={segment.type}
+            title={segment.title}
+            xlabel={segment.xlabel}
+            ylabel={segment.ylabel}
+            raw={segment.raw}
+          />
+        {/if}
+      {/each}
+    </div>
   {:else if content}
     <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html markdownHtml}</div>
   {/if}

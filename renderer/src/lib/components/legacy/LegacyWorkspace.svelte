@@ -92,7 +92,7 @@
  <iframe
  bind:this={iframe}
  class="h-full w-full border-0 bg-[var(--background)]"
-   title="Legacy TalamoLM workspace"
+   title="Legacy 7Context workspace"
  src={legacyUrl}
  onload={handleLoad}
  ></iframe>

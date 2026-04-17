@@ -220,6 +220,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('get_api_model_context', async (_e, { baseUrl, apiKey, providerName, modelId }) => {
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
+    if (!realKey && provider.name !== 'local') {
+      return null;
+    }
     const result = await provider.fetchModelMetadata(realKey, baseUrl, modelId);
     return result;
   });

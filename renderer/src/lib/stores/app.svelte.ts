@@ -30,6 +30,16 @@ interface ContextBudget {
   usagePercent: number;
   isOverflow: boolean;
   reservedForCompletion: number;
+  promptCostPerMillionUsd?: number;
+  completionCostPerMillionUsd?: number;
+  estimatedInputCostUsd?: number;
+}
+
+interface ApiModelMetadata {
+  context_window: number;
+  max_completion_tokens?: number;
+  prompt_cost_per_million?: number;
+  completion_cost_per_million?: number;
 }
 
 const LOCAL_MODEL_SETTINGS_KEY = 'talamolm_model_load_settings_by_model';
@@ -358,7 +368,7 @@ class AppStore {
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
   contextBudget = $state<ContextBudget | null>(null);
-  apiModelContextWindows = $state<Record<string, number>>({});
+  apiModelMetadataByKey = $state<Record<string, ApiModelMetadata>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
   activeManagedAgentTaskId = $state<string | null>(null);
@@ -559,14 +569,14 @@ class AppStore {
         }
 
         const cacheKey = `${this.activeProviderName}:${model}`;
-        let contextWindow: number | null = this.apiModelContextWindows[cacheKey] ?? null;
-
-        if (contextWindow === null || contextWindow === undefined) {
-          contextWindow = await this.fetchApiModelContextWindow(this.activeProviderName, model);
+        let modelMetadata: ApiModelMetadata | null = this.apiModelMetadataByKey[cacheKey] || null;
+        if (!modelMetadata) {
+          modelMetadata = await this.fetchApiModelMetadata(this.activeProviderName, model);
         }
 
         if (requestId !== this.contextBudgetRequestId) return;
 
+        const contextWindow = modelMetadata?.context_window || null;
         if (!contextWindow) {
           this.contextBudget = null;
           return;
@@ -581,12 +591,20 @@ class AppStore {
 
         if (requestId !== this.contextBudgetRequestId) return;
 
-        const maxTokensSetting = provider?.max_tokens || 4096;
-        const reserved = Math.min(maxTokensSetting, contextWindow * 0.1);
+        const maxTokensSetting = provider?.max_tokens
+          || modelMetadata?.max_completion_tokens
+          || Math.floor(contextWindow * 0.1);
+        const reserved = Math.min(maxTokensSetting, Math.floor(contextWindow * 0.2));
         const effectiveMax = contextWindow - reserved;
         const usagePercent = Math.min(100, Math.round((totalTokens / effectiveMax) * 100));
         const remaining = Math.max(0, effectiveMax - totalTokens);
         const isOverflow = totalTokens > effectiveMax;
+
+        const promptCostPerMillionUsd = modelMetadata?.prompt_cost_per_million;
+        const completionCostPerMillionUsd = modelMetadata?.completion_cost_per_million;
+        const estimatedInputCostUsd = promptCostPerMillionUsd
+          ? (totalTokens / 1_000_000) * promptCostPerMillionUsd
+          : undefined;
 
         this.contextBudget = {
           maxContext: contextWindow,
@@ -594,7 +612,10 @@ class AppStore {
           remaining,
           usagePercent,
           isOverflow,
-          reservedForCompletion: reserved
+          reservedForCompletion: reserved,
+          promptCostPerMillionUsd,
+          completionCostPerMillionUsd,
+          estimatedInputCostUsd
         };
       }
     } catch {
@@ -604,13 +625,13 @@ class AppStore {
     }
   }
 
-  private async fetchApiModelContextWindow(providerName: string, model: string): Promise<number | null> {
+  private async fetchApiModelMetadata(providerName: string, model: string): Promise<ApiModelMetadata | null> {
     if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       return null;
     }
 
     const cacheKey = `${providerName}:${model}`;
-    const cached = this.apiModelContextWindows[cacheKey];
+    const cached = this.apiModelMetadataByKey[cacheKey];
     if (cached) return cached;
 
     const provider = this.activeProvider;
@@ -624,10 +645,17 @@ class AppStore {
         modelId: model
       });
 
-      if (result && typeof result === 'object' && typeof result.context_window === 'number') {
-        const contextWindow = result.context_window;
-        this.apiModelContextWindows = { ...this.apiModelContextWindows, [cacheKey]: contextWindow };
-        return contextWindow;
+      if (result && typeof result === 'object') {
+        const metadata: ApiModelMetadata = {
+          context_window: Number((result as any).context_window) || 0,
+          max_completion_tokens: Number((result as any).max_completion_tokens) || undefined,
+          prompt_cost_per_million: Number((result as any).prompt_cost_per_million) || undefined,
+          completion_cost_per_million: Number((result as any).completion_cost_per_million) || undefined
+        };
+        if (metadata.context_window > 0) {
+          this.apiModelMetadataByKey = { ...this.apiModelMetadataByKey, [cacheKey]: metadata };
+          return metadata;
+        }
       }
     } catch {
       // ignore

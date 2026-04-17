@@ -56,6 +56,8 @@
   --user-bubble: #F4F4F4;
   --user-bubble-text: var(--text);
   --chat-bg: var(--background);
+  --titlebar-bg: #F3F3F3;
+  --sidebar-bg: #F3F3F3;
 
   --accent: var(--primary);
   --accent-soft: rgba(0, 0, 0, 0.04);
@@ -140,6 +142,8 @@
   --user-bubble: #2A2A2E;
   --user-bubble-text: var(--text);
   --chat-bg: var(--background);
+  --titlebar-bg: #161618;
+  --sidebar-bg: #161618;
 
   --accent: var(--primary);
   --accent-soft: rgba(255, 255, 255, 0.07);

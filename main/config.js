@@ -228,6 +228,11 @@ function getDefaultConfig() {
         server: { host: '127.0.0.1', port: 11435, args: [] },
         models_dir: paths.localModelsRoot,
         base_url: `http://127.0.0.1:11435/v1`,
+        embedding_model: 'nomic_embed_text_v15',
+        embedding_model_path: '',
+        embedding_port: 11436,
+        embedding_context_length: 2048,
+        embedding_gpu_layers: 0,
         active_model_id: '', default_model_id: '', models: []
       },
       providers: {
@@ -244,6 +249,13 @@ function getDefaultConfig() {
           api_key: '', model: '', default_params: { temperature: 0.7 }
         }
       }
+    },
+    rag: {
+      enabled: true,
+      auto_start_embedding: true,
+      rerank: false,
+      preferred_embedding_model: 'nomic_embed_text_v15',
+      fallback_embedding_models: ['all_minilm_l6_v2']
     },
     stt: {
       provider: 'local', model: 'whisper-1',

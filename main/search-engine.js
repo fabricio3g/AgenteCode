@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { LOCAL_GGUF_CATALOG, TTS_MODEL_CATALOG, WHISPER_QUALITY_CATALOG } from './config.js';
+import { EMBEDDING_MODEL_CATALOG } from './rag/embedding-catalog.js';
 
 const DEFAULT_PROVIDER_ORDER = [
   'tavily',
@@ -1075,7 +1076,8 @@ export async function fetchModelCatalog() {
   return {
     llm: LOCAL_GGUF_CATALOG,
     tts: TTS_MODEL_CATALOG,
-    whisper: WHISPER_QUALITY_CATALOG
+    whisper: WHISPER_QUALITY_CATALOG,
+    embeddings: EMBEDDING_MODEL_CATALOG
   };
 }
 

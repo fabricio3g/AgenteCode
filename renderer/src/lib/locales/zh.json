@@ -1,6 +1,6 @@
 {
   "chat": {
-    "placeholder": "给 TalamoLM 发消息...",
+    "placeholder": "给 {{APP_NAME}} 发消息...",
     "stop": "停止回复",
     "send": "发送消息",
     "attach": "附件",
@@ -133,7 +133,7 @@
     "readyToChat": "准备聊天",
     "startChatting": "开始聊天",
     "welcome": "欢迎",
-    "welcomeDesc": "让我们设置 TalamoLM 以获得最佳体验。",
+    "welcomeDesc": "让我们设置 {{APP_NAME}} 以获得最佳体验。",
     "model": "模型",
     "runtime": "运行时",
     "ready": "就绪"

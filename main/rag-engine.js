@@ -5,6 +5,8 @@ import { getAppPaths } from './index.js';
 import { getEmbedding, getEmbeddings } from './embedding-client.js';
 import { rerankChunks } from './reranker.js';
 import { vectorStore } from './vector-store.js';
+import { loadConfig } from './config.js';
+import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.js';
 import {
   saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
   deleteRagDocumentsByChat
@@ -28,7 +30,19 @@ let storeMtime = 0;
 const queryEmbeddingCache = new Map();
 const QUERY_EMBEDDING_CACHE_TTL_MS = 2 * 60 * 1000;
 const QUERY_EMBEDDING_CACHE_MAX = 200;
-const SMALL_DATASET_FAST_PATH_CHUNKS = 80;
+const SMALL_DATASET_FAST_PATH_CHUNKS = 200;
+
+function getRagRuntimeSettings() {
+  try {
+    const config = loadConfig();
+    const rag = config?.rag || {};
+    return {
+      rerank: rag.rerank === true
+    };
+  } catch {
+    return { rerank: false };
+  }
+}
 
 function queryEmbeddingCacheKey(query, chatId) {
   return `${String(chatId || 'default')}:${String(query || '').trim().toLowerCase()}`;
@@ -70,6 +84,8 @@ async function getCachedQueryEmbedding(query, chatId) {
 async function indexRecordEmbeddings(chatId, record) {
   const chunkTexts = record.chunks.map((chunk) => chunk.text).filter((text) => text.trim());
   if (chunkTexts.length === 0) return;
+
+  await ensureRagEmbeddingRuntime().catch(() => {});
 
   const embeddings = await getEmbeddings(chunkTexts).catch(() => null);
   if (!embeddings) return;
@@ -424,8 +440,10 @@ export async function queryDocuments({ query, chat_id, top_k }) {
 
 export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   await ensureVectorStore().catch(() => {});
+  await ensureRagEmbeddingRuntime().catch(() => {});
   ensureStoreLoaded();
   const store = ensureChatStore(chat_id);
+  const settings = getRagRuntimeSettings();
   const k = Math.max(1, Number(top_k) || 5);
   const queryTokens = tokenize(query);
   const allChunks = [];
@@ -493,28 +511,39 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
     vectorResultMap.set(vr.id, vr._distance != null ? 1 - vr._distance : 0);
   }
 
-  // Score each chunk with hybrid scoring
-  for (let i = 0; i < allChunks.length; i++) {
-    const entry = allChunks[i];
-    const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
-    let vectorScore = 0;
-
-    if (vectorResultMap.has(entry.chunk.id)) {
-      vectorScore = vectorResultMap.get(entry.chunk.id);
+  // If vector results are available, score only that candidate set for speed.
+  if (vectorResultMap.size > 0) {
+    const chunkById = new Map(allChunks.map((entry) => [entry.chunk.id, entry]));
+    for (const [chunkId, vectorScore] of vectorResultMap.entries()) {
+      const entry = chunkById.get(chunkId);
+      if (!entry) continue;
+      const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
+      const hybridScore = (keywordScore * 0.25) + (vectorScore * 10 * 0.75);
+      scored.push({
+        chunk: entry.chunk,
+        doc: entry.doc,
+        text: entry.text,
+        score: hybridScore,
+        keywordScore,
+        vectorScore
+      });
     }
+  }
 
-    const hasVector = vectorResultMap.size > 0;
-    const hybridScore = hasVector
-      ? (keywordScore * 0.4) + (vectorScore * 10 * 0.6)
-      : keywordScore;
-
-    scored.push({
-      chunk: entry.chunk,
-      doc: entry.doc,
-      score: hybridScore,
-      keywordScore,
-      vectorScore
-    });
+  // Fallback path when vector retrieval is unavailable.
+  if (!scored.length) {
+    for (let i = 0; i < allChunks.length; i++) {
+      const entry = allChunks[i];
+      const keywordScore = scoreChunk(queryTokens, entry.text) + scoreChunk(queryTokens, entry.doc.source) * 0.5;
+      scored.push({
+        chunk: entry.chunk,
+        doc: entry.doc,
+        text: entry.text,
+        score: keywordScore,
+        keywordScore,
+        vectorScore: 0
+      });
+    }
   }
 
   scored.sort((left, right) => right.score - left.score);
@@ -522,7 +551,7 @@ export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   // Rerank top candidates if reranker available
   const topCandidates = scored.slice(0, Math.min(Math.max(k * 2, 6), scored.length));
   let finalRanked = topCandidates;
-  if (topCandidates.length > 1) {
+  if (settings.rerank && topCandidates.length > 1) {
     try {
       const reranked = await rerankChunks(query, topCandidates.map(c => c.text), Math.min(k, topCandidates.length));
       if (reranked.length > 0 && reranked[0].rerankScore != null) {

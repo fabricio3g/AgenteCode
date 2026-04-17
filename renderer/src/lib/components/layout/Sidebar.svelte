@@ -144,12 +144,11 @@
 </script>
 
 <aside class="sidebar flex h-full w-[260px] shrink-0 flex-col">
-  <div class="flex min-h-0 flex-1 flex-col px-2 pt-2 pb-1">
+  <div class="flex min-h-0 flex-1 flex-col px-3 pt-3 pb-1">
 
-    <!-- Top actions row: New Chat + Search toggle -->
-    <div class="flex items-center gap-1 px-1 pb-2">
+    <div class="flex items-center gap-1.5 pb-3">
       <button
-        class="new-chat-btn flex flex-1 items-center gap-2 rounded-[var(--radius-s)] px-2.5 py-1.5 text-[13px] font-medium transition"
+        class="new-chat-btn flex flex-1 items-center gap-2 rounded-[var(--radius-s)] px-3 py-2 text-[13px] font-medium transition"
         onclick={() => appStore.createChat()}
       >
         <Plus class="h-4 w-4" />
@@ -165,9 +164,8 @@
       </button>
     </div>
 
-    <!-- Inline search (shown when focused or has value) -->
     {#if isSearching || searchFocused}
-      <div class="px-1 pb-2">
+      <div class="pb-3">
         <label class="relative block">
           <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
           <input
@@ -198,18 +196,17 @@
       </div>
     {/if}
 
-    <!-- Chat list -->
-    <div class="chat-list flex-1 overflow-y-auto px-0.5">
+    <div class="chat-list flex-1 overflow-y-auto">
       {#if groupedChats.length}
         {#each groupedChats as group (group.key)}
-          <div class="mb-2">
-            <div class="group-label px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+          <div class="mb-1.5">
+            <div class="group-label px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               {group.label}
             </div>
             <div class="space-y-0.5">
               {#each group.chats as chat (chat.id)}
                 <div
-                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between rounded-[var(--radius-s)] px-2.5 py-2 text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
+                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between rounded-[var(--radius-s)] px-2.5 py-[7px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
                   role="button"
                   tabindex="0"
                   onclick={() => appStore.selectChat(chat.id)}
@@ -238,7 +235,7 @@
 
                   {#if openMenuChatId === chat.id}
                     <div
-                      class="chat-menu absolute right-0 top-10 z-30 w-40 rounded-[var(--radius-m)]"
+                      class="chat-menu absolute right-0 top-9 z-30 w-40 rounded-[var(--radius-m)]"
                       role="menu"
                       tabindex="-1"
                       onclick={(e) => e.stopPropagation()}
@@ -290,10 +287,9 @@
       {/if}
     </div>
 
-    <!-- Footer: Model Hub, Runtime, Settings -->
-    <div class="sidebar-footer space-y-px px-0.5 py-1.5">
+    <div class="sidebar-footer px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
         onclick={() => (appStore.modelManagerOpen = true)}
         title="Manage models"
       >
@@ -302,7 +298,7 @@
       </button>
       {#if isTauri()}
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
           onclick={() => (appStore.runtimeManagerOpen = true)}
           title="Manage local runtime"
         >
@@ -311,7 +307,7 @@
         </button>
       {/if}
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-2 text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
         onclick={() => (appStore.settingsOpen = true)}
         title="Settings"
       >
@@ -332,19 +328,18 @@
 
 <style>
   .sidebar {
-    background: var(--chat-bg);
-    border-right: 1px solid var(--border);
+    background: var(--sidebar-bg, var(--surface));
+    border-right: 1px solid var(--border-light);
   }
 
   .new-chat-btn {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
+    color: var(--text);
+    background: var(--surface-highlight);
+    border: 1px solid var(--border-light);
   }
 
   .new-chat-btn:hover {
-    color: var(--text);
-    background: var(--surface-highlight);
+    background: var(--surface-secondary);
     border-color: var(--border);
   }
 
@@ -360,12 +355,12 @@
 
   .search-input {
     background: var(--surface-highlight);
-    border: 1px solid transparent;
+    border: 1px solid var(--border-light);
     color: var(--text);
   }
 
   .search-input.focused {
-    border-color: var(--border);
+    border-color: var(--border-strong);
     background: var(--surface);
   }
 
@@ -385,18 +380,18 @@
   .chat-item {
     color: var(--text-secondary);
     border: 1px solid transparent;
+    padding-left: 10px;
   }
 
   .chat-item:hover {
     background: var(--surface-highlight);
     color: var(--text);
-    border-color: var(--border-light);
   }
 
   .chat-item.is-active {
     background: var(--surface-secondary);
     color: var(--text);
-    border-color: var(--border);
+    border-color: var(--border-light);
   }
 
   .chat-item.is-active .chat-title {
@@ -417,7 +412,7 @@
   .chat-menu {
     background: var(--surface);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-l);
+    box-shadow: var(--shadow-xl);
     padding: 3px;
   }
 
@@ -448,7 +443,7 @@
   }
 
   .sidebar-btn {
-    color: var(--text-secondary);
+    color: var(--text-muted);
     background: transparent;
     border: 1px solid transparent;
   }

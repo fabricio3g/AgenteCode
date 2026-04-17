@@ -1,6 +1,6 @@
 {
   "chat": {
-    "placeholder": "TalamoLMにメッセージを送信...",
+    "placeholder": "{{APP_NAME}}にメッセージを送信...",
     "stop": "応答を停止",
     "send": "メッセージを送信",
     "attach": "添付",
@@ -133,7 +133,7 @@
     "readyToChat": "チャットの準備完了",
     "startChatting": "チャットを開始",
     "welcome": "ようこそ",
-    "welcomeDesc": "TalamoLMを最高の体験で設定しましょう。",
+    "welcomeDesc": "{{APP_NAME}}を最高の体験で設定しましょう。",
     "model": "モデル",
     "runtime": "ランタイム",
     "ready": "準備完了"

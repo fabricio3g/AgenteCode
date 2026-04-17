@@ -3,6 +3,7 @@
 <script lang="ts">
   import { Sparkles, ArrowRight } from 'lucide-svelte';
   import { t, locale } from 'svelte-i18n';
+  import { APP_NAME } from '$lib/app-meta';
 
   const languages = [
     { code: 'en', label: 'English' },
@@ -42,7 +43,7 @@
   <div class="space-y-2">
     <h1 class="text-xl font-semibold text-[var(--text)]">{$t('onboarding.welcome')}</h1>
     <p class="text-sm text-[var(--text-secondary)]">
-      {$t('onboarding.welcomeDesc')}
+      {$t('onboarding.welcomeDesc').replace('{{APP_NAME}}', APP_NAME)}
     </p>
   </div>
 

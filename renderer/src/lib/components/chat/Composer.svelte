@@ -10,6 +10,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { onDestroy } from 'svelte';
   import { t } from 'svelte-i18n';
+  import { APP_NAME } from '$lib/app-meta';
   import ComposerModes from './composer/ComposerModes.svelte';
   import ModeSelector from './composer/ModeSelector.svelte';
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
@@ -125,9 +126,7 @@
   const composerBusy = $derived(appStore.loading || appStore.workspaceIndexing);
   const compactComposer = $derived(composerWidth > 0 && composerWidth < 640);
   const contextBudget = $derived(appStore.contextBudget);
-  const showContextUsage = $derived(
-    appStore.backendMode === 'local' || (appStore.backendMode === 'api' && appStore.contextBudget !== null)
-  );
+  const showContextUsage = $derived(contextBudget !== null);
 
   // Welcome hint state (shown above composer when centered / no messages)
   const PROVIDER_LABELS: Record<string, string> = {
@@ -708,7 +707,7 @@
       <textarea
         bind:this={textarea}
         class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-        placeholder={$t('chat.placeholder')}
+        placeholder={$t('chat.placeholder').replace('{{APP_NAME}}', APP_NAME)}
         rows="1"
         value={appStore.composer}
         oninput={onInput}
@@ -733,6 +732,16 @@
       </div>
 
       <div class={`flex items-center gap-1.5 ${compactComposer ? 'justify-end' : 'pl-2'}`}>
+        {#if showContextUsage}
+          <ContextUsageRing
+            usedTokens={contextBudget?.usedTokens ?? 0}
+            maxTokens={contextBudget?.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
+            reservedTokens={contextBudget?.reservedForCompletion ?? 0}
+            promptCostPerMillionUsd={contextBudget?.promptCostPerMillionUsd}
+            completionCostPerMillionUsd={contextBudget?.completionCostPerMillionUsd}
+            estimatedInputCostUsd={contextBudget?.estimatedInputCostUsd}
+          />
+        {/if}
         <button
           class={`voice-btn flex items-center justify-center rounded-full transition h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
           onclick={hasMicSupport ? toggleSpeech : undefined}
@@ -746,12 +755,6 @@
             <Mic class="h-3.5 w-3.5" />
           {/if}
         </button>
-        {#if showContextUsage}
-          <ContextUsageRing
-            usedTokens={contextBudget?.usedTokens ?? 0}
-            maxTokens={contextBudget?.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
-          />
-        {/if}
         <button
           class={`send-btn flex items-center justify-center rounded-full transition ${compactComposer ? 'h-8 min-w-[2rem] px-2.5' : 'h-8 w-8'}`}
           onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}

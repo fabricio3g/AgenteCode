@@ -1,6 +1,6 @@
 {
   "chat": {
-    "placeholder": "Nachricht an TalamoLM...",
+    "placeholder": "Nachricht an {{APP_NAME}}...",
     "stop": "Antwort stoppen",
     "send": "Nachricht senden",
     "attach": "Anhängen",
@@ -133,7 +133,7 @@
     "readyToChat": "Bereit zum Chatten",
     "startChatting": "Chat starten",
     "welcome": "Willkommen",
-    "welcomeDesc": "Lassen Sie uns TalamoLM für das beste Erlebnis einrichten.",
+    "welcomeDesc": "Lassen Sie uns {{APP_NAME}} für das beste Erlebnis einrichten.",
     "model": "Modell",
     "runtime": "Laufzeitumgebung",
     "ready": "Fertig"

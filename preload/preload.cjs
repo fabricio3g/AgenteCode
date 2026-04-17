@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowRequestClose: () => ipcRenderer.invoke('window:request-close'),
   windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
 
+  // App info
+  appName: '7Context',
+
   // Platform info
   platform: process.platform,
   isElectron: true

@@ -133,7 +133,7 @@
         <Sidebar />
       {:else}
         <!-- Collapsed sidebar icon strip -->
-        <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 bg-[var(--chat-bg,var(--background))] py-3">
+        <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-[var(--border-light)] bg-[var(--sidebar-bg,var(--surface))] py-3">
           <Tooltip label="New chat">
             <button
               class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"

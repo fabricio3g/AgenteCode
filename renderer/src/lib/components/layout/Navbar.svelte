@@ -54,7 +54,7 @@
 </script>
 
 <header class="navbar sticky top-0 z-30 w-full">
-  <div class="navbar-inner relative flex h-14 items-center justify-between px-3 md:px-4">
+  <div class="navbar-inner relative flex h-11 items-center justify-between px-2 md:px-3">
     <div class="flex items-center gap-1">
       <button
         class="nav-btn rounded-lg p-2"
@@ -119,6 +119,7 @@
     color: var(--text-muted);
     background: transparent;
     border: 1px solid transparent;
+    border-radius: var(--radius-s);
     transition: color 0.12s, background 0.12s, border-color 0.12s;
   }
 

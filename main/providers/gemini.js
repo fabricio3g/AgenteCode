@@ -115,4 +115,30 @@ export class GeminiProvider extends BaseProvider {
       .filter(Boolean)
       .sort();
   }
+
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
+    const base = (baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+    const normalizedModelId = String(modelId || '').startsWith('models/') ? String(modelId) : `models/${modelId}`;
+    const url = `${base}/v1beta/${normalizedModelId}?key=${apiKey || ''}`;
+
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const contextWindow = numberOrNull(data?.inputTokenLimit ?? data?.input_token_limit);
+      if (!contextWindow) return null;
+      const maxCompletionTokens = numberOrNull(data?.outputTokenLimit ?? data?.output_token_limit);
+      return {
+        context_window: contextWindow,
+        ...(maxCompletionTokens ? { max_completion_tokens: maxCompletionTokens } : {})
+      };
+    } catch {
+      return null;
+    }
+  }
+}
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

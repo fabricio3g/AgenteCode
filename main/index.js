@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const IS_DEV = !app.isPackaged;
 const RENDERER_DEV_URL = 'http://localhost:5173';
 const RENDERER_PROD_PATH = path.join(__dirname, '..', 'renderer', 'dist', 'index.html');
+const APP_NAME = '7Context';
 
 let mainWindow = null;
 let tray = null;
@@ -22,7 +23,7 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 640,
-    title: 'TalamoLM',
+    title: APP_NAME,
     frame: false,
     titleBarStyle: 'hidden',
     webPreferences: {
@@ -58,7 +59,7 @@ function createWindow() {
 function createTray() {
   const icon = nativeImage.createEmpty();
   tray = new Tray(icon);
-  tray.setToolTip('TalamoLM');
+  tray.setToolTip(APP_NAME);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show', click: () => mainWindow?.show() },
@@ -132,7 +133,7 @@ export async function requestMainWindowClose() {
     defaultId: 0,
     cancelId: 0,
     noLink: true,
-    title: 'Quit TalamoLM?',
+    title: `Quit ${APP_NAME}?`,
     message: 'Work is still in progress.',
     detail: `${reasonText}\n\nIf you quit now, in-progress work may be interrupted.`
   });
@@ -148,7 +149,7 @@ export async function requestMainWindowClose() {
 export function getAppPaths() {
   const envOverride = String(process.env.TALAMOLM_HOME || '').trim();
   const legacyAppData = path.join(app.getPath('home'), '.talamolm');
-  const platformAppData = path.join(app.getPath('appData'), 'TalamoLM');
+  const platformAppData = path.join(app.getPath('appData'), APP_NAME);
   const appData = envOverride || (fs.existsSync(legacyAppData) ? legacyAppData : platformAppData);
   const projectRoot = IS_DEV
     ? path.resolve(__dirname, '..', '..')

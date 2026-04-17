@@ -70,8 +70,56 @@ export class GroqProvider extends BaseProvider {
     const list = data?.data ?? data?.models ?? [];
     return list.map((m) => m.id).filter(Boolean).sort();
   }
+
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
+    const normalized = normalizeBaseUrl(baseUrl || 'https://api.groq.com/openai/v1');
+    const headers = { 'Accept': 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+    const parseMetadata = (record) => {
+      if (!record || typeof record !== 'object') return null;
+      const contextWindow = numberOrNull(
+        record.context_window
+        ?? record.context_length
+        ?? record.max_context_length
+      );
+      if (!contextWindow) return null;
+      const maxCompletionTokens = numberOrNull(record.max_completion_tokens ?? record.max_output_tokens);
+      return {
+        context_window: contextWindow,
+        ...(maxCompletionTokens ? { max_completion_tokens: maxCompletionTokens } : {})
+      };
+    };
+
+    try {
+      const detailRes = await fetch(`${normalized}/models/${encodeURIComponent(modelId)}`, { headers, signal: AbortSignal.timeout(8000) });
+      if (detailRes.ok) {
+        const detail = await detailRes.json();
+        const parsed = parseMetadata(detail?.data || detail);
+        if (parsed) return parsed;
+      }
+    } catch {
+      // Continue to list fallback.
+    }
+
+    try {
+      const listRes = await fetch(`${normalized}/models`, { headers, signal: AbortSignal.timeout(8000) });
+      if (!listRes.ok) return null;
+      const payload = await listRes.json();
+      const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : [];
+      const found = list.find((entry) => String(entry?.id || '') === String(modelId));
+      return parseMetadata(found || null);
+    } catch {
+      return null;
+    }
+  }
 }
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').trim().replace(/\/+$/, '');
+}
+
+function numberOrNull(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

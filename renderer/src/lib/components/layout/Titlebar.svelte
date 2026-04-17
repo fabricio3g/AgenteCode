@@ -3,6 +3,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
+  import { appStore } from '$lib/stores/app.svelte';
+  import { APP_NAME } from '$lib/app-meta';
 
   let isMaximized = $state(false);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
@@ -18,71 +20,89 @@
 </script>
 
 <div
-  class="titlebar flex h-9 shrink-0 select-none items-center justify-between border-b border-[var(--border-light)]"
-  style="-webkit-app-region: drag; background: var(--background);"
+  class="titlebar-row flex h-8 shrink-0 select-none"
+  style="-webkit-app-region: drag;"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
-  <!-- Centered logo — absolutely positioned so it doesn't disturb the flex layout -->
-  <div class="pointer-events-none absolute inset-0 flex items-center justify-start gap-1.5" style="padding-left: {isMac ? '80px' : '12px'};" aria-hidden="true">
-    <svg viewBox="0 0 24 24" width="17" height="17" xmlns="http://www.w3.org/2000/svg" style="color: var(--text-muted);">
-      <g>
-        <polygon fill="color-mix(in srgb, currentColor 6%, transparent)" stroke="none"
-          points="12,5 19,8.5 19,15.5 12,19 5,15.5 5,8.5">
-          <animate attributeName="points" dur="2.4s" repeatCount="indefinite"
-            values="12,5 19,8.5 19,15.5 12,19 5,15.5 5,8.5;
-                    12,6.5 18,10 16,16.5 8,17.5 4,12 7.5,7;
-                    12,7 17,11.5 17,17.5 12,19.5 7,17.5 7,11.5;
-                    12,5 19,8.5 19,15.5 12,19 5,15.5 5,8.5"/>
-        </polygon>
-        <polygon fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"
-          stroke-dasharray="8 3" stroke-dashoffset="0"
-          points="12,2 22,7 22,17 12,22 2,17 2,7">
-          <animate attributeName="points" dur="2.4s" repeatCount="indefinite"
-            values="12,2 22,7 22,17 12,22 2,17 2,7;
-                    12,3 21,8.5 18,18 6,20.5 1,12 7,4;
-                    12,4 20,10 20,19 12,22 4,19 4,10;
-                    12,2 22,7 22,17 12,22 2,17 2,7"/>
-          <animate attributeName="stroke-dashoffset" dur="1.2s" repeatCount="indefinite" from="0" to="22"/>
-        </polygon>
-        <circle cx="12" cy="12" r="1.2" fill="currentColor" opacity="0.7">
-          <animate attributeName="r" dur="1.8s" repeatCount="indefinite" values="1.2;1.8;1.2"/>
-          <animate attributeName="opacity" dur="1.8s" repeatCount="indefinite" values="0.7;1;0.7"/>
-        </circle>
-      </g>
+  <div class="titlebar-left flex items-center {appStore.sidebarOpen ? '' : 'is-collapsed'}" style="width: {appStore.sidebarOpen ? '260px' : '56px'}; {isMac ? 'padding-left: 78px;' : ''}">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" style="color: var(--text-muted); flex-shrink: 0; margin-right: {appStore.sidebarOpen ? '6px' : '0'};">
+      <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" fill="currentColor" opacity="0.12"/>
+      <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>
+      <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.35"/>
     </svg>
-    <span style="font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: -0.01em;">ContextLM</span>
+    {#if appStore.sidebarOpen}
+      <span class="titlebar-label">{APP_NAME}</span>
+    {/if}
   </div>
 
-  {#if isMac}
-    <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
-      <button class="dot dot-close" onclick={() => appWindow.close()} aria-label="Close" title="Close"></button>
-      <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize"></button>
-      <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
-    </div>
-    <div class="flex-1"></div>
-  {:else}
-    <div class="flex-1"></div>
-    <div class="flex items-center gap-1 pr-2" style="-webkit-app-region: no-drag">
-      <button class="win-btn" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize">
-        <span class="win-icon">&#x2013;</span>
-      </button>
-      <button class="win-btn" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Zoom'}>
-        {#if isMaximized}
-          <span class="win-icon win-icon-restore">&#x2752;</span>
-        {:else}
-          <span class="win-icon">&#x25A1;</span>
-        {/if}
-      </button>
-      <button class="win-btn win-btn-close" onclick={() => appWindow.close()} aria-label="Close" title="Close">
-        <span class="win-icon">&#x2715;</span>
-      </button>
-    </div>
-  {/if}
+  <div class="titlebar-right flex flex-1 items-center justify-end">
+    {#if isMac}
+      <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
+        <button class="dot dot-close" onclick={() => appWindow.close()} aria-label="Close" title="Close"></button>
+        <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize"></button>
+        <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
+      </div>
+    {:else}
+      <div class="win-controls flex h-full items-center" style="-webkit-app-region: no-drag">
+        <button class="win-btn" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize">
+          <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+        </button>
+        <button class="win-btn" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}>
+          {#if isMaximized}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.1">
+              <rect x="0.5" y="2.5" width="7" height="7" rx="0.5"/>
+              <polyline points="2.5,2.5 2.5,0.5 9.5,0.5 9.5,7.5 7.5,7.5" fill="none"/>
+            </svg>
+          {:else}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.1">
+              <rect x="0.5" y="0.5" width="9" height="9" rx="0.5"/>
+            </svg>
+          {/if}
+        </button>
+        <button class="win-btn win-btn-close" onclick={() => appWindow.close()} aria-label="Close" title="Close">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
+            <line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/>
+          </svg>
+        </button>
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
-  .titlebar { position: relative; }
+  .titlebar-row {
+    display: flex;
+    width: 100%;
+  }
+
+  .titlebar-left {
+    background: var(--sidebar-bg, var(--surface));
+    flex-shrink: 0;
+    padding-left: 14px;
+    gap: 0;
+    overflow: hidden;
+    transition: width 0.15s ease, padding 0.15s ease;
+  }
+
+  .titlebar-left.is-collapsed {
+    justify-content: center;
+    padding-left: 0;
+  }
+
+  .titlebar-right {
+    background: var(--titlebar-bg, var(--surface));
+    min-width: 0;
+    border-bottom-right-radius: 8px;
+  }
+
+  .titlebar-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
 
   .dot {
     width: 12px; height: 12px;
@@ -122,24 +142,31 @@
   :global(.dark) .dot-minimize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4h5' stroke='%23ffdd99' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
   :global(.dark) .dot-maximize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4.5l2.5-3 2.5 3M1.5 3.5l2.5 3 2.5-3' stroke='%2399ff99' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
+  .win-controls { margin-right: 0; }
+
   .win-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 30px; height: 24px;
+    width: 46px; height: 100%;
     border: none; background: transparent; cursor: default;
-    border-radius: 8px;
-    transition: background 0.12s, color 0.12s;
+    transition: background 0.1s;
     color: var(--text-muted);
   }
-  .win-icon {
-    font-size: 10px; line-height: 1;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    letter-spacing: 0;
+
+  .win-btn:hover {
+    background: var(--surface-highlight);
+    color: var(--text);
   }
-  .win-icon-restore { font-size: 9px; }
 
-  .win-btn:hover { background: rgba(128,128,128,0.15); color: var(--text); }
-  .win-btn-close:hover { background: var(--error) !important; color: white !important; }
+  .win-btn-close:hover {
+    background: #e81123 !important;
+    color: white !important;
+  }
 
-  :global(.dark) .win-btn:hover { background: rgba(255,255,255,0.1); }
-  :global(.dark) .win-btn-close:hover { background: var(--error) !important; }
+  :global(.dark) .win-btn:hover {
+    background: rgba(255,255,255,0.08);
+  }
+  :global(.dark) .win-btn-close:hover {
+    background: #e81123 !important;
+    color: white !important;
+  }
 </style>

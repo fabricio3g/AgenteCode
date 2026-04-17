@@ -13,6 +13,7 @@
   import AssistantMessageBody from '$lib/ui/components/AssistantMessageBody.svelte';
   import { buildUIActionMessage } from '$lib/ui';
   import type { ActionEvent } from '$lib/ui';
+  import { APP_NAME } from '$lib/app-meta';
 
   interface Props {
     message: ChatMessage;
@@ -67,7 +68,7 @@
   async function downloadSlides() {
     if (!message.slides?.length) return;
     const bytes = await generatePptx({
-      title: message.slides[0]?.title || 'TalamoLM Presentation',
+      title: message.slides[0]?.title || `${APP_NAME} Presentation`,
       slides: message.slides
     });
     const blob = new Blob([new Uint8Array(bytes)], {

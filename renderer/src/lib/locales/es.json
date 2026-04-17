@@ -1,6 +1,6 @@
 {
   "chat": {
-    "placeholder": "Mensaje a TalamoLM...",
+    "placeholder": "Mensaje a {{APP_NAME}}...",
     "stop": "Detener respuesta",
     "send": "Enviar mensaje",
     "attach": "Adjuntar",
@@ -133,7 +133,7 @@
     "readyToChat": "Listo para chatear",
     "startChatting": "Empezar a chatear",
     "welcome": "Bienvenido",
-    "welcomeDesc": "Configuremos TalamoLM para la mejor experiencia.",
+    "welcomeDesc": "Configuremos {{APP_NAME}} para la mejor experiencia.",
     "runtimeInstalledReady": "Runtime instalado — listo para usar.",
     "runtimeDownloadDesc": "Descarga llama.cpp para ejecutar modelos localmente.",
     "noRuntimeAvailable": "No hay runtimes disponibles para tu plataforma. Puedes instalar uno después desde Configuración.",

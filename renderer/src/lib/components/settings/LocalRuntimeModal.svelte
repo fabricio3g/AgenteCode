@@ -68,7 +68,7 @@
         headers: {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'talamolm-desktop'
+          'User-Agent': '7context-desktop'
         }
       });
       if (res.status === 403 || res.status === 429) {

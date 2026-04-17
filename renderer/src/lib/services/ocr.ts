@@ -1,4 +1,4 @@
-// TalamoLM - OCR Engine (Tesseract.js + PDF.js)
+// 7Context - OCR Engine (Tesseract.js + PDF.js)
 // Ported from legacy web/components/ocr.js
 
 interface OcrResult {

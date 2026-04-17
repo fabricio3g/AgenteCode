@@ -5,6 +5,7 @@
   import { flyAndScale } from '$lib/utils/transitions';
   import { Brain, Cpu, MessageSquareText, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { APP_SYSTEM_PROMPT_DEFAULT } from '$lib/app-meta';
 
   let systemPrompt = $state(appStore.config.llm?.system_prompt || '');
   let localSystemPrompt = $state(appStore.config.llm?.local?.system_prompt || appStore.config.llm?.system_prompt || '');
@@ -50,7 +51,7 @@
  <div class="space-y-4 p-5">
  <label class="block space-y-2 text-sm">
  <span class="font-medium text-[var(--text-secondary)]">{isLocal ? 'Fallback shared system prompt' : 'System prompt'}</span>
-  <textarea bind:value={systemPrompt} rows="6" class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]" placeholder="You are TalamoLM. Answer clearly and accurately."></textarea>
+   <textarea bind:value={systemPrompt} rows="6" class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 outline-none transition text-[var(--text)] focus:border-[var(--border-strong)]" placeholder={APP_SYSTEM_PROMPT_DEFAULT}></textarea>
  </label>
 
  {#if isLocal}

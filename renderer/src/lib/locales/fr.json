@@ -1,6 +1,6 @@
 {
   "chat": {
-    "placeholder": "Envoyer un message à TalamoLM...",
+    "placeholder": "Envoyer un message à {{APP_NAME}}...",
     "stop": "Arrêter la réponse",
     "send": "Envoyer le message",
     "attach": "Joindre",
@@ -133,7 +133,7 @@
     "readyToChat": "Prêt à discuter",
     "startChatting": "Commencer à discuter",
     "welcome": "Bienvenue",
-    "welcomeDesc": "Configurons TalamoLM pour une expérience optimale.",
+    "welcomeDesc": "Configurons {{APP_NAME}} pour une expérience optimale.",
     "model": "Modèle",
     "runtime": "Runtime",
     "ready": "Prêt"

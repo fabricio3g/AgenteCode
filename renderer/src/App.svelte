@@ -7,6 +7,7 @@
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { i18nReady } from '$lib/i18n';
+  import { APP_TAGLINE } from '$lib/app-meta';
 
   let startupBypassed = $state(false);
   let activeWorkSyncInterval: ReturnType<typeof setInterval> | null = null;
@@ -51,7 +52,7 @@
 {#if !appStore.ready && !startupBypassed}
   <div class="flex h-full items-center justify-center">
     <div class="surface-panel rounded-[1.7rem] px-6 py-5 text-sm text-fg-ter">
-      {appStore.error ? `Recovering from startup issue: ${appStore.error}` : 'Loading TalamoLM...'}
+      {appStore.error ? `Recovering from startup issue: ${appStore.error}` : APP_TAGLINE}
     </div>
   </div>
 {/if}
