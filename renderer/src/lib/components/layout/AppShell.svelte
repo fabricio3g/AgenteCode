@@ -197,6 +197,7 @@
           </div>
 
           {#if sandboxVisible}
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div
               class="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-[var(--surface-highlight)] transition hover:bg-[var(--primary)] active:bg-[var(--primary)]"
               onmousedown={startResize}

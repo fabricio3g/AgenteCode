@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { resolveProvider } from './providers/registry.js';
 import { resolveApiKey } from './chat-ipc.js';
-import { completeChatRequest } from './chat-ipc.js';
 import { loadConfig } from './config.js';
 
 function mapToolToStepType(toolName) {
@@ -47,7 +46,7 @@ export class AgentRunner {
   async runAgentLoop({ chatId, messages, tools, providerName, baseUrl, apiKey, config, onStep }) {
     const provider = resolveProvider(providerName, baseUrl);
     const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-    if (!realKey) throw new Error('No API key configured');
+    if (!realKey && provider.name !== 'local') throw new Error('No API key configured');
 
     const toolMap = new Map(tools.map(t => [t.name, t]));
     const toolDefs = tools.map(t => t.toDefinition());
@@ -68,116 +67,99 @@ export class AgentRunner {
       agentSteps.push(thinkStep);
       emitSteps();
 
-      const requestBody = provider.transformBody({
-        model: config.model,
-        messages,
-        stream: false,
-        tools: toolDefs,
-      });
-
-      const url = provider.resolveUrl(baseUrl);
-      const headers = provider.buildHeaders(realKey);
-
-      let response;
+      let result;
       try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(120000),
+        result = await provider.completeChat({
+          apiKey: realKey,
+          baseUrl,
+          model: config.model,
+          messages,
+          tools: toolDefs,
         });
       } catch (err) {
-        thinkStep.status = 'error';
-        thinkStep.label = 'Error';
-        thinkStep.detail = err?.message || String(err);
-        emitSteps();
-        throw err;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
+        const errorMsg = err?.message || String(err);
 
         // Check if error is due to tool not being supported
-        if (errorText.includes('tool use') || errorText.includes('function calling') || response.status === 404) {
+        if (errorMsg.includes('tool use') || errorMsg.includes('function calling') || errorMsg.includes('404')) {
           console.warn('[AgentRunner] Tools not supported by this provider/model, falling back to regular chat');
-          // Retry without tools
-          const fallbackBody = provider.transformBody({
-            model: config.model,
-            messages,
-            stream: false,
-          });
 
-          const fallbackResponse = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(fallbackBody),
-            signal: AbortSignal.timeout(120000),
-          });
+          try {
+            const fallbackResult = await provider.completeChat({
+              apiKey: realKey,
+              baseUrl,
+              model: config.model,
+              messages,
+            });
 
-          if (!fallbackResponse.ok) {
-            throw new Error(`HTTP ${fallbackResponse.status}: ${await fallbackResponse.text().catch(() => 'Request failed')}`);
+            thinkStep.status = 'done';
+            thinkStep.detail = 'Tools not supported, fell back to regular chat';
+            emitSteps();
+            return {
+              content: fallbackResult.content,
+              steps: agentSteps,
+              warning: 'Tools not supported by this provider. Agent mode ran without tools.'
+            };
+          } catch (fallbackErr) {
+            thinkStep.status = 'error';
+            thinkStep.label = 'Error';
+            thinkStep.detail = fallbackErr?.message || String(fallbackErr);
+            emitSteps();
+            throw fallbackErr;
           }
-
-          const fallbackData = await fallbackResponse.json();
-          const content = fallbackData?.choices?.[0]?.message?.content || '';
-          thinkStep.status = 'done';
-          thinkStep.detail = 'Tools not supported, fell back to regular chat';
-          emitSteps();
-          return { content, steps: agentSteps, warning: 'Tools not supported by this provider. Agent mode ran without tools.' };
         }
 
         thinkStep.status = 'error';
         thinkStep.label = 'Error';
-        thinkStep.detail = `HTTP ${response.status}: ${errorText}`;
+        thinkStep.detail = errorMsg;
         emitSteps();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw err;
       }
 
-      const data = await response.json();
-
-      const toolCalls = data?.choices?.[0]?.message?.tool_calls;
-      if (!toolCalls?.length) {
-        const content = data?.choices?.[0]?.message?.content || '';
+      if (!result.toolCalls?.length) {
         thinkStep.status = 'done';
         thinkStep.detail = 'Producing answer';
         emitSteps();
-        return { content, steps: agentSteps };
+        return { content: result.content, steps: agentSteps };
       }
 
       thinkStep.status = 'done';
-      thinkStep.detail = `Using tools: ${toolCalls.map(tc => tc.function.name).join(', ')}`;
+      thinkStep.detail = `Using tools: ${result.toolCalls.map(tc => tc.name).join(', ')}`;
       emitSteps();
 
-      for (const toolCall of toolCalls) {
-        // Push a tool step before each execution
+      for (const toolCall of result.toolCalls) {
         const toolStep = {
           id: randomUUID(),
-          type: mapToolToStepType(toolCall.function.name),
-          label: toolCall.function.name.replace(/_/g, ' '),
+          type: mapToolToStepType(toolCall.name),
+          label: toolCall.name.replace(/_/g, ' '),
           status: 'running',
           detail: undefined,
         };
         agentSteps.push(toolStep);
         emitSteps();
 
-        const tool = toolMap.get(toolCall.function.name);
-        let result;
+        const tool = toolMap.get(toolCall.name);
+        let toolResult;
         try {
-          result = tool
-            ? await tool.execute(JSON.parse(toolCall.function.arguments), { chatId })
-            : { error: `Unknown tool: ${toolCall.function.name}` };
+          toolResult = tool
+            ? await tool.execute(
+                typeof toolCall.arguments === 'string'
+                  ? JSON.parse(toolCall.arguments)
+                  : toolCall.arguments,
+                { chatId }
+              )
+            : { error: `Unknown tool: ${toolCall.name}` };
           toolStep.status = 'done';
         } catch (err) {
-          result = { error: err?.message || String(err) };
+          toolResult = { error: err?.message || String(err) };
           toolStep.status = 'error';
-          toolStep.detail = result.error;
+          toolStep.detail = toolResult.error;
         }
 
-        if (result.error) {
-          toolStep.detail = toolStep.detail || String(result.error).slice(0, 200);
+        if (toolResult.error) {
+          toolStep.detail = toolStep.detail || String(toolResult.error).slice(0, 200);
         }
 
-        messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(result) });
+        messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
         emitSteps();
       }
     }

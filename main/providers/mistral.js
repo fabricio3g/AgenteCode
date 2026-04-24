@@ -1,4 +1,6 @@
+import { Mistral } from '@mistralai/mistralai';
 import { BaseProvider } from './base.js';
+import { numberOrNull, safeParseJson } from './helpers.js';
 
 export class MistralProvider extends BaseProvider {
   name = 'mistral';
@@ -11,77 +13,110 @@ export class MistralProvider extends BaseProvider {
     return name === 'mistral' || url.includes('api.mistral.ai');
   }
 
-  resolveUrl(baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl);
-    if (!normalized) return 'https://api.mistral.ai/v1/chat/completions';
-    return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
-  }
-
-  buildHeaders(apiKey) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    return headers;
-  }
-
-  transformBody(body) {
-    return body;
-  }
-
-  parseStreamDelta(line) {
-    const trimmed = String(line || '').trim();
-    if (!trimmed.startsWith('data:')) return null;
-
-    const payload = trimmed.slice(5).trim();
-    if (!payload || payload === '[DONE]') return null;
-
-    try {
-      const parsed = JSON.parse(payload);
-      const delta = parsed?.choices?.[0]?.delta || parsed?.choices?.[0]?.message || {};
-      const rawContent = delta.content;
-      const rawReasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      const content = rawContent != null ? String(rawContent) : '';
-      const reasoning = rawReasoning != null ? String(rawReasoning) : '';
-      if (!content && !reasoning) return null;
-      return { content, reasoning };
-    } catch {
-      return null;
+  createClient(apiKey, _baseUrl) {
+    const key = apiKey || '';
+    if (!this._clients.has(key)) {
+      this._clients.set(key, new Mistral({ apiKey }));
     }
+    return this._clients.get(key);
   }
 
-  parseResponse(data) {
-    const choice = data?.choices?.[0] || {};
-    const message = choice.message || {};
-    const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+  _buildMessages(messages) {
+    const systemMessages = [];
+    const chatMessages = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        systemMessages.push(msg.content);
+      } else {
+        chatMessages.push({ role: msg.role, content: msg.content });
+      }
+    }
+
     return {
-      content: message.content || '',
-      reasoning: rawReasoning ? String(rawReasoning) : '',
-      usage: data?.usage || null
+      systemMessage: systemMessages.length ? systemMessages.join('\n') : undefined,
+      messages: chatMessages
     };
   }
 
-  async fetchModels(apiKey, baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl || 'https://api.mistral.ai/v1');
-    const url = `${normalized}/models`;
-    const headers = { 'Accept': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const list = data?.data ?? data?.models ?? [];
-    return list.map((m) => m.id).filter(Boolean).sort();
+  async *streamChat({ apiKey, model, messages, tools, max_tokens, temperature, top_p }) {
+    const client = this.createClient(apiKey);
+    const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
+
+    const request = {
+      model,
+      messages: chatMessages,
+      ...(systemMessage ? { systemMessage } : {}),
+      ...(max_tokens ? { maxTokens: max_tokens } : {}),
+      ...(temperature != null ? { temperature } : {}),
+      ...(top_p != null ? { topP: top_p } : {}),
+      ...(tools?.length ? { tools } : {}),
+      stream: true
+    };
+
+    const stream = await client.chat.stream(request);
+    for await (const chunk of stream) {
+      const delta = chunk.data?.choices?.[0]?.delta || {};
+      const content = delta.content;
+      if (content) {
+        yield { content, reasoning: '' };
+      }
+    }
   }
 
-  async fetchModelMetadata(apiKey, baseUrl, modelId) {
-    const normalized = normalizeBaseUrl(baseUrl || 'https://api.mistral.ai/v1');
-    const headers = { 'Accept': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  async completeChat({ apiKey, model, messages, tools, max_tokens, temperature, top_p }) {
+    const client = this.createClient(apiKey);
+    const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
+
+    const request = {
+      model,
+      messages: chatMessages,
+      ...(systemMessage ? { systemMessage } : {}),
+      ...(max_tokens ? { maxTokens: max_tokens } : {}),
+      ...(temperature != null ? { temperature } : {}),
+      ...(top_p != null ? { topP: top_p } : {}),
+      ...(tools?.length ? { tools } : {}),
+      stream: false
+    };
+
+    const response = await client.chat.complete(request);
+    const choice = response?.choices?.[0] || {};
+    const message = choice.message || {};
+
+    return {
+      content: message.content || '',
+      reasoning: '',
+      usage: response?.usage ? {
+        input_tokens: response.usage.promptTokens,
+        output_tokens: response.usage.completionTokens,
+        total_tokens: response.usage.totalTokens
+      } : null,
+      toolCalls: message.toolCalls ? message.toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.function?.name || '',
+        arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
+      })) : null
+    };
+  }
+
+  async fetchModels(apiKey, _baseUrl) {
+    const client = this.createClient(apiKey);
+    try {
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      return list.map(m => m.id).filter(Boolean).sort();
+    } catch {
+      return [];
+    }
+  }
+
+  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
+    const client = this.createClient(apiKey);
 
     const parseMetadata = (record) => {
       if (!record || typeof record !== 'object') return null;
       const contextWindow = numberOrNull(
-        record.context_window
-        ?? record.context_length
-        ?? record.max_context_length
+        record.context_window ?? record.context_length ?? record.max_context_length
       );
       if (!contextWindow) return null;
       const maxCompletionTokens = numberOrNull(record.max_completion_tokens ?? record.max_output_tokens);
@@ -92,34 +127,20 @@ export class MistralProvider extends BaseProvider {
     };
 
     try {
-      const detailRes = await fetch(`${normalized}/models/${encodeURIComponent(modelId)}`, { headers, signal: AbortSignal.timeout(8000) });
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        const parsed = parseMetadata(detail?.data || detail);
-        if (parsed) return parsed;
-      }
+      const detail = await client.models.retrieve({ modelId });
+      const parsed = parseMetadata(detail);
+      if (parsed) return parsed;
     } catch {
-      // Continue to list fallback.
+      // fall through
     }
 
     try {
-      const listRes = await fetch(`${normalized}/models`, { headers, signal: AbortSignal.timeout(8000) });
-      if (!listRes.ok) return null;
-      const payload = await listRes.json();
-      const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : [];
-      const found = list.find((entry) => String(entry?.id || '') === String(modelId));
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      const found = list.find(entry => String(entry?.id || '') === String(modelId));
       return parseMetadata(found || null);
     } catch {
       return null;
     }
   }
-}
-
-function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || '').trim().replace(/\/+$/, '');
-}
-
-function numberOrNull(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

@@ -1,9 +1,25 @@
+import OpenAI from 'openai';
 import type { AppConfig, ChatMessage, ModelOption } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/tauri';
 import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { invoke, listen, isTauri } from '$lib/services/tauri';
 import { loadAppConfig } from '$lib/utils/storage';
+
+const _openaiClients = new Map<string, OpenAI>();
+
+function getOpenAIClient(apiKey: string, baseUrl: string): OpenAI {
+  const normalized = String(baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const clientKey = `${apiKey}::${normalized}`;
+  if (!_openaiClients.has(clientKey)) {
+    _openaiClients.set(clientKey, new OpenAI({
+      apiKey: apiKey || 'not-needed',
+      baseURL: normalized,
+      dangerouslyAllowBrowser: true
+    }));
+  }
+  return _openaiClients.get(clientKey)!;
+}
 
 function resolveProvider(config: AppConfig) {
   const providerName = config.llm?.provider || 'openai';
@@ -13,18 +29,6 @@ function resolveProvider(config: AppConfig) {
     model: ''
   };
   return { providerName, provider };
-}
-
-function resolveChatUrl(baseUrl: string): string {
-  const normalized = String(baseUrl || '').replace(/\/+$/, '');
-  if (!normalized) return 'https://api.openai.com/v1/chat/completions';
-  return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
-}
-
-function resolveModelsUrl(baseUrl: string): string {
-  const normalized = String(baseUrl || '').replace(/\/+$/, '');
-  if (!normalized) return 'https://api.openai.com/v1/models';
-  return normalized.endsWith('/models') ? normalized : `${normalized}/models`;
 }
 
 function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
@@ -101,18 +105,14 @@ async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
 }
 
 function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
-  // Local mode: hasMmproj is explicitly passed (true/false) — only mmproj determines vision
-  // API mode: hasMmproj is undefined — fall back to model name heuristic
   const visionCapable = hasMmproj !== undefined ? hasMmproj : isVisionModel(modelName || '');
   return messages.map((message) => {
     const base: Record<string, unknown> = { role: message.role };
 
-    // Build multimodal content if user message has image attachments
     const imageAttachments = message.attachments?.filter(
       (a) => a.kind === 'image' && a.base64 && String(a.base64).startsWith('data:')
     ) || [];
 
-    // Collect OCR text from all attachments (images + documents)
     const ocrTexts: string[] = [];
     for (const att of message.attachments || []) {
       if (att.ocrText) ocrTexts.push(`[${att.name}]: ${att.ocrText}`);
@@ -136,28 +136,6 @@ function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMm
     if (message.name) base.name = message.name;
     return base;
   });
-}
-
-// Parse a single SSE data line and return delta content/reasoning.
-// Handles `data: <json>` lines; returns null for non-data or [DONE] lines.
-function parseSseLine(line: string): { content: string; reasoning: string } | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith('data:')) return null;
-  const payload = trimmed.slice(5).trim();
-  if (!payload || payload === '[DONE]') return null;
-  try {
-    const parsed = JSON.parse(payload);
-    const delta = parsed.choices?.[0]?.delta || parsed.choices?.[0]?.message || {};
-    // Explicitly guard against null values — String(null) = "null" which is wrong
-    const rawContent = delta.content;
-    const rawReasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-    const content = rawContent != null ? String(rawContent) : '';
-    const reasoning = rawReasoning != null ? String(rawReasoning) : '';
-    if (!content && !reasoning) return null;
-    return { content, reasoning };
-  } catch {
-    return null;
-  }
 }
 
 export async function loadChatConfig(): Promise<AppConfig> {
@@ -217,40 +195,18 @@ export async function loadChatConfig(): Promise<AppConfig> {
   return next;
 }
 
-export async function fetchModels(config?: AppConfig): Promise<ModelOption[]> {
+export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): Promise<ModelOption[]> {
   const resolvedConfig = config || (await loadChatConfig());
-  if (resolvedConfig.llm?.backend_mode === 'local' && isTauri()) {
-    try {
-      const indexed = await getIndexedModels();
-      if (indexed.length) {
-        return indexed.map((entry) => ({
-          id: entry.id,
-          name: entry.name,
-          source: 'local',
-          path: entry.path,
-          details: [entry.architecture, entry.size_label].filter(Boolean).join(' • ')
-        }));
-      }
-    } catch {
-      // fallback below
-    }
-
-    try {
-      const localModels = await getLocalModels();
-      return resolveLocalModels(localModels);
-    } catch {
-      return [];
-    }
-  }
-
+  // ...
   const { provider, providerName } = resolveProvider(resolvedConfig);
+  const apiKey = (apiKeyOverride ?? provider.api_key) || '';
   if (!provider.base_url) return [];
 
   if (isTauri()) {
     try {
       const ids = await invoke<string[]>('fetch_provider_models', {
         baseUrl: provider.base_url,
-        apiKey: provider.api_key,
+        apiKey,
         providerName
       });
       const mapped: ModelOption[] = (ids || []).map((id) => ({
@@ -264,18 +220,20 @@ export async function fetchModels(config?: AppConfig): Promise<ModelOption[]> {
     }
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
-
-  const response = await fetch(resolveModelsUrl(provider.base_url), { headers });
-  if (!response.ok) return [];
-  const payload = await response.json();
-  const items = Array.isArray(payload?.data) ? payload.data : [];
-  return items.map((entry: any) => ({
-    id: String(entry.id || ''),
-    name: String(entry.id || entry.name || 'Unnamed model'),
-    source: 'api'
-  })).filter((entry: ModelOption) => !!entry.id);
+  try {
+    const client = getOpenAIClient(apiKey, provider.base_url || '');
+    const response = await client.models.list();
+    const list = response?.data ?? [];
+    return list
+      .map((m: { id: string }) => ({
+        id: String(m.id || ''),
+        name: String(m.id || 'Unnamed model'),
+        source: 'api' as const
+      }))
+      .filter((entry: ModelOption) => !!entry.id);
+  } catch {
+    return [];
+  }
 }
 
 async function streamLocalReply(args: {
@@ -288,17 +246,11 @@ async function streamLocalReply(args: {
   const baseUrl = await ensureLocalRuntime(config);
   const hasVisionModel = await hasLocalVisionModel(config);
 
-  const response = await fetch(resolveChatUrl(resolveLocalBaseUrl({
-    llm: {
-      local: {
-        base_url: baseUrl
-      }
-    }
-  })), {
+  const response = await fetch(resolveLocalBaseUrl({
+    llm: { local: { base_url: baseUrl } }
+  } as AppConfig).replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     signal: args.signal,
     body: JSON.stringify({
       model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
@@ -326,16 +278,34 @@ async function streamLocalReply(args: {
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
     for (const line of lines) {
-      const delta = parseSseLine(line);
-      if (!delta) continue;
-      if (delta.reasoning) args.onReasoning?.(delta.reasoning);
-      if (delta.content) args.onChunk(delta.content);
+      const trimmed = String(line || '').trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(payload);
+        const delta = parsed?.choices?.[0]?.delta || {};
+        const content = delta.content;
+        const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+        if (reasoning) args.onReasoning?.(String(reasoning));
+        if (content) args.onChunk(String(content));
+      } catch { /* skip */ }
     }
   }
-  // Flush any remaining buffered line
-  const tailLocal = parseSseLine(buffer);
-  if (tailLocal?.reasoning) args.onReasoning?.(tailLocal.reasoning);
-  if (tailLocal?.content) args.onChunk(tailLocal.content);
+  const trimmedTail = String(buffer || '').trim();
+  if (trimmedTail.startsWith('data:')) {
+    const payload = trimmedTail.slice(5).trim();
+    if (payload && payload !== '[DONE]') {
+      try {
+        const parsed = JSON.parse(payload);
+        const delta = parsed?.choices?.[0]?.delta || {};
+        const content = delta.content;
+        const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+        if (reasoning) args.onReasoning?.(String(reasoning));
+        if (content) args.onChunk(String(content));
+      } catch { /* skip */ }
+    }
+  }
 }
 
 export async function streamAssistantReply(args: {
@@ -343,12 +313,14 @@ export async function streamAssistantReply(args: {
   signal?: AbortSignal;
   onChunk: (value: string) => void;
   onReasoning?: (value: string) => void;
+  apiKey?: string;
 }): Promise<void> {
   const config = await loadChatConfig();
   if (config.llm?.backend_mode === 'local' && isTauri()) {
     return streamLocalReply(args);
   }
   const { provider, providerName } = resolveProvider(config);
+  const apiKey = (args.apiKey ?? provider.api_key) || '';
 
   if (isTauri()) {
     let streamId = '';
@@ -383,7 +355,7 @@ export async function streamAssistantReply(args: {
     try {
       const started = await invoke<{ streamId: string }>('chat_stream_start', {
         baseUrl: provider.base_url,
-        apiKey: provider.api_key,
+        apiKey,
         providerName,
         body: {
           model: provider.model,
@@ -415,52 +387,25 @@ export async function streamAssistantReply(args: {
     }
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
+  // Non-Tauri path: use OpenAI SDK directly
+  const client = getOpenAIClient(apiKey, provider.base_url || '');
 
-  const response = await fetch(resolveChatUrl(provider.base_url), {
-    method: 'POST',
-    headers,
-    signal: args.signal,
-    body: JSON.stringify({
-      model: provider.model,
-      stream: true,
-      messages: toRequestMessages(args.messages, provider.model),
-      ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-      ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-      ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
-    })
+  const stream = await client.chat.completions.create({
+    model: provider.model,
+    stream: true,
+    messages: toRequestMessages(args.messages, provider.model) as any,
+    ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
+    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
+    ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {}),
   });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => 'Request failed');
-    throw new Error(detail || `HTTP ${response.status}`);
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta || {};
+    const content = (delta as any).content;
+    const reasoning = (delta as any).reasoning_content ?? (delta as any).reasoning ?? (delta as any).thinking;
+    if (reasoning) args.onReasoning?.(String(reasoning));
+    if (content) args.onChunk(String(content));
   }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response stream available');
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const delta = parseSseLine(line);
-      if (!delta) continue;
-      if (delta.reasoning) args.onReasoning?.(delta.reasoning);
-      if (delta.content) args.onChunk(delta.content);
-    }
-  }
-  // Flush any remaining buffered line
-  const tail = parseSseLine(buffer);
-  if (tail?.reasoning) args.onReasoning?.(tail.reasoning);
-  if (tail?.content) args.onChunk(tail.content);
 }
 
 function readCompletionPayload(payload: any): CompletionResult {
@@ -476,23 +421,18 @@ function readCompletionPayload(payload: any): CompletionResult {
 export async function completeAssistantReply(args: {
   messages: RequestMessage[];
   signal?: AbortSignal;
+  apiKey?: string;
 }): Promise<CompletionResult> {
   const config = await loadChatConfig();
 
   if (config.llm?.backend_mode === 'local' && isTauri()) {
     const baseUrl = await ensureLocalRuntime(config);
     const hasVisionModel = await hasLocalVisionModel(config);
-    const response = await fetch(resolveChatUrl(resolveLocalBaseUrl({
-      llm: {
-        local: {
-          base_url: baseUrl
-        }
-      }
-    })), {
+    const response = await fetch(resolveLocalBaseUrl({
+      llm: { local: { base_url: baseUrl } }
+    } as AppConfig).replace(/\/+$/, '') + '/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       signal: args.signal,
       body: JSON.stringify({
         model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
@@ -511,11 +451,12 @@ export async function completeAssistantReply(args: {
   }
 
   const { provider, providerName } = resolveProvider(config);
+  const apiKey = (args.apiKey ?? provider.api_key) || '';
 
   if (isTauri()) {
     const payload = await invoke<any>('chat_complete', {
       baseUrl: provider.base_url,
-      apiKey: provider.api_key,
+      apiKey,
       providerName,
       body: {
         model: provider.model,
@@ -526,29 +467,20 @@ export async function completeAssistantReply(args: {
     return readCompletionPayload(payload);
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
-
-  const response = await fetch(resolveChatUrl(provider.base_url), {
-    method: 'POST',
-    headers,
-    signal: args.signal,
-    body: JSON.stringify({
-      model: provider.model,
-      stream: false,
-      messages: toRequestMessages(args.messages)
-    })
+  const client = getOpenAIClient(apiKey, provider.base_url || '');
+  const response = await client.chat.completions.create({
+    model: provider.model,
+    stream: false,
+    messages: toRequestMessages(args.messages) as any,
   });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => 'Request failed');
-    throw new Error(detail || `HTTP ${response.status}`);
-  }
-
-  const payload = await response.json();
-  return readCompletionPayload(payload);
+  const message = response?.choices?.[0]?.message || {};
+  const rawContent = message.content;
+  const rawReasoning = (message as any).reasoning_content ?? (message as any).reasoning ?? (message as any).thinking;
+  return {
+    content: rawContent != null ? String(rawContent) : '',
+    reasoning: rawReasoning != null ? String(rawReasoning) : ''
+  };
 }
 
 function readCompletionWithTools(payload: any): CompletionResult {
@@ -561,13 +493,13 @@ function readCompletionWithTools(payload: any): CompletionResult {
 
   return {
     content: String(message.content || ''),
-    reasoning: String(message.reasoning_content || message.reasoning || message.thinking || ''),
+    reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
     toolCalls: toolCalls.length ? toolCalls : undefined
   };
 }
 
 // ── Phase 5: Structured Output ─────────────────────────────────────────────
-// JSON Schema definition for structured extraction requests.
+
 export interface JsonSchemaProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
   description?: string;
@@ -595,17 +527,12 @@ export interface StructuredExtractionResult<T = Record<string, unknown>> {
   error?: string;
 }
 
-/**
- * Extract JSON from a raw LLM response string.
- * Handles markdown code fences, leading/trailing whitespace, and partial JSON.
- */
 export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string): StructuredExtractionResult<T> {
   const trimmed = String(raw || '').trim();
   if (!trimmed) {
     return { data: null, raw: trimmed, parsed: false, error: 'Empty response' };
   }
 
-  // Attempt 1: Try direct JSON parse
   try {
     const data = JSON.parse(trimmed) as T;
     return { data, raw: trimmed, parsed: true };
@@ -613,7 +540,6 @@ export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string
     // Continue to extraction strategies
   }
 
-  // Attempt 2: Extract from markdown code fences
   const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
   if (codeBlockMatch) {
     try {
@@ -624,7 +550,6 @@ export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string
     }
   }
 
-  // Attempt 3: Find first '{' to last '}' substring
   const firstBrace = trimmed.indexOf('{');
   const lastBrace = trimmed.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace > firstBrace) {
@@ -636,7 +561,6 @@ export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string
     }
   }
 
-  // Attempt 4: Find first '[' to last ']' substring (for array responses)
   const firstBracket = trimmed.indexOf('[');
   const lastBracket = trimmed.lastIndexOf(']');
   if (firstBracket !== -1 && lastBracket > firstBracket) {
@@ -651,11 +575,6 @@ export function extractJsonFromResponse<T = Record<string, unknown>>(raw: string
   return { data: null, raw: trimmed, parsed: false, error: 'Could not extract valid JSON from response' };
 }
 
-/**
- * Build a system prompt that instructs the LLM to produce JSON conforming
- * to the given schema. Used as a fallback for providers that don't support
- * native response_format / json_schema.
- */
 export function buildJsonSystemPrompt(schema: JsonSchemaDefinition): string {
   const propertiesDesc = Object.entries(schema.schema.properties)
     .map(([key, prop]) => {
@@ -693,11 +612,6 @@ export function buildJsonSystemPrompt(schema: JsonSchemaDefinition): string {
   ].filter(Boolean).join('\n');
 }
 
-/**
- * Request a structured JSON extraction from the LLM using native
- * `response_format` (OpenAI JSON mode / structured outputs) when available,
- * with a prompt-based fallback for unsupported providers.
- */
 export async function extractStructured<T = Record<string, unknown>>(args: {
   messages: RequestMessage[];
   schema: JsonSchemaDefinition;
@@ -706,10 +620,8 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
   const config = await loadChatConfig();
   const { provider, providerName } = resolveProvider(config);
 
-  // Build the system message with schema instructions
   const schemaPrompt = buildJsonSystemPrompt(args.schema);
 
-  // Prepend or replace system message
   const messagesWithSystem: RequestMessage[] = [
     { role: 'system', content: schemaPrompt },
     ...args.messages.filter((m) => m.role !== 'system')
@@ -721,7 +633,6 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
     messages: toRequestMessages(messagesWithSystem, provider.model)
   };
 
-  // Try native structured output (response_format with json_schema) for supported providers
   const isLocalMode = config.llm?.backend_mode === 'local' && isTauri();
   const supportsNativeJson =
     !isLocalMode &&
@@ -731,19 +642,6 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
 
   if (supportsNativeJson) {
     try {
-      const nativeBody = {
-        ...bodyBase,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: args.schema.name,
-            description: args.schema.description || '',
-            schema: args.schema.schema,
-            strict: args.schema.strict ?? true
-          }
-        }
-      };
-
       const result = await completeAssistantReply({
         messages: messagesWithSystem,
         signal: args.signal
@@ -758,7 +656,6 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
     }
   }
 
-  // Fallback: Prompt-based JSON extraction (works with all providers)
   const result = await completeAssistantReply({
     messages: messagesWithSystem,
     signal: args.signal
@@ -767,11 +664,6 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
   return extractJsonFromResponse<T>(result.content);
 }
 
-/**
- * Validate extracted data against a JsonSchemaDefinition at runtime.
- * Returns an object with `valid: true` and the (potentially coerced) data,
- * or `valid: false` with an array of validation errors.
- */
 export function validateStructuredOutput<T = Record<string, unknown>>(
   data: unknown,
   schema: JsonSchemaDefinition
@@ -806,7 +698,6 @@ export function validateStructuredOutput<T = Record<string, unknown>>(
 
 function checkType(value: unknown, prop: JsonSchemaProperty, path: string): string | null {
   if (value === undefined || value === null) {
-    // null/undefined is ok for non-required fields
     return null;
   }
 
@@ -854,10 +745,6 @@ function checkType(value: unknown, prop: JsonSchemaProperty, path: string): stri
   }
 }
 
-/**
- * Convenience helper: extract structured data, validate it, and retry once
- * with an error-correction message if validation fails.
- */
 export async function extractStructuredWithRetry<T = Record<string, unknown>>(args: {
   messages: RequestMessage[];
   schema: JsonSchemaDefinition;
@@ -883,62 +770,47 @@ export async function extractStructuredWithRetry<T = Record<string, unknown>>(ar
     lastResult = result;
 
     if (!result.parsed || !result.data) {
-      // Append error context and retry
       currentMessages = [
         ...currentMessages,
-        {
-          role: 'assistant',
-          content: result.raw || '[no response]'
-        },
-        {
-          role: 'user',
-          content: 'Your previous response was not valid JSON. Please respond with ONLY the JSON object, no markdown or explanation.'
-        }
+        { role: 'assistant', content: result.raw || '[no response]' },
+        { role: 'user', content: 'Your previous response was not valid JSON. Please respond with ONLY the JSON object, no markdown or explanation.' }
       ];
       continue;
     }
 
-    // Validate
     const validation = validateStructuredOutput<T>(result.data, args.schema);
     if (validation.valid) {
       return { ...result, data: validation.data };
     }
 
-    // Validation failed -- retry with correction prompt
     currentMessages = [
       ...currentMessages,
-      {
-        role: 'assistant',
-        content: result.raw
-      },
-      {
-        role: 'user',
-        content: `The JSON had validation errors: ${validation.errors.join('; ')}. Please fix and return the corrected JSON object only.`
-      }
+      { role: 'assistant', content: result.raw },
+      { role: 'user', content: `The JSON had validation errors: ${validation.errors.join('; ')}. Please fix and return the corrected JSON object only.` }
     ];
   }
 
   return lastResult;
 }
 
-// Complete a request with native tool definitions (OpenAI tool_calls format).
-// Only works for API mode — returns null for local mode so caller can fall back to XML.
 export async function completeWithTools(args: {
   messages: RequestMessage[];
   tools: ToolDefinition[];
   signal?: AbortSignal;
+  apiKey?: string;
 }): Promise<CompletionResult | null> {
   const config = await loadChatConfig();
   if (config.llm?.backend_mode === 'local' && isTauri()) return null;
 
   const { provider, providerName } = resolveProvider(config);
   if (!provider.base_url) return null;
+  const apiKey = (args.apiKey ?? provider.api_key) || '';
 
   if (isTauri()) {
     try {
       const payload = await invoke<any>('chat_complete', {
         baseUrl: provider.base_url,
-        apiKey: provider.api_key,
+        apiKey,
         providerName,
         body: {
           model: provider.model,
@@ -954,33 +826,33 @@ export async function completeWithTools(args: {
     }
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
-
-  let response: Response;
   try {
-    response = await fetch(resolveChatUrl(provider.base_url), {
-      method: 'POST',
-      headers,
-      signal: args.signal,
-      body: JSON.stringify({
-        model: provider.model,
-        stream: false,
-        messages: toRequestMessages(args.messages, provider.model),
-        tools: args.tools,
-        tool_choice: 'auto'
-      })
+    const client = getOpenAIClient(apiKey, provider.base_url || '');
+    const response = await client.chat.completions.create({
+      model: provider.model,
+      stream: false,
+      messages: toRequestMessages(args.messages, provider.model) as any,
+      tools: args.tools as any,
+      tool_choice: 'auto' as any,
     });
+
+    const message = response?.choices?.[0]?.message || {};
+    const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
+      id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+      name: String(tc.function?.name || ''),
+      arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
+    })).filter((tc: NativeToolCall) => !!tc.name);
+
+    return {
+      content: String(message.content || ''),
+      reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
+      toolCalls: toolCalls.length ? toolCalls : undefined
+    };
   } catch {
     return null;
   }
-
-  if (!response.ok) return null;
-  const payload = await response.json();
-  return readCompletionWithTools(payload);
 }
 
-/** Send messages with a JSON schema constraint for structured output. */
 export async function completeStructuredOutput<T>(
   args: {
     messages: RequestMessage[];
@@ -991,37 +863,43 @@ export async function completeStructuredOutput<T>(
 ): Promise<T | null> {
   const cfg = config || await loadChatConfig();
   const { providerName, provider } = resolveProvider(cfg);
+  const apiKey = provider.api_key || '';
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (provider.api_key) headers.Authorization = `Bearer ${provider.api_key}`;
-
-  const url = resolveChatUrl(provider.base_url);
-  const body: Record<string, unknown> = {
-    model: provider.model,
-    stream: false,
-    messages: toRequestMessages(args.messages, provider.model),
-    response_format: {
-      type: 'json_schema',
-      json_schema: args.schema
-    }
-  };
+  if (isTauri()) {
+    const payload = await invoke<any>('chat_complete', {
+      baseUrl: provider.base_url,
+      apiKey,
+      providerName,
+      body: {
+        model: provider.model,
+        stream: false,
+        messages: toRequestMessages(args.messages, provider.model),
+        response_format: {
+          type: 'json_schema',
+          json_schema: args.schema
+        }
+      }
+    });
+    const content = payload?.choices?.[0]?.message?.content;
+    if (!content) return null;
+    try { return JSON.parse(content) as T; } catch { return null; }
+  }
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      signal: args.signal,
-      body: JSON.stringify(body)
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
+    const client = getOpenAIClient(apiKey, provider.base_url || '');
+    const response = await client.chat.completions.create({
+      model: provider.model,
+      stream: false,
+      messages: toRequestMessages(args.messages, provider.model) as any,
+      response_format: {
+        type: 'json_schema',
+        json_schema: args.schema as any,
+      },
+    } as any);
+
+    const content = response?.choices?.[0]?.message?.content;
     if (!content) return null;
-    try {
-      return JSON.parse(content) as T;
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(content) as T; } catch { return null; }
   } catch {
     return null;
   }

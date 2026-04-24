@@ -2245,6 +2245,7 @@ Design rules:
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
+          apiKey: this.activeProvider?.api_key,
           onChunk: (value) => {
             assistantMessage.content += value;
             tokenCount += value.split(/\s+/).filter(Boolean).length;
@@ -2484,6 +2485,7 @@ Design rules:
 
     try {
       const result = await completeAssistantReply({
+        apiKey: this.activeProvider?.api_key,
         messages: [
           {
             role: 'system',
@@ -2693,6 +2695,7 @@ Design rules:
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
+          apiKey: this.activeProvider?.api_key,
           onChunk: (value) => {
             nextVersion.content += value;
             message.content = nextVersion.content;

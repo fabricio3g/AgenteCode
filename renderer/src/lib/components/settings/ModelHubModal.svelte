@@ -731,6 +731,7 @@
     openrouter: 'https://openrouter.ai/api/v1',
     anthropic: 'https://api.anthropic.com/v1',
     groq: 'https://api.groq.com/openai/v1',
+    gemini: 'https://generativelanguage.googleapis.com',
     mistral: 'https://api.mistral.ai/v1',
     together: 'https://api.together.xyz/v1',
     deepseek: 'https://api.deepseek.com/v1',
@@ -2225,6 +2226,7 @@
                     <option value="openrouter">OpenRouter (multi-provider)</option>
                     <option value="anthropic">Anthropic (Claude)</option>
                     <option value="groq">Groq</option>
+                    <option value="gemini">Google Gemini</option>
                     <option value="mistral">Mistral AI</option>
                     <option value="together">Together AI</option>
                     <option value="deepseek">DeepSeek</option>

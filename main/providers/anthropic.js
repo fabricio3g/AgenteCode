@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { BaseProvider } from './base.js';
 
 export class AnthropicProvider extends BaseProvider {
@@ -14,93 +15,100 @@ export class AnthropicProvider extends BaseProvider {
       name === 'claude';
   }
 
-  resolveUrl(baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl);
-    if (normalized.includes('anthropic.com') || normalized.includes('claude.ai')) {
-      return normalized.replace(/\/chat\/completions$/, '').replace(/\/v1\/?$/, '/v1') + '/messages';
+  createClient(apiKey, _baseUrl) {
+    const key = apiKey || '';
+    if (!this._clients.has(key)) {
+      this._clients.set(key, new Anthropic({ apiKey }));
     }
-    return 'https://api.anthropic.com/v1/messages';
+    return this._clients.get(key);
   }
 
-  buildHeaders(apiKey) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = '2023-01-01';
-    }
-    return headers;
-  }
+  _buildMessages(messages) {
+    const systemMessages = [];
+    const chatMessages = [];
 
-  transformBody(body) {
-    const openaiMessages = Array.isArray(body?.messages) ? body.messages : [];
-    let systemPrompt = null;
-    const otherMessages = [];
-
-    for (const msg of openaiMessages) {
+    for (const msg of messages) {
       if (msg.role === 'system') {
-        systemPrompt = msg.content;
+        systemMessages.push({ type: 'text', text: msg.content });
       } else {
-        otherMessages.push({ role: msg.role, content: msg.content });
+        chatMessages.push({ role: msg.role, content: msg.content });
       }
     }
 
     return {
-      model: body.model,
-      max_tokens: body.max_tokens || 4096,
-      stream: body.stream,
-      system: systemPrompt ? [{ type: 'text', text: systemPrompt }] : undefined,
-      messages: otherMessages
+      system: systemMessages.length ? systemMessages : undefined,
+      messages: chatMessages
     };
   }
 
-  parseStreamDelta(line) {
-    const trimmed = String(line || '').trim();
+  async *streamChat({ apiKey, baseUrl, model, messages, max_tokens, ...params }) {
+    const client = this.createClient(apiKey);
+    const { system, messages: chatMessages } = this._buildMessages(messages);
 
-    if (trimmed.startsWith('event:')) {
-      return { _eventType: trimmed.slice(5).trim() };
-    }
+    const maxTokens = max_tokens || 4096;
 
-    if (trimmed.startsWith('data:')) {
-      const payload = trimmed.slice(5).trim();
-      if (!payload) return null;
-      try {
-        return { _data: JSON.parse(payload) };
-      } catch {
-        return null;
+    const stream = client.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      messages: chatMessages,
+      ...(system ? { system } : {}),
+      ...params
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta') {
+        const delta = event.delta;
+        if (delta.type === 'text_delta') {
+          yield { content: delta.text ?? '', reasoning: '' };
+        } else if (delta.type === 'thinking_delta') {
+          yield { content: '', reasoning: delta.thinking ?? '' };
+        }
       }
     }
-
-    return null;
   }
 
-  parseResponse(data) {
-    const contentBlocks = data?.content || [];
+  async completeChat({ apiKey, baseUrl, model, messages, max_tokens, ...params }) {
+    const client = this.createClient(apiKey);
+    const { system, messages: chatMessages } = this._buildMessages(messages);
+
+    const maxTokens = max_tokens || 4096;
+
+    const response = await client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      messages: chatMessages,
+      ...(system ? { system } : {}),
+      ...params
+    });
+
+    const contentBlocks = response?.content || [];
     let content = '';
     let reasoning = '';
     for (const block of contentBlocks) {
       if (block.type === 'text') content += block.text;
       if (block.type === 'thinking') reasoning += block.thinking;
     }
+
     return {
       content,
       reasoning,
-      usage: data?.usage ? { input_tokens: data.usage.input_tokens, output_tokens: data.usage.output_tokens } : null
+      usage: response?.usage ? {
+        input_tokens: response.usage.input_tokens,
+        output_tokens: response.usage.output_tokens
+      } : null,
+      toolCalls: null
     };
   }
 
   async fetchModels(apiKey, _baseUrl) {
-    const res = await fetch('https://api.anthropic.com/v1/models', {
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-01-01',
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const list = data?.data ?? [];
-    return list.map((m) => m.id).filter(Boolean).sort();
+    const client = this.createClient(apiKey);
+    try {
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      return list.map(m => m.id).filter(Boolean).sort();
+    } catch {
+      return [];
+    }
   }
 
   async fetchModelMetadata(apiKey, _baseUrl, modelId) {
@@ -120,8 +128,4 @@ export class AnthropicProvider extends BaseProvider {
     const contextWindow = KNOWN_CONTEXTS[modelId] ?? null;
     return contextWindow ? { context_window: contextWindow } : null;
   }
-}
-
-function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || '').trim().replace(/\/+$/, '');
 }

@@ -1,4 +1,6 @@
+import OpenAI from 'openai';
 import { BaseProvider } from './base.js';
+import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.js';
 
 export class OpenAIProvider extends BaseProvider {
   name = 'openai';
@@ -11,78 +13,88 @@ export class OpenAIProvider extends BaseProvider {
     return name === 'openai' || url.includes('api.openai.com');
   }
 
-  resolveUrl(baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl);
-    if (!normalized) return 'https://api.openai.com/v1/chat/completions';
-    return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
+  createClient(apiKey, baseUrl) {
+    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl) || 'https://api.openai.com/v1'}`;
+    if (!this._clients.has(clientKey)) {
+      this._clients.set(clientKey, new OpenAI({
+        apiKey,
+        baseURL: normalizeBaseUrl(baseUrl) || 'https://api.openai.com/v1'
+      }));
+    }
+    return this._clients.get(clientKey);
   }
 
-  buildHeaders(apiKey) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    return headers;
-  }
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+    const client = this.createClient(apiKey, baseUrl);
+    const stream = await client.chat.completions.create({
+      model,
+      messages,
+      ...(tools?.length ? { tools } : {}),
+      ...params,
+      stream: true
+    });
 
-  transformBody(body) {
-    return body;
-  }
-
-  parseStreamDelta(line) {
-    const trimmed = String(line || '').trim();
-    if (!trimmed.startsWith('data:')) return null;
-
-    const payload = trimmed.slice(5).trim();
-    if (!payload || payload === '[DONE]') return null;
-
-    try {
-      const parsed = JSON.parse(payload);
-      const delta = parsed?.choices?.[0]?.delta || parsed?.choices?.[0]?.message || {};
-      const rawContent = delta.content;
-      const rawReasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      const content = rawContent != null ? String(rawContent) : '';
-      const reasoning = rawReasoning != null ? String(rawReasoning) : '';
-      if (!content && !reasoning) return null;
-      return { content, reasoning };
-    } catch {
-      return null;
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta || {};
+      const content = delta.content;
+      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+      if (content || reasoning) {
+        yield {
+          content: content ?? '',
+          reasoning: reasoning ?? ''
+        };
+      }
     }
   }
 
-  parseResponse(data) {
-    const choice = data?.choices?.[0] || {};
+  async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+    const client = this.createClient(apiKey, baseUrl);
+    const response = await client.chat.completions.create({
+      model,
+      messages,
+      ...(tools?.length ? { tools } : {}),
+      ...params,
+      stream: false
+    });
+
+    const choice = response?.choices?.[0] || {};
     const message = choice.message || {};
     const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+
     return {
       content: message.content || '',
       reasoning: rawReasoning ? String(rawReasoning) : '',
-      usage: data?.usage || null
+      usage: response?.usage ? {
+        input_tokens: response.usage.prompt_tokens,
+        output_tokens: response.usage.completion_tokens,
+        total_tokens: response.usage.total_tokens
+      } : null,
+      toolCalls: message.tool_calls ? message.tool_calls.map(tc => ({
+        id: tc.id,
+        name: tc.function?.name || '',
+        arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
+      })) : null
     };
   }
 
   async fetchModels(apiKey, baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl || 'https://api.openai.com/v1');
-    const url = `${normalized}/models`;
-    const headers = { 'Accept': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const list = data?.data ?? data?.models ?? [];
-    return list.map((m) => m.id).filter(Boolean).sort();
+    const client = this.createClient(apiKey, baseUrl);
+    try {
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      return list.map(m => m.id).filter(Boolean).sort();
+    } catch {
+      return [];
+    }
   }
 
   async fetchModelMetadata(apiKey, baseUrl, modelId) {
-    const normalized = normalizeBaseUrl(baseUrl || 'https://api.openai.com/v1');
-    const detailUrl = `${normalized}/models/${encodeURIComponent(modelId)}`;
-    const headers = { 'Accept': 'application/json' };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const client = this.createClient(apiKey, baseUrl);
 
     const parseMetadata = (record) => {
       if (!record || typeof record !== 'object') return null;
       const contextWindow = numberOrNull(
-        record.context_window
-        ?? record.context_length
-        ?? record.max_context_length
+        record.context_window ?? record.context_length ?? record.max_context_length
       );
       if (!contextWindow) return null;
       const maxCompletionTokens = numberOrNull(record.max_completion_tokens ?? record.max_output_tokens);
@@ -93,39 +105,20 @@ export class OpenAIProvider extends BaseProvider {
     };
 
     try {
-      const detailRes = await fetch(detailUrl, { headers, signal: AbortSignal.timeout(8000) });
-      if (detailRes.ok) {
-        const detail = await detailRes.json();
-        const parsed = parseMetadata(detail?.data || detail);
-        if (parsed) return parsed;
-      }
+      const detail = await client.models.retrieve(modelId);
+      const parsed = parseMetadata(detail);
+      if (parsed) return parsed;
     } catch {
-      // Continue to list fallback.
+      // fall through
     }
 
     try {
-      const listUrl = `${normalized}/models`;
-      const listRes = await fetch(listUrl, { headers, signal: AbortSignal.timeout(8000) });
-      if (!listRes.ok) return null;
-      const payload = await listRes.json();
-      const list = Array.isArray(payload?.data)
-        ? payload.data
-        : Array.isArray(payload?.models)
-          ? payload.models
-          : [];
-      const found = list.find((entry) => String(entry?.id || '') === String(modelId));
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      const found = list.find(entry => String(entry?.id || '') === String(modelId));
       return parseMetadata(found || null);
     } catch {
       return null;
     }
   }
-}
-
-function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || '').trim().replace(/\/+$/, '');
-}
-
-function numberOrNull(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

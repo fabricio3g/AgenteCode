@@ -6,6 +6,7 @@
   "type": "module",
   "main": "main/index.js",
   "scripts": {
+    "postinstall": "@electron/rebuild -f -w better-sqlite3 || exit 0",
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:electron\"",
     "dev:renderer": "cd renderer && npx vite --port 5173",
     "dev:electron": "wait-on http://localhost:5173 && electron . --no-sandbox",
@@ -17,15 +18,22 @@
     "test:crawler": "node --test tests/crawler/*.test.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.0",
+    "@google/generative-ai": "^0.24.1",
     "@lancedb/lancedb": "^0.27.2",
+    "@mistralai/mistralai": "^2.2.1",
     "@mozilla/readability": "^0.6.0",
+    "@openrouter/sdk": "^0.12.21",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "apache-arrow": "^18.1.0",
     "better-sqlite3": "^11.10.0",
     "electron-store": "^10.0.0",
     "extract-zip": "^2.0.1",
+    "groq-sdk": "^1.1.2",
     "linkedom": "^0.18.12",
     "lucide-svelte": "^1.0.1",
     "mammoth": "^1.8.0",
+    "openai": "^6.34.0",
     "pdf-parse": "^1.1.1",
     "pptxgenjs": "^3.12.0",
     "svelte-i18n": "^4.0.1",
@@ -37,6 +45,7 @@
     "sherpa-onnx-node": "^1.10.30"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "concurrently": "^9.1.0",
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8",

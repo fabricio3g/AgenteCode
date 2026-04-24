@@ -1026,7 +1026,7 @@
 </div>
 
 {#if showNewFileModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New File</h3>
@@ -1054,7 +1054,7 @@
 {/if}
 
 {#if showNewFolderModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New Folder</h3>
@@ -1082,7 +1082,7 @@
 {/if}
 
 {#if showDeleteConfirm}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelDelete} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelDelete} role="dialog" aria-modal="true" tabindex="-1">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Confirm Delete</h3>
@@ -1103,7 +1103,7 @@
 {/if}
 
 {#if showRenameModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelRename} role="dialog" aria-modal="true">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelRename} role="dialog" aria-modal="true" tabindex="-1">
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Rename {pendingRenameType === 'folder' ? 'Folder' : 'File'}</h3>

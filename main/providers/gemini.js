@@ -1,4 +1,6 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BaseProvider } from './base.js';
+import { numberOrNull } from './helpers.js';
 
 export class GeminiProvider extends BaseProvider {
   name = 'gemini';
@@ -12,114 +14,131 @@ export class GeminiProvider extends BaseProvider {
       url.includes('generativelanguage.googleapis.com');
   }
 
-  resolveUrl(baseUrl, apiKey, model) {
-    const modelName = model || 'gemini-2.0-flash';
+  createClient(apiKey, _baseUrl) {
     const key = apiKey || '';
-    const base = baseUrl || 'https://generativelanguage.googleapis.com';
-    const normalized = base.replace(/\/+$/, '');
-    return `${normalized}/v1beta/models/${modelName}:streamGenerateContent?alt=sse&key=${key}`;
+    if (!this._clients.has(key)) {
+      this._clients.set(key, { genAI: new GoogleGenerativeAI(key), models: new Map() });
+    }
+    return this._clients.get(key);
   }
 
-  resolveNonStreamUrl(baseUrl, apiKey, model) {
-    const modelName = model || 'gemini-2.0-flash';
-    const key = apiKey || '';
-    const base = baseUrl || 'https://generativelanguage.googleapis.com';
-    const normalized = base.replace(/\/+$/, '');
-    return `${normalized}/v1beta/models/${modelName}:generateContent?key=${key}`;
+  _getModel(client, modelId) {
+    const modelName = modelId || 'gemini-2.0-flash';
+    if (!client.models.has(modelName)) {
+      client.models.set(modelName, client.genAI.getGenerativeModel({ model: modelName }));
+    }
+    return client.models.get(modelName);
   }
 
-  buildHeaders(_apiKey) {
-    return { 'Content-Type': 'application/json' };
-  }
-
-  transformBody(body) {
-    const openaiMessages = Array.isArray(body?.messages) ? body.messages : [];
+  _buildContents(messages) {
     let systemInstruction = null;
     const contents = [];
 
-    for (const msg of openaiMessages) {
+    for (const msg of messages) {
       if (msg.role === 'system') {
-        systemInstruction = { parts: [{ text: msg.content }] };
+        systemInstruction =  msg.content;
       } else {
-        contents.push({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }]
-        });
+        const role = msg.role === 'assistant' ? 'model' : 'user';
+        if (typeof msg.content === 'string') {
+          contents.push({ role, parts: [{ text: msg.content }] });
+        } else if (Array.isArray(msg.content)) {
+          const parts = msg.content.map(part => {
+            if (part.type === 'text') return { text: part.text };
+            if (part.type === 'image_url') {
+              return {
+                inlineData: {
+                  mimeType: 'image/jpeg',
+                  data: String(part.image_url?.url || '').replace(/^data:image\/\w+;base64,/, '')
+                }
+              };
+            }
+            return { text: '' };
+          });
+          contents.push({ role, parts });
+        }
       }
     }
 
-    const result = {
+    return { systemInstruction, contents };
+  }
+
+  async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p }) {
+    const client = this.createClient(apiKey);
+    const geminiModel = this._getModel(client, model);
+    const { systemInstruction, contents } = this._buildContents(messages);
+
+    const generationConfig = {};
+    if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
+    if (temperature != null) generationConfig.temperature = temperature;
+    if (top_p != null) generationConfig.topP = top_p;
+
+    const request = {
       contents,
-      generationConfig: {}
+      ...(systemInstruction ? { systemInstruction } : {}),
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {})
     };
-    if (systemInstruction) result.systemInstruction = systemInstruction;
-    if (body.max_tokens) result.generationConfig.maxOutputTokens = body.max_tokens;
-    if (body.temperature != null) result.generationConfig.temperature = body.temperature;
-    if (body.top_p != null) result.generationConfig.topP = body.top_p;
 
-    return result;
-  }
-
-  parseStreamDelta(line) {
-    const trimmed = String(line || '').trim();
-    if (!trimmed.startsWith('data:')) return null;
-
-    const payload = trimmed.slice(5).trim();
-    if (!payload) return null;
-
-    try {
-      const parsed = JSON.parse(payload);
-      const parts = parsed?.candidates?.[0]?.content?.parts || [];
-      let content = '';
-      let reasoning = '';
-      for (const part of parts) {
-        if (part.text) content += part.text;
-        if (part.thought) reasoning += part.thought;
+    const result = await geminiModel.generateContentStream(request);
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) {
+        yield { content: text, reasoning: '' };
       }
-      if (!content && !reasoning) return null;
-      return { content, reasoning };
-    } catch {
-      return null;
     }
   }
 
-  parseResponse(data) {
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    let content = '';
-    let reasoning = '';
-    for (const part of parts) {
-      if (part.text) content += part.text;
-      if (part.thought) reasoning += part.thought;
-    }
+  async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p }) {
+    const client = this.createClient(apiKey);
+    const geminiModel = this._getModel(client, model);
+    const { systemInstruction, contents } = this._buildContents(messages);
+
+    const generationConfig = {};
+    if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
+    if (temperature != null) generationConfig.temperature = temperature;
+    if (top_p != null) generationConfig.topP = top_p;
+
+    const request = {
+      contents,
+      ...(systemInstruction ? { systemInstruction } : {}),
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {})
+    };
+
+    const result = await geminiModel.generateContent(request);
+    const response = result.response;
+    const text = response.text();
+
     return {
-      content,
-      reasoning,
-      usage: data?.usageMetadata ? {
-        input_tokens: data.usageMetadata.promptTokenCount,
-        output_tokens: data.usageMetadata.candidatesTokenCount,
-        total_tokens: data.usageMetadata.totalTokenCount
-      } : null
+      content: text ?? '',
+      reasoning: '',
+      usage: response.usageMetadata ? {
+        input_tokens: response.usageMetadata.promptTokenCount,
+        output_tokens: response.usageMetadata.candidatesTokenCount,
+        total_tokens: response.usageMetadata.totalTokenCount
+      } : null,
+      toolCalls: null
     };
   }
 
-  async fetchModels(apiKey, baseUrl) {
-    const base = baseUrl || 'https://generativelanguage.googleapis.com';
-    const url = `${base.replace(/\/+$/, '')}/v1beta/models?key=${apiKey}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    const data = await res.json();
-    const list = data?.models ?? [];
-    return list
-      .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-      .map(m => m.name?.replace('models/', '') || m.name)
-      .filter(Boolean)
-      .sort();
+  async fetchModels(apiKey, _baseUrl) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey || ''}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const list = data?.models ?? [];
+      return list
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => m.name?.replace('models/', '') || m.name)
+        .filter(Boolean)
+        .sort();
+    } catch {
+      return [];
+    }
   }
 
-  async fetchModelMetadata(apiKey, baseUrl, modelId) {
-    const base = (baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
     const normalizedModelId = String(modelId || '').startsWith('models/') ? String(modelId) : `models/${modelId}`;
-    const url = `${base}/v1beta/${normalizedModelId}?key=${apiKey || ''}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/${normalizedModelId}?key=${apiKey || ''}`;
 
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -136,9 +155,4 @@ export class GeminiProvider extends BaseProvider {
       return null;
     }
   }
-}
-
-function numberOrNull(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }

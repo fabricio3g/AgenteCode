@@ -1,14 +1,9 @@
 import crypto from 'node:crypto';
 import { loadConfigFromDisk } from './config.js';
 import { resolveProvider } from './providers/registry.js';
+import { normalizeBaseUrl } from './providers/helpers.js';
 
 const activeStreams = new Map();
-
-// ── Helpers ──
-
-function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || '').trim().replace(/\/+$/, '');
-}
 
 // Resolve the real API key: use the provided key if present, otherwise look it up
 // from the on-disk config by providerName first, then by matching base_url.
@@ -39,76 +34,28 @@ export function resolveApiKey(apiKey, baseUrl, providerName) {
   return '';
 }
 
-// ── Anthropic SSE stateful parsing helper ──
-
-function createAnthropicStreamParser(emit) {
-  let pendingEventType = null;
-
-  return {
-    processLine(line) {
-      const provider = resolveProvider('anthropic', 'https://api.anthropic.com');
-      const parsed = provider.parseStreamDelta(line);
-      if (!parsed) return;
-
-      if (parsed._eventType) {
-        pendingEventType = parsed._eventType;
-        return;
-      }
-
-      if (parsed._data) {
-        const data = parsed._data;
-        const evtType = pendingEventType;
-        pendingEventType = null;
-
-        if (evtType === 'content_block_delta') {
-          const delta = data?.delta || {};
-          const content = delta?.text || '';
-          const reasoning = delta?.thinking || '';
-          if (content || reasoning) {
-            emit({ type: 'delta', content, reasoning });
-          }
-        }
-        // message_delta, message_stop, message_start, content_block_start — nothing to stream
-      }
-    }
-  };
-}
-
 // ── Public API ──
 
 export async function completeChatRequest({ baseUrl, apiKey, providerName, body }) {
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey) {
+  if (!realKey && provider.name !== 'local') {
     const cfg = loadConfigFromDisk();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
     throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`);
   }
 
-  // Gemini uses a different URL pattern
-  let url;
-  if (provider.name === 'gemini') {
-    url = provider.resolveNonStreamUrl(baseUrl, realKey, body.model);
-  } else {
-    url = provider.resolveUrl(baseUrl);
-  }
-
-  const headers = provider.name === 'gemini' ? provider.buildHeaders(realKey) : provider.buildHeaders(realKey);
-  const requestBody = provider.transformBody({ ...body, stream: false });
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody)
+  return provider.completeChat({
+    apiKey: realKey,
+    baseUrl,
+    model: body.model,
+    messages: body.messages,
+    tools: body.tools,
+    max_tokens: body.max_tokens,
+    temperature: body.temperature,
+    top_p: body.top_p
   });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => 'Request failed');
-    throw new Error(detail || `HTTP ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
@@ -118,9 +65,10 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
     providerName,
     model: body?.model
   });
+
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey) {
+  if (!realKey && provider.name !== 'local') {
     const cfg = loadConfigFromDisk();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
@@ -139,6 +87,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
     }, 0);
     return { streamId };
   }
+
   const streamId = crypto.randomUUID();
   const abortController = new AbortController();
   activeStreams.set(streamId, abortController);
@@ -161,83 +110,20 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
 
   (async () => {
     try {
-      // Gemini uses a different URL pattern that includes the model name and API key
-      let url;
-      if (provider.name === 'gemini') {
-        url = provider.resolveUrl(baseUrl, realKey, body.model);
-      } else {
-        url = provider.resolveUrl(baseUrl);
-      }
+      const streamParams = {
+        apiKey: realKey,
+        baseUrl,
+        model: body.model,
+        messages: body.messages,
+        tools: body.tools,
+        max_tokens: body.max_tokens,
+        temperature: body.temperature,
+        top_p: body.top_p,
+        ...body.extra_params
+      };
 
-      const headers = provider.buildHeaders(realKey);
-      const requestBody = provider.transformBody({ ...body, stream: true });
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        signal: abortController.signal,
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        const detail = await response.text().catch(() => 'Request failed');
-        throw new Error(detail || `HTTP ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response stream available');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Anthropic uses a stateful SSE parser (event type + data on separate lines)
-      if (provider.name === 'anthropic') {
-        const parser = createAnthropicStreamParser(emit);
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          // Prevent unbounded buffer growth from oversized chunks
-          if (buffer.length > 1_000_000) {
-            parser.processLine(buffer);
-            buffer = '';
-          }
-
-          for (const line of lines) {
-            parser.processLine(line);
-          }
-        }
-      } else {
-        // OpenAI-compatible SSE format (works for OpenAI, Groq, Mistral, local, etc.)
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          // Prevent unbounded buffer growth from oversized chunks
-          if (buffer.length > 1_000_000) {
-            const delta = provider.parseStreamDelta(buffer);
-            if (delta && !delta._eventType && !delta._data) emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
-            buffer = '';
-          }
-
-          for (const line of lines) {
-            const delta = provider.parseStreamDelta(line);
-            if (!delta || delta._eventType || delta._data) continue;
-            emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
-          }
-        }
-
-        const tail = provider.parseStreamDelta(buffer);
-        if (tail && !tail._eventType && !tail._data) emit({ type: 'delta', content: tail.content, reasoning: tail.reasoning });
+      for await (const delta of provider.streamChat(streamParams)) {
+        emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
       }
 
       emit({ type: 'done' });

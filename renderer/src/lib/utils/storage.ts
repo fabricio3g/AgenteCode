@@ -24,6 +24,28 @@ export async function loadAppConfig(): Promise<AppConfig> {
     try {
       const stored = await (window as any).electronAPI.invoke('get_config') as AppConfig;
       if (stored && typeof stored === 'object') {
+        // IPC config has API keys redacted for security. Restore keys from
+        // existing localStorage so that freshly saved keys survive the
+        // refresh cycle (saveAppConfig → refreshModels → loadAppConfig).
+        const prev = safeParse<AppConfig>(localStorage.getItem(APP_CONFIG_KEY), {} as AppConfig);
+        const storedProviders = stored?.llm?.providers || {};
+        const prevProviders = prev?.llm?.providers || {};
+        // Copy API keys from localStorage into matching IPC providers
+        for (const name of Object.keys(storedProviders)) {
+          const prevKey = prevProviders[name]?.api_key;
+          if (prevKey && !storedProviders[name].api_key) {
+            storedProviders[name].api_key = prevKey;
+            delete storedProviders[name].has_api_key;
+          }
+        }
+        // Also copy providers that exist in localStorage but not yet in IPC config
+        for (const name of Object.keys(prevProviders)) {
+          if (!storedProviders[name] && prevProviders[name]?.api_key) {
+            const llm = (stored as any).llm ?? ((stored as any).llm = {});
+            const providers = llm.providers ?? (llm.providers = {});
+            providers[name] = { ...prevProviders[name] };
+          }
+        }
         localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(stored));
         return stored;
       }
