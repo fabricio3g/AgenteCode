@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 
-const SANDBOX_ROOT = path.join(os.tmpdir(), 'talamolm-sandbox');
+const SANDBOX_ROOT = path.join(os.tmpdir(), 'chatealm-sandbox');
 
 const ALLOWED_COMMANDS = new Set([
   'node', 'nodejs', 'npm', 'npx', 'python', 'python3', 'python2', 'pip', 'pip3',

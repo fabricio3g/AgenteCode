@@ -61,7 +61,7 @@
   async function fetchAssets() {
     try {
       const res = await fetch('https://api.github.com/repos/ggerganov/llama.cpp/releases/latest', {
-        headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': '7context-desktop' }
+        headers: { 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'chatealm-desktop' }
       });
       if (res.status === 403 || res.status === 429) {
         releaseAssets = buildFallbackAssets();

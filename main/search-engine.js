@@ -621,7 +621,7 @@ async function searchExa(query, maxResults, options) {
 async function searchJina(query, maxResults, options) {
   const baseUrl = String(options?.jina_base_url || 'https://s.jina.ai').replace(/\/+$/, '');
   const url = `${baseUrl}/${encodeURIComponent(query)}`;
-  const headers = { Accept: 'text/plain', 'User-Agent': 'TalamoLM/1.0' };
+  const headers = { Accept: 'text/plain', 'User-Agent': 'Chatea LM/1.0' };
   if (options?.jina_api_key) {
     headers.Authorization = `Bearer ${options.jina_api_key}`;
   }
@@ -735,7 +735,7 @@ async function searchPerplexity(query, maxResults, options) {
 async function searchDuckDuckGo(query, maxResults) {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const resp = await fetchWithRetry(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TalamoLM/1.0)' },
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Chatea LM/1.0)' },
     timeout_ms: 12000
   });
   const html = await resp.text();
@@ -875,7 +875,7 @@ async function fetchPageContent(url, options = {}) {
   try {
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
-    const headers = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'TalamoLM/1.0' };
+    const headers = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'Chatea LM/1.0' };
     if (options.jina_api_key) {
       headers.Authorization = `Bearer ${options.jina_api_key}`;
     }

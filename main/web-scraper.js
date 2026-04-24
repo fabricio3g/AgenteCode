@@ -171,7 +171,7 @@ export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks 
     response = await fetch(normalizedUrl, {
       signal: AbortSignal.timeout(safeTimeout),
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; TalamoLM/1.0)',
+        'User-Agent': 'Mozilla/5.0 (compatible; Chatea LM/1.0)',
         Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8'
       }
     });

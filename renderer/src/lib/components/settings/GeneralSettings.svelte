@@ -44,7 +44,7 @@
   function setLocale(code: string) {
     const resolved = normalizeLocaleCode(code);
     locale.set(resolved);
-    localStorage.setItem('talamolm_locale', resolved);
+    localStorage.setItem('chatealm_locale', resolved);
   }
 </script>
 

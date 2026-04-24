@@ -148,7 +148,7 @@ function checkLocalWhisper(quality) {
 async function decodeAudioToFloat32(audioBytes, mimeType) {
   // Try ffmpeg first (most reliable for webm/opus)
   const { execFileSync } = await import('node:child_process');
-  const tmpDir = path.join(os.tmpdir(), 'talamolm-stt');
+  const tmpDir = path.join(os.tmpdir(), 'chatealm-stt');
   fs.mkdirSync(tmpDir, { recursive: true });
 
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';

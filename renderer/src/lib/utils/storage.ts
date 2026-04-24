@@ -1,9 +1,9 @@
 import type { AppConfig, ChatSession, ChatFolder } from '$lib/types/chat';
 
-const APP_CONFIG_KEY = 'talamolm_app_config';
-const CHAT_STATE_KEY = 'talamolm_chat_state_v2';
-const THEME_KEY = 'talamolm_theme';
-const DB_MIGRATED_KEY = 'talamolm_db_migrated';
+const APP_CONFIG_KEY = 'chatealm_app_config';
+const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
+const THEME_KEY = 'chatealm_theme';
+const DB_MIGRATED_KEY = 'chatealm_db_migrated';
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;

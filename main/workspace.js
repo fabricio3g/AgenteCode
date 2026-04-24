@@ -251,7 +251,7 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
 }
 
 export async function writeTempFile(name, data) {
-  const tmpDir = path.join(os.tmpdir(), 'talamolm');
+  const tmpDir = path.join(os.tmpdir(), 'chatealm');
   fs.mkdirSync(tmpDir, { recursive: true });
   const filePath = path.join(tmpDir, name);
   const buffer = Buffer.from(data);

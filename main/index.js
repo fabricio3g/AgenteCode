@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const IS_DEV = !app.isPackaged;
 const RENDERER_DEV_URL = 'http://localhost:5173';
 const RENDERER_PROD_PATH = path.join(__dirname, '..', 'renderer', 'dist', 'index.html');
-const APP_NAME = '7Context';
+const APP_NAME = 'Chatea LM';
 
 let mainWindow = null;
 let tray = null;
@@ -148,7 +148,7 @@ export async function requestMainWindowClose() {
 
 export function getAppPaths() {
   const envOverride = String(process.env.TALAMOLM_HOME || '').trim();
-  const legacyAppData = path.join(app.getPath('home'), '.talamolm');
+  const legacyAppData = path.join(app.getPath('home'), '.chatealm');
   const platformAppData = path.join(app.getPath('appData'), APP_NAME);
   const appData = envOverride || (fs.existsSync(legacyAppData) ? legacyAppData : platformAppData);
   const projectRoot = IS_DEV

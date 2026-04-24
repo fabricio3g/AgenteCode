@@ -92,7 +92,7 @@
  <iframe
  bind:this={iframe}
  class="h-full w-full border-0 bg-[var(--background)]"
-   title="Legacy 7Context workspace"
+   title="Legacy workspace"
  src={legacyUrl}
  onload={handleLoad}
  ></iframe>

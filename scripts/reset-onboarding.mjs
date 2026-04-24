@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const configPath = path.join(os.homedir(), '.talamolm', 'config.json');
+const configPath = path.join(os.homedir(), '.chatealm', 'config.json');
 
 if (!fs.existsSync(configPath)) {
   console.log('No config file found at', configPath);

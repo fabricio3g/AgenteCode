@@ -63,20 +63,11 @@
   }
 
   onMount(() => {
-    hfToken = localStorage.getItem('talamolm_hf_token') || '';
-    const provider = String(searchProvider || 'auto').toLowerCase();
-    searchApiKey = getStoredSearchApiKey(provider);
-  });
-
-  $effect(() => {
-    const provider = String(searchProvider || 'auto').toLowerCase();
-    searchApiKey = getStoredSearchApiKey(provider);
-  });
-
-  function saveHfToken() {
-    const token = hfToken.trim();
-    if (token) localStorage.setItem('talamolm_hf_token', token);
-    else localStorage.removeItem('talamolm_hf_token');
+hfToken = localStorage.getItem('chatealm_hf_token') || '';
+      } catch { hfToken = ''; }
+    } else {
+      if (token) localStorage.setItem('chatealm_hf_token', token);
+      else localStorage.removeItem('chatealm_hf_token');
   }
 
   async function save() {

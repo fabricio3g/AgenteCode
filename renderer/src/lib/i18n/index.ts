@@ -39,9 +39,9 @@ init({
   fallbackLocale: 'en',
   initialLocale: (() => {
     try {
-      const stored = localStorage.getItem('talamolm_locale');
+      const stored = localStorage.getItem('chatealm_locale');
       const resolved = normalizeLocaleCode(stored || navigator?.language || 'en');
-      if (stored !== resolved) localStorage.setItem('talamolm_locale', resolved);
+      if (stored !== resolved) localStorage.setItem('chatealm_locale', resolved);
       return resolved;
     } catch {
       return 'en';

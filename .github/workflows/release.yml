@@ -19,10 +19,10 @@ jobs:
         include:
           - os: ubuntu-latest
             name: linux
-            artifact_name: talamolm-linux
+            artifact_name: chatealm-linux
           - os: windows-latest
             name: windows
-            artifact_name: talamolm-windows
+            artifact_name: chatealm-windows
 
     steps:
       - name: Checkout
@@ -47,9 +47,9 @@ jobs:
       - name: Inject Linux maintainer metadata (CI only)
         if: matrix.name == 'linux'
         run: |
-          npm pkg set author.name="TalamoLM"
+          npm pkg set author.name="Chatea LM"
           npm pkg set author.email="ci@local.invalid"
-          npm pkg set "build.linux.maintainer=TalamoLM <ci@local.invalid>"
+          npm pkg set "build.linux.maintainer=Chatea LM <ci@local.invalid>"
 
       - name: Build Electron app
         run: npm run build:renderer && npx electron-builder --publish=never

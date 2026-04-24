@@ -42,8 +42,8 @@ interface ApiModelMetadata {
   completion_cost_per_million?: number;
 }
 
-const LOCAL_MODEL_SETTINGS_KEY = 'talamolm_model_load_settings_by_model';
-const USER_NAME_KEY = 'talamolm_user_name';
+const LOCAL_MODEL_SETTINGS_KEY = 'chatealm_model_load_settings_by_model';
+const USER_NAME_KEY = 'chatealm_user_name';
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;

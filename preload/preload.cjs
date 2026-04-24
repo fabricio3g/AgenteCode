@@ -72,7 +72,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
 
   // App info
-  appName: '7Context',
+  appName: 'Chatea LM',
 
   // Platform info
   platform: process.platform,

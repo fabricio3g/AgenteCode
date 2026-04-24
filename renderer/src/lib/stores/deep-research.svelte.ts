@@ -42,7 +42,7 @@ export interface DeepResearchTask {
   } | null;
 }
 
-const STORAGE_KEY = 'talamolm_deep_research_tasks_v2';
+const STORAGE_KEY = 'chatealm_deep_research_tasks_v2';
 
 const QUESTION_TIMEOUT_MS = 3200;
 const questionCache = new Map<string, { questions: ResearchQuestion[]; expires: number }>();

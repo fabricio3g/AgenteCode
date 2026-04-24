@@ -1,8 +1,8 @@
 {
-  "name": "talamolm-electron",
+  "name": "chatealm",
   "version": "0.1.0",
   "private": true,
-  "description": "TalamoLM – AI Chat Assistant (Electron)",
+  "description": "Chatea LM – AI Chat Assistant (Electron)",
   "type": "module",
   "main": "main/index.js",
   "scripts": {
@@ -52,8 +52,8 @@
     "wait-on": "^8.0.2"
   },
   "build": {
-    "appId": "com.talamolm.electron",
-    "productName": "TalamoLM",
+    "appId": "com.chatea.lm",
+    "productName": "Chatea LM",
     "directories": {
       "output": "dist-electron",
       "buildResources": "build"
