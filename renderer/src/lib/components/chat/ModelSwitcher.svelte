@@ -466,7 +466,9 @@
   .confirm-btn.primary {
     background: var(--primary);
     color: var(--primary-fg);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
     transition: opacity 0.12s, transform 0.1s;
   }
 
@@ -517,7 +519,9 @@
   .empty-btn {
     background: var(--primary);
     color: var(--primary-fg);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
     transition: opacity 0.12s, transform 0.1s;
   }
 

@@ -74,7 +74,7 @@
  <button class="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)] hover:border-[var(--border-strong)]" onclick={() => (appStore.promptConfigOpen = false)}>
  Cancel
  </button>
- <button class="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98] disabled:opacity-50" onclick={save} disabled={saving}>
+ <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98] disabled:opacity-50" onclick={save} disabled={saving}>
  {saving ? 'Saving…' : 'Save'}
  </button>
  </div>

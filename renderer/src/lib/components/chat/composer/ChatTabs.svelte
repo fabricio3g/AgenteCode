@@ -130,11 +130,11 @@
 </script>
 
 {#if appStore.sidebarOpen}
-<div bind:clientWidth={width} class="openui-card pointer-events-auto relative z-20 mb-3 rounded-xl px-3 py-2">
+<div bind:clientWidth={width} class="chateaui-card pointer-events-auto relative z-20 mb-3 rounded-xl px-3 py-2">
   {#if canScrollLeft}
     <button
       type="button"
-      class="openui-pill absolute -left-3 top-1/2 z-30 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] transition hover:text-[var(--text)]"
+      class="chateaui-pill absolute -left-3 top-1/2 z-30 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] transition hover:text-[var(--text)]"
       onclick={() => scroll('left')}
       aria-label="Scroll chats left"
     >
@@ -144,7 +144,7 @@
   {#if canScrollRight}
     <button
       type="button"
-      class="openui-pill absolute -right-3 top-1/2 z-30 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] transition hover:text-[var(--text)]"
+      class="chateaui-pill absolute -right-3 top-1/2 z-30 flex h-8 w-8 -translate-y-1/2 items-center justify-center text-[var(--text-secondary)] transition hover:text-[var(--text)]"
       onclick={() => scroll('right')}
       aria-label="Scroll chats right"
     >
@@ -170,8 +170,8 @@
           </button>
             <button
               type="button"
-              class="openui-icon-button flex h-7 w-7 items-center justify-center rounded-full"
-              style="--openui-icon-button-color: var(--text-muted);"
+              class="chateaui-icon-button flex h-7 w-7 items-center justify-center rounded-full"
+              style="--chateaui-icon-button-color: var(--text-muted);"
               aria-label="Chat options"
               onclick={(event) => toggleMenu(event, chat.id)}
             >
@@ -183,8 +183,8 @@
 
     <button
       type="button"
-      class="openui-pill shrink-0 snap-start px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
-      style="--openui-pill-border-style: dashed;"
+      class="chateaui-pill shrink-0 snap-start px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
+      style="--chateaui-pill-border-style: dashed;"
       onclick={() => appStore.createChat()}
     >
       + New
@@ -197,7 +197,7 @@
   {@const activeChat = recentChats.find((chat) => chat.id === openMenuId)}
   {#if activeChat}
     <div
-      class="openui-menu pointer-events-auto fixed z-[220] w-40 py-1"
+      class="chateaui-menu pointer-events-auto fixed z-[220] w-40 py-1"
       style={`top: ${menuPosition.top}px; left: ${menuPosition.left}px;`}
       onclick={(event) => event.stopPropagation()}
       onkeydown={(event) => event.stopPropagation()}

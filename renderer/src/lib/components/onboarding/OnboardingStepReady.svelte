@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { t } from 'svelte-i18n';
-  import { MessageSquare, ArrowLeft, LoaderCircle, CheckCircle2, AlertTriangle } from 'lucide-svelte';
+  import { MessageSquare, ArrowLeft, ArrowRight, LoaderCircle, CheckCircle2, AlertTriangle } from 'lucide-svelte';
   import { loadLocalModel } from '$lib/services/runtime';
   import { getLocalModels } from '$lib/services/models';
   import { getInstalledRuntimes } from '$lib/services/files';
@@ -106,14 +106,15 @@
 
   <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm transition hover:bg-[var(--surface-highlight)]"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-highlight)]"
       onclick={onBack}
       disabled={loading}
     >
       <ArrowLeft class="h-4 w-4" />
+      {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-1.5 rounded-full bg-[var(--text)] px-5 py-2 text-sm font-medium text-[var(--surface)] transition hover:opacity-90 disabled:opacity-50"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
       onclick={handleFinish}
       disabled={loading}
     >
@@ -122,6 +123,7 @@
       {:else}
         {$t('onboarding.loadModelAndChat')}
       {/if}
+      <ArrowRight class="h-4 w-4" />
     </button>
   </div>
 </div>

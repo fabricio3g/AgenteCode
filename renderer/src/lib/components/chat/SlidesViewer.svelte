@@ -45,7 +45,7 @@
       Presentation · {total} slide{total === 1 ? '' : 's'}
     </span>
     <button
-      class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
+      class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
       onclick={onDownload}
     >
       <Download class="h-3.5 w-3.5" />

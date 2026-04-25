@@ -15,7 +15,7 @@
 </script>
 
 {#if artifact}
-  <div class="artifact-card openui-card mt-3 flex items-center justify-between gap-4 px-4 py-3">
+  <div class="artifact-card chateaui-card mt-3 flex items-center justify-between gap-4 px-4 py-3">
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <div class="icon-wrap">
         <FileCode2 class="h-4 w-4" />
@@ -25,7 +25,7 @@
         <div class="subtitle">{fileCount} file{fileCount !== 1 ? 's' : ''}</div>
       </div>
     </div>
-    <button class="view-btn openui-button-secondary flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs font-medium" onclick={onOpen}>
+    <button class="view-btn chateaui-button-secondary flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs font-medium" onclick={onOpen}>
       View in Sandbox
       <ExternalLink class="h-3 w-3 opacity-60" />
     </button>
@@ -34,7 +34,7 @@
 
 <style>
   .artifact-card {
-    --openui-card-bg: var(--surface-highlight);
+    --chateaui-card-bg: var(--surface-highlight);
   }
 
   .icon-wrap {
@@ -63,7 +63,7 @@
   }
 
   .view-btn {
-    --openui-button-secondary-radius: var(--radius-m);
+    --chateaui-button-secondary-radius: var(--radius-m);
     font-size: 0.75rem;
   }
 </style>

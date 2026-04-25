@@ -132,7 +132,7 @@
           {#each QUICK_MODELS as m}
             <button
               type="button"
-              class="openui-card openui-card-interactive group flex min-h-[122px] flex-col items-start gap-3 px-3 py-3 text-left"
+              class="chateaui-card chateaui-card-interactive group flex min-h-[122px] flex-col items-start gap-3 px-3 py-3 text-left"
               onclick={() => openModelHub(m.id)}
             >
               <div class="flex w-full items-start justify-between gap-2">
@@ -145,7 +145,7 @@
                     <Brain class="h-4 w-4 text-[var(--text-secondary)]" />
                   {/if}
                 </div>
-                <span class="openui-muted-pill px-2 py-1 text-[10px] font-medium tracking-[0.02em] text-[var(--text-secondary)]">
+                <span class="chateaui-muted-pill px-2 py-1 text-[10px] font-medium tracking-[0.02em] text-[var(--text-secondary)]">
                   {m.tagline}
                 </span>
               </div>
@@ -176,7 +176,7 @@
       <div class="mt-5">
         {#if appStore.backendMode === 'local'}
           <button
-            class="openui-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)]"
+            class="chateaui-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)]"
             onclick={() => (appStore.modelManagerOpen = true)}
           >
             <Sparkles class="h-4 w-4 text-[var(--text-muted)]" />
@@ -185,7 +185,7 @@
           </button>
         {:else}
           <button
-            class="openui-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)]"
+            class="chateaui-button-secondary inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--text-secondary)]"
             onclick={() => { appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
           >
             Configure a provider

@@ -35,7 +35,7 @@
         <button class="rounded-lg border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)] transition-all hover:bg-[var(--surface-highlight)] hover:text-[var(--text)] hover:border-[var(--border-strong)]" onclick={() => appStore.closeEditMessage()}>
           {$t('chat.cancel')}
         </button>
-        <button class="rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition-all hover:opacity-88 active:scale-[0.98]" onclick={save}>
+        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition-all hover:opacity-88 active:scale-[0.98]" onclick={save}>
           {$t('common.save')}
         </button>
       </div>

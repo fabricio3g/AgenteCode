@@ -167,6 +167,20 @@
   --code-terminal-warn: #fbbf24;
 }
 
+.dark .chateaui-button-primary,
+.dark .chateaui-button-secondary {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
+}
+
+button[class*="var(--primary)"] {
+  border: 1px solid var(--border-strong);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.dark button[class*="var(--primary)"] {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
+}
+
 html,
 body,
 #app {
@@ -231,14 +245,14 @@ textarea {
 
 /* ─── Utility classes ─────────────────────────────────── */
 
-.openui-card {
-  background: var(--openui-card-bg, var(--surface));
+.chateaui-card {
+  background: var(--chateaui-card-bg, var(--surface));
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.openui-card:hover {
+.chateaui-card:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
@@ -250,29 +264,29 @@ textarea {
   will-change: transform, opacity;
 }
 
-.openui-card-interactive {
+.chateaui-card-interactive {
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
-.openui-card-interactive:hover {
+.chateaui-card-interactive:hover {
   background: var(--surface-highlight);
   border-color: var(--border-strong);
 }
 
-.openui-pill {
-  background: var(--openui-pill-bg, var(--surface));
-  border: 1px solid var(--openui-pill-border, var(--border));
-  border-style: var(--openui-pill-border-style, solid);
+.chateaui-pill {
+  background: var(--chateaui-pill-bg, var(--surface));
+  border: 1px solid var(--chateaui-pill-border, var(--border));
+  border-style: var(--chateaui-pill-border-style, solid);
   border-radius: var(--radius-full);
 }
 
-.openui-muted-pill {
-  background: var(--openui-muted-pill-bg, var(--surface-highlight));
-  border: 1px solid var(--openui-muted-pill-border, transparent);
+.chateaui-muted-pill {
+  background: var(--chateaui-muted-pill-bg, var(--surface-highlight));
+  border: 1px solid var(--chateaui-muted-pill-border, transparent);
   border-radius: var(--radius-full);
 }
 
-.openui-segmented {
+.chateaui-segmented {
   display: inline-flex;
   align-items: center;
   gap: 1px;
@@ -282,7 +296,7 @@ textarea {
   border-radius: var(--radius-m);
 }
 
-.openui-segment {
+.chateaui-segment {
   border-radius: 4px;
   border: none;
   background: none;
@@ -294,79 +308,83 @@ textarea {
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-.openui-segment:hover {
+.chateaui-segment:hover {
   color: var(--text);
   background: var(--surface-highlight);
 }
 
-.openui-segment.is-active {
+.chateaui-segment.is-active {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-s);
 }
 
-.openui-button-primary {
+.chateaui-button-primary {
   background: var(--primary);
   color: var(--primary-fg);
-  border: none;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   transition: transform 0.1s ease, opacity 0.12s ease;
 }
 
-.openui-button-primary:hover {
+.chateaui-button-primary:hover {
   opacity: 0.88;
+  border-color: var(--text);
 }
 
-.openui-button-primary:active {
+.chateaui-button-primary:active {
   transform: scale(0.98);
 }
 
-.openui-button-secondary {
+.chateaui-button-secondary {
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-s);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
-.openui-button-secondary:hover {
+.chateaui-button-secondary:hover {
   background: var(--surface-highlight);
-  border-color: var(--border-strong);
+  border-color: var(--fg-tertiary);
 }
 
-.openui-icon-button {
+.chateaui-icon-button {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-s);
   color: var(--text-tertiary);
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.openui-icon-button:hover {
+.chateaui-icon-button:hover {
   background: var(--surface-highlight);
   color: var(--text);
+  border-color: var(--border-strong);
 }
 
-.openui-field {
+.chateaui-field {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
   transition: border-color 0.15s ease;
 }
 
-.openui-field:focus,
-.openui-field:focus-within {
+.chateaui-field:focus,
+.chateaui-field:focus-within {
   border-color: var(--border-strong);
 }
 
-.openui-menu {
+.chateaui-menu {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
   box-shadow: var(--shadow-l);
 }
 
-@keyframes openui-loader-dots {
+@keyframes chateaui-loader-dots {
   33% {
     background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;
   }
@@ -378,7 +396,7 @@ textarea {
   }
 }
 
-.openui-message-loading-container {
+.chateaui-message-loading-container {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -389,16 +407,16 @@ textarea {
   border: 1px solid var(--border-light);
 }
 
-.openui-message-loading {
+.chateaui-message-loading {
   width: 24px;
   aspect-ratio: 4;
   --_g: no-repeat radial-gradient(circle closest-side, var(--text-tertiary) 90%, transparent 90%);
   background: var(--_g) 0% 50%, var(--_g) 50% 50%, var(--_g) 100% 50%;
   background-size: calc(100% / 3) 100%;
-  animation: openui-loader-dots 750ms infinite linear;
+  animation: chateaui-loader-dots 750ms infinite linear;
 }
 
-.openui-shimmer-text {
+.chateaui-shimmer-text {
   display: inline-block;
   background-image:
     linear-gradient(90deg, transparent calc(50% - 44px), var(--text) 50%, transparent calc(50% + 44px)),
@@ -408,15 +426,15 @@ textarea {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: openui-loader-shimmer 2s linear infinite;
+  animation: chateaui-loader-shimmer 2s linear infinite;
 }
 
-@keyframes openui-loader-shimmer {
+@keyframes chateaui-loader-shimmer {
   0% { background-position: 100% center; }
   100% { background-position: 0% center; }
 }
 
-.openui-user-bubble {
+.chateaui-user-bubble {
   background: var(--user-bubble);
   color: var(--user-bubble-text);
   border-radius: 8px 8px 2px 8px;

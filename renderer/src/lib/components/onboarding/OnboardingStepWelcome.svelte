@@ -38,18 +38,21 @@
 </script>
 
 <div class="flex flex-1 flex-col items-center justify-center gap-6 px-8 text-center">
-  <Sparkles class="h-8 w-8 text-[var(--text-secondary)]" />
+  <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface-highlight)] ring-1 ring-[var(--border)]">
+    <Sparkles class="h-6 w-6 text-[var(--text-secondary)]" />
+  </div>
 
   <div class="space-y-2">
-    <h1 class="text-xl font-semibold text-[var(--text)]">{$t('onboarding.welcome')}</h1>
-    <p class="text-sm text-[var(--text-secondary)]">
+    <h1 class="text-2xl font-bold text-[var(--text)] tracking-tight">{$t('onboarding.welcome')}</h1>
+    <p class="max-w-xs text-sm text-[var(--text-secondary)] leading-relaxed">
       {$t('onboarding.welcomeDesc').replace('{{APP_NAME}}', APP_NAME)}
     </p>
   </div>
 
-  <div class="w-full max-w-xs text-left">
+  <div class="w-full max-w-xs text-left space-y-1.5">
+    <label class="block text-xs font-medium text-[var(--text-muted)]">{$t('onboarding.chooseLanguage')}</label>
     <select
-      class="w-full rounded-full border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2 text-sm text-[var(--text)] outline-none transition-colors"
+      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm text-[var(--text)] outline-none transition-colors hover:border-[var(--border-strong)] focus:border-[var(--border-strong)]"
       value={normalizeLocaleCode($locale)}
       onchange={(e) => setLocale((e.target as HTMLSelectElement).value)}
     >
@@ -59,14 +62,14 @@
     </select>
   </div>
 
-  <div class="flex gap-2 text-xs text-[var(--text-muted)]">
-    <span class="rounded-full px-2 py-1">{$t('onboarding.runtime')}</span>
-    <span class="rounded-full px-2 py-1">{$t('onboarding.model')}</span>
-    <span class="rounded-full px-2 py-1">{$t('onboarding.startChatting')}</span>
+  <div class="flex gap-1.5 text-[11px] text-[var(--text-muted)]">
+    <span class="rounded-full bg-[var(--surface-highlight)] border border-[var(--border)] px-2.5 py-1 font-medium">{$t('onboarding.runtime')}</span>
+    <span class="rounded-full bg-[var(--surface-highlight)] border border-[var(--border)] px-2.5 py-1 font-medium">{$t('onboarding.model')}</span>
+    <span class="rounded-full bg-[var(--surface)] border border-[var(--border)] px-2.5 py-1 font-semibold text-[var(--text)]">{$t('onboarding.startChatting')}</span>
   </div>
 
   <button
-    class="mt-2 inline-flex items-center gap-2 rounded-full bg-[var(--text)] px-6 py-2.5 text-sm font-medium text-[var(--surface)] transition hover:opacity-90"
+    class="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--primary)] px-6 py-3 text-sm font-semibold text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 active:scale-[0.98]"
     onclick={onNext}
   >
     {$t('onboarding.startChatting')}

@@ -63,11 +63,20 @@
   }
 
   onMount(() => {
-hfToken = localStorage.getItem('chatealm_hf_token') || '';
-      } catch { hfToken = ''; }
-    } else {
-      if (token) localStorage.setItem('chatealm_hf_token', token);
-      else localStorage.removeItem('chatealm_hf_token');
+    hfToken = localStorage.getItem('chatealm_hf_token') || '';
+    const provider = String(searchProvider || 'auto').toLowerCase();
+    searchApiKey = getStoredSearchApiKey(provider);
+  });
+
+  $effect(() => {
+    const provider = String(searchProvider || 'auto').toLowerCase();
+    searchApiKey = getStoredSearchApiKey(provider);
+  });
+
+  function saveHfToken() {
+    const token = hfToken.trim();
+    if (token) localStorage.setItem('chatealm_hf_token', token);
+    else localStorage.removeItem('chatealm_hf_token');
   }
 
   async function save() {
@@ -297,7 +306,9 @@ hfToken = localStorage.getItem('chatealm_hf_token') || '';
   .primary-btn {
     background: var(--primary);
     color: var(--primary-fg);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
     transition: opacity 0.12s, transform 0.1s;
   }
 
@@ -333,7 +344,8 @@ hfToken = localStorage.getItem('chatealm_hf_token') || '';
   .btn.primary {
     color: var(--primary-fg);
     background: var(--primary);
-    border: none;
+    border: 1px solid var(--border-strong);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   }
 
   .btn.primary:hover {

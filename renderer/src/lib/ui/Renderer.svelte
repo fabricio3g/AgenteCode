@@ -169,15 +169,17 @@
     border: 1px solid var(--border);
   }
   :global(.ui-button) {
-    border: 0;
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
     padding: 0.65rem 1rem;
     font: inherit;
     cursor: pointer;
-    transition: transform 0.1s ease, opacity 0.12s ease;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    transition: transform 0.1s ease, opacity 0.12s ease, border-color 0.12s ease;
   }
   :global(.ui-button:hover) {
     opacity: 0.88;
+    border-color: var(--text);
   }
   :global(.ui-button:active) {
     transform: scale(0.98);
@@ -193,7 +195,10 @@
   }
   :global(.ui-button-secondary:hover), :global(.ui-button-tertiary:hover) {
     background: var(--surface-highlight);
-    border-color: var(--border-strong);
+    border-color: var(--fg-tertiary);
+  }
+  :global(.dark .ui-button) {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
   }
   :global(.ui-form), :global(.ui-field) {
     display: flex;

@@ -56,24 +56,27 @@
   });
 </script>
 
-<div   class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay" transition:fade={{ duration: 150 }}>
+<div class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay" transition:fade={{ duration: 150 }}>
   <div
-    class="flex h-full max-h-[560px] w-full max-w-lg flex-col rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+    class="flex h-full max-h-[580px] w-full max-w-lg flex-col rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
     transition:fly={{ y: 20, duration: 200 }}
     role="dialog"
     aria-modal="true"
   >
     <!-- Header with step indicator -->
-    <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-3">
-      <div class="flex items-center gap-1.5">
-        {#each STEPS as s, i}
-          <div
-            class="h-1 w-6 rounded-full transition-all {i <= STEP_INDEX ? 'bg-[var(--text)]' : 'bg-[var(--surface-highlight)]'}"
-          ></div>
-        {/each}
+    <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-3.5">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5">
+          {#each STEPS as s, i}
+            <div
+              class="h-1.5 w-1.5 rounded-full transition-all {i <= STEP_INDEX ? 'bg-[var(--text)] scale-125' : 'bg-[var(--border)]'}"
+            ></div>
+          {/each}
+        </div>
+        <span class="text-xs font-medium text-[var(--text-muted)]">{$t('onboarding.stepOf', { values: { current: STEP_INDEX + 1, total: STEPS.length } })}</span>
       </div>
       <button
-        class="rounded-full p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+        class="rounded-lg border border-transparent p-1.5 text-[var(--text-muted)] transition hover:border-[var(--border)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
         onclick={handleSkip}
         title={$t('onboarding.skipSetup')}
       >
@@ -82,7 +85,7 @@
     </div>
 
     <!-- Step content -->
-    <div class="flex flex-1 overflow-y-auto py-4">
+    <div class="flex flex-1 overflow-y-auto px-1 py-2">
       {#if step === 'welcome'}
         <OnboardingStepWelcome onNext={goNext} />
       {:else if step === 'runtime'}

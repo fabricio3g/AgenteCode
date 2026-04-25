@@ -105,7 +105,7 @@
 {/if}
 
 {#if message.status === 'error'}
-  <div class="openui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm" style="--openui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --openui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
+  <div class="chateaui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm" style="--chateaui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --chateaui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
     <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-error" />
     <div>
       <div class="font-semibold">Generation failed</div>
@@ -132,7 +132,7 @@
 <ArtifactBlock artifact={message.artifact} onOpen={onOpenArtifact} />
 
 {#if !enableThinking && displayReasoning}
-  <details class="openui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--openui-card-bg: var(--surface-highlight);">
+  <details class="chateaui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--chateaui-card-bg: var(--surface-highlight);">
     <summary class="cursor-pointer font-medium">Reasoning</summary>
     <div class="mt-2 whitespace-pre-wrap">{displayReasoning}</div>
   </details>

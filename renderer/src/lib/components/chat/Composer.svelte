@@ -694,7 +694,7 @@
 
     {#if ocrProgressLabel}
       <div class="px-3 pt-1">
-        <div class="openui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--openui-pill-border:var(--border)] [--openui-pill-bg:var(--surface-highlight)]">
+        <div class="chateaui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--chateaui-pill-border:var(--border)] [--chateaui-pill-bg:var(--surface-highlight)]">
           <span class={`h-1.5 w-1.5 rounded-[2px] bg-[var(--text-tertiary)] ${ocrProgress?.phase === 'done' ? '' : 'animate-pulse'}`}></span>
           <span>{ocrProgressLabel}</span>
         </div>
@@ -857,8 +857,9 @@
   .send-btn {
     color: var(--primary-fg);
     background: var(--primary);
-    border: none;
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-s);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
     transition: transform 0.1s ease, opacity 0.12s ease;
   }
 

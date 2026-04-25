@@ -271,7 +271,7 @@
   const send = (level, args) => {
     try {
       parent.postMessage({
-        source: 'openui-preview',
+        source: 'chateaui-preview',
         level,
         text: args.map((value) => {
           if (typeof value === 'string') return value;
@@ -749,7 +749,7 @@
   onMount(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data;
-      if (!data || data.source !== 'openui-preview' || typeof data.text !== 'string') return;
+      if (!data || data.source !== 'chateaui-preview' || typeof data.text !== 'string') return;
       const level = data.level === 'warn' || data.level === 'error' ? data.level : 'log';
       previewMessages = [...previewMessages, { level, text: data.text }].slice(-40);
     };
@@ -1047,7 +1047,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
+        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
       </div>
     </div>
   </div>
@@ -1075,7 +1075,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
+        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
       </div>
     </div>
   </div>
@@ -1121,7 +1121,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
       </div>
     </div>
   </div>

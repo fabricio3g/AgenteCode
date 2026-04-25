@@ -243,9 +243,9 @@
 
    <!-- View mode toggle -->
    <div class="mb-3 flex items-center gap-2">
-   <div class="openui-segmented">
-   <button class={`openui-segment px-3 py-1.5 text-xs font-medium transition ${viewMode === 'simple' ? 'is-active' : ''}`} onclick={() => (viewMode = 'simple')}>Simple</button>
-   <button class={`openui-segment flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition ${viewMode === 'advanced' ? 'is-active' : ''}`} onclick={() => (viewMode = 'advanced')}>
+   <div class="chateaui-segmented">
+   <button class={`chateaui-segment px-3 py-1.5 text-xs font-medium transition ${viewMode === 'simple' ? 'is-active' : ''}`} onclick={() => (viewMode = 'simple')}>Simple</button>
+   <button class={`chateaui-segment flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition ${viewMode === 'advanced' ? 'is-active' : ''}`} onclick={() => (viewMode = 'advanced')}>
    <SlidersHorizontal class="h-3 w-3" />
    Advanced
    </button>

@@ -13,8 +13,8 @@
           <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-s)]" />
           <button
             aria-label="Remove image"
-            class="openui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
-            style="--openui-pill-bg: var(--surface); --openui-pill-border: var(--border);"
+            class="chateaui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+            style="--chateaui-pill-bg: var(--surface); --chateaui-pill-border: var(--border);"
             type="button"
             onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
           >
@@ -22,7 +22,7 @@
           </button>
         </div>
       {:else}
-        <div class="openui-card group relative flex items-center gap-2 px-3 py-2" style="--openui-card-bg: var(--surface-highlight);">
+        <div class="chateaui-card group relative flex items-center gap-2 px-3 py-2" style="--chateaui-card-bg: var(--surface-highlight);">
           <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-overlay-light">
             {#if file.status === 'processing'}
               <div class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-transparent"></div>
@@ -44,8 +44,8 @@
           </div>
           <button
             aria-label="Remove file"
-            class="openui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
-            style="--openui-pill-bg: var(--surface); --openui-pill-border: var(--border);"
+            class="chateaui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
+            style="--chateaui-pill-bg: var(--surface); --chateaui-pill-border: var(--border);"
             type="button"
             onclick={(e) => { e.stopPropagation(); appStore.removeAttachment(file.id); }}
           >

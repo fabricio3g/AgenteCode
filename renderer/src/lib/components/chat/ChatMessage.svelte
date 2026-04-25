@@ -103,7 +103,7 @@
 <article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
   {#if message.role === 'user'}
     <div class="max-w-[min(46rem,84%)] space-y-3">
-      <div class="openui-user-bubble px-5 py-3.5 text-base leading-7">
+      <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7">
         <div class="markdown-body user-markdown">{@html userHtml}</div>
       </div>
       {#if message.attachments?.length}
@@ -119,7 +119,7 @@
               />
             {:else}
               <!-- Document chip -->
-              <div class="openui-card inline-flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div class="chateaui-card inline-flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)]">
                 <span class="truncate max-w-[12rem] font-medium">{attachment.name}</span>
                 <span class="text-[11px] text-[var(--text-muted)]">{attachment.status === 'error' ? 'Failed' : 'Indexed'}</span>
               </div>
@@ -129,23 +129,23 @@
       {/if}
       {#if message.workContext}
         <div class="flex flex-wrap justify-end gap-2">
-          <div class="openui-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[color:var(--work-accent-strong)]" style="--openui-pill-border: var(--work-accent-border); --openui-pill-bg: var(--work-accent-soft);">
+          <div class="chateaui-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[color:var(--work-accent-strong)]" style="--chateaui-pill-border: var(--work-accent-border); --chateaui-pill-bg: var(--work-accent-soft);">
             <BriefcaseBusiness class="h-3 w-3" />
             Work · {message.workContext.rootName}
           </div>
-          <div class="openui-pill inline-flex items-center px-2.5 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
+          <div class="chateaui-pill inline-flex items-center px-2.5 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
             {message.workContext.indexedCount} file{message.workContext.indexedCount === 1 ? '' : 's'}
           </div>
         </div>
       {/if}
       <div class={`flex justify-end gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-          <button class="openui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy message">
+          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy message">
             <Copy class="h-3.5 w-3.5" />
           </button>
-        <button class="openui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message">
+        <button class="chateaui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message">
           <Pencil class="h-3.5 w-3.5" />
         </button>
-        <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message">
+        <button class="chateaui-icon-button rounded-lg p-1.5" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message">
           <Trash2 class="h-3.5 w-3.5" />
         </button>
       </div>
@@ -176,12 +176,12 @@
       {/if}
 
       {#if (message.versions?.length || 0) > 1}
-        <div class="openui-pill mt-3 inline-flex items-center gap-2 px-2 py-1 text-xs text-[var(--text-tertiary)]">
-          <button class="openui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
+        <div class="chateaui-pill mt-3 inline-flex items-center gap-2 px-2 py-1 text-xs text-[var(--text-tertiary)]">
+          <button class="chateaui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
             <ChevronLeft class="h-3.5 w-3.5" />
           </button>
           <span>{activeVersionIndex + 1}/{message.versions?.length || 1}</span>
-          <button class="openui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
+          <button class="chateaui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
             <ChevronRight class="h-3.5 w-3.5" />
           </button>
         </div>
@@ -189,21 +189,21 @@
 
       <div class={`mt-2 flex items-center gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
           {#if displayMetadata?.tokens}
-            <span class="openui-pill mr-1 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+            <span class="chateaui-pill mr-1 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
               {displayMetadata.tokens} tok
               {#if displayMetadata.timing}· {displayMetadata.timing.toFixed(1)}s{/if}
               {#if displayMetadata.tokensPerSecond}· {displayMetadata.tokensPerSecond.toFixed(0)}/s{/if}
             </span>
           {/if}
-          <button class="openui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy response" title="Copy">
+          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy response" title="Copy">
             <Copy class="h-3.5 w-3.5" />
           </button>
-          <button class="openui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
+          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
             <Pencil class="h-3.5 w-3.5" />
           </button>
           <button
-            class="openui-icon-button rounded-lg p-1.5"
-            style={ttsStore.isSpeaking(message.id) ? '--openui-icon-button-color: var(--primary); --openui-icon-button-bg: var(--surface-highlight); --openui-icon-button-border: var(--border-light);' : ''}
+            class="chateaui-icon-button rounded-lg p-1.5"
+            style={ttsStore.isSpeaking(message.id) ? '--chateaui-icon-button-color: var(--primary); --chateaui-icon-button-bg: var(--surface-highlight); --chateaui-icon-button-border: var(--border-light);' : ''}
             onclick={speakContent}
             aria-label={ttsStore.isSpeaking(message.id) ? 'Stop reading' : 'Read aloud'}
             title={ttsStore.isSpeaking(message.id) ? 'Stop' : 'Read aloud'}
@@ -214,10 +214,10 @@
               <Volume2 class="h-3.5 w-3.5" />
             {/if}
           </button>
-          <button class="openui-icon-button rounded-lg p-1.5 disabled:opacity-40" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
+          <button class="chateaui-icon-button rounded-lg p-1.5 disabled:opacity-40" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
             <RefreshCcw class="h-3.5 w-3.5" />
           </button>
-          <button class="openui-icon-button rounded-lg p-1.5" style="--openui-icon-button-hover-color: var(--error); --openui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
+          <button class="chateaui-icon-button rounded-lg p-1.5" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
             <Trash2 class="h-3.5 w-3.5" />
           </button>
       </div>
