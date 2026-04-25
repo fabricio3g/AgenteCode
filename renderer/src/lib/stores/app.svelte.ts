@@ -2822,6 +2822,27 @@ Design rules:
   }
 
   async refreshModels(force?: boolean) {
+    if (this.backendMode === 'local' && isTauri()) {
+      this.modelsRefreshing = true;
+      try {
+        await modelsStore.refreshIndex();
+        this.models = modelsStore.availableModels.map((m) => ({
+          id: m.id,
+          name: m.name,
+          source: 'local' as const,
+          path: m.path,
+          details: 'architecture' in m && m.architecture
+            ? [m.architecture, (m as any).size_label].filter(Boolean).join(' • ')
+            : undefined
+        }));
+      } catch {
+        this.models = [];
+      } finally {
+        this.modelsRefreshing = false;
+      }
+      return;
+    }
+
     const cacheKey = this._apiModelsCacheKey();
     if (cacheKey && !force) {
       const cached = this._apiModelsCache.get(cacheKey);

@@ -399,13 +399,12 @@
 <style>
   .model-trigger {
     background: transparent;
+    border: none;
     border-radius: var(--radius-s);
-    border: 1px solid transparent;
   }
 
   .model-trigger:hover {
     background: var(--surface-highlight);
-    border-color: var(--border-light);
   }
 
   .model-dropdown {

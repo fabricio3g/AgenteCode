@@ -880,6 +880,7 @@
             {/if}
           </button>
 
+          {#if appStore.backendMode === 'api'}
           <button
             type="button"
             class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'providers' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
@@ -894,6 +895,7 @@
               </span>
             {/if}
           </button>
+          {/if}
 
           <button
             type="button"
@@ -2209,7 +2211,7 @@
               <p class="mt-1 text-xs" style="color:var(--text-muted)">Third-party extensions coming soon — custom tools, integrations, and more.</p>
             </div>
           </div>
-        {:else if activeSection === 'providers'}
+        {:else if activeSection === 'providers' && appStore.backendMode === 'api'}
           <div class="flex-1 overflow-y-auto p-5">
             <header class="mb-5">
               <h2 class="text-base font-semibold text-[var(--text)]">API Providers</h2>
