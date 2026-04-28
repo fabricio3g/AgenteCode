@@ -75,12 +75,60 @@ export class AgentRunner {
           model: config.model,
           messages,
           tools: toolDefs,
+          tool_choice: 'auto',
         });
       } catch (err) {
         const errorMsg = err?.message || String(err);
 
+        // Groq-specific: if model called a tool but tool_choice was none, retry with auto
+        if (errorMsg.includes('Tool choice is none') || errorMsg.includes('tool_use_failed')) {
+          console.warn('[AgentRunner] Groq tool_choice error, retrying with tool_choice=auto');
+          try {
+            result = await provider.completeChat({
+              apiKey: realKey,
+              baseUrl,
+              model: config.model,
+              messages,
+              tools: toolDefs,
+              tool_choice: 'auto',
+            });
+          } catch (retryErr) {
+            const retryMsg = retryErr?.message || String(retryErr);
+            if (retryMsg.includes('Tool choice is none') || retryMsg.includes('tool_use_failed')) {
+              thinkStep.status = 'error';
+              thinkStep.label = 'Tool Error';
+              thinkStep.detail = 'Model called a tool but tool_choice constraint failed';
+              emitSteps();
+              
+              // Try one more time WITHOUT tools to get a final answer
+              try {
+                const noToolResult = await provider.completeChat({
+                  apiKey: realKey,
+                  baseUrl,
+                  model: config.model,
+                  messages,
+                });
+                thinkStep.status = 'done';
+                thinkStep.detail = 'Fell back to no-tool mode for final answer';
+                emitSteps();
+                return {
+                  content: noToolResult.content,
+                  steps: agentSteps,
+                  warning: 'Agent encountered a tool error but recovered with a regular response.'
+                };
+              } catch (finalErr) {
+                thinkStep.status = 'error';
+                thinkStep.label = 'Error';
+                thinkStep.detail = finalErr?.message || String(finalErr);
+                emitSteps();
+                throw finalErr;
+              }
+            }
+            throw retryErr;
+          }
+        }
         // Check if error is due to tool not being supported
-        if (errorMsg.includes('tool use') || errorMsg.includes('function calling') || errorMsg.includes('404')) {
+        else if (errorMsg.includes('tool use') || errorMsg.includes('function calling') || errorMsg.includes('404')) {
           console.warn('[AgentRunner] Tools not supported by this provider/model, falling back to regular chat');
 
           try {
@@ -164,6 +212,34 @@ export class AgentRunner {
       }
     }
 
-    return { content: 'Agent loop exceeded maximum iterations', steps: agentSteps };
+    // Max iterations reached - try one final call without tools to get an answer
+    const finalStep = {
+      id: randomUUID(),
+      type: 'done',
+      label: 'Finalizing',
+      status: 'running',
+      detail: 'Max iterations reached, getting final answer',
+    };
+    agentSteps.push(finalStep);
+    emitSteps();
+
+    try {
+      const finalResult = await provider.completeChat({
+        apiKey: realKey,
+        baseUrl,
+        model: config.model,
+        messages,
+      });
+      finalStep.status = 'done';
+      finalStep.detail = 'Final answer ready';
+      emitSteps();
+      return { content: finalResult.content, steps: agentSteps };
+    } catch (finalErr) {
+      finalStep.status = 'error';
+      finalStep.label = 'Error';
+      finalStep.detail = 'Max iterations reached';
+      emitSteps();
+      return { content: '', steps: agentSteps, error: 'Agent loop exceeded maximum iterations' };
+    }
   }
 }

@@ -21,26 +21,39 @@
   let { content, status = 'idle', metadataError = false, sources = [], onAction }: Props = $props();
 
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
-  const RENDER_THROTTLE_MS = 60;
   let displayedContent = $state(content);
   let pendingContent = $state(content);
-  let renderTimer: ReturnType<typeof setTimeout> | undefined;
+  let renderRaf: number | undefined;
+  let lastRenderedLength = $state(0);
+  let isStreamingActive = $state(false);
 
   $effect(() => {
     pendingContent = content;
     if (status !== 'streaming') {
-      if (renderTimer !== undefined) {
-        clearTimeout(renderTimer);
-        renderTimer = undefined;
+      if (renderRaf !== undefined) {
+        cancelAnimationFrame(renderRaf);
+        renderRaf = undefined;
       }
+      isStreamingActive = false;
       displayedContent = content;
+      lastRenderedLength = content.length;
       return;
     }
-    if (renderTimer !== undefined) return;
-    renderTimer = setTimeout(() => {
-      renderTimer = undefined;
+    isStreamingActive = true;
+    if (renderRaf !== undefined) return;
+    renderRaf = requestAnimationFrame(() => {
+      renderRaf = undefined;
       displayedContent = pendingContent;
-    }, RENDER_THROTTLE_MS);
+    });
+  });
+
+  // Track new block count to trigger CSS-based fade on newly appended blocks
+  $effect(() => {
+    if (!contentEl || !isStreamingActive) return;
+    const newLength = displayedContent.length;
+    if (newLength > lastRenderedLength) {
+      lastRenderedLength = newLength;
+    }
   });
 
   const sanitizedContent = $derived(sanitizeAssistantArtifacts(displayedContent));
@@ -138,11 +151,11 @@
   {#if rendersUI}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
   {:else if hasCharts}
-    <div bind:this={contentEl} class="space-y-3" class:stream-caret={status === 'streaming' && !!content}>
+    <div bind:this={contentEl} class="space-y-3" class:stream-caret={status === 'streaming' && !!content} class:streaming-active={isStreamingActive}>
       {#each contentSegments as segment}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
-            <div class="markdown-body">{@html renderMarkdown(segment.content)}</div>
+            <div class="markdown-body markdown-segment" style="content-visibility: auto;">{@html renderMarkdown(segment.content)}</div>
           {/if}
         {:else}
           <ChartBlock
@@ -156,11 +169,16 @@
       {/each}
     </div>
   {:else if content}
-    <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content}>{@html markdownHtml}</div>
+    <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content} class:streaming-active={isStreamingActive} style="content-visibility: auto;">{@html markdownHtml}</div>
   {/if}
 {/if}
 
 <style>
+  :global(.streaming-active > .markdown-body > :last-child),
+  :global(.streaming-active > .space-y-3 > :last-child) {
+    animation: streamFadeIn 120ms ease-out;
+  }
+
   :global(.copy-btn) {
     position: absolute;
     top: 8px;
@@ -174,7 +192,7 @@
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text-tertiary);
-    box-shadow: var(--shadow-s);
+    box-shadow: var(--shadow-xs);
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s, background 0.15s, color 0.15s;
@@ -185,7 +203,7 @@
   }
 
   :global(.copy-btn:hover) {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
   }
 </style>

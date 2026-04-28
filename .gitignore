@@ -6,3 +6,4 @@ renderer/dist/
 out/
 web-browser/
 *.log
+models/

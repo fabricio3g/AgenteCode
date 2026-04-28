@@ -45,7 +45,7 @@
       Presentation · {total} slide{total === 1 ? '' : 's'}
     </span>
     <button
-      class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
+      class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"
       onclick={onDownload}
     >
       <Download class="h-3.5 w-3.5" />
@@ -68,7 +68,7 @@
         {/each}
       </ul>
       {#if currentSlide.notes}
-        <div class="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-3 text-xs text-[var(--text-secondary)]">
+        <div class="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-hover)] px-4 py-3 text-xs text-[var(--text-secondary)]">
           <span class="font-semibold">Speaker notes: </span>{currentSlide.notes}
         </div>
       {/if}
@@ -78,7 +78,7 @@
   <!-- Navigation footer -->
   <div class="flex items-center justify-between border-t border-[var(--border)] px-4 py-3">
     <button
-      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-30"
+      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-30"
       onclick={prev}
       disabled={currentIndex === 0}
       aria-label="Previous slide"
@@ -92,7 +92,7 @@
     </span>
 
     <button
-      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-30"
+      class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-30"
       onclick={next}
       disabled={currentIndex === total - 1}
       aria-label="Next slide"

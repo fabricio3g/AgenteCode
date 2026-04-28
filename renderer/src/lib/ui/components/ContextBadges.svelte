@@ -50,7 +50,7 @@
     font-size: 0.6875rem;
     font-weight: 500;
     color: var(--text-muted);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
   }
 
   .context-pill.work {

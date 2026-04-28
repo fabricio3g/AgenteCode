@@ -34,7 +34,7 @@
 
 <style>
   .artifact-card {
-    --chateaui-card-bg: var(--surface-highlight);
+    --chateaui-card-bg: var(--surface-hover);
   }
 
   .icon-wrap {
@@ -43,7 +43,7 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--text-secondary);
@@ -63,7 +63,7 @@
   }
 
   .view-btn {
-    --chateaui-button-secondary-radius: var(--radius-m);
+    --chateaui-button-secondary-radius: var(--radius-md);
     font-size: 0.75rem;
   }
 </style>

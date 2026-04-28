@@ -25,8 +25,8 @@ describe('Migration constants', () => {
   });
 
   it('LEGACY_TTS_VARIANTS maps old names to new', () => {
-    assert.strictEqual(LEGACY_TTS_VARIANTS['kitten_en_nano_08'], 'kitten_nano_v02');
-    assert.strictEqual(LEGACY_TTS_VARIANTS['kitten_nano_08'], 'kitten_nano_v01');
+    assert.strictEqual(LEGACY_TTS_VARIANTS['kitten_en_nano_08'], 'kokoro_v11');
+    assert.strictEqual(LEGACY_TTS_VARIANTS['kitten_nano_08'], 'kokoro_v11');
     assert.strictEqual(LEGACY_TTS_VARIANTS['kokoro_multi_v1'], 'kokoro_82m_v1');
   });
 
@@ -140,11 +140,11 @@ describe('migrateProvider', () => {
 describe('migrateTTS', () => {
   const modelsRoot = '/path/to/models';
 
-  it('migrates legacy TTS variant kitten_en_nano_08', () => {
+  it('migrates legacy TTS variant kitten_en_nano_08 to kokoro_v11', () => {
     const tts = { model_variant: 'kitten_en_nano_08' };
     const dirty = migrateTTS(tts, modelsRoot);
     assert.strictEqual(dirty, true);
-    assert.strictEqual(tts.model_variant, 'kitten_nano_v02');
+    assert.strictEqual(tts.model_variant, 'kokoro_v11');
   });
 
   it('migrates legacy TTS variant kokoro_multi_v1', () => {
@@ -155,16 +155,16 @@ describe('migrateTTS', () => {
   });
 
   it('does not change current TTS variant', () => {
-    const tts = { model_variant: 'kitten_nano_v02', model_dir: '/path/to/models/kitten-nano-en-v0_2-fp16', model: 'model.fp16.onnx' };
+    const tts = { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'model.int8.onnx' };
     const dirty = migrateTTS(tts, modelsRoot);
     assert.strictEqual(dirty, false);
   });
 
   it('fixes model_dir for valid variant', () => {
-    const tts = { model_variant: 'kitten_nano_v02', model_dir: '/wrong/path' };
+    const tts = { model_variant: 'kokoro_v11', model_dir: '/wrong/path' };
     const dirty = migrateTTS(tts, modelsRoot);
     assert.strictEqual(dirty, true);
-    assert.ok(tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_1'));
   });
 
   it('sets model_dir when missing', () => {
@@ -174,11 +174,11 @@ describe('migrateTTS', () => {
     assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_0'));
   });
 
-  it('fixes model filename for kitten variant', () => {
-    const tts = { model_variant: 'kitten_nano_v02', model_dir: '/path/to/models/kitten-nano-en-v0_2-fp16', model: 'wrong.onnx' };
+  it('fixes model filename for kokoro variant', () => {
+    const tts = { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'wrong.onnx' };
     const dirty = migrateTTS(tts, modelsRoot);
     assert.strictEqual(dirty, true);
-    assert.strictEqual(tts.model, 'model.fp16.onnx');
+    assert.strictEqual(tts.model, 'model.int8.onnx');
   });
 
   it('fixes model filename for kokoro variant', () => {
@@ -328,7 +328,7 @@ describe('migrateConfig', () => {
     assert.strictEqual(cfg.llm.providers.openai.base_url, 'https://api.openai.com/v1');
     assert.strictEqual(cfg.llm.providers.openai.model, '');
     assert.strictEqual(cfg.llm.providers.openrouter.base_url, 'https://openrouter.ai/api/v1');
-    assert.strictEqual(cfg.tts.model_variant, 'kitten_nano_v02');
+    assert.strictEqual(cfg.tts.model_variant, 'kokoro_v11');
     assert.strictEqual(cfg.stt.provider, 'local');
     assert.ok(cfg.onboarding);
   });
@@ -340,7 +340,7 @@ describe('migrateConfig', () => {
           openai: { base_url: 'https://api.openai.com/v1', model: 'gpt-4-turbo' },
         },
       },
-      tts: { model_variant: 'kitten_nano_v02', model_dir: '/path/to/models/kitten-nano-en-v0_2-fp16', model: 'model.fp16.onnx' },
+      tts: { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'model.int8.onnx' },
       stt: { provider: 'local' },
       onboarding: { completed: true },
     };

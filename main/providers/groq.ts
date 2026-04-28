@@ -44,12 +44,12 @@ export class GroqProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, tool_choice, ...params }) {
     const client = this.createClient(apiKey);
     const response = await client.chat.completions.create({
       model,
       messages,
-      ...(tools?.length ? { tools } : {}),
+      ...(tools?.length ? { tools, tool_choice: tool_choice || 'auto' } : {}),
       ...params,
       stream: false
     });

@@ -13,7 +13,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'get_loaded_models', 'unload_model', 'get_recommended_settings',
   'ingest_workspace_files',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
-  'generate_tts', 'unload_tts', 'check_espeak_data',
+  'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'read_file_base64',
   'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models', 'get_api_model_context',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
   'count_tokens', 'build_context_budget', 'truncate_messages',
@@ -40,7 +40,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 
 const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress',
-  'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event'
+  'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
+  'tts-chunk', 'tts-done', 'tts-start'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {

@@ -79,7 +79,7 @@
     gap: 0.5rem;
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     padding: 0.45rem 0.65rem;
     max-width: fit-content;
@@ -88,8 +88,8 @@
 
   .summary-trigger:hover {
     color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
+    border-color: var(--border);
   }
 
   .summary-title {

@@ -67,7 +67,7 @@
   <label class="block space-y-2 text-sm">
     <span class="font-medium text-[var(--text-secondary)]">Search provider</span>
     <select
-      class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
       bind:value={searchProvider}
     >
       {#each SEARCH_PROVIDERS as provider}
@@ -79,7 +79,7 @@
   <label class="block space-y-2 text-sm">
     <span class="font-medium text-[var(--text-secondary)]">Max search results</span>
     <input
-      class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
       bind:value={searchMaxResults}
       inputmode="numeric"
     />
@@ -90,7 +90,7 @@
     <label class="block space-y-2 text-sm">
       <span class="font-medium text-[var(--text-secondary)]">{searchProviderMeta.keyPlaceholder}</span>
       <input
-        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+        class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
         bind:value={searchApiKey}
         type="password"
         placeholder={searchProviderMeta.keyPlaceholder}
@@ -102,7 +102,7 @@
     <label class="block space-y-2 text-sm">
       <span class="font-medium text-[var(--text-secondary)]">Google Custom Search Engine ID</span>
       <input
-        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+        class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
         bind:value={searchEngineId}
         placeholder="CX ID from Programmable Search Engine"
       />
@@ -115,7 +115,7 @@
         {searchProvider === 'searxng' ? 'SearXNG Instance URL' : searchProvider === 'bing' ? 'Bing API Endpoint' : 'Base URL'}
       </span>
       <input
-        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+        class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
         bind:value={searchBaseUrl}
         placeholder={searchProvider === 'searxng' ? 'https://searx.be' : 'https://api.bing.microsoft.com/v7.0/search'}
       />
@@ -126,7 +126,7 @@
     <label class="block space-y-2 text-sm">
       <span class="font-medium text-[var(--text-secondary)]">Perplexity Model</span>
       <select
-        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+        class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
         bind:value={searchModel}
       >
         <option value="sonar">Sonar</option>

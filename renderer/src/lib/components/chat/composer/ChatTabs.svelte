@@ -159,7 +159,7 @@
     {#each recentChats as chat (chat.id)}
       <div class="relative shrink-0 snap-start">
         <div
-          class={`flex items-center gap-1 rounded-full border pr-1 transition ${appStore.currentChatId === chat.id ? 'border-[var(--border)] bg-[var(--surface)] text-[var(--text)]' : 'border-transparent bg-[var(--surface-highlight)] text-[var(--text-tertiary)] hover:border-[var(--border)] hover:bg-[var(--surface)] hover:text-[var(--text)]'}`}
+          class={`flex items-center gap-1 rounded-full border pr-1 transition ${appStore.currentChatId === chat.id ? 'border-[var(--border)] bg-[var(--surface)] text-[var(--text)]' : 'border-transparent bg-[var(--surface-hover)] text-[var(--text-tertiary)] hover:border-[var(--border)] hover:bg-[var(--surface)] hover:text-[var(--text)]'}`}
         >
           <button
             type="button"
@@ -206,7 +206,7 @@
     >
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-[var(--surface-highlight)]"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-[var(--surface-hover)]"
         onclick={() => renameChat(activeChat.id, activeChat.title)}
       >
         <Pencil class="h-3.5 w-3.5 text-[var(--text-muted)]" />
@@ -214,7 +214,7 @@
       </button>
       <button
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-[var(--surface-highlight)]"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--text)] transition hover:bg-[var(--surface-hover)]"
         onclick={() => exportChat(activeChat)}
       >
         <FileDown class="h-3.5 w-3.5 text-[var(--text-muted)]" />

@@ -84,7 +84,7 @@
 <div class="modal-backdrop fixed inset-0 z-[61] flex items-center justify-center bg-overlay px-4" transition:fade={{ duration: 150}}>
  <div class="modal-surface flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <!-- Header -->
- <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-4">
+ <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
  <h3 class="flex items-center gap-2 text-base font-semibold text-[var(--text)]">
  <Download class="h-4 w-4" />
  {#if activeCount > 0}
@@ -97,7 +97,7 @@
  {/if}
  </h3>
  <button
- class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+ class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
  onclick={() => (appStore.downloadsOpen = false)}
  aria-label="Close downloads"
  >
@@ -106,11 +106,11 @@
  </div>
 
  <!-- Toolbar -->
- <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-3 text-xs text-[var(--text-tertiary)]">
+ <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3 text-xs text-[var(--text-tertiary)]">
  <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
  <div class="flex items-center gap-2">
  <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
+ class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
  onclick={() => downloadsStore.refresh()}
  >
  <RefreshCw class="h-3.5 w-3.5" />
@@ -118,7 +118,7 @@
  </button>
  {#if hasFinished}
  <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
+ class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
  onclick={() => downloadsStore.clearFinished()}
  >
  <Trash2 class="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@
  <div class="flex shrink-0 items-center gap-1">
  {#if job.status === 'running'}
  <button
- class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+ class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
  onclick={() => pause(job.id)}
  aria-label="Pause download"
  title="Pause"
@@ -227,7 +227,7 @@
  </div>
 
  <!-- Progress bar -->
- <div class="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
+ <div class="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-hover)]">
  <div
  class={`h-full rounded-full transition-all duration-300 ${progressBarColor(job.status)} ${job.status === 'running' ? 'animate-pulse' : ''}`}
  style={`width:${Math.max(0, Math.min(100, job.progress))}%`}

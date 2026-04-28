@@ -25,11 +25,11 @@
 
 <style>
   .tooltip-pill {
-    background: var(--surface);
+    background: var(--surface-overlay);
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: var(--radius-full);
-    box-shadow: var(--shadow-m);
+    box-shadow: var(--shadow-md);
     margin-left: 8px;
     pointer-events: none;
   }

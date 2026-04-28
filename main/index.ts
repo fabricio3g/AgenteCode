@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog } f
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
+import { initTts } from './tts-engine.ts';
 
 // Handle both ESM (tsx dev) and CJS (esbuild bundled) environments
 // esbuild CJS bundle provides __dirname global, ESM uses import.meta.url
@@ -56,6 +57,7 @@ function createWindow() {
       preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
+      nodeIntegrationInWorker: true,
       sandbox: false,
       webSecurity: true
     }
@@ -203,6 +205,9 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers();
   createWindow();
+
+  // Preload Kokoro TTS model in background while app finishes booting
+  initTts().catch(() => {});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

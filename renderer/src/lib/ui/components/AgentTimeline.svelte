@@ -10,7 +10,6 @@
     Brain,
     CheckCircle2,
     ChevronDown,
-    ChevronUp,
     Code2,
     Eye,
     FileSearch,
@@ -21,7 +20,7 @@
     Wrench,
     Zap
   } from 'lucide-svelte';
-  import MorphingHexagon from './MorphingHexagon.svelte';
+  import ToolCallBlock from './ToolCallBlock.svelte';
 
   interface Props {
     steps?: ChatMessage['agentSteps'];
@@ -36,7 +35,6 @@
   const errCount = $derived(steps.filter((s) => s.status === 'error').length);
   const doneCount = $derived(steps.filter((s) => s.status === 'done').length);
 
-  // Auto-open while running, collapse when done (unless user already toggled)
   $effect(() => {
     if (!userToggled) {
       open = hasRunning;
@@ -68,50 +66,77 @@
       default:          return Zap;
     }
   }
+
+  function badgeLabel(step: NonNullable<ChatMessage['agentSteps']>[number]) {
+    switch (step.status) {
+      case 'done': return 'Done';
+      case 'running': return 'Running';
+      case 'error': return 'Error';
+      default: return '';
+    }
+  }
 </script>
 
 {#if steps?.length}
   <div class="agent-block mb-4 w-full">
-    <!-- Toggle header — identical pattern to ReasoningBlock -->
-    <button class="agent-toggle flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition" onclick={toggle}>
-      <Bot class={`h-4 w-4 shrink-0 ${hasRunning ? 'animate-pulse' : ''}`} />
-      <span class="flex-1 text-sm font-medium">{label()}</span>
+    <button class="steps-trigger" onclick={toggle}>
+      <Bot class="h-4 w-4 shrink-0" />
       {#if hasRunning}
-        <MorphingHexagon size={16} />
+        <span class="steps-pulse-dot"></span>
       {/if}
-      {#if open}
-        <ChevronUp class="h-4 w-4 shrink-0 opacity-50" />
-      {:else}
-        <ChevronDown class="h-4 w-4 shrink-0 opacity-50" />
-      {/if}
+      <span class="flex-1">{label()}</span>
+      <ChevronDown class={`steps-chevron h-4 w-4 shrink-0 ${open ? 'open' : ''}`} />
     </button>
 
     {#if open}
-      <div class="agent-steps mt-1 overflow-hidden rounded-xl" transition:slide={{ duration: 200, easing: quintOut }}>
-        <div class="px-3 py-2.5">
+      <div class="agent-steps" transition:slide={{ duration: 200, easing: quintOut }}>
+        <div class="px-1 py-1.5">
           {#each steps as step, idx (step.id)}
             {@const Icon = step.status === 'running' ? Loader : stepIcon(step.type)}
             {@const isLast = idx === steps.length - 1}
-            <div class="step-row" class:last={isLast}>
-              <!-- Track -->
-              <div class="track">
-                <div class="dot-wrap" class:err={step.status === 'error'}>
-                  <Icon class={`h-3 w-3 ${step.status === 'running' ? 'animate-spin' : ''}`} />
+
+            {#if step.type === 'tool'}
+              <div class="step-row" class:last={isLast}>
+                <ToolCallBlock
+                  name={step.label}
+                  status={step.status}
+                  detail={step.detail}
+                  output={step.output}
+                />
+              </div>
+            {:else}
+              <div class="step-row" class:last={isLast}>
+                <!-- Track -->
+                <div class="track">
+                  <div class="dot-wrap" class:err={step.status === 'error'}>
+                    <Icon class={`h-3 w-3 ${step.status === 'running' ? 'animate-spin' : ''}`} />
+                  </div>
+                  {#if !isLast}
+                    <div class="connector"></div>
+                  {/if}
                 </div>
-                {#if !isLast}
-                  <div class="connector"></div>
-                {/if}
+                <!-- Text -->
+                <div class="content" class:last={isLast}>
+                  <span class="step-label" class:muted={step.status === 'done'} class:running={step.status === 'running'} class:err={step.status === 'error'} class:shimmer={step.status === 'running' && isLast}>
+                    {step.label}
+                  </span>
+                  {#if step.detail}
+                    <span class="step-detail">{step.detail}</span>
+                  {/if}
+                  {#if step.output}
+                    <details class="step-output">
+                      <summary class="step-output-toggle">Output</summary>
+                      <pre class="step-output-pre">{step.output}</pre>
+                    </details>
+                  {/if}
+                  {#if !isLast}
+                    <span class="step-badge" class:done={step.status === 'done'} class:running={step.status === 'running'} class:error={step.status === 'error'}>
+                      {badgeLabel(step)}
+                    </span>
+                  {/if}
+                </div>
               </div>
-              <!-- Text -->
-              <div class="content" class:last={isLast}>
-                <span class="step-label" class:muted={step.status === 'done'} class:running={step.status === 'running' && isLast} class:err={step.status === 'error'}>
-                  {step.label}
-                </span>
-                {#if step.detail}
-                  <span class="step-detail">{step.detail}</span>
-                {/if}
-              </div>
-            </div>
+            {/if}
           {/each}
         </div>
       </div>
@@ -120,30 +145,60 @@
 {/if}
 
 <style>
-  /* ── Outer card — same as ReasoningBlock ─────────────── */
-  .agent-toggle {
+  .steps-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+    border: none;
+    background: transparent;
     color: var(--text-secondary);
-    background: var(--surface);
-    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
   }
-  .agent-toggle:hover {
-    background: var(--surface-highlight);
+  .steps-trigger:hover {
+    color: var(--text);
+  }
+  .steps-chevron {
+    transition: transform 0.2s ease;
+  }
+  .steps-chevron.open {
+    transform: rotate(180deg);
+  }
+  .steps-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: cotPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes cotPulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.2;
+    }
   }
 
   .agent-steps {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border);
+    padding: 0.25rem 0;
   }
 
-  /* ── Step rows ───────────────────────────────────────── */
   .step-row {
     display: flex;
     align-items: stretch;
     gap: 0.625rem;
     min-height: 1.75rem;
   }
+  .step-row:last {
+    margin-bottom: 0;
+  }
 
-  /* Track column: dot + vertical line */
   .track {
     display: flex;
     flex-direction: column;
@@ -163,20 +218,19 @@
     color: var(--text-tertiary);
     flex-shrink: 0;
   }
-
   .dot-wrap.err {
     color: var(--error);
   }
 
   .connector {
-    width: 1px;
+    width: 2px;
     flex: 1;
     margin: 0.2rem 0;
     min-height: 0.375rem;
     background: var(--border);
+    border-radius: 1px;
   }
 
-  /* Content column */
   .content {
     flex: 1;
     min-width: 0;
@@ -185,8 +239,9 @@
     flex-direction: column;
     gap: 0.1rem;
     justify-content: center;
+    position: relative;
   }
-  .content.last {
+  .content:last {
     padding-bottom: 0;
   }
 
@@ -206,6 +261,14 @@
   .step-label.running {
     color: var(--text);
   }
+  .step-label.shimmer {
+    background: linear-gradient(90deg, var(--text) 40%, var(--text-muted) 60%, var(--text) 80%);
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: textShimmer 3s linear infinite;
+  }
 
   .step-detail {
     font-size: 0.6875rem;
@@ -215,4 +278,58 @@
     text-overflow: ellipsis;
   }
 
+  .step-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    width: fit-content;
+  }
+  .step-badge.done {
+    background: var(--success-bg);
+    color: var(--success);
+  }
+  .step-badge.running {
+    background: var(--info-bg);
+    color: var(--info);
+  }
+  .step-badge.error {
+    background: var(--error-bg);
+    color: var(--error);
+  }
+
+  .step-output {
+    margin-top: 0.25rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .step-output-toggle {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .step-output-toggle:hover {
+    color: var(--text);
+  }
+  .step-output-pre {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-top: 1px solid var(--border);
+    max-height: 16rem;
+    overflow: auto;
+  }
 </style>

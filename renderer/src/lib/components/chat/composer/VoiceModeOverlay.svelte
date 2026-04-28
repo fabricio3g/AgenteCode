@@ -45,22 +45,10 @@
 
 {#if appStore.voiceModeActive || isListening || !!interimTranscript}
   <div class="voice-card">
-    <!-- Liquid Gradient Orb -->
+    <!-- Pulse ring orb -->
     <div class="orb-outer">
-      {#if state === 'recording'}
-        <div class="pulse-ring"></div>
-        <div class="pulse-ring ring-2"></div>
-      {/if}
-
+      <div class="pulse-ring" class:active={state === 'recording'}></div>
       <div class="orb" class:recording={state === 'recording'} class:error={state === 'error'}>
-        <!-- Liquid gradient blobs inside orb -->
-        <div class="liquid-container">
-          <div class="blob blob-1" style="transform: scale({0.7 + avgLevel * 0.3})"></div>
-          <div class="blob blob-2" style="transform: scale({0.6 + avgLevel * 0.4})"></div>
-          <div class="blob blob-3" style="transform: scale({0.8 + avgLevel * 0.2})"></div>
-          <div class="blob blob-4"></div>
-        </div>
-
         <!-- Waveform bars when recording -->
         {#if state === 'recording'}
           <div class="waveform">
@@ -105,9 +93,9 @@
   .voice-card {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    gap: 14px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
     border-radius: var(--radius-xl);
     border: 1px solid var(--border);
     background: var(--surface);
@@ -123,22 +111,24 @@
   /* Outer ring container */
   .orb-outer {
     position: relative;
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
     flex-shrink: 0;
   }
 
-  /* Pulse rings for recording */
+  /* Single subtle pulse ring */
   .pulse-ring {
     position: absolute;
-    inset: -4px;
+    inset: -3px;
     border-radius: 50%;
-    border: 2px solid rgba(0, 0, 0, 0.08);
-    animation: pulseOut 2s ease-out infinite;
+    border: 2px solid transparent;
+    opacity: 0;
+    transition: opacity 0.2s ease;
   }
 
-  .ring-2 {
-    animation-delay: 0.7s;
+  .pulse-ring.active {
+    border-color: rgba(0, 0, 0, 0.08);
+    animation: pulseOut 2s ease-out infinite;
   }
 
   @keyframes pulseOut {
@@ -146,11 +136,11 @@
     100% { transform: scale(1.15); opacity: 0; }
   }
 
-  /* Main orb with liquid effect */
+  /* Main orb */
   .orb {
     position: relative;
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     overflow: hidden;
     background: linear-gradient(135deg, #fdfbf7 0%, #f5f0e8 100%);
@@ -165,8 +155,8 @@
   .orb.recording {
     box-shadow:
       inset 0 0 20px rgba(255, 255, 255, 0.5),
-      0 0 0 4px rgba(0, 0, 0, 0.03),
-      0 8px 32px rgba(0, 0, 0, 0.15);
+      0 0 0 3px rgba(0, 0, 0, 0.03),
+      0 6px 24px rgba(0, 0, 0, 0.12);
   }
 
   .orb.error {
@@ -176,97 +166,20 @@
       0 4px 20px rgba(220, 38, 38, 0.2);
   }
 
-  /* Liquid blobs container */
-  .liquid-container {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    overflow: hidden;
-    filter: blur(0px);
-  }
-
-  /* Gradient blobs - ChatGPT Voice style pastel aurora */
-  .blob {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(12px);
-    opacity: 0.7;
-    transition: transform 0.2s ease-out;
-  }
-
-  .blob-1 {
-    width: 60%;
-    height: 60%;
-    background: linear-gradient(135deg, rgba(253, 186, 116, 0.8) 0%, rgba(251, 146, 60, 0.6) 100%);
-    top: 10%;
-    left: 5%;
-    animation: float1 6s ease-in-out infinite;
-  }
-
-  .blob-2 {
-    width: 55%;
-    height: 55%;
-    background: linear-gradient(135deg, rgba(147, 197, 253, 0.8) 0%, rgba(96, 165, 250, 0.6) 100%);
-    bottom: 15%;
-    right: 10%;
-    animation: float2 7s ease-in-out infinite;
-  }
-
-  .blob-3 {
-    width: 50%;
-    height: 50%;
-    background: linear-gradient(135deg, rgba(167, 243, 208, 0.7) 0%, rgba(110, 231, 183, 0.5) 100%);
-    top: 30%;
-    left: 40%;
-    animation: float3 8s ease-in-out infinite;
-  }
-
-  .blob-4 {
-    width: 40%;
-    height: 40%;
-    background: linear-gradient(135deg, rgba(216, 180, 254, 0.6) 0%, rgba(192, 132, 252, 0.4) 100%);
-    bottom: 25%;
-    left: 15%;
-    animation: float4 5s ease-in-out infinite;
-  }
-
-  @keyframes float1 {
-    0%, 100% { transform: translate(0, 0) scale(0.8); }
-    25% { transform: translate(10px, -8px) scale(0.9); }
-    50% { transform: translate(5px, 5px) scale(0.85); }
-    75% { transform: translate(-5px, 3px) scale(0.9); }
-  }
-
-  @keyframes float2 {
-    0%, 100% { transform: translate(0, 0) scale(0.75); }
-    33% { transform: translate(-8px, -5px) scale(0.85); }
-    66% { transform: translate(5px, 8px) scale(0.8); }
-  }
-
-  @keyframes float3 {
-    0%, 100% { transform: translate(0, 0) scale(0.7); }
-    50% { transform: translate(8px, -3px) scale(0.8); }
-  }
-
-  @keyframes float4 {
-    0%, 100% { transform: translate(0, 0) scale(0.65); }
-    50% { transform: translate(-6px, 6px) scale(0.75); }
-  }
-
-  /* Waveform bars */
+  /* Waveform bars — thinner, tighter */
   .waveform {
     position: relative;
     z-index: 10;
     display: flex;
     align-items: center;
-    gap: 3px;
-    height: 24px;
+    gap: 2px;
+    height: 20px;
   }
 
   .wave-bar {
-    width: 3px;
+    width: 2px;
     background: rgba(0, 0, 0, 0.8);
-    border-radius: 2px;
+    border-radius: 1px;
     transition: height 0.08s ease-out, opacity 0.08s ease-out;
     min-height: 3px;
   }
@@ -279,8 +192,8 @@
   }
 
   .icon {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
 
   .spin {
@@ -296,29 +209,31 @@
   .status {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     flex: 1;
     min-width: 0;
   }
 
   .status-title {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--text);
   }
 
   .status-sub {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
   }
 
-  /* End button */
+  /* End button — rounded-full, h-9 w-9 */
   .end-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
-    padding: 6px 12px;
-    border-radius: var(--radius-m);
+    height: 2.25rem;
+    padding: 0 0.75rem;
+    border-radius: 9999px;
     border: 1px solid var(--border);
     background: transparent;
     color: var(--text-secondary);
@@ -330,8 +245,8 @@
   }
 
   .end-btn:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
+    background: var(--surface-hover);
+    border-color: var(--border-hover);
     color: var(--text);
   }
 
@@ -351,24 +266,8 @@
   :global(.dark) .orb.recording {
     box-shadow:
       inset 0 0 20px rgba(255, 255, 255, 0.05),
-      0 0 0 4px rgba(255, 255, 255, 0.04),
-      0 8px 32px rgba(0, 0, 0, 0.5);
-  }
-
-  :global(.dark) .blob-1 {
-    background: linear-gradient(135deg, rgba(253, 186, 116, 0.6) 0%, rgba(251, 146, 60, 0.4) 100%);
-  }
-
-  :global(.dark) .blob-2 {
-    background: linear-gradient(135deg, rgba(96, 165, 250, 0.6) 0%, rgba(59, 130, 246, 0.4) 100%);
-  }
-
-  :global(.dark) .blob-3 {
-    background: linear-gradient(135deg, rgba(52, 211, 153, 0.5) 0%, rgba(16, 185, 129, 0.3) 100%);
-  }
-
-  :global(.dark) .blob-4 {
-    background: linear-gradient(135deg, rgba(192, 132, 252, 0.5) 0%, rgba(168, 85, 247, 0.3) 100%);
+      0 0 0 3px rgba(255, 255, 255, 0.04),
+      0 6px 24px rgba(0, 0, 0, 0.5);
   }
 
   :global(.dark) .wave-bar {
@@ -379,7 +278,7 @@
     color: rgba(255, 255, 255, 0.85);
   }
 
-  :global(.dark) .pulse-ring {
+  :global(.dark) .pulse-ring.active {
     border-color: rgba(255, 255, 255, 0.06);
   }
 

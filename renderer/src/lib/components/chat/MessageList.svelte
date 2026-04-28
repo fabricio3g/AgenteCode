@@ -6,6 +6,7 @@
   import { ArrowDown } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import EditMessageInline from './EditMessageInline.svelte';
 
   interface Props {
     composerInset?: number;
@@ -96,7 +97,16 @@
       >
         <div class="mx-auto flex max-w-[55rem] flex-col gap-7">
           {#each messages as message (message.id)}
-            <ChatMessage {message} />
+            {#if appStore.editingMessageId === message.id}
+              <EditMessageInline
+                messageId={message.id}
+                initialContent={appStore.editingMessageContent}
+                role={message.role}
+                onCancel={() => appStore.closeEditMessage()}
+              />
+            {:else}
+              <ChatMessage {message} />
+            {/if}
           {/each}
         </div>
       </div>
@@ -112,7 +122,6 @@
           aria-label={$t('chat.jumpToLatest')}
         >
           <ArrowDown class="h-4 w-4" />
-          <span>{$t('chat.jumpToLatest')}</span>
         </button>
       {/if}
     </div>
@@ -167,21 +176,31 @@
     z-index: 12;
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    border-radius: var(--radius-m);
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 9999px;
     border: 1px solid var(--border);
-    background: #FFFFFF;
+    background: var(--surface);
     color: var(--text-secondary);
-    padding: 0.4rem 0.75rem;
-    font-size: 11px;
-    font-weight: 600;
-    box-shadow: var(--shadow-m);
-    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+    box-shadow: var(--shadow-sm);
+    transition: transform 150ms ease-out, opacity 150ms ease-out, background 0.15s ease, color 0.15s ease;
+    animation: slideUpFadeIn 150ms ease-out;
   }
 
   .jump-latest-btn:hover {
-    background: #FFFFFF;
+    background: var(--surface-hover);
     color: var(--text);
-    transform: translateX(-50%) translateY(-1px);
+  }
+
+  @keyframes slideUpFadeIn {
+    from {
+      transform: translateX(-50%) translateY(1rem) scale(0.95);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(-50%) translateY(0) scale(1);
+      opacity: 1;
+    }
   }
 </style>

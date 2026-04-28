@@ -2,13 +2,15 @@
 
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Copy, Pencil, RefreshCcw, Square, Trash2, Volume2, Wrench } from 'lucide-svelte';
+  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, Pencil, RefreshCcw, Trash2, Wrench, Volume2, X } from 'lucide-svelte';
+  import { fly } from 'svelte/transition';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
   import { generatePptx } from '$lib/services/slides';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
+  import TtsAudioPlayer from './TtsAudioPlayer.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import AssistantMessageBody from '$lib/ui/components/AssistantMessageBody.svelte';
   import { buildUIActionMessage } from '$lib/ui';
@@ -22,6 +24,8 @@
   let { message }: Props = $props();
 
   let hovering = $state(false);
+  let copyFeedback = $state<string | null>(null);
+  let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   const activeVersionIndex = $derived(typeof message.activeVersion === 'number' ? Math.max(0, Math.min(message.activeVersion, (message.versions?.length || 1) - 1)) : 0);
   const activeVersion = $derived(message.versions?.[activeVersionIndex] || null);
@@ -33,9 +37,20 @@
     const task = deepResearchStore.activeTask;
     return !!task && task.messageId === message.id;
   });
-  // For copy / TTS — strip chart JSON blobs
   const cleanContent = $derived(stripChartBlocks(displayContent));
   const userHtml = $derived(renderMarkdown(message.content || ''));
+
+  // TTS state
+  const isTtsGenerating = $derived(
+    ttsStore.isGenerating && ttsStore.currentMessageId === message.id
+  );
+  const isTtsPlaying = $derived(
+    ttsStore.playing && ttsStore.currentMessageId === message.id
+  );
+  const hasTtsAudio = $derived(
+    ttsStore.hasStoredAudio(message.id) || !!message.ttsAudio
+  );
+  const hasActiveTtsPlayer = $derived(isTtsGenerating || isTtsPlaying || hasTtsAudio);
 
   function inferSearchMeta(entry: ChatMessage): SearchMeta | null {
     if (!entry.sources?.length || entry.searchMode === 'chat') return null;
@@ -54,15 +69,12 @@
 
   async function copyContent() {
     await navigator.clipboard.writeText(cleanContent || message.content || '');
-  }
-
-  function speakContent() {
-    if (ttsStore.isSpeaking(message.id)) {
-      ttsStore.stop();
-      return;
-    }
-    if (!cleanContent) return;
-    ttsStore.speak(message.id, cleanContent, appStore.config);
+    if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+    copyFeedback = 'copied';
+    copyFeedbackTimer = setTimeout(() => {
+      copyFeedback = null;
+      copyFeedbackTimer = null;
+    }, 1800);
   }
 
   async function downloadSlides() {
@@ -98,9 +110,44 @@
     appStore.composer = buildUIActionMessage(event);
     await appStore.sendCurrentMessage();
   }
+
+  function handleTtsAction() {
+    if (isTtsGenerating) {
+      // Stop generation
+      ttsStore.stop();
+      return;
+    }
+    if (isTtsPlaying) {
+      // Stop playback
+      ttsStore.stop();
+      return;
+    }
+    // Always (re)generate audio — click again to regenerate
+    const text = message.content || '';
+    if (!text.trim()) return;
+    ttsStore.speak(message.id, text, appStore.config);
+  }
+
+  $effect(() => {
+    const id = message.id;
+    const handler = (msgId: string, dur: number) => {
+      if (msgId === id && !message.ttsAudio) {
+        message.ttsAudio = {
+          duration: dur,
+          voice: appStore.config.tts?.voice || 'af_heart',
+          generatedAt: Date.now()
+        };
+        appStore.persist();
+      }
+    };
+    ttsStore.onAudioComplete = handler;
+    return () => {
+      if (ttsStore.onAudioComplete === handler) ttsStore.onAudioComplete = null;
+    };
+  });
 </script>
 
-<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
+<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} transition:fly={{ y: 12, duration: 350, opacity: 0 }} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
   {#if message.role === 'user'}
     <div class="max-w-[min(46rem,84%)] space-y-3">
       <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7">
@@ -110,7 +157,6 @@
         <div class="flex flex-wrap justify-end gap-2 mb-1">
           {#each message.attachments as attachment (attachment.id)}
             {#if attachment.kind === 'image' && (attachment.preview || attachment.base64)}
-              <!-- Image as standalone thumbnail -->
               <img
                 src={attachment.base64 || attachment.preview}
                 alt={attachment.name}
@@ -118,7 +164,6 @@
                 title={attachment.name}
               />
             {:else}
-              <!-- Document chip -->
               <div class="chateaui-card inline-flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)]">
                 <span class="truncate max-w-[12rem] font-medium">{attachment.name}</span>
                 <span class="text-[11px] text-[var(--text-muted)]">{attachment.status === 'error' ? 'Failed' : 'Indexed'}</span>
@@ -138,15 +183,19 @@
           </div>
         </div>
       {/if}
-      <div class={`flex justify-end gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy message">
-            <Copy class="h-3.5 w-3.5" />
+      <div class={`message-action-bar justify-end ${hovering ? 'visible' : ''}`}>
+          <button class="msg-action-btn" onclick={copyContent} aria-label="Copy message" title="Copy">
+            {#if copyFeedback === 'copied'}
+              <Check class="h-3.5 w-3.5 action-icon copied" />
+            {:else}
+              <Copy class="h-3.5 w-3.5 action-icon" />
+            {/if}
           </button>
-        <button class="chateaui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message">
-          <Pencil class="h-3.5 w-3.5" />
+        <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message" title="Edit">
+          <Pencil class="h-3.5 w-3.5 action-icon" />
         </button>
-        <button class="chateaui-icon-button rounded-lg p-1.5" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message">
-          <Trash2 class="h-3.5 w-3.5" />
+        <button class="msg-action-btn danger" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message" title="Delete">
+          <Trash2 class="h-3.5 w-3.5 action-icon" />
         </button>
       </div>
     </div>
@@ -165,62 +214,62 @@
         onUIAction={handleUIAction}
       />
 
-      {#if message.status !== 'streaming' && (displayMetadata || message.model || toolCallingState())}
-        <!-- Model name shown subtly below content -->
-        <div class="mt-2 text-[12px] text-[var(--text-muted)]">
-          {displayMetadata?.modelName || message.model || ''}
-          {#if toolCallingState()}
-            <span class="ml-1 inline-flex items-center gap-0.5"><Wrench class="inline h-3 w-3" /> Tools</span>
-          {/if}
-        </div>
+      <!-- Model name + token usage (always visible) -->
+      <div class="mt-1 flex items-center gap-2 flex-wrap">
+        {#if message.status !== 'streaming' && (displayMetadata?.modelName || message.model)}
+          <span class="text-xs text-[var(--text-muted)]">{displayMetadata?.modelName || message.model}</span>
+        {/if}
+        {#if displayMetadata?.tokens}
+          <span class="text-xs text-[var(--text-muted)]">
+            {displayMetadata.tokens} tok
+            {#if displayMetadata.timing}· {displayMetadata.timing.toFixed(1)}s{/if}
+            {#if displayMetadata.tokensPerSecond}· {displayMetadata.tokensPerSecond.toFixed(0)}/s{/if}
+          </span>
+        {/if}
+      </div>
+
+      <!-- TTS player -->
+      {#if hasActiveTtsPlayer && message.role === 'assistant' && message.status !== 'streaming' && appStore.config.tts?.enable_voice_output}
+        <div class="mt-1"><TtsAudioPlayer {message} /></div>
       {/if}
 
-      {#if (message.versions?.length || 0) > 1}
-        <div class="chateaui-pill mt-3 inline-flex items-center gap-2 px-2 py-1 text-xs text-[var(--text-tertiary)]">
-          <button class="chateaui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
-            <ChevronLeft class="h-3.5 w-3.5" />
-          </button>
-          <span>{activeVersionIndex + 1}/{message.versions?.length || 1}</span>
-          <button class="chateaui-icon-button rounded-full p-1" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
-            <ChevronRight class="h-3.5 w-3.5" />
-          </button>
-        </div>
-      {/if}
-
-      <div class={`mt-2 flex items-center gap-0.5 text-fg-muted transition-opacity duration-200 ${hovering ? 'visible opacity-100' : 'invisible opacity-0'}`}>
-          {#if displayMetadata?.tokens}
-            <span class="chateaui-pill mr-1 inline-flex items-center gap-1 px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
-              {displayMetadata.tokens} tok
-              {#if displayMetadata.timing}· {displayMetadata.timing.toFixed(1)}s{/if}
-              {#if displayMetadata.tokensPerSecond}· {displayMetadata.tokensPerSecond.toFixed(0)}/s{/if}
-            </span>
+      <!-- Action buttons + version nav (visible on hover) -->
+      <div class="message-action-bar" class:visible={hovering}>
+          {#if (message.versions?.length || 0) > 1}
+            <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
+              <ChevronLeft class="h-3.5 w-3.5 action-icon" />
+            </button>
+            <span class="text-xs text-[var(--text-tertiary)]">{activeVersionIndex + 1}/{message.versions?.length || 1}</span>
+            <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
+              <ChevronRight class="h-3.5 w-3.5 action-icon" />
+            </button>
           {/if}
-          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={copyContent} aria-label="Copy response" title="Copy">
-            <Copy class="h-3.5 w-3.5" />
-          </button>
-          <button class="chateaui-icon-button rounded-lg p-1.5" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
-            <Pencil class="h-3.5 w-3.5" />
-          </button>
-          <button
-            class="chateaui-icon-button rounded-lg p-1.5"
-            style={ttsStore.isSpeaking(message.id) ? '--chateaui-icon-button-color: var(--primary); --chateaui-icon-button-bg: var(--surface-highlight); --chateaui-icon-button-border: var(--border-light);' : ''}
-            onclick={speakContent}
-            aria-label={ttsStore.isSpeaking(message.id) ? 'Stop reading' : 'Read aloud'}
-            title={ttsStore.isSpeaking(message.id) ? 'Stop' : 'Read aloud'}
-          >
-            {#if ttsStore.isSpeaking(message.id)}
-              <Square class="h-3.5 w-3.5" />
+          <button class="msg-action-btn" onclick={copyContent} aria-label="Copy response" title="Copy">
+            {#if copyFeedback === 'copied'}
+              <Check class="h-3.5 w-3.5 action-icon copied" />
             {:else}
-              <Volume2 class="h-3.5 w-3.5" />
+              <Copy class="h-3.5 w-3.5 action-icon" />
             {/if}
           </button>
-          <button class="chateaui-icon-button rounded-lg p-1.5 disabled:opacity-40" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
-            <RefreshCcw class="h-3.5 w-3.5" />
+          {#if message.role === 'assistant' && message.status !== 'streaming' && appStore.config.tts?.enable_voice_output}
+            <button class="msg-action-btn" onclick={handleTtsAction} aria-label="Read aloud" title={isTtsGenerating ? 'Stop generation' : isTtsPlaying ? 'Stop playback' : 'Listen'}>
+              {#if isTtsGenerating || isTtsPlaying}
+                <X class="h-3.5 w-3.5 action-icon" />
+              {:else}
+                <Volume2 class="h-3.5 w-3.5 action-icon" />
+              {/if}
+            </button>
+          {/if}
+          <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
+            <Pencil class="h-3.5 w-3.5 action-icon" />
           </button>
-          <button class="chateaui-icon-button rounded-lg p-1.5" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
-            <Trash2 class="h-3.5 w-3.5" />
+          <button class="msg-action-btn" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
+            <RefreshCcw class="h-3.5 w-3.5 action-icon" />
           </button>
-      </div>
+          <button class="msg-action-btn danger" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
+            <Trash2 class="h-3.5 w-3.5 action-icon" />
+          </button>
+        </div>
       </div>
     </div>
   {/if}

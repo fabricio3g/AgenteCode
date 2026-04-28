@@ -32,38 +32,20 @@ export const RUNTIME_INSTALL_VARIANTS = [
 ];
 
 export const TTS_MODEL_CATALOG = {
-  kitten_nano_v02: {
-    label: 'Kitten Nano EN v0.2',
-    repo: 'csukuangfj/kitten-nano-en-v0_2-fp16',
-    dir: 'kitten-nano-en-v0_2-fp16',
-    engine: 'kitten'
-  },
-  kitten_nano_v01: {
-    label: 'Kitten Nano EN v0.1',
-    repo: 'csukuangfj/kitten-nano-en-v0_1-fp16',
-    dir: 'kitten-nano-en-v0_1-fp16',
-    engine: 'kitten'
-  },
-  kitten_mini_v01: {
-    label: 'Kitten Mini EN v0.1',
-    repo: 'csukuangfj/kitten-mini-en-v0_1-fp16',
-    dir: 'kitten-mini-en-v0_1-fp16',
-    engine: 'kitten'
+  kokoro_v11: {
+    label: 'Kokoro v1.1 Multi-language (High Quality)',
+    repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1',
+    dir: 'kokoro-multi-lang-v1_1',
+    engine: 'kokoro',
+    lang: 'multi',
+    voice_map: {}
   },
   kokoro_82m_v1: {
     label: 'Kokoro Multi-lang v1.0',
     repo: 'csukuangfj/kokoro-int8-multi-lang-v1_0',
     dir: 'kokoro-multi-lang-v1_0',
     engine: 'kokoro',
-    lang: 'en-us',
-    voice_map: {}
-  },
-  kokoro_v11: {
-    label: 'Kokoro v1.1 Chinese + English',
-    repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1',
-    dir: 'kokoro-multi-lang-v1_1',
-    engine: 'kokoro',
-    lang: 'en-us',
+    lang: 'multi',
     voice_map: {}
   }
 };

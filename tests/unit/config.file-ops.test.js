@@ -184,7 +184,7 @@ describe('readJsonSafe', () => {
 describe('writeJsonSafe + readJsonSafe integration', () => {
   it('round-trips config object', () => {
     const config = {
-      tts: { engine: 'kitten', num_threads: 2 },
+      tts: { engine: 'kokoro', num_threads: 2 },
       llm: { provider: 'openai' },
       rag: { enabled: true }
     };

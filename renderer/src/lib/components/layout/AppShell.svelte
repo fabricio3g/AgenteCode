@@ -5,7 +5,6 @@
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import Navbar from '$lib/components/layout/Navbar.svelte';
-  import EditMessageModal from '$lib/components/chat/EditMessageModal.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
   import ChatSandbox from '$lib/components/agent/ChatSandbox.svelte';
@@ -23,7 +22,7 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Search, Boxes, Cpu, Settings2 } from 'lucide-svelte';
+  import { Plus, Search, Boxes, Cpu, Settings2, PanelLeftOpen } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -133,53 +132,62 @@
         <Sidebar />
       {:else}
         <!-- Collapsed sidebar icon strip -->
-        <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-[var(--border-light)] bg-[var(--sidebar-bg,var(--surface))] py-3">
+        <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--surface))] py-3">
+          <Tooltip label="Show sidebar">
+            <button
+              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
+              onclick={() => (appStore.sidebarOpen = true)}
+              aria-label="Show sidebar"
+            >
+              <PanelLeftOpen class="h-4 w-4" />
+            </button>
+          </Tooltip>
           <Tooltip label="New chat">
             <button
-              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
               onclick={() => appStore.createChat()}
               aria-label="New chat"
             >
-              <Plus class="h-5 w-5" />
+              <Plus class="h-4 w-4" />
             </button>
           </Tooltip>
           <Tooltip label="Search conversations">
             <button
-              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
               onclick={() => (appStore.chatSearchOpen = true)}
               aria-label="Search chats"
             >
-              <Search class="h-5 w-5" />
+              <Search class="h-4 w-4" />
             </button>
           </Tooltip>
           <Tooltip label="Model Hub">
             <button
-              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
               onclick={() => { appStore.modelManagerOpen = true; appStore.modelManagerOpenSection = 'models'; }}
               aria-label="Model Hub"
             >
-              <Boxes class="h-5 w-5" />
+              <Boxes class="h-4 w-4" />
             </button>
           </Tooltip>
           {#if isTauri()}
             <Tooltip label="Runtime">
               <button
-                class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+                class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
                 onclick={() => (appStore.runtimeManagerOpen = true)}
                 aria-label="Runtime"
               >
-                <Cpu class="h-5 w-5" />
+                <Cpu class="h-4 w-4" />
               </button>
             </Tooltip>
           {/if}
           <div class="flex-1"></div>
           <Tooltip label="Settings">
             <button
-              class="collapsed-btn flex h-10 w-10 items-center justify-center rounded-full transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
               onclick={() => (appStore.settingsOpen = true)}
               aria-label="Settings"
             >
-              <Settings2 class="h-5 w-5" />
+              <Settings2 class="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -199,7 +207,7 @@
           {#if sandboxVisible}
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <div
-              class="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-[var(--surface-highlight)] transition hover:bg-[var(--primary)] active:bg-[var(--primary)]"
+              class="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-[var(--surface-hover)] transition hover:bg-[var(--primary)] active:bg-[var(--primary)]"
               onmousedown={startResize}
               role="separator"
               aria-orientation="vertical"
@@ -222,9 +230,6 @@
     {/if}
     {#if appStore.settingsOpen}
       <SettingsModal />
-    {/if}
-    {#if appStore.editingMessageId}
-      <EditMessageModal />
     {/if}
     {#if appStore.downloadsOpen}
       <DownloadsModal />

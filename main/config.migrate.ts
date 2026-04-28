@@ -26,8 +26,11 @@ const URL_FIXES: Record<string, string> = {
  * Legacy TTS model variant mappings to current variants.
  */
 const LEGACY_TTS_VARIANTS: Record<string, string> = {
-  kitten_en_nano_08: 'kitten_nano_v02',
-  kitten_nano_08: 'kitten_nano_v01',
+  kitten_en_nano_08: 'kokoro_v11',
+  kitten_nano_08: 'kokoro_v11',
+  kitten_nano_v02: 'kokoro_v11',
+  kitten_nano_v01: 'kokoro_v11',
+  kitten_mini_v01: 'kokoro_v11',
   kokoro_multi_v1: 'kokoro_82m_v1',
 };
 
@@ -35,9 +38,6 @@ const LEGACY_TTS_VARIANTS: Record<string, string> = {
  * TTS model directory mappings.
  */
 const TTS_DIR_MAP: Record<string, string> = {
-  kitten_nano_v02: 'kitten-nano-en-v0_2-fp16',
-  kitten_nano_v01: 'kitten-nano-en-v0_1-fp16',
-  kitten_mini_v01: 'kitten-mini-en-v0_1-fp16',
   kokoro_82m_v1: 'kokoro-multi-lang-v1_0',
   kokoro_v11: 'kokoro-multi-lang-v1_1',
 };
@@ -46,9 +46,6 @@ const TTS_DIR_MAP: Record<string, string> = {
  * TTS model filename mappings.
  */
 const TTS_MODEL_MAP: Record<string, string> = {
-  kitten_nano_v02: 'model.fp16.onnx',
-  kitten_nano_v01: 'model.fp16.onnx',
-  kitten_mini_v01: 'model.fp16.onnx',
   kokoro_82m_v1: 'model.int8.onnx',
   kokoro_v11: 'model.int8.onnx',
 };
@@ -131,6 +128,12 @@ export function migrateProvider(provider: ProviderConfig): ProviderMigrationResu
  */
 export function migrateTTS(tts: TTSConfig, modelsRoot: string): boolean {
   let dirty = false;
+
+  // Migrate legacy 'kitten' engine to 'kokoro'
+  if (tts.engine === 'kitten') {
+    tts.engine = 'kokoro';
+    dirty = true;
+  }
 
   // Migrate legacy model variant names
   if (tts.model_variant && LEGACY_TTS_VARIANTS[tts.model_variant]) {

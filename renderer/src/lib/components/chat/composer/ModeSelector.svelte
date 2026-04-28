@@ -1,28 +1,22 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Plus, MessageSquare, Bot, Presentation, Check, ChevronDown } from 'lucide-svelte';
-  import { fly } from 'svelte/transition';
+  import { Plus, ChevronDown } from 'lucide-svelte';
+  import { flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { t } from 'svelte-i18n';
 
   const composerMode = $derived(appStore.composerMode);
 
-  interface ModeOption {
-    id: 'chat' | 'agent' | 'slides';
-    icon: typeof MessageSquare;
-  }
-
-  const modeOptionsIds: ModeOption['id'][] = ['chat', 'agent', 'slides'];
+  const modeOptionsIds: Array<'chat' | 'agent' | 'slides'> = ['chat', 'agent', 'slides'];
 
   let triggerEl: HTMLButtonElement | undefined = $state();
   let dropdownEl: HTMLDivElement | undefined = $state();
   let dropdownOpen = $state(false);
-  let dropdownPos = $state({ bottom: 0, left: 0 });
 
   const currentModeId = $derived(modeOptionsIds.find(id => id === composerMode) || modeOptionsIds[0]);
 
-  function getModeLabel(id: ModeOption['id']): string {
+  function getModeLabel(id: 'chat' | 'agent' | 'slides'): string {
     const labels = {
       chat: $t('composer.modeChat'),
       agent: $t('composer.modeAgent'),
@@ -31,31 +25,8 @@
     return labels[id] || id;
   }
 
-  function getModeIcon(id: ModeOption['id']) {
-    const icons = {
-      chat: MessageSquare,
-      agent: Bot,
-      slides: Presentation
-    };
-    return icons[id] || MessageSquare;
-  }
-
-  function updateDropdownPos() {
-    if (!triggerEl) return;
-    const rect = triggerEl.getBoundingClientRect();
-    dropdownPos = {
-      bottom: window.innerHeight - rect.top + 4,
-      left: rect.left
-    };
-  }
-
   function toggleDropdown() {
-    if (dropdownOpen) {
-      dropdownOpen = false;
-      return;
-    }
-    updateDropdownPos();
-    dropdownOpen = true;
+    dropdownOpen = !dropdownOpen;
   }
 
   function selectMode(mode: 'chat' | 'agent' | 'slides') {
@@ -64,19 +35,19 @@
   }
 
   $effect(() => {
-    if (!dropdownOpen) return;
+    if (!dropdownOpen || !triggerEl || !dropdownEl) return;
+    const trigger = triggerEl;
+    const dropdown = dropdownEl;
 
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
-      if (!triggerEl?.contains(target) && !dropdownEl?.contains(target)) {
+      if (!trigger.contains(target) && !dropdown.contains(target)) {
         dropdownOpen = false;
       }
     }
 
     function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        dropdownOpen = false;
-      }
+      if (event.key === 'Escape') dropdownOpen = false;
     }
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -89,83 +60,36 @@
   });
 </script>
 
-<button
-  bind:this={triggerEl}
-  class="selector-trigger flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition"
-  onclick={toggleDropdown}
-  aria-haspopup="listbox"
-  aria-expanded={dropdownOpen}
->
-  <Plus class="h-4 w-4" />
-  <span>{getModeLabel(currentModeId)}</span>
-  <ChevronDown class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
-</button>
-
-{#if dropdownOpen}
-  <div
-    bind:this={dropdownEl}
-    class="selector-dropdown fixed overflow-hidden"
-    style="bottom:{dropdownPos.bottom}px; left:{dropdownPos.left}px; z-index:200; min-width: 140px;"
-    transition:fly={{ y: 4, duration: 120 }}
-    role="listbox"
-    aria-label={$t('composer.selectMode')}
+<div class="relative inline-flex">
+  <button
+    bind:this={triggerEl}
+    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)]' : 'rounded-lg border border-[var(--border)]'}"
+    onclick={toggleDropdown}
+    aria-haspopup="listbox"
+    aria-expanded={dropdownOpen}
   >
-    <div class="p-1">
+    <Plus class="h-3.5 w-3.5" />
+    {getModeLabel(currentModeId)}
+    <ChevronDown class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
+  </button>
+
+  {#if dropdownOpen}
+    <div
+      bind:this={dropdownEl}
+      class="absolute bottom-full z-[200] min-w-[130px] origin-bottom overflow-hidden rounded-t-lg border border-[var(--border)] bg-[var(--surface)] py-0.5"
+      transition:flyAndScale={{ y: -4, start: 0.95, duration: 150 }}
+      role="listbox"
+    >
       {#each modeOptionsIds as optionId (optionId)}
-        {@const Icon = getModeIcon(optionId)}
         <button
-          class="selector-option flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition"
-          class:selected={composerMode === optionId}
+          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {composerMode === optionId ? 'text-[var(--text)] font-medium' : 'text-[var(--text-secondary)]'}"
           onclick={() => selectMode(optionId)}
           role="option"
           aria-selected={composerMode === optionId}
         >
-          <Icon class="h-4 w-4" />
-          <span class="flex-1">{getModeLabel(optionId)}</span>
-          {#if composerMode === optionId}
-            <Check class="h-3.5 w-3.5 text-[var(--primary)]" />
-          {/if}
+          {getModeLabel(optionId)}
         </button>
       {/each}
     </div>
-  </div>
-{/if}
-
-<style>
-  .selector-trigger {
-    color: var(--text-secondary);
-    background: transparent;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .selector-trigger:hover {
-    background: var(--surface-highlight);
-    color: var(--text);
-    border-color: var(--border-light);
-  }
-
-  .selector-dropdown {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .selector-option {
-    color: var(--text);
-    background: transparent;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .selector-option:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
-  }
-
-  .selector-option.selected {
-    background: var(--surface-secondary);
-    border-color: var(--border);
-  }
-</style>
+  {/if}
+</div>

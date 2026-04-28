@@ -78,20 +78,20 @@
   .cancel-btn {
     background: var(--surface);
     color: var(--text-secondary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   }
   .cancel-btn:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
     border-color: var(--fg-tertiary);
   }
   .confirm-btn {
     background: var(--primary);
     color: var(--primary-fg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   }
   .confirm-btn:hover {

@@ -15,7 +15,7 @@
   }
 </script>
 
-<div class={`flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] p-1 ${compact ? 'gap-1' : 'gap-1.5'}`}>
+<div class={`flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] p-1 ${compact ? 'gap-1' : 'gap-1.5'}`}>
   <button
     class={`flex items-center rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${appStore.workspaceMode === 'legacy' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
     onclick={() => select('legacy')}

@@ -25,6 +25,8 @@ export interface MessageVersion {
     timing?: number;
     tokensPerSecond?: number;
     error?: boolean;
+    errorMessage?: string;
+    warning?: string;
   };
 }
 
@@ -81,6 +83,7 @@ export interface AgentStep {
   label: string;
   status: 'pending' | 'running' | 'awaiting_approval' | 'done' | 'error';
   detail?: string;
+  output?: string;
 }
 
 export interface AgentArtifact {
@@ -93,6 +96,12 @@ export interface CreatedFile {
   path: string;
   name: string;
   fullPath?: string;
+}
+
+export interface TtsAudioMeta {
+  duration: number;
+  voice: string;
+  generatedAt: number;
 }
 
 export interface ChatMessage {
@@ -119,6 +128,7 @@ export interface ChatMessage {
   artifact?: AgentArtifact | null;
   workContext?: WorkContextMeta | null;
   filesCreated?: CreatedFile[];
+  ttsAudio?: TtsAudioMeta | null;
 }
 
 export interface ChatFolder {
@@ -245,7 +255,8 @@ export interface AppConfig {
     auto_play_voice?: boolean;
     voice?: string;
     speed?: number;
-    engine?: 'kitten' | 'kokoro' | 'browser';
+    volume?: number;
+    engine?: 'kokoro' | 'wasm' | 'browser';
     model_path?: string;
     voices_path?: string;
     tokens_path?: string;

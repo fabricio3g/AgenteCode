@@ -104,7 +104,7 @@
       <div class="flex-1 overflow-y-auto p-1.5 space-y-px">
         {#each files as [path]}
           <button
-            class={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${selectedPath === path ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}`}
+            class={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition ${selectedPath === path ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'}`}
             onclick={() => (selectedPath = path, activePane = 'code')}
           >
             <span class="text-[13px] leading-none w-4 text-center shrink-0">{getFileIcon(path)}</span>
@@ -119,7 +119,7 @@
       <!-- Header bar -->
       <div class="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
         <!-- Pane tabs -->
-        <div class="flex items-center gap-1 rounded-lg bg-[var(--surface-highlight)] p-1">
+        <div class="flex items-center gap-1 rounded-lg bg-[var(--surface-hover)] p-1">
           <button
             class={`rounded-md px-3 py-1 text-[12px] font-medium transition ${activePane === 'code' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
             onclick={() => (activePane = 'code')}
@@ -139,23 +139,23 @@
         <div class="ml-auto flex items-center gap-1">
           {#if isHtml}
             <button
-              class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+              class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
               onclick={openInWindow}
               title="Open in new window"
             ><ExternalLink class="h-3.5 w-3.5" /></button>
           {/if}
           <button
-            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
             onclick={copyContent}
             title="Copy file contents"
                       >{#if copied}<Check class="h-3.5 w-3.5 text-success" />{:else}<Copy class="h-3.5 w-3.5" />{/if}</button>
           <button
-            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
             onclick={() => (fullscreen = !fullscreen)}
             title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           >{#if fullscreen}<Minimize2 class="h-3.5 w-3.5" />{:else}<Maximize2 class="h-3.5 w-3.5" />{/if}</button>
           <button
-            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+            class="rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
             onclick={() => (appStore.agentWorkspaceOpen = false)}
             aria-label="Close artifact workspace"
           ><X class="h-4 w-4" /></button>

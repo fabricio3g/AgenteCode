@@ -30,7 +30,8 @@
   let searchApiUrl = $state(appStore.config.search?.providers?.perplexity?.api_url || 'https://api.perplexity.ai');
   let searchEndpoint = $state(appStore.config.search?.providers?.bing?.endpoint || 'https://api.bing.microsoft.com/v7.0/search');
 
-  let saving = $state(false);
+  let savingGeneral = $state(false);
+  let savingSearch = $state(false);
 
   function getStoredSearchApiKey(provider: string): string {
     const providers = appStore.config.search?.providers || {};
@@ -79,13 +80,19 @@
     else localStorage.removeItem('chatealm_hf_token');
   }
 
-  async function save() {
-    saving = true;
-
+  async function saveGeneralSettings() {
+    savingGeneral = true;
     await appStore.updateUiSettings({
       show_assistant_text: showAssistantText,
       enable_thinking: enableThinking
     });
+    saveHfToken();
+    savingGeneral = false;
+    toastStore.success('Settings saved');
+  }
+
+  async function saveSearchSettings() {
+    savingSearch = true;
     await appStore.updateSearchSettings({
       provider: searchProvider,
       max_results: searchMaxResults ? Number(searchMaxResults) : undefined,
@@ -125,69 +132,94 @@
           : {})
       }
     });
-    saveHfToken();
+    savingSearch = false;
+    toastStore.success('Search settings saved');
+  }
 
-    saving = false;
+  function close() {
     appStore.settingsOpen = false;
   }
 </script>
 
-<div class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150 }}>
-  <div class="modal-surface flex h-[min(680px,calc(100vh-3rem))] w-full max-w-4xl overflow-hidden" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}>
-    <!-- Sidebar -->
-    <div class="modal-sidebar flex w-60 flex-col">
-      <div class="px-5 py-5">
-        <h2 class="sidebar-title text-sm font-semibold">{$t('settings.title')}</h2>
+<svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
+
+<div
+  role="presentation"
+  class="modal-backdrop fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-overlay"
+  transition:fade={{ duration: 200 }}
+  onclick={(e) => { if (e.target === e.currentTarget) close(); }}
+>
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+    tabindex="-1"
+    class="modal-surface relative mx-4 flex max-h-[calc(100vh-4rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
+    transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
+  >
+    <!-- Top bar -->
+    <div class="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-2.5">
+      <div class="chateaui-segmented">
+        {#each [
+          { id: 'General', label: 'General', icon: Settings },
+          { id: 'Search', label: 'Search', icon: Search },
+          { id: 'Hardware', label: 'Hardware', icon: MonitorCheck },
+          { id: 'Runtime', label: 'Runtime', icon: Cpu },
+        ] as tab}
+          <button
+            type="button"
+            class="chateaui-segment inline-flex items-center gap-1.5 {activeTab === tab.id ? 'is-active' : ''}"
+            onclick={() => {
+              activeTab = tab.id as Tab;
+              if (tab.id === 'Hardware') void hardwareStore.refresh();
+            }}
+          >
+            <tab.icon class="h-3.5 w-3.5" />
+            <span>{tab.label}</span>
+          </button>
+        {/each}
       </div>
-      <nav class="nav-list flex-1 space-y-1 overflow-y-auto px-3">
-        <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'General' ? 'is-active' : ''}`} onclick={() => activeTab = 'General'}>
-          <Settings class="h-4 w-4" />
-          {$t('settings.general')}
-        </button>
-        <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Search' ? 'is-active' : ''}`} onclick={() => activeTab = 'Search'}>
-          <Search class="h-4 w-4" />
-          {$t('settings.search')}
-        </button>
-        <div class="nav-divider my-2"></div>
-        <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Runtime' ? 'is-active' : ''}`} onclick={() => activeTab = 'Runtime'}>
-          <Cpu class="h-4 w-4" />
-          {$t('settings.runtime')}
-        </button>
-        <button class={`nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${activeTab === 'Hardware' ? 'is-active' : ''}`} onclick={() => { activeTab = 'Hardware'; void hardwareStore.refresh(); }}>
-          <MonitorCheck class="h-4 w-4" />
-          {$t('settings.hardware')}
-        </button>
-        <div class="nav-divider my-2"></div>
+
+      <div class="flex items-center gap-0.5">
         <button
-          class="nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition"
-          onclick={() => { appStore.settingsOpen = false; appStore.onboardingOpen = true; }}
+          type="button"
+          class="chateaui-icon-button h-7 w-7 p-0"
+          onclick={() => { close(); appStore.onboardingOpen = true; }}
+          title="Re-run Setup"
         >
-          <Sparkles class="h-4 w-4" />
-          {$t('settings.rerunSetup')}
+          <Sparkles class="h-3.5 w-3.5" />
         </button>
-      </nav>
+        <button type="button" class="chateaui-icon-button h-7 w-7 p-0" onclick={close} aria-label="Close">
+          <X class="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
 
-    <!-- Main content -->
-    <div class="modal-main flex min-w-0 flex-1 flex-col">
-      <div class="modal-header flex items-center justify-between px-6 py-4">
-        <h2 class="modal-heading text-lg font-semibold">{activeTab}</h2>
-        <button class="close-btn flex h-9 w-9 items-center justify-center rounded-xl" aria-label={$t('settings.close')} onclick={() => (appStore.settingsOpen = false)}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
-
-      <div class="modal-body flex-1 overflow-y-auto p-6">
-        {#if activeTab === 'General'}
+    <!-- Content -->
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {#if activeTab === 'General'}
+        <div class="flex-1 overflow-y-auto p-6">
           <GeneralSettings
             bind:showAssistantText
             bind:enableThinking
             bind:hfToken
             onsaveHfToken={saveHfToken}
           />
-        {/if}
+          <div class="mt-6 flex items-center justify-end border-t border-[var(--border)] pt-4">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+              onclick={saveGeneralSettings}
+              disabled={savingGeneral}
+            >
+              {savingGeneral ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      {/if}
 
-        {#if activeTab === 'Search'}
+      {#if activeTab === 'Search'}
+        <div class="flex-1 overflow-y-auto p-6">
           <SearchSettings
             bind:searchProvider
             bind:searchMaxResults
@@ -196,172 +228,43 @@
             bind:searchBaseUrl
             bind:searchModel
           />
-        {/if}
-
-        {#if activeTab === 'Hardware'}
-          <VoiceSettings />
-        {/if}
-
-
-        {#if activeTab === 'Runtime'}
-          <div class="space-y-4">
-            <div class="info-card rounded-xl p-4">
-              <div class="text-sm font-medium">{$t('settings.runtimeMoved')}</div>
-              <div class="mt-1 text-xs text-[var(--text-muted)]">{$t('settings.runtimeMovedDesc')}</div>
-            </div>
-            <button class="primary-btn rounded-xl px-4 py-2.5 text-sm font-medium" onclick={() => { appStore.settingsOpen = false; appStore.runtimeManagerOpen = true; }}>
-              {$t('settings.openRuntime')}
+          <div class="mt-6 flex items-center justify-end border-t border-[var(--border)] pt-4">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+              onclick={saveSearchSettings}
+              disabled={savingSearch}
+            >
+              {savingSearch ? 'Saving…' : 'Save'}
             </button>
           </div>
-        {/if}
-      </div>
+        </div>
+      {/if}
 
-      <div class="modal-footer flex items-center justify-end gap-2 px-6 py-4">
-        <button class="btn secondary rounded-xl px-4 py-2 text-sm font-medium" onclick={() => (appStore.settingsOpen = false)}>
-          {$t('settings.cancel')}
-        </button>
-        <button class="btn primary rounded-xl px-4 py-2 text-sm font-medium" onclick={save} disabled={saving}>
-          {saving ? $t('settings.saving') : $t('settings.save')}
-        </button>
-      </div>
-    </div>
+      {#if activeTab === 'Hardware'}
+        <div class="flex-1 overflow-y-auto p-6">
+          <VoiceSettings />
+        </div>
+      {/if}
+
+      {#if activeTab === 'Runtime'}
+        <div class="flex-1 overflow-y-auto p-6">
+          <div class="space-y-4">
+            <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] p-4">
+              <div class="text-sm font-medium text-[var(--text)]">{'Runtime Manager'}</div>
+              <div class="mt-1 text-xs text-[var(--text-muted)]">{'Install and manage llama.cpp runtimes for running local models.'}</div>
+            </div>
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90"
+              onclick={() => { close(); appStore.runtimeManagerOpen = true; }}
+            >
+              <Cpu class="h-4 w-4" />
+              {'Open Runtime Manager'}
+            </button>
+          </div>
+        </div>
+      {/if}
+    </main>
   </div>
 </div>
-
-<style>
-  .modal-backdrop {
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .modal-surface {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .modal-sidebar {
-    background: var(--surface-highlight);
-    border-right: 1px solid var(--border);
-  }
-
-  .sidebar-title {
-    color: var(--text-muted);
-    letter-spacing: 0.02em;
-  }
-
-  .nav-item {
-    color: var(--text-secondary);
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .nav-item:hover {
-    color: var(--text);
-    background: var(--surface);
-    border-color: var(--border-light);
-  }
-
-  .nav-item.is-active {
-    color: var(--text);
-    background: var(--surface);
-    border-color: var(--border);
-    font-weight: 500;
-  }
-
-  .nav-divider {
-    border-top: 1px solid var(--border-light);
-  }
-
-  .modal-header {
-    border-bottom: 1px solid var(--border);
-  }
-
-  .modal-heading {
-    color: var(--text);
-    font-family: var(--font-serif);
-    letter-spacing: -0.01em;
-  }
-
-  .close-btn {
-    color: var(--text-muted);
-    transition: color 0.12s, background 0.12s;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .close-btn:hover {
-    color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
-  }
-
-  .info-card {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: var(--radius-m);
-  }
-
-  .primary-btn {
-    background: var(--primary);
-    color: var(--primary-fg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    transition: opacity 0.12s, transform 0.1s;
-  }
-
-  .primary-btn:hover {
-    opacity: 0.9;
-  }
-
-  .primary-btn:active {
-    transform: scale(0.98);
-  }
-
-  .modal-footer {
-    border-top: 1px solid var(--border);
-  }
-
-  .btn {
-    transition: all 0.12s;
-    border-radius: var(--radius-s);
-  }
-
-  .btn.secondary {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid var(--border);
-  }
-
-  .btn.secondary:hover {
-    color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
-  }
-
-  .btn.primary {
-    color: var(--primary-fg);
-    background: var(--primary);
-    border: 1px solid var(--border-strong);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  }
-
-  .btn.primary:hover {
-    opacity: 0.88;
-  }
-
-  .btn.primary:active {
-    transform: scale(0.98);
-  }
-
-  .btn.primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn.primary:disabled:active {
-    transform: none;
-  }
-</style>

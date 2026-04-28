@@ -145,7 +145,7 @@
         {@const isDownloading = downloading && selectedId === model.id}
         <button
           class="flex w-full items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition
-            {isSelected ? 'border-[var(--text)] bg-[var(--surface-secondary)]' : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text)]'}"
+            {isSelected ? 'border-[var(--text)] bg-[var(--surface)]' : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text)]'}"
           onclick={() => { selectedId = model.id; if (!isLocal) downloadModel(model); }}
           disabled={downloading && !isDownloading}
         >
@@ -164,7 +164,7 @@
               {#if model.tags.length}
                 <span>·</span>
                 {#each model.tags.slice(0, 2) as tag}
-                  <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5">{tag}</span>
+                  <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5">{tag}</span>
                 {/each}
               {/if}
             </div>
@@ -180,7 +180,7 @@
 
     {#if downloading}
       <div class="space-y-1">
-        <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-highlight)]">
+        <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
           <div class="h-full bg-[var(--text)] transition-all" style="width: {downloadProgress}%"></div>
         </div>
         <p class="text-xs text-[var(--text-muted)]">{Math.round(downloadProgress)}%</p>
@@ -194,14 +194,14 @@
 
   <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-highlight)]"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-hover)]"
       onclick={onBack}
     >
       <ArrowLeft class="h-4 w-4" />
       {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
+      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
       onclick={() => {
         const local = models.find(m => isModelLocal(m));
         if (local) onNext(local.filename);

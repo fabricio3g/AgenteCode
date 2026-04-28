@@ -46,15 +46,22 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`);
   }
 
+  // Strip undefined values before passing to provider SDKs (some reject them)
+  const params = Object.fromEntries(
+    Object.entries({
+      max_tokens: body.max_tokens,
+      temperature: body.temperature,
+      top_p: body.top_p
+    }).filter(([, v]) => v !== undefined)
+  );
+
   return provider.completeChat({
     apiKey: realKey,
     baseUrl,
     model: body.model,
     messages: body.messages,
     tools: body.tools,
-    max_tokens: body.max_tokens,
-    temperature: body.temperature,
-    top_p: body.top_p
+    ...params
   });
 }
 
@@ -116,10 +123,14 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         model: body.model,
         messages: body.messages,
         tools: body.tools,
-        max_tokens: body.max_tokens,
-        temperature: body.temperature,
-        top_p: body.top_p,
-        ...body.extra_params
+        ...Object.fromEntries(
+          Object.entries({
+            max_tokens: body.max_tokens,
+            temperature: body.temperature,
+            top_p: body.top_p,
+            ...body.extra_params
+          }).filter(([, v]) => v !== undefined)
+        )
       };
 
       for await (const delta of provider.streamChat(streamParams)) {

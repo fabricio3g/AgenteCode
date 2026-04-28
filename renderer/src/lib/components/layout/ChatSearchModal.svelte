@@ -138,7 +138,7 @@
     <div bind:this={resultsContainer} class="max-h-[50vh] overflow-y-auto p-2">
       {#if results.length === 0}
         <div class="flex flex-col items-center justify-center py-10 text-center">
-          <div class="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)] border border-[var(--border-light)]">
+          <div class="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)] border border-[var(--border)]">
             <MessageSquare class="h-5 w-5 text-[var(--text-muted)]" />
           </div>
           <p class="text-sm text-[var(--text-muted)]">
@@ -177,12 +177,12 @@
 
   .chat-result:hover,
   .chat-result.is-selected {
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
+    border-color: var(--border);
   }
 
   .chat-result.is-active {
-    background: var(--surface-secondary);
+    background: var(--surface);
     border-color: var(--border);
   }
 </style>

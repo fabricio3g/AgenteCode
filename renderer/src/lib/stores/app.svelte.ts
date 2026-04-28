@@ -2171,6 +2171,13 @@ Design rules:
               });
             }
           },
+          onProgress: (text) => {
+            // Show live progress in the message body while agent works
+            if (!assistantMessage.content || assistantMessage.content.startsWith('Planning') || assistantMessage.content.endsWith('…')) {
+              assistantMessage.content = text;
+              syncMsg();
+            }
+          },
           onReasoning: (value) => {
             assistantMessage.reasoning = value;
             syncMsg();
@@ -2178,6 +2185,9 @@ Design rules:
           onArtifact: (artifact) => {
             assistantMessage.artifact = artifact;
             syncMsg();
+            if (artifact && !this.sandboxOpen) {
+              this.sandboxOpen = true; // auto-open sandbox when files are created
+            }
             if (artifact || this.currentArtifactMessageId === assistantMessage.id) {
               this.setCurrentArtifact(artifact, assistantMessage.id, !!artifact);
             }
@@ -2203,7 +2213,43 @@ Design rules:
             }
           }
         });
-        assistantMessage.content = agentResult.content;
+        // Handle agent result - check for errors or warnings
+        if (agentResult.error) {
+          // Agent had an error - set error status and show error message
+          assistantMessage.content = agentResult.content || agentResult.error;
+          assistantMessage.status = 'error';
+          assistantMessage.done = true;
+          assistantMessage.metadata = {
+            modelName: this.activeModelLabel,
+            error: true,
+            errorMessage: agentResult.error,
+            tokens: 0,
+            timing: 0,
+            tokensPerSecond: 0
+          };
+        } else if (agentResult.warning) {
+          // Agent had a warning but recovered - show warning in metadata
+          assistantMessage.content = agentResult.content;
+          assistantMessage.done = true;
+          if (assistantMessage.status !== 'error') {
+            assistantMessage.status = 'idle';
+          }
+          assistantMessage.metadata = {
+            modelName: this.activeModelLabel,
+            warning: agentResult.warning,
+            tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
+            timing: 0,
+            tokensPerSecond: 0
+          };
+          console.warn('[agent-runtime]', agentResult.warning);
+        } else {
+          // Normal success
+          assistantMessage.content = agentResult.content;
+          assistantMessage.done = true;
+          if (assistantMessage.status !== 'error') {
+            assistantMessage.status = 'idle';
+          }
+        }
         assistantMessage.reasoning = agentResult.reasoning;
         assistantMessage.agentSteps = agentResult.steps;
         assistantMessage.artifact = agentResult.artifact;
@@ -2273,16 +2319,22 @@ Design rules:
       }
 
       assistantMessage.done = true;
-      assistantMessage.status = 'idle';
+      // Only set status to 'idle' if it wasn't already set to 'error'
+      if (assistantMessage.status !== 'error') {
+        assistantMessage.status = 'idle';
+      }
       flushPendingSync();
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
-      assistantMessage.metadata = {
-        modelName: this.activeModelLabel,
-        tokens: tokenCount,
-        timing,
-        tokensPerSecond
-      };
+      // Only overwrite metadata if there's no error/warning already set
+      if (!assistantMessage.metadata?.error && !assistantMessage.metadata?.warning) {
+        assistantMessage.metadata = {
+          modelName: this.activeModelLabel,
+          tokens: tokenCount,
+          timing,
+          tokensPerSecond
+        };
+      }
       assistantMessage.model = this.activeModelLabel;
       assistantMessage.versions = [{
         content: assistantMessage.content,
@@ -2291,8 +2343,15 @@ Design rules:
         metadata: assistantMessage.metadata
       }];
       if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
+        const hasError = assistantMessage.metadata?.error;
+        const hasWarning = assistantMessage.metadata?.warning;
         assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
           if (index === all.length - 1) {
+            if (hasError) {
+              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
+            } else if (hasWarning) {
+              return { ...step, status: 'done', detail: hasWarning };
+            }
             return { ...step, type: 'done', label: 'Completed', status: 'done', detail: 'Response ready' };
           }
           return { ...step, status: step.status === 'running' ? 'done' : step.status };
@@ -2445,7 +2504,7 @@ Design rules:
     this.loading = false;
     const chat = this.currentChat;
     if (chat) {
-      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && message.status === 'streaming');
+      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || (message.mode === 'agent' && !message.done)));
       if (streamingAssistant) {
         streamingAssistant.status = 'idle';
         streamingAssistant.done = true;
@@ -2620,6 +2679,12 @@ Design rules:
               });
             }
           },
+          onProgress: (text) => {
+            if (!message.content || message.content.startsWith('Planning') || message.content.endsWith('…')) {
+              message.content = text;
+              this.touchChats();
+            }
+          },
           onReasoning: (value) => {
             nextVersion.reasoning = value;
             message.reasoning = value;
@@ -2627,6 +2692,9 @@ Design rules:
           },
           onArtifact: (artifact) => {
             message.artifact = artifact;
+            if (artifact && !this.sandboxOpen) {
+              this.sandboxOpen = true;
+            }
             if (artifact || this.currentArtifactMessageId === message.id) {
               this.setCurrentArtifact(artifact, message.id, !!artifact);
             }
@@ -2653,9 +2721,35 @@ Design rules:
             }
           }
         });
-        nextVersion.content = agentResult.content;
+        // Handle agent result - check for errors or warnings
+        if (agentResult.error) {
+          nextVersion.content = agentResult.content || agentResult.error;
+          message.content = agentResult.content || agentResult.error;
+          message.status = 'error';
+          nextVersion.metadata = {
+            modelName: this.activeModelLabel,
+            error: true,
+            errorMessage: agentResult.error,
+            tokens: 0,
+            timing: 0,
+            tokensPerSecond: 0
+          };
+        } else if (agentResult.warning) {
+          nextVersion.content = agentResult.content;
+          message.content = agentResult.content;
+          nextVersion.metadata = {
+            modelName: this.activeModelLabel,
+            warning: agentResult.warning,
+            tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
+            timing: 0,
+            tokensPerSecond: 0
+          };
+          console.warn('[agent-runtime]', agentResult.warning);
+        } else {
+          nextVersion.content = agentResult.content;
+          message.content = agentResult.content;
+        }
         nextVersion.reasoning = agentResult.reasoning;
-        message.content = agentResult.content;
         message.reasoning = agentResult.reasoning;
         message.agentSteps = agentResult.steps;
         message.artifact = agentResult.artifact;
@@ -2712,16 +2806,22 @@ Design rules:
 
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
-      nextVersion.metadata = {
-        modelName: this.activeModelLabel,
-        tokens: tokenCount,
-        timing,
-        tokensPerSecond
-      };
-      message.metadata = nextVersion.metadata;
+      // Only overwrite metadata if there's no error/warning already set
+      if (!nextVersion.metadata?.error && !nextVersion.metadata?.warning) {
+        nextVersion.metadata = {
+          modelName: this.activeModelLabel,
+          tokens: tokenCount,
+          timing,
+          tokensPerSecond
+        };
+        message.metadata = nextVersion.metadata;
+      }
       message.model = this.activeModelLabel;
       message.done = true;
-      message.status = 'idle';
+      // Only set status to 'idle' if it wasn't already set to 'error'
+      if (message.status !== 'error') {
+        message.status = 'idle';
+      }
       if (message.mode === 'slides') {
         try {
           const slides = await parseSlidesFromMarkdown(nextVersion.content);
@@ -2731,8 +2831,15 @@ Design rules:
         }
       }
       if (message.mode === 'agent' && message.agentSteps?.length) {
+        const hasError = message.metadata?.error;
+        const hasWarning = message.metadata?.warning;
         message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
           if (stepIndex === all.length - 1) {
+            if (hasError) {
+              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
+            } else if (hasWarning) {
+              return { ...step, status: 'done', detail: hasWarning };
+            }
             return { ...step, type: 'done', label: 'Completed', status: 'done', detail: 'Response ready' };
           }
           return { ...step, status: step.status === 'running' ? 'done' : step.status };
@@ -3080,7 +3187,8 @@ Design rules:
     auto_play_voice?: boolean;
     voice?: string;
     speed?: number;
-    engine?: 'kitten' | 'kokoro' | 'browser';
+    volume?: number;
+    engine?: 'kokoro' | 'wasm' | 'browser';
     model_path?: string;
     voices_path?: string;
     tokens_path?: string;

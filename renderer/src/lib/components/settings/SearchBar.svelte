@@ -40,14 +40,14 @@
  {autofocus}
  oninput={handleInput}
  onkeydown={handleKeydown}
- class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] py-2.5 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-strong)] focus:bg-[var(--surface)]"
+ class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] py-2.5 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)] focus:bg-[var(--surface)]"
  autocomplete="off"
  spellcheck="false"
  />
  {#if value}
  <button
  type="button"
- class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)]"
+ class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
  onclick={handleClear}
  aria-label="Clear search"
  >

@@ -6,7 +6,6 @@
   import { AlertCircle } from 'lucide-svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import DeepResearchWidget from '$lib/components/search/DeepResearchWidget.svelte';
-  import MorphingHexagon from './MorphingHexagon.svelte';
   import AgentRuntimeBlock from './AgentRuntimeBlock.svelte';
   import AgentTimeline from './AgentTimeline.svelte';
   import SourcesBlock from './SourcesBlock.svelte';
@@ -109,7 +108,9 @@
     <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-error" />
     <div>
       <div class="font-semibold">Generation failed</div>
-      {#if displayContent && displayMetadata?.error}
+      {#if displayMetadata?.errorMessage}
+        <div class="mt-0.5 text-xs text-error opacity-70">{displayMetadata.errorMessage}</div>
+      {:else if displayContent}
         <div class="mt-0.5 text-xs text-error opacity-70">{displayContent}</div>
       {/if}
     </div>
@@ -121,8 +122,12 @@
 {#if message.status === 'streaming' && !displayContent && !displayReasoning && !message.agentSteps?.length}
   {#if !hasActiveDeepResearch}
     <div class="thinking-indicator flex items-center gap-2.5 py-2">
-      <MorphingHexagon size={20} />
-      <span class="thinking-label text-sm">Thinking...</span>
+      <span class="thinking-dot-pulse inline-flex items-center gap-3">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+      </span>
+      <span class="text-shimmer text-sm">Thinking...</span>
     </div>
   {/if}
 {/if}
@@ -132,15 +137,18 @@
 <ArtifactBlock artifact={message.artifact} onOpen={onOpenArtifact} />
 
 {#if !enableThinking && displayReasoning}
-  <details class="chateaui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--chateaui-card-bg: var(--surface-highlight);">
+  <details class="chateaui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--chateaui-card-bg: var(--surface-hover);">
     <summary class="cursor-pointer font-medium">Reasoning</summary>
     <div class="mt-2 whitespace-pre-wrap">{displayReasoning}</div>
   </details>
 {/if}
 
 <style>
-  .thinking-label {
-    color: var(--text-muted);
-    font-weight: 500;
+  .thinking-dot-pulse {
+    animation: thinkingDotPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes thinkingDotPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
   }
 </style>

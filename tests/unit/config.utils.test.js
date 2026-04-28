@@ -208,7 +208,7 @@ describe('real-world config scenarios', () => {
 
   it('deepMerge preserves missing default config keys', () => {
     const defaultConfig = {
-      tts: { engine: 'kitten', num_threads: 2 },
+      tts: { engine: 'kokoro', num_threads: 2 },
       llm: { provider: 'openai', providers: {} },
       rag: { enabled: true }
     };
@@ -217,7 +217,7 @@ describe('real-world config scenarios', () => {
     };
     const result = deepMerge(structuredClone(defaultConfig), userConfig);
     // Preserved from default
-    assert.strictEqual(result.tts.engine, 'kitten');
+    assert.strictEqual(result.tts.engine, 'kokoro');
     assert.strictEqual(result.tts.num_threads, 2);
     assert.strictEqual(result.rag.enabled, true);
     // Overridden by user

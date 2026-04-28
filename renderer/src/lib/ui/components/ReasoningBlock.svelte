@@ -3,8 +3,7 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
-  import { Brain, ChevronDown, ChevronUp } from 'lucide-svelte';
-  import MorphingHexagon from './MorphingHexagon.svelte';
+  import { Brain, ChevronDown } from 'lucide-svelte';
 
   interface Props {
     reasoning: string;
@@ -44,25 +43,22 @@
 {#if reasoning}
   <div class="reasoning-block mb-4 w-full">
     <button
-      class="reasoning-toggle flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition"
+      class="cot-trigger"
       onclick={toggle}
     >
-      <Brain class={`h-4 w-4 shrink-0 ${status === 'streaming' ? 'animate-pulse' : ''}`} />
-      <span class="flex-1 text-sm font-medium">{label()}</span>
+      <Brain class="h-4 w-4 shrink-0" />
       {#if status === 'streaming'}
-        <MorphingHexagon size={16} />
+        <span class="cot-pulse-dot"></span>
       {/if}
-      {#if open}
-        <ChevronUp class="h-4 w-4 shrink-0 opacity-50" />
-      {:else}
-        <ChevronDown class="h-4 w-4 shrink-0 opacity-50" />
-      {/if}
+      <span class="flex-1" class:text-shimmer={status === 'streaming'}>{label()}</span>
+      <ChevronDown class={`cot-chevron h-4 w-4 shrink-0 ${open ? 'open' : ''}`} />
     </button>
 
     {#if open}
-      <div class="reasoning-content mt-1 overflow-hidden rounded-lg" transition:slide={{ duration: 200, easing: quintOut }}>
-        <div bind:this={reasoningLiveEl} class="max-h-64 overflow-y-auto px-4 py-3">
-          <p class="whitespace-pre-wrap text-sm leading-relaxed">{reasoning}</p>
+      <div class="cot-body" transition:slide={{ duration: 200, easing: quintOut }}>
+        <div class="cot-timeline-line"></div>
+        <div bind:this={reasoningLiveEl} class="cot-content">
+          <p>{reasoning}</p>
         </div>
       </div>
     {/if}
@@ -70,26 +66,63 @@
 {/if}
 
 <style>
-  .reasoning-toggle {
-    color: var(--text-secondary);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
+  .reasoning-block {
+    margin-top: 0.75rem;
   }
-
-  .reasoning-toggle:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
+  .cot-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
   }
-
-  .reasoning-content {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
+  .cot-trigger:hover {
+    color: var(--text);
   }
-
-  .reasoning-content p {
+  .cot-chevron {
+    transition: transform 0.2s ease;
+  }
+  .cot-chevron.open {
+    transform: rotate(180deg);
+  }
+  .cot-body {
+    display: grid;
+    grid-template-columns: 2px 1fr;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+  }
+  .cot-timeline-line {
+    width: 2px;
+    background: var(--border);
+    border-radius: 1px;
+  }
+  .cot-content p {
     color: var(--text-tertiary);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    margin: 0;
   }
-
+  .cot-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: cotPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes cotPulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.2;
+    }
+  }
 </style>

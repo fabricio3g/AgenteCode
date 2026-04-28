@@ -31,6 +31,34 @@ function resolveProvider(config: AppConfig) {
   return { providerName, provider };
 }
 
+// Tool-capable model detection for OpenRouter.
+// Many OpenRouter models don't support native function calling.
+// Skip native tools and use simulated XML mode for those.
+const TOOL_CAPABLE_PATTERNS = [
+  /gpt-4[./o]/i, /gpt-5/i,
+  /claude-3/i, /claude-sonnet-4/i, /claude-opus-4/i,
+  /gemini-2\.5-pro/i, /gemini-3-pro/i, /gemini-3-flash/i,
+  /llama-3\.3/i, /llama-4/i,
+  /qwen2\.5/i, /qwen3/i,
+  /deepseek-chat/i, /deepseek-r1/i,
+  /o1/i, /o3/i, /o4/i
+];
+const TOOL_AVOID_PATTERNS = [
+  /gemma-3/i,
+  /gemini-2\.5-flash-lite/i,
+  /mistral.*free/i,
+  /mixtral.*free/i,
+  /phi-3/i, /phi-4/i
+];
+
+export function supportsNativeTools(modelId: string, providerName: string): boolean {
+  if (providerName !== 'openrouter') return true;
+  const id = String(modelId || '');
+  if (TOOL_AVOID_PATTERNS.some(p => p.test(id))) return false;
+  if (TOOL_CAPABLE_PATTERNS.some(p => p.test(id))) return true;
+  return false;
+}
+
 function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
   return localModels.map((entry) => ({
     id: entry.id,
@@ -409,6 +437,14 @@ export async function streamAssistantReply(args: {
 }
 
 function readCompletionPayload(payload: any): CompletionResult {
+  // Flat format from main-process providers: { content: "...", reasoning: "..." }
+  if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
+    return {
+      content: payload.content,
+      reasoning: String(payload.reasoning || '')
+    };
+  }
+  // Raw OpenAI API format: { choices: [{ message: { content: "..." } }] }
   const message = payload?.choices?.[0]?.message || {};
   const rawContent = message.content;
   const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
@@ -437,7 +473,9 @@ export async function completeAssistantReply(args: {
       body: JSON.stringify({
         model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
         stream: false,
-        messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel)
+        messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel),
+        ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
+        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
       })
     });
 
@@ -447,11 +485,19 @@ export async function completeAssistantReply(args: {
     }
 
     const payload = await response.json();
-    return readCompletionPayload(payload);
+    const result = readCompletionPayload(payload);
+    console.log('[chat-api] completeAssistantReply local result:', { content_len: result.content.length, model: config.llm?.local?.model });
+    return result;
   }
 
   const { provider, providerName } = resolveProvider(config);
   const apiKey = (args.apiKey ?? provider.api_key) || '';
+
+  const genParams = {
+    ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
+    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
+    ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
+  };
 
   if (isTauri()) {
     const payload = await invoke<any>('chat_complete', {
@@ -461,10 +507,14 @@ export async function completeAssistantReply(args: {
       body: {
         model: provider.model,
         stream: false,
-        messages: toRequestMessages(args.messages)
+        messages: toRequestMessages(args.messages),
+        ...genParams
       }
     });
-    return readCompletionPayload(payload);
+    console.log('[chat-api] completeAssistantReply IPC raw payload:', JSON.stringify(payload));
+    const result = readCompletionPayload(payload);
+    console.log('[chat-api] completeAssistantReply IPC result:', { content_len: result.content.length, model: provider.model });
+    return result;
   }
 
   const client = getOpenAIClient(apiKey, provider.base_url || '');
@@ -472,11 +522,13 @@ export async function completeAssistantReply(args: {
     model: provider.model,
     stream: false,
     messages: toRequestMessages(args.messages) as any,
-  });
+    ...genParams
+  } as any);
 
   const message = response?.choices?.[0]?.message || {};
   const rawContent = message.content;
   const rawReasoning = (message as any).reasoning_content ?? (message as any).reasoning ?? (message as any).thinking;
+  console.log('[chat-api] completeAssistantReply direct result:', { content_len: String(rawContent || '').length, model: provider.model });
   return {
     content: rawContent != null ? String(rawContent) : '',
     reasoning: rawReasoning != null ? String(rawReasoning) : ''
@@ -484,6 +536,20 @@ export async function completeAssistantReply(args: {
 }
 
 function readCompletionWithTools(payload: any): CompletionResult {
+  // Flat format from main-process providers: { content: "...", reasoning: "...", toolCalls: [...] }
+  if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
+    const toolCalls: NativeToolCall[] = (payload.toolCalls || []).map((tc: any) => ({
+      id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+      name: String(tc.function?.name || ''),
+      arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
+    })).filter((tc: NativeToolCall) => !!tc.name);
+    return {
+      content: payload.content,
+      reasoning: String(payload.reasoning || ''),
+      toolCalls: toolCalls.length ? toolCalls : undefined
+    };
+  }
+  // Raw OpenAI API format: { choices: [{ message: { content: "...", tool_calls: [...] } }] }
   const message = payload?.choices?.[0]?.message || {};
   const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
     id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
@@ -806,6 +872,12 @@ export async function completeWithTools(args: {
   if (!provider.base_url) return null;
   const apiKey = (args.apiKey ?? provider.api_key) || '';
 
+  const genParams = {
+    ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
+    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
+    ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
+  };
+
   if (isTauri()) {
     try {
       const payload = await invoke<any>('chat_complete', {
@@ -817,11 +889,16 @@ export async function completeWithTools(args: {
           stream: false,
           messages: toRequestMessages(args.messages, provider.model),
           tools: args.tools,
-          tool_choice: 'auto'
+          tool_choice: 'auto',
+          ...genParams
         }
       });
-      return readCompletionWithTools(payload);
-    } catch {
+      console.log('[chat-api] completeWithTools IPC raw payload:', JSON.stringify(payload));
+      const result = readCompletionWithTools(payload);
+      console.log('[chat-api] completeWithTools IPC result:', { content_len: result.content.length, has_tools: !!result.toolCalls?.length, model: provider.model });
+      return result;
+    } catch (err) {
+      console.warn('[chat-api] completeWithTools IPC call failed:', err);
       return null;
     }
   }
@@ -834,7 +911,8 @@ export async function completeWithTools(args: {
       messages: toRequestMessages(args.messages, provider.model) as any,
       tools: args.tools as any,
       tool_choice: 'auto' as any,
-    });
+      ...genParams
+    } as any);
 
     const message = response?.choices?.[0]?.message || {};
     const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
@@ -843,12 +921,14 @@ export async function completeWithTools(args: {
       arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
     })).filter((tc: NativeToolCall) => !!tc.name);
 
+    console.log('[chat-api] completeWithTools direct result:', { content_len: String(message.content || '').length, has_tools: !!toolCalls.length, model: provider.model });
     return {
       content: String(message.content || ''),
       reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
       toolCalls: toolCalls.length ? toolCalls : undefined
     };
-  } catch {
+  } catch (err) {
+    console.warn('[chat-api] completeWithTools direct call failed:', err);
     return null;
   }
 }

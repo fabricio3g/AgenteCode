@@ -1,27 +1,104 @@
 import type { AppConfig } from '$lib/types/chat';
-import { generateTts } from '$lib/services/tts';
-import { isTauri } from '$lib/services/tauri';
+import { isKokoroVoice } from '$lib/services/kokoro-tts';
+import { generateTtsStream, cancelTtsStream, base64ToFloat32Pcm, onTtsChunk, onTtsDone, onTtsStart } from '$lib/services/tts';
+import { invoke } from '$lib/services/tauri';
+import { cleanTextForTTS } from '$lib/utils/tts-text';
+
+const SAMPLE_RATE = 24000;
 
 class TtsStore {
   playing = $state(false);
+  isGenerating = $state(false);
   currentMessageId = $state<string | null>(null);
-  /** Called when TTS playback finishes (used by voice mode to restart listening) */
   onPlaybackEnd: (() => void) | null = null;
+  preloaded = $state(false);
+  preloadPromise: Promise<boolean> | null = null;
+  progress: { index: number; total: number } | null = $state(null);
+  lastPlayedMessageId: string | null = $state(null);
+  elapsedTime = $state(0);
+  totalDuration = $state(0);
+  audioBuffers: Map<string, Float32Array> = new Map();
+  // Reactive set of message IDs that have stored audio (for Svelte reactivity)
+  storedAudioIds = $state<Set<string>>(new Set());
+  // Fires when a generation + playback session completes for a message
+  onAudioComplete: ((messageId: string, duration: number) => void) | null = null;
 
   private audioCtx: AudioContext | null = null;
-  private currentSource: AudioBufferSourceNode | null = null;
+  private genId = 0;
+  private currentGenId: number | null = null;
+  private chunkQueue: { index: number; samples: Float32Array }[] = [];
+  private nextIndex = 0;
+  private doneReceived = false;
+  private unsubChunk: (() => void) | null = null;
+  private unsubDone: (() => void) | null = null;
+  private unsubStart: (() => void) | null = null;
+  private collectedChunks: { index: number; samples: Float32Array }[] = [];
+  private progressInterval: ReturnType<typeof setInterval> | null = null;
+  // Look-ahead scheduling state
+  private scheduleAheadTime = 0.1; // seconds to keep buffered ahead
+  private scheduledCount = 0; // chunks already scheduled for playback
+  private lastScheduledEnd = 0; // AudioContext time when last scheduled chunk ends
+  private pendingEndSource: AudioBufferSourceNode | null = null; // tracks final chunk for onended
+  private silenceBuffer: AudioBuffer | null = null; // 200ms silence between sentences
+
+  async preloadEngine(): Promise<boolean> {
+    if (this.preloaded) return true;
+    if (this.preloadPromise) return this.preloadPromise;
+    this.preloadPromise = (async () => {
+      try {
+        // Always call preload_tts to ensure worker is initialized.
+        // list_tts_voices may return cached voices without initWorker()
+        // having completed, so we unconditionally warm up the worker.
+        await invoke<string[]>('preload_tts');
+        this.preloaded = true;
+        return true;
+      } catch { return false; }
+    })();
+    return this.preloadPromise;
+  }
 
   isSpeaking(messageId: string): boolean {
     return this.playing && this.currentMessageId === messageId;
   }
 
-  stop() {
-    try {
-      this.currentSource?.stop();
-    } catch {
-      // already stopped
+  private playbackStartTime = 0; // AudioContext.currentTime when first chunk started playing
+
+  private startProgressTracking() {
+    this.stopProgressTracking();
+    this.playbackStartTime = this.audioCtx ? this.audioCtx.currentTime : 0;
+    this.progressInterval = setInterval(() => {
+      if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
+        this.elapsedTime = Math.max(0, this.audioCtx.currentTime - this.playbackStartTime);
+      }
+    }, 50);
+  }
+
+  private stopProgressTracking() {
+    if (this.progressInterval) {
+      clearInterval(this.progressInterval);
+      this.progressInterval = null;
     }
-    this.currentSource = null;
+  }
+
+  stop() {
+    cancelTtsStream();
+    this.stopProgressTracking();
+    this.currentGenId = null;
+    this.chunkQueue = [];
+    this.collectedChunks = [];
+    this.nextIndex = 0;
+    this.doneReceived = false;
+    this.scheduledCount = 0;
+    this.lastScheduledEnd = 0;
+    this.pendingEndSource = null;
+    this.silenceBuffer = null;
+    this.playbackStartTime = 0;
+    this.unsubChunk?.();
+    this.unsubDone?.();
+    this.unsubStart?.();
+    this.unsubChunk = null;
+    this.unsubDone = null;
+    this.unsubStart = null;
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
       this.audioCtx.close();
       this.audioCtx = null;
@@ -30,149 +107,319 @@ class TtsStore {
       window.speechSynthesis.cancel();
     }
     this.playing = false;
+    this.isGenerating = false;
     this.currentMessageId = null;
+    this.progress = null;
+    this.elapsedTime = 0;
+    this.totalDuration = 0;
   }
 
   async speak(messageId: string, text: string, config: AppConfig): Promise<void> {
-    // Stop whatever is currently playing
-    this.stop();
-
-    if (!text?.trim()) return;
-
-    this.playing = true;
-    this.currentMessageId = messageId;
-
-    const engine = config.tts?.engine;
-    const useTauri =
-      isTauri() &&
-      (engine === 'kitten' || engine === 'kokoro') &&
-      !!config.tts?.model_path &&
-      !!config.tts?.voices_path &&
-      !!config.tts?.tokens_path;
-
-    if (useTauri) {
-      try {
-        const base64Audio = await generateTts({
-          text,
-          voice: config.tts?.voice || 'af_heart',
-          speed: config.tts?.speed ?? 1,
-          engine: engine as 'kitten' | 'kokoro',
-          model_path: config.tts!.model_path!,
-          voices_path: config.tts!.voices_path!,
-          tokens_path: config.tts!.tokens_path!,
-          lexicon_path: config.tts?.lexicon_path,
-          dict_dir: config.tts?.dict_dir,
-          data_dir: config.tts?.data_dir
-        });
-
-        // Still speaking?
-        if (!this.playing || this.currentMessageId !== messageId) return;
-
-        await this.playBase64Pcm(base64Audio, messageId);
-      } catch (err) {
-        console.warn('[TTS] Tauri TTS failed, falling back to browser:', err);
-        if (this.currentMessageId === messageId) {
-          try {
-            this.playBrowser(messageId, text, config);
-          } catch {
-            // Both engines failed — ensure state is cleaned up
-            this.playing = false;
-            this.currentMessageId = null;
-            this.onPlaybackEnd?.();
-          }
-        }
-      }
-    } else {
-      this.playBrowser(messageId, text, config);
+    // If we already have a stored buffer for this message, replay instead of re-generating
+    if (this.audioBuffers.has(messageId)) {
+      return this.replay(messageId);
     }
-  }
 
-  private playBrowser(messageId: string, text: string, config: AppConfig) {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      this.playing = false;
-      this.currentMessageId = null;
-      this.onPlaybackEnd?.();
+    this.stop();
+    const cleaned = cleanTextForTTS(text);
+    if (!cleaned?.trim()) return;
+
+    this.lastPlayedMessageId = messageId;
+    this.playing = true;
+    this.isGenerating = true;
+    this.currentMessageId = messageId;
+    this.elapsedTime = 0;
+    this.totalDuration = 0;
+    this.collectedChunks = [];
+
+    const voice = config.tts?.voice || 'af_heart';
+    const speed = config.tts?.speed ?? 1;
+    const volume = config.tts?.volume ?? 1;
+
+    if (isKokoroVoice(voice)) {
+      this.genId++;
+      this.currentGenId = this.genId;
+      this.chunkQueue = [];
+      this.nextIndex = 0;
+      this.doneReceived = false;
+      this.scheduledCount = 0;
+      this.lastScheduledEnd = 0;
+      this.pendingEndSource = null;
+
+      this.unsubChunk = onTtsChunk((evt: any) => {
+        if (evt.seq !== this.currentGenId || this.currentMessageId !== messageId) return;
+        this.progress = { index: evt.index + 1, total: evt.total };
+        const samples = base64ToFloat32Pcm(evt.base64);
+        this.collectedChunks.push({ index: evt.index, samples });
+        this.chunkQueue.push({ index: evt.index, samples });
+        this.chunkQueue.sort((a, b) => a.index - b.index);
+        this.scheduleAhead();
+      });
+
+      this.unsubStart = onTtsStart((evt: any) => {
+        if (evt.seq !== this.currentGenId) return;
+        this.progress = { index: 0, total: evt.total };
+      });
+
+      this.unsubDone = onTtsDone((evt: any) => {
+        if (evt.seq !== this.currentGenId) return;
+        this.doneReceived = true;
+        // If all chunks already scheduled, set up end detection immediately
+        if (this.scheduledCount >= this.chunkQueue.length) {
+          this.setupEndDetection();
+        } else {
+          // Otherwise scheduleAhead will catch it on next chunk
+          this.scheduleAhead();
+        }
+      });
+
+      this.startProgressTracking();
+      generateTtsStream({ text: cleaned, voice, speed, volume } as any);
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const preferredVoice = config.tts?.voice;
-    if (preferredVoice) {
-      const voice = window.speechSynthesis.getVoices().find((v) => v.name === preferredVoice);
-      if (voice) utterance.voice = voice;
+
+    this.playBrowser(messageId, cleaned, config);
+  }
+
+  private ensureSilenceBuffer() {
+    if (!this.audioCtx || this.silenceBuffer) return;
+    // Create 200ms silence buffer for natural rhythm between sentences
+    const silenceLen = Math.round(24000 * 200 / 1000);
+    this.silenceBuffer = this.audioCtx.createBuffer(1, silenceLen, 24000);
+  }
+
+  private ensureAudioContext() {
+    if (!this.audioCtx || this.audioCtx.state === 'closed') {
+      this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
     }
-    utterance.rate = Number(config.tts?.speed || 1);
-    utterance.onend = () => {
-      if (this.currentMessageId === messageId) {
-        this.playing = false;
-        this.currentMessageId = null;
-        this.onPlaybackEnd?.();
-      }
-    };
-    utterance.onerror = () => {
-      if (this.currentMessageId === messageId) {
-        this.playing = false;
-        this.currentMessageId = null;
-        this.onPlaybackEnd?.();
-      }
-    };
-    try {
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      this.playing = false;
-      this.currentMessageId = null;
-      this.onPlaybackEnd?.();
+    if (this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
     }
   }
 
-  private async playBase64Pcm(base64: string, messageId: string): Promise<void> {
-    // Decode base64 → raw bytes
-    const binaryStr = atob(base64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
+  private scheduleAhead() {
+    if (this.currentMessageId === null) return;
+    if (this.scheduledCount >= this.chunkQueue.length) return; // nothing new to schedule
+
+    this.ensureAudioContext();
+    if (!this.audioCtx) return;
+
+    this.ensureSilenceBuffer();
+
+    // Schedule chunks in look-ahead window
+    while (this.scheduledCount < this.chunkQueue.length) {
+      const chunk = this.chunkQueue[this.scheduledCount];
+      if (!chunk) break;
+
+      const buffer = this.audioCtx.createBuffer(1, chunk.samples.length, SAMPLE_RATE);
+      buffer.copyToChannel(chunk.samples, 0);
+
+      const source = this.audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.audioCtx.destination);
+
+      // Schedule to start at the later of: current time + small margin, or lastScheduledEnd
+      const when = Math.max(this.audioCtx.currentTime + 0.02, this.lastScheduledEnd);
+      source.start(when);
+
+      this.lastScheduledEnd = when + buffer.duration;
+      this.scheduledCount++;
+      this.nextIndex = this.scheduledCount;
+
+      // If there's a next chunk, schedule 200ms silence gap
+      if (this.scheduledCount < this.chunkQueue.length && this.silenceBuffer) {
+        const silenceSrc = this.audioCtx.createBufferSource();
+        silenceSrc.buffer = this.silenceBuffer;
+        silenceSrc.connect(this.audioCtx.destination);
+        silenceSrc.start(this.lastScheduledEnd);
+        this.lastScheduledEnd += this.silenceBuffer.duration;
+      }
+
+      // Track the final source for end detection
+      this.pendingEndSource = source;
     }
 
-    // Backend encodes as Int16 PCM (i16 * 32767.0), little-endian, 24000 Hz mono
-    const sampleCount = Math.floor(bytes.byteLength / 2);
-    const int16 = new Int16Array(bytes.buffer, 0, sampleCount);
-
-    // Convert Int16 → Float32 normalized to [-1, 1]
-    const float32 = new Float32Array(sampleCount);
-    for (let i = 0; i < sampleCount; i++) {
-      float32[i] = int16[i] / 32768;
+    // If done and all chunks scheduled, set up end detection
+    if (this.doneReceived && this.scheduledCount >= this.chunkQueue.length) {
+      this.setupEndDetection();
     }
+  }
 
-    // Create/reuse AudioContext
+  private setupEndDetection() {
+    if (this.pendingEndSource && this.audioCtx) {
+      const endTime = this.lastScheduledEnd;
+      const source = this.pendingEndSource;
+      source.onended = () => {
+        this.onPlaybackEnded();
+      };
+      // Fallback timeout in case onended doesn't fire
+      const waitMs = Math.max(100, (endTime - this.audioCtx.currentTime + 0.1) * 1000);
+      setTimeout(() => {
+        this.onPlaybackEnded();
+      }, waitMs);
+    } else {
+      this.onPlaybackEnded();
+    }
+  }
+
+  private onPlaybackEnded() {
+    this.stopProgressTracking();
+    // Store collected chunks as a single buffer BEFORE clearing state
+    if (this.currentMessageId && this.collectedChunks.length > 0 && !this.audioBuffers.has(this.currentMessageId)) {
+      this.storeCollectedAudio(this.currentMessageId);
+    }
+    const finishedId = this.currentMessageId;
+    const totalDur = this.totalDuration;
+    this.isGenerating = false;
+    this.playing = false;
+    this.progress = null;
+    this.elapsedTime = this.totalDuration;
+    this.pendingEndSource = null;
+    this.currentMessageId = null;
+    this.unsubChunk?.();
+    this.unsubDone?.();
+    this.unsubStart?.();
+    this.unsubChunk = null;
+    this.unsubDone = null;
+    this.unsubStart = null;
+    if (this.audioCtx && this.audioCtx.state !== 'closed') {
+      this.audioCtx.close();
+      this.audioCtx = null;
+    }
+    this.onPlaybackEnd?.();
+    // Fire onAudioComplete AFTER buffer is stored so the player can transition
+    this.onAudioComplete?.(finishedId!, totalDur);
+  }
+
+  private storeCollectedAudio(messageId: string) {
+    if (this.collectedChunks.length === 0) return;
+    const sorted = [...this.collectedChunks].sort((a, b) => a.index - b.index);
+    let totalLen = 0;
+    for (const c of sorted) totalLen += c.samples.length;
+    const combined = new Float32Array(totalLen);
+    let offset = 0;
+    for (const c of sorted) {
+      combined.set(c.samples, offset);
+      offset += c.samples.length;
+    }
+    this.audioBuffers.set(messageId, combined);
+    this.totalDuration = combined.length / SAMPLE_RATE;
+    // Mark as stored for Svelte reactivity
+    this.storedAudioIds = new Set(this.storedAudioIds).add(messageId);
+  }
+
+  hasStoredAudio(messageId: string): boolean {
+    return this.storedAudioIds.has(messageId);
+  }
+
+  async replay(messageId: string): Promise<void> {
+    const buffer = this.audioBuffers.get(messageId);
+    if (!buffer) return;
+
+    this.stop();
+    this.lastPlayedMessageId = messageId;
+    this.playing = true;
+    this.currentMessageId = messageId;
+    this.elapsedTime = 0;
+    this.totalDuration = buffer.length / SAMPLE_RATE;
+
     if (!this.audioCtx || this.audioCtx.state === 'closed') {
-      this.audioCtx = new AudioContext({ sampleRate: 24000 });
+      this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
     }
     if (this.audioCtx.state === 'suspended') {
       await this.audioCtx.resume();
     }
 
-    const buffer = this.audioCtx.createBuffer(1, sampleCount, 24000);
-    buffer.copyToChannel(float32, 0);
+    this.startProgressTracking();
 
+    const audioBuffer = this.audioCtx.createBuffer(1, buffer.length, SAMPLE_RATE);
+    audioBuffer.copyToChannel(buffer as Float32Array<ArrayBuffer>, 0);
     const source = this.audioCtx.createBufferSource();
-    source.buffer = buffer;
+    source.buffer = audioBuffer;
     source.connect(this.audioCtx.destination);
 
-    this.currentSource = source;
+    const startTime = this.audioCtx.currentTime;
+    source.onended = () => {
+      this.stopProgressTracking();
+      this.playing = false;
+      this.currentMessageId = null;
+      this.elapsedTime = this.totalDuration;
+      this.onPlaybackEnd?.();
+    };
+    source.start();
+
+    // Track progress via audio clock
+    this.progressInterval = setInterval(() => {
+      if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
+        const pos = this.audioCtx.currentTime - startTime;
+        // Account for playback rate (default 1.0) adjusted by config speed
+        const rate = source.playbackRate?.value ?? 1;
+        this.elapsedTime = Math.min(pos * rate, this.totalDuration);
+      }
+    }, 50);
+  }
+
+  async seek(messageId: string, fraction: number) {
+    const buffer = this.audioBuffers.get(messageId);
+    if (!buffer) return;
+
+    const sampleOffset = Math.floor(fraction * buffer.length);
+    const sliced = buffer.slice(sampleOffset);
+
+    this.stop();
+    this.lastPlayedMessageId = messageId;
+    this.playing = true;
+    this.currentMessageId = messageId;
+    this.elapsedTime = 0;
+    this.totalDuration = buffer.length / SAMPLE_RATE;
+
+    if (!this.audioCtx || this.audioCtx.state === 'closed') {
+      this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    }
+    if (this.audioCtx.state === 'suspended') {
+      await this.audioCtx.resume();
+    }
+
+    const audioBuffer = this.audioCtx.createBuffer(1, sliced.length, SAMPLE_RATE);
+    audioBuffer.copyToChannel(sliced as Float32Array<ArrayBuffer>, 0);
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(this.audioCtx.destination);
+
+    const startTime = this.audioCtx.currentTime;
+    const baseElapsed = (sampleOffset / SAMPLE_RATE);
+    this.elapsedTime = baseElapsed;
 
     source.onended = () => {
-      if (this.currentMessageId === messageId) {
-        this.playing = false;
-        this.currentMessageId = null;
-        if (this.audioCtx && this.audioCtx.state !== 'closed') {
-          this.audioCtx.close();
-          this.audioCtx = null;
-        }
-        this.onPlaybackEnd?.();
-      }
+      this.stopProgressTracking();
+      this.playing = false;
+      this.currentMessageId = null;
+      this.elapsedTime = this.totalDuration;
+      this.onPlaybackEnd?.();
     };
-
     source.start();
+
+    this.progressInterval = setInterval(() => {
+      if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
+        const pos = this.audioCtx.currentTime - startTime;
+        this.elapsedTime = baseElapsed + pos;
+      }
+    }, 50);
+  }
+
+  private playBrowser(messageId: string, text: string, config: AppConfig) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = Number(config.tts?.speed || 1);
+    u.onend = () => { if (this.currentMessageId === messageId) { this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
+    u.onerror = () => { if (this.currentMessageId === messageId) { this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
+    try { window.speechSynthesis.speak(u); } catch {
+      this.playing = false; this.currentMessageId = null; this.isGenerating = false;
+    }
   }
 }
 

@@ -176,7 +176,7 @@ describe('redactLLMConfig', () => {
 describe('redactConfig', () => {
   it('redacts full config without mutating original', () => {
     const config = {
-      tts: { engine: 'kitten' },
+      tts: { engine: 'kokoro' },
       llm: {
         backend_mode: 'api',
         provider: 'openai',
@@ -203,14 +203,14 @@ describe('redactConfig', () => {
 
   it('preserves non-LLM sections', () => {
     const config = {
-      tts: { engine: 'kitten', model_variant: 'kitten_nano_v02' },
+      tts: { engine: 'kokoro', model_variant: 'kokoro_v11' },
       llm: { providers: {} },
       rag: { enabled: true, rerank: false },
       stt: { provider: 'local', model: 'whisper-1' },
       onboarding: { completed: true }
     };
     const redacted = redactConfig(config);
-    assert.strictEqual(redacted.tts.engine, 'kitten');
+    assert.strictEqual(redacted.tts.engine, 'kokoro');
     assert.strictEqual(redacted.rag.enabled, true);
     assert.strictEqual(redacted.stt.provider, 'local');
     assert.strictEqual(redacted.onboarding.completed, true);
@@ -238,7 +238,7 @@ describe('redactConfig', () => {
 
   it('returns deeply cloned object', () => {
     const config = {
-      tts: { engine: 'kitten' },
+      tts: { engine: 'kokoro' },
       llm: { providers: {} },
       rag: {},
       stt: {},
@@ -247,8 +247,8 @@ describe('redactConfig', () => {
     const redacted = redactConfig(config);
     
     // Modify redacted, ensure original unchanged
-    redacted.tts.engine = 'kokoro';
-    assert.strictEqual(config.tts.engine, 'kitten');
+    redacted.tts.engine = 'wasm';
+    assert.strictEqual(config.tts.engine, 'kokoro');
   });
 });
 

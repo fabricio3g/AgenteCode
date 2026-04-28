@@ -2,13 +2,11 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { AlertCircle, Check, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, Pencil, Play, Plus, RefreshCw, Trash2, X, FilePlus } from 'lucide-svelte';
+  import { AlertCircle, Check, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, Pencil, RefreshCw, Trash2, X, FilePlus } from 'lucide-svelte';
   import JSZip from 'jszip';
   import hljs from 'highlight.js';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { sandboxExec } from '$lib/services/sandbox';
-  import { isTauri } from '$lib/services/tauri';
   import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
 
   type TreeNode = { name: string; path: string; type: 'file' | 'folder'; children?: TreeNode[]; expanded?: boolean };
@@ -35,7 +33,7 @@
   };
 
   let selectedPath = $state('');
-  let activePane = $state<'code' | 'preview' | 'terminal'>('code');
+  let activePane = $state<'code' | 'preview'>('code');
   let copied = $state(false);
   let downloading = $state(false);
   let editing = $state(false);
@@ -43,10 +41,6 @@
   let treeExpanded = $state<Record<string, boolean>>({});
   let openTabs = $state<string[]>([]);
 
-  let terminalCommand = $state('');
-  let terminalOutput = $state<Array<{ cmd: string; stdout: string; stderr: string; code: number | null; timedOut: boolean }>>([]);
-  let terminalRunning = $state(false);
-  let terminalEl = $state<HTMLDivElement | undefined>(undefined);
   let previewMessages = $state<PreviewLog[]>([]);
   let previewRefreshKey = $state(0);
 
@@ -132,7 +126,7 @@
     } else if (isNewHtml) {
       selectedPath = htmlFile;
       activePane = 'preview';
-    } else if (!htmlFile && artifact?.previewHtml && activePane !== 'terminal') {
+    } else if (!htmlFile && artifact?.previewHtml) {
       activePane = 'preview';
     }
   });
@@ -297,6 +291,19 @@
     const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
     send('error', [reason]);
   });
+
+  // Intercept link clicks — open external links in new tab, prevent iframe navigation
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (!link || !link.href) return;
+    const href = link.getAttribute('href') || link.href;
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+    const isExternal = /^(?:https?:|mailto:|tel:)/i.test(href);
+    if (isExternal) {
+      e.preventDefault();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  }, true);
 })();`;
   }
 
@@ -653,10 +660,11 @@
   function getFileIcon(path: string) {
     const ext = path.split('.').pop() || '';
     const icons: Record<string, string> = {
-      html: 'o', css: '*', js: '~', ts: '~', py: 'py', json: '{ }', md: 'md', sh: '>',
-      rs: 'rs', go: 'go', java: 'jv', c: 'c', cpp: 'c++', rb: 'rb', svg: 'svg'
+      html: 'HT', css: '#', js: 'JS', ts: 'TS', jsx: 'JS', tsx: 'TS', py: 'PY',
+      json: '{}', md: 'MD', sh: 'SH', rs: 'RS', go: 'GO', java: 'JV', c: 'C', cpp: 'C+',
+      rb: 'RB', svg: 'SV', xml: 'XM', yaml: 'YM', yml: 'YM', toml: 'TO', txt: 'TX'
     };
-    return icons[ext] || 'file';
+    return icons[ext] || ext.slice(0, 2).toUpperCase() || '--';
   }
 
   function toggleFolder(path: string) {
@@ -665,7 +673,6 @@
 
   function selectFile(path: string) {
     selectedPath = path;
-    if (activePane === 'terminal') activePane = 'code';
   }
 
   function renderTree(nodes: TreeNode[], depth = 0): TreeNode[] {
@@ -697,55 +704,6 @@
     }
   }
 
-  async function runCommand() {
-    const cmd = terminalCommand.trim();
-    if (!cmd || terminalRunning || !isTauri()) return;
-    terminalRunning = true;
-    try {
-      const result = await sandboxExec({
-        project_name: projectName,
-        files: artifact?.files || {},
-        command: cmd,
-        shell: true,
-        timeout_ms: 30000
-      });
-      terminalOutput = [...terminalOutput, {
-        cmd,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        code: result.exit_code ?? null,
-        timedOut: result.timed_out
-      }];
-      if (artifact) {
-        appStore.setCurrentArtifact({
-          ...artifact,
-          files: { ...result.files }
-        }, appStore.currentArtifactMessageId, appStore.sandboxOpen);
-      }
-      terminalCommand = '';
-      requestAnimationFrame(() => {
-        terminalEl?.scrollTo({ top: terminalEl.scrollHeight });
-      });
-    } catch (err) {
-      terminalOutput = [...terminalOutput, {
-        cmd,
-        stdout: '',
-        stderr: String((err as Error)?.message || err),
-        code: -1,
-        timedOut: false
-      }];
-    } finally {
-      terminalRunning = false;
-    }
-  }
-
-  function handleTerminalKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      runCommand();
-    }
-  }
-
   onMount(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data;
@@ -763,7 +721,7 @@
   <div class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
     <span class="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text)]">{artifact?.title || 'Sandbox'}</span>
 
-    <div class="flex items-center gap-0.5 rounded-lg bg-[var(--surface-highlight)] p-0.5">
+    <div class="flex items-center gap-0.5 rounded-lg bg-[var(--surface-hover)] p-0.5">
       <button
         class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${activePane === 'code' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
         onclick={() => (activePane = 'code')}
@@ -774,54 +732,48 @@
           onclick={() => (activePane = 'preview')}
         >Preview</button>
       {/if}
-      {#if isTauri()}
-        <button
-          class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${activePane === 'terminal' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
-          onclick={() => (activePane = 'terminal')}
-        >Terminal</button>
-      {/if}
     </div>
 
     <div class="flex items-center gap-0.5">
-      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
+      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
         <Download class="h-3.5 w-3.5" />
       </button>
       {#if activePane === 'code' && !editing}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
+        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
           <Pencil class="h-3.5 w-3.5" />
         </button>
       {/if}
       {#if activePane === 'code'}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
+        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
           {#if copied}<Check class="h-3.5 w-3.5 text-success" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
         </button>
       {/if}
       {#if activePane === 'preview' && previewSrc}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={() => (previewRefreshKey += 1)} title="Reload preview">
+        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (previewRefreshKey += 1)} title="Reload preview">
           <RefreshCw class="h-3.5 w-3.5" />
         </button>
       {/if}
-      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={() => (appStore.sandboxOpen = false)} title="Close">
+      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (appStore.sandboxOpen = false)} title="Close">
         <X class="h-3.5 w-3.5" />
       </button>
     </div>
   </div>
 
   <div class="flex min-h-0 flex-1 overflow-hidden">
-    {#if (fileList.length > 0 || true) && activePane !== 'terminal'}
+    {#if (fileList.length > 0 || true)}
       <div class="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
         <div class="flex items-center justify-between px-2.5 py-2 border-b border-[var(--border)]">
           <span class="text-[11px] font-medium text-[var(--text-secondary)]">Files</span>
           <div class="flex items-center gap-0.5">
             <button
-              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
               onclick={() => openNewFileModal()}
               title="New file"
             >
               <FilePlus class="h-3.5 w-3.5" />
             </button>
             <button
-              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
               onclick={() => openNewFolderModal()}
               title="New folder"
             >
@@ -845,7 +797,7 @@
 
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       {#if openTabs.length > 0 && activePane === 'code'}
-        <div class="flex items-end overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-highlight)]" style="min-height:33px">
+        <div class="flex items-end overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-hover)]" style="min-height:33px">
           {#each openTabs as tab}
             <div class="group relative flex shrink-0 items-center border-r border-[var(--border)] {selectedPath === tab ? 'bg-[var(--surface)]' : 'hover:bg-[var(--surface)]'}" style="height:33px">
               {#if selectedPath === tab}
@@ -856,12 +808,12 @@
                 class="flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => openTab(tab)}
               >
-                <span class="font-mono opacity-50 text-[10px]">{getFileIcon(tab)}</span>
+                <span class="file-icon-tab">{getFileIcon(tab)}</span>
                 <span class="max-w-[100px] truncate">{tab.split('/').pop()}</span>
               </button>
               <button
                 type="button"
-                class="mr-1.5 ml-0.5 flex shrink-0 items-center rounded p-0.5 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+                class="mr-1.5 ml-0.5 flex shrink-0 items-center rounded p-0.5 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                 onclick={(e) => { e.stopPropagation(); closeTab(tab); }}
                 aria-label="Close {tab}"
               >
@@ -899,7 +851,7 @@
                   onclick={saveEdit}
                 >Save</button>
                 <button
-                  class="rounded-lg border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
+                  class="rounded-lg border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
                   onclick={cancelEdit}
                 >Cancel</button>
               </div>
@@ -978,48 +930,6 @@
           <p class="text-sm font-medium text-fg">No previewable page yet</p>
           <p class="text-xs">Generate an HTML artifact or use the agent's report and preview tools to create one.</p>
         </div>
-      {:else if activePane === 'terminal'}
-        <div class="flex h-full flex-col bg-code-terminal-bg">
-          <div bind:this={terminalEl} class="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
-            {#if terminalOutput.length === 0}
-              <div class="text-code-terminal-dim">
-                <p>Sandbox terminal - files written to project folder.</p>
-                <p class="mt-1">Run any command: <span class="text-code-terminal-dim">ls, python, node, etc.</span></p>
-              </div>
-            {/if}
-            {#each terminalOutput as entry}
-              <div class="mb-3">
-                <div class="text-code-terminal-prompt"><span class="text-code-terminal-dim">$</span> {entry.cmd}</div>
-                {#if entry.stdout}<pre class="mt-1 whitespace-pre-wrap text-code-terminal-text">{entry.stdout}</pre>{/if}
-                {#if entry.stderr}<pre class="mt-1 whitespace-pre-wrap text-code-terminal-error">{entry.stderr}</pre>{/if}
-                {#if entry.timedOut}<div class="mt-1 text-[11px] text-code-terminal-warn">Timed out</div>{/if}
-                {#if entry.code !== null && entry.code !== 0 && !entry.timedOut}<div class="text-[11px] text-code-terminal-dim">exit {entry.code}</div>{/if}
-              </div>
-            {/each}
-          </div>
-          <div class="flex items-center gap-2 border-t border-code-terminal-dim/40 px-4 py-2">
-            <span class="text-xs font-mono text-code-terminal-prompt">$</span>
-            <input
-              type="text"
-              bind:value={terminalCommand}
-              onkeydown={handleTerminalKeydown}
-              placeholder="command..."
-              disabled={terminalRunning}
-              class="flex-1 bg-transparent font-mono text-xs text-code-terminal-text outline-none placeholder:text-code-terminal-dim disabled:opacity-50"
-            />
-            <button
-              class="rounded p-1.5 text-code-terminal-dim transition hover:text-primary-fg disabled:opacity-30"
-              onclick={runCommand}
-              disabled={terminalRunning || !terminalCommand.trim()}
-            >
-              {#if terminalRunning}
-                <span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border border-code-terminal-dim border-t-code-terminal-dim"></span>
-              {:else}
-                <Play class="h-3.5 w-3.5" />
-              {/if}
-            </button>
-          </div>
-        </div>
       {/if}
     </div>
   </div>
@@ -1030,7 +940,7 @@
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New File</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -1042,12 +952,12 @@
         bind:value={newItemName}
         type="text"
         placeholder="filename.ext"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
         onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') closeNewItemModal(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
+        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
       </div>
     </div>
   </div>
@@ -1058,7 +968,7 @@
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">New Folder</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -1070,12 +980,12 @@
         bind:value={newItemName}
         type="text"
         placeholder="folder-name"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
         onkeydown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') closeNewItemModal(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
+        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
       </div>
     </div>
   </div>
@@ -1086,7 +996,7 @@
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Confirm Delete</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={cancelDelete}>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={cancelDelete}>
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -1095,7 +1005,7 @@
         {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-warning">This will delete all files inside.</span>{/if}
       </p>
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelDelete}>Cancel</button>
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelDelete}>Cancel</button>
         <button class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmDelete}>Delete</button>
       </div>
     </div>
@@ -1107,7 +1017,7 @@
     <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
       <div class="mb-4 flex items-center justify-between">
         <h3 class="text-sm font-semibold text-[var(--text)]">Rename {pendingRenameType === 'folder' ? 'Folder' : 'File'}</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>
+        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={cancelRename}>
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -1116,12 +1026,12 @@
         bind:this={renameInput}
         bind:value={renameValue}
         type="text"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
         onkeydown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') cancelRename(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]" onclick={cancelRename}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelRename}>Cancel</button>
+        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
       </div>
     </div>
   </div>
@@ -1132,7 +1042,7 @@
     <div class="group/folder">
       <div class="flex items-center">
         <button
-          class="flex flex-1 items-center gap-1 px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-highlight)]"
+          class="flex flex-1 items-center gap-1 px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-hover)]"
           style="padding-left: {8 + depth * 12}px"
           onclick={() => toggleFolder(node.path)}
         >
@@ -1146,21 +1056,21 @@
         </button>
         <div class="flex items-center gap-0.5 px-1 opacity-0 group-hover/folder:opacity-100 transition">
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); openNewFileModal(node.path); }}
             title="New file in folder"
           >
             <FilePlus class="h-3 w-3" />
           </button>
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'folder'); }}
             title="Rename folder"
           >
             <Pencil class="h-3 w-3" />
           </button>
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-error hover:bg-[var(--surface-highlight)]"
+            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-error hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'folder'); }}
             title="Delete folder"
           >
@@ -1177,22 +1087,22 @@
   {:else}
     <div class="group/file flex items-center">
       <button
-        class="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left transition {selectedPath === node.path ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]'}"
+        class="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left transition {selectedPath === node.path ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'}"
         style="padding-left: {20 + depth * 12}px"
         onclick={() => selectFile(node.path)}
       >
-        <span class="w-4 shrink-0 text-center text-[11px] uppercase">{getFileIcon(node.path)}</span>
+        <span class="file-icon-tree">{getFileIcon(node.path)}</span>
         <span class="truncate text-[11px]">{node.name}</span>
       </button>
       <button
-        class="rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-[var(--text)] hover:bg-[var(--surface-highlight)]"
+        class="rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
         onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'file'); }}
         title="Rename file"
       >
         <Pencil class="h-3 w-3" />
       </button>
       <button
-        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-error hover:bg-[var(--surface-highlight)]"
+        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-error hover:bg-[var(--surface-hover)]"
         onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'file'); }}
         title="Delete file"
       >
@@ -1230,4 +1140,21 @@
   :global(.dark) .sandbox-code :global(.hljs-literal) { color: #79c0ff; }
   :global(.dark) .sandbox-code :global(.hljs-type) { color: #ffa657; }
   :global(.dark) .sandbox-code :global(.hljs-params) { color: #e6edf3; }
+
+  .file-icon-tab {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    opacity: 0.55;
+  }
+  .file-icon-tree {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    width: 1.25rem;
+    flex-shrink: 0;
+    text-align: center;
+  }
 </style>

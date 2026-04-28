@@ -25,15 +25,15 @@ describe('getDefaultTTSConfig', () => {
   it('returns valid TTS config', () => {
     const tts = getDefaultTTSConfig(modelsRoot);
     assert.ok(tts);
-    assert.strictEqual(tts.engine, 'kitten');
-    assert.strictEqual(tts.model_variant, 'kitten_nano_v02');
+    assert.strictEqual(tts.engine, 'wasm');
+    assert.strictEqual(tts.model_variant, 'kokoro_v11');
     assert.ok(tts.model_dir);
   });
 
   it('sets model_dir relative to modelsRoot', () => {
     const tts = getDefaultTTSConfig(modelsRoot);
     // path.join normalizes based on platform, so check for the directory name
-    assert.ok(tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_1'));
     // Verify it's a valid absolute path structure
     assert.ok(path.isAbsolute(tts.model_dir) || tts.model_dir.startsWith('.'));
   });
@@ -41,8 +41,8 @@ describe('getDefaultTTSConfig', () => {
   it('has default voice mapping', () => {
     const tts = getDefaultTTSConfig(modelsRoot);
     assert.ok(tts.voice_map);
-    assert.strictEqual(tts.voice_map.Bella, 0);
-    assert.strictEqual(tts.voice_map.Leo, 7);
+    assert.strictEqual(tts.voice_map.af_maple, 0);
+    assert.strictEqual(tts.voice_map.bf_vale, 2);
     assert.strictEqual(Object.keys(tts.voice_map).length, 8);
   });
 
@@ -59,7 +59,7 @@ describe('getDefaultTTSConfig', () => {
     const tts = getDefaultTTSConfig(windowsRoot);
     assert.ok(tts.model_dir);
     // Path.join handles platform-specific separators
-    assert.ok(tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_1'));
   });
 
   it('handles relative paths', () => {
@@ -67,7 +67,7 @@ describe('getDefaultTTSConfig', () => {
     const tts = getDefaultTTSConfig(relativeRoot);
     assert.ok(tts.model_dir);
     // Just verify it includes the TTS directory name
-    assert.ok(tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_1'));
   });
 });
 
@@ -332,7 +332,7 @@ describe('getDefaultConfig', () => {
     };
     const config = getDefaultConfig(paths);
     // Check for the expected directory name (path.join normalizes separators)
-    assert.ok(config.tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(config.tts.model_dir.includes('kokoro-multi-lang-v1_1'));
   });
 
   it('passes localModelsRoot to LLM config', () => {
@@ -357,7 +357,7 @@ describe('getDefaultConfig', () => {
     
     // Verify defaults are applied
     assert.strictEqual(config.llm.provider, 'openai');
-    assert.strictEqual(config.tts.engine, 'kitten');
+    assert.strictEqual(config.tts.engine, 'wasm');
     assert.strictEqual(config.stt.provider, 'local');
     assert.strictEqual(config.rag.enabled, true);
     assert.strictEqual(config.onboarding.completed, false);
@@ -388,13 +388,13 @@ describe('createDefaultConfigWithPaths', () => {
     const config = createDefaultConfigWithPaths('/models', '/local');
     assert.ok(config);
     // Check for expected directory names
-    assert.ok(config.tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(config.tts.model_dir.includes('kokoro-multi-lang-v1_1'));
     assert.strictEqual(config.llm.local.models_dir, '/local');
   });
 
   it('handles same path for both roots', () => {
     const config = createDefaultConfigWithPaths('/models', '/models');
-    assert.ok(config.tts.model_dir.includes('kitten-nano-en-v0_2-fp16'));
+    assert.ok(config.tts.model_dir.includes('kokoro-multi-lang-v1_1'));
     assert.strictEqual(config.llm.local.models_dir, '/models');
   });
 

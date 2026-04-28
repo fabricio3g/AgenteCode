@@ -136,7 +136,7 @@
               onclick={() => openModelHub(m.id)}
             >
               <div class="flex w-full items-start justify-between gap-2">
-                <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--surface-highlight)] ring-1 ring-[var(--border-light)]">
+                <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--surface-hover)] ring-1 ring-[var(--border)]">
                   {#if m.icon === 'zap'}
                     <Zap class="h-4 w-4 text-[var(--text-secondary)]" />
                   {:else if m.icon === 'sparkles'}

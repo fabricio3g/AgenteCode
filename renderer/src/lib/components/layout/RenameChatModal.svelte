@@ -130,10 +130,10 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
   }
 
   .modal-title {
@@ -149,7 +149,7 @@
     align-items: center;
     justify-content: center;
     padding: 0.375rem;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
     color: var(--text-muted);
     background: transparent;
     border: 1px solid transparent;
@@ -158,8 +158,8 @@
 
   .close-btn:hover {
     color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
+    border-color: var(--border);
   }
 
   .modal-body {
@@ -178,9 +178,9 @@
   .input-field {
     width: 100%;
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-m);
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
     font-size: 0.9375rem;
     outline: none;
@@ -192,7 +192,7 @@
   }
 
   .input-field:focus {
-    border-color: var(--border-strong);
+    border-color: var(--border-hover);
   }
 
   .char-count {
@@ -213,7 +213,7 @@
 
   .btn {
     padding: 0.5rem 1rem;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
     font-size: 0.875rem;
     font-weight: 500;
     transition: all 0.12s;
@@ -227,14 +227,14 @@
 
   .btn-secondary:hover {
     color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
+    background: var(--surface-hover);
+    border-color: var(--border-hover);
   }
 
   .btn-primary {
     color: var(--primary-fg);
     background: var(--primary);
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--border-hover);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
   }
 

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -18,6 +19,7 @@
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "katex": "^0.16.38",
+    "kokoro-js": "^1.2.1",
     "lucide-svelte": "^0.542.0",
     "marked": "^16.3.0",
     "monaco-editor": "^0.55.1",
@@ -34,6 +36,7 @@
     "@types/d3": "^7.4.3",
     "@types/node": "^24.5.2",
     "autoprefixer": "^10.4.21",
+    "patch-package": "^8.0.1",
     "postcss": "^8.5.6",
     "svelte-check": "^4.3.1",
     "tailwindcss": "^3.4.17",

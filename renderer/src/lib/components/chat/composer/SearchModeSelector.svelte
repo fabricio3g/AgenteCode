@@ -1,8 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Search, Globe, Database, XCircle, Check, ChevronDown, ChevronUp } from 'lucide-svelte';
-  import { fly } from 'svelte/transition';
+  import { ChevronDown, WifiOff } from 'lucide-svelte';
+  import { flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { t } from 'svelte-i18n';
 
@@ -15,17 +15,11 @@
   let triggerEl: HTMLButtonElement | undefined = $state();
   let dropdownEl: HTMLDivElement | undefined = $state();
   let dropdownOpen = $state(false);
-  let dropdownPos = $state({ top: 0, bottom: 0, left: 0, openUp: false });
-  const dropdownStyle = $derived(
-    dropdownPos.openUp
-      ? `bottom:${dropdownPos.bottom}px; left:${dropdownPos.left}px; z-index:200; min-width: 160px;`
-      : `top:${dropdownPos.top}px; left:${dropdownPos.left}px; z-index:200; min-width: 160px;`
-  );
 
   const currentModeId = $derived(searchModeIds.find(id => id === searchMode) || searchModeIds[0]);
 
   function getSearchLabel(id: SearchModeId): string {
-    const labels = {
+    const labels: Record<SearchModeId, string> = {
       chat: $t('composer.searchOff'),
       search: $t('composer.webSearch'),
       deep: $t('composer.deepSearch'),
@@ -34,44 +28,8 @@
     return labels[id] || id;
   }
 
-  function getSearchIcon(id: SearchModeId) {
-    const icons = {
-      chat: XCircle,
-      search: Search,
-      deep: Globe,
-      max: Database
-    };
-    return icons[id] || Search;
-  }
-
-  function getSearchDescription(id: SearchModeId): string {
-    const descriptions = {
-      chat: $t('composer.searchOffDesc'),
-      search: $t('composer.webSearchDesc'),
-      deep: $t('composer.deepSearchDesc'),
-      max: $t('composer.maxSearchDesc')
-    };
-    return descriptions[id] || '';
-  }
-
-  function updateDropdownPos() {
-    if (!triggerEl) return;
-    const rect = triggerEl.getBoundingClientRect();
-    const menuHeight = 208;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < menuHeight && rect.top > spaceBelow;
-    dropdownPos = openUp
-      ? { top: 0, bottom: Math.max(8, window.innerHeight - rect.top + 4), left: rect.left, openUp: true }
-      : { top: rect.bottom + 4, bottom: 0, left: rect.left, openUp: false };
-  }
-
   function toggleDropdown() {
-    if (dropdownOpen) {
-      dropdownOpen = false;
-      return;
-    }
-    updateDropdownPos();
-    dropdownOpen = true;
+    dropdownOpen = !dropdownOpen;
   }
 
   function selectMode(mode: 'chat' | 'search' | 'deep' | 'max') {
@@ -80,19 +38,19 @@
   }
 
   $effect(() => {
-    if (!dropdownOpen) return;
+    if (!dropdownOpen || !triggerEl || !dropdownEl) return;
+    const trigger = triggerEl;
+    const dropdown = dropdownEl;
 
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
-      if (!triggerEl?.contains(target) && !dropdownEl?.contains(target)) {
+      if (!trigger.contains(target) && !dropdown.contains(target)) {
         dropdownOpen = false;
       }
     }
 
     function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        dropdownOpen = false;
-      }
+      if (event.key === 'Escape') dropdownOpen = false;
     }
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -105,94 +63,39 @@
   });
 </script>
 
-<button
-  bind:this={triggerEl}
-  class="selector-trigger flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition"
-  class:active={searchMode !== 'chat'}
-  onclick={toggleDropdown}
-  aria-haspopup="listbox"
-  aria-expanded={dropdownOpen}
->
-  <svelte:component this={getSearchIcon(currentModeId)} class="h-4 w-4" />
-  <span>{getSearchLabel(currentModeId)}</span>
-  {#if dropdownPos.openUp}
-    <ChevronUp class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
-  {:else}
-    <ChevronDown class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
-  {/if}
-</button>
-
-{#if dropdownOpen}
-  <div
-    bind:this={dropdownEl}
-    class="selector-dropdown fixed overflow-hidden"
-    style={dropdownStyle}
-    transition:fly={{ y: dropdownPos.openUp ? 4 : -4, duration: 120 }}
-    role="listbox"
-    aria-label={$t('composer.selectSearchMode')}
+<div class="relative inline-flex">
+  <button
+    bind:this={triggerEl}
+    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)]' : 'rounded-lg border border-[var(--border)]'}"
+    onclick={toggleDropdown}
+    aria-haspopup="listbox"
+    aria-expanded={dropdownOpen}
   >
-    <div class="p-1">
+    {#if currentModeId === 'chat'}
+      <WifiOff class="h-3.5 w-3.5" />
+    {:else}
+      {getSearchLabel(currentModeId)}
+    {/if}
+    <ChevronDown class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
+  </button>
+
+  {#if dropdownOpen}
+    <div
+      bind:this={dropdownEl}
+      class="absolute bottom-full z-[200] min-w-[140px] origin-bottom overflow-hidden rounded-t-lg border border-[var(--border)] bg-[var(--surface)] py-0.5"
+      transition:flyAndScale={{ y: -4, start: 0.95, duration: 150 }}
+      role="listbox"
+    >
       {#each searchModeIds as modeId (modeId)}
-        {@const Icon = getSearchIcon(modeId)}
         <button
-          class="selector-option flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition"
-          class:selected={searchMode === modeId}
+          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {searchMode === modeId ? 'text-[var(--text)] font-medium' : 'text-[var(--text-secondary)]'}"
           onclick={() => selectMode(modeId)}
           role="option"
           aria-selected={searchMode === modeId}
         >
-          <Icon class="h-4 w-4" />
-          <span class="flex-1">{getSearchLabel(modeId)}</span>
-          {#if searchMode === modeId}
-            <Check class="h-3.5 w-3.5 text-[var(--primary)]" />
-          {/if}
+          {getSearchLabel(modeId)}
         </button>
       {/each}
     </div>
-  </div>
-{/if}
-
-<style>
-  .selector-trigger {
-    color: var(--text-secondary);
-    background: transparent;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .selector-trigger:hover {
-    background: var(--surface-highlight);
-    color: var(--text);
-    border-color: var(--border-light);
-  }
-
-  .selector-trigger.active {
-    color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border);
-  }
-
-  .selector-dropdown {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .selector-option {
-    color: var(--text);
-    background: transparent;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-  }
-
-  .selector-option:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
-  }
-
-  .selector-option.selected {
-    background: var(--surface-secondary);
-    border-color: var(--border);
-  }
-</style>
+  {/if}
+</div>

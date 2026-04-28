@@ -16,7 +16,7 @@
   {#if mode === 'slides'}
     <SlidesViewer slides={slides} {onDownload} />
   {:else}
-    <div class="chateaui-card mt-4 flex items-center justify-between px-4 py-3" style="--chateaui-card-bg: var(--surface-highlight);">
+    <div class="chateaui-card mt-4 flex items-center justify-between px-4 py-3" style="--chateaui-card-bg: var(--surface-hover);">
       <div>
         <div class="text-sm font-semibold text-[var(--text)]">Presentation ready</div>
         <div class="text-xs text-[var(--text-secondary)]">{slides.length} slide(s) parsed from the response</div>

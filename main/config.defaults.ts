@@ -23,10 +23,10 @@ import type {
  */
 export function getDefaultTTSConfig(modelsRoot: string): TTSConfig {
   return {
-    engine: 'kitten',
-    model_variant: 'kitten_nano_v02',
-    model_dir: path.join(modelsRoot, 'kitten-nano-en-v0_2-fp16'),
-    model: 'model.fp16.onnx',
+    engine: 'wasm',
+    model_variant: 'kokoro_v11',
+    model_dir: path.join(modelsRoot, 'kokoro-multi-lang-v1_1'),
+    model: 'model.int8.onnx',
     voices: 'voices.bin',
     tokens: 'tokens.txt',
     data_dir: 'espeak-ng-data',
@@ -37,8 +37,8 @@ export function getDefaultTTSConfig(modelsRoot: string): TTSConfig {
     provider: 'cpu',
     sample_rate: 24000,
     voice_map: {
-      Bella: 0, Jasper: 1, Luna: 2, Bruno: 3,
-      Rosie: 4, Hugo: 5, Kiki: 6, Leo: 7
+      af_heart: 0, af_bella: 1, af_nicole: 2,
+      am_michael: 3, am_fenrir: 4, bf_emma: 5
     }
   };
 }

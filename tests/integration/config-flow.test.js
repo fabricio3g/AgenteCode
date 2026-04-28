@@ -209,14 +209,14 @@ describe('Full Config Flow Integration', () => {
       
       original.llm.provider = 'gpt-4';
       original.llm.providers.openai.model = 'gpt-4';
-      original.tts.engine = 'kitten';
+      original.tts.engine = 'kokoro';
       
       const redacted = redactConfig(original);
       
       // Non-sensitive data preserved
       assert.strictEqual(redacted.llm.provider, 'gpt-4');
       assert.strictEqual(redacted.llm.providers.openai.model, 'gpt-4');
-      assert.strictEqual(redacted.tts.engine, 'kitten');
+      assert.strictEqual(redacted.tts.engine, 'kokoro');
     });
   });
 

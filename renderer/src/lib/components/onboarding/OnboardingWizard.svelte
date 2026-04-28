@@ -8,19 +8,20 @@
   import OnboardingStepWelcome from './OnboardingStepWelcome.svelte';
   import OnboardingStepRuntime from './OnboardingStepRuntime.svelte';
   import OnboardingStepModel from './OnboardingStepModel.svelte';
+  import OnboardingStepTtsModel from './OnboardingStepTtsModel.svelte';
   import OnboardingStepReady from './OnboardingStepReady.svelte';
   import { gatherOnboardingHardware, markOnboardingComplete } from '$lib/services/onboarding';
   import { appStore } from '$lib/stores/app.svelte';
   import type { HardwareInfo } from '$lib/types/tauri';
 
-  type Step = 'welcome' | 'runtime' | 'model' | 'ready';
+  type Step = 'welcome' | 'runtime' | 'model' | 'tts-model' | 'ready';
 
   let step = $state<Step>('welcome');
   let hardware = $state<HardwareInfo | null>(null);
   let runtimePath = $state('');
   let modelFilename = $state('');
 
-  const STEPS: Step[] = ['welcome', 'runtime', 'model', 'ready'];
+  const STEPS: Step[] = ['welcome', 'runtime', 'model', 'tts-model', 'ready'];
   const STEP_INDEX = $derived(STEPS.indexOf(step));
 
   function goNext() {
@@ -38,6 +39,9 @@
   }
   function handleModelNext(filename: string) {
     modelFilename = filename;
+    goNext();
+  }
+  function handleTtsModelNext() {
     goNext();
   }
   function handleFinish() {
@@ -64,7 +68,7 @@
     aria-modal="true"
   >
     <!-- Header with step indicator -->
-    <div class="flex items-center justify-between border-b border-[var(--border-light)] px-5 py-3.5">
+    <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3.5">
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5">
           {#each STEPS as s, i}
@@ -76,7 +80,7 @@
         <span class="text-xs font-medium text-[var(--text-muted)]">{$t('onboarding.stepOf', { values: { current: STEP_INDEX + 1, total: STEPS.length } })}</span>
       </div>
       <button
-        class="rounded-lg border border-transparent p-1.5 text-[var(--text-muted)] transition hover:border-[var(--border)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+        class="rounded-lg border border-transparent p-1.5 text-[var(--text-muted)] transition hover:border-[var(--border)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
         onclick={handleSkip}
         title={$t('onboarding.skipSetup')}
       >
@@ -92,6 +96,8 @@
         <OnboardingStepRuntime onNext={handleRuntimeNext} onBack={goBack} />
       {:else if step === 'model'}
         <OnboardingStepModel onNext={handleModelNext} onBack={goBack} {hardware} />
+      {:else if step === 'tts-model'}
+        <OnboardingStepTtsModel onNext={handleTtsModelNext} onBack={goBack} />
       {:else if step === 'ready'}
         <OnboardingStepReady {modelFilename} onBack={goBack} onFinish={handleFinish} />
       {/if}

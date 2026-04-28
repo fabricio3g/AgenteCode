@@ -131,7 +131,7 @@
 <!-- Trigger: clean flat text button -->
 <button
   bind:this={triggerEl}
-  class="model-trigger flex max-w-[18rem] items-center gap-1.5 rounded-lg px-2 py-1 transition"
+  class="model-trigger flex max-w-[18rem] items-center gap-1.5 px-2 py-1 transition"
   onclick={toggleMenu}
 >
     {#if appStore.backendMode === 'local'}
@@ -167,7 +167,7 @@
       </span>
       {#if appStore.backendMode === 'api'}
         <button
-          class="refresh-btn rounded-lg p-1.5"
+          class="refresh-btn p-1.5"
           onclick={() => { appStore.refreshModels(true); modelsStore.refreshStatus(); }}
           aria-label="Refresh"
         >
@@ -178,13 +178,13 @@
 
     <!-- API / Local mode toggle -->
     {#if isTauri()}
-      <div class="mode-toggle mx-4 mb-3 flex gap-1 rounded-xl p-0.5">
+      <div class="mode-toggle mx-4 mb-3">
         <button
-          class={`mode-btn flex-1 rounded-lg py-1.5 text-[13px] font-medium transition ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
+          class={`mode-btn flex-1 transition ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('api')}
         >API</button>
         <button
-          class={`mode-btn flex-1 rounded-lg py-1.5 text-[13px] font-medium transition ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
+          class={`mode-btn flex-1 transition ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('local')}
         >Local</button>
       </div>
@@ -192,7 +192,7 @@
 
     <!-- Runtime busy -->
     {#if appStore.backendMode === 'local' && localLoading}
-      <div class="loading-indicator mx-4 mb-3 flex items-center gap-2.5 rounded-xl px-3 py-2.5">
+      <div class="loading-indicator mx-4 mb-3 flex items-center gap-2.5 px-3 py-2.5">
         <LoaderCircle class="h-4 w-4 shrink-0 animate-spin text-[var(--text-muted)]" />
         <span class="text-sm font-medium text-[var(--text-secondary)]">Loading model...</span>
       </div>
@@ -200,20 +200,20 @@
 
     <!-- Switch confirmation -->
     {#if confirmSwitch}
-      <div class="confirm-card mx-4 mb-3 rounded-xl p-3">
+      <div class="confirm-card mx-4 mb-3 p-3">
         <p class="text-sm text-[var(--text-secondary)]">
           Unload <span class="font-semibold text-[var(--text)]">{loadedModelFilename}</span> and load <span class="font-semibold text-[var(--text)]">{confirmSwitch.name}</span>?
         </p>
         <div class="mt-3 flex gap-2">
           <button
-            class="confirm-btn primary flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold"
+            class="confirm-btn primary flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold"
             onclick={confirmSwitchModel}
           >
             <Power class="h-3.5 w-3.5" />
             Switch
           </button>
           <button
-            class="confirm-btn secondary rounded-lg px-3 py-1.5 text-sm font-medium"
+            class="confirm-btn secondary px-3 py-1.5 text-sm font-medium"
             onclick={() => (confirmSwitch = null)}
           >Cancel</button>
         </div>
@@ -229,13 +229,13 @@
           bind:value={modelSearch}
           type="text"
           placeholder="Search models..."
-          class="search-input w-full rounded-xl py-2 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
+          class="search-input w-full py-2 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
           onclick={(e) => e.stopPropagation()}
           onkeydown={(e) => e.key === 'Escape' && (appStore.modelMenuOpen = false)}
         />
         {#if modelSearch}
           <button
-            class="clear-btn absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1"
+            class="clear-btn absolute right-3 top-1/2 -translate-y-1/2 p-1"
             onclick={() => (modelSearch = '')}
           >
             <X class="h-3.5 w-3.5" />
@@ -248,7 +248,7 @@
     <div class="model-list max-h-64 overflow-y-auto px-3 pb-3">
       {#if !appStore.models.length}
         <div class="empty-state flex flex-col items-center gap-3 px-4 py-6 text-center">
-          <div class="empty-icon flex h-10 w-10 items-center justify-center rounded-xl">
+          <div class="empty-icon flex h-10 w-10 items-center justify-center">
             <Sparkles class="h-5 w-5 text-[var(--text-muted)]" />
           </div>
           <div>
@@ -260,7 +260,7 @@
             </p>
           </div>
           <button
-            class="empty-btn inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium"
+            class="empty-btn inline-flex items-center gap-2 px-4 py-2 text-sm font-medium"
             onclick={() => {
               appStore.modelMenuOpen = false;
               if (appStore.backendMode === 'api') {
@@ -282,10 +282,10 @@
             {@const loaded = appStore.backendMode === 'local' && isLoaded(model)}
 
             <div
-              class="model-item group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition {loaded ? 'is-loaded' : ''}"
+              class="model-item group flex w-full items-center gap-2.5 px-2.5 py-[5px] transition {loaded ? 'is-loaded' : ''}"
             >
               <!-- Status indicator -->
-              <div class="flex h-5 w-5 shrink-0 items-center justify-center">
+              <div class="flex h-4 w-4 shrink-0 items-center justify-center">
                 {#if appStore.backendMode === 'local'}
                   {#if loaded}
                     <span class="relative flex h-2 w-2">
@@ -293,7 +293,7 @@
                       <span class="status-dot relative inline-flex h-2 w-2 rounded-full"></span>
                     </span>
                   {:else}
-                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--border-strong)]"></span>
+                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--border-hover)]"></span>
                   {/if}
                 {:else}
                   {#if activeProvider?.model === model.id}
@@ -322,13 +322,13 @@
                 onkeydown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLElement).click(); }}
               >
                 <div class="flex items-center gap-1.5">
-                  <span class="text-sm font-medium text-[var(--text)] truncate">{model.name}</span>
+                  <span class="text-[13px] font-medium text-[var(--text)] truncate">{model.name}</span>
                   {#if loaded}
-                    <span class="live-badge shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">Live</span>
+                    <span class="live-badge shrink-0 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">Live</span>
                   {/if}
                 </div>
                 {#if model.details}
-                  <div class="mt-0.5 truncate text-xs text-[var(--text-muted)]">{model.details}</div>
+                  <div class="mt-0.5 truncate text-[11px] text-[var(--text-muted)]">{model.details}</div>
                 {/if}
               </div>
 
@@ -337,7 +337,7 @@
                 {#if loaded}
                   <button
                     type="button"
-                    class="action-btn unload shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
+                    class="action-btn unload shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
                     onclick={handleUnload}
                     disabled={unloading}
                   >
@@ -351,7 +351,7 @@
                 {:else}
                   <button
                     type="button"
-                    class="action-btn load shrink-0 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
+                    class="action-btn load shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium disabled:opacity-40"
                     onclick={async (e) => { e.stopPropagation(); await handleLoad(model); }}
                     disabled={localLoading}
                   >
@@ -374,7 +374,7 @@
     <!-- Footer -->
     <div class="dropdown-footer border-t border-[var(--border)] px-4 py-2.5 space-y-1.5">
       <button
-        class="refresh-footer-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium"
+        class="refresh-footer-btn flex w-full items-center justify-center gap-2 px-4 py-2 text-sm font-medium"
         onclick={() => { appStore.refreshModels(true); modelsStore.refreshStatus(); if (isTauri()) modelsStore.refreshIndex(); }}
         disabled={appStore.modelsRefreshing}
       >
@@ -388,7 +388,7 @@
       </button>
       {#if appStore.backendMode === 'local'}
         <button
-          class="hub-btn flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium"
+          class="hub-btn flex w-full items-center justify-center gap-2 px-4 py-2 text-sm font-medium"
           onclick={() => { appStore.modelMenuOpen = false; appStore.modelManagerOpen = true; }}
         >Browse Model Hub</button>
       {/if}
@@ -400,158 +400,168 @@
   .model-trigger {
     background: transparent;
     border: none;
-    border-radius: var(--radius-s);
+    border-radius: 4px;
   }
 
   .model-trigger:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
+  }
+
+  .model-trigger svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .model-trigger:hover svg {
+    transform: rotate(-8deg);
   }
 
   .model-dropdown {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
+    border-radius: 8px;
     box-shadow: var(--shadow-xl);
   }
 
   .refresh-btn {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     background: transparent;
-    border-radius: var(--radius-s);
-    border: 1px solid transparent;
-    transition: all 0.12s;
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
 
   .refresh-btn:hover {
     color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
+  }
+
+  .refresh-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .refresh-btn:hover svg {
+    transform: rotate(-8deg);
   }
 
   .mode-toggle {
-    background: var(--surface-highlight);
-    border-radius: var(--radius-m);
-    padding: 2px;
-    border: 1px solid var(--border-light);
+    display: flex;
+    gap: 4px;
   }
 
   .mode-btn {
-    color: var(--text-tertiary);
-    border-radius: var(--radius-s);
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 500;
   }
 
   .mode-btn:hover {
-    color: var(--text-secondary);
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .mode-btn.is-active {
     color: var(--text);
-    background: var(--surface);
-    box-shadow: var(--shadow-s);
+    background: var(--surface-hover);
   }
 
   .loading-indicator {
-    background: var(--surface-highlight);
-    border-radius: var(--radius-m);
-    border: 1px solid var(--border-light);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
   }
 
   .confirm-card {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-m);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
   }
 
   .confirm-btn.primary {
     background: var(--primary);
     color: var(--primary-fg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    transition: opacity 0.12s, transform 0.1s;
+    border: none;
+    border-radius: 8px;
+    transition: opacity 0.12s;
   }
 
   .confirm-btn.primary:hover {
     opacity: 0.88;
   }
 
-  .confirm-btn.primary:active {
-    transform: scale(0.98);
-  }
-
   .confirm-btn.secondary {
-    background: var(--surface);
+    background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    border-radius: var(--radius-s);
+    border-radius: 8px;
   }
 
   .confirm-btn.secondary:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .search-wrapper .search-input {
-    background: var(--surface-highlight);
+    background: transparent;
     border: 1px solid var(--border);
-    border-radius: var(--radius-m);
+    border-radius: 8px;
   }
 
   .search-wrapper .search-input:focus {
-    border-color: var(--border-strong);
+    border-color: var(--border-hover);
+    background: var(--surface-hover);
   }
 
   .clear-btn {
     color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
   }
 
   .clear-btn:hover {
     color: var(--text);
+    background: var(--surface-hover);
   }
 
   .empty-icon {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-m);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
   }
 
   .empty-btn {
     background: var(--primary);
     color: var(--primary-fg);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    transition: opacity 0.12s, transform 0.1s;
+    border: none;
+    border-radius: 8px;
+    transition: opacity 0.12s;
   }
 
   .empty-btn:hover {
     opacity: 0.88;
   }
 
-  .empty-btn:active {
-    transform: scale(0.98);
-  }
-
   .model-item {
     background: transparent;
-    border-radius: var(--radius-s);
     border: 1px solid transparent;
+    border-radius: 8px;
   }
 
   .model-item:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
   }
 
   .model-item.is-loaded {
-    background: var(--surface-secondary);
-    border-color: var(--border);
+    background: var(--surface);
   }
 
   .live-badge {
     color: var(--live-indicator);
     background: var(--success-bg);
-    border-radius: var(--radius-sm);
+    border-radius: 3px;
   }
 
   :global(.dark) .live-badge {
@@ -560,42 +570,45 @@
   }
 
   .action-btn {
-    background: var(--surface);
+    background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    border-radius: var(--radius-s);
-    transition: all 0.12s;
+    border-radius: 8px;
   }
 
   .action-btn:hover {
-    background: var(--surface-highlight);
-    border-color: var(--border-strong);
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .action-btn.unload:hover {
     background: var(--error-bg);
-    border-color: var(--error-border);
     color: var(--error);
   }
 
   .action-btn.load:hover {
     background: var(--primary);
-    border-color: var(--primary);
     color: var(--primary-fg);
+  }
+
+  .action-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .action-btn:hover svg {
+    transform: rotate(-8deg);
   }
 
   .refresh-footer-btn {
-    background: var(--surface-highlight);
+    background: transparent;
     color: var(--text-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-s);
-    transition: all 0.12s;
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
 
   .refresh-footer-btn:hover:not(:disabled) {
-    background: var(--primary);
-    color: var(--primary-fg);
-    border-color: var(--primary);
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .refresh-footer-btn:disabled {
@@ -603,18 +616,98 @@
     cursor: not-allowed;
   }
 
+  .refresh-footer-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .refresh-footer-btn:hover svg {
+    transform: rotate(-8deg);
+  }
+
   .hub-btn {
-    background: var(--surface-highlight);
+    background: transparent;
     color: var(--text-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-s);
-    transition: all 0.12s;
+    border: 1px solid var(--border);
+    border-radius: 8px;
   }
 
   .hub-btn:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+
+  .hub-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .hub-btn:hover svg {
+    transform: rotate(-8deg);
+  }
+
+  .action-btn:hover {
+    background: var(--surface-hover);
+  }
+
+  .action-btn.unload:hover {
+    background: var(--error-bg);
+    color: var(--error);
+  }
+
+  .action-btn.load:hover {
     background: var(--primary);
     color: var(--primary-fg);
-    border-color: var(--primary);
+  }
+
+  .action-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .action-btn:hover svg {
+    transform: rotate(-8deg);
+  }
+
+  .refresh-footer-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .refresh-footer-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .refresh-footer-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .refresh-footer-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .refresh-footer-btn:hover svg {
+    transform: rotate(-8deg);
+  }
+
+  .hub-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: 4px;
+  }
+
+  .hub-btn:hover {
+    background: var(--surface-hover);
+  }
+
+  .hub-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .hub-btn:hover svg {
+    transform: rotate(-8deg);
   }
 
   :global(.dark) .status-ping {

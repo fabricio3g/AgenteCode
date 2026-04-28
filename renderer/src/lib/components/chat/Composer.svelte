@@ -1,17 +1,16 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Paperclip, Search, Square, ArrowUp, X, Globe, Database, Mic, AudioLines, LoaderCircle, ArrowRight } from 'lucide-svelte';
+  import { Paperclip, Search, Square, ArrowUp, X, Globe, Database, AudioLines, LoaderCircle, ArrowRight } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isTauri } from '$lib/services/tauri';
   import { sttTranscribe } from '$lib/services/stt';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { APP_NAME } from '$lib/app-meta';
-  import ComposerModes from './composer/ComposerModes.svelte';
+
   import ModeSelector from './composer/ModeSelector.svelte';
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
@@ -50,6 +49,45 @@
   let composerWidth = $state(0);
   let composerHeight = $state(0);
   let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Rotating placeholder
+  let placeholderIndex = $state(0);
+  let placeholderInterval: ReturnType<typeof setInterval> | undefined;
+  let showErrorPlaceholder = $state(false);
+  let errorPlaceholderTimer: ReturnType<typeof setTimeout> | null = null;
+  const placeholders = $derived(($t('chat.placeholders') as string || '').split('|').filter(Boolean));
+  const errorPlaceholderText = $derived($t('chat.errorPlaceholder') as string || 'Something went wrong. Try again.');
+  const currentPlaceholder = $derived(
+    showErrorPlaceholder
+      ? errorPlaceholderText
+      : appStore.loading && appStore.composerMode === 'agent'
+        ? 'Agent working…'
+        : (placeholders[placeholderIndex] || 'Message...')
+  );
+
+  function startPlaceholderRotation() {
+    if (placeholderInterval) return;
+    placeholderInterval = setInterval(() => {
+      if (placeholders.length > 1 && !showErrorPlaceholder) {
+        placeholderIndex = (placeholderIndex + 1) % placeholders.length;
+      }
+    }, 8000);
+  }
+
+  function stopPlaceholderRotation() {
+    if (placeholderInterval) {
+      clearInterval(placeholderInterval);
+      placeholderInterval = undefined;
+    }
+  }
+
+  function clearErrorPlaceholder() {
+    showErrorPlaceholder = false;
+    if (errorPlaceholderTimer) {
+      clearTimeout(errorPlaceholderTimer);
+      errorPlaceholderTimer = null;
+    }
+  }
 
   // Whisper API recording state (fallback when Web Speech API unavailable)
   let whisperRecorder: MediaRecorder | null = null;
@@ -589,11 +627,33 @@
     };
   });
 
+  $effect(() => {
+    if (appStore.loading) {
+      stopPlaceholderRotation();
+      clearErrorPlaceholder();
+    } else {
+      const messages = untrack(() => appStore.currentChat?.messages);
+      const lastMsg = messages?.length ? messages[messages.length - 1] : undefined;
+      if (lastMsg?.role === 'assistant' && lastMsg?.status === 'error' && !showErrorPlaceholder) {
+        showErrorPlaceholder = true;
+        if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
+        errorPlaceholderTimer = setTimeout(() => {
+          showErrorPlaceholder = false;
+        }, 12000);
+      }
+      if (!placeholderInterval) {
+        startPlaceholderRotation();
+      }
+    }
+  });
+
   onDestroy(() => {
     destroyed = true;
     exitVoiceMode();
     stopPulse();
     clearOcrProgress();
+    stopPlaceholderRotation();
+    if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
   });
 
   $effect(() => {
@@ -635,7 +695,7 @@
   <input bind:this={fileInput} class="hidden" type="file" multiple accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" oninput={onFilesSelected} />
 
   {#if dragOver}
-    <div class="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border-strong)] bg-[var(--surface-highlight)]">
+    <div class="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border-hover)] bg-[var(--surface-hover)]">
       <div class="text-center">
         <Paperclip class="mx-auto mb-2 h-8 w-8 text-[var(--text-tertiary)]" />
         <p class="text-sm font-medium text-[var(--text-secondary)]">{$t('composer.dropFiles')}</p>
@@ -690,11 +750,9 @@
 
     <div class="composer-blur-wrapper">
       <div class={`composer-shell pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
-    <ComposerModes />
-
     {#if ocrProgressLabel}
       <div class="px-3 pt-1">
-        <div class="chateaui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--chateaui-pill-border:var(--border)] [--chateaui-pill-bg:var(--surface-highlight)]">
+        <div class="chateaui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--chateaui-pill-border:var(--border)] [--chateaui-pill-bg:var(--surface-hover)]">
           <span class={`h-1.5 w-1.5 rounded-[2px] bg-[var(--text-tertiary)] ${ocrProgress?.phase === 'done' ? '' : 'animate-pulse'}`}></span>
           <span>{ocrProgressLabel}</span>
         </div>
@@ -703,11 +761,11 @@
 
     <AttachmentCards />
 
-    <div class="px-3 pb-0.5 pt-2">
+    <div class="px-4 pb-1 pt-3">
       <textarea
         bind:this={textarea}
         class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-        placeholder={$t('chat.placeholder').replace('{{APP_NAME}}', APP_NAME)}
+        placeholder={currentPlaceholder}
         rows="1"
         value={appStore.composer}
         oninput={onInput}
@@ -715,16 +773,9 @@
       ></textarea>
     </div>
 
-    <div class={`px-3 pb-2 pt-1 ${compactComposer ? 'space-y-1.5' : 'flex items-center justify-between'}`}>
+    <div class={`px-4 pb-3 pt-2 ${compactComposer ? 'space-y-1.5' : 'flex items-center justify-between'}`}>
       <div class={`flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
         <ModeSelector />
-
-        <button class="composer-attach-btn flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium text-[var(--text-secondary)] transition" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
-          <Paperclip class="h-4 w-4" />
-          <span class={compactComposer ? '' : 'hidden sm:inline'}>{$t('composer.attach')}</span>
-        </button>
-
-        <div class="composer-divider h-4 w-[1px] bg-[var(--border)]"></div>
 
         {#if appStore.composerMode !== 'agent'}
           <SearchModeSelector />
@@ -742,31 +793,41 @@
             estimatedInputCostUsd={contextBudget?.estimatedInputCostUsd}
           />
         {/if}
-        <button
-          class={`voice-btn flex items-center justify-center rounded-full transition h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
-          onclick={hasMicSupport ? toggleSpeech : undefined}
-          disabled={!hasMicSupport}
-          aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
-          title={!hasMicSupport ? 'Speech recognition not available' : activelyListening ? 'Listening…' : isWhisperListening ? interimTranscript : 'Tap to speak'}
-        >
-          {#if activelyListening}
-            <AudioLines class="h-3.5 w-3.5" />
-          {:else}
-            <Mic class="h-3.5 w-3.5" />
-          {/if}
+        <button class="chateaui-icon-button h-8 w-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
+          <Paperclip class="h-4 w-4" />
         </button>
-        <button
-          class={`send-btn flex items-center justify-center rounded-full transition ${compactComposer ? 'h-8 min-w-[2rem] px-2.5' : 'h-8 w-8'}`}
-          onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}
-          disabled={!appStore.loading && ((!appStore.composer.trim() && appStore.pendingAttachments.length === 0) || !backendReady)}
-          aria-label={appStore.loading ? $t('chat.stop') : $t('chat.send')}
-        >
-          {#if appStore.loading}
-            <Square class="h-3.5 w-3.5 fill-current" />
-          {:else}
-            <ArrowUp class="h-3.5 w-3.5" />
-          {/if}
-        </button>
+        {#if appStore.composer.trim() || appStore.loading}
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}
+            disabled={!appStore.loading && !backendReady}
+            aria-label={appStore.loading ? $t('chat.stop') : $t('chat.send')}
+          >
+            {#if appStore.loading}
+              <Square class="h-3.5 w-3.5 fill-current" />
+            {:else}
+              <ArrowUp class="h-3.5 w-3.5" />
+            {/if}
+          </button>
+        {:else}
+          <button
+            class={`chateaui-icon-button h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
+            onclick={hasMicSupport ? toggleSpeech : undefined}
+            disabled={!hasMicSupport}
+            aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
+            title={!hasMicSupport ? 'Speech recognition not available' : activelyListening ? 'Listening…' : isWhisperListening ? interimTranscript : 'Tap to speak'}
+          >
+            {#if activelyListening}
+              <AudioLines class="h-3.5 w-3.5" />
+            {:else}
+              <span class="mic-wave-wrap">
+                {#each [0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4] as h, i}
+                  <span class="mic-bar" style="--bar-h: {h}; --bar-delay: {i * 0.08}s;"></span>
+                {/each}
+              </span>
+            {/if}
+          </button>
+        {/if}
       </div>
     </div>
 
@@ -784,7 +845,7 @@
 <style>
   .composer-blur-wrapper {
     position: relative;
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-2xl);
     overflow: visible;
   }
 
@@ -795,14 +856,14 @@
   .composer-shell {
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: var(--shadow-l);
-    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xs);
+    border-radius: var(--radius-2xl);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .composer-shell:focus-within {
-    border-color: var(--border-strong);
-    box-shadow: var(--shadow-xl);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-sm);
   }
 
   .composer-textarea {
@@ -816,14 +877,14 @@
     color: var(--text-secondary);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-full);
     transition: all 0.12s ease;
   }
 
   .composer-attach-btn:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
-    border-color: var(--border-light);
+    border-color: var(--border);
   }
 
   .composer-divider {
@@ -832,15 +893,15 @@
 
   .voice-btn {
     color: var(--text-secondary);
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-s);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
     transition: all 0.12s ease;
   }
 
   .voice-btn:hover {
     color: var(--text);
-    background: var(--surface-secondary);
+    background: var(--surface-hover);
     border-color: var(--border);
   }
 
@@ -854,17 +915,56 @@
     opacity: 0.9;
   }
 
+  /* Mic wave bars — animated waveform on hover */
+  .mic-wave-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    height: 18px;
+  }
+  .mic-bar {
+    display: block;
+    width: 2.5px;
+    height: 12px;
+    border-radius: 1.5px;
+    background: currentColor;
+    opacity: 0.5;
+    transform-origin: center;
+    backface-visibility: hidden;
+    transform: scaleY(var(--bar-h, 0.5));
+    transition: opacity 0.2s ease;
+  }
+  .voice-btn:hover .mic-wave-wrap {
+    filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 30%, transparent));
+  }
+  .voice-btn:hover .mic-bar {
+    opacity: 1;
+    animation: micWave 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  .voice-btn:hover .mic-bar:nth-child(1) { animation-delay: 0s; }
+  .voice-btn:hover .mic-bar:nth-child(2) { animation-delay: 0.08s; }
+  .voice-btn:hover .mic-bar:nth-child(3) { animation-delay: 0.16s; }
+  .voice-btn:hover .mic-bar:nth-child(4) { animation-delay: 0.24s; }
+  .voice-btn:hover .mic-bar:nth-child(5) { animation-delay: 0.32s; }
+  .voice-btn:hover .mic-bar:nth-child(6) { animation-delay: 0.40s; }
+  .voice-btn:hover .mic-bar:nth-child(7) { animation-delay: 0.48s; }
+
+  @keyframes micWave {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
   .send-btn {
     color: var(--primary-fg);
     background: var(--primary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-    transition: transform 0.1s ease, opacity 0.12s ease;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    transition: background-color 0.12s ease, transform 0.1s ease;
   }
 
   .send-btn:hover {
-    opacity: 0.88;
+    background: var(--primary-hover);
   }
 
   .send-btn:active {

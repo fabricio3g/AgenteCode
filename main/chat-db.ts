@@ -109,6 +109,13 @@ function migrate(database) {
 
     CREATE INDEX IF NOT EXISTS idx_rag_documents_chat_id ON rag_documents(chat_id);
   `);
+
+  // Migration: add tts_audio column if missing
+  try {
+    database.prepare('ALTER TABLE messages ADD COLUMN tts_audio TEXT').run();
+  } catch {
+    // Column already exists
+  }
 }
 
 export function saveChatSession(session) {
@@ -125,8 +132,8 @@ export function saveChatSession(session) {
   `);
 
   const upsertMessage = database.prepare(`
-    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, agent_task_id, active_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, agent_task_id, active_version, tts_audio)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       content = excluded.content,
       reasoning = excluded.reasoning,
@@ -136,7 +143,8 @@ export function saveChatSession(session) {
       search_mode = excluded.search_mode,
       mode = excluded.mode,
       agent_task_id = excluded.agent_task_id,
-      active_version = excluded.active_version
+      active_version = excluded.active_version,
+      tts_audio = excluded.tts_audio
   `);
 
   const deleteAttachments = database.prepare('DELETE FROM attachments WHERE message_id = ?');
@@ -176,7 +184,8 @@ export function saveChatSession(session) {
         msg.searchMode || null,
         msg.mode || null,
         msg.agentTaskId || null,
-        msg.activeVersion != null ? msg.activeVersion : null
+        msg.activeVersion != null ? msg.activeVersion : null,
+        msg.ttsAudio ? JSON.stringify(msg.ttsAudio) : null
       );
 
       // Attachments
@@ -271,6 +280,9 @@ export function loadAllChats() {
       if (msg.mode) result.mode = msg.mode;
       if (msg.agent_task_id) result.agentTaskId = msg.agent_task_id;
       if (msg.active_version != null) result.activeVersion = msg.active_version;
+      if (msg.tts_audio) {
+        try { result.ttsAudio = JSON.parse(msg.tts_audio); } catch { /* ignore parse errors */ }
+      }
       if (attachments.length) result.attachments = attachments;
       if (versions.length) result.versions = versions;
       return result;

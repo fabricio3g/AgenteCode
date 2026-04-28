@@ -65,11 +65,11 @@
   :global(.ui-panel) {
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: var(--radius-m);
+    border-radius: var(--radius-md);
     padding: 1rem;
   }
   :global(.ui-chat-card) {
-    background: var(--surface-secondary);
+    background: var(--surface);
   }
   :global(.ui-title) {
     margin: 0;
@@ -97,10 +97,10 @@
     line-height: 1.5;
   }
   :global(.ui-callout) {
-    border-radius: var(--radius-m);
+    border-radius: var(--radius-md);
     padding: 0.85rem 1rem;
     border: 1px solid var(--border);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
   }
   :global(.ui-callout-info) {
     border-color: var(--info-border);
@@ -122,10 +122,10 @@
   :global(.ui-image-block img), :global(.ui-gallery-image) {
     width: 100%;
     display: block;
-    border-radius: var(--radius-m);
+    border-radius: var(--radius-md);
     object-fit: cover;
     border: 1px solid var(--border);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
   }
   :global(.ui-image-block figcaption) {
     margin-top: 0.45rem;
@@ -163,14 +163,14 @@
   :global(.ui-tag) {
     padding: 0.35rem 0.7rem;
     border-radius: var(--radius-full);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text-secondary);
     font-size: 0.82rem;
     border: 1px solid var(--border);
   }
   :global(.ui-button) {
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-s);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
     padding: 0.65rem 1rem;
     font: inherit;
     cursor: pointer;
@@ -194,7 +194,7 @@
     border: 1px solid var(--border);
   }
   :global(.ui-button-secondary:hover), :global(.ui-button-tertiary:hover) {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     border-color: var(--fg-tertiary);
   }
   :global(.dark .ui-button) {
@@ -212,7 +212,7 @@
   }
   :global(.ui-input), :global(.ui-textarea) {
     width: 100%;
-    border-radius: var(--radius-m);
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text);
@@ -222,7 +222,7 @@
   }
   :global(.ui-input:focus), :global(.ui-textarea:focus) {
     outline: none;
-    border-color: var(--border-strong);
+    border-color: var(--border-hover);
   }
   :global(.ui-range) {
     width: 100%;
@@ -244,7 +244,7 @@
   }
   :global(.ui-tab-trigger) {
     border: 1px solid var(--border);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text-secondary);
     border-radius: var(--radius-full);
     padding: 0.45rem 0.8rem;
@@ -253,7 +253,7 @@
     transition: all 0.12s ease;
   }
   :global(.ui-tab-trigger:hover) {
-    background: var(--surface-secondary);
+    background: var(--surface);
     color: var(--text);
   }
   :global(.ui-tab-trigger.active) {
@@ -310,16 +310,16 @@
     flex-direction: column;
     gap: 0.2rem;
     border: 1px solid var(--border);
-    background: var(--surface-highlight);
-    border-radius: var(--radius-m);
+    background: var(--surface-hover);
+    border-radius: var(--radius-md);
     padding: 0.85rem 1rem;
     cursor: pointer;
     font: inherit;
     transition: all 0.15s ease;
   }
   :global(.ui-list-item:hover) {
-    background: var(--surface-secondary);
-    border-color: var(--border-strong);
+    background: var(--surface);
+    border-color: var(--border-hover);
   }
   :global(.ui-list-label) {
     color: var(--text);

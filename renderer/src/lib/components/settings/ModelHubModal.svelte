@@ -24,6 +24,7 @@
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
   import SearchBar from './SearchBar.svelte';
   import SearchSettings from './SearchSettings.svelte';
+  import VoiceLanguageSelector from './VoiceLanguageSelector.svelte';
 
   type NavSection = 'models' | 'explore' | 'voices' | 'whisper' | 'runtime' | 'search' | 'extensions' | 'providers';
   let activeSection = $state<NavSection>('models');
@@ -82,56 +83,8 @@
   let providerConnectionStatus = $state<'idle' | 'ok' | 'fail'>('idle');
 
   const VOICE_TTS_FALLBACK_CATALOG: Record<string, any> = {
-    kitten_nano_v02: {
-      label: 'Kitten Nano EN v0.2', description: 'Fast, lightweight English TTS',
-      repo: 'csukuangfj/kitten-nano-en-v0_2-fp16', branch: 'main',
-      dir: 'kitten-nano-en-v0_2-fp16', engine: 'kitten', size_mb: 23,
-      files: ['model.fp16.onnx', 'voices.bin', 'tokens.txt'],
-      voices: ['Bella', 'Jasper', 'Luna', 'Bruno', 'Rosie', 'Hugo', 'Kiki', 'Leo'],
-    },
-    kitten_nano_v01: {
-      label: 'Kitten Nano EN v0.1', description: 'Lightweight English TTS',
-      repo: 'csukuangfj/kitten-nano-en-v0_1-fp16', branch: 'main',
-      dir: 'kitten-nano-en-v0_1-fp16', engine: 'kitten', size_mb: 23,
-      files: ['model.fp16.onnx', 'voices.bin', 'tokens.txt'],
-      voices: ['Bella', 'Jasper', 'Luna', 'Bruno', 'Rosie', 'Hugo', 'Kiki', 'Leo'],
-    },
-    kitten_mini_v01: {
-      label: 'Kitten Mini EN v0.1', description: 'Higher quality English TTS',
-      repo: 'csukuangfj/kitten-mini-en-v0_1-fp16', branch: 'main',
-      dir: 'kitten-mini-en-v0_1-fp16', engine: 'kitten', size_mb: 158,
-      files: ['model.fp16.onnx', 'voices.bin', 'tokens.txt'],
-      voices: ['Bella', 'Jasper', 'Luna', 'Bruno', 'Rosie', 'Hugo', 'Kiki', 'Leo'],
-    },
-    kokoro_82m_v1: {
-      label: 'Kokoro Multi-lang v1.0', description: '53 voices across 9 languages (EN, JP, ZH, ES, FR, HI, IT, PT)',
-      repo: 'csukuangfj/kokoro-int8-multi-lang-v1_0', branch: 'main',
-      dir: 'kokoro-multi-lang-v1_0', engine: 'kokoro', size_mb: 160,
-      model_file: 'model.int8.onnx', tokens_file: 'tokens.txt',
-      voices_file: 'voices.bin', lexicon_file: 'lexicon-us-en.txt',
-      files: ['model.int8.onnx', 'voices.bin', 'tokens.txt',
-              'lexicon-us-en.txt', 'lexicon-gb-en.txt', 'lexicon-zh.txt',
-              'date-zh.fst', 'number-zh.fst', 'phone-zh.fst',
-              'dict/hmm_model.utf8', 'dict/idf.utf8', 'dict/jieba.dict.utf8',
-              'dict/stop_words.utf8', 'dict/user.dict.utf8'],
-      voices: [
-        'af_alloy', 'af_aoede', 'af_bella', 'af_heart', 'af_jessica',
-        'af_kore', 'af_nicole', 'af_nova', 'af_river', 'af_sarah', 'af_sky',
-        'am_adam', 'am_echo', 'am_eric', 'am_fenrir', 'am_liam',
-        'am_michael', 'am_onyx', 'am_puck', 'am_santa',
-        'bf_alice', 'bf_emma', 'bf_isabella', 'bf_lily',
-        'bm_daniel', 'bm_fable', 'bm_george', 'bm_lewis',
-        'ef_dora', 'em_alex', 'ff_siwis',
-        'hf_alpha', 'hf_beta', 'hm_omega', 'hm_psi',
-        'if_sara', 'im_nicola',
-        'jf_alpha', 'jf_gongitsune', 'jf_nezumi', 'jf_tebukuro', 'jm_kumo',
-        'pf_dora', 'pm_alex', 'pm_santa',
-        'zf_xiaobei', 'zf_xiaoni', 'zf_xiaoxiao', 'zf_xiaoyi',
-        'zm_yunjian', 'zm_yunxi', 'zm_yunxia', 'zm_yunyang',
-      ],
-    },
     kokoro_v11: {
-      label: 'Kokoro v1.1 Chinese + English', description: '103 voices, Chinese + English, improved quality',
+      label: 'Kokoro v1.1 Multi-language (High Quality)', description: '103 voices, 9 languages, improved quality. Recommended.',
       repo: 'csukuangfj/kokoro-int8-multi-lang-v1_1', branch: 'main',
       dir: 'kokoro-multi-lang-v1_1', engine: 'kokoro', size_mb: 170,
       model_file: 'model.int8.onnx', tokens_file: 'tokens.txt',
@@ -158,6 +111,33 @@
         'zm_062', 'zm_063', 'zm_064', 'zm_065', 'zm_066', 'zm_068', 'zm_069',
         'zm_080', 'zm_081', 'zm_082', 'zm_089', 'zm_091', 'zm_095', 'zm_096',
         'zm_097', 'zm_098', 'zm_100',
+      ],
+    },
+    kokoro_82m_v1: {
+      label: 'Kokoro Multi-lang v1.0', description: '53 voices across 9 languages (EN, JP, ZH, ES, FR, HI, IT, PT)',
+      repo: 'csukuangfj/kokoro-int8-multi-lang-v1_0', branch: 'main',
+      dir: 'kokoro-multi-lang-v1_0', engine: 'kokoro', size_mb: 160,
+      model_file: 'model.int8.onnx', tokens_file: 'tokens.txt',
+      voices_file: 'voices.bin', lexicon_file: 'lexicon-us-en.txt',
+      files: ['model.int8.onnx', 'voices.bin', 'tokens.txt',
+              'lexicon-us-en.txt', 'lexicon-gb-en.txt', 'lexicon-zh.txt',
+              'date-zh.fst', 'number-zh.fst', 'phone-zh.fst',
+              'dict/hmm_model.utf8', 'dict/idf.utf8', 'dict/jieba.dict.utf8',
+              'dict/stop_words.utf8', 'dict/user.dict.utf8'],
+      voices: [
+        'af_alloy', 'af_aoede', 'af_bella', 'af_heart', 'af_jessica',
+        'af_kore', 'af_nicole', 'af_nova', 'af_river', 'af_sarah', 'af_sky',
+        'am_adam', 'am_echo', 'am_eric', 'am_fenrir', 'am_liam',
+        'am_michael', 'am_onyx', 'am_puck', 'am_santa',
+        'bf_alice', 'bf_emma', 'bf_isabella', 'bf_lily',
+        'bm_daniel', 'bm_fable', 'bm_george', 'bm_lewis',
+        'ef_dora', 'em_alex', 'ff_siwis',
+        'hf_alpha', 'hf_beta', 'hm_omega', 'hm_psi',
+        'if_sara', 'im_nicola',
+        'jf_alpha', 'jf_gongitsune', 'jf_nezumi', 'jf_tebukuro', 'jm_kumo',
+        'pf_dora', 'pm_alex', 'pm_santa',
+        'zf_xiaobei', 'zf_xiaoni', 'zf_xiaoxiao', 'zf_xiaoyi',
+        'zm_yunjian', 'zm_yunxi', 'zm_yunxia', 'zm_yunyang',
       ],
     },
   };
@@ -849,188 +829,85 @@
     aria-modal="true"
     aria-labelledby="model-hub-title"
     tabindex="-1"
-    class="modal-surface relative mx-4 flex max-h-[calc(100vh-4rem)] w-full max-w-[1280px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]"
+    class="modal-surface relative mx-4 flex max-h-[calc(100vh-4rem)] w-full max-w-[1100px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
     transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
   >
-    <div class="flex min-h-0 flex-1 overflow-hidden">
-      <aside class="flex w-56 shrink-0 flex-col border-r border-[var(--border)]">
-        <header class="flex h-14 items-center justify-between px-4 border-b border-[var(--border)]">
-          <h1 id="model-hub-title" class="text-sm font-semibold text-[var(--text)]">Model Hub</h1>
+    <!-- Top bar -->
+    <div class="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-2.5">
+      <!-- Tab group (segmented control style) -->
+      <div class="chateaui-segmented">
+        {#each [
+          { id: 'models', label: 'Models' },
+          ...(appStore.backendMode === 'api' ? [{ id: 'providers', label: 'API', active: appStore.activeProvider?.has_api_key }] : []),
+          { id: 'explore', label: 'Explore' },
+          { id: 'voices', label: 'Voices' },
+          { id: 'whisper', label: 'Whisper' },
+          { id: 'runtime', label: 'Runtime', active: hasRuntime },
+          { id: 'search', label: 'Search' },
+        ] as tab}
           <button
             type="button"
-            class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
-            onclick={close}
-            aria-label="Close model hub"
+            class="chateaui-segment {activeSection === tab.id ? 'is-active' : ''}"
+            onclick={() => (activeSection = tab.id)}
           >
-            <X class="h-4 w-4" />
-          </button>
-        </header>
-
-        <nav class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5" aria-label="Model hub navigation">
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'models' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'models')}
-            aria-current={activeSection === 'models' ? 'page' : undefined}
-          >
-            <HardDrive class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">My Models</span>
-            {#if installedModels.length > 0}
-              <span class="text-xs text-[var(--text-muted)] tabular-nums">{installedModels.length}</span>
+            <span>{tab.label}</span>
+            {#if tab.active}
+              <span class="h-1.5 w-1.5 rounded-full bg-[var(--success)]"></span>
             {/if}
           </button>
+        {/each}
+      </div>
 
-          {#if appStore.backendMode === 'api'}
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'providers' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'providers')}
-            aria-current={activeSection === 'providers' ? 'page' : undefined}
-          >
-            <Key class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">API Providers</span>
-            {#if appStore.activeProvider?.has_api_key}
-              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-                <span class="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span>
-              </span>
-            {/if}
-          </button>
+      <!-- Actions -->
+      <div class="flex items-center gap-0.5">
+        <button
+          type="button"
+          class="chateaui-icon-button h-7 w-7 p-0"
+          onclick={() => { close(); appStore.downloadsOpen = true; }}
+          title="Downloads"
+        >
+          <Download class="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          class="chateaui-icon-button h-7 w-7 p-0"
+          onclick={() => openModelsFolder()}
+          title="Open folder"
+        >
+          <FolderOpen class="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          disabled={importingModel}
+          class="chateaui-icon-button h-7 w-7 p-0 disabled:opacity-50"
+          onclick={() => { void handleImportLocalModel(); }}
+          title="Import model"
+        >
+          {#if importingModel}
+            <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
+          {:else}
+            <FolderInput class="h-3.5 w-3.5" />
           {/if}
+        </button>
+        <button
+          type="button"
+          class="chateaui-icon-button h-7 w-7 p-0"
+          onclick={close}
+          aria-label="Close"
+        >
+          <X class="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
 
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'explore' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'explore')}
-            aria-current={activeSection === 'explore' ? 'page' : undefined}
-          >
-            <Compass class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Explore</span>
-          </button>
-
-          <div class="my-2 border-t border-[var(--border)]"></div>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'voices' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'voices')}
-            aria-current={activeSection === 'voices' ? 'page' : undefined}
-          >
-            <Volume2 class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Voices</span>
-            {#if downloadedVoiceCount > 0}
-              <span class="text-xs text-[var(--text-muted)] tabular-nums">{downloadedVoiceCount}</span>
-            {/if}
-          </button>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'whisper' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'whisper')}
-            aria-current={activeSection === 'whisper' ? 'page' : undefined}
-          >
-            <Mic class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Whisper</span>
-            {#if downloadedWhisperCount > 0}
-              <span class="text-xs text-[var(--text-muted)] tabular-nums">{downloadedWhisperCount}</span>
-            {/if}
-          </button>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'search' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'search')}
-            aria-current={activeSection === 'search' ? 'page' : undefined}
-          >
-            <Search class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Search</span>
-          </button>
-
-          <div class="my-2 border-t border-[var(--border)]"></div>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
-            onclick={() => { close(); appStore.downloadsOpen = true; }}
-          >
-            <Download class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Downloads</span>
-            {#if downloadsStore.activeCount > 0}
-              <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-hornero-500 px-1.5 text-[10px] font-semibold text-primary-fg">{downloadsStore.activeCount}</span>
-            {:else if downloadsStore.jobs.length > 0}
-              <span class="text-xs text-[var(--text-muted)] tabular-nums">{downloadsStore.jobs.length}</span>
-            {/if}
-          </button>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'runtime' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'runtime')}
-            aria-current={activeSection === 'runtime' ? 'page' : undefined}
-          >
-            <Server class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Runtime</span>
-            {#if hasRuntime === true}
-              <span class="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
-                <span class="h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span>
-              </span>
-            {:else if hasRuntime === false}
-              <span class="text-xs text-[var(--text-secondary)]">Required</span>
-            {/if}
-          </button>
-
-          <button
-            type="button"
-            class="group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition {activeSection === 'extensions' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]'}"
-            onclick={() => (activeSection = 'extensions')}
-            aria-current={activeSection === 'extensions' ? 'page' : undefined}
-          >
-            <Puzzle class="h-4 w-4 shrink-0 opacity-70" />
-            <span class="flex-1 text-sm font-medium">Extensions</span>
-            <span class="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
-              style="background:color-mix(in srgb,var(--work-accent) 15%,transparent);color:var(--work-accent)">Soon</span>
-          </button>
-        </nav>
-
-        <footer class="border-t border-[var(--border)] px-2 py-2 space-y-0.5">
-          <button
-            type="button"
-            class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)]"
-            onclick={() => openModelsFolder()}
-          >
-            <FolderOpen class="h-3.5 w-3.5 shrink-0" />
-            <span>Open models folder</span>
-          </button>
-          <button
-            type="button"
-            disabled={importingModel}
-            class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
-            onclick={() => { void handleImportLocalModel(); }}
-          >
-            {#if importingModel}
-              <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin" />
-            {:else}
-              <FolderInput class="h-3.5 w-3.5 shrink-0" />
-            {/if}
-            <span>Import local GGUF…</span>
-          </button>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs text-[var(--text-tertiary)] transition hover:bg-[var(--surface-highlight)]"
-            onclick={() => { void modelsStore.refreshIndex(); void appStore.refreshModels(); }}
-          >
-            <RefreshCw class="h-3.5 w-3.5 shrink-0" />
-            <span>Refresh</span>
-          </button>
-        </footer>
-      </aside>
-
-      <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- Content -->
+    <main class="flex min-w-0 flex-1 flex-col overflow-hidden">
         {#if activeSection === 'models'}
           <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-5">
             <div class="flex-1 max-w-md">
               <SearchBar bind:value={modelSearch} placeholder="Filter models..." />
             </div>
-            <div class="flex items-center gap-1 rounded-lg bg-[var(--surface-highlight)] p-0.5">
+            <div class="flex items-center gap-1 rounded-lg bg-[var(--surface-hover)] p-0.5">
               {#each (['date', 'name', 'size'] as const) as opt}
                 <button
                   type="button"
@@ -1044,12 +921,12 @@
           </header>
 
           {#if hasRuntime === false}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-highlight)] px-4 py-3" transition:fly={{ y: -10, duration: 200 }}>
+            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border border-[var(--border-hover)] bg-[var(--surface-hover)] px-4 py-3" transition:fly={{ y: -10, duration: 200 }}>
               <AlertTriangle class="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
               <p class="flex-1 text-sm text-[var(--text)]">No runtime installed — models cannot be loaded.</p>
               <button
                 type="button"
-                class="shrink-0 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-[var(--surface-secondary)]"
+                class="shrink-0 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-primary-fg transition hover:bg-[var(--surface)]"
                 onclick={() => (activeSection = 'runtime')}
               >
                 Install
@@ -1060,8 +937,8 @@
           <!-- Active model status banner -->
           {#if appStore.localModelActive}
             {@const isLoading = appStore.localModelLoading}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 {!isLoading ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)]' : 'border-[var(--border-strong)] bg-[var(--surface-highlight)]'}" transition:fly={{ y: -10, duration: 200 }}>
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {!isLoading ? 'bg-[var(--surface-secondary)]' : 'bg-[var(--surface-secondary)]'}">
+            <div class="mx-5 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 {!isLoading ? 'border-[var(--border-hover)] bg-[var(--surface-hover)]' : 'border-[var(--border-hover)] bg-[var(--surface-hover)]'}" transition:fly={{ y: -10, duration: 200 }}>
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {!isLoading ? 'bg-[var(--surface)]' : 'bg-[var(--surface)]'}">
                 {#if isLoading}
                   <Activity class="h-4 w-4 text-[var(--text-secondary)] animate-pulse" />
                 {:else}
@@ -1081,7 +958,7 @@
               </div>
               <button
                 type="button"
-                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-[var(--border-strong)] text-[var(--text-secondary)] hover:bg-[var(--surface-highlight)]' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg border {!isLoading ? 'border-[var(--border-hover)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]' : 'border-[var(--border)] text-[var(--text-tertiary)]'} bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
                 onclick={unloadModel}
                 disabled={unloading || isLoading}
               >
@@ -1094,7 +971,7 @@
           <div class="flex-1 overflow-y-auto p-5">
             {#if installedModels.length === 0}
               <div class="flex flex-col items-center justify-center py-20 text-center">
-                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-highlight)]">
+                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-hover)]">
                   <Box class="h-8 w-8 text-[var(--text-muted)]" />
                 </div>
                 <p class="text-base font-medium text-[var(--text-secondary)]">No local models</p>
@@ -1110,43 +987,44 @@
               </div>
             {:else}
               <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {#each installedModels as model (model.id)}
+                {#each installedModels as model, i (model.id)}
                   {@const loaded = isLoaded(model)}
                   {@const selected = appStore.selectedLocalModelPath === model.path}
                   {@const fit = vramFit(model)}
                   {@const tools = toolSupported(model)}
                   <article
-                    class="group relative flex h-[180px] flex-col rounded-xl border bg-[var(--surface)] p-4 transition-all duration-200 hover:shadow-lg {loaded
-                      ? 'border-[var(--border-strong)] ring-1 ring-[var(--border-light)]'
+                    class="scroll-animate group relative flex h-[180px] flex-col border-b border-[var(--border)] p-4 transition-all duration-200 hover:bg-[var(--surface-hover)] {loaded
+                      ? 'border-[var(--border-hover)]'
                       : selected
-                        ? 'border-border-str ring-1 ring-border-lt'
-                        : 'border-[var(--border)] hover:border-border-lt'}"
+                        ? 'border-[var(--border-hover)]'
+                        : 'border-[var(--border)]'}"
+                    style="animation-delay: {i * 40}ms;"
                   >
                     <!-- Top: icon + name + badges -->
                     <div class="flex items-start gap-3 min-h-0">
-                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-highlight)] transition group-hover:bg-[var(--surface-strong)]">
+                      <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] transition group-hover:bg-[var(--surface-active)]">
                         <Cpu class="h-5 w-5 text-[var(--text-muted)]" />
                       </div>
                       <div class="min-w-0 flex-1">
                         <h3 class="text-sm font-semibold text-[var(--text)] truncate" title={model.name}>{model.name}</h3>
                         <div class="mt-1 flex flex-wrap items-center gap-1">
                           {#if loaded}
-                            <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
+                            <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
                               <span class="h-1 w-1 rounded-full bg-[var(--primary)] animate-pulse"></span>
                               Running
                             </span>
                           {/if}
                           {#if selected && !loaded}
-                            <span class="rounded-full bg-[var(--surface-strong)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
+                            <span class="rounded-full bg-[var(--surface-active)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
                           {/if}
                           {#if tools}
-                            <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>
+                            <span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>
                           {/if}
                         </div>
                       </div>
                       <button
                         type="button"
-                        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 focus:opacity-100"
                         onclick={() => model.path && removeModel(model.path)}
                         title="Delete model"
                         aria-label="Delete {model.name}"
@@ -1158,27 +1036,27 @@
                     <!-- Middle: metadata badges -->
                     <div class="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
                       {#if model.architecture}
-                        <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{model.architecture}</span>
+                        <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{model.architecture}</span>
                       {/if}
                       {#if model.quantization_name}
-                        <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-tertiary)]">{model.quantization_name}</span>
+                        <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-tertiary)]">{model.quantization_name}</span>
                       {/if}
                       {#if model.size_gb}
-                        <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{Number(model.size_gb).toFixed(1)} GB</span>
+                        <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{Number(model.size_gb).toFixed(1)} GB</span>
                       {/if}
                       {#if model.context_length}
-                        <span class="rounded bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{Math.round(model.context_length / 1024)}K</span>
+                        <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">{Math.round(model.context_length / 1024)}K</span>
                       {/if}
                       {#if fit === 'vram'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <Zap class="h-2.5 w-2.5" />GPU
                         </span>
                       {:else if fit === 'partial'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <AlertTriangle class="h-2.5 w-2.5" />Partial
                         </span>
                       {:else if fit === 'ram'}
-                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                        <span class="inline-flex items-center gap-0.5 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                           <MemoryStick class="h-2.5 w-2.5" />CPU
                         </span>
                       {/if}
@@ -1189,7 +1067,7 @@
                       {#if loaded}
                         <button
                           type="button"
-                          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)] disabled:opacity-50"
+                          class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-hover)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)] disabled:opacity-50"
                           onclick={unloadModel}
                           disabled={unloading}
                         >
@@ -1209,7 +1087,7 @@
                       {#if !selected && !loaded}
                         <button
                           type="button"
-                          class="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
+                          class="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
                           onclick={() => appStore.updateLocalModel({ id: model.id, name: model.name, path: model.path, source: 'local', details: model.details })}
                         >
                           Select
@@ -1224,7 +1102,7 @@
 
         {:else if activeSection === 'explore'}
           <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] px-5">
-            <div class="flex items-center rounded-lg bg-[var(--surface-highlight)] p-0.5">
+            <div class="flex items-center rounded-lg bg-[var(--surface-hover)] p-0.5">
               <button
                 type="button"
                 class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'recommended' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
@@ -1289,10 +1167,11 @@
                 <!-- Left: model list -->
                 <div class="w-72 shrink-0 overflow-y-auto border-r border-[var(--border)] p-3 flex flex-col gap-1.5">
                   <p class="px-2 pb-1 text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Recommended Models</p>
-                  {#each CURATED_MODELS as model (model.id)}
+                  {#each CURATED_MODELS as model, i (model.id)}
                     <button
                       type="button"
-                      class="group flex w-full flex-col gap-1 rounded-xl border px-3 py-3 text-left transition {selectedCurated?.id === model.id ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)]' : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-highlight)]'}"
+                      class="scroll-animate group flex w-full flex-col gap-1 border-b border-[var(--border)] px-3 py-3 text-left transition last:border-b-0 hover:bg-[var(--surface-hover)]"
+                      style="animation-delay: {i * 50}ms;"
                       onclick={() => {
                         selectedCurated = model;
                         selectedVariant = model.variants.find(v => v.recommended)?.filename || model.variants[0]?.filename || '';
@@ -1301,15 +1180,15 @@
                     >
                       <div class="flex items-center justify-between">
                         <span class="text-sm font-semibold text-[var(--text)]">{model.label}</span>
-                        <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">{model.size_label}</span>
+                        <span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">{model.size_label}</span>
                       </div>
                       <p class="text-[11px] text-[var(--text-muted)] leading-relaxed">{model.description}</p>
                       <div class="mt-1 flex flex-wrap gap-1">
                         {#if model.has_vision}
-                          <span class="rounded-full border border-[var(--border)] bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Eye class="inline h-3 w-3" /> Vision</span>
+                          <span class="rounded-full border border-[var(--border)] bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Eye class="inline h-3 w-3" /> Vision</span>
                         {/if}
                         {#if model.has_tools}
-                          <span class="rounded-full border border-[var(--border)] bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"><Wrench class="inline h-3 w-3" /> Tools</span>
+                          <span class="rounded-full border border-[var(--border)] bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]"><Wrench class="inline h-3 w-3" /> Tools</span>
                         {/if}
                       </div>
                     </button>
@@ -1331,12 +1210,12 @@
                         <h2 class="text-base font-semibold text-[var(--text)]">{selectedCurated.label}</h2>
                         <p class="mt-0.5 text-sm text-[var(--text-secondary)]">{selectedCurated.description}</p>
                         <div class="mt-2 flex flex-wrap gap-1.5">
-                          <span class="rounded-full bg-[var(--surface-highlight)] border border-[var(--border)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">{selectedCurated.architecture}</span>
+                          <span class="rounded-full bg-[var(--surface-hover)] border border-[var(--border)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">{selectedCurated.architecture}</span>
                           {#if selectedCurated.has_vision}
-                            <span class="rounded-full bg-[var(--surface-highlight)] border border-[var(--border)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">Vision</span>
+                            <span class="rounded-full bg-[var(--surface-hover)] border border-[var(--border)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">Vision</span>
                           {/if}
                           {#if selectedCurated.has_tools}
-                            <span class="rounded-full border border-[var(--border)] bg-[var(--surface-highlight)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)]">Tool Calling</span>
+                            <span class="rounded-full border border-[var(--border)] bg-[var(--surface-hover)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)]">Tool Calling</span>
                           {/if}
                         </div>
                       </div>
@@ -1350,11 +1229,11 @@
                             {@const downloaded = findDownloadedModel(v.filename)}
                             <button
                               type="button"
-                              class="group flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition {selectedVariant === v.filename ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)]' : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-highlight)]'}"
+                              class="group flex w-full items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 text-left transition last:border-b-0 hover:bg-[var(--surface-hover)]"
                               onclick={() => (selectedVariant = v.filename)}
                             >
                               <div class="flex items-center gap-3 min-w-0">
-                                <div class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 {selectedVariant === v.filename ? 'border-[var(--primary)]' : 'border-[var(--border-strong)]'}">
+                                <div class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 {selectedVariant === v.filename ? 'border-[var(--primary)]' : 'border-[var(--border-hover)]'}">
                                   {#if selectedVariant === v.filename}
                                     <div class="h-2.5 w-2.5 rounded-full bg-[var(--primary)]"></div>
                                   {/if}
@@ -1363,7 +1242,7 @@
                                   <div class="flex items-center gap-2">
                                     <span class="text-sm font-medium text-[var(--text)]">{v.quant}</span>
                                     {#if v.recommended}
-                                      <span class="rounded-full bg-[var(--surface-highlight)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">Recommended</span>
+                                      <span class="rounded-full bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">Recommended</span>
                                     {/if}
                                   </div>
                                   <span class="text-xs text-[var(--text-muted)]">{v.filename}</span>
@@ -1372,7 +1251,7 @@
                               <div class="flex shrink-0 items-center gap-2">
                                 <span class="text-xs text-[var(--text-tertiary)]">{v.size_human}</span>
                                 {#if downloaded || (job && job.status === 'done')}
-                                  <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="inline h-3 w-3" /> Downloaded</span>
+                                  <span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="inline h-3 w-3" /> Downloaded</span>
                                 {:else if job && (job.status === 'starting' || job.status === 'running')}
                                   <span class="text-[10px] text-[var(--text-muted)]">{downloadsStore.getJobSpeed(job.id) || 'Downloading…'}</span>
                                 {/if}
@@ -1392,11 +1271,11 @@
                             {@const vdownloaded = findDownloadedModel(vf.filename)}
                             <button
                               type="button"
-                              class="group flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition {selectedVisionFile === vf.filename ? 'border-[var(--border-strong)] bg-[var(--surface-highlight)]' : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-highlight)]'}"
+                              class="group flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition {selectedVisionFile === vf.filename ? 'border-[var(--border-hover)] bg-[var(--surface-hover)]' : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-hover)]'}"
                               onclick={() => (selectedVisionFile = vf.filename)}
                             >
                               <div class="flex items-center gap-3 min-w-0">
-                                <div class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 {selectedVisionFile === vf.filename ? 'border-[var(--primary)]' : 'border-[var(--border-strong)]'}">
+                                <div class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 {selectedVisionFile === vf.filename ? 'border-[var(--primary)]' : 'border-[var(--border-hover)]'}">
                                   {#if selectedVisionFile === vf.filename}
                                     <div class="h-2.5 w-2.5 rounded-full bg-[var(--primary)]"></div>
                                   {/if}
@@ -1409,7 +1288,7 @@
                               <div class="flex shrink-0 items-center gap-2">
                                 <span class="text-xs text-[var(--text-tertiary)]">{vf.size_human}</span>
                                 {#if vdownloaded || (vjob && vjob.status === 'done')}
-                                  <span class="rounded-full bg-[var(--surface-highlight)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="inline h-3 w-3" /> Downloaded</span>
+                                  <span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="inline h-3 w-3" /> Downloaded</span>
                                 {:else if vjob && (vjob.status === 'starting' || vjob.status === 'running')}
                                   <span class="text-[10px] text-[var(--text-muted)]">Downloading…</span>
                                 {/if}
@@ -1456,7 +1335,7 @@
                           {/if}
                           <button
                             type="button"
-                            class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
+                            class="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] px-5 py-2.5 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
                             disabled={!selectedVariant || downloadingCuratedMain}
                             onclick={downloadCuratedModel}
                           >
@@ -1465,7 +1344,7 @@
                           </button>
                         </div>
                       {:else}
-                        <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                        <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-3 text-sm text-[var(--text-secondary)]">
                           Downloads are only available in the desktop app.
                         </div>
                       {/if}
@@ -1496,7 +1375,7 @@
                         {#each searchResults as result (result.repo_id)}
                           <button
                             type="button"
-                            class="w-full rounded-lg px-3 py-2.5 text-left transition {selectedRepo?.repo_id === result.repo_id ? 'bg-[var(--surface-highlight)]' : 'hover:bg-[var(--surface-highlight)]'}"
+                            class="w-full rounded-lg px-3 py-2.5 text-left transition {selectedRepo?.repo_id === result.repo_id ? 'bg-[var(--surface-hover)]' : 'hover:bg-[var(--surface-hover)]'}"
                             onclick={() => openRepo(result.repo_id)}
                           >
                             <div class="text-xs font-medium text-[var(--text-secondary)] truncate">{result.repo_id}</div>
@@ -1535,7 +1414,7 @@
                             {#if job && job.status === 'done'}
                               <button
                                 type="button"
-                                class="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-highlight)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--surface-secondary)] disabled:opacity-50"
+                                class="inline-flex items-center gap-1 rounded-lg bg-[var(--surface-hover)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--surface)] disabled:opacity-50"
                                 onclick={() => downloaded && appStore.openLocalModelLoadDialog(downloaded)}
                                 disabled={!downloaded}
                               >
@@ -1550,13 +1429,13 @@
                                     <span>{job.progress.toFixed(0)}%</span>
                                     <span>{speed && speed.speedBps > 0 ? (speed.speedBps >= 1048576 ? `${(speed.speedBps / 1048576).toFixed(1)} MB/s` : `${(speed.speedBps / 1024).toFixed(0)} KB/s`) : ''}</span>
                                   </div>
-                                  <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
+                                  <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-active)]">
                                     <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {job.progress}%"></div>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)]"
+                                  class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
                                   onclick={async () => { await cancelDownloadJob(job.id); await downloadsStore.refresh(); }}
                                   aria-label="Cancel download"
                                   title="Cancel"
@@ -1618,10 +1497,10 @@
 
             {#if voiceCatalogLoading}
               <div class="flex items-center justify-center py-16">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
               </div>
             {:else if !Object.keys(voiceModels).length}
-              <div class="rounded-xl border border-[var(--border)] p-8 text-center text-sm text-[var(--text-muted)]">
+              <div class="p-8 text-center text-sm text-[var(--text-muted)]">
                 No voice models available
               </div>
             {:else}
@@ -1635,7 +1514,7 @@
                   {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
                   {@const totalFiles = Array.isArray(item.files) ? item.files.length : 0}
                   {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'done')}
-                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)]' : ''}">
+                  <div class="border-b border-[var(--border)] pb-4 last:border-b-0 {item.is_active ? '' : ''}">
                     <div class="flex items-start justify-between gap-4">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
@@ -1645,7 +1524,7 @@
                           {/if}
                         </div>
                         <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">
-                          {item.engine === 'kokoro' ? 'Kokoro' : 'Kitten'}{sizeLabel ? ` · ${sizeLabel}` : ''}{voiceCount ? ` · ${voiceCount} voices` : ''}
+                          {item.engine === 'kokoro' ? 'Kokoro' : 'WASM'}{sizeLabel ? ` · ${sizeLabel}` : ''}{voiceCount ? ` · ${voiceCount} voices` : ''}
                         </p>
                         {#if item.description}
                           <p class="mt-1 text-xs text-[var(--text-muted)]">{item.description}</p>
@@ -1683,7 +1562,7 @@
                         {#if item.is_active}
                           <button
                             type="button"
-                            class="rounded-lg border border-[var(--border-strong)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
+                            class="rounded-lg border border-[var(--border-hover)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
                             onclick={() => unloadTts()}
                           >
                             Unload
@@ -1696,14 +1575,14 @@
                                 Downloading {activeJobs.length}/{totalFiles} files
                               </div>
                               {#if activeJobs[0]}
-                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
+                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-active)]">
                                   <div class="h-full rounded-full bg-[var(--primary)] transition-all animate-pulse" style="width: {activeJobs[0].progress}%"></div>
                                 </div>
                               {/if}
                             </div>
                             <button
                               type="button"
-                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)]"
+                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
                               onclick={async () => {
                                 for (const j of activeJobs) { await cancelDownloadJob(j.id); }
                                 downloadingVoice = null;
@@ -1785,78 +1664,16 @@
 
                     <!-- Voice picker for active model -->
                     {#if item.is_active && Array.isArray(item.voices) && item.voices.length > 0}
-                      {@const voiceGroups = (() => {
-                        const groups: { label: string; voices: string[] }[] = [];
-                        const grouped: Record<string, string[]> = {};
-                        for (const v of item.voices) {
-                          let key = 'Other';
-                          if (v.startsWith('af_')) key = 'American Female';
-                          else if (v.startsWith('am_')) key = 'American Male';
-                          else if (v.startsWith('bf_')) key = 'British Female';
-                          else if (v.startsWith('bm_')) key = 'British Male';
-                          else if (v.startsWith('ef_')) key = 'Spanish Female';
-                          else if (v.startsWith('em_')) key = 'Spanish Male';
-                          else if (v.startsWith('ff_')) key = 'French Female';
-                          else if (v.startsWith('fm_')) key = 'French Male';
-                          else if (v.startsWith('hf_')) key = 'Hindi Female';
-                          else if (v.startsWith('hm_')) key = 'Hindi Male';
-                          else if (v.startsWith('if_')) key = 'Italian Female';
-                          else if (v.startsWith('im_')) key = 'Italian Male';
-                          else if (v.startsWith('jf_')) key = 'Japanese Female';
-                          else if (v.startsWith('jm_')) key = 'Japanese Male';
-                          else if (v.startsWith('kf_')) key = 'Korean Female';
-                          else if (v.startsWith('km_')) key = 'Korean Male';
-                          else if (v.startsWith('pf_')) key = 'Portuguese Female';
-                          else if (v.startsWith('pm_')) key = 'Portuguese Male';
-                          else if (v.startsWith('zf_')) key = 'Chinese Female';
-                          else if (v.startsWith('zm_')) key = 'Chinese Male';
-                          if (!grouped[key]) grouped[key] = [];
-                          grouped[key].push(v);
-                        }
-                        const order = [
-                          'American Female', 'American Male', 'British Female', 'British Male',
-                          'Japanese Female', 'Japanese Male', 'Chinese Female', 'Chinese Male',
-                          'Spanish Female', 'Spanish Male', 'French Female', 'French Male',
-                          'Hindi Female', 'Hindi Male', 'Italian Female', 'Italian Male',
-                          'Korean Female', 'Korean Male', 'Portuguese Female', 'Portuguese Male',
-                          'Other',
-                        ];
-                        for (const label of order) {
-                          if (grouped[label]?.length) groups.push({ label, voices: grouped[label] });
-                        }
-                        return groups;
-                      })()}
                       <div class="mt-3 border-t border-[var(--border)] pt-3">
                         <p class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Select Voice</p>
-                        <div class="max-h-[240px] space-y-3 overflow-y-auto pr-1">
-                          {#each voiceGroups as group (group.label)}
-                            {#if voiceGroups.length > 1}
-                              <p class="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{group.label}</p>
-                            {/if}
-                            <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4">
-                              {#each group.voices as voice (voice)}
-                                {@const isSelected = ttsVoice === voice}
-                                <button
-                                  type="button"
-                                  class="flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-medium transition {isSelected
-                                    ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] ring-1 ring-[var(--primary)]'
-                                    : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-highlight)]'}"
-                                  onclick={async () => {
-                                    ttsVoice = voice;
-                                    await appStore.updateTtsSettings({ voice });
-                                    toastStore.success(`Voice set to ${voice}`);
-                                  }}
-                                >
-                                  <Volume2 class="h-3 w-3 shrink-0 {isSelected ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
-                                  <span class="truncate">{voice}</span>
-                                  {#if isSelected}
-                                    <Check class="ml-auto h-3 w-3 shrink-0 text-[var(--primary)]" />
-                                  {/if}
-                                </button>
-                              {/each}
-                            </div>
-                          {/each}
-                        </div>
+                        <VoiceLanguageSelector
+                          selectedVoice={ttsVoice}
+                          onSelect={async (voice) => {
+                            ttsVoice = voice;
+                            await appStore.updateTtsSettings({ voice });
+                            toastStore.success(`Voice set to ${voice}`);
+                          }}
+                        />
                       </div>
                     {/if}
                   </div>
@@ -1873,7 +1690,7 @@
             </header>
 
             <!-- ── Microphone selector ── -->
-            <div class="mb-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div class="mb-6">
               <div class="flex items-center gap-2 mb-3">
                 <Mic class="h-4 w-4 text-[var(--text-muted)] shrink-0" />
                 <span class="text-sm font-semibold text-[var(--text)]">Microphone</span>
@@ -1892,7 +1709,7 @@
                   <label for="mic-select" class="text-xs text-[var(--text-muted)]">Select the microphone for voice input</label>
                   <select
                     id="mic-select"
-                    class="mic-select w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] transition focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                    class="mic-select w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] transition focus:border-[var(--primary)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
                     value={selectedMicId}
                     onchange={(e) => void saveMicDevice((e.currentTarget as HTMLSelectElement).value)}
                   >
@@ -1912,7 +1729,7 @@
 
             {#if voiceCatalogLoading}
               <div class="flex items-center justify-center py-16">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
               </div>
             {:else}
               <div class="grid gap-3 sm:grid-cols-2">
@@ -1924,7 +1741,7 @@
                   {@const isDownloading = activeJobs.length > 0 || downloadingWhisper === key}
                   {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
                   {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && whisperFiles.includes(j.file) && j.status === 'done')}
-                  <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 {item.is_active ? 'ring-1 ring-[var(--border-strong)]' : ''}">
+                  <div class="border-b border-[var(--border)] pb-4 last:border-b-0">
                     <div class="flex items-start justify-between gap-4">
                       <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
@@ -1962,7 +1779,7 @@
                         {#if item.is_active}
                           <button
                             type="button"
-                            class="rounded-lg border border-[var(--border-strong)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)]"
+                            class="rounded-lg border border-[var(--border-hover)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
                             onclick={async () => {
                               try {
                                 await unloadWhisper();
@@ -1985,14 +1802,14 @@
                                 Downloading {doneJobs.length + activeJobs.length}/{whisperFiles.length} files
                               </div>
                               {#if activeJobs[0]}
-                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-strong)]">
+                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-active)]">
                                   <div class="h-full rounded-full bg-[var(--primary)] transition-all animate-pulse" style="width: {activeJobs[0].progress}%"></div>
                                 </div>
                               {/if}
                             </div>
                             <button
                               type="button"
-                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text-secondary)]"
+                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
                               onclick={async () => {
                                 for (const j of activeJobs) { await cancelDownloadJob(j.id); }
                                 downloadingWhisper = null;
@@ -2066,48 +1883,46 @@
 
         {:else if activeSection === 'runtime'}
           <div class="flex-1 overflow-y-auto p-5">
-            <header class="mb-5">
+            <header class="mb-6">
               <h2 class="text-base font-semibold text-[var(--text)]">Local Runtime</h2>
               <p class="mt-0.5 text-sm text-[var(--text-muted)]">llama.cpp server for running local models</p>
             </header>
 
-            <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-              {#if hasRuntime === true}
-                <div class="flex items-center gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)]">
-                    <Check class="h-5 w-5 text-[var(--text-secondary)]" />
-                  </div>
-                  <div>
-                    <h3 class="text-sm font-semibold text-[var(--text)]">Runtime installed</h3>
-                    <p class="text-xs text-[var(--text-tertiary)]">Local models can be loaded and run</p>
-                  </div>
+            {#if hasRuntime === true}
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)]">
+                  <Check class="h-5 w-5 text-[var(--text-secondary)]" />
                 </div>
-              {:else if hasRuntime === false}
-                <div class="flex items-start gap-3">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-highlight)]">
-                    <AlertTriangle class="h-5 w-5 text-[var(--text-secondary)]" />
-                  </div>
-                  <div class="flex-1">
-                    <h3 class="text-sm font-semibold text-[var(--text)]">Runtime not installed</h3>
-                    <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">Install llama.cpp to run local models</p>
-                    <button
-                      type="button"
-                      class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-                      onclick={() => { close(); appStore.runtimeManagerOpen = true; }}
-                    >
-                      <Settings class="h-3.5 w-3.5" />
-                      Open Runtime Settings
-                    </button>
-                  </div>
+                <div>
+                  <h3 class="text-sm font-semibold text-[var(--text)]">Runtime installed</h3>
+                  <p class="text-xs text-[var(--text-tertiary)]">Local models can be loaded and run</p>
                 </div>
-              {:else}
-                <div class="flex items-center justify-center py-4">
-                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-border-lt border-t-text-muted"></div>
+              </div>
+            {:else if hasRuntime === false}
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)]">
+                  <AlertTriangle class="h-5 w-5 text-[var(--text-secondary)]" />
                 </div>
-              {/if}
-            </div>
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold text-[var(--text)]">Runtime not installed</h3>
+                  <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">Install llama.cpp to run local models</p>
+                  <button
+                    type="button"
+                    class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                    onclick={() => { close(); appStore.runtimeManagerOpen = true; }}
+                  >
+                    <Settings class="h-3.5 w-3.5" />
+                    Open Runtime Settings
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <div class="flex items-center justify-center py-4">
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
+              </div>
+            {/if}
 
-            <div class="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] p-4">
+            <div class="mt-6">
               <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-2">About llama.cpp</h4>
               <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
                 llama.cpp is a high-performance inference engine for running large language models locally.
@@ -2132,7 +1947,7 @@
               <p class="mt-0.5 text-sm text-[var(--text-muted)]">Configure how web search works in your chats</p>
             </header>
 
-            <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-5">
+            <div class="space-y-5">
               <SearchSettings
                 bind:searchProvider
                 bind:searchMaxResults
@@ -2152,7 +1967,7 @@
               </button>
             </div>
 
-            <div class="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] p-4">
+            <div class="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] p-4">
               <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-3">Search Modes</h4>
               <div class="space-y-3">
                 <div>
@@ -2218,11 +2033,11 @@
               <p class="mt-0.5 text-sm text-[var(--text-muted)]">Configure cloud or self-hosted LLM providers</p>
             </header>
 
-            <div class="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-5">
+            <div class="space-y-5">
               <!-- Provider selector -->
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">Provider</span>
-                <select class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]" bind:value={providerName}>
+                <select class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerName}>
                   <optgroup label="Cloud">
                     <option value="openai">OpenAI</option>
                     <option value="openrouter">OpenRouter (multi-provider)</option>
@@ -2246,7 +2061,7 @@
               <!-- Base URL -->
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
-                <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]" bind:value={providerBaseUrl} placeholder="https://api.openai.com/v1" />
+                <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerBaseUrl} placeholder="https://api.openai.com/v1" />
               </label>
 
               <!-- API Key -->
@@ -2260,7 +2075,7 @@
                   {/if}
                 </div>
                 <input
-                  class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+                  class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
                   bind:value={providerApiKey}
                   placeholder={appStore.config.llm?.providers?.[providerName]?.has_api_key ? '••••••••• (leave blank to keep)' : 'Enter API key…'}
                   type="password"
@@ -2276,7 +2091,7 @@
                     <!-- Searchable model selector -->
                     <div class="relative flex-1">
                       <input
-                        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+                        class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
                         value={modelDropdownOpen ? modelSearchQuery : (providerModel || '')}
                         placeholder="Search models…"
                         onfocus={() => { modelDropdownOpen = true; modelSearchQuery = ''; }}
@@ -2302,7 +2117,7 @@
                             {#each filteredProviderModels as m (m)}
                               <button
                                 type="button"
-                                class="flex w-full items-center px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--surface-highlight)] {m === providerModel ? 'text-[var(--primary)] font-medium' : 'text-[var(--text)]'}"
+                                class="flex w-full items-center px-4 py-2 text-left text-sm transition-colors hover:bg-[var(--surface-hover)] {m === providerModel ? 'text-[var(--primary)] font-medium' : 'text-[var(--text)]'}"
                                 onclick={() => {
                                   providerModel = m;
                                   modelDropdownOpen = false;
@@ -2317,10 +2132,10 @@
                       {/if}
                     </div>
                   {:else}
-                    <input class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]" bind:value={providerModel} placeholder="No model" />
+                    <input class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerModel} placeholder="No model" />
                   {/if}
                   <button
-                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
+                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
                     onclick={fetchProviderModels}
                     disabled={fetchingProviderModels}
                     title="Fetch available models from provider"
@@ -2339,7 +2154,7 @@
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">System prompt</span>
                 <textarea
-                  class="h-20 w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-4 py-2.5 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+                  class="h-20 w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-2.5 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
                   bind:value={providerSystemPrompt}
                   placeholder="You are a helpful assistant…"
                 ></textarea>
@@ -2369,7 +2184,7 @@
                 <label class="block space-y-1.5">
                   <span class="font-medium text-[var(--text-secondary)]">Max tokens</span>
                   <input
-                    class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+                    class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
                     bind:value={providerMaxTokens}
                     inputmode="numeric"
                     placeholder="2048 (leave blank for provider default)"
@@ -2387,7 +2202,7 @@
                   {savingProvider ? 'Saving…' : 'Save Provider'}
                 </button>
                 <button
-                  class="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
+                  class="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
                   onclick={testProviderConnection}
                   disabled={testingProviderConnection}
                 >
@@ -2399,7 +2214,7 @@
                   {/if}
                 </button>
                 {#if providerConnectionStatus !== 'idle'}
-                  <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${providerConnectionStatus === 'ok' ? 'bg-[var(--surface-highlight)] text-[var(--text)]' : 'bg-[var(--surface-highlight)] text-[var(--text)]'}`}>
+                  <span class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${providerConnectionStatus === 'ok' ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'bg-[var(--surface-hover)] text-[var(--text)]'}`}>
                     {providerConnectionStatus === 'ok' ? '● Connected' : '● Failed'}
                   </span>
                 {/if}
@@ -2408,7 +2223,6 @@
           </div>
         {/if}
       </main>
-    </div>
   </div>
 </div>
 

@@ -47,7 +47,8 @@ function toManagedSteps(steps?: AgentStep[]) {
     type: step.type,
     label: step.label,
     status: step.status,
-    detail: step.detail ?? null
+    detail: step.detail ?? null,
+    output: step.output ?? null
   }));
 }
 

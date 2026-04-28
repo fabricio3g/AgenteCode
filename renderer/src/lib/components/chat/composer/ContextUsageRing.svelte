@@ -117,8 +117,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.85rem;
-    height: 1.85rem;
+    width: 2rem;
+    height: 2rem;
     position: relative;
   }
 
@@ -145,8 +145,8 @@
     border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text-secondary);
-    border-radius: var(--radius-m);
-    box-shadow: var(--shadow-m);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     padding: 6px 8px;
     font-size: 11px;
     line-height: 1.35;

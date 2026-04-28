@@ -42,7 +42,7 @@
     <div class="flex h-full flex-col">
       <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <h2 class="text-sm font-semibold tracking-wide text-[var(--text)]">Source Search</h2>
-        <button class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]" onclick={closeSidebar} aria-label="Close">
+        <button class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={closeSidebar} aria-label="Close">
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -51,13 +51,13 @@
         <div class="flex items-center gap-2">
           <input
             type="text"
-            class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--border-strong)]"
+            class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
             placeholder="Search the web sources..."
             bind:value={query}
             onkeydown={(event) => { if (event.key === 'Enter') void runSearch(); }}
           />
           <button
-            class="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--border)] px-3 text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] disabled:opacity-50"
+            class="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--border)] px-3 text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
             onclick={runSearch}
             disabled={appStore.searchLoading}
             aria-label="Run source search"
@@ -84,7 +84,7 @@
           <div class="space-y-2">
             {#each appStore.searchResults as result (result.url)}
               <button
-                class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--surface-highlight)]"
+                class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--surface-hover)]"
                 onclick={() => openResult(result.url)}
               >
                 <p class="line-clamp-2 text-sm font-semibold text-[var(--text)]">{result.title || result.url}</p>

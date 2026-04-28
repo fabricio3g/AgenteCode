@@ -10,7 +10,7 @@
     {#each appStore.pendingAttachments as file (file.id)}
       {#if file.kind === 'image' && (file.preview || file.base64)}
         <div class="group relative">
-          <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-s)]" />
+          <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-xs)]" />
           <button
             aria-label="Remove image"
             class="chateaui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
@@ -22,7 +22,7 @@
           </button>
         </div>
       {:else}
-        <div class="chateaui-card group relative flex items-center gap-2 px-3 py-2" style="--chateaui-card-bg: var(--surface-highlight);">
+        <div class="chateaui-card group relative flex items-center gap-2 px-3 py-2" style="--chateaui-card-bg: var(--surface-hover);">
           <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-overlay-light">
             {#if file.status === 'processing'}
               <div class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-transparent"></div>

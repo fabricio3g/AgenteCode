@@ -124,7 +124,7 @@ export interface TTSVoiceMap {
 /**
  * TTS engine type.
  */
-export type TTSEngineType = 'kitten' | 'kokoro';
+export type TTSEngineType = 'kokoro' | 'wasm';
 
 /**
  * TTS configuration.

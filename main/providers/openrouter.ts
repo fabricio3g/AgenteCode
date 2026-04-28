@@ -1,7 +1,12 @@
-import { OpenRouter } from '@openrouter/sdk';
+import OpenAI from 'openai';
 import { BaseProvider } from './base.ts';
-import { safeParseJson } from './helpers.ts';
+import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 
+/**
+ * OpenRouter provider using the OpenAI SDK.
+ * OpenRouter is fully OpenAI-compatible, so the standard OpenAI SDK works perfectly.
+ * The official @openrouter/sdk has Zod validation issues with message formats.
+ */
 export class OpenRouterProvider extends BaseProvider {
   name = 'openrouter';
   label = 'OpenRouter';
@@ -13,17 +18,25 @@ export class OpenRouterProvider extends BaseProvider {
     return name === 'openrouter' || url.includes('openrouter.ai');
   }
 
-  createClient(apiKey, _baseUrl) {
-    const key = apiKey || '';
-    if (!this._clients.has(key)) {
-      this._clients.set(key, new OpenRouter({ apiKey }));
+  createClient(apiKey, baseUrl) {
+    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl)}`;
+    if (!this._clients.has(clientKey)) {
+      this._clients.set(clientKey, new OpenAI({
+        apiKey: apiKey || 'not-needed',
+        baseURL: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+        defaultHeaders: {
+          'HTTP-Referer': 'https://chatea.app',
+          'X-Title': 'Chatea LM'
+        }
+      }));
     }
-    return this._clients.get(key);
+    return this._clients.get(clientKey);
   }
 
   async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
-    const client = this.createClient(apiKey);
-    const stream = await client.chat.send({
+    const client = this.createClient(apiKey, baseUrl);
+
+    const stream = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
@@ -45,12 +58,17 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
-    const client = this.createClient(apiKey);
-    const response = await client.chat.send({
+    const client = this.createClient(apiKey, baseUrl);
+
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined)
+    );
+
+    const response = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
-      ...params,
+      ...cleanParams,
       stream: false
     });
 
@@ -71,7 +89,7 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   async fetchModels(apiKey, _baseUrl) {
-    const client = this.createClient(apiKey);
+    const client = this.createClient(apiKey, 'https://openrouter.ai/api/v1');
     try {
       const response = await client.models.list();
       const list = response?.data ?? [];
@@ -83,7 +101,7 @@ export class OpenRouterProvider extends BaseProvider {
 
   async fetchModelMetadata(apiKey, _baseUrl, modelId) {
     try {
-      const client = this.createClient(apiKey);
+      const client = this.createClient(apiKey, 'https://openrouter.ai/api/v1');
       const response = await client.models.list();
       const list = response?.data ?? [];
       const found = list.find(entry => String(entry?.id || '') === String(modelId));

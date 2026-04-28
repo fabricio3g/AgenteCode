@@ -41,9 +41,9 @@
 <style>
   .toast {
     background: var(--surface);
-    border-color: var(--border-light);
-    box-shadow: var(--shadow-m);
-    border-radius: var(--radius-s);
+    border-color: var(--border);
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius-sm);
     max-width: 18rem;
   }
 </style>

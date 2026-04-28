@@ -12,7 +12,7 @@ import {
   unloadModel, getRecommendedSettings,
   startEmbeddingServer, stopEmbeddingServer, getEmbeddingStatus
 } from './llm-runner.ts';
-import { generateTts, unloadTts, checkEspeakData } from './tts-engine.ts';
+import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './tts-engine.ts';
 import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.ts';
 import {
   startDownloadHf, getDownloadJobs, cancelDownloadJob,
@@ -184,9 +184,40 @@ export function registerIpcHandlers() {
   ipcMain.handle('download_runtime', (_e, { payload }) => downloadRuntime(payload, getMainWindow()));
 
   // ── TTS ──
-  ipcMain.handle('generate_tts', (_e, { request }) => generateTts(request));
+  onWorkerMessage((msg: any) => {
+    const win = getMainWindow();
+    if (msg.type === 'chunk' || msg.type === 'done' || msg.type === 'start') {
+      console.log('[IPC] Worker msg:', msg.type, 'id:', msg.id, 'index:', msg.index, 'win:', !!win);
+    }
+    if (!win) return;
+    if (msg.type === 'start') {
+      win.webContents.send('tts-start', { seq: msg.id, total: msg.total });
+    } else if (msg.type === 'chunk') {
+      win.webContents.send('tts-chunk', { seq: msg.id, index: msg.index, total: msg.total, base64: msg.base64 });
+    } else if (msg.type === 'done') {
+      win.webContents.send('tts-done', { seq: msg.id, total: msg.total });
+    }
+  });
+
+  ipcMain.handle('generate_tts_stream', (_e, { request }) => {
+    console.log('[IPC] generate_tts_stream called');
+    generateTtsStream(request, null);
+    return { ok: true };
+  });
+  ipcMain.handle('cancel_tts_stream', () => {
+    cancelTtsStream();
+  });
   ipcMain.handle('unload_tts', () => unloadTts());
   ipcMain.handle('check_espeak_data', (_e, { modelsDir }) => checkEspeakData(modelsDir));
+  ipcMain.handle('preload_tts', async () => {
+    return initTts();
+  });
+  ipcMain.handle('list_tts_voices', () => listVoices());
+  ipcMain.handle('read_file_base64', async (_e, { filePath }: { filePath: string }) => {
+    const fs = await import('node:fs');
+    const data = await fs.promises.readFile(filePath);
+    return data.toString('base64');
+  });
 
   // ── STT (speech-to-text) ──
   ipcMain.handle('stt_transcribe', (_e, args) => {

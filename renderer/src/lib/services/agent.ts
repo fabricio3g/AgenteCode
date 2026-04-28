@@ -7,12 +7,13 @@
 import type { AgentStep, AgentArtifact, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { RequestMessage, ToolDefinition, NativeToolCall } from '$lib/services/chat-api';
-import { completeAssistantReply, completeWithTools } from '$lib/services/chat-api';
+import { completeAssistantReply, completeWithTools, supportsNativeTools } from '$lib/services/chat-api';
 import { webSearch, fetchUrlContent } from '$lib/services/search';
 import { queryDocuments } from '$lib/services/rag';
 import { sandboxExec } from '$lib/services/sandbox';
 import { loadAppConfig } from '$lib/utils/storage';
 import { isTauri } from '$lib/services/tauri';
+import { sandboxStore } from '$lib/stores/sandbox.svelte';
 import {
   browserNavigate, browserSnapshot, browserClick, browserTypeText, formatPageInfo
 } from '$lib/services/browser';
@@ -33,6 +34,12 @@ type ToolResult = {
   createdFiles?: string[];
   modifiedFiles?: string[];
   deletedFiles?: string[];
+  nextTurnMods?: {
+    instructions?: string;
+    temperature?: number;
+    injectMessages?: RequestMessage[];
+    disableNativeTools?: boolean;
+  };
 };
 
 type ToolContext = {
@@ -50,6 +57,7 @@ type ToolContext = {
 const MAX_ITERATIONS = 20;
 const MAX_TIME_MS = 3 * 60 * 1000;
 const KEEP_TOOL_PAIRS = 6;
+const MAX_TOOL_CALLS = 8;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -759,33 +767,159 @@ function buildArtifact(ctx: ToolContext): AgentArtifact | null {
 // ── Context trimmer ────────────────────────────────────────────────────────
 
 function trimContext(messages: RequestMessage[], nativeMode: boolean) {
-  // Keep system + user + last N tool pairs to avoid token blowup
+  // Keep system + recent user + last N tool pairs to avoid token blowup
   const sys = messages.filter(m => m.role === 'system');
   const user = messages.filter(m => m.role === 'user');
   const rest = messages.filter(m => m.role !== 'system' && m.role !== 'user');
 
-  const keepCount = KEEP_TOOL_PAIRS * (nativeMode ? 2 : 2);
+  const pairMultiplier = nativeMode ? 2 : 2;
+  const keepCount = KEEP_TOOL_PAIRS * pairMultiplier;
+  const keepUser = KEEP_TOOL_PAIRS; // cap user messages too (tool results in XML mode)
+
+  let trimmed = rest;
   if (rest.length > keepCount) {
-    const trimmed = rest.slice(rest.length - keepCount);
-    messages.splice(0, messages.length, ...sys, ...user, ...trimmed);
+    trimmed = rest.slice(rest.length - keepCount);
   }
+
+  let trimmedUser = user;
+  if (user.length > keepUser) {
+    trimmedUser = user.slice(user.length - keepUser);
+  }
+
+  messages.splice(0, messages.length, ...sys, ...trimmedUser, ...trimmed);
 }
 
 // ── XML fallback parser ───────────────────────────────────────────────────
 
 function parseXmlToolCall(content: string): { toolCall: ToolCall | null; cleanContent: string } {
-  const match = content.match(/<tool_call>\s*(\{[\s\S]*?\})\s*<\/tool_call>/i);
-  if (!match) return { toolCall: null, cleanContent: content.trim() };
+  const tagMatch = content.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/i);
+  if (!tagMatch) return { toolCall: null, cleanContent: content.trim() };
+  const inner = tagMatch[1];
+  // Find balanced JSON object between { and }
+  const jsonStart = inner.indexOf('{');
+  if (jsonStart === -1) return { toolCall: null, cleanContent: content.trim() };
+  let depth = 0;
+  let jsonEnd = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = jsonStart; i < inner.length; i++) {
+    const c = inner[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === '\\') { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) { jsonEnd = i; break; }
+    }
+  }
+  if (jsonEnd === -1) return { toolCall: null, cleanContent: content.trim() };
+  const jsonStr = inner.slice(jsonStart, jsonEnd + 1);
   try {
-    const parsed = JSON.parse(match[1]);
+    const parsed = JSON.parse(jsonStr);
     if (typeof parsed.name !== 'string') throw new Error('missing name');
     return {
       toolCall: { name: parsed.name, arguments: parsed.arguments || parsed.args || {} },
-      cleanContent: content.replace(match[0], '').trim()
+      cleanContent: content.replace(tagMatch[0], '').trim()
     };
   } catch {
     return { toolCall: null, cleanContent: content.trim() };
   }
+}
+
+// ── Tool-call codeblock parser ──────────────────────────────────────────
+// Models like Gemma 3 output ```tool_call\n{JSON}\n``` instead of <tool_call> XML.
+// This detects those and returns the tool call + cleaned content.
+
+function parseToolCallCodeblocks(content: string): { toolCalls: ToolCall[]; cleanContent: string } {
+  // Find ```tool_call ... ``` blocks and extract JSON from them
+  const fenceRegex = /```tool_call\s*\n([\s\S]*?)\n```/gi;
+  let match;
+  let clean = content;
+  const allCalls: ToolCall[] = [];
+  while ((match = fenceRegex.exec(content)) !== null) {
+    const inner = match[1].trim();
+    // Extract JSON (object or array) with balanced brackets
+    const json = extractBalancedJson(inner);
+    if (!json) continue;
+    try {
+      const parsed = JSON.parse(json);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item.name === 'string') {
+            allCalls.push({ name: item.name, arguments: item.arguments || item.args || {} });
+          }
+        }
+      } else if (typeof parsed.name === 'string') {
+        allCalls.push({ name: parsed.name, arguments: parsed.arguments || parsed.args || {} });
+      }
+    } catch { /* ignore */ }
+  }
+  if (allCalls.length) {
+    clean = content.replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '').trim();
+  }
+  return { toolCalls: allCalls, cleanContent: clean };
+}
+
+function extractBalancedJson(str: string): string | null {
+  let start = -1;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '{' || str[i] === '[') { start = i; break; }
+  }
+  if (start === -1) return null;
+  const opener = str[start];
+  const closer = opener === '{' ? '}' : ']';
+  let depth = 0, inString = false, escaped = false;
+  for (let i = start; i < str.length; i++) {
+    const c = str[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === '\\') { escaped = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === opener) depth++;
+    else if (c === closer) { depth--; if (depth === 0) { return str.slice(start, i + 1); } }
+  }
+  return null;
+}
+
+// ── Tool-call artifact stripper ─────────────────────────────────────────
+// Removes any remaining <tool_call> tags or ```tool_call``` fences from content
+// so they never leak to the user.
+
+function stripToolCallArtifacts(content: string): string {
+  return content
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '')
+    .trim();
+}
+
+// ── Codeblock auto-extraction ────────────────────────────────────────────
+// When non-tool models output markdown codeblocks, auto-extract them as files.
+
+const CODEBLOCK_EXT_MAP: Record<string, string> = {
+  html: 'index.html', css: 'style.css', js: 'script.js', ts: 'script.ts',
+  svg: 'icon.svg', json: 'data.json', xml: 'config.xml',
+  py: 'script.py', bash: 'run.sh', sh: 'run.sh',
+  yaml: 'config.yaml', yml: 'config.yml', toml: 'config.toml',
+  txt: 'readme.txt', md: 'readme.md'
+};
+
+function parseCodeblockWrites(content: string): Array<{ path: string; code: string }> {
+  const matches = content.matchAll(/```(\w+)\s*\n([\s\S]*?)```/g);
+  const files: Array<{ path: string; code: string }> = [];
+  const seen = new Set<string>();
+  for (const m of matches) {
+    const lang = m[1].toLowerCase();
+    const code = m[2].trim();
+    if (!code) continue;
+    const ext = CODEBLOCK_EXT_MAP[lang];
+    if (ext && !seen.has(ext)) {
+      seen.add(ext);
+      files.push({ path: ext, code });
+    }
+  }
+  return files;
 }
 
 // ── System prompts ────────────────────────────────────────────────────────
@@ -793,12 +927,14 @@ function parseXmlToolCall(content: string): { toolCall: ToolCall | null; cleanCo
 function getNativeSystemPrompt(extra?: string): string {
   const base = [
     'You are an autonomous AI agent with tools for web search, file management, coding, and more.',
-    'Use the minimum number of tool calls needed. Batch related work. Avoid unnecessary exploration.',
+    'Use the MINIMUM number of tool calls needed. Batch related work. Avoid unnecessary exploration.',
+    'You may call at most ' + MAX_TOOL_CALLS + ' tools total. After that, you MUST provide your final answer.',
     'After all tool calls are done, produce a clear, complete final answer in plain text.',
     'For research tasks: use web_search, then create_report to produce a structured artifact.',
     'For web projects: write HTML/CSS/JS files, then call preview_project.',
     'For calculations: use run_code.',
     'If a tool fails, adapt: answer from knowledge or try an alternative approach. Do not retry the same failing call.',
+    'NEVER call the same tool more than twice with similar arguments. If results are insufficient, answer with what you have.',
   ].join('\n');
   return extra ? `${extra}\n\n${base}` : base;
 }
@@ -817,8 +953,10 @@ function getXmlSystemPrompt(extra?: string): string {
     'Available tools:',
     tools,
     '',
+    'You may call at most ' + MAX_TOOL_CALLS + ' tools total. After that, you MUST provide your final answer in plain text with NO tool_call block.',
     'After a tool result, call the next tool OR write your final answer (plain text, no tool_call block).',
     'If a tool fails, adapt or answer from knowledge. Do not loop on the same failing call.',
+    'NEVER call the same tool more than twice with similar arguments. If results are insufficient, answer with what you have.',
   ].join('\n');
   return extra ? `${extra}\n\n${base}` : base;
 }
@@ -835,11 +973,12 @@ export async function runAgentTask(args: {
   workspaceName?: string;
   workspaceFiles?: WorkspaceFile[];
   onStep: (steps: AgentStep[]) => void;
+  onProgress?: (text: string) => void;
   onReasoning?: (value: string) => void;
   onArtifact: (artifact: AgentArtifact | null) => void;
   onSources?: (sources: SearchResult[]) => void;
   signal?: AbortSignal;
-}): Promise<{ content: string; reasoning: string; steps: AgentStep[]; artifact: AgentArtifact | null; sources: SearchResult[] }> {
+}): Promise<{ content: string; reasoning: string; steps: AgentStep[]; artifact: AgentArtifact | null; sources: SearchResult[]; error?: string; warning?: string }> {
 
   const steps: AgentStep[] = [];
   const sources: SearchResult[] = [];
@@ -857,7 +996,9 @@ export async function runAgentTask(args: {
 
   const config = await loadAppConfig();
   const isApiMode = config.llm?.backend_mode !== 'local' || !isTauri();
-  let useNativeTools = isApiMode;
+  const providerName = config.llm?.provider || 'openai';
+  const providerModel = config.llm?.providers?.[providerName]?.model || '';
+  let useNativeTools = isApiMode && supportsNativeTools(providerModel, providerName);
   let nativeFailed = false;
 
   const toolDefs = getToolDefinitions();
@@ -874,8 +1015,10 @@ export async function runAgentTask(args: {
 
   let finalContent = '';
   let finalReasoning = '';
+  let errorReason: string | undefined;
   const startTime = Date.now();
   const recentSigs: string[] = [];
+  let totalToolCalls = 0;
 
   const checkAbort = () => {
     if (args.signal?.aborted) {
@@ -884,9 +1027,17 @@ export async function runAgentTask(args: {
     }
   };
 
+  const throwIfAborted = () => {
+    args.signal?.throwIfAborted?.();
+  };
+
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     checkAbort();
-    if (Date.now() - startTime > MAX_TIME_MS) break;
+    throwIfAborted();
+    if (Date.now() - startTime > MAX_TIME_MS) {
+      errorReason = errorReason || 'Agent timed out after 3 minutes.';
+      break;
+    }
 
     const thinkStep: AgentStep = {
       id: uid('step'), type: 'thinking',
@@ -896,6 +1047,9 @@ export async function runAgentTask(args: {
     };
     steps.push(thinkStep);
     args.onStep([...steps]);
+    if (iter === 0) {
+      args.onProgress?.(`Planning how to approach this…`);
+    }
 
     trimContext(messages, useNativeTools && !nativeFailed);
 
@@ -934,6 +1088,7 @@ export async function runAgentTask(args: {
           thinkStep.label = 'Error';
           thinkStep.detail = e2 instanceof Error ? e2.message : String(e2);
           args.onStep([...steps]);
+          errorReason = thinkStep.detail;
           break;
         }
       } else {
@@ -941,6 +1096,7 @@ export async function runAgentTask(args: {
         thinkStep.label = 'Error';
         thinkStep.detail = errMsg;
         args.onStep([...steps]);
+        errorReason = errMsg;
         break;
       }
     }
@@ -951,6 +1107,8 @@ export async function runAgentTask(args: {
       finalReasoning = finalReasoning ? `${finalReasoning}\n${reasoning}` : reasoning;
       args.onReasoning?.(finalReasoning);
     }
+
+    console.log(`[agent] iter=${iter + 1} content_len=${rawContent.length} nativeFailed=${nativeFailed}`);
 
     // Resolve tool calls
     let toolCalls: ToolCall[] = [];
@@ -963,12 +1121,46 @@ export async function runAgentTask(args: {
         content: rawContent || null,
         tool_calls: toolCalls.map(tc => ({ id: tc.id!, type: 'function' as const, function: { name: tc.name, arguments: JSON.stringify(tc.arguments) } }))
       });
-    } else if (!nativeActive || nativeFailed) {
-      const parsed = parseXmlToolCall(rawContent);
-      if (parsed.toolCall) {
-        toolCalls = [parsed.toolCall];
-        cleanContent = parsed.cleanContent;
-        messages.push({ role: 'assistant', content: cleanContent || '(tool call)' });
+    } else {
+      // Fallback — parse content for tool calls when native API didn't provide them:
+      //   1. <tool_call> XML tags
+      //   2. ```tool_call code fences (Gemma 3, etc.)
+      //   3. ```html / ```css / ```js codeblocks → auto write_file
+      const xmlResult = parseXmlToolCall(rawContent);
+      if (xmlResult.toolCall) {
+        toolCalls = [xmlResult.toolCall];
+        cleanContent = stripToolCallArtifacts(xmlResult.cleanContent);
+        messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools…' });
+        if (nativeActive && !nativeFailed) nativeFailed = true;
+      } else {
+        const cbResult = parseToolCallCodeblocks(rawContent);
+        if (cbResult.toolCalls.length) {
+          toolCalls = cbResult.toolCalls;
+          cleanContent = stripToolCallArtifacts(cbResult.cleanContent);
+          messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools…' });
+          if (nativeActive && !nativeFailed) nativeFailed = true;
+        } else {
+          // No XML or codeblock tool calls — try extracting code blocks as file writes
+          const codeblockFiles = parseCodeblockWrites(rawContent);
+          if (codeblockFiles.length) {
+            toolCalls = codeblockFiles.map((f, i) => ({
+              id: `auto-write-${i}`,
+              name: 'write_file',
+              arguments: { path: f.path, content: f.code }
+            }));
+            const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
+            if (hasHtml) {
+              toolCalls.push({
+                id: `auto-preview`,
+                name: 'preview_project',
+                arguments: { entryPoint: 'index.html' }
+              });
+            }
+            cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
+            messages.push({ role: 'assistant', content: cleanContent || 'Files have been written and are ready for preview.' });
+            if (nativeActive && !nativeFailed) nativeFailed = true;
+          }
+        }
       }
     }
 
@@ -988,15 +1180,116 @@ export async function runAgentTask(args: {
 
     // No tools → final answer
     if (!toolCalls.length) {
-      finalContent = rawContent;
+      args.onProgress?.('Producing final answer…');
+      if (rawContent) {
+        finalContent = stripToolCallArtifacts(rawContent);
+        console.log(`[agent] iter=${iter + 1} final answer (no tools)`);
+        break;
+      }
+
+      // Empty response on first step → retry with simpler prompt
+      if (iter === 0) {
+        console.log('[agent] first step empty, retrying with simpler prompt');
+        thinkStep.detail = 'Retrying with simpler prompt…';
+        try {
+          const simpleMessages: RequestMessage[] = [
+            { role: 'system', content: 'You are a helpful assistant. Answer the user\'s question directly and concisely.' },
+            ...args.messages
+          ];
+          const retry = await completeAssistantReply({ messages: simpleMessages, signal: args.signal });
+          const retryContent = String(retry.content || '').trim();
+          if (retryContent) {
+            thinkStep.detail = 'Producing answer';
+            thinkStep.status = 'done';
+            args.onStep([...steps]);
+            // Retry succeeded — try to extract codeblocks as file writes
+            const codeblockFiles = parseCodeblockWrites(retryContent);
+            if (codeblockFiles.length) {
+              args.onProgress?.('Writing files from retry response…');
+              for (const f of codeblockFiles) {
+                const writeResult = await executeTool('write_file', { path: f.path, content: f.code }, ctx);
+                const toolStep: AgentStep = {
+                  id: uid('step'), type: 'coding', label: 'write file',
+                  status: writeResult.success ? 'done' : 'error',
+                  detail: f.path,
+                  output: writeResult.success ? `Wrote ${f.path} (${f.code.length} chars)` : writeResult.error
+                };
+                steps.push(toolStep);
+                args.onStep([...steps]);
+              }
+              // If HTML among files, auto preview
+              const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
+              if (hasHtml) {
+                args.onProgress?.('Building preview…');
+                const previewResult = await executeTool('preview_project', { entryPoint: 'index.html' }, ctx);
+                const previewStep: AgentStep = {
+                  id: uid('step'), type: 'preview', label: 'preview project',
+                  status: previewResult.success ? 'done' : 'error',
+                  detail: previewResult.success ? 'Preview ready' : previewResult.error
+                };
+                steps.push(previewStep);
+                args.onStep([...steps]);
+              }
+              const artifact = buildArtifact(ctx);
+              args.onArtifact(artifact);
+              // Set final content from retry text (strip code fences so user sees clean text)
+              finalContent = stripToolCallArtifacts(retryContent.replace(/```[\s\S]*?```/g, '').trim()) || 'Project files have been written.';
+              console.log('[agent] retry succeeded (codeblocks)');
+              break;
+            } else {
+              finalContent = stripToolCallArtifacts(retryContent);
+              console.log('[agent] retry succeeded (no codeblocks)');
+              break;
+            }
+          }
+        } catch (retryErr) {
+          console.warn('[agent] retry failed:', retryErr);
+        }
+      }
+
+      // Empty response without tool calls — likely a model/context issue
+      steps.push({
+        id: uid('step'), type: 'error', label: 'Empty response',
+        status: 'error', detail: 'The model returned an empty response. Context may be too long.'
+      });
+      args.onStep([...steps]);
+      errorReason = 'The model returned an empty response.';
+      console.log(`[agent] iter=${iter + 1} empty response error`);
       break;
+    }
+
+    totalToolCalls += toolCalls.length;
+    console.log(`[agent] iter=${iter + 1} tools=${toolCalls.length} total_tools=${totalToolCalls}`);
+
+    // Hard limit on total tool calls
+    if (totalToolCalls >= MAX_TOOL_CALLS) {
+      steps.push({
+        id: uid('step'), type: 'error', label: 'Tool limit reached',
+        status: 'error', detail: `Used ${totalToolCalls} tools. Forcing final answer.`
+      });
+      args.onStep([...steps]);
+      messages.push({ role: 'user', content: `You have used ${totalToolCalls} tools. You MUST stop using tools and provide your final answer now based on everything gathered.` });
+      try {
+        const fallback = await completeAssistantReply({ messages, signal: args.signal });
+        finalContent = String(fallback.content || '').trim() || 'The agent used many tools but could not synthesize a final answer.';
+      } catch {
+        finalContent = 'The agent used many tools but could not synthesize a final answer.';
+      }
+      if (!finalContent) finalContent = 'The agent used many tools but could not synthesize a final answer.';
+      errorReason = errorReason || `Agent reached the tool call limit (${MAX_TOOL_CALLS}) without a clear final answer.`;
+      break;
+    }
+
+    // Iteration-aware urgency: after iteration 8, remind model to answer soon
+    if (iter >= 8) {
+      messages.push({ role: 'user', content: 'You are running out of steps. Provide your final answer in the next response. Do NOT call any more tools.' });
     }
 
     // Stuck-loop detection (same tool 3 of last 5 calls)
     const sig = toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
     const toolNames = toolCalls.map(tc => tc.name);
     recentSigs.push(sig);
-    if (recentSigs.length > 5) recentSigs.shift();
+    if (recentSigs.length > 6) recentSigs.shift();
     const recentNames = recentSigs.flatMap(s => {
       const parts = s.split('|');
       return parts.map(p => p.split(':')[0]);
@@ -1012,6 +1305,16 @@ export async function runAgentTask(args: {
         break;
       }
     }
+    // Also detect 2-tool cycles (e.g., A→B→A→B→A)
+    if (!stuckTool && recentNames.length >= 6) {
+      const last6 = recentNames.slice(-6);
+      const isTwoToolCycle = last6.length === 6 && new Set(last6).size === 2 &&
+        last6[0] === last6[2] && last6[2] === last6[4] &&
+        last6[1] === last6[3] && last6[3] === last6[5];
+      if (isTwoToolCycle) {
+        stuckTool = `${last6[0]} ↔ ${last6[1]}`;
+      }
+    }
     if (stuckTool) {
       steps.push({
         id: uid('step'), type: 'error', label: 'Loop detected — stopping',
@@ -1025,11 +1328,15 @@ export async function runAgentTask(args: {
       } catch {
         finalContent = 'The agent encountered a loop and could not complete the task.';
       }
+      errorReason = 'Agent encountered a loop and could not complete the task.';
+      console.log(`[agent] loop detected: ${stuckTool}`);
       break;
     }
 
     // Execute tool calls
     for (const tc of toolCalls) {
+      args.onProgress?.(`Running ${tc.name.replace(/_/g, ' ')}…`);
+
       const toolStep: AgentStep = {
         id: uid('step'),
         type: STEP_TYPE[tc.name] || 'tool',
@@ -1044,6 +1351,17 @@ export async function runAgentTask(args: {
 
       const result = await executeTool(tc.name, tc.arguments, ctx);
       checkAbort();
+
+      // Process next-turn modifications
+      if (result.nextTurnMods?.disableNativeTools) {
+        nativeFailed = true;
+      }
+      if (result.nextTurnMods?.instructions) {
+        messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
+      }
+      if (result.nextTurnMods?.injectMessages) {
+        messages.push(...result.nextTurnMods.injectMessages);
+      }
 
       // Collect web_search results as sources for display
       if (tc.name === 'web_search' && result.success) {
@@ -1062,10 +1380,43 @@ export async function runAgentTask(args: {
       toolStep.status = result.success ? 'done' : 'error';
       if (!result.success && result.note) {
         toolStep.detail = `${result.error} — ${result.note.slice(0, 120)}`;
+        toolStep.output = result.error;
       } else if (!result.success) {
         toolStep.detail = result.error?.slice(0, 200);
+        toolStep.output = result.error || '';
       } else {
         toolStep.detail = undefined; // keep it clean on success
+        // Populate output with human-readable execution result
+        if (tc.name === 'run_code') {
+          const out = result.output as { result?: unknown; logs?: string[] };
+          const parts: string[] = [];
+          if (out.logs?.length) parts.push(out.logs.join('\n'));
+          if (out.result !== undefined) parts.push(`> ${JSON.stringify(out.result, null, 2)}`);
+          toolStep.output = parts.join('\n');
+          // Sync to sandbox terminal
+          sandboxStore.addEntry({ cmd: `python`, stdout: out.logs?.join('\n') || '', stderr: '', exitCode: result.success ? 0 : 1 });
+        } else if (tc.name === 'execute_command') {
+          const out = result.output as { stdout?: string; stderr?: string; exitCode?: number; timedOut?: boolean };
+          const parts: string[] = [];
+          if (out.stdout) parts.push(out.stdout);
+          if (out.stderr) parts.push(out.stderr);
+          if (out.exitCode === 0) parts.push('Command completed successfully');
+          else if (out.exitCode !== undefined) parts.push(`Exit code: ${out.exitCode}`);
+          if (out.timedOut) parts.push('⚠ Command timed out');
+          toolStep.output = parts.join('\n');
+          // Sync to sandbox terminal
+          sandboxStore.addEntry({ cmd: out.stdout?.split('\n')[0] || 'command', stdout: out.stdout || '', stderr: out.stderr || '', exitCode: out.exitCode, timedOut: out.timedOut });
+        } else {
+          // Generic fallback: show key fields from output
+          const out = result.output as Record<string, unknown> | undefined;
+          if (out && typeof out === 'object') {
+            const lines: string[] = [];
+            for (const [k, v] of Object.entries(out)) {
+              if (typeof v === 'string') lines.push(`${k}: ${v.slice(0, 200)}`);
+            }
+            toolStep.output = lines.join('\n') || JSON.stringify(out, null, 2);
+          }
+        }
       }
 
       // Update artifact whenever files change
@@ -1088,20 +1439,48 @@ export async function runAgentTask(args: {
 
   // If we exhausted iterations without a final answer, ask for one explicitly
   if (!finalContent) {
+    args.onProgress?.('Asking for final answer (iteration limit reached)…');
     try {
       messages.push({ role: 'user', content: 'You have reached the iteration limit. Provide your final answer now based on everything gathered so far.' });
       const fallback = await completeAssistantReply({ messages, signal: args.signal });
-      finalContent = String(fallback.content || '').trim();
+    finalContent = stripToolCallArtifacts(String(fallback.content || '').trim());
+  } catch { /* ignore */ }
+  }
+
+  // Second fallback: strip context to essentials and ask again
+  if (!finalContent) {
+    try {
+      const lastUser = messages.filter(m => m.role === 'user').pop();
+      const strippedMessages: RequestMessage[] = [
+        messages[0], // system
+        ...(lastUser ? [lastUser] : []),
+        { role: 'user', content: 'Provide your final answer concisely.' }
+      ];
+      const fallback2 = await completeAssistantReply({ messages: strippedMessages, signal: args.signal });
+      finalContent = stripToolCallArtifacts(String(fallback2.content || '').trim());
     } catch { /* ignore */ }
   }
 
-  if (!finalContent) finalContent = 'The agent completed all steps but did not produce a final answer.';
+  // Third fallback: use reasoning or partial data as answer
+  if (!finalContent && finalReasoning) {
+    finalContent = finalReasoning;
+    errorReason = errorReason || 'Agent could not synthesize a structured final answer, but produced reasoning.';
+    console.log('[agent] used reasoning as fallback answer');
+  }
+
+  if (!finalContent) {
+    finalContent = 'The agent completed all steps but did not produce a final answer.';
+    errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
+  }
+
+  console.log(`[agent] done content_len=${finalContent.length} error=${errorReason || 'none'} steps=${steps.length}`);
 
   return {
     content: finalContent,
     reasoning: finalReasoning,
     steps,
     artifact: buildArtifact(ctx),
-    sources
+    sources,
+    ...(errorReason ? { error: errorReason } : {})
   };
 }

@@ -9,14 +9,19 @@ marked.setOptions({
 
 const renderer = new marked.Renderer();
 
+const COPY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const COPY_BTN_HTML = `<button class="code-copy-btn" type="button" aria-label="Copy code">${COPY_ICON_SVG}</button>`;
+const COPY_HANDLER = `(function(btn){var pre=btn.closest('div.code-block-wrapper');if(!pre)return;pre=pre.querySelector('pre');var code=pre?pre.querySelector('code'):null;if(code){navigator.clipboard.writeText(code.innerText||code.textContent||'').then(function(){btn.innerHTML='${CHECK_ICON_SVG}';btn.classList.add('copied');setTimeout(function(){btn.innerHTML='${COPY_ICON_SVG}';btn.classList.remove('copied');},1800)}).catch(function(){btn.innerHTML='${COPY_ICON_SVG}'})}else{btn.innerHTML='${COPY_ICON_SVG}'}})(this)`;
+
 renderer.code = ({ text, lang }) => {
   const language = lang && hljs.getLanguage(lang) ? lang : undefined;
   // For large code blocks, defer highlighting to avoid blocking the main thread
   const LAZY_THRESHOLD = 2000;
   const langLabel = language || (lang ? lang.toLowerCase() : '');
   const header = langLabel
-    ? `<div class="code-block-header"><span class="code-lang">${langLabel}</span><button class="code-copy-btn" onclick="(function(btn){var pre=btn.closest('pre');var code=pre?pre.querySelector('code'):null;if(code){navigator.clipboard.writeText(code.innerText||code.textContent||'').then(function(){btn.textContent='Copied!';btn.classList.add('copied');setTimeout(function(){btn.textContent='Copy';btn.classList.remove('copied');},1800)}).catch(function(){btn.textContent='Copy';})}else{btn.textContent='Copy'}})(this)" type="button">Copy</button></div>`
-    : `<div class="code-block-header code-block-header--bare"><button class="code-copy-btn" onclick="(function(btn){var pre=btn.closest('pre');var code=pre?pre.querySelector('code'):null;if(code){navigator.clipboard.writeText(code.innerText||code.textContent||'').then(function(){btn.textContent='Copied!';btn.classList.add('copied');setTimeout(function(){btn.textContent='Copy';btn.classList.remove('copied');},1800)}).catch(function(){btn.textContent='Copy';})}else{btn.textContent='Copy'}})(this)" type="button">Copy</button></div>`;
+    ? `<div class="code-block-header"><span class="code-lang">${langLabel}</span>${COPY_BTN_HTML}</div>`
+    : `<div class="code-block-header code-block-header--bare">${COPY_BTN_HTML}</div>`;
 
   if (text.length > LAZY_THRESHOLD) {
     // Render plain escaped text initially; a post-render DOM observer will highlight it

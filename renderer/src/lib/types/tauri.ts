@@ -38,6 +38,7 @@ export interface ManagedAgentStep {
   label: string;
   status: string;
   detail?: string | null;
+  output?: string | null;
 }
 
 export interface ManagedAgentTask {
@@ -310,7 +311,7 @@ export interface TtsRequest {
   text: string;
   voice: string;
   speed: number;
-  engine: 'kokoro' | 'kitten';
+  engine: 'kokoro' | 'wasm';
   model_path: string;
   voices_path: string;
   tokens_path: string;

@@ -337,20 +337,20 @@
     <div class="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
       <span class="text-sm font-medium text-[var(--text)]">{title}</span>
       <div class="flex items-center gap-1">
-        <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)] transition-colors">
+        <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
           <Download class="h-3.5 w-3.5" /> SVG
         </button>
-        <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)] transition-colors">
+        <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
           <Download class="h-3.5 w-3.5" /> PNG
         </button>
       </div>
     </div>
   {:else}
     <div class="flex justify-end gap-1 px-3 pt-2">
-      <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)] transition-colors">
+      <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
         <Download class="h-3.5 w-3.5" /> SVG
       </button>
-      <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-highlight)] transition-colors">
+      <button onclick={downloadPng} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
         <Download class="h-3.5 w-3.5" /> PNG
       </button>
     </div>

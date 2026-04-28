@@ -171,7 +171,7 @@
   }
 
   .stop-btn:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
   }
 
@@ -207,10 +207,10 @@
     font-size: 0.62rem;
     line-height: 1;
     color: var(--text-muted);
-    border: 1px solid var(--border-light);
+    border: 1px solid var(--border);
     border-radius: 999px;
     padding: 0.2rem 0.45rem;
-    background: var(--surface-secondary);
+    background: var(--surface);
     white-space: nowrap;
   }
 
@@ -225,7 +225,7 @@
     padding: 0.45rem 0.55rem;
     font-size: 0.76rem;
     color: var(--text);
-    background: var(--surface-secondary);
+    background: var(--surface);
     outline: none;
     width: 100%;
     min-height: 2.3rem;
@@ -234,7 +234,7 @@
   }
 
   .question-input:focus {
-    border-color: var(--border-strong);
+    border-color: var(--border-hover);
   }
 
   .question-actions {
@@ -246,7 +246,7 @@
   .question-btn {
     border: 1px solid var(--border);
     border-radius: 0.45rem;
-    background: var(--surface-secondary);
+    background: var(--surface);
     color: var(--text-secondary);
     font-size: 0.72rem;
     padding: 0.35rem 0.55rem;
@@ -257,13 +257,13 @@
 
   .question-btn:hover {
     color: var(--text);
-    border-color: var(--border-light);
-    background: var(--surface-highlight);
+    border-color: var(--border);
+    background: var(--surface-hover);
   }
 
   .question-btn.primary {
     background: var(--surface);
-    border-color: var(--border-strong);
+    border-color: var(--border-hover);
     color: var(--text);
   }
 </style>

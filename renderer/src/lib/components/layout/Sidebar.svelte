@@ -7,7 +7,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/services/tauri';
   import { t } from 'svelte-i18n';
-  import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
   import RenameChatModal from './RenameChatModal.svelte';
 
   let search = $state('');
@@ -144,23 +144,38 @@
 </script>
 
 <aside class="sidebar flex h-full w-[260px] shrink-0 flex-col">
-  <div class="flex min-h-0 flex-1 flex-col px-3 pt-3 pb-1">
+  <div class="flex min-h-0 flex-1 flex-col px-3 pt-0 pb-1">
 
-    <div class="flex items-center gap-1.5 pb-3">
+    <div class="sidebar-header flex items-center justify-between" style="padding: 7px 14px 8px;">
+      <span class="sidebar-title">Chatea</span>
       <button
-        class="new-chat-btn flex flex-1 items-center gap-2 rounded-[var(--radius-s)] px-3 py-2 text-[13px] font-medium transition"
+        class="sidebar-collapse-btn flex h-6 w-6 items-center justify-center transition"
+        onclick={() => (appStore.sidebarOpen = false)}
+        aria-label="Hide sidebar"
+        title="Hide sidebar"
+      >
+        <PanelLeftClose class="h-4 w-4" />
+      </button>
+    </div>
+
+    <div class="flex flex-col gap-1.5 pb-3">
+      <button
+        class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[13px] font-medium transition"
         onclick={() => appStore.createChat()}
       >
-        <Plus class="h-4 w-4" />
-        {$t('sidebar.newChat')}
+        <span class="plus-badge flex items-center justify-center">
+          <Plus class="h-4 w-4" />
+        </span>
+        <span class="btn-label">{$t('sidebar.newChat')}</span>
       </button>
       <button
-        class="sidebar-icon-btn flex h-8 w-8 items-center justify-center rounded-[var(--radius-s)] transition"
+        class="search-bar-btn flex items-center gap-2 px-3 py-[5px] text-[13px] transition"
         onclick={() => (appStore.chatSearchOpen = true)}
         aria-label="Search chats"
         title="Search conversations (Ctrl+Shift+K)"
       >
-        <Search class="h-4 w-4" />
+        <Search class="h-3.5 w-3.5" />
+        <span class="btn-label">{$t('sidebar.searchPlaceholder')}</span>
       </button>
     </div>
 
@@ -172,7 +187,7 @@
             bind:value={search}
             onfocus={() => (searchFocused = true)}
             onblur={() => (searchFocused = false)}
-            class="search-input w-full rounded-[var(--radius-s)] py-1.5 pl-8 pr-8 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
+            class="search-input w-full rounded-[var(--radius-sm)] py-1.5 pl-8 pr-8 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
             class:focused={searchFocused}
             placeholder={$t('sidebar.searchPlaceholder')}
             type="text"
@@ -200,13 +215,13 @@
       {#if groupedChats.length}
         {#each groupedChats as group (group.key)}
           <div class="mb-1.5">
-            <div class="group-label px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <div class="group-label px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               {group.label}
             </div>
             <div class="space-y-0.5">
               {#each group.chats as chat (chat.id)}
                 <div
-                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between rounded-[var(--radius-s)] px-2.5 py-[7px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
+                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
                   role="button"
                   tabindex="0"
                   onclick={() => appStore.selectChat(chat.id)}
@@ -223,7 +238,7 @@
                   </div>
                   <button
                     type="button"
-                    class="menu-btn ml-0.5 rounded-[var(--radius-s)] p-1 opacity-0 transition group-hover:opacity-100"
+                    class="menu-btn ml-0.5 rounded-[var(--radius-sm)] p-1 opacity-0 transition group-hover:opacity-100"
                     onclick={(e) => {
                       e.stopPropagation();
                       openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
@@ -235,7 +250,7 @@
 
                   {#if openMenuChatId === chat.id}
                     <div
-                      class="chat-menu absolute right-0 top-9 z-30 w-40 rounded-[var(--radius-m)]"
+                      class="chat-menu absolute right-0 top-9 z-30 w-40 rounded-[var(--radius-md)]"
                       role="menu"
                       tabindex="-1"
                       onclick={(e) => e.stopPropagation()}
@@ -274,7 +289,7 @@
         {/each}
       {:else}
         <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
-          <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-s)]">
+          <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
             <MessageSquare class="h-4 w-4 text-[var(--text-muted)]" />
           </div>
           {#if isSearching}
@@ -289,30 +304,30 @@
 
     <div class="sidebar-footer px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
         onclick={() => (appStore.modelManagerOpen = true)}
         title="Manage models"
       >
         <Boxes class="h-4 w-4" />
-        Model Hub
+        <span class="btn-label">Model Hub</span>
       </button>
       {#if isTauri()}
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
+          class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
           onclick={() => (appStore.runtimeManagerOpen = true)}
           title="Manage local runtime"
         >
           <Cpu class="h-4 w-4" />
-          Runtime
+          <span class="btn-label">Runtime</span>
         </button>
       {/if}
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-[var(--radius-s)] px-2.5 py-[7px] text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
         onclick={() => (appStore.settingsOpen = true)}
         title="Settings"
       >
         <Settings2 class="h-4 w-4" />
-        Settings
+        <span class="btn-label">Settings</span>
       </button>
     </div>
   </div>
@@ -329,39 +344,97 @@
 <style>
   .sidebar {
     background: var(--sidebar-bg, var(--surface));
-    border-right: 1px solid var(--border-light);
+    border-right: 1px solid var(--border);
   }
 
   .new-chat-btn {
     color: var(--text);
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
   }
 
   .new-chat-btn:hover {
-    background: var(--surface-secondary);
-    border-color: var(--border);
+    background: var(--surface-hover);
   }
 
-  .sidebar-icon-btn {
+  .new-chat-btn:hover .plus-badge {
+    transform: rotate(-12deg) scale(1.05);
+  }
+
+  .plus-badge {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--surface-hover);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+  }
+
+  .sidebar-title {
+    font-family: 'Plus Jakarta Sans', var(--font-sans);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+
+  .sidebar-collapse-btn {
     color: var(--text-muted);
     background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
   }
 
-  .sidebar-icon-btn:hover {
+  .sidebar-collapse-btn:hover {
     color: var(--text);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
+  }
+
+  .sidebar-collapse-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .sidebar-collapse-btn:hover svg {
+    transform: rotate(-8deg);
+  }
+
+  .btn-label {
+    color: var(--text-secondary);
+  }
+
+  .search-bar-btn {
+    color: var(--text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .search-bar-btn:hover {
+    background: var(--surface-hover);
+  }
+
+  .search-bar-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .search-bar-btn:hover svg {
+    transform: rotate(-8deg);
   }
 
   .search-input {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
     color: var(--text);
   }
 
   .search-input.focused {
-    border-color: var(--border-strong);
+    border-color: var(--border-active);
     background: var(--surface);
+    box-shadow: 0 0 0 2px var(--accent-soft);
   }
 
   .search-input::placeholder {
@@ -371,58 +444,59 @@
   .clear-btn {
     color: var(--text-muted);
     background: transparent;
+    border: 1px solid transparent;
   }
 
   .clear-btn:hover {
     color: var(--text);
+    background: var(--surface-hover);
   }
 
   .chat-item {
-    color: var(--text-secondary);
+    color: var(--text);
+    background: transparent;
     border: 1px solid transparent;
-    padding-left: 10px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
   }
 
   .chat-item:hover {
-    background: var(--surface-highlight);
-    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .chat-item.is-active {
-    background: var(--surface-secondary);
-    color: var(--text);
-    border-color: var(--border-light);
-  }
-
-  .chat-item.is-active .chat-title {
-    color: var(--text);
-    font-weight: 500;
+    background: var(--surface-hover);
   }
 
   .menu-btn {
     color: var(--text-muted);
     background: transparent;
+    border: 1px solid transparent;
   }
 
   .menu-btn:hover {
     color: var(--text);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
+    border-color: var(--border);
   }
 
   .chat-menu {
-    background: var(--surface);
+    background: var(--surface-overlay);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-xl);
-    padding: 3px;
+    padding: 4px;
+    border-radius: var(--radius-lg);
   }
 
   .menu-item {
     color: var(--text);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
   }
 
   .menu-item:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
+    border-color: var(--border);
   }
 
   .menu-item.danger {
@@ -431,26 +505,38 @@
 
   .menu-item.danger:hover {
     background: var(--error-bg);
+    border-color: var(--error-border);
   }
 
   .empty-icon {
-    background: var(--surface-highlight);
-    border: 1px solid var(--border-light);
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
   }
 
   .sidebar-footer {
-    border-top: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-top: 0.5rem;
   }
 
   .sidebar-btn {
-    color: var(--text-muted);
+    color: var(--text);
     background: transparent;
     border: 1px solid transparent;
+    border-radius: 4px;
   }
 
   .sidebar-btn:hover {
-    color: var(--text);
-    background: var(--surface-highlight);
-    border-color: var(--border-light);
+    background: var(--surface-hover);
+  }
+
+  .sidebar-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .sidebar-btn:hover svg {
+    transform: rotate(-8deg);
   }
 </style>

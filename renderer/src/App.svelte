@@ -6,6 +6,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import { ttsStore } from '$lib/stores/tts.svelte';
   import { i18nReady } from '$lib/i18n';
   import { APP_TAGLINE } from '$lib/app-meta';
 
@@ -24,6 +25,10 @@
 
     themeStore.set(themeStore.current);
     deepResearchStore.init();
+    // Preload TTS engine in background
+    if (!startupBypassed) {
+      void ttsStore.preloadEngine();
+    }
     activeWorkSyncInterval = setInterval(() => {
       void appStore.syncWindowActiveWork();
     }, 900);

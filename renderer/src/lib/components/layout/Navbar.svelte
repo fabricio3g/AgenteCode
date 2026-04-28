@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Code2, FileDown, MoonStar, PanelLeftClose, PanelLeftOpen, SlidersHorizontal, SunMedium } from 'lucide-svelte';
+  import { Code2, FileDown, MoonStar, PanelLeftClose, SlidersHorizontal, SunMedium } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -56,17 +56,8 @@
 <header class="navbar sticky top-0 z-30 w-full">
   <div class="navbar-inner relative flex h-11 items-center justify-between px-2 md:px-3">
     <div class="flex items-center gap-1">
-      <button
-        class="nav-btn rounded-lg p-2"
-        onclick={() => (appStore.sidebarOpen = !appStore.sidebarOpen)}
-        aria-label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-        title={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-      >
-        {#if appStore.sidebarOpen}
-          <PanelLeftClose class="h-5 w-5" />
-        {:else}
-          <PanelLeftOpen class="h-5 w-5" />
-        {/if}
+      <button class="nav-btn invisible p-2" aria-hidden="true" tabindex="-1">
+        <PanelLeftClose class="h-5 w-5" />
       </button>
     </div>
 
@@ -77,7 +68,7 @@
     <div class="flex items-center gap-0.5">
       {#if hasArtifact}
         <button
-          class="nav-btn rounded-lg p-2 {appStore.sandboxOpen ? 'is-active' : ''}"
+          class="nav-btn p-2 {appStore.sandboxOpen ? 'is-active' : ''}"
           onclick={() => (appStore.sandboxOpen = !appStore.sandboxOpen)}
           aria-label="Toggle code sandbox"
           title="Toggle code sandbox"
@@ -87,7 +78,7 @@
       {/if}
       {#if hasMessages}
         <button
-          class="nav-btn rounded-lg p-2"
+          class="nav-btn p-2"
           onclick={exportCurrentChat}
           aria-label="Export chat"
           title="Export chat"
@@ -95,14 +86,14 @@
           <FileDown class="h-5 w-5" />
         </button>
       {/if}
-      <button class="nav-btn rounded-lg p-2" onclick={() => themeStore.toggle()} aria-label="Toggle theme" title="Toggle theme">
+      <button class="nav-btn p-2" onclick={() => themeStore.toggle()} aria-label="Toggle theme" title="Toggle theme">
         {#if themeStore.current === 'dark'}
           <SunMedium class="h-5 w-5" />
         {:else}
           <MoonStar class="h-5 w-5" />
         {/if}
       </button>
-      <button class="nav-btn rounded-lg p-2" onclick={() => (appStore.llmDrawerOpen = true)} aria-label="LLM settings" title="Settings">
+      <button class="nav-btn p-2" onclick={() => (appStore.llmDrawerOpen = true)} aria-label="LLM settings" title="Settings">
         <SlidersHorizontal class="h-5 w-5" />
       </button>
     </div>
@@ -112,23 +103,30 @@
 <style>
   .navbar {
     background: var(--background);
+    border-bottom: 1px solid var(--border);
   }
 
   .nav-btn {
-    color: var(--text-muted);
+    color: var(--text);
     background: transparent;
     border: none;
-    border-radius: var(--radius-s);
-    transition: color 0.12s, background 0.12s;
+    border-radius: 4px;
+    transition: background 0.15s ease;
   }
 
   .nav-btn:hover {
-    color: var(--text);
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
   }
 
   .nav-btn.is-active {
-    color: var(--text);
-    background: var(--surface-secondary);
+    background: var(--surface-hover);
+  }
+
+  .nav-btn svg {
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .nav-btn:hover svg {
+    transform: rotate(-8deg);
   }
 </style>

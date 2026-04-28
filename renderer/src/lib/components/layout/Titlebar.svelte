@@ -4,7 +4,6 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
-  import { APP_NAME } from '$lib/app-meta';
 
   let isMaximized = $state(false);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
@@ -26,14 +25,6 @@
   role="banner"
 >
   <div class="titlebar-left flex items-center {appStore.sidebarOpen ? '' : 'is-collapsed'}" style="width: {appStore.sidebarOpen ? '260px' : '56px'}; {isMac ? 'padding-left: 78px;' : ''}">
-    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" style="color: var(--text-muted); flex-shrink: 0; margin-right: {appStore.sidebarOpen ? '6px' : '0'};">
-      <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" fill="currentColor" opacity="0.12"/>
-      <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>
-      <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.35"/>
-    </svg>
-    {#if appStore.sidebarOpen}
-      <span class="titlebar-label">{APP_NAME}</span>
-    {/if}
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
@@ -96,14 +87,6 @@
     border-bottom-right-radius: 8px;
   }
 
-  .titlebar-label {
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--text-muted);
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-  }
-
   .dot {
     width: 12px; height: 12px;
     border-radius: 50%;
@@ -153,7 +136,7 @@
   }
 
   .win-btn:hover {
-    background: var(--surface-highlight);
+    background: var(--surface-hover);
     color: var(--text);
   }
 

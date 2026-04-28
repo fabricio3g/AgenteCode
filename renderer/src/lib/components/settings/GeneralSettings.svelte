@@ -57,7 +57,7 @@
       bind:value={nameValue}
       oninput={() => appStore.setUserName(nameValue)}
       placeholder={$t('generalSettings.enterYourName')}
-      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-strong)]"
+      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]"
     />
   </div>
 
@@ -65,7 +65,7 @@
     <h3 class="mb-1 text-sm font-medium text-[var(--text)]">{$t('generalSettings.language')}</h3>
     <p class="mb-3 text-xs text-[var(--text-tertiary)]">{$t('generalSettings.languageDesc')}</p>
     <select
-      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+      class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
       value={normalizeLocaleCode($locale)}
       onchange={(e) => setLocale((e.target as HTMLSelectElement).value)}
     >
@@ -80,7 +80,11 @@
       <div class="text-sm font-medium text-[var(--text-secondary)]">{$t('generalSettings.showAssistantText')}</div>
       <div class="text-xs text-[var(--text-tertiary)]">{$t('generalSettings.showAssistantTextDesc')}</div>
     </div>
-    <input type="checkbox" bind:checked={showAssistantText} />
+    <label class="relative inline-flex h-5 w-9 cursor-pointer items-center">
+      <input type="checkbox" bind:checked={showAssistantText} class="peer sr-only" />
+      <span class="absolute inset-0 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)]"></span>
+      <span class="absolute left-0.5 h-4 w-4 rounded-full bg-[var(--text)] transition peer-checked:translate-x-4 peer-checked:bg-[var(--primary-fg)]"></span>
+    </label>
   </div>
 
   <div class="flex items-center justify-between py-2">
@@ -88,7 +92,11 @@
       <div class="text-sm font-medium text-[var(--text-secondary)]">{$t('generalSettings.enableThinking')}</div>
       <div class="text-xs text-[var(--text-tertiary)]">{$t('generalSettings.enableThinkingDesc')}</div>
     </div>
-    <input type="checkbox" bind:checked={enableThinking} />
+    <label class="relative inline-flex h-5 w-9 cursor-pointer items-center">
+      <input type="checkbox" bind:checked={enableThinking} class="peer sr-only" />
+      <span class="absolute inset-0 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)]"></span>
+      <span class="absolute left-0.5 h-4 w-4 rounded-full bg-[var(--text)] transition peer-checked:translate-x-4 peer-checked:bg-[var(--primary-fg)]"></span>
+    </label>
   </div>
 
   <div class="border-t border-[var(--border)] pt-6">
@@ -101,10 +109,10 @@
         type="password"
         bind:value={hfToken}
         placeholder="hf_..."
-        class="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-highlight)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-strong)]"
+        class="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
       />
       <button
-        class="rounded-lg border border-[var(--border-strong)] bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-fg)] transition hover:opacity-90"
         onclick={onsaveHfToken}
       >
         {$t('generalSettings.save')}

@@ -72,7 +72,7 @@
  <div class="flex items-center gap-2">
  <WorkspaceModeSwitch compact={true} />
  <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-highlight)] hover:text-[var(--text)]"
+ class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
  onclick={reload}
  >
  <RefreshCw class="h-3.5 w-3.5" />
