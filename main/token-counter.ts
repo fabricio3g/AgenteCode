@@ -17,12 +17,12 @@ export async function countTokens(text, baseUrl) {
   }
 }
 
-export function estimateTokensFromText(text) {
+function estimateTokensFromText(text) {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
 }
 
-export function estimateTokensFromMessages(messages) {
+function estimateTokensFromMessages(messages) {
   let total = 0;
   for (const msg of messages) {
     total += 4;

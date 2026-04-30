@@ -7,7 +7,7 @@
   import Navbar from '$lib/components/layout/Navbar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
-  import ChatSandbox from '$lib/components/agent/ChatSandbox.svelte';
+  import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import SettingsModal from '$lib/components/settings/SettingsModal.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
@@ -22,42 +22,16 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Search, Boxes, Cpu, Settings2, PanelLeftOpen } from 'lucide-svelte';
+  import { Plus, Boxes, Cpu, Settings2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isTauri } from '$lib/services/tauri';
 
   let showShortcutsHelp = $state(false);
-  let sandboxSplit = $state(50); // percentage for chat pane width
   let composerHeight = $state(320);
 
-  // Sandbox visible = open AND artifact exists
-  const sandboxVisible = $derived(appStore.sandboxOpen && !!appStore.currentArtifact);
   const hasMessages = $derived((appStore.currentChat?.messages?.length || 0) > 0);
-
-  // Drag-to-resize split pane
-  function startResize(event: MouseEvent) {
-    event.preventDefault();
-    const container = (event.currentTarget as HTMLElement).parentElement;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-
-    function onMove(e: MouseEvent) {
-      const pct = ((e.clientX - rect.left) / rect.width) * 100;
-      sandboxSplit = Math.min(80, Math.max(20, pct));
-    }
-    function onUp() {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    }
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }
 
   function handleKeydown(event: KeyboardEvent) {
     const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -124,45 +98,31 @@
 
   <Titlebar />
 
-  <div class="flex min-h-0 flex-1">
+  <div class="flex min-h-0 flex-1 gap-2 p-2">
     {#if appStore.workspaceMode === 'legacy'}
       <LegacyWorkspace />
     {:else}
-      {#if appStore.sidebarOpen}
-        <Sidebar />
-      {:else}
-        <!-- Collapsed sidebar icon strip -->
-        <div class="collapsed-sidebar flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--sidebar-bg,var(--surface))] py-3">
-          <Tooltip label="Show sidebar">
-            <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
-              onclick={() => (appStore.sidebarOpen = true)}
-              aria-label="Show sidebar"
-            >
-              <PanelLeftOpen class="h-4 w-4" />
-            </button>
-          </Tooltip>
+      <div
+        class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden"
+        class:expanded={appStore.sidebarOpen}
+      >
+        <div class="sidebar-view-full absolute inset-0 flex flex-col">
+          <Sidebar />
+        </div>
+
+        <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 py-2">
           <Tooltip label="New chat">
             <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center"
               onclick={() => appStore.createChat()}
               aria-label="New chat"
             >
               <Plus class="h-4 w-4" />
             </button>
           </Tooltip>
-          <Tooltip label="Search conversations">
-            <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
-              onclick={() => (appStore.chatSearchOpen = true)}
-              aria-label="Search chats"
-            >
-              <Search class="h-4 w-4" />
-            </button>
-          </Tooltip>
           <Tooltip label="Model Hub">
             <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center"
               onclick={() => { appStore.modelManagerOpen = true; appStore.modelManagerOpenSection = 'models'; }}
               aria-label="Model Hub"
             >
@@ -172,7 +132,7 @@
           {#if isTauri()}
             <Tooltip label="Runtime">
               <button
-                class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
+                class="collapsed-btn flex h-8 w-8 items-center justify-center"
                 onclick={() => (appStore.runtimeManagerOpen = true)}
                 aria-label="Runtime"
               >
@@ -183,7 +143,7 @@
           <div class="flex-1"></div>
           <Tooltip label="Settings">
             <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center transition"
+              class="collapsed-btn flex h-8 w-8 items-center justify-center"
               onclick={() => (appStore.settingsOpen = true)}
               aria-label="Settings"
             >
@@ -191,34 +151,15 @@
             </button>
           </Tooltip>
         </div>
-      {/if}
+      </div>
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Navbar />
 
-        <!-- Main area: chat + optional sandbox split -->
-        <div class="flex min-h-0 flex-1 overflow-hidden">
-          <!-- Chat pane -->
-          <div class="relative flex min-h-0 min-w-0 flex-col overflow-hidden" style={sandboxVisible ? `width: ${sandboxSplit}%` : 'flex: 1'}>
-            <MessageList composerInset={composerHeight} />
-            <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
-          </div>
-
-          {#if sandboxVisible}
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div
-              class="group relative z-20 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center bg-[var(--surface-hover)] transition hover:bg-[var(--primary)] active:bg-[var(--primary)]"
-              onmousedown={startResize}
-              role="separator"
-              aria-orientation="vertical"
-            >
-              <div class="h-8 w-0.5 rounded-full bg-[var(--border)] transition group-hover:bg-[var(--primary)]"></div>
-            </div>
-
-            <div class="flex h-full min-w-0 flex-col overflow-hidden" style="width: {100 - sandboxSplit}%">
-              <ChatSandbox />
-            </div>
-          {/if}
+        <!-- Main area: chat only (sandbox opens as modal) -->
+        <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <MessageList composerInset={composerHeight} />
+          <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
         </div>
       </div>
     {/if}
@@ -249,6 +190,10 @@
 <Toaster />
 <ConfirmDialog />
 <LLMDrawer />
+
+{#if appStore.sandboxOpen && appStore.currentArtifact}
+  <SandboxModal />
+{/if}
 
 {#if appStore.chatSearchOpen}
   <ChatSearchModal />
@@ -294,3 +239,48 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .sidebar-outer {
+    width: 44px;
+    background: var(--sidebar-bg, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-md);
+    transition: width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: width;
+  }
+  .sidebar-outer.expanded {
+    width: 260px;
+  }
+
+  .sidebar-view-full {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-8px) scale(0.98);
+    transition: opacity 0.22s ease, transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0.3s;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .sidebar-outer.expanded .sidebar-view-full {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0) scale(1);
+    transition-delay: 0.08s, 0.08s, 0s;
+    pointer-events: auto;
+  }
+
+  .sidebar-view-collapsed {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transition: opacity 0.18s ease, transform 0.25s ease, visibility 0s linear;
+  }
+  .sidebar-outer.expanded .sidebar-view-collapsed {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateX(-6px);
+    pointer-events: none;
+    transition-delay: 0s, 0s, 0.18s;
+  }
+</style>

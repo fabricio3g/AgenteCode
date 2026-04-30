@@ -156,7 +156,7 @@ const sharedComponents = [
   TagComponent
 ];
 
-export const uiComponentGroups: ComponentGroup[] = [
+const uiComponentGroups: ComponentGroup[] = [
   { name: 'Layout', components: ['Stack', 'Tabs', 'TabItem', 'Accordion', 'AccordionItem', 'Steps', 'StepsItem', 'Carousel', 'Separator'] },
   { name: 'Content', components: ['Card', 'CardHeader', 'TextContent', 'MarkDownRenderer', 'Callout', 'TextCallout', 'Image', 'ImageBlock', 'ImageGallery', 'CodeBlock'] },
   { name: 'Tables', components: ['Table', 'Col'] },
@@ -166,13 +166,13 @@ export const uiComponentGroups: ComponentGroup[] = [
   { name: 'Data Display', components: ['TagBlock', 'Tag'] }
 ];
 
-export const uiChatComponentGroups: ComponentGroup[] = [
+const uiChatComponentGroups: ComponentGroup[] = [
   ...uiComponentGroups,
   { name: 'Lists & Follow-ups', components: ['ListBlock', 'ListItem', 'FollowUpBlock', 'FollowUpItem'] },
   { name: 'Sections', components: ['SectionBlock', 'SectionItem'] }
 ];
 
-export const uiPromptOptions: PromptOptions = {
+const uiPromptOptions: PromptOptions = {
   additionalRules: [
     'Use Stack for general layouts and Card for grouped panels.',
     'Define referenced variables before or after use; root must always be present.',
@@ -180,7 +180,7 @@ export const uiPromptOptions: PromptOptions = {
   ]
 };
 
-export const uiChatPromptOptions: PromptOptions = {
+const uiChatPromptOptions: PromptOptions = {
   additionalRules: [
     'Use Card as the root component for chat responses.',
     'Use FollowUpBlock at the end when suggesting next actions.',
@@ -188,7 +188,7 @@ export const uiChatPromptOptions: PromptOptions = {
   ]
 };
 
-export const uiLibrary = createLibrary({
+const uiLibrary = createLibrary({
   root: 'Stack',
   componentGroups: uiComponentGroups,
   components: [StackComponent, CardComponent, ...sharedComponents]

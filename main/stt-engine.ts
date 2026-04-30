@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.ts';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 
 const MAX_STT_AUDIO_BYTES = 8 * 1024 * 1024; // 8MB input cap
 const FFMPEG_TIMEOUT_MS = 45_000;

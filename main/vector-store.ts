@@ -1,6 +1,6 @@
 import lancedb from '@lancedb/lancedb';
 import path from 'node:path';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 
 class VectorStore {
   constructor() {

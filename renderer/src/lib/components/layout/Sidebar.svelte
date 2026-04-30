@@ -7,7 +7,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { isTauri } from '$lib/services/tauri';
   import { t } from 'svelte-i18n';
-  import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
   import RenameChatModal from './RenameChatModal.svelte';
 
   let search = $state('');
@@ -143,22 +143,10 @@
   });
 </script>
 
-<aside class="sidebar flex h-full w-[260px] shrink-0 flex-col">
+<aside class="sidebar flex h-full w-full flex-col">
   <div class="flex min-h-0 flex-1 flex-col px-3 pt-0 pb-1">
 
-    <div class="sidebar-header flex items-center justify-between" style="padding: 7px 14px 8px;">
-      <span class="sidebar-title">Chatea</span>
-      <button
-        class="sidebar-collapse-btn flex h-6 w-6 items-center justify-center transition"
-        onclick={() => (appStore.sidebarOpen = false)}
-        aria-label="Hide sidebar"
-        title="Hide sidebar"
-      >
-        <PanelLeftClose class="h-4 w-4" />
-      </button>
-    </div>
-
-    <div class="flex flex-col gap-1.5 pb-3">
+    <div class="flex flex-col gap-1.5 pb-3 pt-2">
       <button
         class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[13px] font-medium transition"
         onclick={() => appStore.createChat()}
@@ -167,15 +155,6 @@
           <Plus class="h-4 w-4" />
         </span>
         <span class="btn-label">{$t('sidebar.newChat')}</span>
-      </button>
-      <button
-        class="search-bar-btn flex items-center gap-2 px-3 py-[5px] text-[13px] transition"
-        onclick={() => (appStore.chatSearchOpen = true)}
-        aria-label="Search chats"
-        title="Search conversations (Ctrl+Shift+K)"
-      >
-        <Search class="h-3.5 w-3.5" />
-        <span class="btn-label">{$t('sidebar.searchPlaceholder')}</span>
       </button>
     </div>
 
@@ -342,11 +321,6 @@
 {/if}
 
 <style>
-  .sidebar {
-    background: var(--sidebar-bg, var(--surface));
-    border-right: 1px solid var(--border);
-  }
-
   .new-chat-btn {
     color: var(--text);
     background: transparent;
@@ -371,58 +345,8 @@
     flex-shrink: 0;
   }
 
-  .sidebar-title {
-    font-family: 'Plus Jakarta Sans', var(--font-sans);
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: -0.02em;
-    white-space: nowrap;
-  }
-
-  .sidebar-collapse-btn {
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-  }
-
-  .sidebar-collapse-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-
-  .sidebar-collapse-btn svg {
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .sidebar-collapse-btn:hover svg {
-    transform: rotate(-8deg);
-  }
-
   .btn-label {
     color: var(--text-secondary);
-  }
-
-  .search-bar-btn {
-    color: var(--text);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .search-bar-btn:hover {
-    background: var(--surface-hover);
-  }
-
-  .search-bar-btn svg {
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .search-bar-btn:hover svg {
-    transform: rotate(-8deg);
   }
 
   .search-input {

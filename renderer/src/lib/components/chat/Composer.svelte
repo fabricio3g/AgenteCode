@@ -182,7 +182,7 @@
       ? (PROVIDER_LABELS[appStore.activeProviderName] || appStore.activeProviderName)
       : null
   );
-  const hasApiKey = $derived(!!appStore.activeProvider?.has_api_key);
+  const hasApiKey = $derived(!!appStore.activeProvider?.has_api_key || !!appStore.activeProvider?.api_key);
   const modelDisplayName = $derived(
     activeModel
       ? activeModel.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') ?? activeModel
@@ -712,7 +712,7 @@
             <LoaderCircle class="h-4 w-4 animate-spin" />
             {$t('welcome.loadingModel')}
           </p>
-        {:else if appStore.backendMode === 'local' && !activeModel}
+        {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
           <p class="text-sm text-[var(--text-muted)]">
             {$t('welcome.noModelLoaded')}
             <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('explore')}>
@@ -736,7 +736,9 @@
           </p>
         {:else}
           <p class="text-sm text-[var(--text-secondary)]">
-            {#if activeModel}
+            {#if appStore.localModelActive?.name}
+              {appStore.localModelActive.name.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || appStore.localModelActive.name}
+            {:else if activeModel}
               {modelDisplayName}
             {:else if apiProviderLabel}
               {apiProviderLabel}{appStore.activeModelLabel ? ` · ${appStore.activeModelLabel}` : ''}

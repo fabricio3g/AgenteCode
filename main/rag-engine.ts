@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 import { getEmbedding, getEmbeddings } from './embedding-client.ts';
 import { rerankChunks } from './reranker.ts';
 import { vectorStore } from './vector-store.ts';
@@ -438,7 +438,7 @@ export async function queryDocuments({ query, chat_id, top_k }) {
   return queryDocumentsHybrid({ query, chat_id, top_k });
 }
 
-export async function queryDocumentsHybrid({ query, chat_id, top_k }) {
+async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   await ensureVectorStore().catch(() => {});
   await ensureRagEmbeddingRuntime().catch(() => {});
   ensureStoreLoaded();
@@ -649,7 +649,7 @@ export async function hasRagDocuments(chatId) {
  * all chunks into LanceDB with embeddings, plus metadata into SQLite.
  * Called once at startup if a migration marker file is absent.
  */
-export async function migrateFromJsonStore() {
+async function migrateFromJsonStore() {
   const storePath = getStorePath();
   if (!fs.existsSync(storePath)) return;
 

@@ -74,6 +74,7 @@
     if (!containerEl) return;
 
     monaco = await import('monaco-editor');
+    if (!containerEl) return;  // Guard: component may have been destroyed during async import
     editor = monaco.editor.create(containerEl, {
       value,
       language: getMonacoLanguage(language),
@@ -133,6 +134,10 @@
   });
 
   onDestroy(() => {
+    // Remove Monaco's DOM node before disposal to prevent parentNode access on detached nodes
+    const domNode = editor?.getDomNode();
+    if (domNode) domNode.remove();
+    if (containerEl) containerEl.innerHTML = '';
     editor?.dispose();
   });
 

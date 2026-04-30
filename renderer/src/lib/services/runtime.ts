@@ -19,7 +19,7 @@ function parseHostPort(baseUrl: string): { host: string; port: number } {
   };
 }
 
-export async function startLlama(config: LlamaConfig): Promise<string> {
+async function startLlama(config: LlamaConfig): Promise<string> {
   return invoke<string>('start_llama', { config });
 }
 
@@ -55,15 +55,15 @@ export async function getSupervisorStatus(): Promise<SupervisorStatus> {
   return invoke<SupervisorStatus>('get_supervisor_status');
 }
 
-export async function supervisorHealthCheck(): Promise<boolean> {
+async function supervisorHealthCheck(): Promise<boolean> {
   return invoke<boolean>('supervisor_health_check');
 }
 
-export async function getLoadedModels(): Promise<ModelSession[]> {
+async function getLoadedModels(): Promise<ModelSession[]> {
   return invoke<ModelSession[]>('get_loaded_models');
 }
 
-export async function unloadModel(modelId: string): Promise<void> {
+async function unloadModel(modelId: string): Promise<void> {
   await invoke<void>('unload_model', { modelId });
 }
 
@@ -81,7 +81,7 @@ export async function getRecommendedSettings(
   });
 }
 
-export async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {
+async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {
   const startedAt = Date.now();
   const modelsUrl = `${resolveLocalBaseUrl({ llm: { local: { base_url: baseUrl } } })}/models`;
 

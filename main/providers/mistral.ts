@@ -1,6 +1,6 @@
 import { Mistral } from '@mistralai/mistralai';
 import { BaseProvider } from './base.ts';
-import { numberOrNull, safeParseJson } from './helpers.ts';
+import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
 export class MistralProvider extends BaseProvider {
   name = 'mistral';
@@ -13,12 +13,15 @@ export class MistralProvider extends BaseProvider {
     return name === 'mistral' || url.includes('api.mistral.ai');
   }
 
-  createClient(apiKey, _baseUrl) {
-    const key = apiKey || '';
-    if (!this._clients.has(key)) {
-      this._clients.set(key, new Mistral({ apiKey }));
+  createClient(apiKey, baseUrl) {
+    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl) || 'https://api.mistral.ai'}`;
+    if (!this._clients.has(clientKey)) {
+      this._clients.set(clientKey, new Mistral({
+        apiKey,
+        ...(normalizeBaseUrl(baseUrl) ? { serverURL: normalizeBaseUrl(baseUrl) } : {})
+      }));
     }
-    return this._clients.get(key);
+    return this._clients.get(clientKey);
   }
 
   _buildMessages(messages) {
@@ -39,8 +42,8 @@ export class MistralProvider extends BaseProvider {
     };
   }
 
-  async *streamChat({ apiKey, model, messages, tools, max_tokens, temperature, top_p }) {
-    const client = this.createClient(apiKey);
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, max_tokens, temperature, top_p, signal }) {
+    const client = this.createClient(apiKey, baseUrl);
     const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
 
     const request = {
@@ -54,18 +57,31 @@ export class MistralProvider extends BaseProvider {
       stream: true
     };
 
-    const stream = await client.chat.stream(request);
+    const stream = await client.chat.stream(request, { signal });
     for await (const chunk of stream) {
       const delta = chunk.data?.choices?.[0]?.delta || {};
       const content = delta.content;
-      if (content) {
-        yield { content, reasoning: '' };
+      const toolCallDeltas = delta.tool_calls;
+
+      if (content || toolCallDeltas) {
+        yield {
+          content: content ?? '',
+          reasoning: '',
+          ...(toolCallDeltas ? {
+            toolCallDeltas: toolCallDeltas.map((tc, i) => ({
+              index: tc.index ?? i,
+              id: tc.id ?? undefined,
+              name: tc.function?.name ?? undefined,
+              arguments: tc.function?.arguments ?? undefined
+            }))
+          } : {})
+        };
       }
     }
   }
 
-  async completeChat({ apiKey, model, messages, tools, max_tokens, temperature, top_p }) {
-    const client = this.createClient(apiKey);
+  async completeChat({ apiKey, baseUrl, model, messages, tools, max_tokens, temperature, top_p, signal }) {
+    const client = this.createClient(apiKey, baseUrl);
     const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
 
     const request = {
@@ -79,7 +95,7 @@ export class MistralProvider extends BaseProvider {
       stream: false
     };
 
-    const response = await client.chat.complete(request);
+    const response = await client.chat.complete(request, { signal });
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};
 

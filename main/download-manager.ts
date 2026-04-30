@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { randomUUID } from 'node:crypto';
-import { getAppPaths, getMainWindow } from './index.ts';
+import { getAppPaths } from './paths.ts';
+import { getMainWindow } from './window-manager.ts';
 
 const downloadJobs = new Map();
 

@@ -28,7 +28,7 @@ export const KOKORO_QUALITY_VOICES: Record<string, { voices: string[]; label: st
   },
 };
 
-export function getQualityVoicesForLanguage(lang: string): string[] {
+function getQualityVoicesForLanguage(lang: string): string[] {
   return KOKORO_QUALITY_VOICES[lang]?.voices ?? KOKORO_QUALITY_VOICES['en-US'].voices;
 }
 

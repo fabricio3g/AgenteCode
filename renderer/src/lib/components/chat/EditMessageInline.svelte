@@ -1,9 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade } from 'svelte/transition';
   import { Check, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { onMount } from 'svelte';
 
   interface Props {
     messageId: string;
@@ -16,6 +16,15 @@
 
   let textarea: HTMLTextAreaElement | undefined;
   let content = $state(initialContent);
+
+  onMount(() => {
+    const timer = setTimeout(() => {
+      textarea?.focus();
+      const len = textarea?.value.length || 0;
+      textarea?.setSelectionRange(len, len);
+    }, 50);
+    return () => clearTimeout(timer);
+  });
 
   function save() {
     if (!content.trim()) return;
@@ -53,7 +62,7 @@
   }
 </script>
 
-<div transition:fade={{ duration: 150 }} class="rounded-xl border border-[var(--border-hover)] bg-[var(--surface)] overflow-hidden">
+<div class="rounded-xl border border-[var(--border-hover)] bg-[var(--surface)] overflow-hidden">
   <div class="p-3">
     <textarea
       bind:this={textarea}
@@ -61,7 +70,6 @@
       value={content}
       oninput={(e) => content = (e.currentTarget as HTMLTextAreaElement).value}
       onkeydown={onKeydown}
-      autofocus
     ></textarea>
 
     <div class="flex items-center justify-end gap-2 mt-3">

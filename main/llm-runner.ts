@@ -5,8 +5,9 @@ import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs } from './process-ma
 import {
   resolveRuntimeBinary, listRuntimeBinaries, clearRuntimeSelectionFromConfig
 } from './runtime-resolver.ts';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-resolver.ts';
+import { setEmbeddingStatus, getEmbeddingStatus as getEmbeddingStatusState } from './embedding-state.ts';
 
 // ── Managed process instances ──
 
@@ -17,11 +18,10 @@ const llama = new ManagedProcess({
 
 const embedding = new ManagedProcess({
   initialStatus: { state: 'idle', port: null },
-  onStatusChange(status) { embeddingStatus = { ...embeddingStatus, ...status }; }
+  onStatusChange(status) { setEmbeddingStatus(status); }
 });
 
 let llamaStatus = llama.status;
-let embeddingStatus = embedding.status;
 
 function isMmprojFileName(fileName) {
   return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
@@ -192,7 +192,7 @@ export async function stopEmbeddingServer() {
 }
 
 export function getEmbeddingStatus() {
-  return { ...embedding.status };
+  return getEmbeddingStatusState();
 }
 
 export function getLlamaStatus() {

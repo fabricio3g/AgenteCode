@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 import { slugify, loadConfig } from './config.ts';
 import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.ts';
 

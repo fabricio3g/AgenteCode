@@ -212,7 +212,7 @@ class TtsStore {
       if (!chunk) break;
 
       const buffer = this.audioCtx.createBuffer(1, chunk.samples.length, SAMPLE_RATE);
-      buffer.copyToChannel(chunk.samples, 0);
+      buffer.copyToChannel(chunk.samples as Float32Array<ArrayBuffer>, 0);
 
       const source = this.audioCtx.createBufferSource();
       source.buffer = buffer;

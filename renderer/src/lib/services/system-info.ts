@@ -17,6 +17,6 @@ export async function getRuntimeRecommendations(): Promise<RuntimeRecommendation
 }
 
 /** Invalidate cache so next call fetches fresh data */
-export function invalidateRuntimeRecommendations() {
+function invalidateRuntimeRecommendations() {
   cached = null;
 }

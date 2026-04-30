@@ -848,7 +848,7 @@
           <button
             type="button"
             class="chateaui-segment {activeSection === tab.id ? 'is-active' : ''}"
-            onclick={() => (activeSection = tab.id)}
+            onclick={() => (activeSection = tab.id as NavSection)}
           >
             <span>{tab.label}</span>
             {#if tab.active}

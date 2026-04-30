@@ -24,7 +24,7 @@ export class OpenAIProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const stream = await client.chat.completions.create({
       model,
@@ -32,22 +32,32 @@ export class OpenAIProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: true
-    });
+    }, { signal });
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (content || reasoning) {
+      const toolCallDeltas = delta.tool_calls;
+
+      if (content || reasoning || toolCallDeltas) {
         yield {
           content: content ?? '',
-          reasoning: reasoning ?? ''
+          reasoning: reasoning ?? '',
+          ...(toolCallDeltas ? {
+            toolCallDeltas: toolCallDeltas.map(tc => ({
+              index: tc.index ?? 0,
+              id: tc.id ?? undefined,
+              name: tc.function?.name ?? undefined,
+              arguments: tc.function?.arguments ?? undefined
+            }))
+          } : {})
         };
       }
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const response = await client.chat.completions.create({
       model,
@@ -55,7 +65,7 @@ export class OpenAIProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: false
-    });
+    }, { signal });
 
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};

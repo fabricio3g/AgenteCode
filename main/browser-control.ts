@@ -13,8 +13,7 @@ async function ensureBrowser() {
       throw new Error('Puppeteer not installed. Install with: npm install puppeteer');
     }
     browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: 'new'
     });
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });

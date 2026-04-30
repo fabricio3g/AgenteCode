@@ -350,7 +350,7 @@ export function createParser(schema: LibraryJSONSchema) {
   return { parse(input: string) { return parseWithSchema(schema, input); } };
 }
 
-export function createStreamingParser(schema: LibraryJSONSchema) {
+function createStreamingParser(schema: LibraryJSONSchema) {
   let buffer = '';
   return {
     push(chunk: string) {

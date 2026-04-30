@@ -38,7 +38,7 @@ export async function sttTranscribe(
   });
 }
 
-export async function getSttStatus(): Promise<SttStatus> {
+async function getSttStatus(): Promise<SttStatus> {
   return invoke<SttStatus>('get_stt_status');
 }
 
@@ -50,7 +50,7 @@ export async function unloadWhisper(): Promise<void> {
  * Record audio from the microphone and return base64-encoded audio data.
  * Uses MediaRecorder API. Returns base64 string and the MIME type used.
  */
-export function recordAudio(
+function recordAudio(
   deviceId?: string,
   maxMs = 30_000
 ): Promise<{ base64: string; mimeType: string }> {

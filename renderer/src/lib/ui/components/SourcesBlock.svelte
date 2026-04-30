@@ -4,6 +4,7 @@
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
   import { ExternalLink, XCircle } from 'lucide-svelte';
   import { fade, slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { faviconUrl, domainLabel } from '$lib/ui/message-utils';
 
   interface Props {
@@ -50,7 +51,7 @@
             alt=""
             loading="lazy"
             style={`z-index: ${sources.length - i}; --pill-offset: ${i * 5}px`}
-            onerror={(e) => (e.currentTarget.style.display = 'none')}
+            onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')}
           />
         {/each}
       </div>
@@ -58,7 +59,7 @@
     </div>
 
     {#if open}
-      <div class="source-list" transition:slide={{ duration: 150, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' }}>
+      <div class="source-list" transition:slide={{ duration: 150, easing: cubicOut }}>
         {#each sources as source, i}
           <a
             href={source.url}

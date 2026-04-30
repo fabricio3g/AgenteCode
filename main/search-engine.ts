@@ -54,20 +54,15 @@ function getCachedResult(key) {
     searchCache.delete(key);
     return null;
   }
-  entry.lastAccess = Date.now();
-  const keys = Array.from(searchCache.keys());
-  keys.sort((a, b) => (searchCache.get(a).lastAccess || 0) - (searchCache.get(b).lastAccess || 0));
   return entry.result;
 }
 
 function setCachedResult(key, result) {
   if (searchCache.size >= 100) {
-    const keys = Array.from(searchCache.keys());
-    keys.sort((a, b) => (searchCache.get(a).lastAccess || 0) - (searchCache.get(b).lastAccess || 0));
-    const lruKey = keys[0];
-    searchCache.delete(lruKey);
+    const oldestKey = searchCache.keys().next().value;
+    if (oldestKey) searchCache.delete(oldestKey);
   }
-  searchCache.set(key, { result, expires: Date.now() + SEARCH_CACHE_TTL_MS, lastAccess: Date.now() });
+  searchCache.set(key, { result, expires: Date.now() + SEARCH_CACHE_TTL_MS });
 }
 
 function classifyNetworkError(err) {

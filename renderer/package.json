@@ -12,27 +12,22 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource/inter": "^5.2.8",
-    "@fontsource/urbanist": "^5.2.7",
-    "@lancedb/lancedb": "^0.27.2",
     "d3": "^7.9.0",
+    "zod": "^4.1.11",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
     "katex": "^0.16.38",
-    "kokoro-js": "^1.2.1",
     "lucide-svelte": "^0.542.0",
     "marked": "^16.3.0",
     "monaco-editor": "^0.55.1",
     "pdfjs-dist": "^5.5.207",
     "svelte": "^5.53.7",
     "svelte-i18n": "^4.0.1",
-    "tesseract.js": "^7.0.0",
-    "zod": "^4.1.11"
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/postcss": "^4.1.13",
-    "@tailwindcss/vite": "^4.2.1",
     "@types/d3": "^7.4.3",
     "@types/node": "^24.5.2",
     "autoprefixer": "^10.4.21",

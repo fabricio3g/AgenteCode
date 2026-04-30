@@ -15,7 +15,6 @@
   let { composerInset = 320 }: Props = $props();
 
   let container = $state<HTMLDivElement | undefined>(undefined);
-  let showTopFade = $state(false);
   let showJumpToLatest = $state(false);
   let scrollRafId = 0;
   let previousChatId = $state<string | null>(null);
@@ -42,9 +41,7 @@
 
   function handleScroll() {
     if (!container) return;
-    const scrollTop = container.scrollTop;
     const nearBottom = isNearBottom();
-    showTopFade = scrollTop > 40;
     showJumpToLatest = !nearBottom;
   }
 
@@ -91,27 +88,28 @@
     <div class="message-list-wrapper relative h-full">
       <div
         bind:this={container}
-        class="h-full overflow-y-auto px-4 pt-6 md:px-8"
+        class="message-scroll h-full overflow-y-auto px-4 pt-6 md:px-8"
         style={`padding-bottom:${contentBottomInset}px;`}
         onscroll={handleScroll}
       >
         <div class="mx-auto flex max-w-[55rem] flex-col gap-7">
           {#each messages as message (message.id)}
-            {#if appStore.editingMessageId === message.id}
-              <EditMessageInline
-                messageId={message.id}
-                initialContent={appStore.editingMessageContent}
-                role={message.role}
-                onCancel={() => appStore.closeEditMessage()}
-              />
-            {:else}
+            <div class="message-slot">
               <ChatMessage {message} />
-            {/if}
+              {#if appStore.editingMessageId === message.id}
+                <div class="edit-overlay">
+                  <EditMessageInline
+                    messageId={message.id}
+                    initialContent={appStore.editingMessageContent}
+                    role={message.role}
+                    onCancel={() => appStore.closeEditMessage()}
+                  />
+                </div>
+              {/if}
+            </div>
           {/each}
         </div>
       </div>
-      <div class="message-list-fade message-list-fade-top pointer-events-none" class:visible={showTopFade}></div>
-      <div class="message-list-fade message-list-fade-bottom pointer-events-none"></div>
 
       {#if showJumpToLatest}
         <button
@@ -134,73 +132,59 @@
     contain: layout style;
   }
 
-  .message-list-fade {
-    position: absolute;
-    left: 0;
-    right: 0;
-    z-index: 5;
-    pointer-events: none;
-  }
-
-  .message-list-fade-top {
-    top: 0;
-    height: 80px;
-    opacity: 0;
-    transition: opacity 0.25s ease;
-    background: linear-gradient(
-      to bottom,
-      var(--background) 0%,
-      rgba(0,0,0,0) 100%
-    );
-  }
-
-  .message-list-fade-top.visible {
-    opacity: 1;
-  }
-
-  .message-list-fade-bottom {
-    bottom: 0;
-    height: 120px;
-    opacity: 1;
-    background: linear-gradient(
-      to top,
-      var(--chat-bg) 0%,
-      transparent 100%
-    );
+  .message-scroll {
+    scroll-behavior: smooth;
   }
 
   .jump-latest-btn {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 12;
+    z-index: 8;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 9999px;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+    background: color-mix(in srgb, var(--chat-bg) 92%, var(--surface));
     color: var(--text-secondary);
-    box-shadow: var(--shadow-sm);
-    transition: transform 150ms ease-out, opacity 150ms ease-out, background 0.15s ease, color 0.15s ease;
-    animation: slideUpFadeIn 150ms ease-out;
+    backdrop-filter: blur(8px);
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 150ms ease-out;
+    animation: fadeInSoft 120ms ease-out;
   }
 
   .jump-latest-btn:hover {
-    background: var(--surface-hover);
+    border-color: var(--border);
+    background: color-mix(in srgb, var(--surface-hover) 88%, var(--chat-bg));
     color: var(--text);
   }
 
-  @keyframes slideUpFadeIn {
+  @keyframes fadeInSoft {
     from {
-      transform: translateX(-50%) translateY(1rem) scale(0.95);
       opacity: 0;
     }
     to {
-      transform: translateX(-50%) translateY(0) scale(1);
       opacity: 1;
     }
+  }
+
+  .message-slot {
+    position: relative;
+  }
+
+  .edit-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    animation: editFadeSlide 200ms ease-out forwards;
+  }
+
+  @keyframes editFadeSlide {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>

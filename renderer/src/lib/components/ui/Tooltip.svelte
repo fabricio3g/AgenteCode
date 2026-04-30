@@ -3,7 +3,7 @@
 <script lang="ts">
   import { fly } from 'svelte/transition';
 
-  let { children, label }: { children?: any; label: string } = $props();
+  let { children, label, position = 'right' }: { children?: any; label: string; position?: 'left' | 'right' } = $props();
   let visible = $state(false);
 </script>
 
@@ -15,8 +15,9 @@
   {@render children?.()}
   {#if visible}
     <div
-      class="tooltip-pill absolute left-full top-1/2 z-50 -translate-y-1/2 whitespace-nowrap px-2 py-1 text-xs"
-      transition:fly={{ x: -4, duration: 100 }}
+      class="tooltip-pill absolute top-1/2 z-50 -translate-y-1/2 whitespace-nowrap px-2 py-1 text-xs {position === 'left' ? 'right-full' : 'left-full'}"
+      style={position === 'left' ? 'margin-right: 8px;' : 'margin-left: 8px;'}
+      transition:fly={{ x: position === 'left' ? 4 : -4, duration: 100 }}
     >
       {label}
     </div>
@@ -30,7 +31,6 @@
     color: var(--text);
     border-radius: var(--radius-full);
     box-shadow: var(--shadow-md);
-    margin-left: 8px;
     pointer-events: none;
   }
 </style>

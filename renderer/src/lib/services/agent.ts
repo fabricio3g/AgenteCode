@@ -1,28 +1,16 @@
-/**
- * Agent – self-contained autonomous task runner.
- *
- * All tool logic lives here. No external "cowork" dependencies.
- */
-
 import type { AgentStep, AgentArtifact, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { RequestMessage, ToolDefinition, NativeToolCall } from '$lib/services/chat-api';
-import { completeAssistantReply, completeWithTools, supportsNativeTools } from '$lib/services/chat-api';
+import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
+import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupportsNativeTools } from '$lib/services/agent-llm';
 import { webSearch, fetchUrlContent } from '$lib/services/search';
 import { queryDocuments } from '$lib/services/rag';
-import { sandboxExec } from '$lib/services/sandbox';
 import { loadAppConfig } from '$lib/utils/storage';
-import { isTauri } from '$lib/services/tauri';
-import { sandboxStore } from '$lib/stores/sandbox.svelte';
-import {
-  browserNavigate, browserSnapshot, browserClick, browserTypeText, formatPageInfo
-} from '$lib/services/browser';
+import { isTauri, invoke } from '$lib/services/tauri';
 import {
   readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile,
-  renameWorkspaceFile, workspaceExec, createWorkspaceFolder
+  createWorkspaceFolder
 } from '$lib/services/files';
-
-// ── Types ──────────────────────────────────────────────────────────────────
 
 type ToolCall = { id?: string; name: string; arguments: Record<string, unknown> };
 
@@ -30,7 +18,7 @@ type ToolResult = {
   success: boolean;
   output?: unknown;
   error?: string;
-  note?: string;          // guidance for the LLM when a tool fails gracefully
+  note?: string;
   createdFiles?: string[];
   modifiedFiles?: string[];
   deletedFiles?: string[];
@@ -52,14 +40,12 @@ type ToolContext = {
   onArtifact: (a: AgentArtifact | null) => void;
 };
 
-// ── Constants ──────────────────────────────────────────────────────────────
-
-const MAX_ITERATIONS = 20;
-const MAX_TIME_MS = 3 * 60 * 1000;
+const MAX_ITERATIONS = 12;
+const MAX_TIME_MS = 2 * 60 * 1000;
 const KEEP_TOOL_PAIRS = 6;
-const MAX_TOOL_CALLS = 8;
-
-// ── Helpers ────────────────────────────────────────────────────────────────
+const MAX_TOOL_CALLS = 12;
+const MAX_TOOL_RESULT_CHARS = 4000;
+const TOOL_TIMEOUT_MS = 30000;
 
 function uid(prefix: string) {
   return crypto?.randomUUID
@@ -82,8 +68,6 @@ function isWorkspace(ctx: ToolContext) {
 function normPath(p: unknown): string {
   return String(p || '').replace(/^\/+/, '').replace(/\\/g, '/').trim();
 }
-
-// ── Preview builder ────────────────────────────────────────────────────────
 
 function buildPreviewHtml(files: Record<string, string>, entry = 'index.html'): string | null {
   const html = files[entry] || files['index.html'] || files['index.htm'];
@@ -116,8 +100,6 @@ ${js.map(([f, c]) => `<script>/* ${f} */\n${c}</script>`).join('\n')}
   }
   return result;
 }
-
-// ── Report builders ────────────────────────────────────────────────────────
 
 function buildHtmlReport(
   title: string,
@@ -153,8 +135,6 @@ function buildMarkdownReport(
   }).join('\n');
 }
 
-// ── Workspace helpers ──────────────────────────────────────────────────────
-
 function getWsFiles(ctx: ToolContext): WorkspaceFile[] {
   if (!ctx.workspaceFiles) ctx.workspaceFiles = [];
   return ctx.workspaceFiles;
@@ -187,47 +167,6 @@ function globToRegex(pat: string): RegExp {
     .replace(/\x00/g, '.*');
   return new RegExp(`^${esc}$`);
 }
-
-function applyUnifiedPatch(original: string, patch: string): string {
-  const lines = original.split('\n');
-  const hunks: Array<{ start: number; rem: string[]; add: string[] }> = [];
-  let cur: (typeof hunks)[0] | null = null;
-  for (const line of patch.split('\n')) {
-    if (line.startsWith('@@')) {
-      if (cur) hunks.push(cur);
-      const m = line.match(/@@ -(\d+)/);
-      cur = { start: m ? Math.max(+m[1] - 1, 0) : 0, rem: [], add: [] };
-    } else if (cur) {
-      if (line.startsWith('-') && !line.startsWith('---')) cur.rem.push(line.slice(1));
-      else if (line.startsWith('+') && !line.startsWith('+++')) cur.add.push(line.slice(1));
-    }
-  }
-  if (cur) hunks.push(cur);
-  for (const h of hunks.reverse()) {
-    lines.splice(0, lines.length, ...lines.slice(0, h.start), ...h.add, ...lines.slice(h.start + h.rem.length));
-  }
-  return lines.join('\n');
-}
-
-// ── safeEval ───────────────────────────────────────────────────────────────
-
-function safeEval(code: string): { result: unknown; logs: string[] } {
-  const logs: string[] = [];
-  const con = {
-    log: (...a: unknown[]) => logs.push(a.map(x => JSON.stringify(x)).join(' ')),
-    error: (...a: unknown[]) => logs.push('[ERR] ' + a.map(x => JSON.stringify(x)).join(' ')),
-    warn: (...a: unknown[]) => logs.push('[WARN] ' + a.map(x => JSON.stringify(x)).join(' ')),
-    info: (...a: unknown[]) => logs.push(a.map(x => JSON.stringify(x)).join(' ')),
-  };
-  try {
-    const fn = new Function('console', code.includes('return') ? code : `return (${code})`);
-    return { result: fn(con), logs };
-  } catch (e) {
-    return { result: undefined, logs: [...logs, `[THROW] ${e instanceof Error ? e.message : e}`] };
-  }
-}
-
-// ── Tool definitions (for the LLM) ─────────────────────────────────────────
 
 function getToolDefinitions(): ToolDefinition[] {
   return [
@@ -305,20 +244,6 @@ function getToolDefinitions(): ToolDefinition[] {
     },
     {
       type: 'function', function: {
-        name: 'move_file',
-        description: 'Move or rename a file.',
-        parameters: {
-          type: 'object',
-          properties: {
-            source: { type: 'string', description: 'Current path' },
-            destination: { type: 'string', description: 'New path' }
-          },
-          required: ['source', 'destination']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
         name: 'search_files',
         description: 'Search for text across files.',
         parameters: {
@@ -328,46 +253,6 @@ function getToolDefinitions(): ToolDefinition[] {
             caseSensitive: { type: 'boolean' }
           },
           required: ['query']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'apply_patch',
-        description: 'Apply a unified diff patch to a file.',
-        parameters: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'File to patch' },
-            patch: { type: 'string', description: 'Unified diff' }
-          },
-          required: ['path', 'patch']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'run_code',
-        description: 'Execute JavaScript code in a sandboxed evaluator. Good for calculations and data processing.',
-        parameters: {
-          type: 'object',
-          properties: { code: { type: 'string', description: 'JavaScript code to run' } },
-          required: ['code']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'execute_command',
-        description: 'Run a shell command (desktop app only).',
-        parameters: {
-          type: 'object',
-          properties: {
-            command: { type: 'string', description: 'Shell command' },
-            args: { type: 'array', items: { type: 'string' }, description: 'Arguments' },
-            timeout: { type: 'number', description: 'Timeout ms (default 30000)' }
-          },
-          required: ['command']
         }
       }
     },
@@ -418,73 +303,37 @@ function getToolDefinitions(): ToolDefinition[] {
     },
     {
       type: 'function', function: {
-        name: 'browser_navigate',
-        description: 'Navigate browser to a URL and return page content (desktop only).',
-        parameters: {
-          type: 'object',
-          properties: { url: { type: 'string', description: 'URL to navigate to' } },
-          required: ['url']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'browser_snapshot',
-        description: 'Get current browser page state (desktop only).',
-        parameters: { type: 'object', properties: {} }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'browser_click',
-        description: 'Click an element on the current browser page (desktop only).',
-        parameters: {
-          type: 'object',
-          properties: { selector: { type: 'string', description: 'CSS selector or visible text' } },
-          required: ['selector']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'browser_type',
-        description: 'Type text into a field on the browser page (desktop only).',
+        name: 'calculator',
+        description: 'Evaluate a mathematical expression safely.',
         parameters: {
           type: 'object',
           properties: {
-            selector: { type: 'string', description: 'Field selector' },
-            text: { type: 'string', description: 'Text to type' }
+            expression: { type: 'string', description: 'Math expression to evaluate (e.g., "123 * 456 + 789", "Math.sqrt(144) + Math.pow(2, 10)")' }
           },
-          required: ['selector', 'text']
+          required: ['expression']
         }
       }
     },
   ];
 }
 
-// ── Tool step type map ─────────────────────────────────────────────────────
-
 const STEP_TYPE: Record<string, AgentStep['type']> = {
   web_search: 'searching', fetch_url: 'searching',
-  browser_navigate: 'searching', browser_snapshot: 'reading',
-  browser_click: 'searching', browser_type: 'writing',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
-  write_file: 'writing', delete_file: 'writing', move_file: 'writing',
-  apply_patch: 'coding', run_code: 'executing', execute_command: 'executing',
+  write_file: 'writing', delete_file: 'writing',
   preview_project: 'preview', create_report: 'writing',
+  calculator: 'tool',
 };
-
-// ── Tool executor ──────────────────────────────────────────────────────────
 
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  switch (name) {
+  ctx.signal?.throwIfAborted?.();
 
-    // ── Web ──────────────────────────────────────────────────────────────
+  switch (name) {
 
     case 'web_search': {
       const query = String(args.query || '');
@@ -532,8 +381,6 @@ async function executeTool(
         return fail(e instanceof Error ? e.message : String(e));
       }
     }
-
-    // ── Files ─────────────────────────────────────────────────────────────
 
     case 'read_file': {
       const path = normPath(args.path);
@@ -600,23 +447,6 @@ async function executeTool(
       return ok({ files: paths.map(p => ({ path: p, size: ctx.files[p].length, type: p.split('.').pop() || 'unknown' })), count: paths.length });
     }
 
-    case 'move_file': {
-      const src = normPath(args.source);
-      const dst = normPath(args.destination);
-      if (!src || !dst) return fail('source and destination required');
-      if (isWorkspace(ctx)) {
-        if (!ctx.workspaceRoot) return fail('No workspace root');
-        await renameWorkspaceFile(ctx.workspaceRoot, src, dst);
-        if (src in ctx.files) { ctx.files[dst] = ctx.files[src]; delete ctx.files[src]; }
-        if (ctx.workspaceFiles) ctx.workspaceFiles = ctx.workspaceFiles.filter(f => f.path !== src);
-        upsertWsFile(ctx, dst);
-        return ok({ source: src, destination: dst }, { modifiedFiles: [dst], deletedFiles: [src] });
-      }
-      if (!(src in ctx.files)) return fail(`File not found: ${src}`);
-      ctx.files[dst] = ctx.files[src]; delete ctx.files[src];
-      return ok({ source: src, destination: dst }, { modifiedFiles: [dst], deletedFiles: [src] });
-    }
-
     case 'search_files': {
       const query = String(args.query || '');
       if (!query) return fail('query required');
@@ -627,6 +457,7 @@ async function executeTool(
         : Object.keys(ctx.files).filter(p => !p.startsWith('__'));
       const results: Array<{ file: string; line: number; content: string }> = [];
       for (const file of targets.slice(0, 120)) {
+        ctx.signal?.throwIfAborted?.();
         try {
           const lines = (isWorkspace(ctx) ? await readWsText(file, ctx) : ctx.files[file]).split('\n');
           lines.forEach((l, i) => { re.lastIndex = 0; if (re.test(l)) results.push({ file, line: i + 1, content: l.trim().slice(0, 200) }); });
@@ -634,61 +465,6 @@ async function executeTool(
       }
       return ok({ query, results: results.slice(0, 100), totalMatches: results.length });
     }
-
-    case 'apply_patch': {
-      const path = normPath(args.path);
-      const patch = String(args.patch || '');
-      if (!path || !patch) return fail('path and patch required');
-      if (isWorkspace(ctx)) {
-        if (!ctx.workspaceRoot) return fail('No workspace root');
-        const original = await readWsText(path, ctx);
-        const patched = applyUnifiedPatch(original, patch);
-        await writeWorkspaceFile(ctx.workspaceRoot, path, patched);
-        ctx.files[path] = patched;
-        return ok({ path, patched: true }, { modifiedFiles: [path] });
-      }
-      if (!(path in ctx.files)) return fail(`File not found: ${path}`);
-      ctx.files[path] = applyUnifiedPatch(ctx.files[path], patch);
-      return ok({ path, patched: true }, { modifiedFiles: [path] });
-    }
-
-    // ── Code ──────────────────────────────────────────────────────────────
-
-    case 'run_code': {
-      const code = String(args.code || '');
-      const res = safeEval(code);
-      return ok({ result: res.result, logs: res.logs });
-    }
-
-    case 'execute_command': {
-      if (!isTauri()) return fail('Shell commands require the desktop app.');
-      try {
-        if (isWorkspace(ctx) && ctx.workspaceRoot) {
-          const result = await workspaceExec({
-            workspace_root: ctx.workspaceRoot,
-            command: String(args.command || ''),
-            args: Array.isArray(args.args) ? args.args.map(String) : [],
-            cwd: normPath(args.cwd),
-            shell: true,
-            timeout_ms: Math.min(Number(args.timeout) || 30000, 120000)
-          });
-          return ok({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exit_code, timedOut: result.timed_out });
-        }
-        const result = await sandboxExec({
-          project_name: ctx.chatId,
-          files: ctx.files,
-          command: String(args.command || ''),
-          args: Array.isArray(args.args) ? args.args.map(String) : [],
-          shell: true,
-          timeout_ms: Math.min(Number(args.timeout) || 30000, 120000),
-          preserve: true
-        });
-        if (result.files) Object.assign(ctx.files, result.files);
-        return ok({ stdout: result.stdout, stderr: result.stderr, exitCode: result.exit_code, timedOut: result.timed_out });
-      } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
-    }
-
-    // ── Project & Documents ───────────────────────────────────────────────
 
     case 'preview_project': {
       const entry = String(args.entryPoint || 'index.html');
@@ -724,27 +500,17 @@ async function executeTool(
       } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
     }
 
-    // ── Browser ───────────────────────────────────────────────────────────
-
-    case 'browser_navigate': {
-      if (!isTauri()) return fail('Browser tools require the desktop app.');
-      try { return ok(formatPageInfo(await browserNavigate(String(args.url || '')))); }
-      catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
-    }
-    case 'browser_snapshot': {
-      if (!isTauri()) return fail('Browser tools require the desktop app.');
-      try { return ok(formatPageInfo(await browserSnapshot())); }
-      catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
-    }
-    case 'browser_click': {
-      if (!isTauri()) return fail('Browser tools require the desktop app.');
-      try { return ok(formatPageInfo(await browserClick(String(args.selector || '')))); }
-      catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
-    }
-    case 'browser_type': {
-      if (!isTauri()) return fail('Browser tools require the desktop app.');
-      try { return ok(await browserTypeText(String(args.selector || ''), String(args.text || ''))); }
-      catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
+    case 'calculator': {
+      const expression = String(args.expression || '');
+      if (!expression) return fail('Missing expression');
+      try {
+        // Safe eval: allow only math operators, numbers, functions, and whitespace
+        const sanitized = expression.replace(/[^0-9+\-*/().%\sMath\.\w,]/g, '');
+        const result = Function(`"use strict"; return (${sanitized})`)();
+        return ok({ expression, result: Number.isFinite(result) ? result : String(result) });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
     }
 
     default:
@@ -752,7 +518,39 @@ async function executeTool(
   }
 }
 
-// ── Artifact builder ───────────────────────────────────────────────────────
+async function executeToolWithTimeout(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<ToolResult>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Tool "${name}" timed out after ${TOOL_TIMEOUT_MS / 1000}s`));
+    }, TOOL_TIMEOUT_MS);
+  });
+
+  // Cancel timeout on abort
+  const onAbort = () => { if (timeoutId) clearTimeout(timeoutId); };
+  ctx.signal?.addEventListener?.('abort', onAbort, { once: true });
+
+  const toolArgsStr = JSON.stringify(args).slice(0, 120);
+  console.log(`[agent] tool START | name=${name} | args=${toolArgsStr}`);
+  const t0 = performance.now();
+
+  try {
+    const result = await Promise.race([executeTool(name, args, ctx), timeoutPromise]);
+    const duration = Math.round(performance.now() - t0);
+    console.log(`[agent] tool DONE | name=${name} | success=${result.success} | duration=${duration}ms`);
+    return result;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const duration = Math.round(performance.now() - t0);
+    if (msg.includes('timed out')) {
+      console.log(`[agent] tool TIMEOUT | name=${name} | duration=${duration}ms`);
+    }
+    return fail(msg);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    ctx.signal?.removeEventListener?.('abort', onAbort);
+  }
+}
 
 function buildArtifact(ctx: ToolContext): AgentArtifact | null {
   const visible = Object.keys(ctx.files).filter(f => !f.startsWith('__'));
@@ -764,38 +562,125 @@ function buildArtifact(ctx: ToolContext): AgentArtifact | null {
   };
 }
 
-// ── Context trimmer ────────────────────────────────────────────────────────
+function synthesizeArtifactCompletion(ctx: ToolContext): string {
+  const visible = Object.keys(ctx.files)
+    .filter((path) => !path.startsWith('__'))
+    .sort((a, b) => a.localeCompare(b));
+  if (!visible.length) return '';
+
+  const previewable = visible.some((path) => path.endsWith('.html')) || !!ctx.files['__preview__.html'];
+  const listed = visible.slice(0, 4).join(', ');
+  const extra = visible.length > 4 ? ` and ${visible.length - 4} more` : '';
+
+  if (previewable) {
+    return `Done. I created ${listed}${extra} and prepared a preview.`;
+  }
+  return `Done. I created ${listed}${extra}.`;
+}
+
+function hasVisibleArtifact(ctx: ToolContext): boolean {
+  return Object.keys(ctx.files).some((path) => !path.startsWith('__')) || !!ctx.files['__preview__.html'];
+}
+
+function isWebsiteBuildRequest(prompt: string): boolean {
+  const normalized = String(prompt || '');
+  if (!normalized) return false;
+  return /\b(website|web\s*site|webpage|web\s*page|landing\s*page|landing|site|homepage|index\.html|html|css|javascript|script\.js)\b/i.test(normalized);
+}
+
+function finalizeAgentSteps(steps: AgentStep[], hasError: boolean) {
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    if (step.status !== 'running') continue;
+    if (hasError) {
+      step.status = 'error';
+      if (!step.detail) step.detail = 'Stopped before completion';
+      continue;
+    }
+    step.status = 'done';
+    if (index === steps.length - 1 && step.type === 'thinking') {
+      step.label = 'Completed';
+      step.detail = 'Response ready';
+    }
+  }
+}
 
 function trimContext(messages: RequestMessage[], nativeMode: boolean) {
-  // Keep system + recent user + last N tool pairs to avoid token blowup
   const sys = messages.filter(m => m.role === 'system');
-  const user = messages.filter(m => m.role === 'user');
+  const users = messages.filter(m => m.role === 'user');
   const rest = messages.filter(m => m.role !== 'system' && m.role !== 'user');
 
-  const pairMultiplier = nativeMode ? 2 : 2;
-  const keepCount = KEEP_TOOL_PAIRS * pairMultiplier;
-  const keepUser = KEEP_TOOL_PAIRS; // cap user messages too (tool results in XML mode)
+  const keepCount = KEEP_TOOL_PAIRS;
+  const keepUsers = 3;
+  const keepFirstUser = 1;
 
   let trimmed = rest;
   if (rest.length > keepCount) {
     trimmed = rest.slice(rest.length - keepCount);
   }
 
-  let trimmedUser = user;
-  if (user.length > keepUser) {
-    trimmedUser = user.slice(user.length - keepUser);
+  let trimmedUsers = users;
+  if (users.length > keepUsers) {
+    trimmedUsers = [
+      ...users.slice(0, keepFirstUser),
+      ...users.slice(users.length - (keepUsers - keepFirstUser))
+    ];
   }
 
-  messages.splice(0, messages.length, ...sys, ...trimmedUser, ...trimmed);
+  messages.splice(0, messages.length, ...sys, ...trimmedUsers, ...trimmed);
 }
 
-// ── XML fallback parser ───────────────────────────────────────────────────
+async function enforceTokenBudget(messages: RequestMessage[], config: any) {
+  // Skip if there are very few messages — no risk of overflow
+  if (messages.length <= 6) return;
+
+  const contextLength = config?.llm?.providers?.[config?.llm?.provider]?.context_length
+    || config?.llm?.local?.context_length
+    || 8192;
+
+  if (!isTauri()) {
+    // Non-Tauri: use rough heuristic to check if trim is needed
+    const totalChars = messages.reduce((sum, m) =>
+      sum + (typeof m.content === 'string' ? m.content.length : 0), 0);
+    if (totalChars <= contextLength * 2.5) return;
+  }
+
+  try {
+    const budget = await invoke<any>('build_context_budget', {
+      config: { context_length: contextLength, max_tokens: contextLength },
+      messages: messages.map(m => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : ''),
+        ...(m.name ? { name: m.name } : {})
+      }))
+    });
+
+    if (budget?.isOverflow || (budget?.usagePercent ?? 0) > 80) {
+      const truncated = await invoke<any>('truncate_messages', {
+        messages: budget.isOverflow
+          ? messages.map(m => ({
+              role: m.role,
+              content: typeof m.content === 'string' ? m.content : (m.content ? JSON.stringify(m.content) : ''),
+              ...(m.name ? { name: m.name } : {})
+            }))
+          : [],
+        budget
+      });
+
+      if (Array.isArray(truncated) && truncated.length > 0 && truncated.length < messages.length) {
+        console.log(`[agent] Token budget: trimmed ${messages.length} → ${truncated.length} messages (${budget.usagePercent}% used)`);
+        messages.splice(0, messages.length, ...truncated);
+      }
+    }
+  } catch (err) {
+    console.warn('[agent] Token budget enforcement failed, continuing with structural trim only:', err);
+  }
+}
 
 function parseXmlToolCall(content: string): { toolCall: ToolCall | null; cleanContent: string } {
-  const tagMatch = content.match(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/i);
+  const tagMatch = content.match(/<tool_call[\s\S]*?>([\s\S]*?)<\/tool_call>/i);
   if (!tagMatch) return { toolCall: null, cleanContent: content.trim() };
   const inner = tagMatch[1];
-  // Find balanced JSON object between { and }
   const jsonStart = inner.indexOf('{');
   if (jsonStart === -1) return { toolCall: null, cleanContent: content.trim() };
   let depth = 0;
@@ -828,19 +713,13 @@ function parseXmlToolCall(content: string): { toolCall: ToolCall | null; cleanCo
   }
 }
 
-// ── Tool-call codeblock parser ──────────────────────────────────────────
-// Models like Gemma 3 output ```tool_call\n{JSON}\n``` instead of <tool_call> XML.
-// This detects those and returns the tool call + cleaned content.
-
 function parseToolCallCodeblocks(content: string): { toolCalls: ToolCall[]; cleanContent: string } {
-  // Find ```tool_call ... ``` blocks and extract JSON from them
   const fenceRegex = /```tool_call\s*\n([\s\S]*?)\n```/gi;
   let match;
   let clean = content;
   const allCalls: ToolCall[] = [];
   while ((match = fenceRegex.exec(content)) !== null) {
     const inner = match[1].trim();
-    // Extract JSON (object or array) with balanced brackets
     const json = extractBalancedJson(inner);
     if (!json) continue;
     try {
@@ -883,19 +762,40 @@ function extractBalancedJson(str: string): string | null {
   return null;
 }
 
-// ── Tool-call artifact stripper ─────────────────────────────────────────
-// Removes any remaining <tool_call> tags or ```tool_call``` fences from content
-// so they never leak to the user.
+const DEBUG_LINE_RE = /^\[(?:agent|chat-api|agent-llm|TTS|OcrEngine|onboarding)\][\s\S]*$/gm;
 
-function stripToolCallArtifacts(content: string): string {
+function stripAgentDebugLines(content: string): string {
+  return content.replace(DEBUG_LINE_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function stripInternalAgentChatter(content: string): string {
   return content
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '')
+    .split('\n')
+    .filter((line) => !/tool call limit|over the limit|preparing to use tools|i will need to provide the answer|❌|used \d+ tools/i.test(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-// ── Codeblock auto-extraction ────────────────────────────────────────────
-// When non-tool models output markdown codeblocks, auto-extract them as files.
+function stripToolPayloads(content: string): string {
+  return content
+    .replace(/Tool call for\s+[a-z_]+:\s*\{[\s\S]*?\}\s*(?=\n[A-Z]|\n[a-zA-Z][^\n]*:|$)/gi, '')
+    .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function sanitizeAgentVisibleText(content: string): string {
+  return stripToolPayloads(stripInternalAgentChatter(stripAgentDebugLines(content)));
+}
+
+function stripToolCallArtifacts(content: string): string {
+  return content
+    .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/```tool_call\s*\n[\s\S]*?\n```/gi, '')
+    .trim();
+}
 
 const CODEBLOCK_EXT_MAP: Record<string, string> = {
   html: 'index.html', css: 'style.css', js: 'script.js', ts: 'script.ts',
@@ -922,46 +822,66 @@ function parseCodeblockWrites(content: string): Array<{ path: string; code: stri
   return files;
 }
 
-// ── System prompts ────────────────────────────────────────────────────────
-
 function getNativeSystemPrompt(extra?: string): string {
   const base = [
-    'You are an autonomous AI agent with tools for web search, file management, coding, and more.',
-    'Use the MINIMUM number of tool calls needed. Batch related work. Avoid unnecessary exploration.',
-    'You may call at most ' + MAX_TOOL_CALLS + ' tools total. After that, you MUST provide your final answer.',
-    'After all tool calls are done, produce a clear, complete final answer in plain text.',
-    'For research tasks: use web_search, then create_report to produce a structured artifact.',
-    'For web projects: write HTML/CSS/JS files, then call preview_project.',
-    'For calculations: use run_code.',
-    'If a tool fails, adapt: answer from knowledge or try an alternative approach. Do not retry the same failing call.',
-    'NEVER call the same tool more than twice with similar arguments. If results are insufficient, answer with what you have.',
+    'You are an AI agent. Use tools to complete tasks; never output code or file contents in chat text.',
+    `You have ${MAX_TOOL_CALLS} tool uses maximum. After that, write your final answer in plain text.`,
+    'Stop after you have enough information. Do not over-search or over-verify.',
+    'If a tool fails twice, stop using that tool and work around it or answer from knowledge.',
+    'Do not repeat the same tool with similar arguments. If stuck, give your best answer.',
+    '',
+    'Workflow: web_search \u2192 gather info \u2192 create_report OR write_file \u2192 preview_project.',
+    'For final answer, write plain text with no tool calls.',
   ].join('\n');
-  return extra ? `${extra}\n\n${base}` : base;
+  return extra ? `${base}\n\n${extra}` : base;
 }
 
 function getXmlSystemPrompt(extra?: string): string {
-  const tools = getToolDefinitions().map(t => {
-    const params = Object.keys(t.function.parameters.properties || {});
-    return `${t.function.name}(${params.join(', ')}) — ${t.function.description}`;
-  }).join('\n');
+  const essentialTools = getToolDefinitions()
+    .map(t => {
+      const params = Object.keys(t.function.parameters.properties || {});
+      return `${t.function.name}(${params.join(', ')}) - ${t.function.description}`;
+    }).join('\n');
+
   const base = [
-    'You are an autonomous AI agent. Call ONE tool at a time using this XML format:',
-    '<tool_call>',
-    '{"name":"tool_name","arguments":{"key":"value"}}',
-    '</tool_call>',
+    'You are an AI agent. Call tools using this XML format (one per response):',
     '',
-    'Available tools:',
-    tools,
+    '<tool_call',
+    '{"name":"web_search","arguments":{"query":"your search"}}',
+    '</tool_call',
     '',
-    'You may call at most ' + MAX_TOOL_CALLS + ' tools total. After that, you MUST provide your final answer in plain text with NO tool_call block.',
-    'After a tool result, call the next tool OR write your final answer (plain text, no tool_call block).',
-    'If a tool fails, adapt or answer from knowledge. Do not loop on the same failing call.',
-    'NEVER call the same tool more than twice with similar arguments. If results are insufficient, answer with what you have.',
+    'Tools:',
+    essentialTools,
+    '',
+    'RULES:',
+    `1. Max ${MAX_TOOL_CALLS} tool calls total. Then give final answer in plain text.`,
+    '2. Never dump code or file content in chat. Use write_file or create_report tools.',
+    '3. If a tool fails twice, stop retrying and answer from knowledge.',
+    '4. Chain tools logically: search \u2192 read \u2192 write \u2192 preview.',
+    '5. For final answer, write plain text with NO tool_call tag.',
   ].join('\n');
-  return extra ? `${extra}\n\n${base}` : base;
+  return extra ? `${base}\n\n${extra}` : base;
 }
 
-// ── Main agent loop ───────────────────────────────────────────────────────
+const DEPENDENT_TOOLS: Set<string> = new Set(['preview_project']);
+
+function groupParallelAndSequential(toolCalls: ToolCall[]): ToolCall[][] {
+  const groups: ToolCall[][] = [];
+  let currentBatch: ToolCall[] = [];
+
+  for (const tc of toolCalls) {
+    if (DEPENDENT_TOOLS.has(tc.name)) {
+      if (currentBatch.length) groups.push(currentBatch);
+      groups.push([tc]);
+      currentBatch = [];
+    } else {
+      currentBatch.push(tc);
+    }
+  }
+  if (currentBatch.length) groups.push(currentBatch);
+
+  return groups.length ? groups : [toolCalls];
+}
 
 export async function runAgentTask(args: {
   chatId: string;
@@ -995,11 +915,18 @@ export async function runAgentTask(args: {
   };
 
   const config = await loadAppConfig();
-  const isApiMode = config.llm?.backend_mode !== 'local' || !isTauri();
   const providerName = config.llm?.provider || 'openai';
-  const providerModel = config.llm?.providers?.[providerName]?.model || '';
-  let useNativeTools = isApiMode && supportsNativeTools(providerModel, providerName);
+  const providers = config.llm?.providers || {};
+  const provider = providers[providerName] || {};
+  let useNativeTools = isTauri() && agentSupportsNativeTools(config);
+  console.log(`[agent] START | provider=${providerName} | model=${provider.model || ''} | isTauri=${isTauri()} | useNativeTools=${useNativeTools}`);
+  console.log(`[agent] supportsNativeTools check: providerName=${providerName} modelId=${provider.model || ''} result=${agentSupportsNativeTools(config)}`);
   let nativeFailed = false;
+  let directMode = false;
+  let consecutiveEmptyResponses = 0;
+  const wantsWebsiteArtifact = isWebsiteBuildRequest(
+    args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
+  );
 
   const toolDefs = getToolDefinitions();
   const modeNote = executionMode === 'workspace'
@@ -1007,6 +934,7 @@ export async function runAgentTask(args: {
     : 'You are in sandbox mode. Files exist only within this session unless exported.';
   const nativeSys = getNativeSystemPrompt([modeNote, args.systemPrompt].filter(Boolean).join('\n\n'));
   const xmlSys = getXmlSystemPrompt([modeNote, args.systemPrompt].filter(Boolean).join('\n\n'));
+  const directSys = `You are a helpful assistant. Respond directly to the user's request. When building websites, output HTML, CSS, and JS inside markdown code blocks with language labels (\`\`\`html, \`\`\`css, \`\`\`js). For website or page-building requests, your work is not complete until you provide code blocks that can be written to files and previewed. Produce complete, well-formatted content.${modeNote ? '\n\n' + modeNote : ''}`;
 
   const messages: RequestMessage[] = [
     { role: 'system', content: useNativeTools ? nativeSys : xmlSys },
@@ -1016,14 +944,14 @@ export async function runAgentTask(args: {
   let finalContent = '';
   let finalReasoning = '';
   let errorReason: string | undefined;
+  let warningReason: string | undefined;
   const startTime = Date.now();
   const recentSigs: string[] = [];
   let totalToolCalls = 0;
 
   const checkAbort = () => {
     if (args.signal?.aborted) {
-      const err = new DOMException('Agent task cancelled by user', 'AbortError');
-      throw err;
+      throw new DOMException('Agent task cancelled by user', 'AbortError');
     }
   };
 
@@ -1032,6 +960,7 @@ export async function runAgentTask(args: {
   };
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+    console.log(`[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
     checkAbort();
     throwIfAborted();
     if (Date.now() - startTime > MAX_TIME_MS) {
@@ -1048,36 +977,72 @@ export async function runAgentTask(args: {
     steps.push(thinkStep);
     args.onStep([...steps]);
     if (iter === 0) {
-      args.onProgress?.(`Planning how to approach this…`);
+      args.onProgress?.(`Planning how to approach this\u2026`);
     }
 
     trimContext(messages, useNativeTools && !nativeFailed);
+    await enforceTokenBudget(messages, config);
 
-    const nativeActive = useNativeTools && !nativeFailed;
+    const sysCount = messages.filter(m => m.role === 'system').length;
+    const userCount = messages.filter(m => m.role === 'user').length;
+    const otherCount = messages.filter(m => m.role !== 'system' && m.role !== 'user').length;
+    console.log(`[agent] after trim: messageCount=${messages.length} | sysCount=${sysCount} | userCount=${userCount} | otherCount=${otherCount}`);
+
+    const nativeActive = useNativeTools && !nativeFailed && !directMode;
+    const callMode = directMode ? 'direct' : nativeActive ? 'native' : 'xml';
+    console.log(`[agent] calling LLM via: ${callMode} | toolDefs=${nativeActive ? toolDefs.length : 0} | messages=${messages.length}`);
     let completion;
 
+    const streamingReasoningParts: string[] = [];
+
     try {
-      if (nativeActive) {
-        const res = await completeWithTools({ messages, tools: toolDefs, signal: args.signal });
+      if (directMode) {
+        messages[0] = { role: 'system', content: directSys };
+        completion = await completeAssistantReply({ messages, signal: args.signal });
         checkAbort();
-        if (res === null) {
+      } else if (nativeActive) {
+        const streamResult = await agentStreamComplete({
+          messages,
+          tools: toolDefs,
+          signal: args.signal,
+          config,
+          onReasoning: (text) => {
+            streamingReasoningParts.push(text);
+            finalReasoning = finalReasoning ? `${finalReasoning}${text}` : text;
+            args.onReasoning?.(finalReasoning);
+          },
+          onContent: (text) => {
+            const preview = text.slice(0, 120).trim();
+            if (preview) {
+              thinkStep.detail = preview.length < text.length ? `${preview}\u2026` : preview;
+              args.onStep([...steps]);
+            }
+          }
+        });
+        checkAbort();
+        if (streamResult === null) {
           nativeFailed = true;
+          // Only poison the cache when we know it's a tool rejection —
+          // null here can also mean clone errors, network errors, no base_url, etc.
+          // The error catch block below handles tool rejections with proper pattern matching.
           messages[0] = { role: 'system', content: xmlSys };
           completion = await completeAssistantReply({ messages, signal: args.signal });
           checkAbort();
         } else {
-          completion = res;
+          completion = streamResult;
         }
       } else {
         completion = await completeAssistantReply({ messages, signal: args.signal });
         checkAbort();
       }
     } catch (e) {
-      // Re-throw abort errors immediately — don't treat them as recoverable tool errors
       if (e instanceof DOMException && e.name === 'AbortError') throw e;
       const errMsg = e instanceof Error ? e.message : String(e);
+      console.log(`[agent] LLM ERROR | msg="${errMsg.slice(0, 200)}" | nativeActive=${nativeActive} | iter=${iter}`);
       if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
+        console.log('[agent] -> falling back to XML (tool/400/422/unsupported error)');
         nativeFailed = true;
+        setToolSupportCache(config, false);
         messages[0] = { role: 'system', content: xmlSys };
         try {
           completion = await completeAssistantReply({ messages, signal: args.signal });
@@ -1091,7 +1056,23 @@ export async function runAgentTask(args: {
           errorReason = thinkStep.detail;
           break;
         }
+      } else if (iter < 2 && errMsg.includes('content')) {
+        console.log('[agent] -> switching to direct mode (content error, iter < 2)');
+        directMode = true;
+        messages[0] = { role: 'system', content: directSys };
+        try {
+          completion = await completeAssistantReply({ messages, signal: args.signal });
+          checkAbort();
+        } catch (e3) {
+          thinkStep.status = 'error';
+          thinkStep.label = 'Error';
+          thinkStep.detail = e3 instanceof Error ? e3.message : String(e3);
+          args.onStep([...steps]);
+          errorReason = thinkStep.detail;
+          break;
+        }
       } else {
+        console.log('[agent] -> HARD FAIL (non-recoverable LLM error)');
         thinkStep.status = 'error';
         thinkStep.label = 'Error';
         thinkStep.detail = errMsg;
@@ -1101,20 +1082,91 @@ export async function runAgentTask(args: {
       }
     }
 
-    const rawContent = String(completion.content || '').trim();
-    const reasoning = String(completion.reasoning || '').trim();
+    const rawContent = sanitizeAgentVisibleText(String(completion.content || ''));
+    const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
+    const resultMode = directMode ? 'direct' : (useNativeTools && !nativeFailed) ? 'native' : 'xml';
+    console.log(`[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0} | mode=${resultMode}`);
     if (reasoning) {
       finalReasoning = finalReasoning ? `${finalReasoning}\n${reasoning}` : reasoning;
       args.onReasoning?.(finalReasoning);
     }
 
-    console.log(`[agent] iter=${iter + 1} content_len=${rawContent.length} nativeFailed=${nativeFailed}`);
+    if (!rawContent && !completion.toolCalls?.length && !directMode) {
+      consecutiveEmptyResponses++;
+      console.log(`[agent] EMPTY RESPONSE | consecutiveEmpty=${consecutiveEmptyResponses} | nativeFailed=${nativeFailed} | nativeActive=${useNativeTools && !nativeFailed} | directMode=${directMode} | totalToolCalls=${totalToolCalls} | completionToolCalls=${completion.toolCalls?.length ?? 0}`);
+      const synthesized = synthesizeArtifactCompletion(ctx);
+      if (synthesized && totalToolCalls > 0) {
+        console.log('[agent] -> synthesizing artifact from file outputs');
+        finalContent = synthesized;
+        break;
+      }
+      if (consecutiveEmptyResponses >= 2) {
+        console.log('[agent] -> switching to directMode (2 consecutive empty responses)');
+        directMode = true;
+        messages[0] = { role: 'system', content: directSys };
+        thinkStep.detail = 'Switching to direct mode (tools unavailable)';
+        args.onStep([...steps]);
+        continue;
+      }
+      if (!nativeFailed && nativeActive) {
+        console.log('[agent] -> falling back to XML mode (native returned empty)');
+        nativeFailed = true;
+        messages[0] = { role: 'system', content: xmlSys };
+        thinkStep.detail = 'Falling back to XML mode';
+        args.onStep([...steps]);
+        continue;
+      }
+      console.log('[agent] -> HARD FAIL: Empty response - model may not support tool calling');
+      steps.push({
+        id: uid('step'), type: 'error', label: 'Empty response',
+        status: 'error', detail: 'The model returned an empty response. The model may not support tool calling.'
+      });
+      args.onStep([...steps]);
+      errorReason = 'The model returned an empty response.';
+      break;
+    }
+    consecutiveEmptyResponses = 0;
 
-    // Resolve tool calls
     let toolCalls: ToolCall[] = [];
     let cleanContent = rawContent;
 
-    if (nativeActive && !nativeFailed && completion.toolCalls?.length) {
+    if (directMode) {
+      const codeblockFiles = parseCodeblockWrites(rawContent);
+      if (codeblockFiles.length) {
+        toolCalls = codeblockFiles.map((f, i) => ({
+          id: `auto-write-${i}`,
+          name: 'write_file',
+          arguments: { path: f.path, content: f.code }
+        }));
+        const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
+        if (hasHtml) {
+          toolCalls.push({
+            id: 'auto-preview',
+            name: 'preview_project',
+            arguments: { entryPoint: 'index.html' }
+          });
+        }
+        cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
+        messages.push({ role: 'assistant', content: cleanContent || 'Files generated.' });
+        totalToolCalls = MAX_TOOL_CALLS;
+      } else {
+        if (wantsWebsiteArtifact && !hasVisibleArtifact(ctx)) {
+          steps.push({
+            id: uid('step'),
+            type: 'error',
+            label: 'Missing website files',
+            status: 'error',
+            detail: 'The model described the website but did not provide code blocks or files.'
+          });
+          args.onStep([...steps]);
+          errorReason = 'The model did not produce website files.';
+          break;
+        }
+        messages.push({ role: 'assistant', content: rawContent });
+        finalContent = stripToolCallArtifacts(rawContent);
+        break;
+      }
+    } else if (nativeActive && !nativeFailed && completion.toolCalls?.length) {
       toolCalls = completion.toolCalls.map((tc: NativeToolCall) => ({ id: tc.id, name: tc.name, arguments: tc.arguments }));
       messages.push({
         role: 'assistant',
@@ -1122,25 +1174,20 @@ export async function runAgentTask(args: {
         tool_calls: toolCalls.map(tc => ({ id: tc.id!, type: 'function' as const, function: { name: tc.name, arguments: JSON.stringify(tc.arguments) } }))
       });
     } else {
-      // Fallback — parse content for tool calls when native API didn't provide them:
-      //   1. <tool_call> XML tags
-      //   2. ```tool_call code fences (Gemma 3, etc.)
-      //   3. ```html / ```css / ```js codeblocks → auto write_file
       const xmlResult = parseXmlToolCall(rawContent);
       if (xmlResult.toolCall) {
         toolCalls = [xmlResult.toolCall];
         cleanContent = stripToolCallArtifacts(xmlResult.cleanContent);
-        messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools…' });
+        messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
         if (nativeActive && !nativeFailed) nativeFailed = true;
       } else {
         const cbResult = parseToolCallCodeblocks(rawContent);
         if (cbResult.toolCalls.length) {
           toolCalls = cbResult.toolCalls;
           cleanContent = stripToolCallArtifacts(cbResult.cleanContent);
-          messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools…' });
+          messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
           if (nativeActive && !nativeFailed) nativeFailed = true;
         } else {
-          // No XML or codeblock tool calls — try extracting code blocks as file writes
           const codeblockFiles = parseCodeblockWrites(rawContent);
           if (codeblockFiles.length) {
             toolCalls = codeblockFiles.map((f, i) => ({
@@ -1164,104 +1211,69 @@ export async function runAgentTask(args: {
       }
     }
 
+    const parseMode = directMode ? 'codeblocks' : (nativeActive && !nativeFailed) ? 'native' : 'xml/codeblocks';
+    console.log(`[agent] parsed ${toolCalls.length} toolCalls from ${parseMode} mode${toolCalls.length ? ': ' + toolCalls.map(t => t.name).join(', ') : ''}`);
     thinkStep.status = 'done';
     thinkStep.detail = toolCalls.length ? `Using: ${toolCalls.map(t => t.name).join(', ')}` : 'Producing answer';
 
-    // If content exists alongside tool calls, show it as intermediate reasoning
-    if (toolCalls.length && cleanContent && cleanContent.length > 10) {
-      steps.push({
-        id: uid('step'), type: 'thinking', label: 'Reasoning',
-        status: 'done',
-        detail: cleanContent.length > 240 ? cleanContent.slice(0, 240) + '…' : cleanContent
-      });
+    if (toolCalls.length && cleanContent && cleanContent.length > 10 && !directMode) {
+      const trimmed = cleanContent.slice(0, 240).replace(/\|+$/g, '').trim();
+      if (trimmed) {
+        steps.push({
+          id: uid('step'), type: 'thinking', label: 'Reasoning',
+          status: 'done',
+          detail: trimmed.length < cleanContent.length ? trimmed + '\u2026' : trimmed
+        });
+      }
     }
 
     args.onStep([...steps]);
 
-    // No tools → final answer
     if (!toolCalls.length) {
-      args.onProgress?.('Producing final answer…');
       if (rawContent) {
+        if (wantsWebsiteArtifact && !hasVisibleArtifact(ctx)) {
+          if (!directMode) {
+            directMode = true;
+            messages[0] = { role: 'system', content: directSys };
+            messages.push({
+              role: 'user',
+              content: 'You must actually create the website files now. Output complete code blocks for index.html and any needed style.css or script.js. Do not say the work is done unless you provide the file contents.'
+            });
+            thinkStep.detail = 'Switching to direct website build mode';
+            args.onStep([...steps]);
+            continue;
+          }
+          steps.push({
+            id: uid('step'),
+            type: 'error',
+            label: 'Missing website files',
+            status: 'error',
+            detail: 'The model answered without creating previewable website files.'
+          });
+          args.onStep([...steps]);
+          errorReason = 'The model answered without creating website files.';
+          break;
+        }
+        args.onProgress?.('Producing final answer\u2026');
         finalContent = stripToolCallArtifacts(rawContent);
-        console.log(`[agent] iter=${iter + 1} final answer (no tools)`);
         break;
       }
-
-      // Empty response on first step → retry with simpler prompt
-      if (iter === 0) {
-        console.log('[agent] first step empty, retrying with simpler prompt');
-        thinkStep.detail = 'Retrying with simpler prompt…';
-        try {
-          const simpleMessages: RequestMessage[] = [
-            { role: 'system', content: 'You are a helpful assistant. Answer the user\'s question directly and concisely.' },
-            ...args.messages
-          ];
-          const retry = await completeAssistantReply({ messages: simpleMessages, signal: args.signal });
-          const retryContent = String(retry.content || '').trim();
-          if (retryContent) {
-            thinkStep.detail = 'Producing answer';
-            thinkStep.status = 'done';
-            args.onStep([...steps]);
-            // Retry succeeded — try to extract codeblocks as file writes
-            const codeblockFiles = parseCodeblockWrites(retryContent);
-            if (codeblockFiles.length) {
-              args.onProgress?.('Writing files from retry response…');
-              for (const f of codeblockFiles) {
-                const writeResult = await executeTool('write_file', { path: f.path, content: f.code }, ctx);
-                const toolStep: AgentStep = {
-                  id: uid('step'), type: 'coding', label: 'write file',
-                  status: writeResult.success ? 'done' : 'error',
-                  detail: f.path,
-                  output: writeResult.success ? `Wrote ${f.path} (${f.code.length} chars)` : writeResult.error
-                };
-                steps.push(toolStep);
-                args.onStep([...steps]);
-              }
-              // If HTML among files, auto preview
-              const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
-              if (hasHtml) {
-                args.onProgress?.('Building preview…');
-                const previewResult = await executeTool('preview_project', { entryPoint: 'index.html' }, ctx);
-                const previewStep: AgentStep = {
-                  id: uid('step'), type: 'preview', label: 'preview project',
-                  status: previewResult.success ? 'done' : 'error',
-                  detail: previewResult.success ? 'Preview ready' : previewResult.error
-                };
-                steps.push(previewStep);
-                args.onStep([...steps]);
-              }
-              const artifact = buildArtifact(ctx);
-              args.onArtifact(artifact);
-              // Set final content from retry text (strip code fences so user sees clean text)
-              finalContent = stripToolCallArtifacts(retryContent.replace(/```[\s\S]*?```/g, '').trim()) || 'Project files have been written.';
-              console.log('[agent] retry succeeded (codeblocks)');
-              break;
-            } else {
-              finalContent = stripToolCallArtifacts(retryContent);
-              console.log('[agent] retry succeeded (no codeblocks)');
-              break;
-            }
-          }
-        } catch (retryErr) {
-          console.warn('[agent] retry failed:', retryErr);
-        }
+      const synthesized = synthesizeArtifactCompletion(ctx);
+      if (synthesized && totalToolCalls > 0) {
+        finalContent = synthesized;
+        break;
       }
-
-      // Empty response without tool calls — likely a model/context issue
       steps.push({
         id: uid('step'), type: 'error', label: 'Empty response',
-        status: 'error', detail: 'The model returned an empty response. Context may be too long.'
+        status: 'error', detail: 'The model returned an empty response. The model may be temporarily unavailable or the prompt may exceed context capacity.'
       });
       args.onStep([...steps]);
       errorReason = 'The model returned an empty response.';
-      console.log(`[agent] iter=${iter + 1} empty response error`);
       break;
     }
 
-    totalToolCalls += toolCalls.length;
-    console.log(`[agent] iter=${iter + 1} tools=${toolCalls.length} total_tools=${totalToolCalls}`);
+    totalToolCalls += toolCalls.filter((toolCall) => toolCall.name !== 'preview_project').length;
 
-    // Hard limit on total tool calls
     if (totalToolCalls >= MAX_TOOL_CALLS) {
       steps.push({
         id: uid('step'), type: 'error', label: 'Tool limit reached',
@@ -1271,21 +1283,19 @@ export async function runAgentTask(args: {
       messages.push({ role: 'user', content: `You have used ${totalToolCalls} tools. You MUST stop using tools and provide your final answer now based on everything gathered.` });
       try {
         const fallback = await completeAssistantReply({ messages, signal: args.signal });
-        finalContent = String(fallback.content || '').trim() || 'The agent used many tools but could not synthesize a final answer.';
+        finalContent = String(fallback.content || '').trim() || synthesizeArtifactCompletion(ctx) || 'The agent used many tools but could not synthesize a final answer.';
       } catch {
-        finalContent = 'The agent used many tools but could not synthesize a final answer.';
+        finalContent = synthesizeArtifactCompletion(ctx) || 'The agent used many tools but could not synthesize a final answer.';
       }
       if (!finalContent) finalContent = 'The agent used many tools but could not synthesize a final answer.';
-      errorReason = errorReason || `Agent reached the tool call limit (${MAX_TOOL_CALLS}) without a clear final answer.`;
+      warningReason = warningReason || `Agent reached the tool call limit (${MAX_TOOL_CALLS}) and returned the best available result.`;
       break;
     }
 
-    // Iteration-aware urgency: after iteration 8, remind model to answer soon
     if (iter >= 8) {
       messages.push({ role: 'user', content: 'You are running out of steps. Provide your final answer in the next response. Do NOT call any more tools.' });
     }
 
-    // Stuck-loop detection (same tool 3 of last 5 calls)
     const sig = toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
     const toolNames = toolCalls.map(tc => tc.name);
     recentSigs.push(sig);
@@ -1305,175 +1315,143 @@ export async function runAgentTask(args: {
         break;
       }
     }
-    // Also detect 2-tool cycles (e.g., A→B→A→B→A)
     if (!stuckTool && recentNames.length >= 6) {
       const last6 = recentNames.slice(-6);
       const isTwoToolCycle = last6.length === 6 && new Set(last6).size === 2 &&
         last6[0] === last6[2] && last6[2] === last6[4] &&
         last6[1] === last6[3] && last6[3] === last6[5];
       if (isTwoToolCycle) {
-        stuckTool = `${last6[0]} ↔ ${last6[1]}`;
+        stuckTool = `${last6[0]} \u2194 ${last6[1]}`;
       }
     }
     if (stuckTool) {
       steps.push({
-        id: uid('step'), type: 'error', label: 'Loop detected — stopping',
+        id: uid('step'), type: 'error', label: 'Loop detected \u2014 stopping',
         status: 'error', detail: `Repeated calls to ${stuckTool}`
       });
       args.onStep([...steps]);
       messages.push({ role: 'user', content: `You have called "${stuckTool}" multiple times without making progress. Stop using tools and provide your best answer now based on what you know.` });
       try {
         const fallback = await completeAssistantReply({ messages, signal: args.signal });
-        finalContent = String(fallback.content || '').trim() || 'The agent encountered a loop and could not complete the task.';
+        finalContent = String(fallback.content || '').trim() || synthesizeArtifactCompletion(ctx) || 'The agent encountered a loop and could not complete the task.';
       } catch {
-        finalContent = 'The agent encountered a loop and could not complete the task.';
+        finalContent = synthesizeArtifactCompletion(ctx) || 'The agent encountered a loop and could not complete the task.';
       }
-      errorReason = 'Agent encountered a loop and could not complete the task.';
-      console.log(`[agent] loop detected: ${stuckTool}`);
+      warningReason = 'Agent encountered a loop and returned the best available result.';
       break;
     }
 
-    // Execute tool calls
-    for (const tc of toolCalls) {
-      args.onProgress?.(`Running ${tc.name.replace(/_/g, ' ')}…`);
-
-      const toolStep: AgentStep = {
-        id: uid('step'),
-        type: STEP_TYPE[tc.name] || 'tool',
-        label: tc.name.replace(/_/g, ' '),
-        status: 'running',
-        detail: Object.keys(tc.arguments).length
-          ? Object.entries(tc.arguments).slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(', ')
-          : undefined
-      };
-      steps.push(toolStep);
-      args.onStep([...steps]);
-
-      const result = await executeTool(tc.name, tc.arguments, ctx);
-      checkAbort();
-
-      // Process next-turn modifications
-      if (result.nextTurnMods?.disableNativeTools) {
-        nativeFailed = true;
-      }
-      if (result.nextTurnMods?.instructions) {
-        messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
-      }
-      if (result.nextTurnMods?.injectMessages) {
-        messages.push(...result.nextTurnMods.injectMessages);
-      }
-
-      // Collect web_search results as sources for display
-      if (tc.name === 'web_search' && result.success) {
-        const output = result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
-        let added = false;
-        for (const r of output?.results ?? []) {
-          if (r.url && !seenUrls.has(r.url)) {
-            seenUrls.add(r.url);
-            sources.push({ title: r.title || r.url, url: r.url, snippet: r.snippet || '' });
-            added = true;
-          }
-        }
-        if (added) args.onSources?.([...sources]);
-      }
-
-      toolStep.status = result.success ? 'done' : 'error';
-      if (!result.success && result.note) {
-        toolStep.detail = `${result.error} — ${result.note.slice(0, 120)}`;
-        toolStep.output = result.error;
-      } else if (!result.success) {
-        toolStep.detail = result.error?.slice(0, 200);
-        toolStep.output = result.error || '';
+    // Execute tool calls with parallel grouping
+    const groups = groupParallelAndSequential(toolCalls);
+    for (const group of groups) {
+      if (group.length === 1) {
+        // Single tool — execute directly
+        const tc = group[0];
+        await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, nativeActive, nativeFailed);
       } else {
-        toolStep.detail = undefined; // keep it clean on success
-        // Populate output with human-readable execution result
-        if (tc.name === 'run_code') {
-          const out = result.output as { result?: unknown; logs?: string[] };
-          const parts: string[] = [];
-          if (out.logs?.length) parts.push(out.logs.join('\n'));
-          if (out.result !== undefined) parts.push(`> ${JSON.stringify(out.result, null, 2)}`);
-          toolStep.output = parts.join('\n');
-          // Sync to sandbox terminal
-          sandboxStore.addEntry({ cmd: `python`, stdout: out.logs?.join('\n') || '', stderr: '', exitCode: result.success ? 0 : 1 });
-        } else if (tc.name === 'execute_command') {
-          const out = result.output as { stdout?: string; stderr?: string; exitCode?: number; timedOut?: boolean };
-          const parts: string[] = [];
-          if (out.stdout) parts.push(out.stdout);
-          if (out.stderr) parts.push(out.stderr);
-          if (out.exitCode === 0) parts.push('Command completed successfully');
-          else if (out.exitCode !== undefined) parts.push(`Exit code: ${out.exitCode}`);
-          if (out.timedOut) parts.push('⚠ Command timed out');
-          toolStep.output = parts.join('\n');
-          // Sync to sandbox terminal
-          sandboxStore.addEntry({ cmd: out.stdout?.split('\n')[0] || 'command', stdout: out.stdout || '', stderr: out.stderr || '', exitCode: out.exitCode, timedOut: out.timedOut });
-        } else {
-          // Generic fallback: show key fields from output
-          const out = result.output as Record<string, unknown> | undefined;
-          if (out && typeof out === 'object') {
-            const lines: string[] = [];
-            for (const [k, v] of Object.entries(out)) {
-              if (typeof v === 'string') lines.push(`${k}: ${v.slice(0, 200)}`);
+        // Multiple independent tools — execute in parallel
+        args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
+        const results = await Promise.allSettled(
+          group.map(async (tc) => {
+            const toolStep: AgentStep = {
+              id: uid('step'),
+              type: STEP_TYPE[tc.name] || 'tool',
+              label: tc.name.replace(/_/g, ' '),
+              status: 'running',
+              detail: tc.name === 'write_file'
+                ? `path: ${String(tc.arguments.path || '').slice(0, 120)}`
+                : Object.keys(tc.arguments).length
+                  ? Object.entries(tc.arguments).slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(', ')
+                  : undefined
+            };
+            return { tc, toolStep, result: await executeToolWithTimeout(tc.name, tc.arguments, ctx) };
+          })
+        );
+
+        // Process all results
+        for (const entry of results) {
+          if (entry.status === 'rejected') continue;
+          const { tc, toolStep, result } = entry.value;
+
+          if (result.nextTurnMods?.disableNativeTools) nativeFailed = true;
+          if (result.nextTurnMods?.instructions) {
+            messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
+          }
+          if (result.nextTurnMods?.injectMessages) {
+            messages.push(...result.nextTurnMods.injectMessages);
+          }
+
+          if (tc.name === 'web_search' && result.success) {
+            const output = result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
+            let added = false;
+            for (const r of output?.results ?? []) {
+              if (r.url && !seenUrls.has(r.url)) {
+                seenUrls.add(r.url);
+                sources.push({ title: r.title || r.url, url: r.url, snippet: r.snippet || '' });
+                added = true;
+              }
             }
-            toolStep.output = lines.join('\n') || JSON.stringify(out, null, 2);
+            if (added) args.onSources?.([...sources]);
+          }
+
+          toolStep.status = result.success ? 'done' : 'error';
+          if (!result.success && result.note) {
+            toolStep.detail = `${result.error} \u2014 ${result.note.slice(0, 120)}`;
+            toolStep.output = result.error;
+          } else if (!result.success) {
+            toolStep.detail = result.error?.slice(0, 200);
+            toolStep.output = result.error || '';
+          } else {
+            toolStep.detail = undefined;
+            const out = result.output as Record<string, unknown> | undefined;
+            if (out && typeof out === 'object') {
+              const lines: string[] = [];
+              for (const [k, v] of Object.entries(out)) {
+                if (typeof v === 'string') lines.push(`${k}: ${v.slice(0, 200)}`);
+              }
+              toolStep.output = lines.join('\n') || JSON.stringify(out, null, 2);
+            }
+          }
+
+          steps.push(toolStep);
+
+          const artifact = buildArtifact(ctx);
+          args.onArtifact(artifact);
+
+          let resultPayload = result.success
+            ? (result.note ? { ...result.output as object, _note: result.note } : result.output)
+            : { error: result.error, ...(result.note ? { note: result.note } : {}) };
+          const rawResultJson = JSON.stringify(resultPayload);
+          if (rawResultJson.length > MAX_TOOL_RESULT_CHARS) {
+            resultPayload = { _truncated: true, _summary: rawResultJson.slice(0, MAX_TOOL_RESULT_CHARS) + '\u2026(truncated)', _result: 'ok' };
+          }
+
+          if (nativeActive && !nativeFailed && tc.id) {
+            messages.push({ role: 'tool', content: JSON.stringify(resultPayload), tool_call_id: tc.id, name: tc.name });
+          } else {
+            messages.push({ role: 'user', content: `Tool result for ${tc.name}:\n${JSON.stringify(resultPayload, null, 2)}` });
           }
         }
-      }
-
-      // Update artifact whenever files change
-      const artifact = buildArtifact(ctx);
-      args.onArtifact(artifact);
-      args.onStep([...steps]);
-
-      // Push result into history
-      const resultPayload = result.success
-        ? (result.note ? { ...result.output as object, _note: result.note } : result.output)
-        : { error: result.error, ...(result.note ? { note: result.note } : {}) };
-
-      if (nativeActive && !nativeFailed && tc.id) {
-        messages.push({ role: 'tool', content: JSON.stringify(resultPayload), tool_call_id: tc.id, name: tc.name });
-      } else {
-        messages.push({ role: 'user', content: `Tool result for ${tc.name}:\n${JSON.stringify(resultPayload, null, 2)}` });
+        args.onStep([...steps]);
       }
     }
   }
 
-  // If we exhausted iterations without a final answer, ask for one explicitly
   if (!finalContent) {
-    args.onProgress?.('Asking for final answer (iteration limit reached)…');
-    try {
-      messages.push({ role: 'user', content: 'You have reached the iteration limit. Provide your final answer now based on everything gathered so far.' });
-      const fallback = await completeAssistantReply({ messages, signal: args.signal });
-    finalContent = stripToolCallArtifacts(String(fallback.content || '').trim());
-  } catch { /* ignore */ }
+    if (finalReasoning) {
+      finalContent = finalReasoning;
+      errorReason = errorReason || 'Agent could not synthesize a structured final answer, but produced reasoning.';
+    } else {
+      finalContent = 'The agent reached the iteration limit without producing a final answer. Try a more specific prompt or a model with better tool-calling capabilities.';
+      errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
+    }
   }
 
-  // Second fallback: strip context to essentials and ask again
-  if (!finalContent) {
-    try {
-      const lastUser = messages.filter(m => m.role === 'user').pop();
-      const strippedMessages: RequestMessage[] = [
-        messages[0], // system
-        ...(lastUser ? [lastUser] : []),
-        { role: 'user', content: 'Provide your final answer concisely.' }
-      ];
-      const fallback2 = await completeAssistantReply({ messages: strippedMessages, signal: args.signal });
-      finalContent = stripToolCallArtifacts(String(fallback2.content || '').trim());
-    } catch { /* ignore */ }
-  }
+  finalContent = sanitizeAgentVisibleText(finalContent);
+  finalReasoning = sanitizeAgentVisibleText(finalReasoning);
+  finalizeAgentSteps(steps, !!errorReason);
 
-  // Third fallback: use reasoning or partial data as answer
-  if (!finalContent && finalReasoning) {
-    finalContent = finalReasoning;
-    errorReason = errorReason || 'Agent could not synthesize a structured final answer, but produced reasoning.';
-    console.log('[agent] used reasoning as fallback answer');
-  }
-
-  if (!finalContent) {
-    finalContent = 'The agent completed all steps but did not produce a final answer.';
-    errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
-  }
-
-  console.log(`[agent] done content_len=${finalContent.length} error=${errorReason || 'none'} steps=${steps.length}`);
+  console.log(`[agent] EXIT | contentLen=${finalContent.length} | steps=${steps.length} | error=${errorReason || 'none'} | warning=${warningReason || 'none'}`);
 
   return {
     content: finalContent,
@@ -1481,6 +1459,98 @@ export async function runAgentTask(args: {
     steps,
     artifact: buildArtifact(ctx),
     sources,
-    ...(errorReason ? { error: errorReason } : {})
+    ...(errorReason ? { error: errorReason } : {}),
+    ...(warningReason ? { warning: warningReason } : {})
   };
+}
+
+async function executeSingleTool(
+  tc: ToolCall,
+  steps: AgentStep[],
+  ctx: ToolContext,
+  args: any,
+  messages: RequestMessage[],
+  sources: SearchResult[],
+  seenUrls: Set<string>,
+  nativeActive: boolean,
+  nativeFailed: boolean
+) {
+  args.onProgress?.(`Running ${tc.name.replace(/_/g, ' ')}\u2026`);
+
+  const toolStep: AgentStep = {
+    id: uid('step'),
+    type: STEP_TYPE[tc.name] || 'tool',
+    label: tc.name.replace(/_/g, ' '),
+    status: 'running',
+    detail: tc.name === 'write_file'
+      ? `path: ${String(tc.arguments.path || '').slice(0, 120)}`
+      : Object.keys(tc.arguments).length
+        ? Object.entries(tc.arguments).slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(', ')
+        : undefined
+  };
+  steps.push(toolStep);
+  args.onStep([...steps]);
+
+  const result = await executeToolWithTimeout(tc.name, tc.arguments, ctx);
+  ctx.signal?.throwIfAborted?.();
+
+  if (result.nextTurnMods?.disableNativeTools) {
+    nativeFailed = true;
+  }
+  if (result.nextTurnMods?.instructions) {
+    messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
+  }
+  if (result.nextTurnMods?.injectMessages) {
+    messages.push(...result.nextTurnMods.injectMessages);
+  }
+
+  if (tc.name === 'web_search' && result.success) {
+    const output = result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
+    let added = false;
+    for (const r of output?.results ?? []) {
+      if (r.url && !seenUrls.has(r.url)) {
+        seenUrls.add(r.url);
+        sources.push({ title: r.title || r.url, url: r.url, snippet: r.snippet || '' });
+        added = true;
+      }
+    }
+    if (added) args.onSources?.([...sources]);
+  }
+
+  toolStep.status = result.success ? 'done' : 'error';
+  if (!result.success && result.note) {
+    toolStep.detail = `${result.error} \u2014 ${result.note.slice(0, 120)}`;
+    toolStep.output = result.error;
+  } else if (!result.success) {
+    toolStep.detail = result.error?.slice(0, 200);
+    toolStep.output = result.error || '';
+  } else {
+    toolStep.detail = undefined;
+    const out = result.output as Record<string, unknown> | undefined;
+    if (out && typeof out === 'object') {
+      const lines: string[] = [];
+      for (const [k, v] of Object.entries(out)) {
+        if (typeof v === 'string') lines.push(`${k}: ${v.slice(0, 200)}`);
+      }
+      toolStep.output = lines.join('\n') || JSON.stringify(out, null, 2);
+    }
+  }
+
+  const artifact = buildArtifact(ctx);
+  args.onArtifact(artifact);
+  args.onStep([...steps]);
+
+  let resultPayload = result.success
+    ? (result.note ? { ...result.output as object, _note: result.note } : result.output)
+    : { error: result.error, ...(result.note ? { note: result.note } : {}) };
+  const rawResultJson = JSON.stringify(resultPayload);
+  if (rawResultJson.length > MAX_TOOL_RESULT_CHARS) {
+    resultPayload = { _truncated: true, _summary: rawResultJson.slice(0, MAX_TOOL_RESULT_CHARS) + '\u2026(truncated)', _result: 'ok' };
+  }
+
+  if (nativeActive && !nativeFailed && tc.id) {
+    messages.push({ role: 'tool', content: JSON.stringify(resultPayload), tool_call_id: tc.id, name: tc.name });
+  } else {
+    messages.push({ role: 'user', content: `Tool result for ${tc.name}:\n${JSON.stringify(resultPayload, null, 2)}` });
+  }
 }

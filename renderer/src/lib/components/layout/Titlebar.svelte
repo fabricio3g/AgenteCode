@@ -4,6 +4,8 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
+  import { Search, PanelLeftClose, PanelLeftOpen, MessageSquare } from 'lucide-svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   let isMaximized = $state(false);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
@@ -24,7 +26,43 @@
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
-  <div class="titlebar-left flex items-center {appStore.sidebarOpen ? '' : 'is-collapsed'}" style="width: {appStore.sidebarOpen ? '260px' : '56px'}; {isMac ? 'padding-left: 78px;' : ''}">
+  <div class="titlebar-left flex items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
+    <div class="titlebar-icon flex h-7 w-7 items-center justify-center">
+      <MessageSquare class="h-5 w-5 text-[var(--text)]" />
+    </div>
+    <Tooltip label="Search conversations">
+      <button
+        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+        onclick={() => (appStore.chatSearchOpen = true)}
+        aria-label="Search chats"
+        style="-webkit-app-region: no-drag"
+      >
+        <Search class="h-4 w-4" />
+      </button>
+    </Tooltip>
+    {#if appStore.sidebarOpen}
+      <Tooltip label="Hide sidebar">
+        <button
+          class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+          onclick={() => (appStore.sidebarOpen = false)}
+          aria-label="Hide sidebar"
+          style="-webkit-app-region: no-drag"
+        >
+          <PanelLeftClose class="h-4 w-4" />
+        </button>
+      </Tooltip>
+    {:else}
+      <Tooltip label="Show sidebar">
+        <button
+          class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+          onclick={() => (appStore.sidebarOpen = true)}
+          aria-label="Show sidebar"
+          style="-webkit-app-region: no-drag"
+        >
+          <PanelLeftOpen class="h-4 w-4" />
+        </button>
+      </Tooltip>
+    {/if}
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
@@ -68,17 +106,27 @@
   }
 
   .titlebar-left {
-    background: var(--sidebar-bg, var(--surface));
+    background: var(--titlebar-bg, var(--surface));
     flex-shrink: 0;
     padding-left: 14px;
     gap: 0;
-    overflow: hidden;
-    transition: width 0.15s ease, padding 0.15s ease;
   }
 
-  .titlebar-left.is-collapsed {
-    justify-content: center;
-    padding-left: 0;
+  .titlebar-icon {
+    flex-shrink: 0;
+  }
+
+  .titlebar-btn {
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .titlebar-btn:hover {
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
   .titlebar-right {

@@ -14,7 +14,7 @@ export async function refreshModelIndex(): Promise<number> {
   return invoke<number>('refresh_model_index');
 }
 
-export async function invalidateModelCache(path: string): Promise<void> {
+async function invalidateModelCache(path: string): Promise<void> {
   await invoke<void>('invalidate_model_cache', { path });
 }
 
@@ -40,7 +40,7 @@ export async function importLocalModel(
   });
 }
 
-export async function pickModelFile(): Promise<string | null> {
+async function pickModelFile(): Promise<string | null> {
   try {
     return await invoke<string>('pick_model_file');
   } catch {

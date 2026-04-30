@@ -11,7 +11,7 @@ export interface ValidationError {
   message: string;
 }
 
-export enum BuiltinActionType {
+enum BuiltinActionType {
   ContinueConversation = 'continue_conversation',
   OpenUrl = 'open_url'
 }

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 
 let db = null;
 
@@ -183,7 +183,7 @@ export function saveChatSession(session) {
         msg.status || 'idle',
         msg.searchMode || null,
         msg.mode || null,
-        msg.agentTaskId || null,
+        null,
         msg.activeVersion != null ? msg.activeVersion : null,
         msg.ttsAudio ? JSON.stringify(msg.ttsAudio) : null
       );
@@ -278,7 +278,6 @@ export function loadAllChats() {
       if (msg.model) result.model = msg.model;
       if (msg.search_mode) result.searchMode = msg.search_mode;
       if (msg.mode) result.mode = msg.mode;
-      if (msg.agent_task_id) result.agentTaskId = msg.agent_task_id;
       if (msg.active_version != null) result.activeVersion = msg.active_version;
       if (msg.tts_audio) {
         try { result.ttsAudio = JSON.parse(msg.tts_audio); } catch { /* ignore parse errors */ }
@@ -375,7 +374,7 @@ export function saveRagDocument(doc) {
   `).run(doc.id, doc.chat_id, doc.source, doc.file_type, doc.chunk_count, doc.char_count, doc.fingerprint, doc.created_at, doc.updated_at);
 }
 
-export function listRagDocumentsDb(chatId) {
+function listRagDocumentsDb(chatId) {
   const database = getDb();
   return database.prepare('SELECT * FROM rag_documents WHERE chat_id = ? ORDER BY created_at DESC').all(chatId);
 }

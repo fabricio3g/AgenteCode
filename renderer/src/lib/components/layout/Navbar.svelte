@@ -8,6 +8,7 @@
   import { isTauri } from '$lib/services/tauri';
   import { writeTempFile } from '$lib/services/files';
   import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
   const hasMessages = $derived((appStore.currentChat?.messages?.length || 0) > 0);
   const hasArtifact = $derived(!!appStore.currentArtifact);
@@ -56,8 +57,8 @@
 <header class="navbar sticky top-0 z-30 w-full">
   <div class="navbar-inner relative flex h-11 items-center justify-between px-2 md:px-3">
     <div class="flex items-center gap-1">
-      <button class="nav-btn invisible p-2" aria-hidden="true" tabindex="-1">
-        <PanelLeftClose class="h-5 w-5" />
+      <button class="nav-btn invisible flex h-8 w-8 items-center justify-center" aria-hidden="true" tabindex="-1">
+        <PanelLeftClose class="h-4 w-4" />
       </button>
     </div>
 
@@ -67,35 +68,41 @@
 
     <div class="flex items-center gap-0.5">
       {#if hasArtifact}
-        <button
-          class="nav-btn p-2 {appStore.sandboxOpen ? 'is-active' : ''}"
-          onclick={() => (appStore.sandboxOpen = !appStore.sandboxOpen)}
-          aria-label="Toggle code sandbox"
-          title="Toggle code sandbox"
-        >
-          <Code2 class="h-5 w-5" />
-        </button>
+        <Tooltip label="Toggle code sandbox" position="left">
+          <button
+            class="nav-btn flex h-8 w-8 items-center justify-center {appStore.sandboxOpen ? 'is-active' : ''}"
+            onclick={() => (appStore.sandboxOpen = !appStore.sandboxOpen)}
+            aria-label="Toggle code sandbox"
+          >
+            <Code2 class="h-4 w-4" />
+          </button>
+        </Tooltip>
       {/if}
       {#if hasMessages}
-        <button
-          class="nav-btn p-2"
-          onclick={exportCurrentChat}
-          aria-label="Export chat"
-          title="Export chat"
-        >
-          <FileDown class="h-5 w-5" />
-        </button>
+        <Tooltip label="Export chat" position="left">
+          <button
+            class="nav-btn flex h-8 w-8 items-center justify-center"
+            onclick={exportCurrentChat}
+            aria-label="Export chat"
+          >
+            <FileDown class="h-4 w-4" />
+          </button>
+        </Tooltip>
       {/if}
-      <button class="nav-btn p-2" onclick={() => themeStore.toggle()} aria-label="Toggle theme" title="Toggle theme">
-        {#if themeStore.current === 'dark'}
-          <SunMedium class="h-5 w-5" />
-        {:else}
-          <MoonStar class="h-5 w-5" />
-        {/if}
-      </button>
-      <button class="nav-btn p-2" onclick={() => (appStore.llmDrawerOpen = true)} aria-label="LLM settings" title="Settings">
-        <SlidersHorizontal class="h-5 w-5" />
-      </button>
+      <Tooltip label="Toggle theme" position="left">
+        <button class="nav-btn flex h-8 w-8 items-center justify-center" onclick={() => themeStore.toggle()} aria-label="Toggle theme">
+          {#if themeStore.current === 'dark'}
+            <SunMedium class="h-4 w-4" />
+          {:else}
+            <MoonStar class="h-4 w-4" />
+          {/if}
+        </button>
+      </Tooltip>
+      <Tooltip label="LLM settings" position="left">
+        <button class="nav-btn flex h-8 w-8 items-center justify-center" onclick={() => (appStore.llmDrawerOpen = true)} aria-label="LLM settings">
+          <SlidersHorizontal class="h-4 w-4" />
+        </button>
+      </Tooltip>
     </div>
   </div>
 </header>
@@ -103,7 +110,7 @@
 <style>
   .navbar {
     background: var(--background);
-    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-2xl) 0 0 0;
   }
 
   .nav-btn {

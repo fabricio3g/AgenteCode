@@ -52,6 +52,6 @@ export async function clearRagDocuments(chat_id: string): Promise<void> {
   await invoke<void>('clear_rag_documents', { payload: { chat_id } });
 }
 
-export async function hasRagDocuments(chat_id: string): Promise<boolean> {
+async function hasRagDocuments(chat_id: string): Promise<boolean> {
   return invoke<boolean>('has_rag_documents', { payload: { chat_id } });
 }

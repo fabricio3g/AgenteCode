@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { getEmbeddingStatus } from './llm-runner.ts';
+import { getEmbeddingStatus } from './embedding-state.ts';
 
 const embeddingCache = new Map();
 const MAX_CACHE_SIZE = 5000;
@@ -107,7 +107,7 @@ export async function getEmbeddings(texts) {
   return results;
 }
 
-export function cosineSimilarity(a, b) {
+function cosineSimilarity(a, b) {
   if (!a || !b || a.length !== b.length || a.length === 0) return 0;
   let dot = 0;
   let normA = 0;

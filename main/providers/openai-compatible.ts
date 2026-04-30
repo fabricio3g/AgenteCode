@@ -2,19 +2,12 @@ import OpenAI from 'openai';
 import { BaseProvider } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
-/**
- * Generic OpenAI-compatible provider fallback.
- * Uses the official OpenAI SDK with a custom baseURL.
- * Handles DeepSeek, Together AI, Fireworks, Perplexity,
- * LM Studio, Ollama, and any other OpenAI-compatible API.
- */
 export class OpenAICompatibleProvider extends BaseProvider {
   name = 'openai_compatible';
   label = 'OpenAI Compatible';
   supportsStreaming = true;
 
   detect(_providerName, _baseUrl) {
-    // Always matches as last resort
     return true;
   }
 
@@ -29,7 +22,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const stream = await client.chat.completions.create({
@@ -38,22 +31,32 @@ export class OpenAICompatibleProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: true
-    });
+    }, { signal });
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (content || reasoning) {
+      const toolCallDeltas = delta.tool_calls;
+
+      if (content || reasoning || toolCallDeltas) {
         yield {
           content: content ?? '',
-          reasoning: reasoning ?? ''
+          reasoning: reasoning ?? '',
+          ...(toolCallDeltas ? {
+            toolCallDeltas: toolCallDeltas.map(tc => ({
+              index: tc.index ?? 0,
+              id: tc.id ?? undefined,
+              name: tc.function?.name ?? undefined,
+              arguments: tc.function?.arguments ?? undefined
+            }))
+          } : {})
         };
       }
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const response = await client.chat.completions.create({
@@ -62,7 +65,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: false
-    });
+    }, { signal });
 
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};

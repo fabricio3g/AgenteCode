@@ -44,7 +44,7 @@ export async function webSearch(args: {
   });
 }
 
-export async function ingestSearchContext(chatId: string, context: string, sources: Array<{ title: string; url: string; snippet: string }>): Promise<number> {
+async function ingestSearchContext(chatId: string, context: string, sources: Array<{ title: string; url: string; snippet: string }>): Promise<number> {
   return invoke<number>('ingest_search_context', {
     chatId,
     context,
@@ -64,7 +64,7 @@ export async function hfRepoGguf(repo_id: string): Promise<unknown> {
   return invoke<unknown>('hf_repo_gguf', { repoId: repo_id });
 }
 
-export async function openUrlWindow(url: string): Promise<void> {
+async function openUrlWindow(url: string): Promise<void> {
   await invoke<void>('open_url_window', { url });
 }
 

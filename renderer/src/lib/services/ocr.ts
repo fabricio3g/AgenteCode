@@ -277,7 +277,7 @@ class OcrEngine {
   }
 }
 
-export const ocrEngine = new OcrEngine();
+const ocrEngine = new OcrEngine();
 
 /**
  * Process a file for text extraction — auto-selects best method:

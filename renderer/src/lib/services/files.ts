@@ -29,7 +29,7 @@ export async function writeTempFile(name: string, data: Uint8Array): Promise<str
   return invoke<string>('write_temp_file', { name, data: Array.from(data) });
 }
 
-export async function resetMediaPermissions(): Promise<{ removed: string[]; failed: string[] }> {
+async function resetMediaPermissions(): Promise<{ removed: string[]; failed: string[] }> {
   return invoke<{ removed: string[]; failed: string[] }>('reset_media_permissions');
 }
 
@@ -49,7 +49,7 @@ export async function writeWorkspaceFile(workspaceRoot: string, relativePath: st
   return invoke<string>('write_workspace_file', { workspaceRoot, relativePath, content });
 }
 
-export async function workspaceExec(payload: {
+async function workspaceExec(payload: {
   workspace_root: string;
   command: string;
   args?: string[];

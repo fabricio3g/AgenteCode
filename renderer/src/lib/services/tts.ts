@@ -56,7 +56,7 @@ export function onTtsDone(cb: (evt: any) => void): () => void {
   });
 }
 
-export async function initWorker(): Promise<string[]> {
+async function initWorker(): Promise<string[]> {
   const voices = await invoke<string[]>('list_tts_voices');
   if (voices?.length) return voices;
   // Trigger init

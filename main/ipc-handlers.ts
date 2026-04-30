@@ -1,5 +1,5 @@
 import { ipcMain, shell } from 'electron';
-import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './index.ts';
+import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.ts';
 import { getHardwareLimits, getSystemInfo } from './system-info.ts';
 import {
@@ -35,11 +35,7 @@ import {
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
   resetMediaPermissions, downloadRuntime
 } from './workspace.ts';
-import {
-  agentStartTask, agentUpdateTask, agentCancelTask,
-  agentGetTask, agentListTasks, agentDeleteTask, agentClearHistory,
-  agentRunner
-} from './agent-manager.ts';
+
 import { sandboxExec } from './sandbox.ts';
 import {
   browserNavigate, browserSnapshot, browserClick, browserTypeText,
@@ -120,8 +116,7 @@ export function registerIpcHandlers() {
     audio_recording: true,
     rag_indexing: true,
     web_search: true,
-    sandbox_exec: true,
-    agent_runtime: true
+    sandbox_exec: true
   }));
 
   // ── Config ──
@@ -258,6 +253,20 @@ export function registerIpcHandlers() {
     return result;
   });
 
+  // ── Tool support detection (probes API or reads GGUF metadata) ──
+  ipcMain.handle('detect_tool_support', async (_e, { baseUrl, apiKey, providerName, model, modelPath }) => {
+    const provider = resolveProvider(providerName, baseUrl);
+    const realKey = resolveApiKey(apiKey, baseUrl, providerName);
+    const result = await provider.checkToolSupport({
+      baseUrl,
+      apiKey: realKey,
+      model,
+      modelPath,
+      providerName
+    });
+    return result;
+  });
+
   // ── Chat (main-process network for API key safety) ──
   ipcMain.handle('chat_complete', (_e, args) => completeChatRequest(args));
   ipcMain.handle('chat_stream_start', (_e, args) => startChatStream(args, getMainWindow()));
@@ -357,14 +366,6 @@ export function registerIpcHandlers() {
   ipcMain.handle('workspace_exec', (_e, payload) => workspaceExec(payload));
   ipcMain.handle('write_temp_file', (_e, { name, data }) => writeTempFile(name, data));
   ipcMain.handle('reset_media_permissions', () => resetMediaPermissions());
-
-  // ── Agent tasks ──
-  ipcMain.handle('agent_start_task', (_e, args) => agentStartTask(args));
-  ipcMain.handle('agent_update_task', (_e, args) => agentUpdateTask(args));
-  ipcMain.handle('agent_cancel_task', (_e, { taskId }) => agentCancelTask(taskId));
-  ipcMain.handle('agent_get_task', (_e, { taskId }) => agentGetTask(taskId));
-  ipcMain.handle('agent_list_tools', () => agentRunner.listTools());
-  ipcMain.handle('agent_toggle_tool', (_e, { toolName, enabled }) => agentRunner.toggleTool(toolName, enabled));
 
   // ── Sandbox ──
   ipcMain.handle('sandbox_exec', (_e, args) => sandboxExec(args));

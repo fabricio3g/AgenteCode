@@ -1,7 +1,6 @@
 import type { AgentArtifact, AgentStep, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceContext, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runAgentTask } from '$lib/services/agent';
-import { startManagedAgentTask, updateManagedAgentTask, cancelManagedAgentTask } from '$lib/services/agent-runtime';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
@@ -14,8 +13,9 @@ import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { RequestMessage } from '$lib/services/chat-api';
-import { completeAssistantReply, fetchModels, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
+import { completeAssistantReply, detectToolSupport, fetchModels, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
+import { isSimpleArtifact } from '$lib/utils/preview-builder';
 
 interface PersistedState {
   chats: ChatSession[];
@@ -296,7 +296,6 @@ function normalizeMessage(message: Partial<ChatMessage>, index: number): ChatMes
     searchMode: resolveLegacySearchMode(message),
     slides: Array.isArray(message.slides) ? message.slides : [],
     mode: message.mode || (((message as Partial<ChatMessage> & { agent?: boolean }).agent) ? 'agent' : 'chat'),
-    agentTaskId: message.agentTaskId || null,
     agentSteps: Array.isArray(message.agentSteps) ? message.agentSteps : [],
     artifact: message.artifact || null,
     workContext: message.workContext || null
@@ -371,7 +370,6 @@ class AppStore {
   apiModelMetadataByKey = $state<Record<string, ApiModelMetadata>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
-  activeManagedAgentTaskId = $state<string | null>(null);
   localModelLoadTarget = $state<({ id: string; name: string; path?: string; details?: string; context_length?: number }) | null>(null);
   localModelLoadContextLength = $state('4096');
   localModelLoadGpuLayers = $state('0');
@@ -990,6 +988,9 @@ class AppStore {
         hasMmproj: !!(this.localModelLoadMmprojPath),
       };
       toastStore.success(`Model loaded: ${this.localModelLoadTarget?.name || 'local model'}`);
+      if (isTauri()) {
+        detectToolSupport().catch(() => {});
+      }
       this.localModelLoadTarget = null;
     } finally {
       this.localModelLoading = false;
@@ -1048,6 +1049,9 @@ class AppStore {
     }
 
     void withTimeout(this.refreshModels(), 2500, undefined);
+    if (isTauri()) {
+      void detectToolSupport().catch(() => {});
+    }
     if (isTauri()) {
       void Promise.allSettled([
         withTimeout(modelsStore.refreshIndex(), 2500, undefined),
@@ -1262,7 +1266,7 @@ class AppStore {
     return message;
   }
 
-  private touchChats() {
+  touchChats() {
     this.chats = [...this.chats];
   }
 
@@ -1899,12 +1903,11 @@ Design rules:
       createdAt: Date.now(),
       done: false,
       status: 'streaming',
-      model: this.activeProvider?.model || undefined,
+      model: this.activeModelLabel,
       versions: [],
       activeVersion: 0,
       searchMode: this.searchMode,
       mode: this.composerMode,
-      agentTaskId: null,
       reasoning: '',
       workContext,
       agentSteps: this.composerMode === 'agent'
@@ -1955,7 +1958,6 @@ Design rules:
     }
 
     try {
-      let managedTaskId: string | null = null;
       let searchContext = '';
       let sources: ChatMessage['sources'] = [];
       let searchMeta: SearchMeta | null = null;
@@ -2037,18 +2039,6 @@ Design rules:
       assistantMessage.sources = sources;
       assistantMessage.searchMeta = searchMeta;
       assistantMessage.ragDocuments = ragDocuments;
-      if (assistantMessage.mode === 'agent') {
-        const steps: AgentStep[] = [];
-        steps.push({ id: createId('step'), type: 'thinking', label: 'Planning', status: 'done', detail: 'Context prepared' });
-        if (sources.length) {
-          steps.push({ id: createId('step'), type: 'searching', label: 'Web search', status: 'done', detail: `${sources.length} source${sources.length === 1 ? '' : 's'} gathered` });
-        }
-        if (ragDocuments.length) {
-          steps.push({ id: createId('step'), type: 'reading', label: 'Documents', status: 'done', detail: `${ragDocuments.length} document${ragDocuments.length === 1 ? '' : 's'} loaded` });
-        }
-        steps.push({ id: createId('step'), type: 'coding', label: 'Drafting answer', status: 'running', detail: 'Streaming response' });
-        assistantMessage.agentSteps = steps;
-      }
       syncMsg(); // push initial metadata (sources, searchMeta) to the reactive array
 
       const requestMessages: RequestMessage[] = this.currentChat.messages
@@ -2090,13 +2080,14 @@ Design rules:
           : searchSystemPrefix;
       }
 
-      // Chart rendering capability hint
-      const chartHint = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
-        '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
-        '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
-        '</chart>\n' +
-        'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
-      systemPrompt = systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
+      if (activeComposerMode !== 'agent') {
+        const chartHint = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
+          '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
+          '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
+          '</chart>\n' +
+          'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
+        systemPrompt = systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
+      }
 
       const outboundMessages: RequestMessage[] = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...requestMessages]
@@ -2126,28 +2117,6 @@ Design rules:
       }
 
       if (activeComposerMode === 'agent' && targetChatId) {
-        if (isTauri()) {
-          try {
-            const managedTask = await startManagedAgentTask({
-              chatId: targetChatId,
-              prompt: content,
-              mode: activeComposerMode,
-              searchMode: activeSearchMode,
-              workContext: workContext ? { ...workContext } : null,
-              metadata: {
-                messageId: assistantMessage.id,
-                chatTitle: targetChatTitle
-              }
-            });
-            managedTaskId = managedTask.id;
-            this.activeManagedAgentTaskId = managedTask.id;
-            assistantMessage.agentTaskId = managedTask.id;
-            syncMsg();
-          } catch (managedTaskError) {
-            console.warn('[agent-runtime] Failed to start managed task, continuing with in-memory agent only', managedTaskError);
-          }
-        }
-
         const agentResult = await runAgentTask({
           chatId: targetChatId,
           systemPrompt,
@@ -2161,15 +2130,6 @@ Design rules:
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
             syncMsg();
-            if (managedTaskId) {
-              void updateManagedAgentTask({
-                taskId: managedTaskId,
-                status: steps.some((step) => step.status === 'error') ? 'failed' : 'running',
-                steps
-              }).catch((error) => {
-                console.warn('[agent-runtime] Failed to sync step update', error);
-              });
-            }
           },
           onProgress: (text) => {
             // Show live progress in the message body while agent works
@@ -2185,20 +2145,8 @@ Design rules:
           onArtifact: (artifact) => {
             assistantMessage.artifact = artifact;
             syncMsg();
-            if (artifact && !this.sandboxOpen) {
-              this.sandboxOpen = true; // auto-open sandbox when files are created
-            }
             if (artifact || this.currentArtifactMessageId === assistantMessage.id) {
-              this.setCurrentArtifact(artifact, assistantMessage.id, !!artifact);
-            }
-            if (managedTaskId) {
-              void updateManagedAgentTask({
-                taskId: managedTaskId,
-                artifact,
-                steps: assistantMessage.agentSteps
-              }).catch((error) => {
-                console.warn('[agent-runtime] Failed to sync artifact update', error);
-              });
+              this.setCurrentArtifact(artifact, assistantMessage.id, !!artifact && !isSimpleArtifact(artifact));
             }
           },
           onSources: (liveSources) => {
@@ -2241,14 +2189,9 @@ Design rules:
             timing: 0,
             tokensPerSecond: 0
           };
-          console.warn('[agent-runtime]', agentResult.warning);
+          console.warn('[agent]', agentResult.warning);
         } else {
-          // Normal success
           assistantMessage.content = agentResult.content;
-          assistantMessage.done = true;
-          if (assistantMessage.status !== 'error') {
-            assistantMessage.status = 'idle';
-          }
         }
         assistantMessage.reasoning = agentResult.reasoning;
         assistantMessage.agentSteps = agentResult.steps;
@@ -2265,25 +2208,9 @@ Design rules:
         }
         syncMsg();
         if (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id) {
-          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id, !!agentResult.artifact);
+          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id, !!agentResult.artifact && !isSimpleArtifact(agentResult.artifact));
         }
         tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
-        if (managedTaskId) {
-          await updateManagedAgentTask({
-            taskId: managedTaskId,
-            status: 'completed',
-            content: agentResult.content,
-            reasoning: agentResult.reasoning,
-            artifact: agentResult.artifact,
-            steps: agentResult.steps,
-            metadata: {
-              model: this.activeModelLabel,
-              tokenCount
-            }
-          }).catch((error) => {
-            console.warn('[agent-runtime] Failed to finalize managed task', error);
-          });
-        }
         if (activeContextMode === 'work' && activeWorkspace?.rootPath && this.currentChatId === targetChatId) {
           void this.refreshWorkspace();
         }
@@ -2418,9 +2345,6 @@ Design rules:
 
       syncMsg();
       this.persist();
-      if (assistantMessage.agentTaskId && this.activeManagedAgentTaskId === assistantMessage.agentTaskId) {
-        this.activeManagedAgentTaskId = null;
-      }
 
       if (this.config.tts?.enable_voice_output && this.config.tts?.auto_play_voice && assistantMessage.content) {
         try {
@@ -2471,31 +2395,11 @@ Design rules:
       }
       this.error = aborted ? null : assistantMessage.content;
       userMessage.attachments = sentAttachments;
-      if (!aborted && assistantMessage.agentTaskId) {
-        await updateManagedAgentTask({
-          taskId: assistantMessage.agentTaskId,
-          status: 'failed',
-          content: assistantMessage.content,
-          reasoning: assistantMessage.reasoning,
-          error: assistantMessage.content,
-          artifact: assistantMessage.artifact,
-          steps: assistantMessage.agentSteps,
-          metadata: {
-            model: this.activeModelLabel,
-            failed: true
-          }
-        }).catch((managedTaskError) => {
-          console.warn('[agent-runtime] Failed to mark managed task as failed', managedTaskError);
-        });
-      }
       syncMsg();
       this.persist();
     } finally {
       this.loading = false;
       this.abortController = null;
-      if (assistantMessage.agentTaskId && this.activeManagedAgentTaskId === assistantMessage.agentTaskId) {
-        this.activeManagedAgentTaskId = null;
-      }
     }
   }
 
@@ -2520,12 +2424,6 @@ Design rules:
       }
     }
     deepResearchStore.cancelActiveTask();
-    if (this.activeManagedAgentTaskId && isTauri()) {
-      void cancelManagedAgentTask(this.activeManagedAgentTaskId).catch((error) => {
-        console.warn('[agent-runtime] Failed to cancel managed task', error);
-      });
-      this.activeManagedAgentTaskId = null;
-    }
     // Exit voice mode when user explicitly cancels generation
     if (this.voiceModeActive) {
       this.voiceModeActive = false;
@@ -2606,7 +2504,6 @@ Design rules:
     message.done = false;
     message.status = 'streaming';
     if (message.mode === 'agent') {
-      message.agentTaskId = null;
       message.agentSteps = [
         { id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: 'Preparing tools and context' }
       ];
@@ -2619,7 +2516,6 @@ Design rules:
     this.persist();
 
     try {
-      let managedTaskId: string | null = null;
       const systemPrompt = this.backendMode === 'local'
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
         : (this.activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
@@ -2628,33 +2524,6 @@ Design rules:
         : previousMessages;
 
       if (message.mode === 'agent' && this.currentChatId) {
-        if (isTauri()) {
-          try {
-            const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-            const managedTask = await startManagedAgentTask({
-              chatId: this.currentChatId,
-              prompt: rawPrompt,
-              mode: message.mode,
-              searchMode: message.searchMode,
-              workContext: message.workContext ? { ...message.workContext } : null,
-              metadata: {
-                messageId: message.id,
-                regeneration: true
-              }
-            });
-            managedTaskId = managedTask.id;
-            message.agentTaskId = managedTask.id;
-            this.activeManagedAgentTaskId = managedTask.id;
-            this.touchChats();
-          } catch (managedTaskError) {
-            console.warn('[agent-runtime] Failed to start managed task for regeneration', managedTaskError);
-          }
-        }
-
-        if (managedTaskId) {
-          this.activeManagedAgentTaskId = managedTaskId;
-        }
-
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const agentResult = await runAgentTask({
           chatId: this.currentChatId,
@@ -2669,15 +2538,6 @@ Design rules:
           onStep: (steps) => {
             message.agentSteps = steps;
             this.touchChats();
-            if (managedTaskId) {
-              void updateManagedAgentTask({
-                taskId: managedTaskId,
-                status: steps.some((step) => step.status === 'error') ? 'failed' : 'running',
-                steps
-              }).catch((managedTaskError) => {
-                console.warn('[agent-runtime] Failed to sync regenerated task steps', managedTaskError);
-              });
-            }
           },
           onProgress: (text) => {
             if (!message.content || message.content.startsWith('Planning') || message.content.endsWith('…')) {
@@ -2692,22 +2552,10 @@ Design rules:
           },
           onArtifact: (artifact) => {
             message.artifact = artifact;
-            if (artifact && !this.sandboxOpen) {
-              this.sandboxOpen = true;
-            }
             if (artifact || this.currentArtifactMessageId === message.id) {
-              this.setCurrentArtifact(artifact, message.id, !!artifact);
+              this.setCurrentArtifact(artifact, message.id, !!artifact && !isSimpleArtifact(artifact));
             }
             this.touchChats();
-            if (managedTaskId) {
-              void updateManagedAgentTask({
-                taskId: managedTaskId,
-                artifact,
-                steps: message.agentSteps
-              }).catch((managedTaskError) => {
-                console.warn('[agent-runtime] Failed to sync regenerated task artifact', managedTaskError);
-              });
-            }
           },
           onSources: (liveSources) => {
             const existingUrls = new Set((message.sources || []).map((s) => s.url));
@@ -2721,7 +2569,6 @@ Design rules:
             }
           }
         });
-        // Handle agent result - check for errors or warnings
         if (agentResult.error) {
           nextVersion.content = agentResult.content || agentResult.error;
           message.content = agentResult.content || agentResult.error;
@@ -2744,7 +2591,6 @@ Design rules:
             timing: 0,
             tokensPerSecond: 0
           };
-          console.warn('[agent-runtime]', agentResult.warning);
         } else {
           nextVersion.content = agentResult.content;
           message.content = agentResult.content;
@@ -2762,26 +2608,9 @@ Design rules:
           }
         }
         if (agentResult.artifact || this.currentArtifactMessageId === message.id) {
-          this.setCurrentArtifact(agentResult.artifact, message.id, !!agentResult.artifact);
+          this.setCurrentArtifact(agentResult.artifact, message.id, !!agentResult.artifact && !isSimpleArtifact(agentResult.artifact));
         }
         tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
-        if (managedTaskId) {
-          await updateManagedAgentTask({
-            taskId: managedTaskId,
-            status: 'completed',
-            content: agentResult.content,
-            reasoning: agentResult.reasoning,
-            artifact: agentResult.artifact,
-            steps: agentResult.steps,
-            metadata: {
-              model: this.activeModelLabel,
-              tokenCount,
-              regeneration: true
-            }
-          }).catch((managedTaskError) => {
-            console.warn('[agent-runtime] Failed to finalize regenerated managed task', managedTaskError);
-          });
-        }
         if (this.currentContextMode === 'work' && this.currentChat?.workspace?.rootPath) {
           void this.refreshWorkspace();
         }
@@ -2847,9 +2676,6 @@ Design rules:
       }
       this.touchChats();
       this.persist();
-      if (message.agentTaskId && this.activeManagedAgentTaskId === message.agentTaskId) {
-        this.activeManagedAgentTaskId = null;
-      }
     } catch (error) {
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
@@ -2869,24 +2695,6 @@ Design rules:
       message.done = true;
       message.status = aborted ? 'idle' : 'error';
       this.error = aborted ? null : failure;
-      if (!aborted && message.agentTaskId) {
-        await updateManagedAgentTask({
-          taskId: message.agentTaskId,
-          status: 'failed',
-          content: message.content,
-          reasoning: message.reasoning,
-          error: failure,
-          artifact: message.artifact,
-          steps: message.agentSteps,
-          metadata: {
-            model: this.activeModelLabel,
-            failed: true,
-            regeneration: true
-          }
-        }).catch((managedTaskError) => {
-          console.warn('[agent-runtime] Failed to mark regenerated managed task as failed', managedTaskError);
-        });
-      }
       if (aborted && message.mode === 'agent' && message.agentSteps?.length) {
         message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
           if (stepIndex === all.length - 1 && step.status === 'running') {
@@ -2900,9 +2708,6 @@ Design rules:
     } finally {
       this.loading = false;
       this.abortController = null;
-      if (message.agentTaskId && this.activeManagedAgentTaskId === message.agentTaskId) {
-        this.activeManagedAgentTaskId = null;
-      }
     }
   }
 
@@ -3011,6 +2816,9 @@ Design rules:
     this.config = next;
     await saveAppConfig(next);
     await this.refreshModels();
+    if (isTauri()) {
+      detectToolSupport().catch(() => {});
+    }
     if (isTauri() && next.llm?.backend_mode === 'local') {
       await modelsStore.refreshStatus();
     }

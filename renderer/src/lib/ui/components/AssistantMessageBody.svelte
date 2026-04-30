@@ -6,7 +6,6 @@
   import { AlertCircle } from 'lucide-svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import DeepResearchWidget from '$lib/components/search/DeepResearchWidget.svelte';
-  import AgentRuntimeBlock from './AgentRuntimeBlock.svelte';
   import AgentTimeline from './AgentTimeline.svelte';
   import SourcesBlock from './SourcesBlock.svelte';
   import SearchStatusBlock from './SearchStatusBlock.svelte';
@@ -46,15 +45,6 @@
     return !!task && task.messageId === message.id;
   });
 
-  const hasAgentRuntime = $derived(
-    message.mode === 'agent' ||
-    message.status === 'streaming' ||
-    !!message.agentTaskId ||
-    !!message.agentSteps?.length ||
-    !!message.artifact ||
-    !!message.workContext
-  );
-
   const hasSources = $derived((message.sources?.length || 0) > 0);
   const hasSearchStatus = $derived(
     !!displaySearchMeta && (
@@ -72,19 +62,8 @@
   <DeepResearchWidget messageId={message.id} />
 {/if}
 
-{#if hasAgentRuntime}
-  <AgentRuntimeBlock
-    mode={message.mode}
-    messageStatus={message.status}
-    agentTaskId={message.agentTaskId}
-    stepCount={message.agentSteps?.length || 0}
-    hasArtifact={!!message.artifact}
-    workspaceBound={!!message.workContext}
-  />
-{/if}
-
 {#if message.agentSteps?.length}
-  <AgentTimeline steps={message.agentSteps} managed={!!message.agentTaskId} />
+  <AgentTimeline steps={message.agentSteps} />
 {/if}
 
 {#if hasSources}

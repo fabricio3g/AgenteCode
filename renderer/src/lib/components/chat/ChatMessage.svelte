@@ -3,7 +3,7 @@
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
   import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, Pencil, RefreshCcw, Trash2, Wrench, Volume2, X } from 'lucide-svelte';
-  import { fly } from 'svelte/transition';
+  
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
   import { generatePptx } from '$lib/services/slides';
@@ -94,11 +94,6 @@
     URL.revokeObjectURL(url);
   }
 
-  function toolCallingState() {
-    if (message.mode === 'agent' && message.agentSteps?.length) return 'active';
-    return null;
-  }
-
   async function handleUIAction(event: ActionEvent) {
     if (event.type === 'open_url') {
       const url = String(event.params?.url || '');
@@ -147,10 +142,10 @@
   });
 </script>
 
-<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} transition:fly={{ y: 12, duration: 350, opacity: 0 }} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
+<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
   {#if message.role === 'user'}
     <div class="max-w-[min(46rem,84%)] space-y-3">
-      <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7">
+      <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7 shadow-[var(--shadow-xs)]">
         <div class="markdown-body user-markdown">{@html userHtml}</div>
       </div>
       {#if message.attachments?.length}

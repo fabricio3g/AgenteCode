@@ -14,7 +14,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'ingest_workspace_files',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'read_file_base64',
-  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models', 'get_api_model_context',
+  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models', 'get_api_model_context', 'detect_tool_support',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
   'count_tokens', 'build_context_budget', 'truncate_messages',
   'start_download_hf', 'get_download_jobs', 'cancel_download_job',
@@ -30,7 +30,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'reset_media_permissions',
   'agent_start_task', 'agent_update_task', 'agent_cancel_task', 'agent_get_task',
   'agent_list_tasks', 'agent_delete_task', 'agent_clear_history',
-  'agent_list_tools', 'agent_toggle_tool',
+
   'sandbox_exec',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',

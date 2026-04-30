@@ -1,5 +1,6 @@
 import { BaseProvider } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
+import { getGgufMetadata } from '../model-manager.ts';
 
 export class LocalProvider extends BaseProvider {
   name = 'local';
@@ -23,16 +24,18 @@ export class LocalProvider extends BaseProvider {
     return { 'Content-Type': 'application/json' };
   }
 
-  async *streamChat({ baseUrl, model, messages, ...params }) {
+  async *streamChat({ baseUrl, model, messages, tools, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: this._buildHeaders(),
+      signal,
       body: JSON.stringify({
         model: model || 'local-model',
         messages,
         stream: true,
+        ...(tools?.length ? { tools } : {}),
         ...params
       })
     });
@@ -66,10 +69,20 @@ export class LocalProvider extends BaseProvider {
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-          if (content || reasoning) {
+          const toolCallDeltas = delta.tool_calls;
+
+          if (content || reasoning || toolCallDeltas) {
             yield {
               content: content != null ? String(content) : '',
-              reasoning: reasoning != null ? String(reasoning) : ''
+              reasoning: reasoning != null ? String(reasoning) : '',
+              ...(toolCallDeltas ? {
+                toolCallDeltas: toolCallDeltas.map(tc => ({
+                  index: tc.index ?? 0,
+                  id: tc.id ?? undefined,
+                  name: tc.function?.name ?? undefined,
+                  arguments: tc.function?.arguments ?? undefined
+                }))
+              } : {})
             };
           }
         } catch {
@@ -87,10 +100,20 @@ export class LocalProvider extends BaseProvider {
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-          if (content || reasoning) {
+          const toolCallDeltas = delta.tool_calls;
+
+          if (content || reasoning || toolCallDeltas) {
             yield {
               content: content != null ? String(content) : '',
-              reasoning: reasoning != null ? String(reasoning) : ''
+              reasoning: reasoning != null ? String(reasoning) : '',
+              ...(toolCallDeltas ? {
+                toolCallDeltas: toolCallDeltas.map(tc => ({
+                  index: tc.index ?? 0,
+                  id: tc.id ?? undefined,
+                  name: tc.function?.name ?? undefined,
+                  arguments: tc.function?.arguments ?? undefined
+                }))
+              } : {})
             };
           }
         } catch {
@@ -100,16 +123,18 @@ export class LocalProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ baseUrl, model, messages, ...params }) {
+  async completeChat({ baseUrl, model, messages, tools, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: this._buildHeaders(),
+      signal,
       body: JSON.stringify({
         model: model || 'local-model',
         messages,
         stream: false,
+        ...(tools?.length ? { tools } : {}),
         ...params
       })
     });
@@ -146,5 +171,29 @@ export class LocalProvider extends BaseProvider {
     const data = await res.json().catch(() => ({}));
     const list = data?.data ?? data?.models ?? [];
     return list.map(m => m.id).filter(Boolean).sort();
+  }
+
+  /**
+   * Detect tool support from GGUF metadata.
+   * Falls back to the base probe-based approach if GGUF metadata is unavailable.
+   */
+  async checkToolSupport({ baseUrl, apiKey, model, modelPath, ...rest }) {
+    // Try GGUF metadata first (chat_template_uses_tools is the definitive flag)
+    if (modelPath) {
+      try {
+        const meta = await getGgufMetadata(modelPath);
+        if (typeof meta?.chat_template_uses_tools === 'boolean') {
+          return {
+            supportsTools: meta.chat_template_uses_tools,
+            source: 'gguf_metadata'
+          };
+        }
+      } catch {
+        // Fall through to probe
+      }
+    }
+
+    // If no GGUF metadata path or it failed, try the llama.cpp server API probe
+    return super.checkToolSupport({ baseUrl, apiKey, model, ...rest });
   }
 }

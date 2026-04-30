@@ -26,7 +26,7 @@ import type { AppConfig, AppPaths as AppPathsType } from './config.types.ts';
 
 // ── Model Catalogs ───────────────────────────────────────────────────────────
 
-export const RUNTIME_INSTALL_VARIANTS = [
+const RUNTIME_INSTALL_VARIANTS = [
   'auto', 'cpu', 'cuda', 'cuda12', 'cuda13', 'vulkan',
   'hip', 'rocm', 'sycl', 'openeuler_310p', 'openeuler_910b_aclgraph'
 ];

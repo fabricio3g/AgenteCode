@@ -2,35 +2,15 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { AlertCircle, Check, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, Pencil, RefreshCw, Trash2, X, FilePlus } from 'lucide-svelte';
+  import { AlertCircle, Braces, Check, ChevronRight, Code, Copy, Download, ExternalLink, Eye, FileCode, FileText, File, Folder, Image, Palette, Pencil, Plus, RefreshCw, Terminal, Trash2, X } from 'lucide-svelte';
   import JSZip from 'jszip';
-  import hljs from 'highlight.js';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
+  import { buildPreviewHtml } from '$lib/utils/preview-builder';
 
   type TreeNode = { name: string; path: string; type: 'file' | 'folder'; children?: TreeNode[]; expanded?: boolean };
   type PreviewLog = { level: 'log' | 'warn' | 'error'; text: string };
-  type PreviewBuild = { html: string; externalRefs: string[] };
-
-  const TEXT_ASSET_EXTENSIONS = new Set(['html', 'htm', 'css', 'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx', 'json', 'svg', 'txt', 'md', 'xml', 'webmanifest']);
-  const MIME_BY_EXT: Record<string, string> = {
-    html: 'text/html;charset=utf-8',
-    htm: 'text/html;charset=utf-8',
-    css: 'text/css;charset=utf-8',
-    js: 'text/javascript;charset=utf-8',
-    mjs: 'text/javascript;charset=utf-8',
-    cjs: 'text/javascript;charset=utf-8',
-    ts: 'text/plain;charset=utf-8',
-    jsx: 'text/plain;charset=utf-8',
-    tsx: 'text/plain;charset=utf-8',
-    json: 'application/json;charset=utf-8',
-    svg: 'image/svg+xml;charset=utf-8',
-    txt: 'text/plain;charset=utf-8',
-    md: 'text/markdown;charset=utf-8',
-    xml: 'application/xml;charset=utf-8',
-    webmanifest: 'application/manifest+json;charset=utf-8'
-  };
 
   let selectedPath = $state('');
   let activePane = $state<'code' | 'preview'>('code');
@@ -99,6 +79,8 @@
   });
 
   const fileList = $derived(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
+  const visibleFileList = $derived(fileList.filter(([path]) => !path.startsWith('__')));
+  const visibleFileCount = $derived(visibleFileList.length);
 
   let prevArtifactFileKeys = $state('');
   let prevPreviewHtml = $state('');
@@ -157,7 +139,6 @@
       openTabs = [...openTabs, path];
     }
     selectedPath = path;
-    activePane = 'code';
   }
 
   function closeTab(path: string, e?: MouseEvent) {
@@ -178,259 +159,25 @@
   }
 
   $effect(() => {
-    const currentKeys = Object.keys(files).filter(k => !k.startsWith('__'));
-    // Add any new files that aren't already open as tabs
-    const newFiles = currentKeys.filter(p => !openTabs.includes(p));
-    if (newFiles.length > 0) {
-      openTabs = [...openTabs, ...newFiles];
-    }
-    // Remove tabs for files that no longer exist
-    const validTabs = openTabs.filter(p => p in files);
+    const currentKeys = Object.keys(files).filter((key) => !key.startsWith('__'));
+    const validTabs = openTabs.filter((path) => currentKeys.includes(path));
     if (validTabs.length !== openTabs.length) {
       openTabs = validTabs;
     }
+    if (!openTabs.length && selectedPath && currentKeys.includes(selectedPath)) {
+      openTabs = [selectedPath];
+    }
   });
-
-  function normalizePath(path: string): string {
-    const normalized: string[] = [];
-    for (const part of path.split('/')) {
-      if (!part || part === '.') continue;
-      if (part === '..') {
-        normalized.pop();
-        continue;
-      }
-      normalized.push(part);
-    }
-    return normalized.join('/');
-  }
-
-  function dirname(path: string): string {
-    const parts = normalizePath(path).split('/');
-    parts.pop();
-    return parts.join('/');
-  }
-
-  function isExternalResource(ref: string): boolean {
-    return /^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(ref) || /^[a-z][a-z\d+.-]*:/i.test(ref);
-  }
-
-  function resolveArtifactPath(basePath: string, ref: string): string | null {
-    const cleaned = ref.trim().split(/[?#]/)[0] || '';
-    if (!cleaned || cleaned.startsWith('#') || cleaned.startsWith('data:') || isExternalResource(cleaned)) return null;
-    if (cleaned.startsWith('/')) return normalizePath(cleaned.slice(1));
-    const baseDir = dirname(basePath);
-    return normalizePath(baseDir ? `${baseDir}/${cleaned}` : cleaned);
-  }
-
-  function encodeBase64(value: string): string {
-    const bytes = new TextEncoder().encode(value);
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let index = 0; index < bytes.length; index += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-    }
-    return btoa(binary);
-  }
-
-  function buildAssetDataUrl(path: string, content: string): string | null {
-    if (content.startsWith('data:')) return content;
-    const ext = path.split('.').pop()?.toLowerCase() || '';
-    if (!TEXT_ASSET_EXTENSIONS.has(ext)) return null;
-    const mime = MIME_BY_EXT[ext];
-    if (!mime) return null;
-    return `data:${mime};base64,${encodeBase64(content)}`;
-  }
-
-  function recordExternalRef(externalRefs: string[], ref: string) {
-    if (!externalRefs.includes(ref)) externalRefs.push(ref);
-  }
-
-  function rewriteCssAssetUrls(css: string, cssPath: string, allFiles: Record<string, string>, externalRefs: string[]): string {
-    return css.replace(/url\(([^)]+)\)/g, (match, rawValue: string) => {
-      const ref = rawValue.trim().replace(/^['"]|['"]$/g, '');
-      if (!ref || ref.startsWith('#') || ref.startsWith('data:')) return match;
-      if (isExternalResource(ref)) {
-        recordExternalRef(externalRefs, ref);
-        return match;
-      }
-      const resolved = resolveArtifactPath(cssPath, ref);
-      const content = resolved ? allFiles[resolved] : null;
-      const dataUrl = resolved && content ? buildAssetDataUrl(resolved, content) : null;
-      return dataUrl ? `url("${dataUrl}")` : match;
-    });
-  }
-
-  function buildPreviewBridgeScript(): string {
-    return `(() => {
-  const send = (level, args) => {
-    try {
-      parent.postMessage({
-        source: 'chateaui-preview',
-        level,
-        text: args.map((value) => {
-          if (typeof value === 'string') return value;
-          try { return JSON.stringify(value); } catch { return String(value); }
-        }).join(' ')
-      }, '*');
-    } catch {}
-  };
-
-  ['log', 'warn', 'error'].forEach((level) => {
-    const original = console[level];
-    console[level] = (...args) => {
-      send(level, args);
-      return original.apply(console, args);
-    };
-  });
-
-  window.addEventListener('error', (event) => {
-    send('error', [event.message || 'Preview error']);
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
-    send('error', [reason]);
-  });
-
-  // Intercept link clicks — open external links in new tab, prevent iframe navigation
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('a');
-    if (!link || !link.href) return;
-    const href = link.getAttribute('href') || link.href;
-    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-    const isExternal = /^(?:https?:|mailto:|tel:)/i.test(href);
-    if (isExternal) {
-      e.preventDefault();
-      window.open(href, '_blank', 'noopener,noreferrer');
-    }
-  }, true);
-})();`;
-  }
-
-  function inlineAssets(html: string, allFiles: Record<string, string>, basePath: string): PreviewBuild {
-    const externalRefs: string[] = [];
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-
-    doc.querySelectorAll('link[href]').forEach((link) => {
-      const href = link.getAttribute('href');
-      if (!href) return;
-      if (isExternalResource(href)) {
-        recordExternalRef(externalRefs, href);
-        return;
-      }
-      const resolved = resolveArtifactPath(basePath, href);
-      if (resolved && allFiles[resolved] && (((link.getAttribute('rel') || '').includes('stylesheet')) || resolved.endsWith('.css'))) {
-        const style = doc.createElement('style');
-        style.textContent = `/* ${resolved} */\n${rewriteCssAssetUrls(allFiles[resolved], resolved, allFiles, externalRefs)}`;
-        link.replaceWith(style);
-        return;
-      }
-      const dataUrl = resolved && allFiles[resolved] ? buildAssetDataUrl(resolved, allFiles[resolved]) : null;
-      if (dataUrl) link.setAttribute('href', dataUrl);
-    });
-
-    doc.querySelectorAll('style').forEach((styleEl) => {
-      styleEl.textContent = rewriteCssAssetUrls(styleEl.textContent || '', basePath, allFiles, externalRefs);
-    });
-
-    doc.querySelectorAll('script[src]').forEach((scriptEl) => {
-      const script = scriptEl as HTMLScriptElement;
-      const src = script.getAttribute('src');
-      if (!src) return;
-      if (isExternalResource(src)) {
-        recordExternalRef(externalRefs, src);
-        return;
-      }
-      const resolved = resolveArtifactPath(basePath, src);
-      if (!resolved || !allFiles[resolved]) return;
-
-      const inline = doc.createElement('script');
-      if (script.type) inline.type = script.type;
-      if (script.noModule) inline.noModule = true;
-      if (script.hasAttribute('defer')) inline.setAttribute('defer', '');
-      if (script.hasAttribute('async')) inline.setAttribute('async', '');
-      inline.textContent = `/* ${resolved} */\n${allFiles[resolved]}`;
-      script.replaceWith(inline);
-    });
-
-    const assetTargets: Array<[string, string]> = [
-      ['img[src]', 'src'],
-      ['source[src]', 'src'],
-      ['audio[src]', 'src'],
-      ['video[poster]', 'poster'],
-      ['link[rel="icon"][href]', 'href']
-    ];
-
-    for (const [selector, attribute] of assetTargets) {
-      doc.querySelectorAll(selector).forEach((element) => {
-        const ref = element.getAttribute(attribute);
-        if (!ref || ref.startsWith('data:') || ref.startsWith('#')) return;
-        if (isExternalResource(ref)) {
-          recordExternalRef(externalRefs, ref);
-          return;
-        }
-        const resolved = resolveArtifactPath(basePath, ref);
-        const content = resolved ? allFiles[resolved] : null;
-        const dataUrl = resolved && content ? buildAssetDataUrl(resolved, content) : null;
-        if (dataUrl) element.setAttribute(attribute, dataUrl);
-      });
-    }
-
-    let head = doc.querySelector('head');
-    if (!head) {
-      head = doc.createElement('head');
-      const htmlEl = doc.querySelector('html') || doc.documentElement;
-      htmlEl.insertBefore(head, htmlEl.firstChild);
-    }
-
-    if (!doc.querySelector('meta[charset]')) {
-      const charset = doc.createElement('meta');
-      charset.setAttribute('charset', 'utf-8');
-      head.insertBefore(charset, head.firstChild);
-    }
-
-    if (!doc.querySelector('meta[name="viewport"]')) {
-      const viewport = doc.createElement('meta');
-      viewport.setAttribute('name', 'viewport');
-      viewport.setAttribute('content', 'width=device-width, initial-scale=1');
-      head.appendChild(viewport);
-    }
-
-    const bridgeScript = doc.createElement('script');
-    bridgeScript.textContent = buildPreviewBridgeScript();
-    (doc.body || doc.documentElement).appendChild(bridgeScript);
-
-    return { html: '<!DOCTYPE html>' + doc.documentElement.outerHTML, externalRefs };
-  }
 
   const previewBuild = $derived.by(() => {
+    if (activePane !== 'preview') return { html: '', externalRefs: [] };
     const htmlSource = isHtml && selectedContent ? selectedContent : (artifact?.previewHtml || '');
-    if (!htmlSource) return { html: '', externalRefs: [] } satisfies PreviewBuild;
-    return inlineAssets(htmlSource, files, previewBasePath);
+    if (!htmlSource) return { html: '', externalRefs: [] };
+    return buildPreviewHtml(htmlSource, files, previewBasePath);
   });
 
   const previewSrc = $derived(previewBuild.html);
   const previewExternalRefs = $derived(previewBuild.externalRefs);
-
-  const highlightedCode = $derived.by(() => {
-    if (!selectedContent) return '';
-    const ext = selectedPath.split('.').pop() || '';
-    const langMap: Record<string, string> = {
-      js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
-      html: 'xml', css: 'css', py: 'python', json: 'json', md: 'markdown', sh: 'bash',
-      rs: 'rust', go: 'go', java: 'java', c: 'c', cpp: 'cpp', rb: 'ruby', svg: 'xml'
-    };
-    const lang = langMap[ext];
-    try {
-      if (lang && hljs.getLanguage(lang)) return hljs.highlight(selectedContent, { language: lang }).value;
-      return hljs.highlightAuto(selectedContent).value;
-    } catch {
-      return selectedContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-  });
-
-  const lineCount = $derived(selectedContent ? selectedContent.split('\n').length : 0);
 
   function copyContent() {
     navigator.clipboard.writeText(selectedContent).then(() => {
@@ -657,14 +404,25 @@
     renameValue = '';
   }
 
-  function getFileIcon(path: string) {
-    const ext = path.split('.').pop() || '';
-    const icons: Record<string, string> = {
-      html: 'HT', css: '#', js: 'JS', ts: 'TS', jsx: 'JS', tsx: 'TS', py: 'PY',
-      json: '{}', md: 'MD', sh: 'SH', rs: 'RS', go: 'GO', java: 'JV', c: 'C', cpp: 'C+',
-      rb: 'RB', svg: 'SV', xml: 'XM', yaml: 'YM', yml: 'YM', toml: 'TO', txt: 'TX'
+  function getFileIconComponent(path: string) {
+    const ext = path.split('.').pop()?.toLowerCase() || '';
+    const map: Record<string, typeof FileCode> = {
+      html: FileCode, htm: FileCode,
+      css: Palette,
+      js: Braces, mjs: Braces, cjs: Braces, ts: Braces, jsx: Braces, tsx: Braces,
+      py: FileCode,
+      json: Braces,
+      md: FileText,
+      svg: Image,
+      sh: Terminal, bash: Terminal, zsh: Terminal,
+      xml: FileCode,
+      yaml: FileText, yml: FileText,
+      toml: FileText,
+      txt: FileText,
+      rb: FileCode, rs: FileCode, go: FileCode, java: FileCode,
+      c: FileCode, cpp: FileCode,
     };
-    return icons[ext] || ext.slice(0, 2).toUpperCase() || '--';
+    return map[ext] || FileText;
   }
 
   function toggleFolder(path: string) {
@@ -719,67 +477,64 @@
 
 <div class="flex h-full w-full flex-col overflow-hidden bg-[var(--surface)]">
   <div class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
-    <span class="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--text)]">{artifact?.title || 'Sandbox'}</span>
+    <div class="min-w-0 flex-1">
+      <div class="truncate text-xs font-semibold text-[var(--text)]">{artifact?.title || 'Sandbox'}</div>
+      <div class="text-[10px] text-[var(--text-muted)]">{visibleFileCount} file{visibleFileCount !== 1 ? 's' : ''}{#if hasPreview} · preview ready{/if}</div>
+    </div>
 
-    <div class="flex items-center gap-0.5 rounded-lg bg-[var(--surface-hover)] p-0.5">
-      <button
-        class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${activePane === 'code' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
-        onclick={() => (activePane = 'code')}
-      >Code</button>
+    <div class="flex items-center gap-0.5">
       {#if hasPreview}
         <button
-          class={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${activePane === 'preview' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          class={`rounded p-1 transition ${activePane === 'code' ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          onclick={() => (activePane = 'code')}
+          title="Code"
+        ><Code class="h-3.5 w-3.5" /></button>
+        <button
+          class={`rounded p-1 transition ${activePane === 'preview' ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
           onclick={() => (activePane = 'preview')}
-        >Preview</button>
+          title="Preview"
+        ><Eye class="h-3.5 w-3.5" /></button>
       {/if}
     </div>
 
     <div class="flex items-center gap-0.5">
-      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
+      <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
         <Download class="h-3.5 w-3.5" />
       </button>
       {#if activePane === 'code' && !editing}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
+        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
           <Pencil class="h-3.5 w-3.5" />
         </button>
       {/if}
       {#if activePane === 'code'}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
-          {#if copied}<Check class="h-3.5 w-3.5 text-success" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
+        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
+          {#if copied}<Check class="h-3.5 w-3.5 text-[var(--text)]" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
         </button>
       {/if}
-      {#if activePane === 'preview' && previewSrc}
-        <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (previewRefreshKey += 1)} title="Reload preview">
-          <RefreshCw class="h-3.5 w-3.5" />
-        </button>
-      {/if}
-      <button class="rounded-md p-1.5 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (appStore.sandboxOpen = false)} title="Close">
+      <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (appStore.sandboxOpen = false)} title="Close">
         <X class="h-3.5 w-3.5" />
       </button>
     </div>
   </div>
 
   <div class="flex min-h-0 flex-1 overflow-hidden">
-    {#if (fileList.length > 0 || true)}
-      <div class="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
-        <div class="flex items-center justify-between px-2.5 py-2 border-b border-[var(--border)]">
-          <span class="text-[11px] font-medium text-[var(--text-secondary)]">Files</span>
-          <div class="flex items-center gap-0.5">
-            <button
-              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-              onclick={() => openNewFileModal()}
-              title="New file"
-            >
-              <FilePlus class="h-3.5 w-3.5" />
-            </button>
-            <button
-              class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-              onclick={() => openNewFolderModal()}
-              title="New folder"
-            >
-              <Folder class="h-3.5 w-3.5" />
-            </button>
-          </div>
+    {#if fileList.length > 0}
+      <div class="flex w-44 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
+        <div class="flex items-center gap-0.5 px-2 py-1.5 border-b border-[var(--border)]">
+          <button
+            class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+            onclick={() => openNewFileModal()}
+            title="New file"
+          >
+            <Plus class="h-3.5 w-3.5" />
+          </button>
+          <button
+            class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+            onclick={() => openNewFolderModal()}
+            title="New folder"
+          >
+            <Folder class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+          </button>
         </div>
         <div class="flex-1 overflow-y-auto py-1.5">
           {#if fileList.length === 0}
@@ -801,14 +556,17 @@
           {#each openTabs as tab}
             <div class="group relative flex shrink-0 items-center border-r border-[var(--border)] {selectedPath === tab ? 'bg-[var(--surface)]' : 'hover:bg-[var(--surface)]'}" style="height:33px">
               {#if selectedPath === tab}
-                <div class="absolute inset-x-0 top-0 h-[2px] bg-[var(--primary)]"></div>
+                <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--text)]"></div>
               {/if}
               <button
                 type="button"
                 class="flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
-                onclick={() => openTab(tab)}
+                onclick={() => {
+                  activePane = 'code';
+                  openTab(tab);
+                }}
               >
-                <span class="file-icon-tab">{getFileIcon(tab)}</span>
+                <span class="file-icon-tab"><svelte:component this={getFileIconComponent(tab)} class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" /></span>
                 <span class="max-w-[100px] truncate">{tab.split('/').pop()}</span>
               </button>
               <button
@@ -821,17 +579,6 @@
               </button>
             </div>
           {/each}
-          {#if Object.keys(files).filter(p => !openTabs.includes(p)).length > 0}
-            <button
-              type="button"
-              class="flex shrink-0 items-center justify-center px-2 text-[var(--text-tertiary)] opacity-50 transition hover:opacity-100 hover:text-[var(--text)]"
-              style="height:33px"
-              onclick={addNewTab}
-              title="Open another file"
-            >
-              <span class="text-base leading-none">+</span>
-            </button>
-          {/if}
         </div>
       {/if}
       {#if fileList.length === 0 && !previewSrc}
@@ -847,7 +594,7 @@
               <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath} (editing)</span>
               <div class="flex items-center gap-1.5">
                 <button
-                  class="rounded-lg bg-success px-3 py-1 text-[11px] font-medium text-primary-fg transition hover:opacity-90"
+                  class="rounded-lg bg-[var(--primary)] px-3 py-1 text-[11px] font-medium text-primary-fg transition hover:opacity-90"
                   onclick={saveEdit}
                 >Save</button>
                 <button
@@ -884,7 +631,7 @@
             <div class="min-w-0 flex-1 truncate font-medium">{previewLabel}</div>
             <div class="flex items-center gap-2">
               {#if previewExternalRefs.length}
-                <span class="inline-flex items-center gap-1 rounded-full border border-warning bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning">
+                <span class="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
                   <AlertCircle class="h-3 w-3" /> {previewExternalRefs.length} external
                 </span>
               {/if}
@@ -901,7 +648,7 @@
               <iframe
                 class="h-full w-full border-0"
                 srcdoc={previewSrc}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"
+                sandbox="allow-scripts allow-forms allow-modals allow-popups"
                 title="Preview"
               ></iframe>
             {/key}
@@ -937,13 +684,7 @@
 
 {#if showNewFileModal}
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-[var(--text)]">New File</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
+    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
       {#if newItemParent}
         <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
       {/if}
@@ -957,7 +698,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
       </div>
     </div>
   </div>
@@ -965,13 +706,7 @@
 
 {#if showNewFolderModal}
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-[var(--text)]">New Folder</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
+    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
       {#if newItemParent}
         <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
       {/if}
@@ -985,7 +720,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
       </div>
     </div>
   </div>
@@ -993,20 +728,14 @@
 
 {#if showDeleteConfirm}
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelDelete} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-[var(--text)]">Confirm Delete</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={cancelDelete}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
+    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
       <p class="mb-4 text-sm text-[var(--text-secondary)]">
         Delete {pendingDeleteType} "<span class="font-mono text-[var(--text)]">{pendingDeletePath}</span>"?
-        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-warning">This will delete all files inside.</span>{/if}
+        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-[var(--text-secondary)]">This will delete all files inside.</span>{/if}
       </p>
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelDelete}>Cancel</button>
-        <button class="rounded-lg bg-error px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmDelete}>Delete</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmDelete}>Delete</button>
       </div>
     </div>
   </div>
@@ -1014,13 +743,7 @@
 
 {#if showRenameModal}
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelRename} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-xl" onclick={(e) => e.stopPropagation()}>
-      <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-[var(--text)]">Rename {pendingRenameType === 'folder' ? 'Folder' : 'File'}</h3>
-        <button class="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)]" onclick={cancelRename}>
-          <X class="h-4 w-4" />
-        </button>
-      </div>
+    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
       <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">Current: {pendingRenamePath}</p>
       <input
         bind:this={renameInput}
@@ -1031,7 +754,7 @@
       />
       <div class="flex justify-end gap-2">
         <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelRename}>Cancel</button>
-        <button class="rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
       </div>
     </div>
   </div>
@@ -1047,30 +770,26 @@
           onclick={() => toggleFolder(node.path)}
         >
           <ChevronRight class={`h-3 w-3 shrink-0 text-[var(--text-tertiary)] transition-transform duration-150 ${treeExpanded[node.path] ? 'rotate-90' : ''}`} />
-          {#if treeExpanded[node.path]}
-            <FolderOpen class="h-3.5 w-3.5 shrink-0 text-warning" />
-          {:else}
-            <Folder class="h-3.5 w-3.5 shrink-0 text-warning" />
-          {/if}
+          <File class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
           <span class="truncate text-[11px] font-medium text-[var(--text-secondary)]">{node.name}</span>
         </button>
-        <div class="flex items-center gap-0.5 px-1 opacity-0 group-hover/folder:opacity-100 transition">
+        <div class="flex items-center gap-0.5 px-1">
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+            class="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); openNewFileModal(node.path); }}
             title="New file in folder"
           >
-            <FilePlus class="h-3 w-3" />
+            <Plus class="h-3 w-3" />
           </button>
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+            class="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'folder'); }}
             title="Rename folder"
           >
             <Pencil class="h-3 w-3" />
           </button>
           <button
-            class="rounded p-0.5 text-[var(--text-tertiary)] hover:text-error hover:bg-[var(--surface-hover)]"
+            class="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
             onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'folder'); }}
             title="Delete folder"
           >
@@ -1089,20 +808,23 @@
       <button
         class="flex flex-1 items-center gap-2 px-2.5 py-1.5 text-left transition {selectedPath === node.path ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'}"
         style="padding-left: {20 + depth * 12}px"
-        onclick={() => selectFile(node.path)}
+        onclick={() => {
+          activePane = 'code';
+          openTab(node.path);
+        }}
       >
-        <span class="file-icon-tree">{getFileIcon(node.path)}</span>
+        <span class="file-icon-tree"><svelte:component this={getFileIconComponent(node.path)} class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" /></span>
         <span class="truncate text-[11px]">{node.name}</span>
       </button>
       <button
-        class="rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+        class="rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
         onclick={(e) => { e.stopPropagation(); requestRename(node.path, 'file'); }}
         title="Rename file"
       >
         <Pencil class="h-3 w-3" />
       </button>
       <button
-        class="mr-1 rounded p-0.5 text-[var(--text-tertiary)] opacity-0 group-hover/file:opacity-100 transition hover:text-error hover:bg-[var(--surface-hover)]"
+        class="mr-1 rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
         onclick={(e) => { e.stopPropagation(); requestDelete(node.path, 'file'); }}
         title="Delete file"
       >
@@ -1141,20 +863,17 @@
   :global(.dark) .sandbox-code :global(.hljs-type) { color: #ffa657; }
   :global(.dark) .sandbox-code :global(.hljs-params) { color: #e6edf3; }
 
-  .file-icon-tab {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
+  .file-icon-tab svg {
+    height: 0.875rem;
+    width: 0.875rem;
+    flex-shrink: 0;
     color: var(--text-muted);
     opacity: 0.55;
   }
-  .file-icon-tree {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    width: 1.25rem;
+  .file-icon-tree svg {
+    height: 0.875rem;
+    width: 0.875rem;
     flex-shrink: 0;
-    text-align: center;
+    color: var(--text-muted);
   }
 </style>

@@ -24,10 +24,9 @@
 
   interface Props {
     steps?: ChatMessage['agentSteps'];
-    managed?: boolean;
   }
 
-  let { steps = [], managed = false }: Props = $props();
+  let { steps = [] }: Props = $props();
   let open = $state(true);
   let userToggled = $state(false);
 

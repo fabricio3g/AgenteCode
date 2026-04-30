@@ -31,32 +31,104 @@ function resolveProvider(config: AppConfig) {
   return { providerName, provider };
 }
 
-// Tool-capable model detection for OpenRouter.
-// Many OpenRouter models don't support native function calling.
-// Skip native tools and use simulated XML mode for those.
-const TOOL_CAPABLE_PATTERNS = [
-  /gpt-4[./o]/i, /gpt-5/i,
-  /claude-3/i, /claude-sonnet-4/i, /claude-opus-4/i,
-  /gemini-2\.5-pro/i, /gemini-3-pro/i, /gemini-3-flash/i,
-  /llama-3\.3/i, /llama-4/i,
-  /qwen2\.5/i, /qwen3/i,
-  /deepseek-chat/i, /deepseek-r1/i,
-  /o1/i, /o3/i, /o4/i
-];
-const TOOL_AVOID_PATTERNS = [
-  /gemma-3/i,
-  /gemini-2\.5-flash-lite/i,
-  /mistral.*free/i,
-  /mixtral.*free/i,
-  /phi-3/i, /phi-4/i
-];
+// ── Tool support detection ──────────────────────────────────────────────
+// Instead of hardcoded model name patterns, we probe the actual API.
+// For local models: GGUF metadata's chat_template_uses_tools flag.
+// For API providers: lightweight completion test with a tool definition.
+// Results are cached in-memory for the session.
 
-export function supportsNativeTools(modelId: string, providerName: string): boolean {
-  if (providerName !== 'openrouter') return true;
-  const id = String(modelId || '');
-  if (TOOL_AVOID_PATTERNS.some(p => p.test(id))) return false;
-  if (TOOL_CAPABLE_PATTERNS.some(p => p.test(id))) return true;
-  return false;
+const toolSupportCache = new Map<string, boolean>();
+
+function toolSupportCacheKey(providerName: string, modelId: string): string {
+  return `${providerName}:${modelId}`;
+}
+
+/**
+ * Synchronous check — reads from the probe cache.
+ * For uncached first-party providers: always true (they support tools).
+ * For uncached third-party providers: defaults to true (try native, the
+ * agent's error handler will fall back to XML if the model rejects tools).
+ * Call detectToolSupport() on model selection to populate the cache.
+ */
+export function supportsNativeTools(config: any): boolean {
+  const providerName = config?.llm?.provider || 'openai';
+  const provider = config?.llm?.providers?.[providerName];
+  const modelId = provider?.model || '';
+  const key = toolSupportCacheKey(providerName, modelId);
+
+  if (toolSupportCache.has(key)) {
+    const result = toolSupportCache.get(key)!;
+    console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | cached=${result}`);
+    return result;
+  }
+
+  // First-party providers always support native tool calling
+  if (['openai', 'anthropic', 'gemini', 'groq', 'mistral'].includes(providerName)) {
+    toolSupportCache.set(key, true);
+    console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | first-party → true`);
+    return true;
+  }
+
+  // Uncached third-party: default to true (agent will fall back on error)
+  console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | uncached → true`);
+  return true;
+}
+
+/**
+ * Probe the API/GGUF metadata to detect native tool support.
+ * Call this when the model selection changes (updateProvider, load local model, etc.).
+ * Caches the result so supportsNativeTools() returns accurate values.
+ */
+export async function detectToolSupport(): Promise<boolean> {
+  if (!isTauri()) return true;
+
+  const config = await loadAppConfig();
+  const providerName = config.llm?.provider || 'openai';
+  const providers = config.llm?.providers || {};
+  const provider = providers[providerName];
+  const modelId = provider?.model || '';
+  const key = toolSupportCacheKey(providerName, modelId);
+
+  // Don't re-probe already-cached entries
+  if (toolSupportCache.has(key)) return toolSupportCache.get(key)!;
+
+  // First-party providers are known to support tools
+  if (['openai', 'anthropic', 'gemini', 'groq', 'mistral'].includes(providerName)) {
+    toolSupportCache.set(key, true);
+    return true;
+  }
+
+  try {
+    const result = await invoke<{ supportsTools: boolean; source: string }>('detect_tool_support', {
+      baseUrl: provider?.base_url || '',
+      apiKey: provider?.api_key || '',
+      providerName,
+      model: modelId,
+      modelPath: config.llm?.local?.selected_model_path || ''
+    });
+
+    const supports = result?.supportsTools ?? true;
+    toolSupportCache.set(key, supports);
+    console.log(`[agent] detectToolSupport | ${providerName}/${modelId} → ${supports} (source: ${result?.source})`);
+    return supports;
+  } catch (err) {
+    console.warn('[agent] detectToolSupport probe failed, defaulting to true:', err);
+    // Don't cache on probe failure — try again next time
+    return true;
+  }
+}
+
+/**
+ * Record that a model does NOT support native tools.
+ * Called by the agent when native tool calling fails at runtime.
+ */
+export function setToolSupportCache(config: any, supports: boolean): void {
+  const providerName = config?.llm?.provider || 'openai';
+  const provider = config?.llm?.providers?.[providerName];
+  const modelId = provider?.model || '';
+  const key = toolSupportCacheKey(providerName, modelId);
+  toolSupportCache.set(key, supports);
+  console.log(`[agent] setToolSupportCache | ${providerName}/${modelId} → ${supports}`);
 }
 
 function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
@@ -132,7 +204,7 @@ async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
   }
 }
 
-function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
+export function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
   const visionCapable = hasMmproj !== undefined ? hasMmproj : isVisionModel(modelName || '');
   return messages.map((message) => {
     const base: Record<string, unknown> = { role: message.role };
@@ -486,7 +558,6 @@ export async function completeAssistantReply(args: {
 
     const payload = await response.json();
     const result = readCompletionPayload(payload);
-    console.log('[chat-api] completeAssistantReply local result:', { content_len: result.content.length, model: config.llm?.local?.model });
     return result;
   }
 
@@ -511,9 +582,7 @@ export async function completeAssistantReply(args: {
         ...genParams
       }
     });
-    console.log('[chat-api] completeAssistantReply IPC raw payload:', JSON.stringify(payload));
     const result = readCompletionPayload(payload);
-    console.log('[chat-api] completeAssistantReply IPC result:', { content_len: result.content.length, model: provider.model });
     return result;
   }
 
@@ -528,20 +597,22 @@ export async function completeAssistantReply(args: {
   const message = response?.choices?.[0]?.message || {};
   const rawContent = message.content;
   const rawReasoning = (message as any).reasoning_content ?? (message as any).reasoning ?? (message as any).thinking;
-  console.log('[chat-api] completeAssistantReply direct result:', { content_len: String(rawContent || '').length, model: provider.model });
   return {
     content: rawContent != null ? String(rawContent) : '',
     reasoning: rawReasoning != null ? String(rawReasoning) : ''
   };
 }
 
-function readCompletionWithTools(payload: any): CompletionResult {
+export function readCompletionWithTools(payload: any): CompletionResult {
   // Flat format from main-process providers: { content: "...", reasoning: "...", toolCalls: [...] }
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
     const toolCalls: NativeToolCall[] = (payload.toolCalls || []).map((tc: any) => ({
       id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-      name: String(tc.function?.name || ''),
-      arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
+      name: String(tc.function?.name || tc.name || ''),
+      arguments: (() => {
+        if (tc.arguments && typeof tc.arguments === 'object') return tc.arguments;
+        try { return JSON.parse(tc.function?.arguments || tc.arguments || '{}'); } catch { return {}; }
+      })()
     })).filter((tc: NativeToolCall) => !!tc.name);
     return {
       content: payload.content,
@@ -893,9 +964,7 @@ export async function completeWithTools(args: {
           ...genParams
         }
       });
-      console.log('[chat-api] completeWithTools IPC raw payload:', JSON.stringify(payload));
       const result = readCompletionWithTools(payload);
-      console.log('[chat-api] completeWithTools IPC result:', { content_len: result.content.length, has_tools: !!result.toolCalls?.length, model: provider.model });
       return result;
     } catch (err) {
       console.warn('[chat-api] completeWithTools IPC call failed:', err);
@@ -921,7 +990,6 @@ export async function completeWithTools(args: {
       arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
     })).filter((tc: NativeToolCall) => !!tc.name);
 
-    console.log('[chat-api] completeWithTools direct result:', { content_len: String(message.content || '').length, has_tools: !!toolCalls.length, model: provider.model });
     return {
       content: String(message.content || ''),
       reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),

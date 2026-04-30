@@ -7,7 +7,7 @@
 
   interface Props {
     name: string;
-    status?: 'done' | 'running' | 'error';
+    status?: 'done' | 'running' | 'error' | 'pending' | 'awaiting_approval';
     detail?: string;
     output?: string;
   }

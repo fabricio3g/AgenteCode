@@ -10,7 +10,7 @@ register('ja', () => import('../locales/ja.json'));
 
 const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'zh', 'fr', 'de', 'ja'] as const;
 
-export function normalizeLocaleCode(value: string | null | undefined): (typeof SUPPORTED_LOCALES)[number] {
+function normalizeLocaleCode(value: string | null | undefined): (typeof SUPPORTED_LOCALES)[number] {
   const raw = String(value || '').trim();
   if (!raw) return 'en';
   const lower = raw.toLowerCase();
@@ -25,7 +25,7 @@ export function normalizeLocaleCode(value: string | null | undefined): (typeof S
   return 'en';
 }
 
-export const SUPPORTED_UI_LANGUAGES = [
+const SUPPORTED_UI_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Español' },
   { code: 'pt-BR', label: 'Português (Brasil)' },
@@ -51,4 +51,3 @@ init({
 
 export const i18nReady = waitLocale();
 
-export { locale };

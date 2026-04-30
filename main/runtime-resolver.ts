@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 import { loadConfig, saveConfig } from './config.ts';
 
-export function inferRuntimeVariant(runtimePath) {
+function inferRuntimeVariant(runtimePath) {
   const value = String(runtimePath || '').toLowerCase();
   if (value.includes('cuda')) return 'cuda';
   if (value.includes('vulkan')) return 'vulkan';
@@ -17,7 +17,7 @@ export function inferRuntimeVariant(runtimePath) {
   return 'unknown';
 }
 
-export function runtimeCandidatesFromDirectory(dirPath) {
+function runtimeCandidatesFromDirectory(dirPath) {
   // Priority order: llama-server first (preferred for server mode),
   // then llama-cli (works for probing --list-devices)
   const priorityCandidates = ['llama-server', 'llama-server.exe'];
@@ -52,7 +52,7 @@ export function runtimeCandidatesFromDirectory(dirPath) {
   return found;
 }
 
-export function resolveRuntimeCandidate(candidate) {
+function resolveRuntimeCandidate(candidate) {
   if (!candidate || !fs.existsSync(candidate)) return null;
   const stat = fs.statSync(candidate);
   if (stat.isDirectory()) {

@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import extract from 'extract-zip';
 import * as tar from 'tar';
 import { shell, dialog } from 'electron';
-import { getAppPaths } from './index.ts';
+import { getAppPaths } from './paths.ts';
 import { ingestText, queryDocuments as queryRagDocuments, listRagDocuments, removeRagDocument, clearRagDocuments } from './rag-engine.ts';
 
 const ALLOWED_WORKSPACE_COMMANDS = new Set([
@@ -25,6 +25,18 @@ function isWorkspaceCommandAllowed(cmd) {
   if (ALLOWED_WORKSPACE_COMMANDS.has(base)) return true;
   if (cmd.includes('/') || cmd.includes('\\')) return false;
   return ALLOWED_WORKSPACE_COMMANDS.has(cmd.toLowerCase());
+}
+
+function workspaceEnv() {
+  const safe: Record<string, string | undefined> = {
+    PATH: process.env.PATH,
+    LANG: process.env.LANG || 'en_US.UTF-8',
+    TZ: process.env.TZ || 'UTC',
+    HOME: process.env.HOME || process.env.USERPROFILE || '',
+    USER: process.env.USER || 'user',
+  };
+  Object.keys(safe).forEach(k => { if (safe[k] === undefined) delete safe[k]; });
+  return safe;
 }
 
 export async function pathExists(targetPath) {
@@ -178,6 +190,8 @@ export async function createWorkspaceFolder(workspaceRoot, relativePath) {
 }
 
 export async function workspaceExec({ workspace_root, command, args: execArgs, cwd, shell: useShell, timeout_ms }) {
+  const workDir = cwd || workspace_root;
+
   if (!isWorkspaceCommandAllowed(command)) {
     return {
       cwd: workDir,
@@ -189,30 +203,18 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
     };
   }
 
-  const workDir = cwd || workspace_root;
   const timeoutMs = timeout_ms || 30000;
-  const useLoginShell = useShell !== false;
+  const env = workspaceEnv();
 
   return new Promise((resolve) => {
     let proc;
-    if (useLoginShell) {
-      // Login shell ensures npm/node/python3/cargo are on PATH
-      const joined = execArgs?.length
-        ? `${command} ${execArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`
-        : command;
-      proc = spawn('sh', ['-lc', joined], {
-        cwd: workDir,
-        timeout: timeoutMs,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-    } else {
-      proc = spawn(command, execArgs || [], {
-        cwd: workDir,
-        shell: false,
-        timeout: timeoutMs,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-    }
+    proc = spawn(command, execArgs || [], {
+      cwd: workDir,
+      shell: useShell === true,
+      timeout: timeoutMs,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env
+    });
 
     let stdout = '';
     let stderr = '';
@@ -220,7 +222,7 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
 
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill('SIGKILL');
+      try { proc.kill('SIGKILL'); } catch { /* ignore */ }
     }, timeoutMs);
 
     proc.stdout.on('data', d => { stdout += d.toString(); });
@@ -397,7 +399,7 @@ function computeFileFingerprint(filePath) {
  * Index all text files in a workspace folder into the RAG engine,
  * scoped to a specific chat session. Returns a summary of indexed files.
  */
-export async function indexWorkspaceRag(workspaceRoot, chatId, options = {}) {
+async function indexWorkspaceRag(workspaceRoot, chatId, options = {}) {
   const chunkSize = Number(options.chunk_size) || 512;
   const maxFiles = Math.min(Number(options.max_files) || 200, 1000);
   const skipPatterns = options.skip_patterns || [];
@@ -540,7 +542,7 @@ export async function indexWorkspaceRag(workspaceRoot, chatId, options = {}) {
  * Query workspace documents that were previously indexed via indexWorkspaceRag.
  * Wraps the RAG queryDocuments with workspace-aware context formatting.
  */
-export async function queryWorkspaceRag(workspaceRoot, chatId, query, topK = 8) {
+async function queryWorkspaceRag(workspaceRoot, chatId, query, topK = 8) {
   const result = await queryRagDocuments({
     query,
     chat_id: chatId,
@@ -568,7 +570,7 @@ export async function queryWorkspaceRag(workspaceRoot, chatId, query, topK = 8) 
  * Build a RAG-augmented system message prefix that injects workspace context
  * relevant to the user's query. Returns the context string and metadata.
  */
-export async function buildWorkspaceContext(workspaceRoot, chatId, query, options = {}) {
+async function buildWorkspaceContext(workspaceRoot, chatId, query, options = {}) {
   const maxContextChars = Math.min(Number(options.max_context_chars) || 4000, 16000);
   const topK = Number(options.top_k) || 6;
 
@@ -618,7 +620,7 @@ export async function buildWorkspaceContext(workspaceRoot, chatId, query, option
  * Get a summary of all RAG-indexed documents for a workspace/chat.
  * Returns file paths, chunk counts, and total characters.
  */
-export async function getWorkspaceRagSummary(chatId) {
+async function getWorkspaceRagSummary(chatId) {
   const docs = await listRagDocuments(chatId);
 
   return {
@@ -639,14 +641,14 @@ export async function getWorkspaceRagSummary(chatId) {
 /**
  * Remove a specific document from the workspace RAG index.
  */
-export async function removeWorkspaceRagDocument(docId, chatId) {
+async function removeWorkspaceRagDocument(docId, chatId) {
   return removeRagDocument(docId, chatId);
 }
 
 /**
  * Clear all RAG documents for a workspace/chat session.
  */
-export async function clearWorkspaceRag(chatId) {
+async function clearWorkspaceRag(chatId) {
   return clearRagDocuments(chatId);
 }
 
@@ -654,7 +656,7 @@ export async function clearWorkspaceRag(chatId) {
  * Format a RAG context block for injection into a chat completion system prompt.
  * Returns a string that can be prepended to the system message.
  */
-export function formatRagContextForPrompt(context, sources = []) {
+function formatRagContextForPrompt(context, sources = []) {
   if (!context || !context.trim()) return '';
 
   const header = '--- Workspace Context ---';
@@ -674,7 +676,7 @@ const WORKSPACE_TEXT_EXTENSIONS = new Set([
 const MAX_WORKSPACE_FILES = 50;
 const MAX_FILE_SIZE = 512 * 1024;
 
-export async function ingestWorkspaceFiles(folderPath, chatId, options = {}) {
+async function ingestWorkspaceFiles(folderPath, chatId, options = {}) {
   const { files: indexedFiles } = await indexWorkspaceFolder(folderPath, chatId);
   if (!indexedFiles || !indexedFiles.length) {
     return { ingested_count: 0, skipped_count: 0, total_files: 0 };

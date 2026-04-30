@@ -21,44 +21,6 @@ export interface DesktopCapabilities {
   rag_indexing: boolean;
   web_search: boolean;
   sandbox_exec: boolean;
-   agent_runtime: boolean;
-}
-
-export interface ManagedAgentArtifact {
-  title: string;
-  files: Record<string, string>;
-  preview_html?: string | null;
-  thumbnail?: string | null;
-  metadata?: Record<string, unknown> | null;
-}
-
-export interface ManagedAgentStep {
-  id: string;
-  type: string;
-  label: string;
-  status: string;
-  detail?: string | null;
-  output?: string | null;
-}
-
-export interface ManagedAgentTask {
-  id: string;
-  chat_id: string;
-  prompt: string;
-  status: string;
-  mode: string;
-  search_mode: string;
-  created_at: number;
-  updated_at: number;
-  started_at?: number | null;
-  completed_at?: number | null;
-  content?: string | null;
-  reasoning?: string | null;
-  error?: string | null;
-  work_context?: Record<string, unknown> | null;
-  metadata?: Record<string, unknown> | null;
-  artifact?: ManagedAgentArtifact | null;
-  steps: ManagedAgentStep[];
 }
 
 export interface GgufMeta {

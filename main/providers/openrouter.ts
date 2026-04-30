@@ -2,11 +2,6 @@ import OpenAI from 'openai';
 import { BaseProvider } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 
-/**
- * OpenRouter provider using the OpenAI SDK.
- * OpenRouter is fully OpenAI-compatible, so the standard OpenAI SDK works perfectly.
- * The official @openrouter/sdk has Zod validation issues with message formats.
- */
 export class OpenRouterProvider extends BaseProvider {
   name = 'openrouter';
   label = 'OpenRouter';
@@ -33,7 +28,7 @@ export class OpenRouterProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const stream = await client.chat.completions.create({
@@ -42,22 +37,32 @@ export class OpenRouterProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: true
-    });
+    }, { signal });
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (content || reasoning) {
+      const toolCallDeltas = delta.tool_calls;
+
+      if (content || reasoning || toolCallDeltas) {
         yield {
           content: content ?? '',
-          reasoning: reasoning ?? ''
+          reasoning: reasoning ?? '',
+          ...(toolCallDeltas ? {
+            toolCallDeltas: toolCallDeltas.map(tc => ({
+              index: tc.index ?? 0,
+              id: tc.id ?? undefined,
+              name: tc.function?.name ?? undefined,
+              arguments: tc.function?.arguments ?? undefined
+            }))
+          } : {})
         };
       }
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const cleanParams = Object.fromEntries(
@@ -70,7 +75,7 @@ export class OpenRouterProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...cleanParams,
       stream: false
-    });
+    }, { signal });
 
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};

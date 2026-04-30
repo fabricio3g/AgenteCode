@@ -2,36 +2,77 @@ import crypto from 'node:crypto';
 import { loadConfigFromDisk } from './config.ts';
 import { resolveProvider } from './providers/registry.ts';
 import { normalizeBaseUrl } from './providers/helpers.ts';
+import { safeParseJson } from './providers/helpers.ts';
 
 const activeStreams = new Map();
 
-// Resolve the real API key: use the provided key if present, otherwise look it up
-// from the on-disk config by providerName first, then by matching base_url.
-export function resolveApiKey(apiKey, baseUrl, providerName) {
+const _configCache = { data: null, ts: 0 };
+const CONFIG_CACHE_TTL = 30_000;
+
+function getCachedConfig() {
+  const now = Date.now();
+  if (_configCache.data && now - _configCache.ts < CONFIG_CACHE_TTL) {
+    return _configCache.data;
+  }
+  _configCache.data = loadConfigFromDisk();
+  _configCache.ts = now;
+  return _configCache.data;
+}
+
+export function resolveApiKeyFromConfig(cfg, apiKey, baseUrl, providerName) {
   if (apiKey) return apiKey;
-  const cfg = loadConfigFromDisk();
   const providers = cfg?.llm?.providers || {};
   const defaultProvider = cfg?.llm?.provider;
 
   if (providerName && providers[providerName]?.api_key) {
     return providers[providerName].api_key;
   }
-  if (providerName && defaultProvider && defaultProvider !== providerName && providers[defaultProvider]?.api_key) {
-    console.log(`[chat-ipc] Provider "${providerName}" has no key, using default provider "${defaultProvider}" key`);
-    return providers[defaultProvider].api_key;
+  const normalizedBase = normalizeBaseUrl(baseUrl);
+  for (const provider of Object.values(providers)) {
+    if (normalizeBaseUrl(provider.base_url) === normalizedBase && provider.api_key) {
+      return provider.api_key;
+    }
   }
   if (!providerName && defaultProvider && providers[defaultProvider]?.api_key) {
     return providers[defaultProvider].api_key;
   }
-  const normalizedBase = normalizeBaseUrl(baseUrl);
-  for (const [name, provider] of Object.entries(providers)) {
-    if (normalizeBaseUrl(provider.base_url) === normalizedBase && provider.api_key) {
-      console.log(`[chat-ipc] API key found by URL match for provider "${name}"`);
-      return provider.api_key;
-    }
-  }
-  console.log(`[chat-ipc] No API key found. Requested: "${providerName}", Default: "${defaultProvider}", BaseURL: "${baseUrl}"`);
   return '';
+}
+
+export function resolveApiKey(apiKey, baseUrl, providerName) {
+  return resolveApiKeyFromConfig(getCachedConfig(), apiKey, baseUrl, providerName);
+}
+
+function mergeToolCallText(currentValue, nextValue, { append = false } = {}) {
+  const current = String(currentValue || '');
+  const next = String(nextValue || '');
+  if (!next) return current;
+  if (!current) return next;
+  if (current === next) return current;
+  if (next.startsWith(current)) return next;
+  if (current.startsWith(next)) return current;
+  if (!append) return next.length > current.length ? next : current;
+  if (current.endsWith(next)) return current;
+  return current + next;
+}
+
+export function accumulateToolCallDelta(toolCallAccumulator, delta, { appendArguments = true } = {}) {
+  if (!delta) return;
+  const index = Number.isFinite(delta.index) ? delta.index : 0;
+  const existing = toolCallAccumulator.get(index) || { id: '', name: '', arguments: '' };
+  existing.id = mergeToolCallText(existing.id, delta.id, { append: false });
+  existing.name = mergeToolCallText(existing.name, delta.name, { append: false });
+  existing.arguments = mergeToolCallText(existing.arguments, delta.arguments, { append: appendArguments });
+  toolCallAccumulator.set(index, existing);
+}
+
+export function finalizeToolCalls(toolCallAccumulator) {
+  if (!toolCallAccumulator?.size) return undefined;
+  return Array.from(toolCallAccumulator.values()).map(tc => ({
+    id: tc.id || `call_${crypto.randomUUID().slice(0, 8)}`,
+    name: tc.name,
+    arguments: safeParseJson(tc.arguments) || tc.arguments
+  })).filter(tc => tc.name);
 }
 
 // ── Public API ──
@@ -40,18 +81,20 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
   if (!realKey && provider.name !== 'local') {
-    const cfg = loadConfigFromDisk();
+    const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
     throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`);
   }
 
-  // Strip undefined values before passing to provider SDKs (some reject them)
   const params = Object.fromEntries(
     Object.entries({
       max_tokens: body.max_tokens,
       temperature: body.temperature,
-      top_p: body.top_p
+      top_p: body.top_p,
+      tool_choice: body.tool_choice,
+      response_format: body.response_format,
+      ...body.extra_params
     }).filter(([, v]) => v !== undefined)
   );
 
@@ -66,17 +109,10 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
 }
 
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
-  console.log('[chat-ipc] startChatStream received:', {
-    baseUrl,
-    hasApiKey: !!apiKey,
-    providerName,
-    model: body?.model
-  });
-
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
   if (!realKey && provider.name !== 'local') {
-    const cfg = loadConfigFromDisk();
+    const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
     const errorMsg = `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`;
@@ -86,7 +122,6 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       try {
         win?.webContents?.send('chat-stream-event', { streamId, ...payload });
       } catch {
-        // Ignore renderer event delivery errors
       }
     };
     setTimeout(() => {
@@ -99,7 +134,6 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
   const abortController = new AbortController();
   activeStreams.set(streamId, abortController);
 
-  // Safety timeout: abort and clean up stale streams after 10 minutes
   const streamTimeout = setTimeout(() => {
     if (activeStreams.has(streamId)) {
       abortController.abort();
@@ -111,7 +145,6 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
     try {
       win?.webContents?.send('chat-stream-event', { streamId, ...payload });
     } catch {
-      // Ignore renderer event delivery errors
     }
   };
 
@@ -133,11 +166,33 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         )
       };
 
+      const toolCallAccumulator = new Map();
+
       for await (const delta of provider.streamChat(streamParams)) {
+        if (abortController.signal.aborted) {
+          break;
+        }
+
         emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
+
+        if (delta.toolCallDeltas) {
+          for (const tc of delta.toolCallDeltas) {
+            accumulateToolCallDelta(toolCallAccumulator, tc, { appendArguments: true });
+          }
+        }
+
+        if (delta.toolCallDelta) {
+          accumulateToolCallDelta(toolCallAccumulator, delta.toolCallDelta, { appendArguments: false });
+        }
       }
 
-      emit({ type: 'done' });
+      if (abortController.signal.aborted) {
+        emit({ type: 'cancelled' });
+        return;
+      }
+
+      const finalToolCalls = finalizeToolCalls(toolCallAccumulator);
+      emit({ type: 'done', toolCalls: finalToolCalls });
     } catch (error) {
       if (abortController.signal.aborted) {
         emit({ type: 'cancelled' });

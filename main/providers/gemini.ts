@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { BaseProvider } from './base.ts';
-import { numberOrNull } from './helpers.ts';
+import { numberOrNull, safeParseJson } from './helpers.ts';
 
 export class GeminiProvider extends BaseProvider {
   name = 'gemini';
@@ -30,13 +30,27 @@ export class GeminiProvider extends BaseProvider {
     return client.models.get(modelName);
   }
 
+  _convertTools(tools) {
+    if (!tools?.length) return undefined;
+    return tools.map(t => {
+      const fn = t.function || t;
+      return {
+        functionDeclarations: [{
+          name: fn.name,
+          description: fn.description || '',
+          parameters: fn.parameters || { type: 'object', properties: {} }
+        }]
+      };
+    });
+  }
+
   _buildContents(messages) {
     let systemInstruction = null;
     const contents = [];
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemInstruction =  msg.content;
+        systemInstruction = msg.content;
       } else {
         const role = msg.role === 'assistant' ? 'model' : 'user';
         if (typeof msg.content === 'string') {
@@ -62,10 +76,27 @@ export class GeminiProvider extends BaseProvider {
     return { systemInstruction, contents };
   }
 
-  async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p }) {
+  _extractToolCalls(response) {
+    if (!response?.candidates?.[0]?.content?.parts) return null;
+    const parts = response.candidates[0].content.parts;
+    const calls = [];
+    for (const part of parts) {
+      if (part.functionCall) {
+        calls.push({
+          id: `call_${Math.random().toString(36).slice(2, 11)}`,
+          name: part.functionCall.name,
+          arguments: part.functionCall.args || safeParseJson(part.functionCall.args) || {}
+        });
+      }
+    }
+    return calls.length ? calls : null;
+  }
+
+  async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools }) {
     const client = this.createClient(apiKey);
     const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
+    const geminiTools = this._convertTools(tools);
 
     const generationConfig = {};
     if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
@@ -75,22 +106,44 @@ export class GeminiProvider extends BaseProvider {
     const request = {
       contents,
       ...(systemInstruction ? { systemInstruction } : {}),
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {})
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+      ...(geminiTools ? { tools: geminiTools } : {})
     };
 
     const result = await geminiModel.generateContentStream(request);
+    let toolCallIndex = 0;
     for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) {
-        yield { content: text, reasoning: '' };
+      const text = chunk.text?.();
+      const parts = chunk.candidates?.[0]?.content?.parts || [];
+      const functionCalls = parts.filter(p => p.functionCall);
+
+      if (text || functionCalls.length) {
+        const toolCallDeltas = functionCalls.map((fc) => {
+          const idx = toolCallIndex++;
+          return {
+            index: idx,
+            id: `call_${Math.random().toString(36).slice(2, 11)}`,
+            name: fc.functionCall.name,
+            arguments: typeof fc.functionCall.args === 'string'
+              ? fc.functionCall.args
+              : JSON.stringify(fc.functionCall.args || {})
+          };
+        });
+
+        yield {
+          content: text || '',
+          reasoning: '',
+          ...(toolCallDeltas.length ? { toolCallDeltas } : {})
+        };
       }
     }
   }
 
-  async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p }) {
+  async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools }) {
     const client = this.createClient(apiKey);
     const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
+    const geminiTools = this._convertTools(tools);
 
     const generationConfig = {};
     if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
@@ -100,7 +153,8 @@ export class GeminiProvider extends BaseProvider {
     const request = {
       contents,
       ...(systemInstruction ? { systemInstruction } : {}),
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {})
+      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
+      ...(geminiTools ? { tools: geminiTools } : {})
     };
 
     const result = await geminiModel.generateContent(request);
@@ -115,7 +169,7 @@ export class GeminiProvider extends BaseProvider {
         output_tokens: response.usageMetadata.candidatesTokenCount,
         total_tokens: response.usageMetadata.totalTokenCount
       } : null,
-      toolCalls: null
+      toolCalls: this._extractToolCalls(response)
     };
   }
 

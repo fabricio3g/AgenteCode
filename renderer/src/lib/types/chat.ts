@@ -123,7 +123,6 @@ export interface ChatMessage {
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
   slides?: SlideData[];
   mode?: 'chat' | 'slides' | 'agent';
-  agentTaskId?: string | null;
   agentSteps?: AgentStep[];
   artifact?: AgentArtifact | null;
   workContext?: WorkContextMeta | null;

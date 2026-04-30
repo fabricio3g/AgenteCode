@@ -1,6 +1,6 @@
 import Groq from 'groq-sdk';
 import { BaseProvider } from './base.ts';
-import { numberOrNull, safeParseJson } from './helpers.ts';
+import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
 export class GroqProvider extends BaseProvider {
   name = 'groq';
@@ -13,46 +13,59 @@ export class GroqProvider extends BaseProvider {
     return name === 'groq' || url.includes('api.groq.com');
   }
 
-  createClient(apiKey, _baseUrl) {
-    const key = apiKey || '';
-    if (!this._clients.has(key)) {
-      this._clients.set(key, new Groq({ apiKey }));
+  createClient(apiKey, baseUrl) {
+    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl) || 'https://api.groq.com/openai/v1'}`;
+    if (!this._clients.has(clientKey)) {
+      this._clients.set(clientKey, new Groq({
+        apiKey,
+        baseURL: normalizeBaseUrl(baseUrl) || 'https://api.groq.com/openai/v1'
+      }));
     }
-    return this._clients.get(key);
+    return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, ...params }) {
-    const client = this.createClient(apiKey);
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+    const client = this.createClient(apiKey, baseUrl);
     const stream = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
       ...params,
       stream: true
-    });
+    }, { signal });
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (content || reasoning) {
+      const toolCallDeltas = delta.tool_calls;
+
+      if (content || reasoning || toolCallDeltas) {
         yield {
           content: content ?? '',
-          reasoning: reasoning ?? ''
+          reasoning: reasoning ?? '',
+          ...(toolCallDeltas ? {
+            toolCallDeltas: toolCallDeltas.map(tc => ({
+              index: tc.index ?? 0,
+              id: tc.id ?? undefined,
+              name: tc.function?.name ?? undefined,
+              arguments: tc.function?.arguments ?? undefined
+            }))
+          } : {})
         };
       }
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, tool_choice, ...params }) {
-    const client = this.createClient(apiKey);
+  async completeChat({ apiKey, baseUrl, model, messages, tools, tool_choice, signal, ...params }) {
+    const client = this.createClient(apiKey, baseUrl);
     const response = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools, tool_choice: tool_choice || 'auto' } : {}),
       ...params,
       stream: false
-    });
+    }, { signal });
 
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};
