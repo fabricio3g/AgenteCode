@@ -5,6 +5,33 @@ import { getAppPaths } from './paths.ts';
 
 let db = null;
 
+function stringifyJson(value) {
+  if (value == null) return null;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseJson(raw, fallback = null) {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed == null ? fallback : parsed;
+  } catch {
+    return fallback;
+  }
+}
+
+function addColumn(database, table, column, definition) {
+  try {
+    database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+  } catch {
+    // Column already exists
+  }
+}
+
 function getDbPath() {
   const { cacheRoot } = getAppPaths();
   return path.join(cacheRoot, 'chat-history.db');
@@ -47,6 +74,15 @@ function migrate(database) {
       mode TEXT,
       agent_task_id TEXT,
       active_version INTEGER,
+      metadata TEXT,
+      sources TEXT,
+      search_meta TEXT,
+      agent_steps TEXT,
+      rag_documents TEXT,
+      slides TEXT,
+      work_context TEXT,
+      files_created TEXT,
+      artifact TEXT,
       folder_id TEXT,
       FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
     );
@@ -60,6 +96,7 @@ function migrate(database) {
       url TEXT,
       preview TEXT,
       base64 TEXT,
+      data TEXT,
       kind TEXT,
       status TEXT,
       doc_id TEXT,
@@ -79,6 +116,7 @@ function migrate(database) {
       timing REAL,
       tokens_per_second REAL,
       error INTEGER DEFAULT 0,
+      metadata TEXT,
       FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
     );
 
@@ -110,12 +148,19 @@ function migrate(database) {
     CREATE INDEX IF NOT EXISTS idx_rag_documents_chat_id ON rag_documents(chat_id);
   `);
 
-  // Migration: add tts_audio column if missing
-  try {
-    database.prepare('ALTER TABLE messages ADD COLUMN tts_audio TEXT').run();
-  } catch {
-    // Column already exists
-  }
+  // Migrations for older chat-history.db files.
+  addColumn(database, 'messages', 'tts_audio', 'TEXT');
+  addColumn(database, 'messages', 'artifact', 'TEXT');
+  addColumn(database, 'messages', 'metadata', 'TEXT');
+  addColumn(database, 'messages', 'sources', 'TEXT');
+  addColumn(database, 'messages', 'search_meta', 'TEXT');
+  addColumn(database, 'messages', 'agent_steps', 'TEXT');
+  addColumn(database, 'messages', 'rag_documents', 'TEXT');
+  addColumn(database, 'messages', 'slides', 'TEXT');
+  addColumn(database, 'messages', 'work_context', 'TEXT');
+  addColumn(database, 'messages', 'files_created', 'TEXT');
+  addColumn(database, 'message_versions', 'metadata', 'TEXT');
+  addColumn(database, 'attachments', 'data', 'TEXT');
 }
 
 export function saveChatSession(session) {
@@ -132,8 +177,8 @@ export function saveChatSession(session) {
   `);
 
   const upsertMessage = database.prepare(`
-    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, agent_task_id, active_version, tts_audio)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, agent_task_id, active_version, tts_audio, artifact, metadata, sources, search_meta, agent_steps, rag_documents, slides, work_context, files_created)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       content = excluded.content,
       reasoning = excluded.reasoning,
@@ -144,19 +189,28 @@ export function saveChatSession(session) {
       mode = excluded.mode,
       agent_task_id = excluded.agent_task_id,
       active_version = excluded.active_version,
-      tts_audio = excluded.tts_audio
+      tts_audio = excluded.tts_audio,
+      artifact = excluded.artifact,
+      metadata = excluded.metadata,
+      sources = excluded.sources,
+      search_meta = excluded.search_meta,
+      agent_steps = excluded.agent_steps,
+      rag_documents = excluded.rag_documents,
+      slides = excluded.slides,
+      work_context = excluded.work_context,
+      files_created = excluded.files_created
   `);
 
   const deleteAttachments = database.prepare('DELETE FROM attachments WHERE message_id = ?');
   const insertAttachment = database.prepare(`
-    INSERT INTO attachments (id, message_id, name, size, type, url, preview, base64, kind, status, doc_id, ocr_text, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO attachments (id, message_id, name, size, type, url, preview, base64, data, kind, status, doc_id, ocr_text, error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const deleteVersions = database.prepare('DELETE FROM message_versions WHERE message_id = ?');
   const insertVersion = database.prepare(`
-    INSERT INTO message_versions (message_id, content, reasoning, created_at, model_name, tokens, timing, tokens_per_second, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO message_versions (message_id, content, reasoning, created_at, model_name, tokens, timing, tokens_per_second, error, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const transaction = database.transaction(() => {
@@ -185,7 +239,16 @@ export function saveChatSession(session) {
         msg.mode || null,
         null,
         msg.activeVersion != null ? msg.activeVersion : null,
-        msg.ttsAudio ? JSON.stringify(msg.ttsAudio) : null
+        stringifyJson(msg.ttsAudio),
+        stringifyJson(msg.artifact),
+        stringifyJson(msg.metadata),
+        stringifyJson(msg.sources),
+        stringifyJson(msg.searchMeta),
+        stringifyJson(msg.agentSteps),
+        stringifyJson(msg.ragDocuments),
+        stringifyJson(msg.slides),
+        stringifyJson(msg.workContext),
+        stringifyJson(msg.filesCreated)
       );
 
       // Attachments
@@ -200,6 +263,7 @@ export function saveChatSession(session) {
           att.url || null,
           att.preview || null,
           att.base64 || null,
+          att.data || null,
           att.kind || null,
           att.status || null,
           att.docId || null,
@@ -220,7 +284,8 @@ export function saveChatSession(session) {
           ver.metadata?.tokens || null,
           ver.metadata?.timing || null,
           ver.metadata?.tokensPerSecond || null,
-          ver.metadata?.error ? 1 : 0
+          ver.metadata?.error ? 1 : 0,
+          stringifyJson(ver.metadata)
         );
       }
     }
@@ -246,6 +311,7 @@ export function loadAllChats() {
         url: att.url || undefined,
         preview: att.preview || undefined,
         base64: att.base64 || undefined,
+        data: att.data || undefined,
         kind: att.kind || undefined,
         status: att.status || undefined,
         docId: att.doc_id || undefined,
@@ -253,18 +319,24 @@ export function loadAllChats() {
         error: att.error || undefined
       }));
 
-      const versions = verStmt.all(msg.id).map(ver => ({
-        content: ver.content,
-        reasoning: ver.reasoning || undefined,
-        createdAt: ver.created_at,
-        metadata: {
+      const versions = verStmt.all(msg.id).map(ver => {
+        const metadata = {
           modelName: ver.model_name || undefined,
           tokens: ver.tokens || undefined,
           timing: ver.timing || undefined,
           tokensPerSecond: ver.tokens_per_second || undefined,
           error: !!ver.error
-        }
-      }));
+        };
+        return {
+          content: ver.content,
+          reasoning: ver.reasoning || undefined,
+          createdAt: ver.created_at,
+          metadata: {
+            ...metadata,
+            ...parseJson(ver.metadata, {})
+          }
+        };
+      });
 
       const result = {
         id: msg.id,
@@ -279,9 +351,16 @@ export function loadAllChats() {
       if (msg.search_mode) result.searchMode = msg.search_mode;
       if (msg.mode) result.mode = msg.mode;
       if (msg.active_version != null) result.activeVersion = msg.active_version;
-      if (msg.tts_audio) {
-        try { result.ttsAudio = JSON.parse(msg.tts_audio); } catch { /* ignore parse errors */ }
-      }
+      result.metadata = parseJson(msg.metadata, undefined);
+      result.sources = parseJson(msg.sources, []);
+      result.searchMeta = parseJson(msg.search_meta, null);
+      result.agentSteps = parseJson(msg.agent_steps, []);
+      result.ragDocuments = parseJson(msg.rag_documents, []);
+      result.slides = parseJson(msg.slides, []);
+      result.workContext = parseJson(msg.work_context, null);
+      result.filesCreated = parseJson(msg.files_created, []);
+      result.ttsAudio = parseJson(msg.tts_audio, undefined);
+      result.artifact = parseJson(msg.artifact, null);
       if (attachments.length) result.attachments = attachments;
       if (versions.length) result.versions = versions;
       return result;

@@ -35,6 +35,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
   'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
+  'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web'
 ]);
 

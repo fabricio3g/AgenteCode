@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreLinksForQuery } from '../../main/link-scorer.js';
+import { scoreLinksForQuery } from '../../main/link-scorer.ts';
 
 test('scoreLinksForQuery ranks relevant links above noise links', async () => {
   const query = 'best rust web crawler performance benchmark';

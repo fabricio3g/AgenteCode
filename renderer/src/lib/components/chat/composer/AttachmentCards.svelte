@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { X, FileText } from 'lucide-svelte';
+  import { X } from 'lucide-svelte';
+  import { getFileIcon } from '$lib/utils/doc-utils';
   import { appStore } from '$lib/stores/app.svelte';
 </script>
 
@@ -10,7 +11,7 @@
     {#each appStore.pendingAttachments as file (file.id)}
       {#if file.kind === 'image' && (file.preview || file.base64)}
         <div class="group relative">
-          <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 rounded-xl border border-[var(--border)] object-cover shadow-[var(--shadow-xs)]" />
+          <img src={file.base64 || file.preview} alt={file.name} class="h-16 w-16 object-cover" />
           <button
             aria-label="Remove image"
             class="chateaui-pill absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100"
@@ -23,11 +24,13 @@
         </div>
       {:else}
         <div class="chateaui-card group relative flex items-center gap-2 px-3 py-2" style="--chateaui-card-bg: var(--surface-hover);">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-overlay-light">
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center bg-overlay-light">
             {#if file.status === 'processing'}
               <div class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-transparent"></div>
             {:else}
-              <FileText class="h-4 w-4 text-[var(--text-tertiary)]" />
+              {#each [getFileIcon(file.name, file.type)] as Icon}
+                <Icon class="h-4 w-4 text-[var(--text-tertiary)]" />
+              {/each}
             {/if}
           </div>
           <div class="min-w-0">

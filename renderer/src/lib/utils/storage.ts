@@ -18,6 +18,57 @@ function isElectronEnv(): boolean {
   return typeof window !== 'undefined' && !!(window as any).electronAPI;
 }
 
+function mergeDocumentPayloadsFromLocal(dbChats: ChatSession[], localChats: ChatSession[]): ChatSession[] {
+  if (!dbChats.length || !localChats.length) return dbChats;
+
+  const localChatById = new Map(localChats.map((chat) => [chat.id, chat]));
+
+  return dbChats.map((chat) => {
+    const localChat = localChatById.get(chat.id);
+    if (!localChat?.messages?.length) return chat;
+
+    const localMessageById = new Map(localChat.messages.map((message) => [message.id, message]));
+    return {
+      ...chat,
+      messages: (chat.messages || []).map((message) => {
+        const localMessage = localMessageById.get(message.id);
+        if (!localMessage) return message;
+
+        const merged = {
+          ...message,
+          metadata: message.metadata || localMessage.metadata,
+          sources: message.sources?.length ? message.sources : (localMessage.sources || []),
+          searchMeta: message.searchMeta || localMessage.searchMeta || null,
+          agentSteps: message.agentSteps?.length ? message.agentSteps : (localMessage.agentSteps || []),
+          ragDocuments: message.ragDocuments?.length ? message.ragDocuments : (localMessage.ragDocuments || []),
+          slides: message.slides?.length ? message.slides : (localMessage.slides || []),
+          workContext: message.workContext || localMessage.workContext || null,
+          filesCreated: message.filesCreated?.length ? message.filesCreated : (localMessage.filesCreated || []),
+          artifact: message.artifact || localMessage.artifact || null
+        };
+
+        if (message.attachments?.length && localMessage.attachments?.length) {
+          const localAttachmentById = new Map(localMessage.attachments.map((attachment) => [attachment.id, attachment]));
+          merged.attachments = message.attachments.map((attachment) => {
+            const localAttachment = localAttachmentById.get(attachment.id);
+            if (!localAttachment) return attachment;
+            return {
+              ...attachment,
+              data: attachment.data || localAttachment.data,
+              base64: attachment.base64 || localAttachment.base64,
+              preview: attachment.preview || localAttachment.preview
+            };
+          });
+        } else if (!message.attachments?.length && localMessage.attachments?.length) {
+          merged.attachments = localMessage.attachments;
+        }
+
+        return merged;
+      })
+    };
+  });
+}
+
 export async function loadAppConfig(): Promise<AppConfig> {
   // In Electron: load from main process (persisted to disk), fall back to localStorage
   if (isElectronEnv()) {
@@ -83,23 +134,31 @@ export async function loadChatStateFromDb(): Promise<{ chats: ChatSession[]; fol
   try {
     const chats = await (window as any).electronAPI.invoke('chat_db_load_all') as ChatSession[];
     const folders = await (window as any).electronAPI.invoke('chat_db_load_folders') as ChatFolder[];
+    const localState = loadChatState<{ chats: ChatSession[]; folders: ChatFolder[] }>({ chats: [], folders: [] });
 
     // If DB is empty, try migration from localStorage
     if ((!chats || chats.length === 0) && !localStorage.getItem(DB_MIGRATED_KEY)) {
-      const localState = loadChatState<{ chats: ChatSession[]; folders: ChatFolder[] }>({ chats: [], folders: [] });
       if (localState.chats?.length > 0 || localState.folders?.length > 0) {
         const migrated = await (window as any).electronAPI.invoke('chat_db_migrate', { persistedState: localState }) as number;
         console.log(`[chat-db] Migrated ${migrated} chats from localStorage to SQLite`);
         localStorage.setItem(DB_MIGRATED_KEY, '1');
         const migratedChats = await (window as any).electronAPI.invoke('chat_db_load_all') as ChatSession[];
         const migratedFolders = await (window as any).electronAPI.invoke('chat_db_load_folders') as ChatFolder[];
-        return { chats: migratedChats || [], folders: migratedFolders || [], migrated: true };
+        return {
+          chats: mergeDocumentPayloadsFromLocal(migratedChats || [], localState.chats || []),
+          folders: migratedFolders || [],
+          migrated: true
+        };
       }
       localStorage.setItem(DB_MIGRATED_KEY, '1');
     }
 
     if (!chats || chats.length === 0) return null;
-    return { chats, folders: folders || [], migrated: false };
+    return {
+      chats: mergeDocumentPayloadsFromLocal(chats, localState.chats || []),
+      folders: folders || [],
+      migrated: false
+    };
   } catch (err) {
     console.error('[loadChatStateFromDb] Failed:', err);
     return null;

@@ -2,12 +2,13 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { AlertCircle, Braces, Check, ChevronRight, Code, Copy, Download, ExternalLink, Eye, FileCode, FileText, File, Folder, Image, Palette, Pencil, Plus, RefreshCw, Terminal, Trash2, X } from 'lucide-svelte';
+  import { AlertCircle, Braces, Check, ChevronRight, Code, Copy, Download, ExternalLink, Eye, FileCode, FileSpreadsheet, FileText, Folder, Image, Palette, Pencil, Plus, Presentation, RefreshCw, Terminal, Trash2, X } from 'lucide-svelte';
   import JSZip from 'jszip';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import CodeEditor from '$lib/ui/components/CodeEditor.svelte';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { artifactFileBlob, artifactFilePayload, isDataUrlFile, isHiddenArtifactFile, viewerPathFor } from '$lib/utils/artifact-files';
 
   type TreeNode = { name: string; path: string; type: 'file' | 'folder'; children?: TreeNode[]; expanded?: boolean };
   type PreviewLog = { level: 'log' | 'warn' | 'error'; text: string };
@@ -45,7 +46,7 @@
 
   const fileTree = $derived.by(() => {
     const root: TreeNode[] = [];
-    const paths = Object.keys(files).sort();
+    const paths = Object.keys(files).filter((path) => !isHiddenArtifactFile(path)).sort();
 
     for (const path of paths) {
       const parts = path.split('/');
@@ -78,37 +79,39 @@
     return root;
   });
 
-  const fileList = $derived(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)));
-  const visibleFileList = $derived(fileList.filter(([path]) => !path.startsWith('__')));
-  const visibleFileCount = $derived(visibleFileList.length);
+  const fileList = $derived(Object.entries(files).filter(([path]) => !isHiddenArtifactFile(path)).sort(([a], [b]) => a.localeCompare(b)));
+  const visibleFileCount = $derived(fileList.length);
 
   let prevArtifactFileKeys = $state('');
   let prevPreviewHtml = $state('');
 
   $effect(() => {
-    const currentKeys = Object.keys(files).sort().join('|');
+    const visiblePaths = Object.keys(files).filter((path) => !isHiddenArtifactFile(path));
+    const currentKeys = visiblePaths.sort().join('|');
     const currentPreviewHtml = artifact?.previewHtml || '';
     if (currentKeys === prevArtifactFileKeys && currentPreviewHtml === prevPreviewHtml) return;
     const oldKeys = prevArtifactFileKeys;
     prevArtifactFileKeys = currentKeys;
     prevPreviewHtml = currentPreviewHtml;
 
-    if (!Object.keys(files).length) {
+    if (!visiblePaths.length) {
       selectedPath = '';
       if (artifact?.previewHtml) activePane = 'preview';
       return;
     }
 
-    const htmlFile = Object.keys(files).find((path) => path.endsWith('.html'));
-    const isNewHtml = htmlFile && !oldKeys.split('|').filter(Boolean).includes(htmlFile);
+    const htmlFile = visiblePaths.find((path) => path.endsWith('.html'));
+    const viewerFile = visiblePaths.find((path) => files[viewerPathFor(path)]);
+    const preferredPreviewFile = htmlFile || viewerFile;
+    const isNewPreview = preferredPreviewFile && !oldKeys.split('|').filter(Boolean).includes(preferredPreviewFile);
 
     if (!selectedPath || !files[selectedPath]) {
-      selectedPath = htmlFile ?? Object.keys(files)[0] ?? '';
-      if (htmlFile || artifact?.previewHtml) activePane = 'preview';
-    } else if (isNewHtml) {
-      selectedPath = htmlFile;
+      selectedPath = preferredPreviewFile ?? visiblePaths[0] ?? '';
+      if (preferredPreviewFile || artifact?.previewHtml) activePane = 'preview';
+    } else if (isNewPreview && preferredPreviewFile) {
+      selectedPath = preferredPreviewFile;
       activePane = 'preview';
-    } else if (!htmlFile && artifact?.previewHtml) {
+    } else if (!preferredPreviewFile && artifact?.previewHtml) {
       activePane = 'preview';
     }
   });
@@ -126,12 +129,15 @@
   });
 
   const selectedContent = $derived(files[selectedPath] || '');
+  const selectedViewerHtml = $derived(selectedPath ? (files[viewerPathFor(selectedPath)] || '') : '');
+  const selectedIsBinary = $derived(isDataUrlFile(selectedContent));
   const isHtml = $derived(selectedPath.endsWith('.html'));
-  const hasPreview = $derived(Boolean((isHtml && selectedContent) || artifact?.previewHtml));
-  const previewLabel = $derived(isHtml && selectedPath ? selectedPath : (artifact?.previewHtml ? 'Generated preview' : 'Preview'));
+  const hasPreview = $derived(Boolean(selectedViewerHtml || (isHtml && selectedContent) || artifact?.previewHtml));
+  const previewLabel = $derived(selectedViewerHtml && selectedPath ? selectedPath : (isHtml && selectedPath ? selectedPath : (artifact?.previewHtml ? 'Generated preview' : 'Preview')));
   const previewBasePath = $derived.by(() => {
+    if (selectedViewerHtml && selectedPath) return viewerPathFor(selectedPath);
     if (isHtml && selectedPath) return selectedPath;
-    return Object.keys(files).find((path) => path.endsWith('.html')) || 'index.html';
+    return Object.keys(files).filter((path) => !isHiddenArtifactFile(path)).find((path) => path.endsWith('.html')) || 'index.html';
   });
 
   function openTab(path: string) {
@@ -152,14 +158,14 @@
   }
 
   function addNewTab() {
-    const unused = Object.keys(files).filter(p => !openTabs.includes(p));
+    const unused = Object.keys(files).filter(p => !isHiddenArtifactFile(p) && !openTabs.includes(p));
     if (unused.length > 0) {
       openTab(unused[0]);
     }
   }
 
   $effect(() => {
-    const currentKeys = Object.keys(files).filter((key) => !key.startsWith('__'));
+    const currentKeys = Object.keys(files).filter((key) => !isHiddenArtifactFile(key));
     const validTabs = openTabs.filter((path) => currentKeys.includes(path));
     if (validTabs.length !== openTabs.length) {
       openTabs = validTabs;
@@ -171,7 +177,7 @@
 
   const previewBuild = $derived.by(() => {
     if (activePane !== 'preview') return { html: '', externalRefs: [] };
-    const htmlSource = isHtml && selectedContent ? selectedContent : (artifact?.previewHtml || '');
+    const htmlSource = selectedViewerHtml || (isHtml && selectedContent ? selectedContent : (artifact?.previewHtml || ''));
     if (!htmlSource) return { html: '', externalRefs: [] };
     return buildPreviewHtml(htmlSource, files, previewBasePath);
   });
@@ -184,6 +190,17 @@
       copied = true;
       setTimeout(() => (copied = false), 1800);
     });
+  }
+
+  function downloadSelectedFile() {
+    if (!selectedPath || !(selectedPath in files)) return;
+    const blob = artifactFileBlob(files[selectedPath]);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = selectedPath.split('/').pop() || 'artifact-file';
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function openPreviewInNewWindow() {
@@ -413,6 +430,12 @@
       py: FileCode,
       json: Braces,
       md: FileText,
+      docx: FileText,
+      pdf: FileText,
+      xlsx: FileSpreadsheet,
+      xls: FileSpreadsheet,
+      pptx: Presentation,
+      ppt: Presentation,
       svg: Image,
       sh: Terminal, bash: Terminal, zsh: Terminal,
       xml: FileCode,
@@ -443,7 +466,8 @@
     try {
       const zip = new JSZip();
       for (const [path, content] of Object.entries(files)) {
-        zip.file(path, content);
+        if (isHiddenArtifactFile(path)) continue;
+        zip.file(path, artifactFilePayload(content));
       }
       if (artifact.previewHtml) {
         zip.file('preview.html', artifact.previewHtml);
@@ -475,8 +499,8 @@
   });
 </script>
 
-<div class="flex h-full w-full flex-col overflow-hidden bg-[var(--surface)]">
-  <div class="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
+<div class="sandbox-shell flex h-full w-full flex-col overflow-hidden bg-[var(--surface)]">
+  <div class="sandbox-topbar flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
     <div class="min-w-0 flex-1">
       <div class="truncate text-xs font-semibold text-[var(--text)]">{artifact?.title || 'Sandbox'}</div>
       <div class="text-[10px] text-[var(--text-muted)]">{visibleFileCount} file{visibleFileCount !== 1 ? 's' : ''}{#if hasPreview} · preview ready{/if}</div>
@@ -485,12 +509,12 @@
     <div class="flex items-center gap-0.5">
       {#if hasPreview}
         <button
-          class={`rounded p-1 transition ${activePane === 'code' ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          class={`rounded p-1 transition ${activePane === 'code' ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
           onclick={() => (activePane = 'code')}
           title="Code"
         ><Code class="h-3.5 w-3.5" /></button>
         <button
-          class={`rounded p-1 transition ${activePane === 'preview' ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          class={`rounded p-1 transition ${activePane === 'preview' ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
           onclick={() => (activePane = 'preview')}
           title="Preview"
         ><Eye class="h-3.5 w-3.5" /></button>
@@ -501,12 +525,17 @@
       <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
         <Download class="h-3.5 w-3.5" />
       </button>
-      {#if activePane === 'code' && !editing}
+      {#if selectedPath}
+        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={downloadSelectedFile} title="Download selected file">
+          <ExternalLink class="h-3.5 w-3.5" />
+        </button>
+      {/if}
+      {#if activePane === 'code' && !editing && !selectedIsBinary}
         <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
           <Pencil class="h-3.5 w-3.5" />
         </button>
       {/if}
-      {#if activePane === 'code'}
+      {#if activePane === 'code' && !selectedIsBinary}
         <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
           {#if copied}<Check class="h-3.5 w-3.5 text-[var(--text)]" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
         </button>
@@ -519,8 +548,8 @@
 
   <div class="flex min-h-0 flex-1 overflow-hidden">
     {#if fileList.length > 0}
-      <div class="flex w-44 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
-        <div class="flex items-center gap-0.5 px-2 py-1.5 border-b border-[var(--border)]">
+      <div class="sandbox-sidebar flex w-48 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
+        <div class="sandbox-sidebar-actions flex items-center gap-0.5 px-2 py-1.5 border-b border-[var(--border)]">
           <button
             class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
             onclick={() => openNewFileModal()}
@@ -552,15 +581,15 @@
 
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       {#if openTabs.length > 0 && activePane === 'code'}
-        <div class="flex items-end overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-hover)]" style="min-height:33px">
+        <div class="sandbox-tabbar flex items-end overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-hover)]" style="min-height:33px">
           {#each openTabs as tab}
-            <div class="group relative flex shrink-0 items-center border-r border-[var(--border)] {selectedPath === tab ? 'bg-[var(--surface)]' : 'hover:bg-[var(--surface)]'}" style="height:33px">
+            <div class="sandbox-tab group relative flex shrink-0 items-center border-r border-[var(--border)] {selectedPath === tab ? 'is-active bg-[var(--surface)]' : 'hover:bg-[var(--surface)]'}" style="height:33px">
               {#if selectedPath === tab}
                 <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--text)]"></div>
               {/if}
               <button
                 type="button"
-                class="flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
+                class="sandbox-tab-button flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => {
                   activePane = 'code';
                   openTab(tab);
@@ -584,13 +613,12 @@
       {#if fileList.length === 0 && !previewSrc}
         <div class="flex h-full flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">
           <span class="text-4xl opacity-20">&lt;/&gt;</span>
-          <p class="text-sm font-medium">No artifact yet</p>
-          <p class="text-xs opacity-60">Ask the assistant to build something</p>
+          <p class="text-sm font-medium">No artifact</p>
         </div>
       {:else if activePane === 'code'}
         {#if editing}
           <div class="flex h-full flex-col">
-            <div class="flex h-8 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
+            <div class="sandbox-code-header flex h-8 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
               <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath} (editing)</span>
               <div class="flex items-center gap-1.5">
                 <button
@@ -611,9 +639,23 @@
               />
             </div>
           </div>
+        {:else if selectedIsBinary}
+          <div class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[var(--text-secondary)]">
+            <svelte:component this={getFileIconComponent(selectedPath)} class="h-9 w-9 text-[var(--text-muted)]" />
+            <div>
+              <p class="text-sm font-medium text-[var(--text)]">{selectedPath}</p>
+              <p class="mt-1 text-xs text-[var(--text-muted)]">Binary artifact with a generated viewer.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              {#if hasPreview}
+                <button class="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (activePane = 'preview')}>Preview</button>
+              {/if}
+              <button class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={downloadSelectedFile}>Download</button>
+            </div>
+          </div>
         {:else}
           <div class="flex h-full flex-col">
-            <div class="flex h-8 shrink-0 items-center border-b border-[var(--border)] px-4">
+            <div class="sandbox-code-header flex h-8 shrink-0 items-center border-b border-[var(--border)] px-4">
               <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath}</span>
             </div>
             <div class="min-h-0 flex-1">
@@ -627,7 +669,7 @@
         {/if}
       {:else if activePane === 'preview' && previewSrc}
         <div class="flex h-full w-full flex-col overflow-hidden bg-bg">
-          <div class="flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2 text-[11px] text-fg">
+          <div class="sandbox-preview-header flex shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2 text-[11px] text-fg">
             <div class="min-w-0 flex-1 truncate font-medium">{previewLabel}</div>
             <div class="flex items-center gap-2">
               {#if previewExternalRefs.length}
@@ -674,8 +716,7 @@
       {:else if activePane === 'preview'}
         <div class="flex h-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-fg-ter">
           <span class="text-4xl opacity-20">&lt;/&gt;</span>
-          <p class="text-sm font-medium text-fg">No previewable page yet</p>
-          <p class="text-xs">Generate an HTML artifact or use the agent's report and preview tools to create one.</p>
+          <p class="text-sm font-medium text-fg">No preview</p>
         </div>
       {/if}
     </div>
@@ -770,7 +811,7 @@
           onclick={() => toggleFolder(node.path)}
         >
           <ChevronRight class={`h-3 w-3 shrink-0 text-[var(--text-tertiary)] transition-transform duration-150 ${treeExpanded[node.path] ? 'rotate-90' : ''}`} />
-          <File class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+          <Folder class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
           <span class="truncate text-[11px] font-medium text-[var(--text-secondary)]">{node.name}</span>
         </button>
         <div class="flex items-center gap-0.5 px-1">
@@ -835,6 +876,63 @@
 {/snippet}
 
 <style>
+  .sandbox-shell {
+    background: var(--surface);
+  }
+
+  .sandbox-shell button {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .sandbox-shell button:focus-visible {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+
+  .sandbox-topbar,
+  .sandbox-sidebar-actions,
+  .sandbox-code-header,
+  .sandbox-preview-header {
+    background: transparent;
+    border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  }
+
+  .sandbox-sidebar {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  }
+
+  .sandbox-tabbar {
+    min-height: 2rem !important;
+    align-items: center;
+    gap: 0.125rem;
+    background: transparent;
+    padding: 0.2rem 0.35rem 0;
+    border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  }
+
+  .sandbox-tab {
+    height: 1.7rem !important;
+    border-right: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+
+  .sandbox-tab:hover,
+  .sandbox-tab.is-active {
+    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  }
+
+  .sandbox-tab > .absolute {
+    display: none;
+  }
+
+  .sandbox-tab-button {
+    padding-left: 0.55rem;
+    padding-right: 0.25rem;
+  }
+
   .sandbox-code {
     background: var(--surface);
     color: var(--text);

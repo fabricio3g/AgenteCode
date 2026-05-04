@@ -1,4 +1,4 @@
-import type { AgentStep, AgentArtifact, WorkspaceFile } from '$lib/types/chat';
+import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { RequestMessage, ToolDefinition, NativeToolCall } from '$lib/services/chat-api';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
@@ -8,11 +8,30 @@ import { queryDocuments } from '$lib/services/rag';
 import { loadAppConfig } from '$lib/utils/storage';
 import { isTauri, invoke } from '$lib/services/tauri';
 import {
+  createDocxArtifactFile, createPdfArtifactFile, createPptxArtifactFile, createXlsxArtifactFile,
+  createWorkProductArtifactFiles,
+  type GeneratedArtifactFile
+} from '$lib/services/generated-documents';
+import { viewerPathFor } from '$lib/utils/artifact-files';
+import {
   readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile,
-  createWorkspaceFolder
 } from '$lib/services/files';
 
 type ToolCall = { id?: string; name: string; arguments: Record<string, unknown> };
+
+type AgentTaskResult = {
+  content: string;
+  reasoning: string;
+  steps: AgentStep[];
+  artifact: AgentArtifact | null;
+  sources: SearchResult[];
+  outcome: AgentOutcome;
+  stopReason: AgentStopReason;
+  publicFallback?: boolean;
+  diagnosticsRedacted?: boolean;
+  error?: string;
+  warning?: string;
+};
 
 type ToolResult = {
   success: boolean;
@@ -30,22 +49,59 @@ type ToolResult = {
   };
 };
 
+type ToolObservation = {
+  name: string;
+  args: Record<string, unknown>;
+  success: boolean;
+  summary: string;
+  sources?: SearchResult[];
+  createdFiles?: string[];
+};
+
 type ToolContext = {
   chatId: string;
   files: Record<string, string>;
+  conversationContext?: string;
   workspaceRoot?: string;
   workspaceFiles?: WorkspaceFile[];
   executionMode: 'sandbox' | 'workspace';
+  debugLogs?: boolean;
   signal?: AbortSignal;
   onArtifact: (a: AgentArtifact | null) => void;
+  workProduct?: AgentArtifact['workProduct'];
 };
 
-const MAX_ITERATIONS = 12;
+const DEFAULT_MAX_ITERATIONS = 10;
 const MAX_TIME_MS = 2 * 60 * 1000;
 const KEEP_TOOL_PAIRS = 6;
-const MAX_TOOL_CALLS = 12;
-const MAX_TOOL_RESULT_CHARS = 4000;
+const TOOL_CALLS_PER_STEP = 3;
+const MAX_TOOL_RESULT_CHARS = 12000;
 const TOOL_TIMEOUT_MS = 30000;
+const MAX_TOOL_RETRIES = 1;
+const LOOP_STAGNATION_MIN_DRAFT_GROWTH = 120;
+const LOW_IMPACT_LOOP_TOOLS = new Set(['list_files', 'read_file', 'search_files']);
+
+type ProgressSnapshot = {
+  sourceCount: number;
+  visibleFileCount: number;
+  draftChars: number;
+};
+
+function shouldDebugAgentLogs(config: any): boolean {
+  return !!config?.ui?.agent_debug_logs;
+}
+
+function debugLog(enabled: boolean, message: string) {
+  if (enabled) console.log(message);
+}
+
+function getToolCallLimit(maxIterations: number): number {
+  return Math.max(maxIterations, maxIterations * TOOL_CALLS_PER_STEP);
+}
+
+function countBudgetedToolCalls(toolCalls: ToolCall[]): number {
+  return toolCalls.filter((toolCall) => toolCall.name !== 'preview_project').length;
+}
 
 function uid(prefix: string) {
   return crypto?.randomUUID
@@ -150,6 +206,21 @@ function upsertWsFile(ctx: ToolContext, path: string, size = 0) {
   if (idx >= 0) files[idx] = entry; else files.unshift(entry);
 }
 
+function addGeneratedArtifactFile(ctx: ToolContext, file: GeneratedArtifactFile): ToolResult {
+  if (isWorkspace(ctx)) {
+    return fail('Office/PDF artifact generation is currently available in chat sandbox mode only.');
+  }
+  ctx.files[file.path] = file.dataUrl;
+  if (file.previewHtml) {
+    ctx.files[viewerPathFor(file.path)] = file.previewHtml;
+    ctx.files['__preview__.html'] = file.previewHtml;
+  }
+  return ok(
+    { path: file.path, mime: file.mime, size: file.dataUrl.length, preview: !!file.previewHtml },
+    { createdFiles: [file.path] }
+  );
+}
+
 async function readWsText(path: string, ctx: ToolContext): Promise<string> {
   if (!ctx.workspaceRoot) throw new Error('No workspace root');
   if (path in ctx.files) return ctx.files[path];
@@ -173,7 +244,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'web_search',
-        description: 'Search the web for up-to-date information.',
+        description: 'Search the web for up-to-date information. The tool automatically receives recent conversation context, so write a focused query and include key entities when helpful.',
         parameters: {
           type: 'object',
           properties: {
@@ -198,7 +269,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'read_file',
-        description: 'Read a file from the sandbox or workspace.',
+        description: 'Read a file from the chat sandbox.',
         parameters: {
           type: 'object',
           properties: { path: { type: 'string', description: 'File path' } },
@@ -209,7 +280,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'write_file',
-        description: 'Create or overwrite a file.',
+        description: 'Create or overwrite a chat sandbox file.',
         parameters: {
           type: 'object',
           properties: {
@@ -224,7 +295,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'delete_file',
-        description: 'Delete a file.',
+        description: 'Delete a chat sandbox file.',
         parameters: {
           type: 'object',
           properties: { path: { type: 'string', description: 'File path' } },
@@ -235,7 +306,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'list_files',
-        description: 'List all files in the sandbox or workspace.',
+        description: 'List all files in the chat sandbox.',
         parameters: {
           type: 'object',
           properties: { pattern: { type: 'string', description: 'Glob filter (optional)' } }
@@ -245,7 +316,7 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'search_files',
-        description: 'Search for text across files.',
+        description: 'Search for text across chat sandbox files.',
         parameters: {
           type: 'object',
           properties: {
@@ -259,10 +330,31 @@ function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'preview_project',
-        description: 'Build an HTML preview of project files. Call after writing HTML/CSS/JS files.',
+        description: 'Build an HTML preview from chat sandbox files. Call after writing HTML/CSS/JS files.',
         parameters: {
           type: 'object',
           properties: { entryPoint: { type: 'string', description: 'Entry HTML file (default: index.html)' } }
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'create_work_product',
+        description: 'Create a professional evidence-aware work product from one shared report schema. Use this for multi-format deliverables such as report + DOCX + XLSX + PPTX + PDF.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Work product title' },
+            subtitle: { type: 'string', description: 'Optional subtitle' },
+            executiveSummary: { type: 'string', description: 'Short evidence-based summary' },
+            sections: { type: 'array', description: 'Array of {title, content, bullets, citations}', items: { type: 'object' } },
+            tables: { type: 'array', description: 'Optional data tables {name, columns, rows}', items: { type: 'object' } },
+            sources: { type: 'array', description: 'Sources used {id,title,url,provider,snippet}', items: { type: 'object' } },
+            limitations: { type: 'array', description: 'Known limits, blocked pages, thin evidence, or missing data', items: { type: 'string' } },
+            formats: { type: 'array', description: 'Formats to create: md, html, docx, xlsx, pptx, pdf', items: { type: 'string' } },
+            path: { type: 'string', description: 'Base output path without extension' }
+          },
+          required: ['title', 'sections', 'formats']
         }
       }
     },
@@ -284,6 +376,70 @@ function getToolDefinitions(): ToolDefinition[] {
             theme: { type: 'string', description: 'Color theme for HTML reports: "light" or "dark"' }
           },
           required: ['title', 'sections']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'create_document',
+        description: 'Create a real DOCX document with a built-in preview. Use for reports, research writeups, briefs, essays, and formatted text documents.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Document title' },
+            sections: { type: 'array', description: 'Array of {title or heading, content, bullets}', items: { type: 'object' } },
+            content: { type: 'string', description: 'Fallback document body when sections are not provided' },
+            path: { type: 'string', description: 'Output path ending in .docx' }
+          },
+          required: ['title']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'create_spreadsheet',
+        description: 'Create a real XLSX workbook with a built-in table viewer. Use for tables, datasets, comparisons, budgets, analysis, and spreadsheet deliverables.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Workbook title' },
+            sheets: { type: 'array', description: 'Array of {name, columns, rows}; rows can be objects or arrays', items: { type: 'object' } },
+            columns: { type: 'array', description: 'Fallback columns for a single-sheet workbook', items: { type: 'string' } },
+            rows: { type: 'array', description: 'Fallback rows for a single-sheet workbook', items: { type: 'object' } },
+            path: { type: 'string', description: 'Output path ending in .xlsx' }
+          },
+          required: ['title']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'create_presentation',
+        description: 'Create a real PPTX slide deck with a built-in slide viewer. Use when the user asks for slides, a deck, or a presentation.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Deck title' },
+            slides: { type: 'array', description: 'Array of {title, content or bullets, notes}', items: { type: 'object' } },
+            path: { type: 'string', description: 'Output path ending in .pptx' }
+          },
+          required: ['title', 'slides']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'create_pdf',
+        description: 'Create a PDF document with a built-in PDF viewer. Use when the user explicitly wants a PDF export.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'PDF title' },
+            sections: { type: 'array', description: 'Array of {title or heading, content, bullets}', items: { type: 'object' } },
+            content: { type: 'string', description: 'Fallback PDF body when sections are not provided' },
+            path: { type: 'string', description: 'Output path ending in .pdf' }
+          },
+          required: ['title']
         }
       }
     },
@@ -323,6 +479,7 @@ const STEP_TYPE: Record<string, AgentStep['type']> = {
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
   write_file: 'writing', delete_file: 'writing',
   preview_project: 'preview', create_report: 'writing',
+  create_work_product: 'writing', create_document: 'writing', create_spreadsheet: 'writing', create_presentation: 'writing', create_pdf: 'writing',
   calculator: 'tool',
 };
 
@@ -340,15 +497,15 @@ async function executeTool(
       const mode = (['search', 'deep', 'max'] as const).includes(args.mode as 'search' | 'deep' | 'max')
         ? (args.mode as 'search' | 'deep' | 'max') : 'search';
       try {
-        const res = await webSearch({ query, deep: mode !== 'search', mode });
+        const res = await webSearch({ query, context: ctx.conversationContext, deep: mode !== 'search', mode });
         if (res.error) {
           return fail(res.error,
-            'Web search is unavailable right now. Answer from your training knowledge and note you could not search the web.');
+            'Web search is unavailable right now. Do not invent current facts; report that live search failed and use only already gathered evidence.');
         }
-        return ok({ query, results: res.results.slice(0, 10).map(r => ({ title: r.title, url: r.url, snippet: r.snippet?.slice(0, 300) })), context: res.context?.slice(0, 3000) });
+        return ok({ query, results: res.results.slice(0, 10).map(r => ({ title: r.title, url: r.url, snippet: r.snippet?.slice(0, 250) })), context: res.context?.slice(0, 2000) });
       } catch (e) {
         return fail(e instanceof Error ? e.message : String(e),
-          'Web search threw an exception. Answer from training knowledge and note you could not search the web.');
+          'Web search threw an exception. Do not invent current facts; report that live search failed and use only already gathered evidence.');
       }
     }
 
@@ -370,7 +527,8 @@ async function executeTool(
             og_image: res.og_image,
             status: res.status,
             truncated: res.truncated,
-            warning: res.warning
+            warning: res.warning,
+            quality: res.quality
           });
         }
         const res = await webSearch({ query: url, deep: true, mode: 'deep' });
@@ -493,6 +651,94 @@ async function executeTool(
       return ok({ title, format, path, sections: sections.length }, { createdFiles: [path] });
     }
 
+    case 'create_work_product': {
+      if (!isTauri()) return fail('Professional work product generation requires the desktop app.');
+      if (isWorkspace(ctx)) return fail('Professional work products are currently available in chat sandbox mode only.');
+      try {
+        const generated = await createWorkProductArtifactFiles(args);
+        const createdFiles: string[] = [];
+        for (const file of generated.files) {
+          ctx.files[file.path] = file.dataUrl;
+          createdFiles.push(file.path);
+          if (file.previewHtml) ctx.files[viewerPathFor(file.path)] = file.previewHtml;
+        }
+        const firstPreview = generated.files.find((file) => file.previewHtml)?.previewHtml || generated.html || '';
+        if (firstPreview) ctx.files['__preview__.html'] = firstPreview;
+        const sourceIds = Array.isArray(args.sources)
+          ? args.sources
+              .map((source: any, index: number) => String(source?.id || source?.url || source?.title || `source-${index + 1}`).trim())
+              .filter(Boolean)
+          : [];
+        const fileKinds = new Set(generated.files.map((file) => file.path.split('.').pop()?.toLowerCase()).filter(Boolean));
+        const workProductKind =
+          generated.files.length > 1 ? 'bundle'
+          : fileKinds.has('xlsx') ? 'spreadsheet'
+          : fileKinds.has('pptx') ? 'presentation'
+          : 'report';
+        ctx.workProduct = {
+          id: uid('work-product'),
+          title: String(args.title || 'Work product'),
+          kind: workProductKind,
+          status: generated.warnings.length ? 'partial' : 'ready',
+          files: generated.files.map((file) => ({
+            path: file.path,
+            title: file.path.split('/').pop() || file.path,
+            mime: file.mime,
+            kind: file.path.split('.').pop()?.toLowerCase() as any,
+            previewPath: file.previewHtml ? viewerPathFor(file.path) : undefined
+          })),
+          sourceIds,
+          evidenceMap: Object.fromEntries(generated.files.map((file) => [file.path, sourceIds])),
+          warnings: generated.warnings,
+          createdAt: Date.now()
+        };
+        ctx.onArtifact(buildArtifact(ctx));
+        return ok({ title: ctx.workProduct.title, files: createdFiles, warnings: generated.warnings }, { createdFiles });
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    case 'create_document': {
+      if (!isTauri()) return fail('DOCX generation requires the desktop app.');
+      try {
+        const file = await createDocxArtifactFile(args);
+        return addGeneratedArtifactFile(ctx, file);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    case 'create_spreadsheet': {
+      if (!isTauri()) return fail('XLSX generation requires the desktop app.');
+      try {
+        const file = await createXlsxArtifactFile(args);
+        return addGeneratedArtifactFile(ctx, file);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    case 'create_presentation': {
+      if (!isTauri()) return fail('PPTX generation requires the desktop app.');
+      try {
+        const file = await createPptxArtifactFile(args);
+        return addGeneratedArtifactFile(ctx, file);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    case 'create_pdf': {
+      if (!isTauri()) return fail('PDF generation requires the desktop app.');
+      try {
+        const file = await createPdfArtifactFile(args);
+        return addGeneratedArtifactFile(ctx, file);
+      } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e));
+      }
+    }
+
     case 'query_knowledge': {
       try {
         const result = await queryDocuments({ query: String(args.query || ''), chat_id: ctx.chatId, top_k: Math.min(Number(args.topK) || 5, 20) });
@@ -520,45 +766,81 @@ async function executeTool(
 
 async function executeToolWithTimeout(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<ToolResult>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`Tool "${name}" timed out after ${TOOL_TIMEOUT_MS / 1000}s`));
-    }, TOOL_TIMEOUT_MS);
-  });
 
-  // Cancel timeout on abort
   const onAbort = () => { if (timeoutId) clearTimeout(timeoutId); };
-  ctx.signal?.addEventListener?.('abort', onAbort, { once: true });
 
   const toolArgsStr = JSON.stringify(args).slice(0, 120);
-  console.log(`[agent] tool START | name=${name} | args=${toolArgsStr}`);
   const t0 = performance.now();
 
-  try {
-    const result = await Promise.race([executeTool(name, args, ctx), timeoutPromise]);
-    const duration = Math.round(performance.now() - t0);
-    console.log(`[agent] tool DONE | name=${name} | success=${result.success} | duration=${duration}ms`);
-    return result;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const duration = Math.round(performance.now() - t0);
-    if (msg.includes('timed out')) {
-      console.log(`[agent] tool TIMEOUT | name=${name} | duration=${duration}ms`);
+  for (let attempt = 1; attempt <= MAX_TOOL_RETRIES + 1; attempt++) {
+    const timeoutPromise = new Promise<ToolResult>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Tool "${name}" timed out after ${TOOL_TIMEOUT_MS / 1000}s`));
+      }, TOOL_TIMEOUT_MS);
+    });
+
+    ctx.signal?.addEventListener?.('abort', onAbort, { once: true });
+
+    debugLog(!!ctx.debugLogs, `[agent] tool START | name=${name} | args=${toolArgsStr} | attempt=${attempt}`);
+    try {
+      const result = await Promise.race([executeTool(name, args, ctx), timeoutPromise]);
+      const duration = Math.round(performance.now() - t0);
+      if (result.success) {
+        debugLog(!!ctx.debugLogs, `[agent] tool DONE | name=${name} | success=true | duration=${duration}ms`);
+        return result;
+      }
+      if (!isRetryableToolFailure(result.error) || attempt > MAX_TOOL_RETRIES) {
+        debugLog(!!ctx.debugLogs, `[agent] tool FAIL | name=${name} | attempt=${attempt} | error=${(result.error || '').slice(0, 100)}`);
+        return result;
+      }
+      debugLog(!!ctx.debugLogs, `[agent] tool RETRY | name=${name} | attempt=${attempt}/${MAX_TOOL_RETRIES} | error=${(result.error || '').slice(0, 100)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const duration = Math.round(performance.now() - t0);
+      if (msg.includes('timed out')) {
+        debugLog(!!ctx.debugLogs, `[agent] tool TIMEOUT | name=${name} | duration=${duration}ms | attempt=${attempt}`);
+      }
+      if (!isRetryableToolFailure(msg) || attempt > MAX_TOOL_RETRIES) return fail(msg);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      ctx.signal?.removeEventListener?.('abort', onAbort);
     }
-    return fail(msg);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-    ctx.signal?.removeEventListener?.('abort', onAbort);
   }
+
+  return fail('Tool execution failed after retries');
+}
+
+function isRetryableToolFailure(error?: string): boolean {
+  const message = String(error || '').toLowerCase();
+  if (!message) return false;
+  if (
+    message.includes('missing ') ||
+    message.includes('not found') ||
+    message.includes('already exists') ||
+    message.includes('invalid ') ||
+    message.includes('unsupported')
+  ) {
+    return false;
+  }
+  return (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('network') ||
+    message.includes('fetch') ||
+    message.includes('temporar') ||
+    message.includes('unavailable') ||
+    message.includes('rate')
+  );
 }
 
 function buildArtifact(ctx: ToolContext): AgentArtifact | null {
   const visible = Object.keys(ctx.files).filter(f => !f.startsWith('__'));
   if (!visible.length) return null;
   return {
-    title: `Agent workspace (${visible.length} file${visible.length === 1 ? '' : 's'})`,
+    title: ctx.workProduct?.title || `Agent workspace (${visible.length} file${visible.length === 1 ? '' : 's'})`,
     files: { ...ctx.files },
-    previewHtml: ctx.files['__preview__.html'] ?? null
+    previewHtml: ctx.files['__preview__.html'] ?? null,
+    workProduct: ctx.workProduct || null
   };
 }
 
@@ -578,8 +860,389 @@ function synthesizeArtifactCompletion(ctx: ToolContext): string {
   return `Done. I created ${listed}${extra}.`;
 }
 
+function compactText(value: unknown, max = 900): string {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+function sourceRows(sources: SearchResult[]): Array<Record<string, string>> {
+  return sources.map((source, index) => ({
+    '#': String(index + 1),
+    title: source.title || source.url,
+    url: source.url,
+    snippet: source.snippet || ''
+  }));
+}
+
+function summarizeToolObservation(name: string, args: Record<string, unknown>, result: ToolResult): ToolObservation {
+  const createdFiles = [
+    ...(result.createdFiles || []),
+    ...(result.modifiedFiles || [])
+  ];
+
+  if (!result.success) {
+    return {
+      name,
+      args,
+      success: false,
+      summary: `${name} failed: ${compactText(result.error || 'Unknown error', 500)}`
+    };
+  }
+
+  const output = result.output as Record<string, unknown> | undefined;
+  if (name === 'web_search' && output && typeof output === 'object') {
+    const rawSources = Array.isArray(output.results)
+      ? output.results as Array<{ title?: string; url?: string; snippet?: string }>
+      : [];
+    const foundSources: SearchResult[] = rawSources
+      .filter((source) => source.url)
+      .map((source) => ({
+        title: source.title || source.url || 'Source',
+        url: source.url || '',
+        snippet: source.snippet || ''
+      }));
+    const lines = [
+      `Search query: ${compactText(output.query || args.query, 180)}`,
+      ...foundSources.slice(0, 8).map((source, index) =>
+        `${index + 1}. ${source.title} - ${source.url}${source.snippet ? ` - ${compactText(source.snippet, 220)}` : ''}`
+      )
+    ];
+    const context = compactText(output.context, 900);
+    return {
+      name,
+      args,
+      success: true,
+      summary: `${lines.join('\n')}${context ? `\nContext excerpt: ${context}` : ''}`,
+      sources: foundSources,
+      createdFiles
+    };
+  }
+
+  if (name === 'fetch_url' && output && typeof output === 'object') {
+    return {
+      name,
+      args,
+      success: true,
+      summary: [
+        `Fetched URL: ${compactText(output.url || args.url, 220)}`,
+        output.title ? `Title: ${compactText(output.title, 180)}` : '',
+        output.quality ? `Scrape quality: ${compactText(output.quality, 80)}${output.warning ? ` (${compactText(output.warning, 220)})` : ''}` : '',
+        output.excerpt ? `Excerpt: ${compactText(output.excerpt, 350)}` : '',
+        output.content ? `Content excerpt: ${compactText(output.content, 900)}` : ''
+      ].filter(Boolean).join('\n'),
+      createdFiles
+    };
+  }
+
+  if (createdFiles.length) {
+    return {
+      name,
+      args,
+      success: true,
+      summary: `${name} created/updated: ${createdFiles.join(', ')}`,
+      createdFiles
+    };
+  }
+
+  return {
+    name,
+    args,
+    success: true,
+    summary: `${name} result: ${compactText(JSON.stringify(result.output ?? {}), 900)}`,
+    createdFiles
+  };
+}
+
+function evidenceSources(observations: ToolObservation[], liveSources: SearchResult[]): SearchResult[] {
+  const byUrl = new Map<string, SearchResult>();
+  for (const source of liveSources) {
+    if (source.url) byUrl.set(source.url, source);
+  }
+  for (const observation of observations) {
+    for (const source of observation.sources || []) {
+      if (source.url && !byUrl.has(source.url)) byUrl.set(source.url, source);
+    }
+  }
+  return Array.from(byUrl.values());
+}
+
+function buildEvidenceText(observations: ToolObservation[], liveSources: SearchResult[]): string {
+  const successful = observations.filter((observation) => observation.success && observation.summary);
+  const failed = observations.filter((observation) => !observation.success && observation.summary);
+  const sources = evidenceSources(observations, liveSources);
+  const parts: string[] = [];
+
+  if (sources.length) {
+    parts.push('## Sources found');
+    parts.push(...sources.slice(0, 12).map((source, index) => {
+      const title = source.title || source.url;
+      const url = source.url;
+      const snippet = source.snippet ? `\n   ${compactText(source.snippet, 350)}` : '';
+      return `${index + 1}. [${title}](${url})${snippet}`;
+    }));
+  }
+
+  if (successful.length) {
+    parts.push('## Tool evidence');
+    parts.push(...successful.slice(0, 10).map((observation, index) =>
+      `${index + 1}. ${observation.summary}`
+    ));
+  }
+
+  if (failed.length) {
+    parts.push('## Tool failures');
+    parts.push(...failed.slice(-5).map((observation, index) =>
+      `${index + 1}. ${observation.summary}`
+    ));
+  }
+
+  return parts.join('\n\n').trim();
+}
+
+function requestedArtifactKinds(prompt: string): { docx: boolean; xlsx: boolean; pptx: boolean; pdf: boolean } {
+  const text = String(prompt || '').toLowerCase();
+  return {
+    docx: /\b(document|docx|word|report|informe|documento)\b/.test(text),
+    xlsx: /\b(excel|xlsx|spreadsheet|workbook|sheet|planilla|hoja de calculo|hoja de cálculo)\b/.test(text),
+    pptx: /\b(slide|slides|ppt|pptx|presentation|deck|diapositiva|presentacion|presentación)\b/.test(text),
+    pdf: /\b(pdf)\b/.test(text)
+  };
+}
+
+function requestedArtifactExtensions(prompt: string): string[] {
+  const kinds = requestedArtifactKinds(prompt);
+  return Object.entries(kinds)
+    .filter(([, requested]) => requested)
+    .map(([kind]) => kind);
+}
+
+function missingRequestedArtifactExtensions(ctx: ToolContext, prompt: string): string[] {
+  const visible = Object.keys(ctx.files).filter((path) => !path.startsWith('__')).map((path) => path.toLowerCase());
+  return requestedArtifactExtensions(prompt).filter((ext) => !visible.some((path) => path.endsWith(`.${ext}`)));
+}
+
+function hasAllRequestedArtifacts(ctx: ToolContext, prompt: string): boolean {
+  return missingRequestedArtifactExtensions(ctx, prompt).length === 0;
+}
+
+function hasGatheredEvidence(ctx: ToolContext, observations: ToolObservation[], sources: SearchResult[], content = ''): boolean {
+  return !!(
+    content.trim() ||
+    sources.length ||
+    observations.some((observation) => observation.success && observation.summary) ||
+    hasVisibleArtifact(ctx)
+  );
+}
+
+function classifyStopReason(reason?: string): AgentStopReason {
+  const text = String(reason || '').toLowerCase();
+  if (!text) return 'none';
+  if (text.includes('timed out') || text.includes('timeout')) return 'timeout';
+  if (text.includes('loop') || text.includes('repeated')) return 'loop';
+  if (text.includes('tool') && (text.includes('limit') || text.includes('budget'))) return 'tool_limit';
+  if (text.includes('iteration')) return 'iteration_limit';
+  if (text.includes('requested file') || text.includes('missing requested') || text.includes('artifact')) return 'missing_artifacts';
+  return 'error';
+}
+
+function stoppedWarning(stopReason: AgentStopReason, reason: string): string {
+  switch (stopReason) {
+    case 'timeout':
+      return 'Agent timed out and returned only gathered evidence.';
+    case 'loop':
+      return 'Agent encountered a loop and returned only gathered evidence.';
+    case 'tool_limit':
+      return 'Agent reached the tool limit and returned only gathered evidence.';
+    case 'iteration_limit':
+      return 'Agent reached the iteration limit and returned only gathered evidence.';
+    case 'missing_artifacts':
+      return 'Agent stopped because requested files could not all be created.';
+    default:
+      return reason || 'Agent stopped before normal completion.';
+  }
+}
+
+function fallbackTitle(prompt: string): string {
+  const cleaned = compactText(prompt, 80).replace(/[^\w\s-]/g, '').trim();
+  return cleaned || 'Agent evidence summary';
+}
+
+async function ensureRequestedArtifactsFromEvidence(params: {
+  prompt: string;
+  reason: string;
+  ctx: ToolContext;
+  observations: ToolObservation[];
+  sources: SearchResult[];
+}): Promise<string[]> {
+  const requestedKinds = requestedArtifactKinds(params.prompt);
+  const missing = new Set(missingRequestedArtifactExtensions(params.ctx, params.prompt));
+  const kinds = {
+    docx: requestedKinds.docx && missing.has('docx'),
+    xlsx: requestedKinds.xlsx && missing.has('xlsx'),
+    pptx: requestedKinds.pptx && missing.has('pptx'),
+    pdf: requestedKinds.pdf && missing.has('pdf')
+  };
+  if (!kinds.docx && !kinds.xlsx && !kinds.pptx && !kinds.pdf) return [];
+
+  const evidence = buildEvidenceText(params.observations, params.sources);
+  if (!evidence) return [];
+
+  const title = fallbackTitle(params.prompt);
+  const sections = [
+    {
+      title: 'Summary',
+      content: [
+        `The agent stopped because ${params.reason}.`,
+        'This artifact only includes information gathered during the agent loop.'
+      ].join('\n')
+    },
+    { title: 'Evidence gathered', content: evidence }
+  ];
+  const created: string[] = [];
+  const formats = [
+    kinds.docx ? 'docx' : '',
+    kinds.xlsx ? 'xlsx' : '',
+    kinds.pptx ? 'pptx' : '',
+    kinds.pdf ? 'pdf' : ''
+  ].filter(Boolean);
+
+  if (formats.length) {
+    const result = await executeTool('create_work_product', {
+      title,
+      path: title,
+      executiveSummary: `The agent stopped because ${params.reason}. This partial work product uses only gathered evidence.`,
+      sections,
+      sources: evidenceSources(params.observations, params.sources).map((source, index) => ({
+        id: String(index + 1),
+        title: source.title,
+        url: source.url,
+        provider: source.provider,
+        snippet: source.snippet
+      })),
+      limitations: ['The agent stopped before normal completion.', 'Unverified or unavailable facts were not added.'],
+      formats
+    }, params.ctx);
+    if (result.success) {
+      created.push(...(result.createdFiles || []));
+      params.ctx.onArtifact(buildArtifact(params.ctx));
+      return Array.from(new Set(created));
+    }
+  }
+
+  const addFile = async (toolName: string, fileArgs: Record<string, unknown>) => {
+    const result = await executeTool(toolName, fileArgs, params.ctx);
+    if (result.success) {
+      created.push(...(result.createdFiles || []));
+      return;
+    }
+    const fallbackPath = normPath(fileArgs.path) || `${title}.md`;
+    params.ctx.files[fallbackPath.replace(/\.(docx|xlsx|pptx|pdf)$/i, '.md')] =
+      buildMarkdownReport(title, sections);
+    created.push(fallbackPath.replace(/\.(docx|xlsx|pptx|pdf)$/i, '.md'));
+  };
+
+  if (kinds.docx) {
+    await addFile('create_document', {
+      title,
+      path: `${title}.docx`,
+      sections
+    });
+  }
+
+  if (kinds.xlsx) {
+    const rows = sourceRows(evidenceSources(params.observations, params.sources));
+    await addFile('create_spreadsheet', {
+      title: `${title} - sources`,
+      path: `${title}.xlsx`,
+      sheets: [{
+        name: 'Sources',
+        columns: ['#', 'title', 'url', 'snippet'],
+        rows: rows.length ? rows : [{ '#': '1', title: 'Evidence', url: '', snippet: compactText(evidence, 500) }]
+      }]
+    });
+  }
+
+  if (kinds.pptx) {
+    await addFile('create_presentation', {
+      title,
+      path: `${title}.pptx`,
+      slides: [
+        { title: 'What was gathered', content: evidence.split('\n').filter(Boolean).slice(0, 5) },
+        { title: 'Sources', content: evidenceSources(params.observations, params.sources).slice(0, 6).map((source) => source.title || source.url) }
+      ]
+    });
+  }
+
+  if (kinds.pdf) {
+    await addFile('create_pdf', {
+      title,
+      path: `${title}.pdf`,
+      sections
+    });
+  }
+
+  params.ctx.onArtifact(buildArtifact(params.ctx));
+  return Array.from(new Set(created));
+}
+
+async function buildStrictFallbackContent(params: {
+  prompt: string;
+  reason: string;
+  ctx: ToolContext;
+  observations: ToolObservation[];
+  sources: SearchResult[];
+}): Promise<string> {
+  const created = await ensureRequestedArtifactsFromEvidence(params);
+  const sources = evidenceSources(params.observations, params.sources);
+  const visibleFiles = Object.keys(params.ctx.files)
+    .filter((path) => !path.startsWith('__'))
+    .sort((a, b) => a.localeCompare(b));
+  const missing = missingRequestedArtifactExtensions(params.ctx, params.prompt);
+
+  const completedSegments: string[] = [];
+  if (sources.length) {
+    completedSegments.push(`${sources.length} source${sources.length === 1 ? '' : 's'} gathered`);
+  }
+  if (visibleFiles.length) {
+    completedSegments.push(`${visibleFiles.length} file${visibleFiles.length === 1 ? '' : 's'} available (${visibleFiles.slice(0, 4).join(', ')}${visibleFiles.length > 4 ? ', ...' : ''})`);
+  }
+  if (created.length) {
+    completedSegments.push(`created from evidence: ${Array.from(new Set(created)).join(', ')}`);
+  }
+  if (!completedSegments.length) {
+    completedSegments.push('no reliable evidence was gathered');
+  }
+
+  const missingLine = missing.length
+    ? `missing requested file type${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`
+    : 'none';
+
+  return [
+    `Agent stopped because ${params.reason}.`,
+    `What was completed: ${completedSegments.join('; ')}.`,
+    `What is missing: ${missingLine}.`
+  ].join('\n');
+}
+
 function hasVisibleArtifact(ctx: ToolContext): boolean {
   return Object.keys(ctx.files).some((path) => !path.startsWith('__')) || !!ctx.files['__preview__.html'];
+}
+
+function visibleFileCount(ctx: ToolContext): number {
+  return Object.keys(ctx.files).filter((path) => !path.startsWith('__')).length;
+}
+
+function hasProgressSince(snapshots: ProgressSnapshot[]): boolean {
+  if (snapshots.length < 2) return true;
+  const first = snapshots[0];
+  const last = snapshots[snapshots.length - 1];
+  return (
+    last.sourceCount > first.sourceCount ||
+    last.visibleFileCount > first.visibleFileCount ||
+    (last.draftChars - first.draftChars) >= LOOP_STAGNATION_MIN_DRAFT_GROWTH
+  );
 }
 
 function isWebsiteBuildRequest(prompt: string): boolean {
@@ -599,35 +1262,69 @@ function finalizeAgentSteps(steps: AgentStep[], hasError: boolean) {
     }
     step.status = 'done';
     if (index === steps.length - 1 && step.type === 'thinking') {
-      step.label = 'Completed';
       step.detail = 'Response ready';
     }
   }
 }
 
+function injectEvidenceSummary(messages: RequestMessage[], observations: ToolObservation[], liveSources: SearchResult[]) {
+  // Remove any previously injected evidence summary
+  const evidenceIdx = messages.findIndex(m => m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('=== EVIDENCE SUMMARY ==='));
+  if (evidenceIdx >= 0) {
+    messages.splice(evidenceIdx, 1);
+  }
+
+  const successful = observations.filter(o => o.success && o.summary);
+  if (!successful.length && !liveSources.length) return;
+
+  const lines: string[] = ['=== EVIDENCE SUMMARY ==='];
+  lines.push('The following facts have been gathered from tool results. Use ONLY this data when creating artifacts or answering:');
+
+  for (const obs of successful.slice(0, 15)) {
+    lines.push(`- [${obs.name}] ${compactText(obs.summary, 400)}`);
+  }
+
+  for (const src of liveSources.slice(0, 10)) {
+    lines.push(`- [source] ${src.title || src.url}: ${compactText(src.snippet || '', 250)}`);
+  }
+
+  lines.push('=== END EVIDENCE ===');
+
+  messages.push({ role: 'system', content: lines.join('\n') });
+}
+
 function trimContext(messages: RequestMessage[], nativeMode: boolean) {
   const sys = messages.filter(m => m.role === 'system');
-  const users = messages.filter(m => m.role === 'user');
-  const rest = messages.filter(m => m.role !== 'system' && m.role !== 'user');
+  const nonSys = messages.filter(m => m.role !== 'system');
 
   const keepCount = KEEP_TOOL_PAIRS;
-  const keepUsers = 3;
-  const keepFirstUser = 1;
 
-  let trimmed = rest;
-  if (rest.length > keepCount) {
-    trimmed = rest.slice(rest.length - keepCount);
+  if (nonSys.length <= keepCount) return;
+
+  // Keep the first user message for long-running context, the newest user
+  // message for the active instruction, plus the most recent tool chatter.
+  const firstUserIndex = nonSys.findIndex(m => m.role === 'user');
+  const firstUser = firstUserIndex >= 0 ? nonSys[firstUserIndex] : null;
+  const lastUserIndex = (() => {
+    for (let i = nonSys.length - 1; i >= 0; i--) {
+      if (nonSys[i].role === 'user') return i;
+    }
+    return -1;
+  })();
+  const lastUser = lastUserIndex >= 0 ? nonSys[lastUserIndex] : null;
+
+  const tail = nonSys.slice(-keepCount);
+
+  const result = [...sys];
+  if (firstUser && !tail.includes(firstUser)) {
+    result.push(firstUser);
   }
-
-  let trimmedUsers = users;
-  if (users.length > keepUsers) {
-    trimmedUsers = [
-      ...users.slice(0, keepFirstUser),
-      ...users.slice(users.length - (keepUsers - keepFirstUser))
-    ];
+  if (lastUser && lastUser !== firstUser && !tail.includes(lastUser)) {
+    result.push(lastUser);
   }
+  result.push(...tail);
 
-  messages.splice(0, messages.length, ...sys, ...trimmedUsers, ...trimmed);
+  messages.splice(0, messages.length, ...result);
 }
 
 async function enforceTokenBudget(messages: RequestMessage[], config: any) {
@@ -668,7 +1365,7 @@ async function enforceTokenBudget(messages: RequestMessage[], config: any) {
       });
 
       if (Array.isArray(truncated) && truncated.length > 0 && truncated.length < messages.length) {
-        console.log(`[agent] Token budget: trimmed ${messages.length} → ${truncated.length} messages (${budget.usagePercent}% used)`);
+        debugLog(!!config?.ui?.agent_debug_logs, `[agent] Token budget: trimmed ${messages.length} → ${truncated.length} messages (${budget.usagePercent}% used)`);
         messages.splice(0, messages.length, ...truncated);
       }
     }
@@ -772,6 +1469,7 @@ function stripInternalAgentChatter(content: string): string {
   return content
     .split('\n')
     .filter((line) => !/tool call limit|over the limit|preparing to use tools|i will need to provide the answer|❌|used \d+ tools/i.test(line))
+    .filter((line) => !/^\s*\|\s*$/.test(line))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -788,6 +1486,10 @@ function stripToolPayloads(content: string): string {
 
 function sanitizeAgentVisibleText(content: string): string {
   return stripToolPayloads(stripInternalAgentChatter(stripAgentDebugLines(content)));
+}
+
+function isPublicFallbackContent(content: string): boolean {
+  return /^Agent stopped because\b/i.test((content || '').trim());
 }
 
 function stripToolCallArtifacts(content: string): string {
@@ -822,21 +1524,27 @@ function parseCodeblockWrites(content: string): Array<{ path: string; code: stri
   return files;
 }
 
-function getNativeSystemPrompt(extra?: string): string {
+function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: number, maxIterations: number): string {
   const base = [
-    'You are an AI agent. Use tools to complete tasks; never output code or file contents in chat text.',
-    `You have ${MAX_TOOL_CALLS} tool uses maximum. After that, write your final answer in plain text.`,
+    'You are an AI agent working inside a chat-scoped sandbox. Use tools to complete tasks; never output code or file contents in chat text.',
+    `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Let the task decide how many tools are needed, then write your final answer in plain text.`,
     'Stop after you have enough information. Do not over-search or over-verify.',
-    'If a tool fails twice, stop using that tool and work around it or answer from knowledge.',
-    'Do not repeat the same tool with similar arguments. If stuck, give your best answer.',
+    'If a tool fails twice, stop using that tool and work only from evidence already gathered. Do not invent current facts.',
+    'Do not repeat the same tool with similar arguments. After a web_search succeeds, use those results to answer or create the requested artifact instead of searching the same thing again.',
+    'If stuck, summarize only the gathered tool results and clearly say what is missing.',
+    'Files are not on the host filesystem unless a tool says so. Treat sandbox files as conversation artifacts saved with this chat.',
     '',
-    'Workflow: web_search \u2192 gather info \u2192 create_report OR write_file \u2192 preview_project.',
-    'For final answer, write plain text with no tool calls.',
+    'Workflow: inspect context -> use the smallest useful tool set -> create_work_product for professional reports/files, or create_report/create_document/create_spreadsheet/create_presentation/create_pdf/write_file for simple single-format tasks -> preview_project when useful.',
+    'When the user asks for multiple deliverables, research reports, slides, documents, spreadsheets, Excel workbooks, or PDFs, prefer create_work_product so every file is generated from the same evidence-aware report schema.',
+    'A professional work product must include an executive summary, structured sections, sources when search was used, and limitations for blocked/thin/partial evidence.',
+    'When creating spreadsheets, include actual rows from tool/search evidence. If no rows exist, include a limitations/methodology sheet instead of inventing data.',
+    'CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Use the actual facts, numbers, and details from your search results.',
+    'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
 }
 
-function getXmlSystemPrompt(extra?: string): string {
+function getXmlSystemPrompt(extra: string | undefined, maxToolCalls: number, maxIterations: number): string {
   const essentialTools = getToolDefinitions()
     .map(t => {
       const params = Object.keys(t.function.parameters.properties || {});
@@ -854,12 +1562,35 @@ function getXmlSystemPrompt(extra?: string): string {
     essentialTools,
     '',
     'RULES:',
-    `1. Max ${MAX_TOOL_CALLS} tool calls total. Then give final answer in plain text.`,
-    '2. Never dump code or file content in chat. Use write_file or create_report tools.',
-    '3. If a tool fails twice, stop retrying and answer from knowledge.',
-    '4. Chain tools logically: search \u2192 read \u2192 write \u2192 preview.',
-    '5. For final answer, write plain text with NO tool_call tag.',
+    `1. You have up to ${maxIterations} reasoning steps and ${maxToolCalls} tool calls total. Use the tools the task actually needs, then give final answer in plain text.`,
+    '2. Never dump code or file content in chat. Use write_file, create_report, create_document, create_spreadsheet, create_presentation, or create_pdf tools.',
+    '3. If a tool fails twice, stop retrying and use only evidence already gathered. Do not invent current facts.',
+    '4. Chain tools logically: search \u2192 read \u2192 create_work_product/create requested artifact \u2192 final answer. After web_search returns results, use them; do not loop on the same search.',
+    '5. CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Include limitations for blocked/thin evidence.',
+    '6. For final answer, write plain text with NO tool_call tag.',
+    '7. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
+    '8. If you cannot finish, final answer must say what was actually found and what could not be verified.',
   ].join('\n');
+  return extra ? `${base}\n\n${extra}` : base;
+}
+
+function buildCurrentRequestReminder(rawPrompt?: string): string {
+  const prompt = compactText(rawPrompt, 2000);
+  if (!prompt) return '';
+  return [
+    'CURRENT USER REQUEST (highest priority after system/developer safety):',
+    prompt,
+    'Keep this request central. If tool results, older chat history, or fallback modes add noise, continue serving this request and the user-supplied instructions.'
+  ].join('\n');
+}
+
+function buildDirectSystemPrompt(extra: string | undefined): string {
+  const base = [
+    'You are a helpful assistant. Respond directly to the user\'s request.',
+    'When building websites, output HTML, CSS, and JS inside markdown code blocks with language labels (```html, ```css, ```js).',
+    'For website or page-building requests, your work is not complete until you provide code blocks that can be written to files and previewed.',
+    'Produce complete, well-formatted content.'
+  ].join(' ');
   return extra ? `${base}\n\n${extra}` : base;
 }
 
@@ -888,6 +1619,7 @@ export async function runAgentTask(args: {
   systemPrompt?: string;
   messages: RequestMessage[];
   rawPrompt?: string;
+  conversationContext?: string;
   executionMode?: 'workspace' | 'sandbox';
   workspaceRoot?: string;
   workspaceName?: string;
@@ -898,29 +1630,37 @@ export async function runAgentTask(args: {
   onArtifact: (artifact: AgentArtifact | null) => void;
   onSources?: (sources: SearchResult[]) => void;
   signal?: AbortSignal;
-}): Promise<{ content: string; reasoning: string; steps: AgentStep[]; artifact: AgentArtifact | null; sources: SearchResult[]; error?: string; warning?: string }> {
+  maxIterations?: number;
+  maxToolCalls?: number;
+}): Promise<AgentTaskResult> {
 
+  const config = await loadAppConfig();
+  const debugLogs = shouldDebugAgentLogs(config);
   const steps: AgentStep[] = [];
   const sources: SearchResult[] = [];
+  const toolObservations: ToolObservation[] = [];
   const seenUrls = new Set<string>();
   const executionMode = args.executionMode || 'sandbox';
   const ctx: ToolContext = {
     chatId: args.chatId,
     files: {},
+    conversationContext: args.conversationContext,
     workspaceRoot: args.workspaceRoot,
     workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
     executionMode,
+    debugLogs,
     signal: args.signal,
     onArtifact: args.onArtifact,
   };
 
-  const config = await loadAppConfig();
+  const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? DEFAULT_MAX_ITERATIONS));
+  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? getToolCallLimit(maxIterations)));
   const providerName = config.llm?.provider || 'openai';
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
   let useNativeTools = isTauri() && agentSupportsNativeTools(config);
   console.log(`[agent] START | provider=${providerName} | model=${provider.model || ''} | isTauri=${isTauri()} | useNativeTools=${useNativeTools}`);
-  console.log(`[agent] supportsNativeTools check: providerName=${providerName} modelId=${provider.model || ''} result=${agentSupportsNativeTools(config)}`);
+  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${providerName} modelId=${provider.model || ''} result=${agentSupportsNativeTools(config)}`);
   let nativeFailed = false;
   let directMode = false;
   let consecutiveEmptyResponses = 0;
@@ -930,11 +1670,13 @@ export async function runAgentTask(args: {
 
   const toolDefs = getToolDefinitions();
   const modeNote = executionMode === 'workspace'
-    ? 'You are attached to a real workspace folder. File operations are persistent.'
-    : 'You are in sandbox mode. Files exist only within this session unless exported.';
-  const nativeSys = getNativeSystemPrompt([modeNote, args.systemPrompt].filter(Boolean).join('\n\n'));
-  const xmlSys = getXmlSystemPrompt([modeNote, args.systemPrompt].filter(Boolean).join('\n\n'));
-  const directSys = `You are a helpful assistant. Respond directly to the user's request. When building websites, output HTML, CSS, and JS inside markdown code blocks with language labels (\`\`\`html, \`\`\`css, \`\`\`js). For website or page-building requests, your work is not complete until you provide code blocks that can be written to files and previewed. Produce complete, well-formatted content.${modeNote ? '\n\n' + modeNote : ''}`;
+    ? 'You are attached to a real workspace folder. Only use persistent file operations when the app explicitly enables workspace mode.'
+    : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
+  const requestReminder = buildCurrentRequestReminder(args.rawPrompt);
+  const agentExtra = [modeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
+  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations);
+  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations);
+  const directSys = buildDirectSystemPrompt(agentExtra);
 
   const messages: RequestMessage[] = [
     { role: 'system', content: useNativeTools ? nativeSys : xmlSys },
@@ -945,9 +1687,12 @@ export async function runAgentTask(args: {
   let finalReasoning = '';
   let errorReason: string | undefined;
   let warningReason: string | undefined;
+  let stopReason: AgentStopReason = 'none';
   const startTime = Date.now();
   const recentSigs: string[] = [];
+  const recentProgress: ProgressSnapshot[] = [];
   let totalToolCalls = 0;
+  let maxObservedDraftChars = 0;
 
   const checkAbort = () => {
     if (args.signal?.aborted) {
@@ -959,12 +1704,13 @@ export async function runAgentTask(args: {
     args.signal?.throwIfAborted?.();
   };
 
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    console.log(`[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
+  for (let iter = 0; iter < maxIterations; iter++) {
+    debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
     checkAbort();
     throwIfAborted();
     if (Date.now() - startTime > MAX_TIME_MS) {
       errorReason = errorReason || 'Agent timed out after 3 minutes.';
+      stopReason = 'timeout';
       break;
     }
 
@@ -972,7 +1718,7 @@ export async function runAgentTask(args: {
       id: uid('step'), type: 'thinking',
       label: iter === 0 ? 'Planning' : 'Thinking',
       status: 'running',
-      detail: `Step ${iter + 1} of ${MAX_ITERATIONS}`
+      detail: `Step ${iter + 1} of ${maxIterations}`
     };
     steps.push(thinkStep);
     args.onStep([...steps]);
@@ -983,14 +1729,17 @@ export async function runAgentTask(args: {
     trimContext(messages, useNativeTools && !nativeFailed);
     await enforceTokenBudget(messages, config);
 
+    // Inject evidence summary so the LLM always knows what it has found
+    injectEvidenceSummary(messages, toolObservations, sources);
+
     const sysCount = messages.filter(m => m.role === 'system').length;
     const userCount = messages.filter(m => m.role === 'user').length;
     const otherCount = messages.filter(m => m.role !== 'system' && m.role !== 'user').length;
-    console.log(`[agent] after trim: messageCount=${messages.length} | sysCount=${sysCount} | userCount=${userCount} | otherCount=${otherCount}`);
+    debugLog(debugLogs, `[agent] after trim: messageCount=${messages.length} | sysCount=${sysCount} | userCount=${userCount} | otherCount=${otherCount}`);
 
     const nativeActive = useNativeTools && !nativeFailed && !directMode;
     const callMode = directMode ? 'direct' : nativeActive ? 'native' : 'xml';
-    console.log(`[agent] calling LLM via: ${callMode} | toolDefs=${nativeActive ? toolDefs.length : 0} | messages=${messages.length}`);
+    debugLog(debugLogs, `[agent] calling LLM via: ${callMode} | toolDefs=${nativeActive ? toolDefs.length : 0} | messages=${messages.length}`);
     let completion;
 
     const streamingReasoningParts: string[] = [];
@@ -1038,9 +1787,9 @@ export async function runAgentTask(args: {
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e;
       const errMsg = e instanceof Error ? e.message : String(e);
-      console.log(`[agent] LLM ERROR | msg="${errMsg.slice(0, 200)}" | nativeActive=${nativeActive} | iter=${iter}`);
+      debugLog(debugLogs, `[agent] LLM ERROR | msg="${errMsg.slice(0, 200)}" | nativeActive=${nativeActive} | iter=${iter}`);
       if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
-        console.log('[agent] -> falling back to XML (tool/400/422/unsupported error)');
+        debugLog(debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
         nativeFailed = true;
         setToolSupportCache(config, false);
         messages[0] = { role: 'system', content: xmlSys };
@@ -1057,7 +1806,7 @@ export async function runAgentTask(args: {
           break;
         }
       } else if (iter < 2 && errMsg.includes('content')) {
-        console.log('[agent] -> switching to direct mode (content error, iter < 2)');
+        debugLog(debugLogs, '[agent] -> switching to direct mode (content error, iter < 2)');
         directMode = true;
         messages[0] = { role: 'system', content: directSys };
         try {
@@ -1072,7 +1821,7 @@ export async function runAgentTask(args: {
           break;
         }
       } else {
-        console.log('[agent] -> HARD FAIL (non-recoverable LLM error)');
+        console.error('[agent] HARD FAIL (non-recoverable LLM error)', errMsg);
         thinkStep.status = 'error';
         thinkStep.label = 'Error';
         thinkStep.detail = errMsg;
@@ -1085,7 +1834,8 @@ export async function runAgentTask(args: {
     const rawContent = sanitizeAgentVisibleText(String(completion.content || ''));
     const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
     const resultMode = directMode ? 'direct' : (useNativeTools && !nativeFailed) ? 'native' : 'xml';
-    console.log(`[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0} | mode=${resultMode}`);
+    maxObservedDraftChars = Math.max(maxObservedDraftChars, rawContent.length);
+    debugLog(debugLogs, `[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0} | mode=${resultMode}`);
     if (reasoning) {
       finalReasoning = finalReasoning ? `${finalReasoning}\n${reasoning}` : reasoning;
       args.onReasoning?.(finalReasoning);
@@ -1093,15 +1843,15 @@ export async function runAgentTask(args: {
 
     if (!rawContent && !completion.toolCalls?.length && !directMode) {
       consecutiveEmptyResponses++;
-      console.log(`[agent] EMPTY RESPONSE | consecutiveEmpty=${consecutiveEmptyResponses} | nativeFailed=${nativeFailed} | nativeActive=${useNativeTools && !nativeFailed} | directMode=${directMode} | totalToolCalls=${totalToolCalls} | completionToolCalls=${completion.toolCalls?.length ?? 0}`);
+      debugLog(debugLogs, `[agent] EMPTY RESPONSE | consecutiveEmpty=${consecutiveEmptyResponses} | nativeFailed=${nativeFailed} | nativeActive=${useNativeTools && !nativeFailed} | directMode=${directMode} | totalToolCalls=${totalToolCalls} | completionToolCalls=${completion.toolCalls?.length ?? 0}`);
       const synthesized = synthesizeArtifactCompletion(ctx);
       if (synthesized && totalToolCalls > 0) {
-        console.log('[agent] -> synthesizing artifact from file outputs');
+        debugLog(debugLogs, '[agent] -> synthesizing artifact from file outputs');
         finalContent = synthesized;
         break;
       }
       if (consecutiveEmptyResponses >= 2) {
-        console.log('[agent] -> switching to directMode (2 consecutive empty responses)');
+        debugLog(debugLogs, '[agent] -> switching to directMode (2 consecutive empty responses)');
         directMode = true;
         messages[0] = { role: 'system', content: directSys };
         thinkStep.detail = 'Switching to direct mode (tools unavailable)';
@@ -1109,14 +1859,14 @@ export async function runAgentTask(args: {
         continue;
       }
       if (!nativeFailed && nativeActive) {
-        console.log('[agent] -> falling back to XML mode (native returned empty)');
+        debugLog(debugLogs, '[agent] -> falling back to XML mode (native returned empty)');
         nativeFailed = true;
         messages[0] = { role: 'system', content: xmlSys };
         thinkStep.detail = 'Falling back to XML mode';
         args.onStep([...steps]);
         continue;
       }
-      console.log('[agent] -> HARD FAIL: Empty response - model may not support tool calling');
+      console.error('[agent] HARD FAIL: Empty response - model may not support tool calling');
       steps.push({
         id: uid('step'), type: 'error', label: 'Empty response',
         status: 'error', detail: 'The model returned an empty response. The model may not support tool calling.'
@@ -1148,7 +1898,6 @@ export async function runAgentTask(args: {
         }
         cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
         messages.push({ role: 'assistant', content: cleanContent || 'Files generated.' });
-        totalToolCalls = MAX_TOOL_CALLS;
       } else {
         if (wantsWebsiteArtifact && !hasVisibleArtifact(ctx)) {
           steps.push({
@@ -1161,6 +1910,51 @@ export async function runAgentTask(args: {
           args.onStep([...steps]);
           errorReason = 'The model did not produce website files.';
           break;
+        }
+        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
+          const finalObservation: ToolObservation = {
+            name: 'assistant_draft',
+            args: {},
+            success: true,
+            summary: `Assistant draft before artifact enforcement: ${compactText(rawContent, 1400)}`
+          };
+          const created = await ensureRequestedArtifactsFromEvidence({
+            prompt: args.rawPrompt || '',
+            reason: 'direct mode tried to finish without creating the requested files',
+            ctx,
+            observations: [...toolObservations, finalObservation],
+            sources
+          });
+          if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
+            steps.push({
+              id: uid('step'),
+              type: 'error',
+              label: 'Missing requested files',
+              status: 'error',
+              detail: `Could not create: ${missingRequestedArtifactExtensions(ctx, args.rawPrompt || '').map((ext) => `.${ext}`).join(', ')}`
+            });
+            args.onStep([...steps]);
+            finalContent = await buildStrictFallbackContent({
+              prompt: args.rawPrompt || '',
+              reason: 'direct mode tried to finish without creating the requested files',
+              ctx,
+              observations: [...toolObservations, finalObservation],
+              sources
+            });
+            stopReason = 'missing_artifacts';
+            errorReason = 'The agent answered without creating the requested files.';
+            break;
+          }
+          if (created.length) {
+            steps.push({
+              id: uid('step'),
+              type: 'writing',
+              label: 'Created requested files',
+              status: 'done',
+              detail: created.join(', ')
+            });
+            args.onStep([...steps]);
+          }
         }
         messages.push({ role: 'assistant', content: rawContent });
         finalContent = stripToolCallArtifacts(rawContent);
@@ -1212,7 +2006,7 @@ export async function runAgentTask(args: {
     }
 
     const parseMode = directMode ? 'codeblocks' : (nativeActive && !nativeFailed) ? 'native' : 'xml/codeblocks';
-    console.log(`[agent] parsed ${toolCalls.length} toolCalls from ${parseMode} mode${toolCalls.length ? ': ' + toolCalls.map(t => t.name).join(', ') : ''}`);
+    debugLog(debugLogs, `[agent] parsed ${toolCalls.length} toolCalls from ${parseMode} mode${toolCalls.length ? ': ' + toolCalls.map(t => t.name).join(', ') : ''}`);
     thinkStep.status = 'done';
     thinkStep.detail = toolCalls.length ? `Using: ${toolCalls.map(t => t.name).join(', ')}` : 'Producing answer';
 
@@ -1254,6 +2048,51 @@ export async function runAgentTask(args: {
           errorReason = 'The model answered without creating website files.';
           break;
         }
+        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
+          const finalObservation: ToolObservation = {
+            name: 'assistant_draft',
+            args: {},
+            success: true,
+            summary: `Assistant draft before artifact enforcement: ${compactText(rawContent, 1400)}`
+          };
+          const created = await ensureRequestedArtifactsFromEvidence({
+            prompt: args.rawPrompt || '',
+            reason: 'the model tried to finish without creating the requested files',
+            ctx,
+            observations: [...toolObservations, finalObservation],
+            sources
+          });
+          if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
+            steps.push({
+              id: uid('step'),
+              type: 'error',
+              label: 'Missing requested files',
+              status: 'error',
+              detail: `Could not create: ${missingRequestedArtifactExtensions(ctx, args.rawPrompt || '').map((ext) => `.${ext}`).join(', ')}`
+            });
+            args.onStep([...steps]);
+            finalContent = await buildStrictFallbackContent({
+              prompt: args.rawPrompt || '',
+              reason: 'the model tried to finish without creating the requested files',
+              ctx,
+              observations: [...toolObservations, finalObservation],
+              sources
+            });
+            stopReason = 'missing_artifacts';
+            errorReason = 'The agent answered without creating the requested files.';
+            break;
+          }
+          if (created.length) {
+            steps.push({
+              id: uid('step'),
+              type: 'writing',
+              label: 'Created requested files',
+              status: 'done',
+              detail: created.join(', ')
+            });
+            args.onStep([...steps]);
+          }
+        }
         args.onProgress?.('Producing final answer\u2026');
         finalContent = stripToolCallArtifacts(rawContent);
         break;
@@ -1272,56 +2111,111 @@ export async function runAgentTask(args: {
       break;
     }
 
-    totalToolCalls += toolCalls.filter((toolCall) => toolCall.name !== 'preview_project').length;
+    const budgetedToolCalls = countBudgetedToolCalls(toolCalls);
 
-    if (totalToolCalls >= MAX_TOOL_CALLS) {
+    if (totalToolCalls >= maxToolCalls) {
       steps.push({
         id: uid('step'), type: 'error', label: 'Tool limit reached',
-        status: 'error', detail: `Used ${totalToolCalls} tools. Forcing final answer.`
+        status: 'error', detail: `Used ${totalToolCalls} tools across ${maxIterations} steps. Forcing final answer.`
       });
       args.onStep([...steps]);
       messages.push({ role: 'user', content: `You have used ${totalToolCalls} tools. You MUST stop using tools and provide your final answer now based on everything gathered.` });
       try {
-        const fallback = await completeAssistantReply({ messages, signal: args.signal });
-        finalContent = String(fallback.content || '').trim() || synthesizeArtifactCompletion(ctx) || 'The agent used many tools but could not synthesize a final answer.';
+        finalContent = await buildStrictFallbackContent({
+          prompt: args.rawPrompt || '',
+          reason: `the tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
+          ctx,
+          observations: toolObservations,
+          sources
+        });
       } catch {
-        finalContent = synthesizeArtifactCompletion(ctx) || 'The agent used many tools but could not synthesize a final answer.';
+        finalContent = await buildStrictFallbackContent({
+          prompt: args.rawPrompt || '',
+          reason: `the tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
+          ctx,
+          observations: toolObservations,
+          sources
+        });
       }
-      if (!finalContent) finalContent = 'The agent used many tools but could not synthesize a final answer.';
-      warningReason = warningReason || `Agent reached the tool call limit (${MAX_TOOL_CALLS}) and returned the best available result.`;
+      warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
+      stopReason = 'tool_limit';
       break;
     }
 
-    if (iter >= 8) {
-      messages.push({ role: 'user', content: 'You are running out of steps. Provide your final answer in the next response. Do NOT call any more tools.' });
+    if (iter >= Math.max(0, maxIterations - 2)) {
+      messages.push({ role: 'user', content: 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.' });
     }
 
     const sig = toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
-    const toolNames = toolCalls.map(tc => tc.name);
     recentSigs.push(sig);
-    if (recentSigs.length > 6) recentSigs.shift();
-    const recentNames = recentSigs.flatMap(s => {
-      const parts = s.split('|');
-      return parts.map(p => p.split(':')[0]);
+    if (recentSigs.length > 10) recentSigs.shift();
+    recentProgress.push({
+      sourceCount: sources.length,
+      visibleFileCount: visibleFileCount(ctx),
+      draftChars: maxObservedDraftChars
     });
-    const nameCounts = new Map<string, number>();
-    for (const name of recentNames) {
-      nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-    }
+    if (recentProgress.length > 10) recentProgress.shift();
+
+    // Extract full individual calls (name + args) for exact-match detection
+    const recentFullCalls = recentSigs.flatMap(s => s.split('|')).filter(Boolean);
+    // Extract just names for name-only counting and cycle detection
+    const recentNames = recentFullCalls.map(c => c.split(':')[0]);
+    const recentWindow = Math.min(recentSigs.length, 6);
+    const progressWindow = recentProgress.slice(-Math.max(2, recentWindow));
+    const isStagnating = !hasProgressSince(progressWindow);
+
     let stuckTool: string | null = null;
-    for (const [name, count] of nameCounts) {
-      if (count >= 3 && recentNames.length >= 3) {
-        stuckTool = name;
-        break;
+
+    // 1. Exact same call (name + identical args) repeated 3+ times = real loop
+    const exactCounts = new Map<string, number>();
+    for (const call of recentFullCalls) {
+      exactCounts.set(call, (exactCounts.get(call) || 0) + 1);
+    }
+    for (const [call, count] of exactCounts) {
+      if (count >= 3) {
+        const toolName = call.split(':')[0];
+        if (!LOW_IMPACT_LOOP_TOOLS.has(toolName) || isStagnating) {
+          stuckTool = toolName;
+          break;
+        }
       }
     }
-    if (!stuckTool && recentNames.length >= 6) {
+
+    // Only trigger loop stops when repeated calls coincide with stagnation.
+    if (!isStagnating) {
+      if (stuckTool) {
+        debugLog(debugLogs, `[agent] loop guard suppressed for ${stuckTool} because progress is still being made.`);
+      }
+      stuckTool = null;
+    }
+
+    // 2. Same tool name only (different args) repeated 6+ times = likely stuck
+    if (!stuckTool && isStagnating) {
+      const nameCounts = new Map<string, number>();
+      for (const name of recentNames) {
+        if (name === 'fetch_url' || LOW_IMPACT_LOOP_TOOLS.has(name)) continue;
+        nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+      }
+      for (const [name, count] of nameCounts) {
+        if (count >= 6) {
+          stuckTool = name;
+          break;
+        }
+      }
+    }
+
+    // 3. Two-tool alternating cycle (A-B-A-B-A-B)
+    if (!stuckTool && isStagnating && recentNames.length >= 6) {
       const last6 = recentNames.slice(-6);
       const isTwoToolCycle = last6.length === 6 && new Set(last6).size === 2 &&
         last6[0] === last6[2] && last6[2] === last6[4] &&
         last6[1] === last6[3] && last6[3] === last6[5];
       if (isTwoToolCycle) {
-        stuckTool = `${last6[0]} \u2194 ${last6[1]}`;
+        const cycleTools = new Set(last6);
+        const onlyLowImpact = [...cycleTools].every((name) => LOW_IMPACT_LOOP_TOOLS.has(name));
+        if (!onlyLowImpact) {
+          stuckTool = `${last6[0]} \u2194 ${last6[1]}`;
+        }
       }
     }
     if (stuckTool) {
@@ -1330,14 +2224,15 @@ export async function runAgentTask(args: {
         status: 'error', detail: `Repeated calls to ${stuckTool}`
       });
       args.onStep([...steps]);
-      messages.push({ role: 'user', content: `You have called "${stuckTool}" multiple times without making progress. Stop using tools and provide your best answer now based on what you know.` });
-      try {
-        const fallback = await completeAssistantReply({ messages, signal: args.signal });
-        finalContent = String(fallback.content || '').trim() || synthesizeArtifactCompletion(ctx) || 'The agent encountered a loop and could not complete the task.';
-      } catch {
-        finalContent = synthesizeArtifactCompletion(ctx) || 'The agent encountered a loop and could not complete the task.';
-      }
-      warningReason = 'Agent encountered a loop and returned the best available result.';
+      finalContent = await buildStrictFallbackContent({
+        prompt: args.rawPrompt || '',
+        reason: `it detected repeated calls to ${stuckTool}`,
+        ctx,
+        observations: toolObservations,
+        sources
+      });
+      warningReason = 'Agent encountered a loop and returned only gathered evidence.';
+      stopReason = 'loop';
       break;
     }
 
@@ -1347,7 +2242,7 @@ export async function runAgentTask(args: {
       if (group.length === 1) {
         // Single tool — execute directly
         const tc = group[0];
-        await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, nativeActive, nativeFailed);
+        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed);
       } else {
         // Multiple independent tools — execute in parallel
         args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
@@ -1380,6 +2275,8 @@ export async function runAgentTask(args: {
           if (result.nextTurnMods?.injectMessages) {
             messages.push(...result.nextTurnMods.injectMessages);
           }
+
+          toolObservations.push(summarizeToolObservation(tc.name, tc.arguments, result));
 
           if (tc.name === 'web_search' && result.success) {
             const output = result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
@@ -1435,32 +2332,74 @@ export async function runAgentTask(args: {
         args.onStep([...steps]);
       }
     }
+
+    totalToolCalls += budgetedToolCalls;
+
+    if (directMode && hasVisibleArtifact(ctx)) {
+      finalContent = synthesizeArtifactCompletion(ctx) || 'Website files created and preview is ready.';
+      break;
+    }
+
+    if (totalToolCalls >= maxToolCalls) {
+      finalContent = await buildStrictFallbackContent({
+        prompt: args.rawPrompt || '',
+        reason: `the available tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
+        ctx,
+        observations: toolObservations,
+        sources
+      });
+      warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
+      stopReason = 'tool_limit';
+      break;
+    }
   }
 
   if (!finalContent) {
-    if (finalReasoning) {
-      finalContent = finalReasoning;
-      errorReason = errorReason || 'Agent could not synthesize a structured final answer, but produced reasoning.';
-    } else {
-      finalContent = 'The agent reached the iteration limit without producing a final answer. Try a more specific prompt or a model with better tool-calling capabilities.';
-      errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
-    }
+    const reason = stopReason !== 'none' && errorReason
+      ? errorReason
+      : 'it reached the iteration limit before producing a final answer';
+    finalContent = await buildStrictFallbackContent({
+      prompt: args.rawPrompt || '',
+      reason,
+      ctx,
+      observations: toolObservations,
+      sources
+    });
+    if (stopReason === 'none') stopReason = 'iteration_limit';
+    errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
   }
 
   finalContent = sanitizeAgentVisibleText(finalContent);
   finalReasoning = sanitizeAgentVisibleText(finalReasoning);
-  finalizeAgentSteps(steps, !!errorReason);
+  const artifact = buildArtifact(ctx);
+  const usefulResult = hasGatheredEvidence(ctx, toolObservations, sources, finalContent);
+  const effectiveStopReason = stopReason !== 'none' ? stopReason : classifyStopReason(errorReason || warningReason);
+  const outcome: AgentOutcome = errorReason
+    ? (usefulResult ? 'stopped' : 'failed')
+    : warningReason
+      ? 'partial'
+      : 'completed';
+  const fatalError = outcome === 'failed';
+  const effectiveWarning = !fatalError && (warningReason || (effectiveStopReason !== 'none' ? stoppedWarning(effectiveStopReason, errorReason || '') : undefined));
 
-  console.log(`[agent] EXIT | contentLen=${finalContent.length} | steps=${steps.length} | error=${errorReason || 'none'} | warning=${warningReason || 'none'}`);
+  finalizeAgentSteps(steps, fatalError);
+
+  const exitNotice = effectiveWarning && !fatalError ? effectiveWarning : 'none';
+  console.log(`[agent] EXIT | contentLen=${finalContent.length} | steps=${steps.length} | outcome=${outcome} | stopReason=${effectiveStopReason} | error=${fatalError ? (errorReason || 'unknown') : 'none'} | notice=${exitNotice}`);
+  const publicFallback = isPublicFallbackContent(finalContent);
 
   return {
     content: finalContent,
     reasoning: finalReasoning,
     steps,
-    artifact: buildArtifact(ctx),
+    artifact,
     sources,
-    ...(errorReason ? { error: errorReason } : {}),
-    ...(warningReason ? { warning: warningReason } : {})
+    outcome,
+    stopReason: effectiveStopReason,
+    publicFallback,
+    diagnosticsRedacted: publicFallback,
+    ...(fatalError && errorReason ? { error: errorReason } : {}),
+    ...(effectiveWarning ? { warning: effectiveWarning } : {})
   };
 }
 
@@ -1472,9 +2411,10 @@ async function executeSingleTool(
   messages: RequestMessage[],
   sources: SearchResult[],
   seenUrls: Set<string>,
+  observations: ToolObservation[],
   nativeActive: boolean,
   nativeFailed: boolean
-) {
+): Promise<boolean> {
   args.onProgress?.(`Running ${tc.name.replace(/_/g, ' ')}\u2026`);
 
   const toolStep: AgentStep = {
@@ -1493,6 +2433,7 @@ async function executeSingleTool(
 
   const result = await executeToolWithTimeout(tc.name, tc.arguments, ctx);
   ctx.signal?.throwIfAborted?.();
+  observations.push(summarizeToolObservation(tc.name, tc.arguments, result));
 
   if (result.nextTurnMods?.disableNativeTools) {
     nativeFailed = true;
@@ -1553,4 +2494,6 @@ async function executeSingleTool(
   } else {
     messages.push({ role: 'user', content: `Tool result for ${tc.name}:\n${JSON.stringify(resultPayload, null, 2)}` });
   }
+
+  return nativeFailed;
 }

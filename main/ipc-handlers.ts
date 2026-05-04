@@ -44,6 +44,9 @@ import {
 import {
   generatePptx, savePptx, parseSlidesFromMarkdown, slidesToMarkdown
 } from './slides.ts';
+import {
+  generateDocx, generateXlsx, generatePdf
+} from './generated-documents.ts';
 import { completeChatRequest, startChatStream, cancelChatStream, resolveApiKey } from './chat-ipc.ts';
 import { resolveProvider } from './providers/registry.ts';
 import { saveChatSession, loadAllChats, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder } from './chat-db.ts';
@@ -385,4 +388,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('save_pptx', (_e, { data, path }) => savePptx(data, path));
   ipcMain.handle('parse_slides_from_markdown', (_e, { markdown }) => parseSlidesFromMarkdown(markdown));
   ipcMain.handle('slides_to_markdown', (_e, { slides }) => slidesToMarkdown(slides));
+  ipcMain.handle('generate_docx', (_e, { data }) => generateDocx(data));
+  ipcMain.handle('generate_xlsx', (_e, { data }) => generateXlsx(data));
+  ipcMain.handle('generate_pdf', (_e, { data }) => generatePdf(data));
 }

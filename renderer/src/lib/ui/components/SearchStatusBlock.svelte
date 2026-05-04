@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { SearchMeta } from '$lib/types/chat';
-  import { ChevronDown, ChevronUp, Globe } from 'lucide-svelte';
+  import { AlertCircle, Globe } from 'lucide-svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
-  import { getSearchStatus, providerLabel } from '../message-utils';
+  import { getSearchStatus } from '../message-utils';
 
   interface Props {
     meta?: SearchMeta | null;
@@ -12,53 +12,28 @@
   const status = $derived(getSearchStatus(meta));
   const researchSummary = $derived(meta?.researchSummary?.trim() || '');
   const summaryHtml = $derived(researchSummary ? renderMarkdown(researchSummary) : '');
-  const provider = $derived.by(() => {
-    const label = providerLabel(meta?.providerUsed || meta?.requestedProvider || '');
-    return label.toLowerCase() === 'auto' ? '' : label;
-  });
   const sourceCount = $derived(Number(meta?.sourceCount || 0));
   const crawlPages = $derived(Number(meta?.researchStats?.pagesCrawled || 0));
   const crawlDepth = $derived(Number(meta?.researchStats?.maxDepthReached || 0));
-  let expanded = $state(false);
 </script>
 
 {#if status}
   {#if researchSummary}
-    <div class="research-summary mb-4">
-      <button class="summary-trigger" onclick={() => (expanded = !expanded)}>
-        <span class="summary-title">Research result</span>
+    <div class="research-summary">
+      <div class="summary-trigger">
+        <Globe class="h-3.5 w-3.5" />
+        <span class="summary-title">Research</span>
         <span class="summary-meta">
           {#if sourceCount > 0}{sourceCount} src{/if}
           {#if crawlPages > 0} · {crawlPages} pages{/if}
           {#if crawlDepth > 0} · d{crawlDepth}{/if}
         </span>
-        {#if expanded}
-          <ChevronUp class="h-3.5 w-3.5" />
-        {:else}
-          <ChevronDown class="h-3.5 w-3.5" />
-        {/if}
-      </button>
-      {#if expanded}
-        <div class="summary-modal">
-          <div class="markdown-body">{@html summaryHtml}</div>
-          {#if provider || sourceCount > 0}
-            <div class="research-meta">
-              {#if provider}
-                <span class="meta-item"><Globe class="h-3 w-3" />{provider}</span>
-              {/if}
-              {#if sourceCount > 0}
-                <span class="meta-item">{sourceCount} {sourceCount === 1 ? 'source' : 'sources'}</span>
-              {/if}
-              {#if crawlPages > 0}
-                <span class="meta-item">{crawlPages} pages crawled</span>
-              {/if}
-            </div>
-          {/if}
-        </div>
-      {/if}
+      </div>
+      <div class="summary-inline markdown-body">{@html summaryHtml}</div>
     </div>
   {:else}
-    <div class="search-status mb-3">
+    <div class="search-status">
+      <AlertCircle class="h-3.5 w-3.5" />
       <span class="status-title">{status.title}</span>
       {#if status.detail}
         <span class="status-detail">{status.detail}</span>
@@ -70,26 +45,26 @@
 <style>
   .research-summary {
     display: grid;
-    gap: 0.55rem;
+    gap: 0.35rem;
+    margin: 0.25rem 0 0.7rem;
   }
 
   .summary-trigger {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: var(--radius-sm);
+    border: 0;
+    background: transparent;
+    border-radius: 0;
     color: var(--text-secondary);
-    padding: 0.45rem 0.65rem;
+    padding: 0;
     max-width: fit-content;
     font-size: 0.77rem;
+    box-shadow: none;
   }
 
   .summary-trigger:hover {
     color: var(--text);
-    background: var(--surface-hover);
-    border-color: var(--border);
   }
 
   .summary-title {
@@ -102,9 +77,10 @@
     font-size: 0.72rem;
   }
 
-  .summary-modal {
-    border-left: 2px solid var(--border);
-    padding-left: 0.9rem;
+  .summary-inline {
+    border-left: 1px solid var(--border);
+    padding-left: 0.75rem;
+    color: var(--text-secondary);
   }
 
   .research-summary :global(.markdown-body) {
@@ -139,26 +115,13 @@
     font-size: 0.9375rem;
   }
 
-  .research-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-  }
-
-  .meta-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-  }
-
   .search-status {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
     font-size: 0.8125rem;
+    margin: 0.25rem 0 0.7rem;
+    color: var(--text-muted);
   }
 
   .status-title {

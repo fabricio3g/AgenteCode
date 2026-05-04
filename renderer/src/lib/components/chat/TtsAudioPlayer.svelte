@@ -123,7 +123,7 @@
       <button class="tts-play-btn" onclick={handlePlayPause} aria-label="Pause">
         <Pause class="h-3.5 w-3.5" />
       </button>
-      <div class="tts-waveform" onclick={handleSeek}>
+      <button type="button" class="tts-waveform" onclick={handleSeek} aria-label="Seek audio">
         {#each barHeights as h, i}
           {@const barPlayed = i / 32 <= progress}
           <div
@@ -132,7 +132,7 @@
             style="height: {Math.max(2, h * 16)}px;"
           ></div>
         {/each}
-      </div>
+      </button>
       <span class="tts-time">
         {formatTime(elapsed)} / {formatTime(duration)}
       </span>
@@ -146,7 +146,7 @@
       <button class="tts-play-btn" onclick={handlePlayPause} aria-label="Replay">
         <Play class="h-3.5 w-3.5" />
       </button>
-      <div class="tts-waveform" onclick={handleSeek}>
+      <button type="button" class="tts-waveform" onclick={handleSeek} aria-label="Seek audio">
         {#each barHeights as h, i}
           {@const barPlayed = i / 32 <= progress}
           <div
@@ -155,7 +155,7 @@
             style="height: {Math.max(2, h * 16)}px;"
           ></div>
         {/each}
-      </div>
+      </button>
       <span class="tts-time">
         {formatTime(duration)}
       </span>
@@ -241,6 +241,9 @@
     height: 18px;
     min-width: 80px;
     max-width: 96px;
+    padding: 0;
+    border: 0;
+    background: transparent;
     cursor: pointer;
   }
 

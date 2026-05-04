@@ -1,4 +1,4 @@
-import type { AgentArtifact, AgentStep, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceContext, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceContext, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runAgentTask } from '$lib/services/agent';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -15,7 +15,6 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import type { RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
-import { isSimpleArtifact } from '$lib/utils/preview-builder';
 
 interface PersistedState {
   chats: ChatSession[];
@@ -42,6 +41,18 @@ interface ApiModelMetadata {
   completion_cost_per_million?: number;
 }
 
+type GenerationBackendMode = 'api' | 'local';
+type GenerationComposerMode = 'chat' | 'agent';
+
+interface ActiveGenerationRun {
+  controller: AbortController;
+  messageId: string;
+  backendMode: GenerationBackendMode;
+  mode: GenerationComposerMode;
+  startedAt: number;
+  researchTaskId?: string | null;
+}
+
 const LOCAL_MODEL_SETTINGS_KEY = 'chatealm_model_load_settings_by_model';
 const USER_NAME_KEY = 'chatealm_user_name';
 
@@ -62,6 +73,93 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 function createId(prefix: string) {
   if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+type AgentStoreResult = Awaited<ReturnType<typeof runAgentTask>>;
+
+function hasUsableAgentResult(result: AgentStoreResult): boolean {
+  return !!(
+    result.content?.trim() ||
+    result.sources?.length ||
+    result.artifact ||
+    result.steps?.some((step) => step.status === 'done' || step.output)
+  );
+}
+
+function agentOutcome(result: AgentStoreResult): AgentOutcome {
+  if (result.outcome) return result.outcome;
+  if (result.error && hasUsableAgentResult(result)) return 'stopped';
+  if (result.error) return 'failed';
+  if (result.warning) return 'partial';
+  return 'completed';
+}
+
+function agentStopReason(result: AgentStoreResult): AgentStopReason {
+  if (result.stopReason) return result.stopReason;
+  const text = `${result.error || ''} ${result.warning || ''}`.toLowerCase();
+  if (text.includes('timeout') || text.includes('timed out')) return 'timeout';
+  if (text.includes('loop')) return 'loop';
+  if (text.includes('tool') && (text.includes('limit') || text.includes('budget'))) return 'tool_limit';
+  if (text.includes('iteration')) return 'iteration_limit';
+  if (text.includes('requested file') || text.includes('artifact')) return 'missing_artifacts';
+  return result.error ? 'error' : 'none';
+}
+
+function activityFromProgress(text: string): { currentActivity: AgentActivity; activityLabel: string } {
+  const value = String(text || '').toLowerCase();
+  if (value.includes('search')) return { currentActivity: 'searching', activityLabel: 'Searching the web' };
+  if (value.includes('fetch') || value.includes('read') || value.includes('source')) return { currentActivity: 'reading', activityLabel: 'Reading sources' };
+  if (value.includes('document') || value.includes('spreadsheet') || value.includes('presentation') || value.includes('pdf') || value.includes('file') || value.includes('artifact') || value.includes('write')) {
+    return { currentActivity: 'creating_files', activityLabel: 'Creating files' };
+  }
+  if (value.includes('final') || value.includes('answer') || value.includes('response') || value.includes('producing')) return { currentActivity: 'writing', activityLabel: 'Writing answer' };
+  return { currentActivity: 'planning', activityLabel: 'Agent is planning' };
+}
+
+function setAgentActivity(message: ChatMessage, activity: AgentActivity, activityLabel: string) {
+  message.metadata = {
+    ...(message.metadata || {}),
+    currentActivity: activity,
+    activityLabel
+  };
+  if (message.versions?.length) {
+    const index = message.activeVersion ?? message.versions.length - 1;
+    if (message.versions[index]) {
+      message.versions[index] = {
+        ...message.versions[index],
+        metadata: {
+          ...(message.versions[index].metadata || {}),
+          currentActivity: activity,
+          activityLabel
+        }
+      };
+    }
+  }
+}
+
+function markAgentWriting(message: ChatMessage) {
+  setAgentActivity(message, 'writing', 'Writing answer');
+  const steps = message.agentSteps || [];
+  const last = steps[steps.length - 1];
+  if (last?.label === 'Writing answer') {
+    last.status = 'running';
+    last.detail = 'Preparing final response';
+    message.agentSteps = [...steps];
+    return;
+  }
+  message.agentSteps = [
+    ...steps.map((step) => step.status === 'running' ? { ...step, status: 'done' as const } : step),
+    { id: createId('step'), type: 'thinking', label: 'Writing answer', status: 'running', detail: 'Preparing final response' }
+  ];
+}
+
+function readBlobAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve(event.target?.result as string || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(blob);
+  });
 }
 
 const WORKSPACE_IGNORED_SEGMENTS = new Set([
@@ -359,10 +457,11 @@ class AppStore {
   loading = $state(false);
   error = $state<string | null>(null);
   abortController = $state<AbortController | null>(null);
+  activeRunsByChat = $state<Record<string, ActiveGenerationRun>>({});
   editingMessageId = $state<string | null>(null);
   editingMessageContent = $state('');
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
-  composerMode = $state<'chat' | 'slides' | 'agent'>('chat');
+  composerMode = $state<'chat' | 'agent'>('chat');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
@@ -421,13 +520,37 @@ class AppStore {
     return this.activeProvider?.model || 'No model';
   }
 
+  get currentRun() {
+    return this.currentChatId ? (this.activeRunsByChat[this.currentChatId] || null) : null;
+  }
+
+  get currentChatGenerating() {
+    return !!this.currentRun;
+  }
+
+  get hasAnyGeneration() {
+    return Object.keys(this.activeRunsByChat).length > 0;
+  }
+
+  isChatGenerating(chatId = this.currentChatId || '') {
+    return !!(chatId && this.activeRunsByChat[chatId]);
+  }
+
+  hasOtherChatGeneration(chatId = this.currentChatId || '') {
+    return Object.keys(this.activeRunsByChat).some((id) => id !== chatId);
+  }
+
+  get currentChatBlockedByOtherLocalRun() {
+    return this.backendMode === 'local' && this.hasOtherChatGeneration(this.currentChatId || '');
+  }
+
   get hasActiveWork() {
-    return this.loading || this.localModelLoading || downloadsStore.hasActive;
+    return this.hasAnyGeneration || this.localModelLoading || downloadsStore.hasActive;
   }
 
   get activeWorkReasons() {
     const reasons: string[] = [];
-    if (this.loading) reasons.push('chat generation');
+    if (this.hasAnyGeneration) reasons.push('chat generation');
     if (this.localModelLoading) reasons.push('model loading');
     if (downloadsStore.hasActive) reasons.push('downloads');
     return reasons;
@@ -447,6 +570,33 @@ class AppStore {
     } catch {
       // no-op for close guard sync failures
     }
+  }
+
+  private refreshGenerationState() {
+    const runs = Object.values(this.activeRunsByChat);
+    this.loading = runs.length > 0;
+    this.abortController = this.currentRun?.controller || runs[0]?.controller || null;
+  }
+
+  private beginGenerationRun(chatId: string, run: ActiveGenerationRun) {
+    this.activeRunsByChat = {
+      ...this.activeRunsByChat,
+      [chatId]: run
+    };
+    this.refreshGenerationState();
+  }
+
+  private endGenerationRun(chatId: string, controller?: AbortController) {
+    const existing = this.activeRunsByChat[chatId];
+    if (!existing) {
+      this.refreshGenerationState();
+      return;
+    }
+    if (controller && existing.controller !== controller) return;
+    const next = { ...this.activeRunsByChat };
+    delete next[chatId];
+    this.activeRunsByChat = next;
+    this.refreshGenerationState();
   }
 
   private queueWebAnswerRagIngest(params: { chatId: string; query: string; answer: string; sources: SearchResult[] }) {
@@ -700,6 +850,10 @@ class AppStore {
   }
 
   openArtifact(artifact: AgentArtifact | null, messageId: string | null = null) {
+    if (!artifact && messageId && this.currentChat) {
+      const msg = this.currentChat.messages.find(m => m.id === messageId);
+      artifact = msg?.artifact || null;
+    }
     if (!artifact) return;
     this.syncArtifactState(artifact, messageId, true);
   }
@@ -1089,9 +1243,15 @@ class AppStore {
       folders: this.folders,
       currentChatId: this.currentChatId
     });
-    // Also persist current chat to SQLite
-    if (this.currentChat) {
-      saveChatStateToDb(this.currentChat);
+    // Also persist the visible chat and any background chats with active runs to SQLite.
+    const chatIds = new Set<string>();
+    if (this.currentChatId) chatIds.add(this.currentChatId);
+    for (const chatId of Object.keys(this.activeRunsByChat)) {
+      chatIds.add(chatId);
+    }
+    for (const chatId of chatIds) {
+      const chat = this.findChat(chatId);
+      if (chat) saveChatStateToDb(chat);
     }
   }
 
@@ -1109,6 +1269,7 @@ class AppStore {
     };
     this.chats = [chat, ...this.chats];
     this.currentChatId = chat.id;
+    this.refreshGenerationState();
     this.composer = '';
     this.persist();
     return chat;
@@ -1126,6 +1287,7 @@ class AppStore {
     this.pendingAttachments = [];
 
     this.currentChatId = chatId;
+    this.refreshGenerationState();
     this.composer = match.draft || '';
     // Restore artifact from the selected chat's last agent message, or clear
     const lastArtifactMsg = [...match.messages].reverse().find(m => m.artifact);
@@ -1152,8 +1314,15 @@ class AppStore {
   }
 
   deleteChat(chatId: string) {
+    if (this.isChatGenerating(chatId)) {
+      this.stopStreaming(chatId);
+    }
     const title = this.chats.find((c) => c.id === chatId)?.title;
     this.chats = this.chats.filter((chat) => chat.id !== chatId);
+    const activeRuns = { ...this.activeRunsByChat };
+    delete activeRuns[chatId];
+    this.activeRunsByChat = activeRuns;
+    this.refreshGenerationState();
     delete this.ragDocumentsByChat[chatId];
     if (this.currentChatId === chatId) {
       this.currentChatId = this.chats[0]?.id || null;
@@ -1255,11 +1424,16 @@ class AppStore {
   }
 
   private appendMessage(message: ChatMessage) {
-    if (!this.currentChat) return null;
-    this.currentChat.messages = [...this.currentChat.messages, message];
-    this.currentChat.updatedAt = Date.now();
-    if (this.currentChat.title === 'New chat' && message.role === 'user') {
-      this.currentChat.title = message.content.slice(0, 48) || 'New chat';
+    return this.appendMessageToChat(this.currentChatId || '', message);
+  }
+
+  private appendMessageToChat(chatId: string, message: ChatMessage) {
+    const chat = this.findChat(chatId);
+    if (!chat) return null;
+    chat.messages = [...chat.messages, message];
+    chat.updatedAt = Date.now();
+    if (chat.title === 'New chat' && message.role === 'user') {
+      chat.title = message.content.slice(0, 48) || 'New chat';
     }
     this.touchChats(); // notify reactive subscribers of array mutation
     this.persist();
@@ -1275,13 +1449,38 @@ class AppStore {
     return this.chats.find((chat) => chat.id === chatId) || null;
   }
 
+  private buildSearchConversationContext(currentUserMessageId?: string, chatId = this.currentChatId || '') {
+    const chat = this.findChat(chatId);
+    if (!chat) return '';
+
+    const entries = chat.messages
+      .filter((message) => message.id !== currentUserMessageId || message.role === 'user')
+      .filter((message) => message.role === 'user' || normalizeText(message.content))
+      .filter((message) => message.done !== false || message.role === 'user')
+      .slice(-8)
+      .map((message) => {
+        const label = message.role === 'user' ? 'User' : 'Assistant';
+        const text = normalizeText(message.content).slice(0, 700);
+        const attachments = (message.attachments || [])
+          .filter((attachment) => attachment.kind !== 'image')
+          .map((attachment) => attachment.name)
+          .filter(Boolean)
+          .slice(0, 4);
+        const attachmentText = attachments.length ? ` Attachments: ${attachments.join(', ')}.` : '';
+        return text ? `${label}: ${text}${attachmentText}` : (attachmentText ? `${label}:${attachmentText}` : '');
+      })
+      .filter(Boolean);
+
+    return entries.join('\n').slice(-3000);
+  }
+
   private buildContextualPrompt(args: {
     content: string;
     searchContext?: string;
     researchSummary?: string;
     ragContext?: string;
     workspaceContext?: string;
-    mode: 'chat' | 'slides' | 'agent';
+    mode: 'chat' | 'agent';
     searchMode?: 'chat' | 'search' | 'deep' | 'max';
   }) {
     const extras: string[] = [];
@@ -1301,40 +1500,6 @@ class AppStore {
       extras.push(`<workspace>\n${args.workspaceContext}\n</workspace>`);
     }
 
-    if (args.mode === 'slides') {
-      const slidesSystemPrompt = `You are a senior presentation designer. Generate a sharp, audience-aware deck. Use this exact format:
-
-# [Deck Title]
-
----
-
-# [Slide Title]
-- Insight or key message
-- Supporting point
-- Supporting point
-
----
-
-# [Next Slide Title]
-- Key point
-- Supporting detail
-
-Design rules:
-- Create 5-10 slides unless asked otherwise
-- Make titles specific and declarative, never vague labels like "Overview"
-- Each slide must make one strong point
-- Bullets must be concise and worth presenting on screen
-- Build a narrative arc: context → insight → implication → action
-- Start strong and end with a decisive closing slide
-- Do NOT add any text outside the slide format above`;
-
-      return [
-        slidesSystemPrompt,
-        extras.length ? extras.join('\n\n') : '',
-        `User request:\n${args.content}`
-      ].filter(Boolean).join('\n\n');
-    }
-
     if (!extras.length) return args.content;
 
     const guidance: string[] = [];
@@ -1350,20 +1515,28 @@ Design rules:
       ].join(' '));
     }
     if (args.workspaceContext) {
-      guidance.push([
-        'You are in work mode with a project workspace attached.',
-        'When agent mode is active in work mode, operate directly inside the attached workspace folder instead of a temporary sandbox.',
-        'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts from the workspace when relevant.',
-        'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.',
-        'You CAN create or write files for the user. To create or update a file use this EXACT format on its own line:',
-        '<write_file path="relative/path/to/filename.ext">',
-        'full file content here',
-        '</write_file>',
-        'Use .md for documents, .txt for plain text, .csv for data, .py/.js/.ts for code, .html/.css/.js for previews, and .docx/.xlsx when the user wants Office documents.',
-        'For graphs and diagrams use Mermaid inside a ```mermaid code block inside a .md file.',
-        'You may output multiple <write_file> blocks in one response.',
-        'After the block(s), briefly explain what you created.'
-      ].join(' '));
+      if (args.mode === 'agent') {
+        guidance.push([
+          'You are in agent mode with workspace context attached as read-only reference.',
+          'Do not claim direct host file access. Agent-created files must be chat sandbox artifacts saved with this conversation.',
+          'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts when relevant.',
+          'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.'
+        ].join(' '));
+      } else {
+        guidance.push([
+          'You are in work mode with a project workspace attached.',
+          'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts from the workspace when relevant.',
+          'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.',
+          'You CAN create or write files for the user. To create or update a file use this EXACT format on its own line:',
+          '<write_file path="relative/path/to/filename.ext">',
+          'full file content here',
+          '</write_file>',
+          'Use .md for documents, .txt for plain text, .csv for data, .py/.js/.ts for code, .html/.css/.js for previews, and .docx/.xlsx when the user wants Office documents.',
+          'For graphs and diagrams use Mermaid inside a ```mermaid code block inside a .md file.',
+          'You may output multiple <write_file> blocks in one response.',
+          'After the block(s), briefly explain what you created.'
+        ].join(' '));
+      }
     }
     if (args.mode === 'agent') {
       const searchModeLabel = args.searchMode && args.searchMode !== 'chat' ? args.searchMode : 'chat';
@@ -1372,6 +1545,7 @@ Design rules:
         `Current search mode preference: ${searchModeLabel}.`,
         'Turn useful work into artifacts instead of only replying in chat.',
         'For research or competitor analysis, create a report file the user can open or download.',
+        'When the user asks for slides, a deck, a document, an Excel workbook, or a PDF, use the matching artifact tool so the chat gets a real file and viewer.',
         'For code requests, create the actual files, test them when possible, and include a previewable HTML result when it helps.'
       ].join(' '));
     }
@@ -1411,7 +1585,12 @@ Design rules:
 
     this.searchLoading = true;
     try {
-      const response = await webSearch({ query: trimmed, deep: false, mode: 'search' });
+      const response = await webSearch({
+        query: trimmed,
+        context: this.buildSearchConversationContext(),
+        deep: false,
+        mode: 'search'
+      });
       this.searchResults = Array.isArray(response.results) ? response.results : [];
     } catch (error) {
       this.searchResults = [];
@@ -1426,7 +1605,7 @@ Design rules:
     this.searchSidebarOpen = true;
   }
 
-  setComposerMode(mode: 'chat' | 'slides' | 'agent') {
+  setComposerMode(mode: 'chat' | 'agent') {
     if (mode === 'agent') {
       this.searchMode = 'chat';
     }
@@ -1523,12 +1702,7 @@ Design rules:
       if (attachment.kind === 'image') {
         attachment.preview = URL.createObjectURL(file);
         // Read base64 for vision API calls
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve) => {
-          reader.onload = (e) => resolve(e.target?.result as string || '');
-          reader.readAsDataURL(file);
-        });
-        attachment.base64 = base64;
+        attachment.base64 = await readBlobAsDataUrl(file);
         // Run OCR on images for text fallback (non-blocking)
         try {
           const { extractTextFromFile } = await import('$lib/services/ocr');
@@ -1542,9 +1716,15 @@ Design rules:
         continue;
       }
 
+      // Create blob URL for document preview
+      const fileBuffer = await file.arrayBuffer();
+      const fileBlob = new Blob([fileBuffer], { type: file.type });
+      attachment.data = await readBlobAsDataUrl(fileBlob);
+      attachment.size = fileBlob.size;
+
       // Documents: try backend RAG ingestion, fallback to client-side extraction
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = new Uint8Array(fileBuffer);
         const tempPath = await writeTempFile(`${Date.now()}_${file.name}`, bytes);
         const doc = await ingestDocument({
           file_path: tempPath,
@@ -1590,13 +1770,14 @@ Design rules:
     await this.refreshRagDocuments();
   }
 
-  private async clearWorkspaceDocs() {
-    if (!this.currentChatId || !this.currentChat?.workspace?.files?.length) return;
+  private async clearWorkspaceDocs(chatId = this.currentChatId || '') {
+    const chat = this.findChat(chatId);
+    if (!chatId || !chat?.workspace?.files?.length) return;
     await Promise.allSettled(
-      this.currentChat.workspace.files
+      chat.workspace.files
         .map((file) => file.docId)
         .filter((docId): docId is string => !!docId)
-        .map((docId) => removeRagDocument(docId, this.currentChatId!))
+        .map((docId) => removeRagDocument(docId, chatId))
     );
   }
 
@@ -1765,14 +1946,13 @@ Design rules:
   }
 
   /** Re-scan the workspace folder after LLM creates new files */
-  async refreshWorkspace() {
-    const chat = this.currentChat;
+  async refreshWorkspace(chatId = this.currentChatId || '') {
+    const chat = this.findChat(chatId);
     const rootPath = chat?.workspace?.rootPath;
-    const chatId = this.currentChatId;
     if (!rootPath || !chatId || !isTauri()) return;
     this.workspaceIndexing = true;
     try {
-      await this.clearWorkspaceDocs();
+      await this.clearWorkspaceDocs(chatId);
       const result = await indexWorkspaceFolder(rootPath, chatId);
       chat!.workspace = {
         rootName: result.root_name,
@@ -1788,7 +1968,7 @@ Design rules:
       };
       this.touchChats();
       this.persist();
-      await this.refreshRagDocuments();
+      await this.refreshRagDocuments(chatId);
     } finally {
       this.workspaceIndexing = false;
     }
@@ -1842,10 +2022,28 @@ Design rules:
 
   async sendCurrentMessage() {
     const content = this.composer.trim();
-    if ((!content && this.pendingAttachments.length === 0) || !this.currentChat || this.loading) return;
+    const targetChatId = this.currentChatId;
+    const targetChat = this.findChat(targetChatId);
+    if ((!content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
+    if (this.isChatGenerating(targetChatId)) return;
+
+    const activeBackendMode = this.backendMode as GenerationBackendMode;
+    if (activeBackendMode === 'local' && this.hasOtherChatGeneration(targetChatId)) {
+      toastStore.info('Local model is busy in another chat. Stop that run before starting a local response here.', 3200);
+      return;
+    }
+
+    const activeModelLabel = this.activeModelLabel;
+    const activeProvider = this.activeProvider;
+    const activeProviderApiKey = activeProvider?.api_key;
+    const activeSearchMode = this.searchMode;
+    const activeComposerMode = this.composerMode;
+    const activeContextMode = targetChat.contextMode || 'chat';
+    const activeWorkspace = activeContextMode === 'work' ? targetChat.workspace : null;
+    const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     // Guard: local mode with no model loaded
-    if (this.backendMode === 'local') {
+    if (activeBackendMode === 'local') {
       if (!this.selectedLocalModelPath) {
         toastStore.error('No local model selected. Open Model Hub to download and load a model.');
         return;
@@ -1856,20 +2054,15 @@ Design rules:
       }
     }
     // Guard: API mode with no provider configured
-    if (this.backendMode === 'api') {
-      const provider = this.activeProvider;
-      if (!provider?.has_api_key && !provider?.api_key) {
+    if (activeBackendMode === 'api') {
+      if (!activeProvider?.has_api_key && !activeProvider?.api_key) {
         toastStore.error('No API key configured. Open Settings to add a provider key.');
         return;
       }
     }
 
     this.error = null;
-    const targetChatId = this.currentChatId;
-    const targetChat = this.findChat(targetChatId);
     const targetChatTitle = targetChat?.title || 'New chat';
-    const activeContextMode = this.currentContextMode;
-    const activeWorkspace = activeContextMode === 'work' ? this.currentWorkspace : null;
     const workContext = activeWorkspace
       ? {
           rootName: activeWorkspace.rootName,
@@ -1885,14 +2078,14 @@ Design rules:
       done: true,
       status: 'idle',
       attachments: this.pendingAttachments,
-      mode: this.composerMode,
-      searchMode: this.searchMode,
+      mode: activeComposerMode,
+      searchMode: activeSearchMode,
       workContext
     };
 
-    this.appendMessage(userMessage);
+    this.appendMessageToChat(targetChatId, userMessage);
     this.composer = '';
-    this.currentChat.draft = '';
+    targetChat.draft = '';
     const sentAttachments = [...this.pendingAttachments];
     this.pendingAttachments = [];
 
@@ -1903,27 +2096,34 @@ Design rules:
       createdAt: Date.now(),
       done: false,
       status: 'streaming',
-      model: this.activeModelLabel,
+      model: activeModelLabel,
       versions: [],
       activeVersion: 0,
-      searchMode: this.searchMode,
-      mode: this.composerMode,
+      searchMode: activeSearchMode,
+      mode: activeComposerMode,
       reasoning: '',
+      metadata: activeComposerMode === 'agent'
+        ? {
+            modelName: activeModelLabel,
+            currentActivity: 'planning',
+            activityLabel: 'Agent is planning'
+          }
+        : undefined,
       workContext,
-      agentSteps: this.composerMode === 'agent'
+      agentSteps: activeComposerMode === 'agent'
         ? [{ id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: 'Preparing tools and context' }]
         : [],
       artifact: null
     };
 
-    this.appendMessage(assistantMessage);
+    this.appendMessageToChat(targetChatId, assistantMessage);
 
     const SYNC_INTERVAL_MS = 50;
     let lastSyncTime = 0;
     let pendingSync = false;
-    const syncMsg = () => {
+    const syncMsg = (force = false) => {
       const now = Date.now();
-      if (now - lastSyncTime < SYNC_INTERVAL_MS) {
+      if (!force && now - lastSyncTime < SYNC_INTERVAL_MS) {
         pendingSync = true;
         return;
       }
@@ -1941,15 +2141,19 @@ Design rules:
       if (pendingSync) {
         pendingSync = false;
         lastSyncTime = 0;
-        syncMsg();
+        syncMsg(true);
       }
     };
 
-    this.loading = true;
     const controller = new AbortController();
-    this.abortController = controller;
-    const activeSearchMode = this.searchMode;
-    const activeComposerMode = this.composerMode;
+    this.beginGenerationRun(targetChatId, {
+      controller,
+      messageId: assistantMessage.id,
+      backendMode: activeBackendMode,
+      mode: activeComposerMode,
+      startedAt: Date.now()
+    });
+    const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
     const startTime = Date.now();
     let tokenCount = 0;
     this.searchMode = 'chat';
@@ -1973,7 +2177,8 @@ Design rules:
                 messageId: assistantMessage.id,
                 chatTitle: targetChatTitle,
                 query: content,
-                mode: activeSearchMode
+                mode: activeSearchMode,
+                conversationContext: searchConversationContext
               }).then((task) => ({
                 context: task.context,
                 results: task.results,
@@ -1985,6 +2190,7 @@ Design rules:
               }))
             : await webSearch({
                 query: content,
+                context: searchConversationContext,
                 deep: activeSearchMode !== 'search',
                 mode: activeSearchMode
               });
@@ -1992,7 +2198,7 @@ Design rules:
           sources = searchResponse.results || [];
           searchMeta = {
             searchRequested: true,
-            searchSucceeded: true,
+            searchSucceeded: !('error' in searchResponse && searchResponse.error),
             contextAvailable: !!(searchResponse.context || searchResponse.results?.length),
             sourceCount: searchResponse.results?.length || 0,
             requestedProvider: this.config.search?.provider || 'auto',
@@ -2001,9 +2207,10 @@ Design rules:
             researchStatus: 'researchStatus' in searchResponse ? (searchResponse.researchStatus as SearchMeta['researchStatus']) : ('researchSummary' in searchResponse ? 'completed' : null),
             researchSummary: 'researchSummary' in searchResponse ? String(searchResponse.researchSummary || '') || null : null,
             researchStats: 'researchStats' in searchResponse ? (searchResponse.researchStats as SearchMeta['researchStats']) : null,
+            providerAttempts: 'provider_attempts' in searchResponse ? (searchResponse.provider_attempts as SearchMeta['providerAttempts']) : [],
             searchFallbackReason: '',
             providerWarnings: [],
-            searchError: ''
+            searchError: 'error' in searchResponse ? (searchResponse.error || '') : ''
           };
 
         } catch (error) {
@@ -2018,6 +2225,7 @@ Design rules:
             researchStatus: activeSearchMode === 'deep' || activeSearchMode === 'max' ? 'failed' : null,
             researchSummary: null,
             researchStats: null,
+            providerAttempts: [],
             searchFallbackReason: '',
             providerWarnings: [],
             searchError: String((error as Error)?.message || error || 'Search did not return a result')
@@ -2025,7 +2233,7 @@ Design rules:
         }
       }
 
-      if (isTauri() && targetChatId && this.currentRagDocuments.length && activeSearchMode === 'chat') {
+      if (isTauri() && targetRagDocuments.length && activeSearchMode === 'chat') {
         const ragResponse = await queryDocuments({
           query: content,
           chat_id: targetChatId,
@@ -2033,15 +2241,16 @@ Design rules:
         });
         ragContext = ragResponse.context || '';
         const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
-        ragDocuments = this.currentRagDocuments.filter((doc) => docIds.has(doc.id));
+        ragDocuments = targetRagDocuments.filter((doc) => docIds.has(doc.id));
       }
 
       assistantMessage.sources = sources;
       assistantMessage.searchMeta = searchMeta;
       assistantMessage.ragDocuments = ragDocuments;
-      syncMsg(); // push initial metadata (sources, searchMeta) to the reactive array
+      syncMsg(true); // push initial metadata (sources, searchMeta) to the reactive array
+      this.persist();
 
-      const requestMessages: RequestMessage[] = this.currentChat.messages
+      const requestMessages: RequestMessage[] = targetChat.messages
         .filter((message) => message.id !== assistantMessage.id)
         .map((message) => {
           if (message.id !== userMessage.id) return message;
@@ -2059,9 +2268,9 @@ Design rules:
           };
         });
 
-      let systemPrompt = this.backendMode === 'local'
+      let systemPrompt = activeBackendMode === 'local'
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
-        : (this.activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
+        : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
 
       if (this.userName?.trim()) {
         const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
@@ -2094,7 +2303,7 @@ Design rules:
         : requestMessages;
 
       // Context window budget check (local mode only)
-      if (this.backendMode === 'local' && isTauri()) {
+      if (activeBackendMode === 'local' && isTauri()) {
         try {
           const budget = await (window as any).electronAPI.invoke('build_context_budget', {
             config: { context_length: this.config.llm?.local?.context_length || 4096, max_tokens: this.config.llm?.local?.max_tokens },
@@ -2122,21 +2331,25 @@ Design rules:
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
-          executionMode: activeContextMode === 'work' && !!activeWorkspace?.rootPath ? 'workspace' : 'sandbox',
-          workspaceRoot: activeWorkspace?.rootPath,
+          conversationContext: searchConversationContext,
+          executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
           signal: controller.signal,
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
-            syncMsg();
+            const running = steps.find((step) => step.status === 'running');
+            if (running) {
+              const mapped = activityFromProgress(running.label);
+              setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
+            }
+            syncMsg(true);
+            this.persist();
           },
           onProgress: (text) => {
-            // Show live progress in the message body while agent works
-            if (!assistantMessage.content || assistantMessage.content.startsWith('Planning') || assistantMessage.content.endsWith('…')) {
-              assistantMessage.content = text;
-              syncMsg();
-            }
+            const mapped = activityFromProgress(text);
+            setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
+            syncMsg();
           },
           onReasoning: (value) => {
             assistantMessage.reasoning = value;
@@ -2144,9 +2357,10 @@ Design rules:
           },
           onArtifact: (artifact) => {
             assistantMessage.artifact = artifact;
-            syncMsg();
-            if (artifact || this.currentArtifactMessageId === assistantMessage.id) {
-              this.setCurrentArtifact(artifact, assistantMessage.id, !!artifact && !isSimpleArtifact(artifact));
+            syncMsg(true);
+            this.persist();
+            if (this.currentChatId === targetChatId && (artifact || this.currentArtifactMessageId === assistantMessage.id)) {
+              this.setCurrentArtifact(artifact, assistantMessage.id);
             }
           },
           onSources: (liveSources) => {
@@ -2157,41 +2371,96 @@ Design rules:
               if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
                 assistantMessage.searchMode = 'search';
               }
-              syncMsg();
+              syncMsg(true);
+              this.persist();
             }
           }
         });
+        markAgentWriting(assistantMessage);
+        syncMsg(true);
+        this.persist();
         // Handle agent result - check for errors or warnings
-        if (agentResult.error) {
-          // Agent had an error - set error status and show error message
+        const outcome = agentOutcome(agentResult);
+        const stopReason = agentStopReason(agentResult);
+        const usableAgentResult = hasUsableAgentResult(agentResult);
+        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
+          // Fatal agent failure: no usable evidence/content was produced.
           assistantMessage.content = agentResult.content || agentResult.error;
           assistantMessage.status = 'error';
           assistantMessage.done = true;
           assistantMessage.metadata = {
-            modelName: this.activeModelLabel,
+            modelName: activeModelLabel,
             error: true,
             errorMessage: agentResult.error,
+            outcome,
+            stopReason,
+            currentActivity: 'stopped',
+            activityLabel: 'Agent failed',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
             tokens: 0,
             timing: 0,
             tokensPerSecond: 0
           };
-        } else if (agentResult.warning) {
-          // Agent had a warning but recovered - show warning in metadata
+        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
+          // Partial/stopped agents keep their evidence and render as a normal answer with a warning.
           assistantMessage.content = agentResult.content;
           assistantMessage.done = true;
-          if (assistantMessage.status !== 'error') {
-            assistantMessage.status = 'idle';
-          }
+          assistantMessage.status = 'idle';
           assistantMessage.metadata = {
-            modelName: this.activeModelLabel,
-            warning: agentResult.warning,
+            modelName: activeModelLabel,
+            warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
+            outcome,
+            stopReason,
+            currentActivity: 'stopped',
+            activityLabel: 'Agent stopped',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
             tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
             timing: 0,
             tokensPerSecond: 0
           };
-          console.warn('[agent]', agentResult.warning);
+          if (agentResult.error && !usableAgentResult) {
+            if (this.config.ui?.agent_debug_logs) {
+              console.warn('[agent]', agentResult.warning || agentResult.error);
+            }
+          } else {
+            if (this.config.ui?.agent_debug_logs) {
+              console.info('[agent]', agentResult.warning || 'Agent stopped with usable gathered evidence.');
+            }
+          }
         } else {
           assistantMessage.content = agentResult.content;
+          assistantMessage.metadata = {
+            ...(assistantMessage.metadata || {}),
+            outcome,
+            stopReason,
+            currentActivity: 'completed',
+            activityLabel: 'Agent finished',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+          };
         }
         assistantMessage.reasoning = agentResult.reasoning;
         assistantMessage.agentSteps = agentResult.steps;
@@ -2205,20 +2474,32 @@ Design rules:
           if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
             assistantMessage.searchMode = 'search';
           }
+          assistantMessage.searchMeta = {
+            ...(assistantMessage.searchMeta || {
+              searchRequested: true,
+              searchSucceeded: true,
+              contextAvailable: true,
+              sourceCount: 0
+            }),
+            searchRequested: true,
+            searchSucceeded: true,
+            contextAvailable: true,
+            sourceCount: assistantMessage.sources.length,
+            stopReason
+          };
         }
-        syncMsg();
-        if (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id) {
-          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id, !!agentResult.artifact && !isSimpleArtifact(agentResult.artifact));
+        syncMsg(true);
+        this.persist();
+        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id)) {
+          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id);
         }
         tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
-        if (activeContextMode === 'work' && activeWorkspace?.rootPath && this.currentChatId === targetChatId) {
-          void this.refreshWorkspace();
-        }
+        // Agent artifacts are chat-sandboxed, so there is no host workspace write to rescan here.
       } else {
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
-          apiKey: this.activeProvider?.api_key,
+          apiKey: activeProviderApiKey,
           onChunk: (value) => {
             assistantMessage.content += value;
             tokenCount += value.split(/\s+/).filter(Boolean).length;
@@ -2239,7 +2520,8 @@ Design rules:
             syncMsg(); // ← CRITICAL: replace array slot so Svelte 5 sees the new object
           },
           onReasoning: (value) => {
-            assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${value}`;
+            const cleaned = value.replace(/^\s*\|\s*$/gm, '').replace(/\n{3,}/g, '\n\n');
+            assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${cleaned}`;
             syncMsg();
           }
         });
@@ -2250,19 +2532,19 @@ Design rules:
       if (assistantMessage.status !== 'error') {
         assistantMessage.status = 'idle';
       }
-      flushPendingSync();
       const timing = (Date.now() - startTime) / 1000;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       // Only overwrite metadata if there's no error/warning already set
       if (!assistantMessage.metadata?.error && !assistantMessage.metadata?.warning) {
         assistantMessage.metadata = {
-          modelName: this.activeModelLabel,
+          ...(assistantMessage.metadata || {}),
+          modelName: activeModelLabel,
           tokens: tokenCount,
           timing,
           tokensPerSecond
         };
       }
-      assistantMessage.model = this.activeModelLabel;
+      assistantMessage.model = activeModelLabel;
       assistantMessage.versions = [{
         content: assistantMessage.content,
         createdAt: assistantMessage.createdAt,
@@ -2279,21 +2561,10 @@ Design rules:
             } else if (hasWarning) {
               return { ...step, status: 'done', detail: hasWarning };
             }
-            return { ...step, type: 'done', label: 'Completed', status: 'done', detail: 'Response ready' };
+            return { ...step, status: 'done', detail: assistantMessage.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
           }
           return { ...step, status: step.status === 'running' ? 'done' : step.status };
         });
-      }
-
-      if (activeComposerMode === 'slides') {
-        try {
-          const slides = await parseSlidesFromMarkdown(assistantMessage.content);
-          if (slides.length) {
-            assistantMessage.slides = slides;
-          }
-        } catch {
-          // ignore slide parse failures
-        }
       }
 
       const responseSources = ((assistantMessage.sources && assistantMessage.sources.length)
@@ -2309,8 +2580,8 @@ Design rules:
       }
 
       // ── Work mode file writing ──────────────────────────────────────
-      const activeWorkspaceRoot = this.currentChat?.workspace?.rootPath;
-      if (activeWorkspaceRoot && isTauri() && assistantMessage.content) {
+      const activeWorkspaceRoot = activeWorkspace?.rootPath;
+      if (activeComposerMode !== 'agent' && activeWorkspaceRoot && isTauri() && assistantMessage.content) {
         const blocks = parseWriteFileBlocks(assistantMessage.content);
         if (blocks.length > 0) {
           const created: import('$lib/types/chat').CreatedFile[] = [];
@@ -2337,13 +2608,13 @@ Design rules:
                 : `${created.length} files created in workspace`
             );
             // Auto-refresh workspace so new files appear in sidebar
-            void this.refreshWorkspace();
+            void this.refreshWorkspace(targetChatId);
           }
         }
       }
       // ───────────────────────────────────────────────────────────────
 
-      syncMsg();
+      syncMsg(true);
       this.persist();
 
       if (this.config.tts?.enable_voice_output && this.config.tts?.auto_play_voice && assistantMessage.content) {
@@ -2355,7 +2626,7 @@ Design rules:
       }
 
       // Auto-generate a smarter chat title after the first exchange
-      void this.generateChatTitle();
+      void this.generateChatTitle(targetChatId, activeProviderApiKey);
     } catch (error) {
       const errorMsg = String((error as Error)?.message || error || 'Request failed');
       const aborted = isAbortLikeError(errorMsg);
@@ -2369,13 +2640,13 @@ Design rules:
       const timing = typeof startTime === 'number' ? (Date.now() - startTime) / 1000 : 0;
       const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       assistantMessage.metadata = {
-        modelName: this.activeModelLabel,
+        modelName: activeModelLabel,
         tokens: tokenCount,
         timing,
         tokensPerSecond,
         ...(aborted ? {} : { error: true })
       };
-      assistantMessage.model = this.activeModelLabel;
+      assistantMessage.model = activeModelLabel;
       assistantMessage.versions = [{
         content: assistantMessage.content,
         createdAt: assistantMessage.createdAt,
@@ -2395,18 +2666,22 @@ Design rules:
       }
       this.error = aborted ? null : assistantMessage.content;
       userMessage.attachments = sentAttachments;
-      syncMsg();
+      syncMsg(true);
       this.persist();
     } finally {
-      this.loading = false;
-      this.abortController = null;
+      this.endGenerationRun(targetChatId, controller);
     }
   }
 
-  stopStreaming() {
-    this.abortController?.abort();
-    this.loading = false;
-    const chat = this.currentChat;
+  stopStreaming(chatId = this.currentChatId || '') {
+    const run = chatId ? this.activeRunsByChat[chatId] : null;
+    run?.controller.abort();
+    if (run) {
+      this.endGenerationRun(chatId, run.controller);
+    } else {
+      this.refreshGenerationState();
+    }
+    const chat = this.findChat(chatId);
     if (chat) {
       const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || (message.mode === 'agent' && !message.done)));
       if (streamingAssistant) {
@@ -2421,17 +2696,23 @@ Design rules:
           });
         }
         this.touchChats();
+        this.persist();
+        saveChatStateToDb(chat);
       }
     }
-    deepResearchStore.cancelActiveTask();
+    if (run?.messageId) {
+      deepResearchStore.cancelTaskForMessage(run.messageId);
+    } else if (chatId) {
+      deepResearchStore.cancelTasksForChat(chatId);
+    }
     // Exit voice mode when user explicitly cancels generation
-    if (this.voiceModeActive) {
+    if (chatId === this.currentChatId && this.voiceModeActive) {
       this.voiceModeActive = false;
     }
   }
 
-  private async generateChatTitle() {
-    const chat = this.currentChat;
+  private async generateChatTitle(chatId = this.currentChatId || '', apiKey = this.activeProvider?.api_key) {
+    const chat = this.findChat(chatId);
     if (!chat) return;
     // Only generate for chats that still have the default title
     if (chat.title !== 'New chat') return;
@@ -2442,7 +2723,7 @@ Design rules:
 
     try {
       const result = await completeAssistantReply({
-        apiKey: this.activeProvider?.api_key,
+        apiKey,
         messages: [
           {
             role: 'system',
@@ -2473,7 +2754,8 @@ Design rules:
 
   async regenerateMessage(messageId: string) {
     const chat = this.currentChat;
-    if (!chat || this.loading) return;
+    const targetChatId = this.currentChatId;
+    if (!chat || !targetChatId || this.isChatGenerating(targetChatId)) return;
     const index = chat.messages.findIndex((entry) => entry.id === messageId);
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
@@ -2481,10 +2763,25 @@ Design rules:
     const previousMessages = buildRequestMessagesFromHistory(chat.messages, index - 1);
     if (!previousMessages.length) return;
 
+    const activeBackendMode = this.backendMode as GenerationBackendMode;
+    if (activeBackendMode === 'local' && this.hasOtherChatGeneration(targetChatId)) {
+      toastStore.info('Local model is busy in another chat. Stop that run before retrying here.', 3200);
+      return;
+    }
+    const activeModelLabel = this.activeModelLabel;
+    const activeProvider = this.activeProvider;
+    const activeProviderApiKey = activeProvider?.api_key;
+    const activeWorkspace = chat.workspace || null;
+
     this.error = null;
-    this.loading = true;
     const controller = new AbortController();
-    this.abortController = controller;
+    this.beginGenerationRun(targetChatId, {
+      controller,
+      messageId: message.id,
+      backendMode: activeBackendMode,
+      mode: (message.mode === 'agent' ? 'agent' : 'chat'),
+      startedAt: Date.now()
+    });
     const startTime = Date.now();
     let tokenCount = 0;
 
@@ -2493,7 +2790,7 @@ Design rules:
       reasoning: '',
       createdAt: Date.now(),
       metadata: {
-        modelName: this.activeModelLabel
+        modelName: activeModelLabel
       }
     };
 
@@ -2507,6 +2804,17 @@ Design rules:
       message.agentSteps = [
         { id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: 'Preparing tools and context' }
       ];
+      message.metadata = {
+        ...(message.metadata || {}),
+        modelName: activeModelLabel,
+        currentActivity: 'planning',
+        activityLabel: 'Agent is planning'
+      };
+      nextVersion.metadata = {
+        ...(nextVersion.metadata || {}),
+        currentActivity: 'planning',
+        activityLabel: 'Agent is planning'
+      };
       message.artifact = null;
       if (this.currentArtifactMessageId === message.id) {
         this.setCurrentArtifact(null, message.id, false);
@@ -2516,34 +2824,48 @@ Design rules:
     this.persist();
 
     try {
-      const systemPrompt = this.backendMode === 'local'
+      const systemPrompt = activeBackendMode === 'local'
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
-        : (this.activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
+        : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
       const outboundMessages: RequestMessage[] = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...previousMessages]
         : previousMessages;
 
-      if (message.mode === 'agent' && this.currentChatId) {
+      if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const agentResult = await runAgentTask({
-          chatId: this.currentChatId,
+          chatId: targetChatId,
           systemPrompt,
           messages: previousMessages,
           rawPrompt,
-          executionMode: this.currentContextMode === 'work' && !!this.currentChat?.workspace?.rootPath ? 'workspace' : 'sandbox',
-          workspaceRoot: this.currentChat?.workspace?.rootPath,
-          workspaceName: this.currentChat?.workspace?.rootName,
-          workspaceFiles: this.currentChat?.workspace?.files,
+          executionMode: 'sandbox',
+          workspaceName: activeWorkspace?.rootName,
+          workspaceFiles: activeWorkspace?.files,
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
+            const running = steps.find((step) => step.status === 'running');
+            if (running) {
+              const mapped = activityFromProgress(running.label);
+              setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
+              nextVersion.metadata = {
+                ...(nextVersion.metadata || {}),
+                currentActivity: mapped.currentActivity,
+                activityLabel: mapped.activityLabel
+              };
+            }
             this.touchChats();
+            this.persist();
           },
           onProgress: (text) => {
-            if (!message.content || message.content.startsWith('Planning') || message.content.endsWith('…')) {
-              message.content = text;
-              this.touchChats();
-            }
+            const mapped = activityFromProgress(text);
+            setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
+            nextVersion.metadata = {
+              ...(nextVersion.metadata || {}),
+              currentActivity: mapped.currentActivity,
+              activityLabel: mapped.activityLabel
+            };
+            this.touchChats();
           },
           onReasoning: (value) => {
             nextVersion.reasoning = value;
@@ -2552,10 +2874,11 @@ Design rules:
           },
           onArtifact: (artifact) => {
             message.artifact = artifact;
-            if (artifact || this.currentArtifactMessageId === message.id) {
-              this.setCurrentArtifact(artifact, message.id, !!artifact && !isSimpleArtifact(artifact));
+            if (this.currentChatId === targetChatId && (artifact || this.currentArtifactMessageId === message.id)) {
+              this.setCurrentArtifact(artifact, message.id);
             }
             this.touchChats();
+            this.persist();
           },
           onSources: (liveSources) => {
             const existingUrls = new Set((message.sources || []).map((s) => s.url));
@@ -2566,34 +2889,92 @@ Design rules:
                 message.searchMode = 'search';
               }
               this.touchChats();
+              this.persist();
             }
           }
         });
-        if (agentResult.error) {
+        markAgentWriting(message);
+        nextVersion.metadata = {
+          ...(nextVersion.metadata || {}),
+          currentActivity: 'writing',
+          activityLabel: 'Writing answer'
+        };
+        this.touchChats();
+        this.persist();
+        const outcome = agentOutcome(agentResult);
+        const stopReason = agentStopReason(agentResult);
+        const usableAgentResult = hasUsableAgentResult(agentResult);
+        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
           nextVersion.content = agentResult.content || agentResult.error;
           message.content = agentResult.content || agentResult.error;
           message.status = 'error';
           nextVersion.metadata = {
-            modelName: this.activeModelLabel,
+            modelName: activeModelLabel,
             error: true,
             errorMessage: agentResult.error,
+            outcome,
+            stopReason,
+            currentActivity: 'stopped',
+            activityLabel: 'Agent failed',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
             tokens: 0,
             timing: 0,
             tokensPerSecond: 0
           };
-        } else if (agentResult.warning) {
+          message.metadata = nextVersion.metadata;
+        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
           nextVersion.content = agentResult.content;
           message.content = agentResult.content;
+          message.status = 'idle';
           nextVersion.metadata = {
-            modelName: this.activeModelLabel,
-            warning: agentResult.warning,
+            modelName: activeModelLabel,
+            warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
+            outcome,
+            stopReason,
+            currentActivity: 'stopped',
+            activityLabel: 'Agent stopped',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
             tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
             timing: 0,
             tokensPerSecond: 0
           };
+          message.metadata = nextVersion.metadata;
         } else {
           nextVersion.content = agentResult.content;
           message.content = agentResult.content;
+          nextVersion.metadata = {
+            ...(nextVersion.metadata || {}),
+            outcome,
+            stopReason,
+            currentActivity: 'completed',
+            activityLabel: 'Agent finished',
+            workProduct: agentResult.artifact?.workProduct ? {
+              id: agentResult.artifact.workProduct.id,
+              kind: agentResult.artifact.workProduct.kind,
+              title: agentResult.artifact.workProduct.title,
+              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+              status: agentResult.artifact.workProduct.status
+            } : undefined,
+            publicFallback: !!agentResult.publicFallback,
+            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+          };
+          message.metadata = nextVersion.metadata;
         }
         nextVersion.reasoning = agentResult.reasoning;
         message.reasoning = agentResult.reasoning;
@@ -2606,19 +2987,32 @@ Design rules:
           if (!message.searchMode || message.searchMode === 'chat') {
             message.searchMode = 'search';
           }
+          message.searchMeta = {
+            ...(message.searchMeta || {
+              searchRequested: true,
+              searchSucceeded: true,
+              contextAvailable: true,
+              sourceCount: 0
+            }),
+            searchRequested: true,
+            searchSucceeded: true,
+            contextAvailable: true,
+            sourceCount: message.sources.length,
+            stopReason
+          };
         }
-        if (agentResult.artifact || this.currentArtifactMessageId === message.id) {
-          this.setCurrentArtifact(agentResult.artifact, message.id, !!agentResult.artifact && !isSimpleArtifact(agentResult.artifact));
+        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === message.id)) {
+          this.setCurrentArtifact(agentResult.artifact, message.id);
         }
+        this.touchChats();
+        this.persist();
         tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
-        if (this.currentContextMode === 'work' && this.currentChat?.workspace?.rootPath) {
-          void this.refreshWorkspace();
-        }
+        // Agent regeneration also stays inside the chat sandbox.
       } else {
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
-          apiKey: this.activeProvider?.api_key,
+          apiKey: activeProviderApiKey,
           onChunk: (value) => {
             nextVersion.content += value;
             message.content = nextVersion.content;
@@ -2626,7 +3020,8 @@ Design rules:
             this.touchChats();
           },
           onReasoning: (value) => {
-            nextVersion.reasoning = `${nextVersion.reasoning || ''}${value}`;
+            const cleaned = value.replace(/^\s*\|\s*$/gm, '').replace(/\n{3,}/g, '\n\n');
+            nextVersion.reasoning = `${nextVersion.reasoning || ''}${cleaned}`;
             message.reasoning = nextVersion.reasoning;
             this.touchChats();
           }
@@ -2638,14 +3033,15 @@ Design rules:
       // Only overwrite metadata if there's no error/warning already set
       if (!nextVersion.metadata?.error && !nextVersion.metadata?.warning) {
         nextVersion.metadata = {
-          modelName: this.activeModelLabel,
+          ...(nextVersion.metadata || {}),
+          modelName: activeModelLabel,
           tokens: tokenCount,
           timing,
           tokensPerSecond
         };
         message.metadata = nextVersion.metadata;
       }
-      message.model = this.activeModelLabel;
+      message.model = activeModelLabel;
       message.done = true;
       // Only set status to 'idle' if it wasn't already set to 'error'
       if (message.status !== 'error') {
@@ -2669,7 +3065,7 @@ Design rules:
             } else if (hasWarning) {
               return { ...step, status: 'done', detail: hasWarning };
             }
-            return { ...step, type: 'done', label: 'Completed', status: 'done', detail: 'Response ready' };
+            return { ...step, status: 'done', detail: message.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
           }
           return { ...step, status: step.status === 'running' ? 'done' : step.status };
         });
@@ -2683,7 +3079,7 @@ Design rules:
       const aborted = isAbortLikeError(failure);
       nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
       nextVersion.metadata = {
-        modelName: this.activeModelLabel,
+        modelName: activeModelLabel,
         tokens: tokenCount,
         timing,
         tokensPerSecond,
@@ -2706,8 +3102,7 @@ Design rules:
       this.touchChats();
       this.persist();
     } finally {
-      this.loading = false;
-      this.abortController = null;
+      this.endGenerationRun(targetChatId, controller);
     }
   }
 

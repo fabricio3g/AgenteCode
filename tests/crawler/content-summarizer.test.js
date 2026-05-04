@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeCrawledPages } from '../../main/content-summarizer.js';
+import { summarizeCrawledPages } from '../../main/content-summarizer.ts';
 
 test('summarizeCrawledPages condenses pages within target budget', () => {
   const pages = [

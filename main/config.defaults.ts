@@ -1,31 +1,35 @@
-/**
- * Default configuration factory.
- * Provides the base configuration structure with sensible defaults.
- */
-
 import path from 'node:path';
 import type {
   AppConfig,
   AppPaths,
-  TTSConfig,
+  LLMProviderConfig,
+  LocalBinaryConfig,
+  LocalLLMConfig,
   LLMConfig,
+  OnboardingConfig,
   RAGConfig,
   STTConfig,
-  OnboardingConfig,
-  LocalLLMConfig,
-  LLMProviderConfig,
+  TTSConfig,
+  TTSVoiceMap,
 } from './config.types.ts';
 
-/**
- * Creates a default TTS configuration.
- * @param modelsRoot - Root path for models directory
- * @returns Default TTS configuration object
- */
+const TTS_MODEL_DIR = 'kokoro-multi-lang-v1_1';
+const DEFAULT_LOCAL_LLM_PORT = 11435;
+
+export const DEFAULT_TTS_VOICE_MAP = {
+  af_heart: 0,
+  af_bella: 1,
+  af_nicole: 2,
+  am_michael: 3,
+  am_fenrir: 4,
+  bf_emma: 5,
+} satisfies TTSVoiceMap;
+
 export function getDefaultTTSConfig(modelsRoot: string): TTSConfig {
   return {
     engine: 'wasm',
     model_variant: 'kokoro_v11',
-    model_dir: path.join(modelsRoot, 'kokoro-multi-lang-v1_1'),
+    model_dir: path.join(modelsRoot, TTS_MODEL_DIR),
     model: 'model.int8.onnx',
     voices: 'voices.bin',
     tokens: 'tokens.txt',
@@ -36,18 +40,13 @@ export function getDefaultTTSConfig(modelsRoot: string): TTSConfig {
     num_threads: 2,
     provider: 'cpu',
     sample_rate: 24000,
-    voice_map: {
-      af_heart: 0, af_bella: 1, af_nicole: 2,
-      am_michael: 3, am_fenrir: 4, bf_emma: 5
-    }
+    voice: 'af_heart',
+    enable_voice_output: true,
+    auto_play_voice: false,
+    voice_map: { ...DEFAULT_TTS_VOICE_MAP },
   };
 }
 
-/**
- * Creates a default OpenAI-compatible provider configuration.
- * @param baseUrl - The API base URL
- * @returns Default provider configuration
- */
 export function getDefaultProvider(baseUrl: string): LLMProviderConfig {
   return {
     type: 'openai_compat',
@@ -58,10 +57,6 @@ export function getDefaultProvider(baseUrl: string): LLMProviderConfig {
   };
 }
 
-/**
- * Creates default LLM provider configurations.
- * @returns Map of default providers
- */
 export function getDefaultProviders(): Record<string, LLMProviderConfig> {
   return {
     openai: getDefaultProvider('https://api.openai.com/v1'),
@@ -70,31 +65,32 @@ export function getDefaultProviders(): Record<string, LLMProviderConfig> {
   };
 }
 
-/**
- * Creates a default local LLM configuration.
- * @param localModelsRoot - Root path for local models
- * @param port - Server port number
- * @returns Default local LLM configuration
- */
-export function getDefaultLocalLLMConfig(localModelsRoot: string, port: number = 11435): LocalLLMConfig {
+function getDefaultLocalBinaryConfig(): LocalBinaryConfig {
+  return {
+    managed: true,
+    path: '',
+    version: '',
+    channel: 'stable',
+    manifest_url: '',
+    current_asset_id: '',
+    sha256: '',
+    install_variant: 'auto',
+    install_source: 'github_release',
+    release_source: 'api',
+    release_tag: '',
+    installed: [],
+    active_runtime_id: '',
+  };
+}
+
+export function getDefaultLocalLLMConfig(
+  localModelsRoot: string,
+  port = DEFAULT_LOCAL_LLM_PORT
+): LocalLLMConfig {
   return {
     enabled: true,
     runtime: 'llama_cpp',
-    binary: {
-      managed: true,
-      path: '',
-      version: '',
-      channel: 'stable',
-      manifest_url: '',
-      current_asset_id: '',
-      sha256: '',
-      install_variant: 'auto',
-      install_source: 'github_release',
-      release_source: 'api',
-      release_tag: '',
-      installed: [],
-      active_runtime_id: ''
-    },
+    binary: getDefaultLocalBinaryConfig(),
     server: { host: '127.0.0.1', port, args: [] },
     models_dir: localModelsRoot,
     base_url: `http://127.0.0.1:${port}/v1`,
@@ -109,11 +105,6 @@ export function getDefaultLocalLLMConfig(localModelsRoot: string, port: number =
   };
 }
 
-/**
- * Creates a default LLM configuration.
- * @param localModelsRoot - Root path for local models
- * @returns Default LLM configuration
- */
 export function getDefaultLLMConfig(localModelsRoot: string): LLMConfig {
   return {
     backend_mode: 'api',
@@ -125,10 +116,6 @@ export function getDefaultLLMConfig(localModelsRoot: string): LLMConfig {
   };
 }
 
-/**
- * Creates a default RAG configuration.
- * @returns Default RAG configuration
- */
 export function getDefaultRAGConfig(): RAGConfig {
   return {
     enabled: true,
@@ -139,10 +126,6 @@ export function getDefaultRAGConfig(): RAGConfig {
   };
 }
 
-/**
- * Creates a default STT configuration.
- * @returns Default STT configuration
- */
 export function getDefaultSTTConfig(): STTConfig {
   return {
     provider: 'local',
@@ -151,10 +134,6 @@ export function getDefaultSTTConfig(): STTConfig {
   };
 }
 
-/**
- * Creates a default onboarding configuration.
- * @returns Default onboarding configuration
- */
 export function getDefaultOnboardingConfig(): OnboardingConfig {
   return {
     completed: false,
@@ -162,11 +141,6 @@ export function getDefaultOnboardingConfig(): OnboardingConfig {
   };
 }
 
-/**
- * Creates the full default application configuration.
- * @param paths - Application paths object
- * @returns Complete default configuration object
- */
 export function getDefaultConfig(paths: AppPaths): AppConfig {
   return {
     tts: getDefaultTTSConfig(paths.modelsRoot),
@@ -177,12 +151,6 @@ export function getDefaultConfig(paths: AppPaths): AppConfig {
   };
 }
 
-/**
- * Creates default config with custom paths (for testing).
- * @param modelsRoot - Custom models root path
- * @param localModelsRoot - Custom local models root path
- * @returns Complete default configuration object
- */
 export function createDefaultConfigWithPaths(
   modelsRoot: string,
   localModelsRoot: string
@@ -192,5 +160,12 @@ export function createDefaultConfigWithPaths(
     secretsPath: path.join(modelsRoot, 'secrets.json'),
     modelsRoot,
     localModelsRoot,
+    appData: modelsRoot,
+    assetsRoot: modelsRoot,
+    localBinRoot: localModelsRoot,
+    localBinVersionsRoot: localModelsRoot,
+    cacheRoot: modelsRoot,
+    projectRoot: process.cwd(),
+    IS_DEV: true,
   });
 }

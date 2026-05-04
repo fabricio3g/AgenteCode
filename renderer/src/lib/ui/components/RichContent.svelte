@@ -24,27 +24,39 @@
   let displayedContent = $state(content);
   let pendingContent = $state(content);
   let renderRaf: number | undefined;
+  let renderTimer: ReturnType<typeof setTimeout> | undefined;
   let lastRenderedLength = $state(0);
   let isStreamingActive = $state(false);
 
   $effect(() => {
     pendingContent = content;
     if (status !== 'streaming') {
+      if (renderTimer !== undefined) {
+        clearTimeout(renderTimer);
+        renderTimer = undefined;
+      }
       if (renderRaf !== undefined) {
         cancelAnimationFrame(renderRaf);
         renderRaf = undefined;
       }
       isStreamingActive = false;
-      displayedContent = content;
-      lastRenderedLength = content.length;
+      if (displayedContent !== content) {
+        displayedContent = content;
+      }
+      lastRenderedLength = displayedContent.length;
       return;
     }
     isStreamingActive = true;
-    if (renderRaf !== undefined) return;
-    renderRaf = requestAnimationFrame(() => {
-      renderRaf = undefined;
-      displayedContent = pendingContent;
-    });
+    if (renderTimer !== undefined || renderRaf !== undefined) return;
+    renderTimer = setTimeout(() => {
+      renderTimer = undefined;
+      renderRaf = requestAnimationFrame(() => {
+        renderRaf = undefined;
+        if (displayedContent !== pendingContent) {
+          displayedContent = pendingContent;
+        }
+      });
+    }, 60);
   });
 
   // Track new block count to trigger CSS-based fade on newly appended blocks
@@ -175,8 +187,41 @@
 
 <style>
   :global(.streaming-active > .markdown-body > :last-child),
-  :global(.streaming-active > .space-y-3 > :last-child) {
-    animation: streamFadeIn 120ms ease-out;
+  :global(.streaming-active.markdown-body > :last-child),
+  :global(.streaming-active > .markdown-segment:last-child) {
+    animation: streamFadeIn 140ms ease-out;
+  }
+
+  :global(.stream-caret)::after {
+    content: '';
+    display: inline-block;
+    width: 0.45rem;
+    height: 1em;
+    margin-left: 0.12rem;
+    border-radius: 999px;
+    background: var(--text-muted);
+    vertical-align: -0.12em;
+    animation: streamCaret 1.05s ease-in-out infinite;
+  }
+
+  @keyframes streamFadeIn {
+    from {
+      opacity: 0.35;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes streamCaret {
+    0%, 100% {
+      opacity: 0.22;
+    }
+    45% {
+      opacity: 0.85;
+    }
   }
 
   :global(.copy-btn) {

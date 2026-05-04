@@ -31,7 +31,7 @@
   function label() {
     const safeTiming = Number(timing || 0);
     if (status === 'streaming') return 'Thinking...';
-    return safeTiming > 0 ? `Thought for ${safeTiming.toFixed(1)}s` : 'Reasoning';
+    return `Thought for ${Math.max(0, safeTiming).toFixed(1)}s`;
   }
 
   function toggle() {
@@ -43,15 +43,13 @@
 {#if reasoning}
   <div class="reasoning-block mb-4 w-full">
     <button
+      type="button"
       class="cot-trigger"
       onclick={toggle}
     >
       <Brain class="h-4 w-4 shrink-0" />
-      {#if status === 'streaming'}
-        <span class="cot-pulse-dot"></span>
-      {/if}
       <span class="flex-1" class:text-shimmer={status === 'streaming'}>{label()}</span>
-      <ChevronDown class={`cot-chevron h-4 w-4 shrink-0 ${open ? 'open' : ''}`} />
+      <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
 
     {#if open}
@@ -85,12 +83,6 @@
   .cot-trigger:hover {
     color: var(--text);
   }
-  .cot-chevron {
-    transition: transform 0.2s ease;
-  }
-  .cot-chevron.open {
-    transform: rotate(180deg);
-  }
   .cot-body {
     display: grid;
     grid-template-columns: 2px 1fr;
@@ -107,22 +99,5 @@
     font-size: 0.8125rem;
     line-height: 1.65;
     margin: 0;
-  }
-  .cot-pulse-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    animation: cotPulse 1.5s ease-in-out infinite;
-  }
-  @keyframes cotPulse {
-    0%, 100% {
-      transform: scale(1);
-      opacity: 0.6;
-    }
-    50% {
-      transform: scale(1.4);
-      opacity: 0.2;
-    }
   }
 </style>

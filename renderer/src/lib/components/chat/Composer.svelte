@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Paperclip, Search, Square, ArrowUp, X, Globe, Database, AudioLines, LoaderCircle, ArrowRight } from 'lucide-svelte';
+  import { Paperclip, Search, Square, ArrowUp, X, Globe, Database, LoaderCircle, ArrowRight, Mic } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
@@ -50,35 +50,63 @@
   let composerHeight = $state(0);
   let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Rotating placeholder
+  // Rotating placeholder with typewriter + shimmer
   let placeholderIndex = $state(0);
-  let placeholderInterval: ReturnType<typeof setInterval> | undefined;
   let showErrorPlaceholder = $state(false);
   let errorPlaceholderTimer: ReturnType<typeof setTimeout> | null = null;
+  let textareaFocused = $state(false);
   const placeholders = $derived(($t('chat.placeholders') as string || '').split('|').filter(Boolean));
   const errorPlaceholderText = $derived($t('chat.errorPlaceholder') as string || 'Something went wrong. Try again.');
   const currentPlaceholder = $derived(
     showErrorPlaceholder
       ? errorPlaceholderText
-      : appStore.loading && appStore.composerMode === 'agent'
+      : appStore.currentChatGenerating && appStore.composerMode === 'agent'
         ? 'Agent working…'
         : (placeholders[placeholderIndex] || 'Message...')
   );
 
-  function startPlaceholderRotation() {
-    if (placeholderInterval) return;
-    placeholderInterval = setInterval(() => {
-      if (placeholders.length > 1 && !showErrorPlaceholder) {
-        placeholderIndex = (placeholderIndex + 1) % placeholders.length;
-      }
-    }, 8000);
-  }
+  const isHomescreen = $derived(!appStore.currentChat?.messages?.length);
+  const staticPlaceholderText = $derived(
+    showErrorPlaceholder
+      ? errorPlaceholderText
+      : appStore.currentChatGenerating && appStore.composerMode === 'agent'
+        ? 'Agent working…'
+        : 'Ask me anything…'
+  );
 
-  function stopPlaceholderRotation() {
-    if (placeholderInterval) {
-      clearInterval(placeholderInterval);
-      placeholderInterval = undefined;
+  const placeholderVisible = $derived(!appStore.composer.trim() && !textareaFocused);
+  const showAnimatedPlaceholder = $derived(placeholderVisible && isHomescreen);
+  const showStaticPlaceholder = $derived(placeholderVisible && !isHomescreen);
+
+  // Typewriter animation state
+  let typedText = $state('');
+  let typingTimer: ReturnType<typeof setTimeout> | null = null;
+  let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+  const TYPING_SPEED_MS = 30;
+  const PLACEHOLDER_DISPLAY_MS = 3500;
+
+  function typePlaceholder(text: string) {
+    if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; }
+    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+    typedText = '';
+    let i = 0;
+
+    function step() {
+      if (i < text.length) {
+        typedText = text.slice(0, i + 1);
+        i++;
+        typingTimer = setTimeout(step, TYPING_SPEED_MS);
+      } else {
+        // Done typing — schedule next rotation if still relevant
+        const current = untrack(() => currentPlaceholder);
+        if (current === text && placeholders.length > 1 && !showErrorPlaceholder && !appStore.currentChatGenerating) {
+          pauseTimer = setTimeout(() => {
+            placeholderIndex = (placeholderIndex + 1) % placeholders.length;
+          }, PLACEHOLDER_DISPLAY_MS);
+        }
+      }
     }
+    step();
   }
 
   function clearErrorPlaceholder() {
@@ -161,7 +189,9 @@
   const activelyListening = $derived(isListening || isWhisperListening);
 
   const voiceMode = $derived(appStore.voiceModeActive);
-  const composerBusy = $derived(appStore.loading || appStore.workspaceIndexing);
+  const currentChatGenerating = $derived(appStore.currentChatGenerating);
+  const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
+  const composerBusy = $derived(currentChatGenerating || localBusyElsewhere || appStore.workspaceIndexing);
   const compactComposer = $derived(composerWidth > 0 && composerWidth < 640);
   const contextBudget = $derived(appStore.contextBudget);
   const showContextUsage = $derived(contextBudget !== null);
@@ -195,6 +225,7 @@
       ? !!(appStore.selectedLocalModelPath && appStore.localModelActive)
       : !!(appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key)
   );
+  const sendDisabled = $derived(!currentChatGenerating && (!backendReady || localBusyElsewhere));
 
   function openModelHub(section?: string) {
     if (section) appStore.modelManagerOpenSection = section;
@@ -203,6 +234,10 @@
 
   function submit() {
     clearOcrProgress();
+    if (localBusyElsewhere) {
+      toastStore.info('Local model is busy in another chat.', 2400);
+      return;
+    }
     void appStore.sendCurrentMessage();
   }
 
@@ -320,7 +355,7 @@
       stopPulse();
       _stopAnalyser();
 
-      if (autoSend && appStore.composer.trim() && !appStore.loading) {
+      if (autoSend && appStore.composer.trim() && !appStore.currentChatGenerating && !appStore.currentChatBlockedByOtherLocalRun) {
         void appStore.sendCurrentMessage();
       }
     };
@@ -396,7 +431,7 @@
           if (result.text?.trim()) {
             const current = appStore.composer.trim();
             appStore.updateComposer(current ? current + ' ' + result.text.trim() : result.text.trim());
-            if (autoSend && !appStore.loading) {
+            if (autoSend && !appStore.currentChatGenerating && !appStore.currentChatBlockedByOtherLocalRun) {
               void appStore.sendCurrentMessage();
             }
           } else {
@@ -449,7 +484,7 @@
 
     ttsStore.onPlaybackEnd = () => {
       if (destroyed) return;
-      if (appStore.voiceModeActive && !appStore.loading) {
+      if (appStore.voiceModeActive && !appStore.currentChatGenerating) {
         setTimeout(() => {
           if (destroyed || !appStore.voiceModeActive) return;
           if (isTauri()) {
@@ -487,12 +522,12 @@
   }
 
   $effect(() => {
-    if (!voiceMode || appStore.loading || ttsStore.playing || isListening || isWhisperListening) return;
+    if (!voiceMode || appStore.currentChatGenerating || ttsStore.playing || isListening || isWhisperListening) return;
     const ttsEnabled = appStore.config.tts?.enable_voice_output && appStore.config.tts?.auto_play_voice;
     if (ttsEnabled) return;
 
     const timer = setTimeout(() => {
-      if (appStore.voiceModeActive && !appStore.loading && !ttsStore.playing && !isListening && !isWhisperListening) {
+      if (appStore.voiceModeActive && !appStore.currentChatGenerating && !ttsStore.playing && !isListening && !isWhisperListening) {
         if (isTauri()) {
           void toggleWhisperRecording(true);
         } else if (hasSpeechRecognition) {
@@ -628,8 +663,7 @@
   });
 
   $effect(() => {
-    if (appStore.loading) {
-      stopPlaceholderRotation();
+    if (appStore.currentChatGenerating) {
       clearErrorPlaceholder();
     } else {
       const messages = untrack(() => appStore.currentChat?.messages);
@@ -641,9 +675,22 @@
           showErrorPlaceholder = false;
         }, 12000);
       }
-      if (!placeholderInterval) {
-        startPlaceholderRotation();
-      }
+    }
+  });
+
+  // Trigger typewriter only on homescreen
+  $effect(() => {
+    if (!appStore.composer.trim() && isHomescreen) {
+      typePlaceholder(currentPlaceholder);
+    }
+  });
+
+  // Stop typewriter when user navigates away from homescreen
+  $effect(() => {
+    if (!isHomescreen) {
+      if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; }
+      if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+      typedText = '';
     }
   });
 
@@ -652,7 +699,8 @@
     exitVoiceMode();
     stopPulse();
     clearOcrProgress();
-    stopPlaceholderRotation();
+    if (typingTimer) clearTimeout(typingTimer);
+    if (pauseTimer) clearTimeout(pauseTimer);
     if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
   });
 
@@ -763,15 +811,32 @@
 
     <AttachmentCards />
 
-    <div class="px-4 pb-1 pt-3">
+    {#if localBusyElsewhere}
+      <div class="px-4 pt-1 text-[11px] text-[var(--text-muted)]">
+        Local model busy in another chat
+      </div>
+    {/if}
+
+    <div class="px-4 pb-1 pt-3 relative">
+      {#if showAnimatedPlaceholder}
+        <div class="placeholder-overlay pointer-events-none absolute left-4 right-4 top-3 z-10">
+          <span class="placeholder-shimmer-text">{typedText}</span>
+        </div>
+      {:else if showStaticPlaceholder}
+        <div class="placeholder-overlay pointer-events-none absolute left-4 right-4 top-3 z-10">
+          <span class="placeholder-static-text">{staticPlaceholderText}</span>
+        </div>
+      {/if}
       <textarea
         bind:this={textarea}
-        class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
-        placeholder={currentPlaceholder}
+        class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none"
+        placeholder=""
         rows="1"
         value={appStore.composer}
         oninput={onInput}
         onkeydown={onKeydown}
+        onfocus={() => (textareaFocused = true)}
+        onblur={() => (textareaFocused = false)}
       ></textarea>
     </div>
 
@@ -798,14 +863,14 @@
         <button class="chateaui-icon-button h-8 w-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
           <Paperclip class="h-4 w-4" />
         </button>
-        {#if appStore.composer.trim() || appStore.loading}
+        {#if appStore.composer.trim() || currentChatGenerating}
           <button
             class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-            onclick={() => (appStore.loading ? appStore.stopStreaming() : submit())}
-            disabled={!appStore.loading && !backendReady}
-            aria-label={appStore.loading ? $t('chat.stop') : $t('chat.send')}
+            onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
+            disabled={sendDisabled}
+            aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
           >
-            {#if appStore.loading}
+            {#if currentChatGenerating}
               <Square class="h-3.5 w-3.5 fill-current" />
             {:else}
               <ArrowUp class="h-3.5 w-3.5" />
@@ -813,20 +878,20 @@
           </button>
         {:else}
           <button
-            class={`chateaui-icon-button h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
+            class={`chateaui-icon-button mic-btn h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
             onclick={hasMicSupport ? toggleSpeech : undefined}
             disabled={!hasMicSupport}
             aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
             title={!hasMicSupport ? 'Speech recognition not available' : activelyListening ? 'Listening…' : isWhisperListening ? interimTranscript : 'Tap to speak'}
           >
             {#if activelyListening}
-              <AudioLines class="h-3.5 w-3.5" />
-            {:else}
-              <span class="mic-wave-wrap">
-                {#each [0.4, 0.6, 0.8, 1, 0.8, 0.6, 0.4] as h, i}
-                  <span class="mic-bar" style="--bar-h: {h}; --bar-delay: {i * 0.08}s;"></span>
+              <span class="mic-lines-wrap">
+                {#each [0, 1, 2, 3, 4] as i}
+                  <span class="mic-line" style="animation-delay: {i * 0.12}s;"></span>
                 {/each}
               </span>
+            {:else}
+              <Mic class="h-4 w-4 mic-icon" />
             {/if}
           </button>
         {/if}
@@ -836,10 +901,12 @@
   </div>
   </div>
 
-    <div class="pointer-events-auto mt-1.5 text-center">
-      <span class="hint-text inline-flex max-w-full px-2 py-0.5 text-xs">
-        {$t('composer.hintText')}
-      </span>
+    <div class="pointer-events-auto -mt-2 flex justify-center relative z-[-1]">
+      <div class="hint-card rounded-b-xl border border-t-0 border-[var(--border)] bg-[var(--surface)] px-3 pb-2 pt-3 text-center shadow-[var(--shadow-xs)]">
+        <span class="hint-text text-xs">
+          {$t('composer.hintText')}
+        </span>
+      </div>
     </div>
   </div>
 </div>
@@ -893,96 +960,76 @@
     opacity: 0.5;
   }
 
-  .voice-btn {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    transition: all 0.12s ease;
+  .mic-icon {
+    transition: transform 0.3s ease;
   }
 
-  .voice-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-    border-color: var(--border);
+  .mic-btn:hover .mic-icon {
+    transform: scale(1.1);
   }
 
-  .voice-btn.is-listening {
-    color: var(--primary-fg);
+  .mic-btn.is-listening {
     background: var(--primary);
     border-color: var(--primary);
+    color: var(--primary-fg);
   }
 
-  .voice-btn.is-listening:hover {
+  .mic-btn.is-listening:hover {
     opacity: 0.9;
   }
 
-  /* Mic wave bars — animated waveform on hover */
-  .mic-wave-wrap {
+  .mic-lines-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 2px;
-    height: 18px;
+    height: 14px;
   }
-  .mic-bar {
-    display: block;
-    width: 2.5px;
-    height: 12px;
-    border-radius: 1.5px;
+
+  .mic-line {
+    width: 2px;
+    height: 6px;
+    border-radius: 1px;
     background: currentColor;
-    opacity: 0.5;
-    transform-origin: center;
-    backface-visibility: hidden;
-    transform: scaleY(var(--bar-h, 0.5));
-    transition: opacity 0.2s ease;
-  }
-  .voice-btn:hover .mic-wave-wrap {
-    filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 30%, transparent));
-  }
-  .voice-btn:hover .mic-bar {
-    opacity: 1;
-    animation: micWave 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  .voice-btn:hover .mic-bar:nth-child(1) { animation-delay: 0s; }
-  .voice-btn:hover .mic-bar:nth-child(2) { animation-delay: 0.08s; }
-  .voice-btn:hover .mic-bar:nth-child(3) { animation-delay: 0.16s; }
-  .voice-btn:hover .mic-bar:nth-child(4) { animation-delay: 0.24s; }
-  .voice-btn:hover .mic-bar:nth-child(5) { animation-delay: 0.32s; }
-  .voice-btn:hover .mic-bar:nth-child(6) { animation-delay: 0.40s; }
-  .voice-btn:hover .mic-bar:nth-child(7) { animation-delay: 0.48s; }
-
-  @keyframes micWave {
-    0%, 100% { transform: scaleY(0.4); }
-    50% { transform: scaleY(1); }
+    animation: micLineBounce 0.8s ease-in-out infinite;
   }
 
-  .send-btn {
-    color: var(--primary-fg);
-    background: var(--primary);
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    transition: background-color 0.12s ease, transform 0.1s ease;
-  }
-
-  .send-btn:hover {
-    background: var(--primary-hover);
-  }
-
-  .send-btn:active {
-    transform: scale(0.96);
-  }
-
-  .send-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .send-btn:disabled:active {
-    transform: none;
+  @keyframes micLineBounce {
+    0%, 100% { height: 5px; opacity: 0.5; }
+    50% { height: 14px; opacity: 1; }
   }
 
   .hint-text {
+    color: var(--text-muted);
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 50%; }
+    100% { background-position: -200% 50%; }
+  }
+
+  .placeholder-overlay {
+    min-height: 26px;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  .placeholder-shimmer-text {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    -webkit-background-clip: text;
+    background-image: linear-gradient(
+      to right,
+      var(--text-muted) 30%,
+      var(--text) 50%,
+      var(--text-muted) 70%
+    );
+    background-size: 200% auto;
+    animation: shimmer 4s infinite linear;
+  }
+
+  .placeholder-static-text {
     color: var(--text-muted);
   }
 

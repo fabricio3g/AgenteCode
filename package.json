@@ -31,6 +31,8 @@
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "apache-arrow": "^18.1.0",
     "better-sqlite3": "^12.9.0",
+    "docx": "^9.6.1",
+    "exceljs": "^4.4.0",
     "extract-zip": "^2.0.1",
     "groq-sdk": "^1.1.2",
     "kokoro-js": "^1.2.1",

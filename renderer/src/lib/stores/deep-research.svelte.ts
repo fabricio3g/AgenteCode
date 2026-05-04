@@ -19,6 +19,7 @@ export interface DeepResearchTask {
   messageId: string;
   chatTitle: string;
   query: string;
+  conversationContext?: string;
   mode: 'deep' | 'max';
   status: DeepResearchStatus;
   createdAt: number;
@@ -165,6 +166,7 @@ async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
     {
       role: 'user',
       content: [
+        task.conversationContext ? `Conversation context:\n${task.conversationContext}` : '',
         `Research query: ${task.enhancedQuery || task.query}`,
         `Search mode: ${task.mode}`,
         answerContext ? `<clarifications>\n${answerContext}\n</clarifications>` : '',
@@ -363,11 +365,13 @@ class DeepResearchStore {
     messageId: string;
     chatTitle: string;
     query: string;
+    conversationContext?: string;
     mode: 'deep' | 'max';
   }): Promise<DeepResearchTask> {
     this.init();
 
-    const questions = await generateQuestions(args.query, args.mode);
+    const planningQuery = [args.conversationContext ? `Conversation context:\n${args.conversationContext}` : '', `Current research request:\n${args.query}`].filter(Boolean).join('\n\n');
+    const questions = await generateQuestions(planningQuery, args.mode);
     const isAwaitingInput = questions.length > 0;
     const task: DeepResearchTask = {
       id: createId('research'),
@@ -375,6 +379,7 @@ class DeepResearchStore {
       messageId: args.messageId,
       chatTitle: args.chatTitle,
       query: args.query,
+      conversationContext: args.conversationContext,
       mode: args.mode,
       status: isAwaitingInput ? 'awaiting_input' : 'queued',
       createdAt: Date.now(),
@@ -443,7 +448,8 @@ class DeepResearchStore {
       task = this.getTask(taskId);
       if (!task) return;
       const enhancedQuery = mergeAnswersIntoQuery(task.query, task.questions, task.answers);
-      const subQueries = await generateSubQueries(enhancedQuery, task.mode);
+      const planningQuery = [task.conversationContext ? `Conversation context:\n${task.conversationContext}` : '', `Current research request:\n${enhancedQuery}`].filter(Boolean).join('\n\n');
+      const subQueries = await generateSubQueries(planningQuery, task.mode);
       const allQueries = [enhancedQuery, ...subQueries.filter((query) => query !== enhancedQuery)];
 
       this.updateTask(taskId, (entry) => ({
@@ -455,7 +461,7 @@ class DeepResearchStore {
       }));
 
       const searchResults = await Promise.allSettled(
-        allQueries.map((query) => searchWithFallback(query, entryMode(taskId, this.tasks)))
+        allQueries.map((query) => searchWithFallback(query, entryMode(taskId, this.tasks), task?.conversationContext))
       );
 
       if (this.getTask(taskId)?.status === 'cancelled') return;
@@ -501,6 +507,7 @@ class DeepResearchStore {
         };
       }>('crawl_web', {
         query: enhancedQuery,
+        context: task.conversationContext,
         mode: task.mode,
         seed_urls: crawlSeeds,
         context_budget_chars: task.mode === 'max' ? 12000 : 8500
@@ -600,6 +607,24 @@ class DeepResearchStore {
     this.cancelTask(this.activeTaskId);
   }
 
+  cancelTaskForMessage(messageId: string) {
+    if (!messageId) return;
+    for (const task of this.tasks) {
+      if (task.messageId === messageId && !['completed', 'failed', 'cancelled'].includes(task.status)) {
+        this.cancelTask(task.id);
+      }
+    }
+  }
+
+  cancelTasksForChat(chatId: string) {
+    if (!chatId) return;
+    for (const task of this.tasks) {
+      if (task.chatId === chatId && !['completed', 'failed', 'cancelled'].includes(task.status)) {
+        this.cancelTask(task.id);
+      }
+    }
+  }
+
   destroy() {
     if (this.unlisten) {
       this.unlisten();
@@ -633,8 +658,8 @@ function isAuthFailure(searchError: unknown) {
     || text.includes('authentication');
 }
 
-async function searchWithFallback(query: string, mode: 'deep' | 'max') {
-  const primary = await webSearch({ query, deep: true, mode });
+async function searchWithFallback(query: string, mode: 'deep' | 'max', context?: string) {
+  const primary = await webSearch({ query, context, deep: true, mode });
   const primaryResults = Array.isArray(primary?.results) ? primary.results : [];
   if (primaryResults.length > 0) return primary;
 
@@ -644,6 +669,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max') {
 
   const fallback = await webSearch({
     query,
+    context,
     deep: true,
     mode,
     options: {
@@ -657,6 +683,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max') {
 
   const secondFallback = await webSearch({
     query,
+    context,
     deep: true,
     mode,
     options: {

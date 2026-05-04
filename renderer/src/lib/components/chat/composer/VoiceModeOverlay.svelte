@@ -31,7 +31,7 @@
     if (state === 'transcribing') return 'Transcribing...';
     if (state === 'recording') return 'Listening';
     if (state === 'error') return 'Error';
-    if (appStore.loading) return 'Thinking...';
+    if (appStore.currentChatGenerating) return 'Thinking...';
     if (ttsStore.playing) return 'Speaking...';
     return 'Voice';
   });

@@ -2,10 +2,11 @@
 
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, Pencil, RefreshCcw, Trash2, Wrench, Volume2, X } from 'lucide-svelte';
+  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
+  import { sanitizeAssistantVisibleText } from '$lib/utils/assistant-visible';
   import { generatePptx } from '$lib/services/slides';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -13,6 +14,7 @@
   import TtsAudioPlayer from './TtsAudioPlayer.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import AssistantMessageBody from '$lib/ui/components/AssistantMessageBody.svelte';
+  import AttachmentDocumentsBlock from './AttachmentDocumentsBlock.svelte';
   import { buildUIActionMessage } from '$lib/ui';
   import type { ActionEvent } from '$lib/ui';
   import { APP_NAME } from '$lib/app-meta';
@@ -29,7 +31,11 @@
 
   const activeVersionIndex = $derived(typeof message.activeVersion === 'number' ? Math.max(0, Math.min(message.activeVersion, (message.versions?.length || 1) - 1)) : 0);
   const activeVersion = $derived(message.versions?.[activeVersionIndex] || null);
-  const displayContent = $derived(activeVersion?.content || message.content || '');
+  const displayContent = $derived(
+    message.role === 'assistant'
+      ? sanitizeAssistantVisibleText(activeVersion?.content || message.content || '')
+      : (activeVersion?.content || message.content || '')
+  );
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
   const displayMetadata = $derived(activeVersion?.metadata || message.metadata || null);
   const displaySearchMeta = $derived(message.searchMeta || inferSearchMeta(message));
@@ -118,7 +124,7 @@
       return;
     }
     // Always (re)generate audio — click again to regenerate
-    const text = message.content || '';
+    const text = displayContent || '';
     if (!text.trim()) return;
     ttsStore.speak(message.id, text, appStore.config);
   }
@@ -147,26 +153,22 @@
     <div class="max-w-[min(46rem,84%)] space-y-3">
       <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7 shadow-[var(--shadow-xs)]">
         <div class="markdown-body user-markdown">{@html userHtml}</div>
+        {#if message.attachments?.length}
+          <div class="mt-3 flex flex-wrap justify-end gap-2">
+            {#each message.attachments as attachment (attachment.id)}
+              {#if attachment.kind === 'image' && (attachment.preview || attachment.base64)}
+                <img
+                  src={attachment.base64 || attachment.preview}
+                  alt={attachment.name}
+                  class="h-16 w-16 rounded-lg border border-[var(--border)] object-cover shadow-[var(--shadow-xs)]"
+                  title={attachment.name}
+                />
+              {/if}
+            {/each}
+            <AttachmentDocumentsBlock attachments={message.attachments} />
+          </div>
+        {/if}
       </div>
-      {#if message.attachments?.length}
-        <div class="flex flex-wrap justify-end gap-2 mb-1">
-          {#each message.attachments as attachment (attachment.id)}
-            {#if attachment.kind === 'image' && (attachment.preview || attachment.base64)}
-              <img
-                src={attachment.base64 || attachment.preview}
-                alt={attachment.name}
-                class="max-h-48 max-w-[280px] rounded-2xl border border-[var(--border)] object-cover"
-                title={attachment.name}
-              />
-            {:else}
-              <div class="chateaui-card inline-flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-secondary)]">
-                <span class="truncate max-w-[12rem] font-medium">{attachment.name}</span>
-                <span class="text-[11px] text-[var(--text-muted)]">{attachment.status === 'error' ? 'Failed' : 'Indexed'}</span>
-              </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
       {#if message.workContext}
         <div class="flex flex-wrap justify-end gap-2">
           <div class="chateaui-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[color:var(--work-accent-strong)]" style="--chateaui-pill-border: var(--work-accent-border); --chateaui-pill-bg: var(--work-accent-soft);">
@@ -258,7 +260,7 @@
           <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
             <Pencil class="h-3.5 w-3.5 action-icon" />
           </button>
-          <button class="msg-action-btn" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.loading} aria-label="Retry" title="Retry">
+          <button class="msg-action-btn" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun} aria-label="Retry" title="Retry">
             <RefreshCcw class="h-3.5 w-3.5 action-icon" />
           </button>
           <button class="msg-action-btn danger" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">

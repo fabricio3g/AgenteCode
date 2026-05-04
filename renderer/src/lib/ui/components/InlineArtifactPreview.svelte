@@ -5,6 +5,7 @@
   import { Download, ExternalLink, ChevronDown, ChevronUp } from 'lucide-svelte';
   import JSZip from 'jszip';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { artifactFilePayload, isHiddenArtifactFile, viewerPathFor } from '$lib/utils/artifact-files';
 
   interface Props {
     artifact: AgentArtifact;
@@ -17,7 +18,7 @@
   let downloading = $state(false);
 
   const visibleEntries = $derived(
-    Object.entries(artifact.files).filter(([path]) => !path.startsWith('__'))
+    Object.entries(artifact.files).filter(([path]) => !isHiddenArtifactFile(path))
   );
   const fileCount = $derived(visibleEntries.length);
   const fileNames = $derived(visibleEntries.map(([path]) => path));
@@ -25,9 +26,10 @@
 
   const previewHtml = $derived.by(() => {
     if (collapsed) return '';
-    const htmlFile = Object.entries(artifact.files).find(([k]) => k.endsWith('.html'));
-    const htmlSource = htmlFile?.[1] || artifact.previewHtml || '';
-    const basePath = htmlFile?.[0] || 'index.html';
+    const htmlFile = visibleEntries.find(([k]) => k.endsWith('.html'));
+    const viewerFile = visibleEntries.find(([path]) => artifact.files[viewerPathFor(path)]);
+    const htmlSource = htmlFile?.[1] || (viewerFile ? artifact.files[viewerPathFor(viewerFile[0])] : '') || artifact.previewHtml || '';
+    const basePath = htmlFile?.[0] || (viewerFile ? viewerPathFor(viewerFile[0]) : 'index.html');
     return htmlSource ? buildPreviewHtml(htmlSource, artifact.files, basePath).html : '';
   });
 
@@ -37,8 +39,8 @@
     try {
       const zip = new JSZip();
       for (const [path, content] of Object.entries(artifact.files)) {
-        if (!path.startsWith('__')) {
-          zip.file(path, content);
+        if (!isHiddenArtifactFile(path)) {
+          zip.file(path, artifactFilePayload(content));
         }
       }
       if (artifact.previewHtml) {

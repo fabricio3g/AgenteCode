@@ -5,8 +5,17 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const APP_NAME = 'Chatea LM';
+
+const nodeRequire: NodeRequire = (() => {
+  try {
+    const cjsRequire = eval('typeof require === "function" ? require : null');
+    if (cjsRequire) return cjsRequire;
+  } catch {}
+  return createRequire(import.meta.url);
+})();
 
 // Handle both ESM (tsx dev) and CJS (esbuild bundled) environments
 // esbuild CJS bundle provides __dirname global, ESM uses import.meta.url
@@ -24,7 +33,7 @@ const __dirname: string = (() => {
   try {
     const metaUrl = (import.meta as any)?.url;
     if (typeof metaUrl === 'string' && metaUrl) {
-      const { fileURLToPath } = require('node:url');
+      const { fileURLToPath } = nodeRequire('node:url');
       return path.dirname(fileURLToPath(metaUrl));
     }
   } catch {}
@@ -38,7 +47,7 @@ const __dirname: string = (() => {
  */
 export function getAppPaths() {
   // Lazy import - Electron is only available inside Electron runtime
-  const { app } = require('electron');
+  const { app } = nodeRequire('electron');
   
   const envOverride = String(process.env.TALAMOLM_HOME || '').trim();
   const legacyAppData = path.join(app.getPath('home'), '.chatealm');

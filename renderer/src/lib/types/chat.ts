@@ -8,6 +8,7 @@ export interface Attachment {
   url?: string;
   preview?: string;
   base64?: string;   // data: URL for images used in vision API calls
+  data?: string;     // Blob URL or data URL for document content (for inline preview)
   kind?: 'image' | 'document';
   status?: 'ready' | 'processing' | 'error';
   docId?: string;
@@ -27,8 +28,20 @@ export interface MessageVersion {
     error?: boolean;
     errorMessage?: string;
     warning?: string;
+    outcome?: AgentOutcome;
+    stopReason?: AgentStopReason;
+    currentActivity?: AgentActivity;
+    activityLabel?: string;
+    publicFallback?: boolean;
+    diagnosticsRedacted?: boolean;
+    documentSurface?: { kind: 'report' | 'documents'; title?: string; primaryFile?: string };
+    workProduct?: { id: string; kind: WorkProductKind; title: string; primaryFile?: string; status?: WorkProductStatus };
   };
 }
+
+export type AgentOutcome = 'completed' | 'partial' | 'stopped' | 'failed';
+export type AgentStopReason = 'timeout' | 'loop' | 'tool_limit' | 'iteration_limit' | 'missing_artifacts' | 'error' | 'none';
+export type AgentActivity = 'planning' | 'searching' | 'reading' | 'creating_files' | 'writing' | 'stopped' | 'completed';
 
 export interface SearchMeta {
   searchRequested: boolean;
@@ -49,6 +62,9 @@ export interface SearchMeta {
     maxDepthReached?: number;
     truncated?: boolean;
   } | null;
+  providerAttempts?: Array<{ provider: string; success: boolean; resultCount: number; error?: string }>;
+  scrapeStats?: { attempted: number; success: number; blocked: number; thinContent: number };
+  stopReason?: AgentStopReason;
 }
 
 export interface WorkspaceFile {
@@ -90,6 +106,30 @@ export interface AgentArtifact {
   title: string;
   files: Record<string, string>;
   previewHtml?: string | null;
+  workProduct?: GeneratedWorkProduct | null;
+}
+
+export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
+export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
+
+export interface GeneratedWorkProductFile {
+  path: string;
+  title?: string;
+  mime?: string;
+  kind?: 'markdown' | 'html' | 'docx' | 'xlsx' | 'pdf' | 'pptx' | 'csv' | 'text';
+  previewPath?: string;
+}
+
+export interface GeneratedWorkProduct {
+  id: string;
+  title: string;
+  kind: WorkProductKind;
+  status: WorkProductStatus;
+  files: GeneratedWorkProductFile[];
+  sourceIds?: string[];
+  evidenceMap?: Record<string, string[]>;
+  warnings?: string[];
+  createdAt: number;
 }
 
 export interface CreatedFile {
@@ -275,6 +315,7 @@ export interface AppConfig {
     workspace_mode?: 'legacy' | 'modern';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
+    agent_debug_logs?: boolean;
   };
   onboarding?: {
     completed?: boolean;

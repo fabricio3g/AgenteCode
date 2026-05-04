@@ -18,6 +18,8 @@ const DEFAULT_PROVIDER_ORDER = [
   'duckduckgo'
 ];
 
+const FREE_PROVIDER_ORDER = ['duckduckgo', 'jina', 'electron'];
+
 const PROVIDER_PRIORITY = {
   tavily: 5,
   brave: 4.5,
@@ -123,6 +125,69 @@ function tokenize(text) {
   return normalizeWhitespace(text).toLowerCase().match(/[a-z0-9]+/g) || [];
 }
 
+function compactSearchContext(context, max = 1800) {
+  return normalizeWhitespace(context).slice(0, max);
+}
+
+function looksContextDependent(query) {
+  const normalized = normalizeWhitespace(query).toLowerCase();
+  if (!normalized) return false;
+  return /\b(this|that|these|those|it|its|he|him|his|she|her|hers|they|them|their|there|latest|recent|current|today|now|news|update|price|stock|version|release)\b/i.test(normalized);
+}
+
+function extractContextTerms(context) {
+  const text = compactSearchContext(context);
+  if (!text) return [];
+
+  const terms = [];
+  const seen = new Set();
+  const stopTerms = new Set([
+    'user', 'assistant', 'search', 'about', 'latest', 'recent', 'current',
+    'please', 'would', 'could', 'should', 'what', 'when', 'where', 'which',
+    'there', 'their', 'these', 'those', 'context', 'message'
+  ]);
+  const add = (value) => {
+    const term = normalizeWhitespace(value).replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '');
+    if (!term || term.length < 3) return;
+    const key = term.toLowerCase();
+    if (stopTerms.has(key)) return;
+    if (seen.has(key)) return;
+    seen.add(key);
+    terms.push(term);
+  };
+
+  const properNameMatches = Array.from(text.matchAll(/\b[A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]*){0,4}\b/g));
+  for (const match of properNameMatches.reverse()) {
+    add(match[0]);
+    if (terms.length >= 8) break;
+  }
+
+  if (terms.length < 4) {
+    const candidates = tokenize(text)
+      .filter((token) => token.length > 4 && !stopTerms.has(token));
+    for (const token of candidates) {
+      add(token);
+      if (terms.length >= 6) break;
+    }
+  }
+
+  return terms.slice(0, 6);
+}
+
+function buildEffectiveSearchQuery(query, context) {
+  const normalizedQuery = normalizeWhitespace(query);
+  const normalizedContext = compactSearchContext(context);
+  if (!normalizedQuery || !normalizedContext) return normalizedQuery;
+  if (!looksContextDependent(normalizedQuery) && normalizedQuery.length >= 16) return normalizedQuery;
+
+  const queryTokens = new Set(tokenize(normalizedQuery));
+  const contextTerms = extractContextTerms(normalizedContext)
+    .filter((term) => !tokenize(term).every((token) => queryTokens.has(token)));
+  if (!contextTerms.length) return normalizedQuery;
+
+  return normalizeWhitespace(`${contextTerms.slice(0, 3).join(' ')} ${normalizedQuery}`).slice(0, 260);
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -214,10 +279,12 @@ function providerHasCredentials(provider, options) {
 
 function providerCandidates(provider, options, searchMode) {
   if (provider && provider !== 'auto') return [provider];
-  if (searchMode === 'max') {
-    return DEFAULT_PROVIDER_ORDER.filter((candidate) => providerHasCredentials(candidate, options));
-  }
-  return DEFAULT_PROVIDER_ORDER.filter((candidate) => providerHasCredentials(candidate, options));
+  const keyed = DEFAULT_PROVIDER_ORDER.filter((candidate) => {
+    if (FREE_PROVIDER_ORDER.includes(candidate)) return false;
+    return providerHasCredentials(candidate, options);
+  });
+  const free = FREE_PROVIDER_ORDER.filter((candidate) => providerHasCredentials(candidate, options));
+  return [...keyed, ...free];
 }
 
 function normalizeSearchItem(provider, item, index) {
@@ -662,6 +729,7 @@ async function searchPerplexity(query, maxResults, options) {
   const baseUrl = String(options?.perplexity_api_url || 'https://api.perplexity.ai').replace(/\/+$/, '');
   const endpoint = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
   const model = options?.perplexity_model || 'sonar';
+  const conversationContext = compactSearchContext(options?.conversation_context, 1400);
   const resp = await fetchWithRetry(endpoint, {
     method: 'POST',
     headers: {
@@ -680,10 +748,11 @@ async function searchPerplexity(query, maxResults, options) {
         {
           role: 'user',
           content: [
+            conversationContext ? `Conversation context:\n${conversationContext}` : '',
             `Search the web for: ${query}`,
             `Return at most ${maxResults} short markdown bullets with title, URL, and one sentence snippet.`,
             'If you cannot find exact URLs, still provide the most useful answer with citations.'
-          ].join('\n')
+          ].filter(Boolean).join('\n\n')
         }
       ],
       temperature: 0.1,
@@ -905,12 +974,18 @@ async function enrichWithDeepContent(results, limit, emit, options = {}) {
   });
 }
 
-export async function webSearch({ query, deep, mode, options }, win = null) {
+export async function webSearch({ query, context, deep, mode, options }, win = null) {
   const normalizedQuery = normalizeWhitespace(query);
+  const conversationContext = compactSearchContext(context || options?.conversation_context || '');
+  const effectiveQuery = buildEffectiveSearchQuery(normalizedQuery, conversationContext);
   const searchMode = mode === 'max' ? 'max' : deep ? 'deep' : 'search';
   const explicitProvider = normalizeProviderName(options?.provider || 'auto');
   const maxResults = Math.max(1, Math.min(Number(options?.max_results) || 6, 20));
   const contextBudget = Math.max(500, Number(options?.context_budget_chars) || DEFAULT_CONTEXT_BUDGET[searchMode] || DEFAULT_CONTEXT_BUDGET.search);
+  const searchOptions = {
+    ...(options || {}),
+    conversation_context: conversationContext
+  };
   const emit = (step, detail) => {
     try {
       win?.webContents?.send('search-progress', { step, detail });
@@ -919,44 +994,54 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
     }
   };
 
-  emit('searching', `Searching for: ${normalizedQuery}`);
+  emit('searching', `Searching for: ${effectiveQuery || normalizedQuery}`);
 
   if (!normalizedQuery) {
     return { query: normalizedQuery, results: [], context: '', provider_used: 'none', search_mode: searchMode };
   }
 
-  const cacheKey = getCacheKey(normalizedQuery, searchMode, explicitProvider);
+  const cacheKey = getCacheKey(effectiveQuery, searchMode, explicitProvider);
   const cached = getCachedResult(cacheKey);
   if (cached) {
     emit('results', `Using cached results from ${cached.provider_used}`);
-    return { ...cached, query: normalizedQuery, search_mode: searchMode, cached: true };
+    return { ...cached, query: normalizedQuery, effective_query: effectiveQuery, search_mode: searchMode, cached: true };
   }
 
-  const configuredProviders = providerCandidates(explicitProvider, options, searchMode);
+  const configuredProviders = providerCandidates(explicitProvider, searchOptions, searchMode);
   let providerResults = [];
   let providerUsed = 'none';
   let lastError = null;
+  const providerAttempts = [];
+  const minimumUsefulResults = searchMode === 'search' ? 1 : Math.min(3, maxResults);
 
   if (explicitProvider !== 'auto') {
-    if (!providerHasCredentials(explicitProvider, options) && explicitProvider !== 'duckduckgo' && explicitProvider !== 'jina' && explicitProvider !== 'electron') {
+    if (!providerHasCredentials(explicitProvider, searchOptions) && explicitProvider !== 'duckduckgo' && explicitProvider !== 'jina' && explicitProvider !== 'electron') {
       const credHint = explicitProvider === 'google_cse'
         ? 'Google CSE requires an API key and Search Engine ID — configure them in Settings > Search'
         : `Missing credentials for ${providerDisplayName(explicitProvider)} — add an API key in Settings > Search`;
       const error = providerSearchError(explicitProvider, new Error(credHint));
-      return { ...error, query: normalizedQuery, search_mode: searchMode };
+      return {
+        ...error,
+        query: normalizedQuery,
+        effective_query: effectiveQuery,
+        search_mode: searchMode,
+        provider_attempts: [{ provider: explicitProvider, success: false, resultCount: 0, error: credHint }]
+      };
     }
 
     try {
-      providerResults = await runProviderSearch(explicitProvider, normalizedQuery, searchMode === 'max' ? Math.max(maxResults * 2, maxResults + 4) : maxResults, options);
+      providerResults = await runProviderSearch(explicitProvider, effectiveQuery, searchMode === 'max' ? Math.max(maxResults * 2, maxResults + 4) : maxResults, searchOptions);
       providerUsed = explicitProvider;
+      providerAttempts.push({ provider: explicitProvider, success: providerResults.length > 0, resultCount: providerResults.length });
     } catch (err) {
+      providerAttempts.push({ provider: explicitProvider, success: false, resultCount: 0, error: err?.message || String(err || 'Search failed') });
       const error = providerSearchError(explicitProvider, err);
-      return { ...error, query: normalizedQuery, search_mode: searchMode };
+      return { ...error, query: normalizedQuery, effective_query: effectiveQuery, search_mode: searchMode, provider_attempts: providerAttempts };
     }
   } else if (searchMode === 'max') {
     emit('results', `Querying ${configuredProviders.length} providers...`);
     const settled = await Promise.allSettled(
-      configuredProviders.map((provider) => runProviderSearch(provider, normalizedQuery, Math.max(maxResults, 6), options))
+      configuredProviders.map((provider) => runProviderSearch(provider, effectiveQuery, Math.max(maxResults, 6), searchOptions))
     );
 
     for (let i = 0; i < settled.length; i += 1) {
@@ -964,8 +1049,10 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
       const provider = configuredProviders[i];
       if (entry.status === 'fulfilled') {
         providerResults.push(...entry.value);
+        providerAttempts.push({ provider, success: entry.value.length > 0, resultCount: entry.value.length });
       } else {
         lastError = entry.reason;
+        providerAttempts.push({ provider, success: false, resultCount: 0, error: entry.reason?.message || String(entry.reason || 'Search failed') });
         emit('provider_failed', `${providerDisplayName(provider)} failed: ${classifyNetworkError(entry.reason).hint}`);
       }
     }
@@ -976,14 +1063,19 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
     for (const provider of configuredProviders) {
       try {
         emit('provider_searching', `Searching ${providerDisplayName(provider)}...`);
-        const results = await runProviderSearch(provider, normalizedQuery, maxResults, options);
+        const results = await runProviderSearch(provider, effectiveQuery, maxResults, searchOptions);
+        providerAttempts.push({ provider, success: results.length > 0, resultCount: results.length });
         if (results.length) {
-          providerResults = results;
-          providerUsed = provider;
-          break;
+          providerResults.push(...results);
+          providerUsed = providerResults.length
+            ? Array.from(new Set(providerResults.map((result) => result.provider || provider).filter(Boolean))).join('+')
+            : provider;
+          if (results.length >= minimumUsefulResults || searchMode === 'search') break;
+          emit('provider_failed', `${providerDisplayName(provider)} returned only ${results.length} result(s); trying another provider...`);
         }
       } catch (err) {
         lastError = err;
+        providerAttempts.push({ provider, success: false, resultCount: 0, error: err?.message || String(err || 'Search failed') });
         emit('provider_failed', `${providerDisplayName(provider)} failed: ${classifyNetworkError(err).hint}`);
       }
     }
@@ -993,13 +1085,15 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
     const info = classifyNetworkError(lastError || new Error('No results'));
     return {
       query: normalizedQuery,
+      effective_query: effectiveQuery,
       results: [],
       context: '',
       provider_used: providerUsed,
       search_mode: searchMode,
       error: lastError?.message || 'No search results were returned.',
       error_type: info.error_type,
-      retryable: info.retryable
+      retryable: info.retryable,
+      provider_attempts: providerAttempts
     };
   }
 
@@ -1009,7 +1103,7 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
       ? Math.max(maxResults, 8)
       : maxResults;
 
-  let mergedResults = mergeAndRankResults(providerResults, normalizedQuery, responseLimit);
+  let mergedResults = mergeAndRankResults(providerResults, effectiveQuery, responseLimit);
 
   if (searchMode !== 'search') {
     const deepLimit = Math.min(
@@ -1017,20 +1111,22 @@ export async function webSearch({ query, deep, mode, options }, win = null) {
       searchMode === 'max' ? 6 : 3
     );
     emit('deep_fetching', `Fetching full content from top ${deepLimit} pages...`);
-    const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, options || {});
-    mergedResults = mergeAndRankResults(enriched, normalizedQuery, responseLimit);
+    const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, searchOptions);
+    mergedResults = mergeAndRankResults(enriched, effectiveQuery, responseLimit);
     emit('deep_done', 'Deep content ready');
   }
 
-  const context = buildContext(mergedResults, contextBudget);
+  const searchContext = buildContext(mergedResults, contextBudget);
   emit('results', `Found ${mergedResults.length} results via ${providerUsed}`);
 
   const result = {
     query: normalizedQuery,
+    effective_query: effectiveQuery,
     results: mergedResults,
-    context,
+    context: searchContext,
     provider_used: providerUsed,
-    search_mode: searchMode
+    search_mode: searchMode,
+    provider_attempts: providerAttempts
   };
 
   setCachedResult(cacheKey, result);

@@ -14,12 +14,20 @@
 
   let { name, status = 'running', detail, output }: Props = $props();
   let open = $state(false);
+  let userToggled = $state(false);
 
   const isCodeTool = $derived(name === 'run code' || name === 'run_code' || name === 'execute command' || name === 'execute_command');
 
   function toggle() {
+    userToggled = true;
     open = !open;
   }
+
+  $effect(() => {
+    if (!userToggled) {
+      open = status === 'error' || (status === 'running' && isCodeTool);
+    }
+  });
 
   function titleCase(snake: string): string {
     return snake
@@ -33,9 +41,9 @@
 <div class="tool-call-block" class:tool-call-code={isCodeTool}>
   <button class="tool-call-header" onclick={toggle}>
     {#if isCodeTool}
-      <Code2 class="tool-wrench h-3.5 w-3.5 shrink-0" />
+      <Code2 class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
     {:else}
-      <Wrench class="tool-wrench h-3.5 w-3.5 shrink-0" />
+      <Wrench class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
     {/if}
     <span class="tool-name">{displayName}</span>
     <span class="tool-badge" class:done={status === 'done'} class:running={status === 'running'} class:error={status === 'error'}>
@@ -47,7 +55,7 @@
         <AlertCircle class="h-3 w-3" />
       {/if}
     </span>
-    <ChevronDown class={`tool-chevron h-3.5 w-3.5 ${open ? 'open' : ''}`} />
+    <ChevronDown class={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
   </button>
 
   {#if open && (detail || output)}
@@ -80,84 +88,73 @@
 <style>
   .tool-call-block {
     width: 100%;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    background: transparent;
     overflow: hidden;
-    margin-top: 0.75rem;
+    margin-top: 0.1rem;
   }
   .tool-call-block.tool-call-code {
-    border-color: var(--border);
-    background: var(--surface);
+    border-color: transparent;
+    background: transparent;
   }
   .tool-call-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 0.35rem 0.45rem;
     border: none;
     background: transparent;
     cursor: pointer;
-    font-size: 0.8125rem;
+    font-size: 0.76rem;
     font-weight: 500;
     color: var(--text-secondary);
     transition: color 0.15s ease, background-color 0.15s ease;
   }
   .tool-call-header:hover {
     color: var(--text);
-    background: var(--surface-hover);
-  }
-  .tool-wrench {
-    color: var(--text-muted);
+    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
   }
   .tool-name {
     flex: 1;
     text-align: left;
-    font-family: var(--font-mono);
-  }
-  .tool-chevron {
-    transition: transform 0.2s ease;
-    color: var(--text-muted);
-  }
-  .tool-chevron.open {
-    transform: rotate(180deg);
+    font-family: var(--font-sans);
   }
   .tool-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.125rem 0.5rem;
-    border-radius: var(--radius-full);
+    padding: 0;
+    border-radius: var(--radius-sm);
     font-size: 0.6875rem;
     font-weight: 500;
   }
   .tool-badge.done {
-    color: var(--accent-green-text);
-    background: var(--accent-green-bg);
+    color: var(--text-muted);
+    background: transparent;
   }
   .tool-badge.running {
-    color: var(--accent-blue-text);
-    background: var(--accent-blue-bg);
+    color: var(--text-secondary);
+    background: transparent;
   }
   .tool-badge.error {
-    color: var(--accent-red-text);
-    background: var(--accent-red-bg);
+    color: var(--error);
+    background: transparent;
   }
   .tool-call-body {
-    padding: 0.5rem 0.75rem 0.75rem;
-    border-top: 1px solid var(--border);
+    padding: 0.2rem 0.45rem 0.55rem 1.75rem;
+    border-top: none;
   }
   .tool-call-body pre {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-family: var(--font-mono);
     color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-all;
-    background: transparent;
     border-radius: var(--radius-sm);
-    padding: 0.5rem;
+    padding: 0.45rem 0;
     line-height: 1.5;
   }
   .tool-section {
@@ -175,7 +172,7 @@
     color: var(--text-muted);
   }
   .tool-output {
-    background: var(--surface-hover);
+    background: transparent;
     border-radius: var(--radius-sm);
     max-height: 18rem;
     overflow: auto;
@@ -187,10 +184,10 @@
     padding-bottom: 0.25rem;
   }
   .terminal-output {
-    background: #0d1117;
-    border: 1px solid #30363d;
+    background: var(--code-terminal-bg);
+    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    color: #e6edf3;
+    color: var(--code-terminal-text);
     max-height: 20rem;
     overflow: auto;
     font-size: 0.75rem;

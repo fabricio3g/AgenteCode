@@ -9,6 +9,7 @@ function resolveSearchOptions(explicit?: SearchOptions): SearchOptions | undefin
 
 export async function webSearch(args: {
   query: string;
+  context?: string;
   deep?: boolean;
   mode?: string;
   options?: SearchOptions;
@@ -17,6 +18,7 @@ export async function webSearch(args: {
   const searchProviders = stored.search?.providers || {};
   return invoke<SearchResponse>('web_search', {
     query: args.query,
+    context: args.context,
     deep: args.deep ?? false,
     mode: args.mode,
     options: {
@@ -39,6 +41,7 @@ export async function webSearch(args: {
       perplexity_api_key: searchProviders.perplexity?.api_key,
       perplexity_model: searchProviders.perplexity?.model,
       perplexity_api_url: searchProviders.perplexity?.api_url,
+      conversation_context: args.context,
       ...resolveSearchOptions(args.options)
     }
   });
@@ -90,6 +93,7 @@ export interface FetchUrlResult {
   error?: string;
   truncated?: boolean;
   warning?: string;
+  quality?: 'ok' | 'thin_content' | 'blocked';
 }
 
 export async function fetchUrlContent(url: string, maxBytes?: number): Promise<FetchUrlResult> {

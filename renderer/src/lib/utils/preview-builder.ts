@@ -42,9 +42,13 @@ function isExternalResource(ref: string): boolean {
   return /^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(ref) || /^[a-z][a-z\d+.-]*:/i.test(ref);
 }
 
+function isBlockedLocalResource(ref: string): boolean {
+  return /^(?:blob|file|filesystem):/i.test(ref.trim());
+}
+
 function resolveArtifactPath(basePath: string, ref: string): string | null {
   const cleaned = ref.trim().split(/[?#]/)[0] || '';
-  if (!cleaned || cleaned.startsWith('#') || cleaned.startsWith('data:') || isExternalResource(cleaned)) return null;
+  if (!cleaned || cleaned.startsWith('#') || cleaned.startsWith('data:') || isBlockedLocalResource(cleaned) || isExternalResource(cleaned)) return null;
   if (cleaned.startsWith('/')) return normalizePath(cleaned.slice(1));
   const baseDir = dirname(basePath);
   return normalizePath(baseDir ? `${baseDir}/${cleaned}` : cleaned);
@@ -77,6 +81,7 @@ function rewriteCssAssetUrls(css: string, cssPath: string, allFiles: Record<stri
   return css.replace(/url\(([^)]+)\)/g, (match, rawValue: string) => {
     const ref = rawValue.trim().replace(/^['"]|['"]$/g, '');
     if (!ref || ref.startsWith('#') || ref.startsWith('data:')) return match;
+    if (isBlockedLocalResource(ref)) return 'url("")';
     if (isExternalResource(ref)) {
       recordExternalRef(externalRefs, ref);
       return match;
@@ -146,6 +151,10 @@ export function buildPreviewHtml(
   doc.querySelectorAll('link[href]').forEach((link) => {
     const href = link.getAttribute('href');
     if (!href) return;
+    if (isBlockedLocalResource(href)) {
+      link.remove();
+      return;
+    }
     if (isExternalResource(href)) {
       recordExternalRef(externalRefs, href);
       return;
@@ -169,6 +178,10 @@ export function buildPreviewHtml(
     const script = scriptEl as HTMLScriptElement;
     const src = script.getAttribute('src');
     if (!src) return;
+    if (isBlockedLocalResource(src)) {
+      script.remove();
+      return;
+    }
     if (isExternalResource(src)) {
       recordExternalRef(externalRefs, src);
       return;
@@ -190,6 +203,10 @@ export function buildPreviewHtml(
   doc.querySelectorAll('link[href]').forEach((linkEl) => {
     const href = linkEl.getAttribute('href');
     if (!href) return;
+    if (isBlockedLocalResource(href)) {
+      linkEl.remove();
+      return;
+    }
     if (isExternalResource(href)) return;
     const resolved = resolveArtifactPath(basePath, href);
     if (!resolved || !allFiles[resolved]) {
@@ -209,6 +226,10 @@ export function buildPreviewHtml(
     doc.querySelectorAll(selector).forEach((element) => {
       const ref = element.getAttribute(attribute);
       if (!ref || ref.startsWith('data:') || ref.startsWith('#')) return;
+      if (isBlockedLocalResource(ref)) {
+        element.removeAttribute(attribute);
+        return;
+      }
       if (isExternalResource(ref)) {
         recordExternalRef(externalRefs, ref);
         return;
@@ -219,6 +240,13 @@ export function buildPreviewHtml(
       if (dataUrl) element.setAttribute(attribute, dataUrl);
     });
   }
+
+  doc.querySelectorAll('a[href]').forEach((anchor) => {
+    const href = anchor.getAttribute('href');
+    if (href && isBlockedLocalResource(href)) {
+      anchor.removeAttribute('href');
+    }
+  });
 
   let head = doc.querySelector('head');
   if (!head) {

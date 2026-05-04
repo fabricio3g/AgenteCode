@@ -6,15 +6,17 @@
   import { AlertCircle } from 'lucide-svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import DeepResearchWidget from '$lib/components/search/DeepResearchWidget.svelte';
-  import AgentTimeline from './AgentTimeline.svelte';
+  import AgentBlock from './AgentBlock.svelte';
+  import ReasoningBlock from './ReasoningBlock.svelte';
   import SourcesBlock from './SourcesBlock.svelte';
   import SearchStatusBlock from './SearchStatusBlock.svelte';
   import ContextBadges from './ContextBadges.svelte';
-  import ReasoningBlock from './ReasoningBlock.svelte';
   import RichContent from './RichContent.svelte';
   import SlidesBlock from './SlidesBlock.svelte';
   import FilesCreatedBlock from './FilesCreatedBlock.svelte';
   import ArtifactBlock from './ArtifactBlock.svelte';
+  import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
 
   interface Props {
     message: ChatMessage;
@@ -48,22 +50,68 @@
   const hasSources = $derived((message.sources?.length || 0) > 0);
   const hasSearchStatus = $derived(
     !!displaySearchMeta && (
-      !!displaySearchMeta.searchRequested ||
       !!displaySearchMeta.searchError ||
       !!displaySearchMeta.searchFallbackReason ||
-      !!displaySearchMeta.providerWarnings?.length
+      !!displaySearchMeta.providerWarnings?.length ||
+      !!displaySearchMeta.researchSummary ||
+      (!hasSources && !!displaySearchMeta.searchRequested)
     )
   );
 
   const hasContextBadges = $derived(!!message.workContext || (message.ragDocuments?.length || 0) > 0);
+
+  function reportTitleFromContent(content: string) {
+    return content.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() || displayMetadata?.documentSurface?.title || 'Report';
+  }
+
+  function isStructuredMarkdownReport(content: string) {
+    if (!content || message.status === 'streaming' || message.status === 'error') return false;
+    if (message.artifact || message.slides?.length) return false;
+    if (displayMetadata?.documentSurface?.kind === 'report') return true;
+    if (content.length < 1400) return false;
+    const headingCount = content.match(/^#{1,3}\s+\S.+$/gm)?.length || 0;
+    const listCount = content.match(/^\s*[-*]\s+\S.+$/gm)?.length || 0;
+    return headingCount >= 2 && (listCount >= 3 || content.length > 2200);
+  }
+
+  function reportIntro(content: string, title: string) {
+    const beforeHeading = content.split(/^#{1,3}\s+/m)[0]?.trim().replace(/\s+/g, ' ') || '';
+    if (beforeHeading.length >= 40 && beforeHeading.length <= 260) return beforeHeading;
+    return `I prepared ${title === 'Report' ? 'a report' : `"${title}"`} as a readable document. Open it below to read the full version.`;
+  }
+
+  const isReportSurface = $derived(isStructuredMarkdownReport(displayContent));
+  const reportTitle = $derived(reportTitleFromContent(displayContent));
+  const reportDocs = $derived.by((): DocumentSurfaceItem[] => {
+    if (!isReportSurface) return [];
+    return [{
+      id: `${message.id}:report`,
+      name: `${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report'}.md`,
+      title: reportTitle,
+      content: displayContent,
+      kind: 'report',
+      status: displayMetadata?.workProduct?.status || 'ready'
+    }];
+  });
+  const visibleContent = $derived(isReportSurface ? reportIntro(displayContent, reportTitle) : displayContent);
 </script>
 
 {#if hasActiveDeepResearch}
   <DeepResearchWidget messageId={message.id} />
 {/if}
 
-{#if message.agentSteps?.length}
-  <AgentTimeline steps={message.agentSteps} />
+{#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
+  <AgentBlock
+    steps={message.agentSteps || []}
+    reasoning={enableThinking ? displayReasoning : undefined}
+    status={message.status}
+    timing={displayMetadata?.timing}
+    outcome={displayMetadata?.outcome}
+    stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
+    currentActivity={displayMetadata?.currentActivity}
+    activityLabel={displayMetadata?.activityLabel}
+    sourceCount={message.sources?.length || 0}
+  />
 {/if}
 
 {#if hasSources}
@@ -78,11 +126,11 @@
   <ContextBadges workContext={message.workContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
 {/if}
 
-{#if enableThinking && displayReasoning}
+{#if enableThinking && displayReasoning && !message.agentSteps?.length}
   <ReasoningBlock reasoning={displayReasoning} status={message.status} timing={displayMetadata?.timing || 0} />
 {/if}
 
-{#if message.status === 'error'}
+{#if message.status === 'error' && displayMetadata?.error}
   <div class="chateaui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm" style="--chateaui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --chateaui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
     <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-error" />
     <div>
@@ -94,40 +142,19 @@
       {/if}
     </div>
   </div>
+{:else if displayMetadata?.warning && (displayMetadata?.outcome === 'partial' || displayMetadata?.outcome === 'stopped')}
+  <div class="mb-2 text-xs text-[var(--text-muted)]">
+    {displayMetadata.warning}
+  </div>
 {/if}
 
-<RichContent content={displayContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
+<RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
 
-{#if message.status === 'streaming' && !displayContent && !displayReasoning && !message.agentSteps?.length}
-  {#if !hasActiveDeepResearch}
-    <div class="thinking-indicator flex items-center gap-2.5 py-2">
-      <span class="thinking-dot-pulse inline-flex items-center gap-3">
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-        <span class="typing-dot"></span>
-      </span>
-      <span class="text-shimmer text-sm">Thinking...</span>
-    </div>
-  {/if}
+{#if reportDocs.length}
+  <DocumentSurface docs={reportDocs} title={reportTitle} sourceCount={message.sources?.length || 0} />
 {/if}
 
 <SlidesBlock slides={message.slides} mode={message.mode} onDownload={onDownloadSlides} />
 <FilesCreatedBlock files={message.filesCreated || []} />
 <ArtifactBlock artifact={message.artifact} onOpen={onOpenArtifact} />
 
-{#if !enableThinking && displayReasoning}
-  <details class="chateaui-card mt-3 px-3 py-2 text-sm text-fg-secondary" style="--chateaui-card-bg: var(--surface-hover);">
-    <summary class="cursor-pointer font-medium">Reasoning</summary>
-    <div class="mt-2 whitespace-pre-wrap">{displayReasoning}</div>
-  </details>
-{/if}
-
-<style>
-  .thinking-dot-pulse {
-    animation: thinkingDotPulse 1.4s ease-in-out infinite;
-  }
-  @keyframes thinkingDotPulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-  }
-</style>

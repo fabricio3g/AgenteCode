@@ -4,6 +4,7 @@ import { parseHTML } from 'linkedom';
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_MAX_LENGTH = 50000;
 const DEFAULT_MAX_LINKS = 120;
+const THIN_CONTENT_CHARS = 700;
 
 function clampNumber(value, min, max, fallback) {
   const num = Number(value);
@@ -17,6 +18,30 @@ function normalizeWhitespace(text) {
 
 function cleanText(text) {
   return String(text || '').replace(/\u0000/g, '').trim();
+}
+
+function classifyScrapeQuality({ status = 0, content = '', error = '', title = '' } = {}) {
+  const textLength = normalizeWhitespace(content).length;
+  const message = String(error || '').toLowerCase();
+  if (status === 401 || status === 403 || status === 429 || message.includes('forbidden') || message.includes('unauthorized')) {
+    return {
+      quality: 'blocked',
+      warning: `Page could not be read cleanly (${error || `HTTP ${status}`}).`
+    };
+  }
+  if (!error && textLength > 0 && textLength < THIN_CONTENT_CHARS) {
+    return {
+      quality: 'thin_content',
+      warning: `Only ${textLength} characters could be extracted from ${title || 'the page'}. The site may rely on scripts or restrict scraping.`
+    };
+  }
+  if (error) {
+    return {
+      quality: 'blocked',
+      warning: error
+    };
+  }
+  return { quality: 'ok', warning: '' };
 }
 
 function isHttpUrl(value) {
@@ -145,7 +170,7 @@ function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH, maxLin
     || metadata.description
     || content.slice(0, 280);
 
-  return {
+  const result = {
     url,
     title,
     excerpt,
@@ -156,6 +181,54 @@ function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH, maxLin
     length: content.length,
     warning: article ? undefined : 'Readability could not identify a clean article; returned body text fallback.'
   };
+  const quality = classifyScrapeQuality(result);
+  return {
+    ...result,
+    quality: quality.quality,
+    warning: quality.warning || result.warning
+  };
+}
+
+function buildReaderFallbackUrl(url) {
+  try {
+    const target = new URL(url);
+    return `https://r.jina.ai/http://${target.host}${target.pathname}${target.search}`;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchReaderFallback(url, maxLength, timeoutMs) {
+  const readerUrl = buildReaderFallbackUrl(url);
+  if (!readerUrl) return null;
+  try {
+    const response = await fetch(readerUrl, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        Accept: 'text/plain',
+        'X-Return-Format': 'markdown',
+        'User-Agent': 'Chatea LM/1.0'
+      }
+    });
+    if (!response.ok) return null;
+    const content = cleanText(await response.text()).slice(0, maxLength);
+    if (!content) return null;
+    return {
+      url,
+      status: response.status,
+      title: url,
+      excerpt: content.slice(0, 280),
+      content,
+      links: [],
+      site_name: '',
+      og_image: '',
+      length: content.length,
+      quality: content.length < THIN_CONTENT_CHARS ? 'thin_content' : 'ok',
+      warning: 'Primary extraction was limited; used reader fallback.'
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks } = {}) {
@@ -184,7 +257,11 @@ export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks 
   }
 
   if (!response.ok) {
-    return { error: `HTTP ${response.status}`, status: response.status, url: normalizedUrl };
+    const error = `HTTP ${response.status}`;
+    const quality = classifyScrapeQuality({ status: response.status, error });
+    const fallback = await fetchReaderFallback(normalizedUrl, safeMaxLength, Math.min(safeTimeout, 20000));
+    if (fallback) return fallback;
+    return { error, status: response.status, url: normalizedUrl, quality: quality.quality, warning: quality.warning };
   }
 
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
@@ -192,7 +269,7 @@ export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks 
 
   if (!contentType.includes('html')) {
     const plainText = cleanText(body).slice(0, safeMaxLength);
-    return {
+    const result = {
       url: normalizedUrl,
       status: response.status,
       title: normalizedUrl,
@@ -203,6 +280,8 @@ export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks 
       og_image: '',
       length: plainText.length
     };
+    const quality = classifyScrapeQuality(result);
+    return { ...result, quality: quality.quality, warning: quality.warning };
   }
 
   const parsed = parseHtmlToReadable({
@@ -212,9 +291,14 @@ export async function scrapeUrlStructured({ url, maxLength, timeoutMs, maxLinks 
     maxLinks
   });
 
-  return {
+  const finalResult = {
     ...parsed,
     status: response.status,
     truncated: parsed.length >= safeMaxLength
   };
+  if (finalResult.quality !== 'ok') {
+    const fallback = await fetchReaderFallback(normalizedUrl, safeMaxLength, Math.min(safeTimeout, 20000));
+    if (fallback && fallback.content.length > finalResult.content.length) return fallback;
+  }
+  return finalResult;
 }

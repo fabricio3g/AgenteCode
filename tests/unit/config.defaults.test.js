@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import path from 'node:path';
 import {
+  DEFAULT_TTS_VOICE_MAP,
   getDefaultTTSConfig,
   getDefaultProvider,
   getDefaultProviders,
@@ -40,10 +41,8 @@ describe('getDefaultTTSConfig', () => {
 
   it('has default voice mapping', () => {
     const tts = getDefaultTTSConfig(modelsRoot);
-    assert.ok(tts.voice_map);
-    assert.strictEqual(tts.voice_map.af_maple, 0);
-    assert.strictEqual(tts.voice_map.bf_vale, 2);
-    assert.strictEqual(Object.keys(tts.voice_map).length, 8);
+    assert.deepStrictEqual(tts.voice_map, DEFAULT_TTS_VOICE_MAP);
+    assert.notStrictEqual(tts.voice_map, DEFAULT_TTS_VOICE_MAP);
   });
 
   it('uses correct defaults', () => {

@@ -8,7 +8,7 @@
 
   const composerMode = $derived(appStore.composerMode);
 
-  const modeOptionsIds: Array<'chat' | 'agent' | 'slides'> = ['chat', 'agent', 'slides'];
+  const modeOptionsIds: Array<'chat' | 'agent'> = ['chat', 'agent'];
 
   let triggerEl: HTMLButtonElement | undefined = $state();
   let dropdownEl: HTMLDivElement | undefined = $state();
@@ -16,11 +16,10 @@
 
   const currentModeId = $derived(modeOptionsIds.find(id => id === composerMode) || modeOptionsIds[0]);
 
-  function getModeLabel(id: 'chat' | 'agent' | 'slides'): string {
+  function getModeLabel(id: 'chat' | 'agent'): string {
     const labels = {
       chat: $t('composer.modeChat'),
-      agent: $t('composer.modeAgent'),
-      slides: $t('composer.modeSlides')
+      agent: $t('composer.modeAgent')
     };
     return labels[id] || id;
   }
@@ -29,7 +28,7 @@
     dropdownOpen = !dropdownOpen;
   }
 
-  function selectMode(mode: 'chat' | 'agent' | 'slides') {
+  function selectMode(mode: 'chat' | 'agent') {
     appStore.setComposerMode(mode);
     dropdownOpen = false;
   }

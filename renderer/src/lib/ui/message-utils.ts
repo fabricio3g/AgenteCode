@@ -46,7 +46,7 @@ export function getSearchStatus(meta: SearchMeta | null): SearchStatusInfo | nul
       : hasFallback
         ? 'Web search fallback'
         : sourceCount > 0
-          ? ''
+          ? 'Searched the web'
           : 'No web sources found',
     detail: detailParts.join(' ').trim()
   };

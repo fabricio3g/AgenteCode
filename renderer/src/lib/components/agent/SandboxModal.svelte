@@ -22,15 +22,17 @@
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
-    class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay px-4"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay px-3"
     onclick={onOverlayClick}
     onkeydown={onKeyDown}
     role="dialog"
     aria-modal="true"
+    tabindex="-1"
   >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="flex w-[95vw] max-w-7xl flex-col rounded-lg border bg-surface shadow-lg"
-      style="height: 90vh;"
+      class="flex w-[96vw] max-w-6xl flex-col overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg"
+      style="height: 88vh;"
       onclick={(e) => e.stopPropagation()}
     >
       <!-- Body -->

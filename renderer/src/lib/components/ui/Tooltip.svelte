@@ -9,6 +9,7 @@
 
 <div
   class="tooltip-wrapper relative"
+  role="presentation"
   onmouseenter={() => (visible = true)}
   onmouseleave={() => (visible = false)}
 >

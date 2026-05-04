@@ -6,24 +6,55 @@ export async function generatePptx(data) {
   const pptx = new PptxGenJS();
 
   pptx.title = data.title || 'Presentation';
+  pptx.layout = 'LAYOUT_WIDE';
+  pptx.author = 'Chatea LM';
+  pptx.subject = data.subtitle || 'Generated work product';
+  pptx.theme = {
+    headFontFace: 'Aptos Display',
+    bodyFontFace: 'Aptos',
+    lang: 'en-US'
+  };
 
-  for (const slide of data.slides || []) {
+  const slides = data.slides || [];
+  for (const [index, slide] of slides.entries()) {
     const s = pptx.addSlide();
+    s.background = { color: index === 0 ? 'F8FAFC' : 'FFFFFF' };
+    s.addShape(pptx.ShapeType.rect, {
+      x: 0, y: 0, w: 13.333, h: 0.08,
+      fill: { color: '2563EB' },
+      line: { color: '2563EB' }
+    });
 
     if (slide.title) {
       s.addText(slide.title, {
-        x: 0.5, y: 0.3, w: '90%', h: 0.8,
-        fontSize: 28, bold: true, color: '333333'
+        x: 0.65, y: 0.45, w: 11.7, h: 0.75,
+        fontFace: 'Aptos Display',
+        fontSize: index === 0 ? 34 : 26,
+        bold: true,
+        color: '0F172A',
+        breakLine: false,
+        fit: 'shrink'
       });
     }
 
-    const content = (slide.content || []).join('\n');
-    if (content) {
-      s.addText(content, {
-        x: 0.5, y: 1.3, w: '90%', h: '60%',
-        fontSize: 16, color: '555555', valign: 'top'
+    const content = (slide.content || []).map(item => String(item || '').replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+    if (content.length) {
+      s.addText(content.map(text => ({ text, options: { bullet: { type: 'ul' }, breakLine: true } })), {
+        x: 0.8, y: index === 0 ? 1.65 : 1.45, w: 11.6, h: 4.75,
+        fontFace: 'Aptos',
+        fontSize: index === 0 ? 18 : 16,
+        color: '334155',
+        valign: 'top',
+        fit: 'shrink',
+        paraSpaceAfterPt: 8
       });
     }
+
+    s.addText(`Chatea LM · ${index + 1}`, {
+      x: 0.65, y: 6.95, w: 2.5, h: 0.2,
+      fontSize: 8,
+      color: '94A3B8'
+    });
 
     if (slide.notes) {
       s.addNotes(slide.notes);

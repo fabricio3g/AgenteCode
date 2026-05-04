@@ -226,6 +226,7 @@ export interface SearchResult {
 
 export interface SearchResponse {
   query: string;
+  effective_query?: string;
   results: SearchResult[];
   context: string;
   provider_used: string;
@@ -233,12 +234,14 @@ export interface SearchResponse {
   error?: string;
   error_type?: string;
   retryable?: boolean;
+  provider_attempts?: Array<{ provider: string; success: boolean; resultCount: number; error?: string }>;
 }
 
 export interface SearchOptions {
   provider?: string;
   max_results?: number;
   context_budget_chars?: number;
+  conversation_context?: string;
   google_cse_api_key?: string;
   google_cse_id?: string;
   brave_api_key?: string;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crawlWeb } from '../../main/web-crawler.js';
+import { crawlWeb } from '../../main/web-crawler.ts';
 
 const pages = {
   'https://site.test/start': {

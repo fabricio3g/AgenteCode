@@ -1,8 +1,15 @@
 <script lang="ts">
   import type { AgentArtifact } from '$lib/types/chat';
-  import { ExternalLink } from 'lucide-svelte';
-  import InlineArtifactPreview from './InlineArtifactPreview.svelte';
+  import { ExternalLink, FolderOpen } from 'lucide-svelte';
   import { isSimpleArtifact } from '$lib/utils/preview-builder';
+  import { isDataUrlFile, viewerPathFor } from '$lib/utils/artifact-files';
+  import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import {
+    baseName,
+    documentExtension,
+    isDocumentSurfaceFile,
+    type DocumentSurfaceItem
+  } from '$lib/components/chat/document-surface';
 
   interface Props {
     artifact?: AgentArtifact | null;
@@ -11,29 +18,76 @@
 
   let { artifact = null, onOpen }: Props = $props();
 
-  const fileCount = $derived(
-    Object.keys(artifact?.files || {}).filter(k => !k.startsWith('__')).length
-  );
+  const visibleEntries = $derived(Object.entries(artifact?.files || {}).filter(([k]) => !k.startsWith('__')));
+  const fileCount = $derived(visibleEntries.length);
 
   const isSimple = $derived(isSimpleArtifact(artifact));
+
+  const documentDocs = $derived.by((): DocumentSurfaceItem[] => {
+    if (!artifact) return [];
+    return visibleEntries
+      .map(([path, content]) => {
+        if (!isDocumentSurfaceFile(path)) return null;
+        const ext = documentExtension(path);
+        const isTextLike = ext === 'md' || ext === 'markdown' || ext === 'txt' || ext === 'csv';
+        return {
+          id: path,
+          name: path,
+          title: baseName(path),
+          dataUrl: isDataUrlFile(content) ? content : undefined,
+          content: !isDataUrlFile(content) && isTextLike ? content : undefined,
+          previewHtml: artifact.files[viewerPathFor(path)] || '',
+          kind: ext === 'md' || ext === 'markdown' ? 'report' : 'document',
+          status: artifact.workProduct?.status,
+          warnings: artifact.workProduct?.warnings
+        };
+      })
+      .filter(Boolean) as DocumentSurfaceItem[];
+  });
+
+  const nonDocumentFileCount = $derived(visibleEntries.filter(([path]) => !isDocumentSurfaceFile(path)).length);
 </script>
 
 {#if artifact}
-  {#if isSimple}
-    <InlineArtifactPreview artifact={artifact} onOpenSandbox={onOpen} />
-  {:else}
-    <div class="artifact-card mt-3 flex items-center justify-between gap-4 py-2">
-      <div class="flex min-w-0 flex-1 items-center gap-3">
+  {#if documentDocs.length}
+    <DocumentSurface
+      docs={documentDocs}
+      title={artifact.workProduct?.title || artifact.title || (documentDocs.length > 1 ? 'Generated documents' : documentDocs[0].title)}
+    />
+  {/if}
+
+  {#if nonDocumentFileCount > 0 || (!documentDocs.length && isSimple)}
+    <div class="artifact-card flex items-center justify-between gap-3 after-preview">
+      <div class="flex min-w-0 flex-1 items-center gap-2.5">
+        <div class="artifact-icon">
+          <FolderOpen class="h-3.5 w-3.5" />
+        </div>
         <div class="min-w-0">
-          <div class="title truncate">{artifact.title || 'Agent workspace'}</div>
+          <div class="title truncate">{artifact.title || 'Workspace'}</div>
           <div class="subtitle">
             {fileCount} file{fileCount !== 1 ? 's' : ''}{#if artifact.previewHtml} · preview ready{/if}
           </div>
         </div>
       </div>
-      <button class="view-btn flex shrink-0 items-center gap-1.5" onclick={onOpen}>
-        Open
-        <ExternalLink class="h-3 w-3" />
+      <button class="open-sandbox-btn flex shrink-0 items-center justify-center" onclick={onOpen} aria-label="Open workspace" title="Open workspace">
+        <ExternalLink class="h-3.5 w-3.5" />
+      </button>
+    </div>
+  {:else if !documentDocs.length}
+    <div class="artifact-card flex items-center justify-between gap-3">
+      <div class="flex min-w-0 flex-1 items-center gap-2.5">
+        <div class="artifact-icon">
+          <FolderOpen class="h-3.5 w-3.5" />
+        </div>
+        <div class="min-w-0">
+          <div class="title truncate">{artifact.title || 'Workspace'}</div>
+          <div class="subtitle">
+            {fileCount} file{fileCount !== 1 ? 's' : ''}{#if artifact.previewHtml} · preview ready{/if}
+          </div>
+        </div>
+      </div>
+      <button class="open-sandbox-btn flex shrink-0 items-center justify-center" onclick={onOpen} aria-label="Open workspace" title="Open workspace">
+        <ExternalLink class="h-3.5 w-3.5" />
       </button>
     </div>
   {/if}
@@ -41,7 +95,27 @@
 
 <style>
   .artifact-card {
-    border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    margin-top: 0.75rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0.35rem 0;
+    box-shadow: none;
+  }
+
+  .artifact-card.after-preview {
+    margin-top: 0.45rem;
+  }
+
+  .artifact-icon {
+    display: inline-flex;
+    height: 1.35rem;
+    width: 1.35rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-tertiary);
   }
 
   .title {
@@ -56,14 +130,19 @@
     margin-top: 0.1rem;
   }
 
-  .view-btn {
-    font-size: 0.75rem;
+  .open-sandbox-btn {
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    width: 1.85rem;
+    height: 1.85rem;
     color: var(--text-secondary);
-    padding: 0.25rem 0;
-    transition: color 150ms ease;
+    padding: 0;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
   }
 
-  .view-btn:hover {
+  .open-sandbox-btn:hover {
+    background: var(--surface-hover);
     color: var(--text);
   }
 </style>

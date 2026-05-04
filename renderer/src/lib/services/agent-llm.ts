@@ -5,6 +5,14 @@ import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult }
 
 export type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 
+function shouldDebugAgentLogs(config: any): boolean {
+  return !!config?.ui?.agent_debug_logs;
+}
+
+function debugLog(enabled: boolean, message: string) {
+  if (enabled) console.log(message);
+}
+
 export async function agentComplete(options: {
   messages: RequestMessage[];
   tools?: ToolDefinition[];
@@ -68,13 +76,14 @@ export async function agentStreamComplete(options: {
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || { base_url: 'https://api.openai.com/v1', model: '' };
   const apiKey = provider.api_key || '';
+  const debugLogs = shouldDebugAgentLogs(config);
 
   if (!provider.base_url) {
-    console.log('[agent-llm] agentStreamComplete ABORT | no base_url for provider');
+    debugLog(debugLogs, '[agent-llm] agentStreamComplete ABORT | no base_url for provider');
     return null;
   }
 
-  console.log(`[agent-llm] agentStreamComplete | model=${provider.model} | messages=${options.messages.length} | tools=${options.tools?.length ?? 0} | provider=${providerName}`);
+  debugLog(debugLogs, `[agent-llm] agentStreamComplete | model=${provider.model} | messages=${options.messages.length} | tools=${options.tools?.length ?? 0} | provider=${providerName}`);
 
   const genParams: Record<string, unknown> = {};
   if (Number.isFinite(provider.temperature)) genParams.temperature = provider.temperature;
@@ -107,7 +116,7 @@ export async function agentStreamComplete(options: {
     if (!event || event.streamId !== streamId) return;
 
     if (event.type !== 'delta') {
-      console.log(`[agent-llm] stream event | type=${event.type} | streamId=${streamId.slice(0, 8)}...`);
+      debugLog(debugLogs, `[agent-llm] stream event | type=${event.type} | streamId=${streamId.slice(0, 8)}...`);
     }
 
     if (event.type === 'delta') {
@@ -123,7 +132,7 @@ export async function agentStreamComplete(options: {
     }
 
     if (event.type === 'done') {
-      console.log(`[agent-llm] stream done | contentLen=${finalResult.content.length} | reasoningLen=${finalResult.reasoning.length} | toolCalls=${event.toolCalls?.length ?? 0}${event.toolCalls?.length ? ' names=[' + event.toolCalls.map((tc: any) => tc.name || tc.function?.name || '?').join(',') + ']' : ''}`);
+      debugLog(debugLogs, `[agent-llm] stream done | contentLen=${finalResult.content.length} | reasoningLen=${finalResult.reasoning.length} | toolCalls=${event.toolCalls?.length ?? 0}${event.toolCalls?.length ? ' names=[' + event.toolCalls.map((tc: any) => tc.name || tc.function?.name || '?').join(',') + ']' : ''}`);
       if (event.toolCalls?.length) {
         finalResult.toolCalls = event.toolCalls.map((tc: any) => ({
           id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
@@ -172,7 +181,7 @@ export async function agentStreamComplete(options: {
   } catch (err) {
     const errStr = String(err);
     const isCloneError = errStr.includes('could not be cloned') || errStr.includes('DataCloneError');
-    console.log(`[agent-llm] agentStreamComplete FAILED | err=${errStr.slice(0, 200)} | hasPartialContent=${!!(finalResult.content || finalResult.toolCalls?.length)} | isCloneError=${isCloneError}`);
+    debugLog(debugLogs, `[agent-llm] agentStreamComplete FAILED | err=${errStr.slice(0, 200)} | hasPartialContent=${!!(finalResult.content || finalResult.toolCalls?.length)} | isCloneError=${isCloneError}`);
     console.warn('[agent-llm] agentStreamComplete failed:', err);
     if (finalResult.content || finalResult.toolCalls?.length) {
       return finalResult;
