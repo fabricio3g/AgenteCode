@@ -302,15 +302,5 @@ export function redactConfig(cfg: AppConfig): ReturnType<typeof redactConfigImpl
   return redactConfigImpl(cfg);
 }
 
-// ── Re-export utilities from other modules ───────────────────────────────────
-
-export {
-  slugify,
-  deepMerge,
-  deepClone,
-  readJsonSafe,
-  writeJsonSafe,
-};
-
 // Export types
 export type { AppConfig, AppPaths } from './config.types.ts';

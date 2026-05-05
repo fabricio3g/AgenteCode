@@ -27,7 +27,7 @@ export interface DocumentSurfaceProduct {
   workProduct?: GeneratedWorkProduct | null;
 }
 
-export const DOCUMENT_SURFACE_EXTS = new Set([
+const DOCUMENT_SURFACE_EXTS = new Set([
   'md',
   'markdown',
   'txt',
@@ -51,7 +51,8 @@ export function baseName(name: string) {
 }
 
 export function fileTypeLabel(name: string, kind?: DocumentSurfaceKind) {
-  if (kind === 'report') return 'REPORT';
-  if (kind === 'slides') return 'SLIDES';
-  return (documentExtension(name) || 'file').toUpperCase();
+  if (kind === 'report') return 'Report';
+  if (kind === 'slides') return 'Slides';
+  const ext = documentExtension(name) || 'file';
+  return ext.length <= 4 ? ext.toUpperCase() : ext;
 }

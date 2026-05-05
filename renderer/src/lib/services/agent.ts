@@ -10,6 +10,7 @@ import { isTauri, invoke } from '$lib/services/tauri';
 import {
   createDocxArtifactFile, createPdfArtifactFile, createPptxArtifactFile, createXlsxArtifactFile,
   createWorkProductArtifactFiles,
+  validateGeneratedDocumentArgs,
   type GeneratedArtifactFile
 } from '$lib/services/generated-documents';
 import { viewerPathFor } from '$lib/utils/artifact-files';
@@ -72,9 +73,11 @@ type ToolContext = {
 };
 
 const DEFAULT_MAX_ITERATIONS = 10;
+const LOCAL_DEFAULT_MAX_ITERATIONS = 7;
 const MAX_TIME_MS = 2 * 60 * 1000;
 const KEEP_TOOL_PAIRS = 6;
 const TOOL_CALLS_PER_STEP = 3;
+const LOCAL_TOOL_CALLS_PER_STEP = 2;
 const MAX_TOOL_RESULT_CHARS = 12000;
 const TOOL_TIMEOUT_MS = 30000;
 const MAX_TOOL_RETRIES = 1;
@@ -95,8 +98,8 @@ function debugLog(enabled: boolean, message: string) {
   if (enabled) console.log(message);
 }
 
-function getToolCallLimit(maxIterations: number): number {
-  return Math.max(maxIterations, maxIterations * TOOL_CALLS_PER_STEP);
+function getToolCallLimit(maxIterations: number, localMode = false): number {
+  return Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : TOOL_CALLS_PER_STEP));
 }
 
 function countBudgetedToolCalls(toolCalls: ToolCall[]): number {
@@ -638,6 +641,10 @@ async function executeTool(
       const format = String(args.format || 'markdown');
       const theme = (args.theme === 'dark' ? 'dark' : 'light') as 'light' | 'dark';
       const path = normPath(args.path) || (format === 'html' ? 'report.html' : 'report.md');
+      const validation = validateGeneratedDocumentArgs({ title, sections }, [format === 'html' ? 'html' : 'md']);
+      if (!validation.ok) {
+        return fail(validation.error || 'Document content is too thin.', 'Rebuild the report using gathered evidence. Include real body content, bullets, sources, and limitations instead of only section titles.');
+      }
       const content = format === 'html'
         ? buildHtmlReport(title, sections, { theme })
         : buildMarkdownReport(title, sections);
@@ -655,6 +662,11 @@ async function executeTool(
       if (!isTauri()) return fail('Professional work product generation requires the desktop app.');
       if (isWorkspace(ctx)) return fail('Professional work products are currently available in chat sandbox mode only.');
       try {
+        const formats = Array.isArray(args.formats) ? args.formats.map((format) => String(format)) : ['md'];
+        const validation = validateGeneratedDocumentArgs(args, formats);
+        if (!validation.ok) {
+          return fail(validation.error || 'Document content is too thin.', 'Rebuild the work product from gathered evidence. Include meaningful body content, populated tables/slides, sources, and limitations instead of only titles.');
+        }
         const generated = await createWorkProductArtifactFiles(args);
         const createdFiles: string[] = [];
         for (const file of generated.files) {
@@ -702,6 +714,8 @@ async function executeTool(
     case 'create_document': {
       if (!isTauri()) return fail('DOCX generation requires the desktop app.');
       try {
+        const validation = validateGeneratedDocumentArgs(args, ['docx']);
+        if (!validation.ok) return fail(validation.error || 'Document content is too thin.', 'Rebuild the document from gathered evidence with meaningful body content, sources, and limitations.');
         const file = await createDocxArtifactFile(args);
         return addGeneratedArtifactFile(ctx, file);
       } catch (e) {
@@ -712,6 +726,8 @@ async function executeTool(
     case 'create_spreadsheet': {
       if (!isTauri()) return fail('XLSX generation requires the desktop app.');
       try {
+        const validation = validateGeneratedDocumentArgs(args, ['xlsx']);
+        if (!validation.ok) return fail(validation.error || 'Spreadsheet content is too thin.', 'Rebuild the spreadsheet with actual rows from gathered evidence or source rows with limitations.');
         const file = await createXlsxArtifactFile(args);
         return addGeneratedArtifactFile(ctx, file);
       } catch (e) {
@@ -722,6 +738,8 @@ async function executeTool(
     case 'create_presentation': {
       if (!isTauri()) return fail('PPTX generation requires the desktop app.');
       try {
+        const validation = validateGeneratedDocumentArgs(args, ['pptx']);
+        if (!validation.ok) return fail(validation.error || 'Presentation content is too thin.', 'Rebuild the deck with at least one content slide populated from gathered evidence.');
         const file = await createPptxArtifactFile(args);
         return addGeneratedArtifactFile(ctx, file);
       } catch (e) {
@@ -732,6 +750,8 @@ async function executeTool(
     case 'create_pdf': {
       if (!isTauri()) return fail('PDF generation requires the desktop app.');
       try {
+        const validation = validateGeneratedDocumentArgs(args, ['pdf']);
+        if (!validation.ok) return fail(validation.error || 'Document content is too thin.', 'Rebuild the PDF from gathered evidence with meaningful body content, sources, and limitations.');
         const file = await createPdfArtifactFile(args);
         return addGeneratedArtifactFile(ctx, file);
       } catch (e) {
@@ -837,7 +857,7 @@ function buildArtifact(ctx: ToolContext): AgentArtifact | null {
   const visible = Object.keys(ctx.files).filter(f => !f.startsWith('__'));
   if (!visible.length) return null;
   return {
-    title: ctx.workProduct?.title || `Agent workspace (${visible.length} file${visible.length === 1 ? '' : 's'})`,
+    title: ctx.workProduct?.title || (visible.length === 1 ? visible[0] : 'Generated documents'),
     files: { ...ctx.files },
     previewHtml: ctx.files['__preview__.html'] ?? null,
     workProduct: ctx.workProduct || null
@@ -1293,11 +1313,9 @@ function injectEvidenceSummary(messages: RequestMessage[], observations: ToolObs
   messages.push({ role: 'system', content: lines.join('\n') });
 }
 
-function trimContext(messages: RequestMessage[], nativeMode: boolean) {
+function trimContext(messages: RequestMessage[], nativeMode: boolean, keepCount = KEEP_TOOL_PAIRS) {
   const sys = messages.filter(m => m.role === 'system');
   const nonSys = messages.filter(m => m.role !== 'system');
-
-  const keepCount = KEEP_TOOL_PAIRS;
 
   if (nonSys.length <= keepCount) return;
 
@@ -1539,6 +1557,7 @@ function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: number, 
     'A professional work product must include an executive summary, structured sections, sources when search was used, and limitations for blocked/thin/partial evidence.',
     'When creating spreadsheets, include actual rows from tool/search evidence. If no rows exist, include a limitations/methodology sheet instead of inventing data.',
     'CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Use the actual facts, numbers, and details from your search results.',
+    'If a document/spreadsheet/presentation/PDF tool says content is too thin, do not finalize. Retry once with meaningful body content from gathered evidence, plus sources and limitations when evidence is partial.',
     'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
@@ -1567,9 +1586,10 @@ function getXmlSystemPrompt(extra: string | undefined, maxToolCalls: number, max
     '3. If a tool fails twice, stop retrying and use only evidence already gathered. Do not invent current facts.',
     '4. Chain tools logically: search \u2192 read \u2192 create_work_product/create requested artifact \u2192 final answer. After web_search returns results, use them; do not loop on the same search.',
     '5. CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Include limitations for blocked/thin evidence.',
-    '6. For final answer, write plain text with NO tool_call tag.',
-    '7. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
-    '8. If you cannot finish, final answer must say what was actually found and what could not be verified.',
+    '6. If a file creation tool rejects thin content, call the tool again once with real body sections, data rows, or slide bullets from gathered evidence before finalizing.',
+    '7. For final answer, write plain text with NO tool_call tag.',
+    '8. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
+    '9. If you cannot finish, final answer must say what was actually found and what could not be verified.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
 }
@@ -1653,14 +1673,18 @@ export async function runAgentTask(args: {
     onArtifact: args.onArtifact,
   };
 
-  const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? DEFAULT_MAX_ITERATIONS));
-  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? getToolCallLimit(maxIterations)));
+  const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  const localMode = backendMode === 'local';
+  const defaultMaxIterations = localMode ? LOCAL_DEFAULT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS;
+  const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? defaultMaxIterations));
+  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? getToolCallLimit(maxIterations, localMode)));
   const providerName = config.llm?.provider || 'openai';
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
+  const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');
   let useNativeTools = isTauri() && agentSupportsNativeTools(config);
-  console.log(`[agent] START | provider=${providerName} | model=${provider.model || ''} | isTauri=${isTauri()} | useNativeTools=${useNativeTools}`);
-  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${providerName} modelId=${provider.model || ''} result=${agentSupportsNativeTools(config)}`);
+  debugLog(debugLogs, `[agent] START | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isTauri=${isTauri()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls}`);
+  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config)}`);
   let nativeFailed = false;
   let directMode = false;
   let consecutiveEmptyResponses = 0;
@@ -1726,7 +1750,7 @@ export async function runAgentTask(args: {
       args.onProgress?.(`Planning how to approach this\u2026`);
     }
 
-    trimContext(messages, useNativeTools && !nativeFailed);
+    trimContext(messages, useNativeTools && !nativeFailed, localMode ? 4 : KEEP_TOOL_PAIRS);
     await enforceTokenBudget(messages, config);
 
     // Inject evidence summary so the LLM always knows what it has found
@@ -2189,15 +2213,17 @@ export async function runAgentTask(args: {
       stuckTool = null;
     }
 
-    // 2. Same tool name only (different args) repeated 6+ times = likely stuck
+    // 2. Same tool name only (different args) repeated enough times = likely stuck.
+    // Local models get a tighter guard because each extra loop is much more expensive.
     if (!stuckTool && isStagnating) {
+      const repeatedNameLimit = localMode ? 4 : 6;
       const nameCounts = new Map<string, number>();
       for (const name of recentNames) {
         if (name === 'fetch_url' || LOW_IMPACT_LOOP_TOOLS.has(name)) continue;
         nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
       }
       for (const [name, count] of nameCounts) {
-        if (count >= 6) {
+        if (count >= repeatedNameLimit) {
           stuckTool = name;
           break;
         }

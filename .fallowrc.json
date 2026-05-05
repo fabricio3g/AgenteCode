@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "main/index.ts",
+    "renderer/src/main.ts"
+  ],
+  "ignorePatterns": [
+    "dist/**",
+    "dist-electron/**",
+    "build/**",
+    "out/**",
+    "web-browser/**",
+    "renderer/dist/**",
+    "renderer/patches/**",
+    "renderer/src/lib/wasm/**",
+    "renderer/public/tts-worker.cjs",
+    "preload/preload.cjs",
+    "renderer/svelte.config.js"
+  ],
+  "ignoreDependencies": [
+    "@lancedb/lancedb-win32-x64-msvc",
+    "sherpa-onnx-win-x64"
+  ],
+  "rules": {
+    "unused-files": "error",
+    "unused-exports": "warn",
+    "unused-types": "warn",
+    "unused-dependencies": "error",
+    "unused-class-members": "off",
+    "unlisted-dependencies": "error",
+    "duplicate-exports": "error",
+    "circular-dependencies": "error"
+  },
+  "duplicates": {
+    "mode": "mild",
+    "minTokens": 40,
+    "minLines": 5
+  },
+  "health": {
+    "maxCyclomatic": 20,
+    "maxCognitive": 15,
+    "maxCrap": 30
+  }
+}

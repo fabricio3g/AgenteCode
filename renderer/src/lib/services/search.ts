@@ -48,8 +48,10 @@ export async function webSearch(args: {
 }
 
 async function ingestSearchContext(chatId: string, context: string, sources: Array<{ title: string; url: string; snippet: string }>): Promise<number> {
+  const normalizedChatId = String(chatId || '').trim();
+  if (!normalizedChatId) throw new Error('chatId is required');
   return invoke<number>('ingest_search_context', {
-    chatId,
+    chatId: normalizedChatId,
     context,
     sources
   });

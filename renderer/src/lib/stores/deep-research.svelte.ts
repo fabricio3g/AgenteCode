@@ -278,6 +278,17 @@ class DeepResearchStore {
     return task;
   }
 
+  getActiveTaskForMessage(messageId: string | null | undefined): DeepResearchTask | null {
+    if (!messageId) return null;
+    const task = this.tasks.find((entry) => entry.messageId === messageId && !['cancelled', 'completed', 'failed'].includes(entry.status));
+    return task || null;
+  }
+
+  getTasksForChat(chatId: string | null | undefined): DeepResearchTask[] {
+    if (!chatId) return [];
+    return this.tasks.filter((entry) => entry.chatId === chatId);
+  }
+
   get pendingInputTask(): DeepResearchTask | null {
     return this.tasks.find((task) => task.status === 'awaiting_input') || null;
   }

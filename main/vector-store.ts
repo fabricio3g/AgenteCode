@@ -16,7 +16,12 @@ class VectorStore {
   }
 
   _tableName(chatId) {
-    return `chat_${chatId.replace(/-/g, '_')}`;
+    const safeId = String(chatId || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9_]/g, '_')
+      .replace(/^_+|_+$/g, '');
+    if (!safeId) throw new Error('chatId is required for vector store isolation');
+    return `chat_${safeId}`;
   }
 
   async getTable(chatId) {

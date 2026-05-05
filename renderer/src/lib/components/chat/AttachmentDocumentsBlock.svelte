@@ -11,30 +11,46 @@
 
   let { attachments = [] }: Props = $props();
 
-  const documents = $derived((attachments || []).filter((attachment) => attachment.kind !== 'image'));
-  const readyDocs = $derived.by((): DocumentSurfaceItem[] => documents
-    .filter((attachment) => !!attachment.data)
+  const readyDocs = $derived.by((): DocumentSurfaceItem[] => (attachments || [])
+    .filter((attachment) => {
+      if (attachment.kind === 'image') return !!(attachment.base64 || attachment.preview);
+      return !!(attachment.data || attachment.preview);
+    })
     .map((attachment) => ({
       id: attachment.id,
       name: attachment.name,
       title: attachment.name,
       type: attachment.type,
       size: attachment.size,
-      dataUrl: attachment.data
+      dataUrl: attachment.kind === 'image'
+        ? (attachment.base64 || attachment.preview)
+        : (attachment.data || attachment.preview)
     })));
-  const pendingCount = $derived(documents.filter((attachment) => !attachment.data).length);
+  const pendingCount = $derived((attachments || []).filter((attachment) => {
+    if (attachment.status === 'error') return false;
+    if (attachment.kind === 'image') return !(attachment.base64 || attachment.preview);
+    return !(attachment.data || attachment.preview);
+  }).length);
+  const errorCount = $derived((attachments || []).filter((attachment) => attachment.status === 'error').length);
 </script>
 
 {#if readyDocs.length}
   <DocumentSurface
     docs={readyDocs}
     title={readyDocs.length > 1 ? `${readyDocs.length} attachments` : readyDocs[0].title}
+    launcherMode="strip"
   />
 {/if}
 
 {#if pendingCount}
   <div class="attachment-doc-note">
-    {pendingCount} document{pendingCount !== 1 ? 's' : ''} still preparing
+    {pendingCount} attachment{pendingCount !== 1 ? 's' : ''} still preparing
+  </div>
+{/if}
+
+{#if errorCount}
+  <div class="attachment-doc-note">
+    {errorCount} attachment{errorCount !== 1 ? 's' : ''} could not be previewed
   </div>
 {/if}
 

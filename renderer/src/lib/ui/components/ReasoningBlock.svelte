@@ -9,9 +9,10 @@
     reasoning: string;
     status?: 'idle' | 'streaming' | 'error';
     timing?: number | null;
+    totalElapsedSeconds?: number | null;
   }
 
-  let { reasoning, status = 'idle', timing = 0 }: Props = $props();
+  let { reasoning, status = 'idle', timing = 0, totalElapsedSeconds = 0 }: Props = $props();
   let open = $state(false);
   let userToggled = $state(false);
   let reasoningLiveEl = $state<HTMLDivElement | undefined>(undefined);
@@ -34,6 +35,12 @@
     return `Thought for ${Math.max(0, safeTiming).toFixed(1)}s`;
   }
 
+  function totalLabel() {
+    const safeTotal = Number(totalElapsedSeconds || 0);
+    if (status === 'streaming' || safeTotal <= 0) return '';
+    return `Completed in ${safeTotal.toFixed(1)}s`;
+  }
+
   function toggle() {
     userToggled = true;
     open = !open;
@@ -48,7 +55,12 @@
       onclick={toggle}
     >
       <Brain class="h-4 w-4 shrink-0" />
-      <span class="flex-1" class:text-shimmer={status === 'streaming'}>{label()}</span>
+      <span class="flex flex-1 flex-col">
+        <span class:text-shimmer={status === 'streaming'}>{label()}</span>
+        {#if totalLabel()}
+          <span class="cot-total">{totalLabel()}</span>
+        {/if}
+      </span>
       <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
 
@@ -88,6 +100,12 @@
     grid-template-columns: 2px 1fr;
     gap: 0.75rem;
     padding: 0.5rem 0;
+  }
+  .cot-total {
+    margin-top: 0.08rem;
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+    font-weight: 450;
   }
   .cot-timeline-line {
     width: 2px;

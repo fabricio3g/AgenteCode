@@ -66,15 +66,17 @@ export class LocalProvider extends BaseProvider {
 
         try {
           const parsed = JSON.parse(payload);
+          const usage = parsed?.usage || null;
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
           const toolCallDeltas = delta.tool_calls;
 
-          if (content || reasoning || toolCallDeltas) {
+          if (content || reasoning || toolCallDeltas || usage) {
             yield {
               content: content != null ? String(content) : '',
               reasoning: reasoning != null ? String(reasoning) : '',
+              ...(usage ? { usage } : {}),
               ...(toolCallDeltas ? {
                 toolCallDeltas: toolCallDeltas.map(tc => ({
                   index: tc.index ?? 0,
@@ -97,15 +99,17 @@ export class LocalProvider extends BaseProvider {
       if (payload && payload !== '[DONE]') {
         try {
           const parsed = JSON.parse(payload);
+          const usage = parsed?.usage || null;
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
           const toolCallDeltas = delta.tool_calls;
 
-          if (content || reasoning || toolCallDeltas) {
+          if (content || reasoning || toolCallDeltas || usage) {
             yield {
               content: content != null ? String(content) : '',
               reasoning: reasoning != null ? String(reasoning) : '',
+              ...(usage ? { usage } : {}),
               ...(toolCallDeltas ? {
                 toolCallDeltas: toolCallDeltas.map(tc => ({
                   index: tc.index ?? 0,

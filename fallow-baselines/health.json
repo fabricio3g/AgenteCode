@@ -1,0 +1,1120 @@
+{
+  "finding_counts": {
+    "main/browser-control.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/chat-db.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/chat-ipc.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "main/config.migrate.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/config.redact.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/config.secrets.ts": {
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "main/config.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/config.utils.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "main/content-summarizer.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/download-manager.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/embedding-client.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/generated-documents.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/index.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/ipc-handlers.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 4
+      }
+    },
+    "main/link-scorer.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/llm-runner.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/model-manager.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "main/paths.ts": {
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "main/process-manager.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/providers/anthropic.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/base.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "main/providers/gemini.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "main/providers/groq.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/local.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/mistral.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/openai-compatible.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/openai.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/providers/openrouter.ts": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/rag-engine.ts": {
+      "complexity_critical": {
+        "count": 6
+      },
+      "crap_critical": {
+        "count": 7
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 6
+      }
+    },
+    "main/rag/embedding-runtime.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/reranker.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/runtime-config-resolver.ts": {
+      "complexity_critical": {
+        "count": 5
+      },
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/runtime-resolver.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "main/sandbox.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "main/search-engine.ts": {
+      "complexity_critical": {
+        "count": 6
+      },
+      "crap_critical": {
+        "count": 21
+      },
+      "crap_high": {
+        "count": 12
+      },
+      "crap_moderate": {
+        "count": 12
+      }
+    },
+    "main/slides.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "main/stt-engine.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 4
+      }
+    },
+    "main/system-info.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/token-counter.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/tts-engine.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/tts-worker.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "main/vector-store.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/web-crawler.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/web-scraper.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/window-manager.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/workspace.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/components/agent/ChatSandbox.svelte": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "renderer/src/lib/components/chat/ChartBlock.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "renderer/src/lib/components/chat/ChatMessage.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "renderer/src/lib/components/chat/Composer.svelte": {
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 6
+      }
+    },
+    "renderer/src/lib/components/chat/DocumentSurface.svelte": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "renderer/src/lib/components/chat/EditMessageInline.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/MessageList.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/ModelSwitcher.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/TtsAudioPlayer.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/components/chat/composer/ContextUsageRing.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/composer/VoiceModeOverlay.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/components/chat/document-surface.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/viewers/PdfViewer.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/viewers/TextViewer.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/chat/viewers/XlsxViewer.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/layout/AppShell.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/layout/ChatSearchModal.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/layout/LLMDrawer.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/layout/Navbar.svelte": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/layout/Sidebar.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/components/legacy/LegacyWorkspace.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/onboarding/OnboardingStepModel.svelte": {
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/components/onboarding/OnboardingStepReady.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/onboarding/OnboardingStepRuntime.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/onboarding/OnboardingStepTtsModel.svelte": {
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/onboarding/OnboardingStepWelcome.svelte": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/search/DeepResearchWidget.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/DownloadsModal.svelte": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/components/settings/GeneralSettings.svelte": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/LocalModelLoadModal.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/LocalRuntimeModal.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/ModelHubModal.svelte": {
+      "complexity_critical": {
+        "count": 3
+      },
+      "crap_critical": {
+        "count": 7
+      },
+      "crap_high": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "renderer/src/lib/components/settings/SettingsModal.svelte": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/components/settings/VoiceLanguageSelector.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/i18n/index.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/services/agent-llm.ts": {
+      "complexity_critical": {
+        "count": 3
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/services/agent.ts": {
+      "complexity_critical": {
+        "count": 9
+      },
+      "crap_critical": {
+        "count": 14
+      },
+      "crap_high": {
+        "count": 7
+      },
+      "crap_moderate": {
+        "count": 6
+      }
+    },
+    "renderer/src/lib/services/chat-api.ts": {
+      "complexity_critical": {
+        "count": 6
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 7
+      }
+    },
+    "renderer/src/lib/services/generated-documents.ts": {
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 12
+      }
+    },
+    "renderer/src/lib/services/ocr.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/services/onboarding.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/services/runtime.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/services/search.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/stores/app.svelte.ts": {
+      "complexity_critical": {
+        "count": 12
+      },
+      "crap_critical": {
+        "count": 26
+      },
+      "crap_high": {
+        "count": 9
+      },
+      "crap_moderate": {
+        "count": 30
+      }
+    },
+    "renderer/src/lib/stores/capabilities.svelte.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/stores/deep-research.svelte.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 12
+      }
+    },
+    "renderer/src/lib/stores/hardware.svelte.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/stores/models.svelte.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/stores/tts.svelte.ts": {
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/ui/components/AgentBlock.svelte": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/components/ArtifactBlock.svelte": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/components/AssistantMessageBody.svelte": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/ui/components/Chart.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/components/RichContent.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/ui/components/Select.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/ui/components/Table.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/context.ts": {
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/ui/detect.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/message-utils.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/parser.ts": {
+      "complexity_critical": {
+        "count": 4
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/prompt.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/assistant-visible.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/chart-data.ts": {
+      "complexity_critical": {
+        "count": 4
+      },
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/charts.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/doc-utils.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/markdown.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/utils/preview-builder.ts": {
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/utils/storage.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "tests/integration/config-flow.test.js": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "tests/unit/chat-db.test.js": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "renderer/src/lib/ui/components/Select.svelte:untested risk",
+    "renderer/src/lib/stores/app.svelte.ts:high impact",
+    "renderer/src/lib/services/runtime.ts:high impact",
+    "renderer/src/lib/services/chat-api.ts:high impact",
+    "main/ipc-handlers.ts:untested risk",
+    "renderer/src/lib/services/agent-llm.ts:untested risk",
+    "renderer/src/lib/ui/components/Chart.svelte:untested risk",
+    "renderer/src/lib/stores/hardware.svelte.ts:high impact",
+    "renderer/src/lib/components/settings/SettingsModal.svelte:untested risk",
+    "renderer/src/lib/services/search.ts:high impact",
+    "main/providers/groq.ts:untested risk",
+    "renderer/src/lib/utils/storage.ts:high impact",
+    "main/providers/openrouter.ts:untested risk",
+    "renderer/src/lib/utils/markdown.ts:high impact",
+    "renderer/src/lib/components/settings/LocalRuntimeModal.svelte:complexity",
+    "renderer/src/lib/ui/message-utils.ts:high impact",
+    "renderer/src/lib/i18n/index.ts:untested risk",
+    "main/chat-ipc.ts:untested risk",
+    "main/runtime-resolver.ts:untested risk",
+    "renderer/src/lib/utils/doc-utils.ts:untested risk",
+    "main/providers/helpers.ts:high impact",
+    "main/sandbox.ts:dead code",
+    "renderer/src/lib/components/onboarding/OnboardingStepRuntime.svelte:complexity",
+    "renderer/src/lib/stores/models.svelte.ts:high impact",
+    "main/providers/openai-compatible.ts:untested risk",
+    "main/providers/openai.ts:untested risk",
+    "renderer/src/lib/stores/deep-research.svelte.ts:high impact",
+    "renderer/src/lib/ui/context.ts:high impact",
+    "renderer/src/lib/ui/prompt.ts:untested risk",
+    "main/chat-db.ts:complexity",
+    "main/providers/mistral.ts:untested risk",
+    "renderer/src/lib/services/agent.ts:complexity",
+    "renderer/src/lib/components/layout/AppShell.svelte:complexity",
+    "main/content-summarizer.ts:untested risk",
+    "main/rag-engine.ts:high impact",
+    "main/search-engine.ts:complexity",
+    "renderer/src/lib/utils/artifact-files.ts:high impact",
+    "main/runtime-config-resolver.ts:high impact",
+    "renderer/src/lib/services/generated-documents.ts:untested risk",
+    "main/providers/gemini.ts:untested risk",
+    "main/link-scorer.ts:untested risk",
+    "main/providers/anthropic.ts:complexity",
+    "main/web-crawler.ts:complexity",
+    "main/providers/local.ts:complexity",
+    "renderer/src/lib/utils/preview-builder.ts:untested risk",
+    "renderer/src/lib/utils/assistant-visible.ts:untested risk",
+    "main/stt-engine.ts:untested risk",
+    "main/web-scraper.ts:untested risk",
+    "renderer/src/lib/components/settings/ModelHubModal.svelte:complexity",
+    "main/system-info.ts:untested risk",
+    "renderer/src/lib/utils/chart-data.ts:complexity",
+    "renderer/src/lib/ui/parser.ts:complexity",
+    "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
+    "main/process-manager.ts:complexity",
+    "main/generated-documents.ts:complexity",
+    "renderer/src/lib/services/ocr.ts:complexity"
+  ]
+}

@@ -3,6 +3,7 @@ import type { AppConfig, ChatMessage, ModelOption } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/tauri';
 import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
+import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { invoke, listen, isTauri } from '$lib/services/tauri';
 import { loadAppConfig } from '$lib/utils/storage';
 
@@ -43,6 +44,31 @@ function toolSupportCacheKey(providerName: string, modelId: string): string {
   return `${providerName}:${modelId}`;
 }
 
+function resolveLocalModelName(config: AppConfig | any): string {
+  return String(config?.llm?.local?.model || '').trim() || 'local-model';
+}
+
+function toolSupportIdentity(config: any): { providerName: string; modelId: string; provider: any } {
+  if (config?.llm?.backend_mode === 'local') {
+    const local = config?.llm?.local || {};
+    return {
+      providerName: 'local',
+      modelId: resolveLocalModelName(config),
+      provider: {
+        base_url: local.base_url || 'http://127.0.0.1:11435/v1',
+        model: resolveLocalModelName(config)
+      }
+    };
+  }
+  const providerName = config?.llm?.provider || 'openai';
+  const provider = config?.llm?.providers?.[providerName];
+  return { providerName, modelId: provider?.model || '', provider };
+}
+
+function debugToolSupport(config: any, message: string) {
+  if (config?.ui?.agent_debug_logs) console.log(message);
+}
+
 /**
  * Synchronous check — reads from the probe cache.
  * For uncached first-party providers: always true (they support tools).
@@ -51,26 +77,29 @@ function toolSupportCacheKey(providerName: string, modelId: string): string {
  * Call detectToolSupport() on model selection to populate the cache.
  */
 export function supportsNativeTools(config: any): boolean {
-  const providerName = config?.llm?.provider || 'openai';
-  const provider = config?.llm?.providers?.[providerName];
-  const modelId = provider?.model || '';
+  const { providerName, modelId } = toolSupportIdentity(config);
   const key = toolSupportCacheKey(providerName, modelId);
 
   if (toolSupportCache.has(key)) {
     const result = toolSupportCache.get(key)!;
-    console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | cached=${result}`);
+    debugToolSupport(config, `[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | cached=${result}`);
     return result;
   }
 
   // First-party providers always support native tool calling
   if (['openai', 'anthropic', 'gemini', 'groq', 'mistral'].includes(providerName)) {
     toolSupportCache.set(key, true);
-    console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | first-party → true`);
+    debugToolSupport(config, `[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | first-party -> true`);
     return true;
   }
 
+  if (providerName === 'local') {
+    debugToolSupport(config, `[agent] supportsNativeTools | providerName=local | modelId=${modelId} | uncached -> false`);
+    return false;
+  }
+
   // Uncached third-party: default to true (agent will fall back on error)
-  console.log(`[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | uncached → true`);
+  debugToolSupport(config, `[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | uncached -> true`);
   return true;
 }
 
@@ -83,10 +112,7 @@ export async function detectToolSupport(): Promise<boolean> {
   if (!isTauri()) return true;
 
   const config = await loadAppConfig();
-  const providerName = config.llm?.provider || 'openai';
-  const providers = config.llm?.providers || {};
-  const provider = providers[providerName];
-  const modelId = provider?.model || '';
+  const { providerName, modelId, provider } = toolSupportIdentity(config);
   const key = toolSupportCacheKey(providerName, modelId);
 
   // Don't re-probe already-cached entries
@@ -109,7 +135,7 @@ export async function detectToolSupport(): Promise<boolean> {
 
     const supports = result?.supportsTools ?? true;
     toolSupportCache.set(key, supports);
-    console.log(`[agent] detectToolSupport | ${providerName}/${modelId} → ${supports} (source: ${result?.source})`);
+    debugToolSupport(config, `[agent] detectToolSupport | ${providerName}/${modelId} -> ${supports} (source: ${result?.source})`);
     return supports;
   } catch (err) {
     console.warn('[agent] detectToolSupport probe failed, defaulting to true:', err);
@@ -123,12 +149,10 @@ export async function detectToolSupport(): Promise<boolean> {
  * Called by the agent when native tool calling fails at runtime.
  */
 export function setToolSupportCache(config: any, supports: boolean): void {
-  const providerName = config?.llm?.provider || 'openai';
-  const provider = config?.llm?.providers?.[providerName];
-  const modelId = provider?.model || '';
+  const { providerName, modelId } = toolSupportIdentity(config);
   const key = toolSupportCacheKey(providerName, modelId);
   toolSupportCache.set(key, supports);
-  console.log(`[agent] setToolSupportCache | ${providerName}/${modelId} → ${supports}`);
+  debugToolSupport(config, `[agent] setToolSupportCache | ${providerName}/${modelId} -> ${supports}`);
 }
 
 function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
@@ -178,6 +202,15 @@ export interface CompletionResult {
   content: string;
   reasoning: string;
   toolCalls?: NativeToolCall[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    eval_count?: number;
+    eval_duration?: number;
+    prompt_eval_count?: number;
+    prompt_eval_duration?: number;
+  } | null;
 }
 
 interface ChatStreamEvent {
@@ -185,11 +218,12 @@ interface ChatStreamEvent {
   type: 'delta' | 'done' | 'error' | 'cancelled';
   content?: string;
   reasoning?: string;
+  usage?: CompletionResult['usage'];
   error?: string;
 }
 
 /** Returns true if model name suggests vision capability */
-function isVisionModel(modelName: string): boolean {
+export function isVisionModel(modelName: string): boolean {
   return /\b(vl|vision|llava|multimodal|gemma[\s-]?3|qwen[\s-]?3[\s._-]?[0-9]|qwen[\s-]?vl)\b|gpt-4o|gpt-4\.1|gemini|claude-3/i.test(modelName);
 }
 
@@ -202,6 +236,16 @@ async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function hasConfiguredVisionModel(config: AppConfig): Promise<boolean> {
+  const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  if (backendMode === 'local') {
+    return hasLocalVisionModel(config);
+  }
+  const providerName = config.llm?.provider || 'openai';
+  const provider = config.llm?.providers?.[providerName];
+  return isVisionModel(provider?.model || '');
 }
 
 export function toRequestMessages(messages: RequestMessage[], modelName?: string, hasMmproj?: boolean) {
@@ -341,10 +385,16 @@ async function streamLocalReply(args: {
   signal?: AbortSignal;
   onChunk: (value: string) => void;
   onReasoning?: (value: string) => void;
+  onUsage?: (usage: CompletionResult['usage']) => void;
 }): Promise<void> {
   const config = await loadChatConfig();
   const baseUrl = await ensureLocalRuntime(config);
   const hasVisionModel = await hasLocalVisionModel(config);
+  const dispatcher = createBufferedStreamDispatcher({
+    onContent: args.onChunk,
+    onReasoning: args.onReasoning,
+    delayMs: 55
+  });
 
   const response = await fetch(resolveLocalBaseUrl({
     llm: { local: { base_url: baseUrl } }
@@ -353,9 +403,10 @@ async function streamLocalReply(args: {
     headers: { 'Content-Type': 'application/json' },
     signal: args.signal,
     body: JSON.stringify({
-      model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
+      model: resolveLocalModelName(config),
       stream: true,
-      messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel),
+      stream_options: { include_usage: true },
+      messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
       ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
       ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
     })
@@ -384,11 +435,12 @@ async function streamLocalReply(args: {
       if (!payload || payload === '[DONE]') continue;
       try {
         const parsed = JSON.parse(payload);
+        if (parsed?.usage) args.onUsage?.(parsed.usage);
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) args.onReasoning?.(String(reasoning));
-        if (content) args.onChunk(String(content));
+        if (reasoning) dispatcher.pushReasoning(String(reasoning));
+        if (content) dispatcher.pushContent(String(content));
       } catch { /* skip */ }
     }
   }
@@ -398,14 +450,16 @@ async function streamLocalReply(args: {
     if (payload && payload !== '[DONE]') {
       try {
         const parsed = JSON.parse(payload);
+        if (parsed?.usage) args.onUsage?.(parsed.usage);
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) args.onReasoning?.(String(reasoning));
-        if (content) args.onChunk(String(content));
+        if (reasoning) dispatcher.pushReasoning(String(reasoning));
+        if (content) dispatcher.pushContent(String(content));
       } catch { /* skip */ }
     }
   }
+  dispatcher.flush();
 }
 
 export async function streamAssistantReply(args: {
@@ -413,6 +467,7 @@ export async function streamAssistantReply(args: {
   signal?: AbortSignal;
   onChunk: (value: string) => void;
   onReasoning?: (value: string) => void;
+  onUsage?: (usage: CompletionResult['usage']) => void;
   apiKey?: string;
 }): Promise<void> {
   const config = await loadChatConfig();
@@ -441,6 +496,7 @@ export async function streamAssistantReply(args: {
       }
 
       if (event.type === 'done' || event.type === 'cancelled') {
+        if (event.usage) args.onUsage?.(event.usage);
         resolveStream?.();
         return;
       }
@@ -513,7 +569,8 @@ function readCompletionPayload(payload: any): CompletionResult {
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
     return {
       content: payload.content,
-      reasoning: String(payload.reasoning || '')
+      reasoning: String(payload.reasoning || ''),
+      usage: payload.usage || null
     };
   }
   // Raw OpenAI API format: { choices: [{ message: { content: "..." } }] }
@@ -522,7 +579,8 @@ function readCompletionPayload(payload: any): CompletionResult {
   const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
   return {
     content: rawContent != null ? String(rawContent) : '',
-    reasoning: rawReasoning != null ? String(rawReasoning) : ''
+    reasoning: rawReasoning != null ? String(rawReasoning) : '',
+    usage: payload?.usage || null
   };
 }
 
@@ -543,9 +601,9 @@ export async function completeAssistantReply(args: {
       headers: { 'Content-Type': 'application/json' },
       signal: args.signal,
       body: JSON.stringify({
-        model: config.llm?.local?.model || config.llm?.providers?.[config.llm?.provider || 'openai']?.model || 'local-model',
+        model: resolveLocalModelName(config),
         stream: false,
-        messages: toRequestMessages(args.messages, config.llm?.local?.model, hasVisionModel),
+        messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
         ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
         ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
       })
@@ -558,6 +616,7 @@ export async function completeAssistantReply(args: {
 
     const payload = await response.json();
     const result = readCompletionPayload(payload);
+    result.usage = payload?.usage || result.usage || null;
     return result;
   }
 
@@ -583,6 +642,7 @@ export async function completeAssistantReply(args: {
       }
     });
     const result = readCompletionPayload(payload);
+    result.usage = payload?.usage || result.usage || null;
     return result;
   }
 
@@ -599,7 +659,12 @@ export async function completeAssistantReply(args: {
   const rawReasoning = (message as any).reasoning_content ?? (message as any).reasoning ?? (message as any).thinking;
   return {
     content: rawContent != null ? String(rawContent) : '',
-    reasoning: rawReasoning != null ? String(rawReasoning) : ''
+    reasoning: rawReasoning != null ? String(rawReasoning) : '',
+    usage: response?.usage ? {
+      input_tokens: response.usage.prompt_tokens,
+      output_tokens: response.usage.completion_tokens,
+      total_tokens: response.usage.total_tokens
+    } : null
   };
 }
 
@@ -617,6 +682,7 @@ export function readCompletionWithTools(payload: any): CompletionResult {
     return {
       content: payload.content,
       reasoning: String(payload.reasoning || ''),
+      usage: payload.usage || null,
       toolCalls: toolCalls.length ? toolCalls : undefined
     };
   }
@@ -631,6 +697,7 @@ export function readCompletionWithTools(payload: any): CompletionResult {
   return {
     content: String(message.content || ''),
     reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
+    usage: payload?.usage || null,
     toolCalls: toolCalls.length ? toolCalls : undefined
   };
 }

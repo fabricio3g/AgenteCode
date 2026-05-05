@@ -6,14 +6,15 @@ import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDi
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, stopLlama } from '$lib/services/runtime';
+import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isTauri } from '$lib/services/tauri';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
 import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
-import type { RequestMessage } from '$lib/services/chat-api';
-import { completeAssistantReply, detectToolSupport, fetchModels, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
+import { completeAssistantReply, detectToolSupport, fetchModels, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 
 interface PersistedState {
@@ -51,6 +52,12 @@ interface ActiveGenerationRun {
   mode: GenerationComposerMode;
   startedAt: number;
   researchTaskId?: string | null;
+}
+
+interface ChatSearchState {
+  results: SearchResult[];
+  loading: boolean;
+  query: string;
 }
 
 const LOCAL_MODEL_SETTINGS_KEY = 'chatealm_model_load_settings_by_model';
@@ -105,6 +112,118 @@ function agentStopReason(result: AgentStoreResult): AgentStopReason {
   return result.error ? 'error' : 'none';
 }
 
+function reliableUsageMetadata(
+  usage: CompletionResult['usage'],
+  elapsedSeconds: number,
+  source: 'provider' | 'runtime'
+): NonNullable<MessageVersion['metadata']> | null {
+  if (!usage) return null;
+  const inputTokens = Number(usage.input_tokens ?? usage.prompt_eval_count ?? 0) || undefined;
+  const outputTokens = Number(usage.output_tokens ?? usage.eval_count ?? 0) || undefined;
+  const totalTokens = Number(usage.total_tokens ?? ((inputTokens || 0) + (outputTokens || 0))) || undefined;
+  const evalDurationSeconds = Number(usage.eval_duration || 0) > 0 ? Number(usage.eval_duration) / 1_000_000_000 : 0;
+  const timing = evalDurationSeconds || elapsedSeconds;
+  const tokensPerSecond = outputTokens && timing > 0 ? outputTokens / timing : undefined;
+  if (!inputTokens && !outputTokens && !totalTokens) return null;
+  return {
+    usageSource: source,
+    timingScope: 'model',
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    tokens: outputTokens || totalTokens,
+    timing,
+    modelTimingSeconds: timing,
+    tokensPerSecond
+  };
+}
+
+function noUsageMetadata(timingScope: NonNullable<MessageVersion['metadata']>['timingScope'] = 'unknown'): NonNullable<MessageVersion['metadata']> {
+  return {
+    usageSource: 'none',
+    timingScope,
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+    tokens: undefined,
+    timing: undefined,
+    modelTimingSeconds: undefined,
+    totalElapsedSeconds: undefined,
+    reasoningTimingSeconds: undefined,
+    tokensPerSecond: undefined
+  };
+}
+
+function executionMetadata(backendMode: GenerationBackendMode): NonNullable<MessageVersion['metadata']> {
+  return {
+    executionBackend: backendMode,
+    executionTransport: backendMode === 'local' ? 'local_runtime' : (isTauri() ? 'provider_ipc' : 'sdk')
+  };
+}
+
+type AssistantMetadata = NonNullable<MessageVersion['metadata']>;
+
+function finalizeAssistantMetadata(options: {
+  existing?: MessageVersion['metadata'] | null;
+  modelName: string;
+  backendMode: GenerationBackendMode;
+  usage?: CompletionResult['usage'] | null;
+  elapsedSeconds?: number;
+  totalElapsedSeconds?: number;
+  reasoningElapsedSeconds?: number;
+  noUsageTimingScope?: AssistantMetadata['timingScope'];
+  overrides?: Partial<AssistantMetadata>;
+}): AssistantMetadata {
+  const {
+    existing,
+    modelName,
+    backendMode,
+    usage,
+    elapsedSeconds = 0,
+    totalElapsedSeconds,
+    reasoningElapsedSeconds,
+    noUsageTimingScope = 'unknown',
+    overrides = {}
+  } = options;
+
+  const reliableUsage = reliableUsageMetadata(
+    usage || null,
+    elapsedSeconds,
+    backendMode === 'local' ? 'runtime' : 'provider'
+  );
+
+  return {
+    ...(existing || {}),
+    modelName,
+    ...executionMetadata(backendMode),
+    ...(reliableUsage || noUsageMetadata(noUsageTimingScope)),
+    totalElapsedSeconds: totalElapsedSeconds ?? existing?.totalElapsedSeconds,
+    reasoningTimingSeconds: reasoningElapsedSeconds ?? existing?.reasoningTimingSeconds,
+    ...overrides
+  };
+}
+
+function startReasoningTimer() {
+  return {
+    startedAt: 0,
+    markStarted() {
+      if (!this.startedAt) this.startedAt = Date.now();
+    },
+    elapsedSeconds() {
+      return this.startedAt ? (Date.now() - this.startedAt) / 1000 : undefined;
+    }
+  };
+}
+
+function sharedAssistantStylePrompt(): string {
+  return [
+    'Write in ChateaLM\'s normal assistant style regardless of backend.',
+    'Keep answers clear, polished, and concise unless the user asks for depth.',
+    'Use markdown structure only when it helps scanning.',
+    'Never expose internal tool traces, raw payloads, model chatter, or hidden reasoning in the visible answer.'
+  ].join('\n');
+}
+
 function activityFromProgress(text: string): { currentActivity: AgentActivity; activityLabel: string } {
   const value = String(text || '').toLowerCase();
   if (value.includes('search')) return { currentActivity: 'searching', activityLabel: 'Searching the web' };
@@ -151,6 +270,32 @@ function markAgentWriting(message: ChatMessage) {
     ...steps.map((step) => step.status === 'running' ? { ...step, status: 'done' as const } : step),
     { id: createId('step'), type: 'thinking', label: 'Writing answer', status: 'running', detail: 'Preparing final response' }
   ];
+}
+
+function updateStreamingVersion(message: ChatMessage, content: string, reasoning: string, metadata: MessageVersion['metadata']) {
+  message.versions = [{
+    content,
+    createdAt: message.createdAt,
+    reasoning,
+    metadata
+  }];
+}
+
+function appendStreamingContent(
+  message: ChatMessage,
+  chunk: string,
+  reasoning: string,
+  metadata: MessageVersion['metadata']
+) {
+  if (!chunk) return;
+  message.content += chunk;
+  updateStreamingVersion(message, message.content, reasoning, metadata);
+}
+
+function appendStreamingReasoning(current: string, chunk: string): string {
+  const cleaned = normalizeStreamingReasoningDelta(chunk);
+  if (!cleaned) return current;
+  return `${current || ''}${cleaned}`;
 }
 
 function readBlobAsDataUrl(blob: Blob): Promise<string> {
@@ -450,8 +595,7 @@ class AppStore {
   sidebarOpen = $state(true);
   chatSearchOpen = $state(false);
   searchSidebarOpen = $state(false);
-  searchResults = $state<SearchResult[]>([]);
-  searchLoading = $state(false);
+  searchStateByChat = $state<Record<string, ChatSearchState>>({});
   downloadsOpen = $state(false);
   voiceModeActive = $state(false);
   loading = $state(false);
@@ -644,6 +788,27 @@ class AppStore {
     return this.ragDocumentsByChat[this.currentChatId] || [];
   }
 
+  get currentSearchState() {
+    return this.getSearchStateForChat(this.currentChatId || '');
+  }
+
+  getSearchStateForChat(chatId: string): ChatSearchState {
+    if (!chatId) return { results: [], loading: false, query: '' };
+    return this.searchStateByChat[chatId] || { results: [], loading: false, query: '' };
+  }
+
+  private setSearchStateForChat(chatId: string, patch: Partial<ChatSearchState>) {
+    if (!chatId) return;
+    const current = this.getSearchStateForChat(chatId);
+    this.searchStateByChat = {
+      ...this.searchStateByChat,
+      [chatId]: {
+        ...current,
+        ...patch
+      }
+    };
+  }
+
   async refreshContextBudgetPreview() {
     if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       this.contextBudget = null;
@@ -816,6 +981,8 @@ class AppStore {
     const localPrompt = this.config.llm?.local?.system_prompt?.trim() || '';
     const providerPrompt = this.config.llm?.providers?.[this.activeProviderName]?.system_prompt?.trim() || '';
     let systemPrompt = this.backendMode === 'local' ? localPrompt : providerPrompt;
+    const stylePrompt = sharedAssistantStylePrompt();
+    systemPrompt = systemPrompt ? `${stylePrompt}\n\n${systemPrompt}` : stylePrompt;
 
     if (this.userName?.trim()) {
       const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
@@ -1324,6 +1491,9 @@ class AppStore {
     this.activeRunsByChat = activeRuns;
     this.refreshGenerationState();
     delete this.ragDocumentsByChat[chatId];
+    const searchStates = { ...this.searchStateByChat };
+    delete searchStates[chatId];
+    this.searchStateByChat = searchStates;
     if (this.currentChatId === chatId) {
       this.currentChatId = this.chats[0]?.id || null;
       this.composer = this.currentChat?.draft || '';
@@ -1334,6 +1504,9 @@ class AppStore {
     }
     if (!this.chats.length) this.createChat();
     this.persist();
+    if (isTauri()) {
+      clearRagDocuments(chatId).catch(() => {});
+    }
     deleteChatFromDb(chatId).catch(() => {});
     toastStore.info(`Chat deleted${title ? `: ${title}` : ''}`, 2500);
   }
@@ -1576,32 +1749,41 @@ class AppStore {
     this.searchMode = this.searchMode === mode ? 'chat' : mode;
   }
 
-  async performWebSearch(query: string) {
+  async performWebSearch(query: string, chatId = this.currentChatId || '') {
     const trimmed = String(query || '').trim();
+    const targetChatId = chatId || '';
+    if (!targetChatId) return;
     if (!trimmed) {
-      this.searchResults = [];
+      this.setSearchStateForChat(targetChatId, { results: [], query: '', loading: false });
       return;
     }
 
-    this.searchLoading = true;
+    this.setSearchStateForChat(targetChatId, { loading: true, query: trimmed });
     try {
       const response = await webSearch({
         query: trimmed,
-        context: this.buildSearchConversationContext(),
+        context: this.buildSearchConversationContext(undefined, targetChatId),
         deep: false,
         mode: 'search'
       });
-      this.searchResults = Array.isArray(response.results) ? response.results : [];
+      this.setSearchStateForChat(targetChatId, {
+        results: Array.isArray(response.results) ? response.results : [],
+        loading: false,
+        query: trimmed
+      });
     } catch (error) {
-      this.searchResults = [];
+      this.setSearchStateForChat(targetChatId, { results: [], loading: false, query: trimmed });
       toastStore.error(String((error as Error)?.message || error || 'Search failed'));
-    } finally {
-      this.searchLoading = false;
     }
   }
 
-  openSearchSidebarWithResults(results: SearchResult[]) {
-    this.searchResults = Array.isArray(results) ? results : [];
+  openSearchSidebarWithResults(results: SearchResult[], chatId = this.currentChatId || '') {
+    if (chatId) {
+      this.setSearchStateForChat(chatId, {
+        results: Array.isArray(results) ? results : [],
+        loading: false
+      });
+    }
     this.searchSidebarOpen = true;
   }
 
@@ -1633,18 +1815,20 @@ class AppStore {
   }
 
   async clearRag() {
-    if (!isTauri() || !this.currentChatId) return;
-    await clearRagDocuments(this.currentChatId);
+    const targetChatId = this.currentChatId;
+    const targetChat = this.findChat(targetChatId);
+    if (!isTauri() || !targetChatId || !targetChat) return;
+    await clearRagDocuments(targetChatId);
     this.pendingAttachments = [];
-    if (this.currentChat?.workspace) {
-      this.currentChat.workspace = null;
-      if (this.currentChat.contextMode === 'work') {
-        this.currentChat.contextMode = 'chat';
+    if (targetChat.workspace) {
+      targetChat.workspace = null;
+      if (targetChat.contextMode === 'work') {
+        targetChat.contextMode = 'chat';
       }
       this.touchChats();
       this.persist();
     }
-    await this.refreshRagDocuments();
+    await this.refreshRagDocuments(targetChatId);
   }
 
   removeAttachment(attachmentId: string) {
@@ -1685,7 +1869,8 @@ class AppStore {
   }
 
   async addFiles(files: File[]) {
-    if (!files.length || !this.currentChatId) return;
+    const targetChatId = this.currentChatId;
+    if (!files.length || !targetChatId) return;
 
     const nextAttachments: Attachment[] = [];
 
@@ -1701,15 +1886,20 @@ class AppStore {
 
       if (attachment.kind === 'image') {
         attachment.preview = URL.createObjectURL(file);
-        // Read base64 for vision API calls
+        // Read base64 for vision API calls.
         attachment.base64 = await readBlobAsDataUrl(file);
-        // Run OCR on images for text fallback (non-blocking)
-        try {
-          const { extractTextFromFile } = await import('$lib/services/ocr');
-          const ocrText = await extractTextFromFile(file);
-          if (ocrText.trim()) attachment.ocrText = ocrText.trim();
-        } catch (err) {
-          console.warn('[addFiles] OCR failed for image:', err);
+        const visionReady = await hasConfiguredVisionModel(this.config);
+        attachment.visionReady = visionReady;
+        attachment.processingMode = visionReady ? 'vision' : 'ocr';
+
+        if (!visionReady) {
+          try {
+            const { extractTextFromFile } = await import('$lib/services/ocr');
+            const ocrText = await extractTextFromFile(file);
+            if (ocrText.trim()) attachment.ocrText = ocrText.trim();
+          } catch (err) {
+            console.warn('[addFiles] OCR failed for image:', err);
+          }
         }
         attachment.status = 'ready';
         nextAttachments.push(attachment);
@@ -1721,6 +1911,7 @@ class AppStore {
       const fileBlob = new Blob([fileBuffer], { type: file.type });
       attachment.data = await readBlobAsDataUrl(fileBlob);
       attachment.size = fileBlob.size;
+      attachment.processingMode = 'document_text';
 
       // Documents: try backend RAG ingestion, fallback to client-side extraction
       try {
@@ -1728,7 +1919,7 @@ class AppStore {
         const tempPath = await writeTempFile(`${Date.now()}_${file.name}`, bytes);
         const doc = await ingestDocument({
           file_path: tempPath,
-          chat_id: this.currentChatId
+          chat_id: targetChatId
         });
         attachment.docId = doc.id;
         attachment.status = 'ready';
@@ -1766,8 +1957,14 @@ class AppStore {
       }
     }
 
-    this.pendingAttachments = [...this.pendingAttachments, ...nextAttachments];
-    await this.refreshRagDocuments();
+    if (this.currentChatId === targetChatId) {
+      this.pendingAttachments = [...this.pendingAttachments, ...nextAttachments];
+    } else {
+      for (const attachment of nextAttachments) {
+        if (attachment.preview?.startsWith('blob:')) URL.revokeObjectURL(attachment.preview);
+      }
+    }
+    await this.refreshRagDocuments(targetChatId);
   }
 
   private async clearWorkspaceDocs(chatId = this.currentChatId || '') {
@@ -1782,7 +1979,9 @@ class AppStore {
   }
 
   async pickWorkspaceFolder() {
-    if (!isTauri() || !this.currentChatId || !this.currentChat) return;
+    const targetChatId = this.currentChatId;
+    const targetChat = this.findChat(targetChatId);
+    if (!isTauri() || !targetChatId || !targetChat) return;
     const selectedPath = await pickWorkspaceFolderDialog();
     if (!selectedPath) return;
 
@@ -1790,9 +1989,11 @@ class AppStore {
     this.error = null;
 
     try {
-      await this.clearWorkspaceDocs();
-      const result = await indexWorkspaceFolder(selectedPath, this.currentChatId);
-      this.currentChat.workspace = {
+      await this.clearWorkspaceDocs(targetChatId);
+      const result = await indexWorkspaceFolder(selectedPath, targetChatId);
+      const chat = this.findChat(targetChatId);
+      if (!chat) return;
+      chat.workspace = {
         rootName: result.root_name,
         rootPath: result.root_path,
         attachedAt: Date.now(),
@@ -1809,10 +2010,10 @@ class AppStore {
           reason: file.reason
         }))
       };
-      this.currentChat.contextMode = 'work';
+      chat.contextMode = 'work';
       this.touchChats();
       this.persist();
-      await this.refreshRagDocuments();
+      await this.refreshRagDocuments(targetChatId);
       toastStore.success(
         result.indexed_count > 0
           ? `Workspace ready: ${result.indexed_count} file${result.indexed_count === 1 ? '' : 's'} indexed`
@@ -1828,12 +2029,14 @@ class AppStore {
       toastStore.error('Work mode is only available in the desktop app.');
       return;
     }
-    if (!files.length || !this.currentChatId || !this.currentChat) return;
+    const targetChatId = this.currentChatId;
+    const targetChat = this.findChat(targetChatId);
+    if (!files.length || !targetChatId || !targetChat) return;
 
     this.workspaceIndexing = true;
     this.error = null;
     try {
-      await this.clearWorkspaceDocs();
+      await this.clearWorkspaceDocs(targetChatId);
 
       const sortedFiles = [...files].sort((left, right) => getWorkspacePath(left).localeCompare(getWorkspacePath(right)));
       const workspaceFiles: WorkspaceFile[] = [];
@@ -1890,7 +2093,7 @@ class AppStore {
             const doc = await ingestText({
               source: relativePath,
               text,
-              chat_id: this.currentChatId,
+              chat_id: targetChatId,
               file_type: workspaceFile.type
             });
             workspaceFile.docId = doc.id;
@@ -1907,7 +2110,9 @@ class AppStore {
       }
 
       const rootName = workspaceFiles[0]?.path.split('/')[0] || sortedFiles[0]?.name || 'Workspace';
-      this.currentChat.workspace = {
+      const chat = this.findChat(targetChatId);
+      if (!chat) return;
+      chat.workspace = {
         rootName,
         rootPath: undefined,
         attachedAt: Date.now(),
@@ -1916,10 +2121,10 @@ class AppStore {
         skippedCount,
         files: workspaceFiles
       };
-      this.currentChat.contextMode = 'work';
+      chat.contextMode = 'work';
       this.touchChats();
       this.persist();
-      await this.refreshRagDocuments();
+      await this.refreshRagDocuments(targetChatId);
 
       toastStore.success(
         indexedCount > 0
@@ -1932,16 +2137,18 @@ class AppStore {
   }
 
   async clearWorkspace() {
-    if (!this.currentChatId || !this.currentChat?.workspace) return;
-    const docIds = this.currentChat.workspace.files
+    const targetChatId = this.currentChatId;
+    const targetChat = this.findChat(targetChatId);
+    if (!targetChatId || !targetChat?.workspace) return;
+    const docIds = targetChat.workspace.files
       .map((file) => file.docId)
       .filter((docId): docId is string => !!docId);
-    await Promise.allSettled(docIds.map((docId) => removeRagDocument(docId, this.currentChatId!)));
-    this.currentChat.workspace = null;
-    this.currentChat.contextMode = 'chat';
+    await Promise.allSettled(docIds.map((docId) => removeRagDocument(docId, targetChatId)));
+    targetChat.workspace = null;
+    targetChat.contextMode = 'chat';
     this.touchChats();
     this.persist();
-    await this.refreshRagDocuments();
+    await this.refreshRagDocuments(targetChatId);
     toastStore.info('Workspace removed from this chat.', 2200);
   }
 
@@ -1976,47 +2183,53 @@ class AppStore {
 
   /** Create a file inside the workspace from the UI */
   async createWorkspaceFile(relativePath: string, docType: string, content: string): Promise<string> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     const fullPath = await createWorkspaceDocument(rootPath, relativePath, docType, content);
-    await this.refreshWorkspace();
+    await this.refreshWorkspace(targetChatId);
     return fullPath;
   }
 
   async renameWorkspaceFile(oldRelPath: string, newRelPath: string): Promise<void> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     await renameWorkspaceFile(rootPath, oldRelPath, newRelPath);
-    await this.refreshWorkspace();
+    await this.refreshWorkspace(targetChatId);
     toastStore.info(`Renamed to ${newRelPath.split('/').pop()}`, 2000);
   }
 
   async deleteWorkspaceFile(relativePath: string): Promise<void> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     await deleteWorkspaceFile(rootPath, relativePath);
-    await this.refreshWorkspace();
+    await this.refreshWorkspace(targetChatId);
     toastStore.info(`Deleted ${relativePath.split('/').pop()}`, 2000);
   }
 
   async readWorkspaceFile(relativePath: string): Promise<string> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     return readWorkspaceFile(rootPath, relativePath);
   }
 
   async openWorkspaceFile(relativePath: string): Promise<void> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     const fullPath = `${rootPath}/${relativePath}`;
     await openWorkspaceFile(fullPath);
   }
 
   async createWorkspaceFolder(relativePath: string): Promise<void> {
-    const rootPath = this.currentChat?.workspace?.rootPath;
+    const targetChatId = this.currentChatId || '';
+    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     await createWorkspaceFolder(rootPath, relativePath);
-    await this.refreshWorkspace();
+    await this.refreshWorkspace(targetChatId);
     toastStore.info(`Folder created`, 2000);
   }
 
@@ -2105,6 +2318,7 @@ class AppStore {
       metadata: activeComposerMode === 'agent'
         ? {
             modelName: activeModelLabel,
+            ...executionMetadata(activeBackendMode),
             currentActivity: 'planning',
             activityLabel: 'Agent is planning'
           }
@@ -2155,7 +2369,8 @@ class AppStore {
     });
     const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
     const startTime = Date.now();
-    let tokenCount = 0;
+    const reasoningTimer = startReasoningTimer();
+    let exactUsage: CompletionResult['usage'] = null;
     this.searchMode = 'chat';
     if (activeComposerMode !== 'agent') {
       this.composerMode = 'chat';
@@ -2271,6 +2486,8 @@ class AppStore {
       let systemPrompt = activeBackendMode === 'local'
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
         : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
+      const stylePrompt = sharedAssistantStylePrompt();
+      systemPrompt = systemPrompt ? `${stylePrompt}\n\n${systemPrompt}` : stylePrompt;
 
       if (this.userName?.trim()) {
         const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
@@ -2352,6 +2569,7 @@ class AppStore {
             syncMsg();
           },
           onReasoning: (value) => {
+            reasoningTimer.markStarted();
             assistantMessage.reasoning = value;
             syncMsg();
           },
@@ -2389,25 +2607,28 @@ class AppStore {
           assistantMessage.status = 'error';
           assistantMessage.done = true;
           assistantMessage.metadata = {
-            modelName: activeModelLabel,
-            error: true,
-            errorMessage: agentResult.error,
-            outcome,
-            stopReason,
-            currentActivity: 'stopped',
-            activityLabel: 'Agent failed',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
-            tokens: 0,
-            timing: 0,
-            tokensPerSecond: 0
+            ...finalizeAssistantMetadata({
+              modelName: activeModelLabel,
+              backendMode: activeBackendMode,
+              noUsageTimingScope: 'agent_wall',
+              overrides: {
+                error: true,
+                errorMessage: agentResult.error,
+                outcome,
+                stopReason,
+                currentActivity: 'stopped',
+                activityLabel: 'Agent failed',
+                workProduct: agentResult.artifact?.workProduct ? {
+                  id: agentResult.artifact.workProduct.id,
+                  kind: agentResult.artifact.workProduct.kind,
+                  title: agentResult.artifact.workProduct.title,
+                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+                  status: agentResult.artifact.workProduct.status
+                } : undefined,
+                publicFallback: !!agentResult.publicFallback,
+                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+              }
+            })
           };
         } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
           // Partial/stopped agents keep their evidence and render as a normal answer with a warning.
@@ -2415,24 +2636,27 @@ class AppStore {
           assistantMessage.done = true;
           assistantMessage.status = 'idle';
           assistantMessage.metadata = {
-            modelName: activeModelLabel,
-            warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
-            outcome,
-            stopReason,
-            currentActivity: 'stopped',
-            activityLabel: 'Agent stopped',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
-            tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
-            timing: 0,
-            tokensPerSecond: 0
+            ...finalizeAssistantMetadata({
+              modelName: activeModelLabel,
+              backendMode: activeBackendMode,
+              noUsageTimingScope: 'agent_wall',
+              overrides: {
+                warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
+                outcome,
+                stopReason,
+                currentActivity: 'stopped',
+                activityLabel: 'Agent stopped',
+                workProduct: agentResult.artifact?.workProduct ? {
+                  id: agentResult.artifact.workProduct.id,
+                  kind: agentResult.artifact.workProduct.kind,
+                  title: agentResult.artifact.workProduct.title,
+                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+                  status: agentResult.artifact.workProduct.status
+                } : undefined,
+                publicFallback: !!agentResult.publicFallback,
+                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+              }
+            })
           };
           if (agentResult.error && !usableAgentResult) {
             if (this.config.ui?.agent_debug_logs) {
@@ -2447,6 +2671,7 @@ class AppStore {
           assistantMessage.content = agentResult.content;
           assistantMessage.metadata = {
             ...(assistantMessage.metadata || {}),
+            ...executionMetadata(activeBackendMode),
             outcome,
             stopReason,
             currentActivity: 'completed',
@@ -2493,7 +2718,6 @@ class AppStore {
         if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id)) {
           this.setCurrentArtifact(agentResult.artifact, assistantMessage.id);
         }
-        tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
         // Agent artifacts are chat-sandboxed, so there is no host workspace write to rescan here.
       } else {
         await streamAssistantReply({
@@ -2501,14 +2725,12 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           onChunk: (value) => {
-            assistantMessage.content += value;
-            tokenCount += value.split(/\s+/).filter(Boolean).length;
-            assistantMessage.versions = [{
-              content: assistantMessage.content,
-              createdAt: assistantMessage.createdAt,
-              reasoning: assistantMessage.reasoning,
-              metadata: assistantMessage.metadata
-            }];
+            appendStreamingContent(
+              assistantMessage,
+              value,
+              assistantMessage.reasoning || '',
+              assistantMessage.metadata
+            );
             if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
               assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
                 if (index === all.length - 1) {
@@ -2520,9 +2742,18 @@ class AppStore {
             syncMsg(); // ← CRITICAL: replace array slot so Svelte 5 sees the new object
           },
           onReasoning: (value) => {
-            const cleaned = value.replace(/^\s*\|\s*$/gm, '').replace(/\n{3,}/g, '\n\n');
-            assistantMessage.reasoning = `${assistantMessage.reasoning || ''}${cleaned}`;
+            reasoningTimer.markStarted();
+            assistantMessage.reasoning = appendStreamingReasoning(assistantMessage.reasoning || '', value);
+            updateStreamingVersion(
+              assistantMessage,
+              assistantMessage.content,
+              assistantMessage.reasoning,
+              assistantMessage.metadata
+            );
             syncMsg();
+          },
+          onUsage: (usage) => {
+            exactUsage = usage || exactUsage;
           }
         });
       }
@@ -2533,17 +2764,15 @@ class AppStore {
         assistantMessage.status = 'idle';
       }
       const timing = (Date.now() - startTime) / 1000;
-      const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
-      // Only overwrite metadata if there's no error/warning already set
-      if (!assistantMessage.metadata?.error && !assistantMessage.metadata?.warning) {
-        assistantMessage.metadata = {
-          ...(assistantMessage.metadata || {}),
-          modelName: activeModelLabel,
-          tokens: tokenCount,
-          timing,
-          tokensPerSecond
-        };
-      }
+      assistantMessage.metadata = finalizeAssistantMetadata({
+        existing: assistantMessage.metadata,
+        modelName: activeModelLabel,
+        backendMode: activeBackendMode,
+        usage: exactUsage,
+        elapsedSeconds: timing,
+        totalElapsedSeconds: timing,
+        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
+      });
       assistantMessage.model = activeModelLabel;
       assistantMessage.versions = [{
         content: assistantMessage.content,
@@ -2638,14 +2867,15 @@ class AppStore {
       assistantMessage.status = aborted ? 'idle' : 'error';
       assistantMessage.content = aborted ? (assistantMessage.content || '') : (assistantMessage.content || errorMsg);
       const timing = typeof startTime === 'number' ? (Date.now() - startTime) / 1000 : 0;
-      const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
-      assistantMessage.metadata = {
+      assistantMessage.metadata = finalizeAssistantMetadata({
+        existing: assistantMessage.metadata,
         modelName: activeModelLabel,
-        tokens: tokenCount,
-        timing,
-        tokensPerSecond,
-        ...(aborted ? {} : { error: true })
-      };
+        backendMode: activeBackendMode,
+        elapsedSeconds: timing,
+        totalElapsedSeconds: timing,
+        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
+        overrides: aborted ? {} : { error: true, errorMessage: errorMsg }
+      });
       assistantMessage.model = activeModelLabel;
       assistantMessage.versions = [{
         content: assistantMessage.content,
@@ -2783,14 +3013,16 @@ class AppStore {
       startedAt: Date.now()
     });
     const startTime = Date.now();
-    let tokenCount = 0;
+    const reasoningTimer = startReasoningTimer();
+    let exactUsage: CompletionResult['usage'] = null;
 
     const nextVersion: MessageVersion = {
       content: '',
       reasoning: '',
       createdAt: Date.now(),
       metadata: {
-        modelName: activeModelLabel
+        modelName: activeModelLabel,
+        ...executionMetadata(activeBackendMode)
       }
     };
 
@@ -2807,11 +3039,13 @@ class AppStore {
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
+        ...executionMetadata(activeBackendMode),
         currentActivity: 'planning',
         activityLabel: 'Agent is planning'
       };
       nextVersion.metadata = {
         ...(nextVersion.metadata || {}),
+        ...executionMetadata(activeBackendMode),
         currentActivity: 'planning',
         activityLabel: 'Agent is planning'
       };
@@ -2827,15 +3061,16 @@ class AppStore {
       const systemPrompt = activeBackendMode === 'local'
         ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
         : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
-      const outboundMessages: RequestMessage[] = systemPrompt
-        ? [{ role: 'system', content: systemPrompt }, ...previousMessages]
-        : previousMessages;
+      const styledSystemPrompt = systemPrompt
+        ? `${sharedAssistantStylePrompt()}\n\n${systemPrompt}`
+        : sharedAssistantStylePrompt();
+      const outboundMessages: RequestMessage[] = [{ role: 'system', content: styledSystemPrompt }, ...previousMessages];
 
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const agentResult = await runAgentTask({
           chatId: targetChatId,
-          systemPrompt,
+          systemPrompt: styledSystemPrompt,
           messages: previousMessages,
           rawPrompt,
           executionMode: 'sandbox',
@@ -2868,6 +3103,7 @@ class AppStore {
             this.touchChats();
           },
           onReasoning: (value) => {
+            reasoningTimer.markStarted();
             nextVersion.reasoning = value;
             message.reasoning = value;
             this.touchChats();
@@ -2909,25 +3145,29 @@ class AppStore {
           message.content = agentResult.content || agentResult.error;
           message.status = 'error';
           nextVersion.metadata = {
-            modelName: activeModelLabel,
-            error: true,
-            errorMessage: agentResult.error,
-            outcome,
-            stopReason,
-            currentActivity: 'stopped',
-            activityLabel: 'Agent failed',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
-            tokens: 0,
-            timing: 0,
-            tokensPerSecond: 0
+            ...finalizeAssistantMetadata({
+              existing: nextVersion.metadata,
+              modelName: activeModelLabel,
+              backendMode: activeBackendMode,
+              noUsageTimingScope: 'agent_wall',
+              overrides: {
+                error: true,
+                errorMessage: agentResult.error,
+                outcome,
+                stopReason,
+                currentActivity: 'stopped',
+                activityLabel: 'Agent failed',
+                workProduct: agentResult.artifact?.workProduct ? {
+                  id: agentResult.artifact.workProduct.id,
+                  kind: agentResult.artifact.workProduct.kind,
+                  title: agentResult.artifact.workProduct.title,
+                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+                  status: agentResult.artifact.workProduct.status
+                } : undefined,
+                publicFallback: !!agentResult.publicFallback,
+                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+              }
+            })
           };
           message.metadata = nextVersion.metadata;
         } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
@@ -2935,24 +3175,28 @@ class AppStore {
           message.content = agentResult.content;
           message.status = 'idle';
           nextVersion.metadata = {
-            modelName: activeModelLabel,
-            warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
-            outcome,
-            stopReason,
-            currentActivity: 'stopped',
-            activityLabel: 'Agent stopped',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted,
-            tokens: agentResult.content.split(/\s+/).filter(Boolean).length,
-            timing: 0,
-            tokensPerSecond: 0
+            ...finalizeAssistantMetadata({
+              existing: nextVersion.metadata,
+              modelName: activeModelLabel,
+              backendMode: activeBackendMode,
+              noUsageTimingScope: 'agent_wall',
+              overrides: {
+                warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
+                outcome,
+                stopReason,
+                currentActivity: 'stopped',
+                activityLabel: 'Agent stopped',
+                workProduct: agentResult.artifact?.workProduct ? {
+                  id: agentResult.artifact.workProduct.id,
+                  kind: agentResult.artifact.workProduct.kind,
+                  title: agentResult.artifact.workProduct.title,
+                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
+                  status: agentResult.artifact.workProduct.status
+                } : undefined,
+                publicFallback: !!agentResult.publicFallback,
+                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
+              }
+            })
           };
           message.metadata = nextVersion.metadata;
         } else {
@@ -2960,6 +3204,7 @@ class AppStore {
           message.content = agentResult.content;
           nextVersion.metadata = {
             ...(nextVersion.metadata || {}),
+            ...executionMetadata(activeBackendMode),
             outcome,
             stopReason,
             currentActivity: 'completed',
@@ -3006,7 +3251,6 @@ class AppStore {
         }
         this.touchChats();
         this.persist();
-        tokenCount = agentResult.content.split(/\s+/).filter(Boolean).length;
         // Agent regeneration also stays inside the chat sandbox.
       } else {
         await streamAssistantReply({
@@ -3016,31 +3260,32 @@ class AppStore {
           onChunk: (value) => {
             nextVersion.content += value;
             message.content = nextVersion.content;
-            tokenCount += value.split(/\s+/).filter(Boolean).length;
+            nextVersion.reasoning = message.reasoning;
             this.touchChats();
           },
           onReasoning: (value) => {
-            const cleaned = value.replace(/^\s*\|\s*$/gm, '').replace(/\n{3,}/g, '\n\n');
-            nextVersion.reasoning = `${nextVersion.reasoning || ''}${cleaned}`;
+            reasoningTimer.markStarted();
+            nextVersion.reasoning = appendStreamingReasoning(nextVersion.reasoning || '', value);
             message.reasoning = nextVersion.reasoning;
             this.touchChats();
+          },
+          onUsage: (usage) => {
+            exactUsage = usage || exactUsage;
           }
         });
       }
 
       const timing = (Date.now() - startTime) / 1000;
-      const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
-      // Only overwrite metadata if there's no error/warning already set
-      if (!nextVersion.metadata?.error && !nextVersion.metadata?.warning) {
-        nextVersion.metadata = {
-          ...(nextVersion.metadata || {}),
-          modelName: activeModelLabel,
-          tokens: tokenCount,
-          timing,
-          tokensPerSecond
-        };
-        message.metadata = nextVersion.metadata;
-      }
+      nextVersion.metadata = finalizeAssistantMetadata({
+        existing: nextVersion.metadata,
+        modelName: activeModelLabel,
+        backendMode: activeBackendMode,
+        usage: exactUsage,
+        elapsedSeconds: timing,
+        totalElapsedSeconds: timing,
+        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
+      });
+      message.metadata = nextVersion.metadata;
       message.model = activeModelLabel;
       message.done = true;
       // Only set status to 'idle' if it wasn't already set to 'error'
@@ -3074,16 +3319,19 @@ class AppStore {
       this.persist();
     } catch (error) {
       const timing = (Date.now() - startTime) / 1000;
-      const tokensPerSecond = timing > 0 ? tokenCount / timing : 0;
       const failure = String((error as Error)?.message || error || 'Request failed');
       const aborted = isAbortLikeError(failure);
       nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
       nextVersion.metadata = {
-        modelName: activeModelLabel,
-        tokens: tokenCount,
-        timing,
-        tokensPerSecond,
-        ...(aborted ? {} : { error: true })
+        ...finalizeAssistantMetadata({
+          existing: nextVersion.metadata,
+          modelName: activeModelLabel,
+          backendMode: activeBackendMode,
+          elapsedSeconds: timing,
+          totalElapsedSeconds: timing,
+          reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
+          overrides: aborted ? {} : { error: true, errorMessage: failure }
+        })
       };
       message.content = nextVersion.content;
       message.reasoning = nextVersion.reasoning || '';

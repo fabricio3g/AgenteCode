@@ -620,9 +620,9 @@
     const total = Math.max(0, ocrProgress.total || 0);
     const progressText = total > 0 ? `${Math.min(page, total)}/${total}` : '…';
 
-    if (ocrProgress.phase === 'rendering') return `OCR · preparing ${progressText}`;
-    if (ocrProgress.phase === 'recognizing') return `OCR · reading ${progressText}`;
-    return 'OCR · complete';
+    if (ocrProgress.phase === 'rendering') return `Reading document ${progressText}`;
+    if (ocrProgress.phase === 'recognizing') return `Reading document ${progressText}`;
+    return 'Document ready';
   });
 
   $effect(() => {
@@ -802,7 +802,7 @@
       <div class={`composer-shell pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
     {#if ocrProgressLabel}
       <div class="px-3 pt-1">
-        <div class="chateaui-pill inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)] [--chateaui-pill-border:var(--border)] [--chateaui-pill-bg:var(--surface-hover)]">
+        <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
           <span class={`h-1.5 w-1.5 rounded-[2px] bg-[var(--text-tertiary)] ${ocrProgress?.phase === 'done' ? '' : 'animate-pulse'}`}></span>
           <span>{ocrProgressLabel}</span>
         </div>

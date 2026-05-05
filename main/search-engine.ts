@@ -1135,7 +1135,8 @@ export async function webSearch({ query, context, deep, mode, options }, win = n
 
 export async function ingestSearchContext(chatId, context, sources) {
   const ragEngine = await import('./rag-engine.js');
-  const normalizedChatId = String(chatId || 'default');
+  const normalizedChatId = String(chatId || '').trim();
+  if (!normalizedChatId) throw new Error('chatId is required for search context ingestion');
   const entries = Array.isArray(sources) ? sources : [];
 
   const sourceText = entries

@@ -7,13 +7,14 @@
   import { openWebviewer } from '$lib/services/search';
 
   let query = $state('');
+  const currentSearchState = $derived(appStore.currentSearchState);
 
   function closeSidebar() {
     appStore.searchSidebarOpen = false;
   }
 
   async function runSearch() {
-    await appStore.performWebSearch(query);
+    await appStore.performWebSearch(query, appStore.currentChatId || '');
   }
 
   async function openResult(url: string) {
@@ -59,11 +60,11 @@
           <button
             class="inline-flex h-9 items-center justify-center rounded-lg border border-[var(--border)] px-3 text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
             onclick={runSearch}
-            disabled={appStore.searchLoading}
+            disabled={currentSearchState.loading}
             aria-label="Run source search"
             title="Run search"
           >
-            {#if appStore.searchLoading}
+            {#if currentSearchState.loading}
               <LoaderCircle class="h-4 w-4 animate-spin" />
             {:else}
               <SearchIcon class="h-4 w-4" />
@@ -73,16 +74,16 @@
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-3">
-        {#if appStore.searchLoading}
+        {#if currentSearchState.loading}
           <div class="flex items-center gap-2 px-1 py-2 text-sm text-[var(--text-muted)]">
             <LoaderCircle class="h-4 w-4 animate-spin" />
             Searching...
           </div>
-        {:else if !appStore.searchResults.length}
+        {:else if !currentSearchState.results.length}
           <p class="px-1 py-2 text-sm text-[var(--text-muted)]">No results yet. Run a search to populate sources.</p>
         {:else}
           <div class="space-y-2">
-            {#each appStore.searchResults as result (result.url)}
+            {#each currentSearchState.results as result (result.url)}
               <button
                 class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:bg-[var(--surface-hover)]"
                 onclick={() => openResult(result.url)}

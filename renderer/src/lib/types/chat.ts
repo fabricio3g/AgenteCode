@@ -13,6 +13,8 @@ export interface Attachment {
   status?: 'ready' | 'processing' | 'error';
   docId?: string;
   ocrText?: string;  // Extracted text from OCR (images, scanned PDFs)
+  processingMode?: 'vision' | 'ocr' | 'document_text';
+  visionReady?: boolean;
   error?: string;
 }
 
@@ -25,6 +27,16 @@ export interface MessageVersion {
     tokens?: number;
     timing?: number;
     tokensPerSecond?: number;
+    modelTimingSeconds?: number;
+    totalElapsedSeconds?: number;
+    reasoningTimingSeconds?: number;
+    usageSource?: 'provider' | 'runtime' | 'estimated' | 'none';
+    timingScope?: 'model' | 'agent_wall' | 'reasoning' | 'unknown';
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    executionBackend?: 'local' | 'api';
+    executionTransport?: 'local_runtime' | 'provider_ipc' | 'sdk';
     error?: boolean;
     errorMessage?: string;
     warning?: string;

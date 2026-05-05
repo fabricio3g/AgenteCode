@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getAppPaths } from './paths.ts';
-import { slugify, loadConfig } from './config.ts';
+import { loadConfig } from './config.ts';
+import { slugify } from './config.utils.ts';
 import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.ts';
 
 function getModelsDir() {

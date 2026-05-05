@@ -36,16 +36,25 @@
     currentPage = 1;
     pdfDoc = null;
     try {
+      if (!src) {
+        throw new Error('No PDF source available');
+      }
       await ensureWorker();
       const pdfjsLib = await import('pdfjs-dist');
       const response = await fetch(src);
+      if (!response.ok) {
+        throw new Error(`PDF request failed (${response.status})`);
+      }
       const arrayBuffer = await response.arrayBuffer();
+      if (!arrayBuffer.byteLength) {
+        throw new Error('PDF file is empty');
+      }
       pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       pageCount = pdfDoc.numPages;
       await renderPage(1);
     } catch (err) {
       console.error('[PdfViewer] Failed to load PDF:', err);
-      error = 'Failed to load PDF';
+      error = 'PDF preview is not available. Download the file to open it.';
     } finally {
       loading = false;
     }
@@ -78,7 +87,7 @@
   }
 
   $effect(() => {
-    if (src) loadPdf();
+    loadPdf();
   });
 </script>
 

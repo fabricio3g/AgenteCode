@@ -45,7 +45,7 @@ function getRagRuntimeSettings() {
 }
 
 function queryEmbeddingCacheKey(query, chatId) {
-  return `${String(chatId || 'default')}:${String(query || '').trim().toLowerCase()}`;
+  return `${requireChatId(chatId)}:${String(query || '').trim().toLowerCase()}`;
 }
 
 function setQueryEmbeddingCache(key, embedding) {
@@ -229,8 +229,14 @@ function scoreChunk(queryTokens, chunkText) {
   return (coverage * 3) + (density * 2) + phrase;
 }
 
+function requireChatId(chatId) {
+  const key = String(chatId || '').trim();
+  if (!key) throw new Error('chat_id is required for RAG isolation');
+  return key;
+}
+
 function ensureChatStore(chatId) {
-  const key = String(chatId || 'default');
+  const key = requireChatId(chatId);
   if (!chatDocuments.has(key)) {
     chatDocuments.set(key, new Map());
   }
@@ -361,6 +367,7 @@ function makeDocumentFingerprint(source, text, fileType) {
 }
 
 function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
+  const chatId = requireChatId(chat_id);
   const normalizedText = String(text || '').trim();
   const chunks = chunkTextSemantic(normalizedText, chunk_size || 512);
   const docId = randomUUID();
@@ -377,7 +384,7 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
       created_at: now,
       updated_at: now,
       fingerprint,
-      chat_id: String(chat_id || 'default')
+      chat_id: chatId
     },
     chunks: chunks.map((chunk, index) => ({
       id: `${docId}_${index}`,
@@ -390,8 +397,9 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
 
 async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background = false }) {
   ensureStoreLoaded();
-  const store = ensureChatStore(chat_id);
-  const record = buildDocumentRecord({ source, text, chat_id, file_type, chunk_size });
+  const chatId = requireChatId(chat_id);
+  const store = ensureChatStore(chatId);
+  const record = buildDocumentRecord({ source, text, chat_id: chatId, file_type, chunk_size });
   store.set(record.doc.id, record);
   persistStore();
 
@@ -402,7 +410,7 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
     console.warn('[RAG] Failed to save doc metadata to SQLite:', err?.message || err);
   }
 
-  const indexTask = indexRecordEmbeddings(chat_id, record);
+  const indexTask = indexRecordEmbeddings(chatId, record);
   if (background) {
     void indexTask.catch((err) => {
       console.warn('[RAG] Background indexing failed:', err?.message || err);
@@ -415,34 +423,39 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
 }
 
 export async function ingestDocument({ file_path, chat_id, chunk_size }) {
+  const chatId = requireChatId(chat_id);
   const fileName = path.basename(file_path);
   const { text, fileType } = await extractText(file_path);
   return ingestTextInternal({
     source: fileName,
     text,
-    chat_id,
+    chat_id: chatId,
     file_type: fileType,
     chunk_size
   });
 }
 
 export async function ingestText({ source, text, chat_id, file_type, chunk_size }) {
+  requireChatId(chat_id);
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size });
 }
 
 export async function ingestTextFast({ source, text, chat_id, file_type, chunk_size }) {
+  requireChatId(chat_id);
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background: true });
 }
 
 export async function queryDocuments({ query, chat_id, top_k }) {
+  requireChatId(chat_id);
   return queryDocumentsHybrid({ query, chat_id, top_k });
 }
 
 async function queryDocumentsHybrid({ query, chat_id, top_k }) {
+  const chatId = requireChatId(chat_id);
   await ensureVectorStore().catch(() => {});
   await ensureRagEmbeddingRuntime().catch(() => {});
   ensureStoreLoaded();
-  const store = ensureChatStore(chat_id);
+  const store = ensureChatStore(chatId);
   const settings = getRagRuntimeSettings();
   const k = Math.max(1, Number(top_k) || 5);
   const queryTokens = tokenize(query);
@@ -495,10 +508,10 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }) {
 
   // Try LanceDB vector search first
   let vectorResults = [];
-  const queryEmbedding = await getCachedQueryEmbedding(query, chat_id);
+  const queryEmbedding = await getCachedQueryEmbedding(query, chatId);
   if (vectorStoreReady && queryEmbedding) {
     try {
-      vectorResults = await vectorStore.search(chat_id, queryEmbedding, Math.max(k * 2, 8));
+      vectorResults = await vectorStore.search(chatId, queryEmbedding, Math.max(k * 2, 8));
     } catch (err) {
       console.warn('[RAG] LanceDB search failed, using in-memory scoring:', err?.message || err);
     }
@@ -601,20 +614,22 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }) {
 }
 
 export async function listRagDocuments(chatId) {
+  const key = requireChatId(chatId);
   ensureStoreLoaded();
-  const store = ensureChatStore(chatId);
+  const store = ensureChatStore(key);
   return Array.from(store.values()).map((entry) => entry.doc);
 }
 
 export async function removeRagDocument(docId, chatId) {
+  const key = requireChatId(chatId);
   ensureStoreLoaded();
-  const store = ensureChatStore(chatId);
+  const store = ensureChatStore(key);
   const removed = store.delete(docId);
   if (removed) {
     persistStore();
     // Clean up LanceDB
     if (vectorStoreReady) {
-      try { await vectorStore.deleteDocument(chatId, docId); } catch {}
+      try { await vectorStore.deleteDocument(key, docId); } catch {}
     }
     // Clean up SQLite
     try { deleteRagDocumentDb(docId); } catch {}
@@ -623,24 +638,25 @@ export async function removeRagDocument(docId, chatId) {
 }
 
 export async function clearRagDocuments(chatId) {
+  const key = requireChatId(chatId);
   ensureStoreLoaded();
-  const key = String(chatId || 'default');
   const removed = chatDocuments.delete(key);
   if (removed) {
     persistStore();
     // Clean up LanceDB
     if (vectorStoreReady) {
-      try { await vectorStore.deleteChat(chatId); } catch {}
+      try { await vectorStore.deleteChat(key); } catch {}
     }
     // Clean up SQLite
-    try { deleteRagDocumentsByChat(chatId); } catch {}
+    try { deleteRagDocumentsByChat(key); } catch {}
   }
   return removed;
 }
 
 export async function hasRagDocuments(chatId) {
+  const key = requireChatId(chatId);
   ensureStoreLoaded();
-  const store = chatDocuments.get(String(chatId || 'default'));
+  const store = chatDocuments.get(key);
   return !!store && store.size > 0;
 }
 

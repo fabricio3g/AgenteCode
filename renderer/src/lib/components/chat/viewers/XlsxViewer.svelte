@@ -6,6 +6,7 @@
   interface Props {
     src: string;
     filename: string;
+    query?: string;
   }
 
   type SheetPreview = {
@@ -13,7 +14,7 @@
     rows: string[][];
   };
 
-  let { src, filename }: Props = $props();
+  let { src, filename, query = '' }: Props = $props();
 
   let loading = $state(true);
   let error = $state<string | null>(null);
@@ -22,7 +23,31 @@
 
   const currentSheet = $derived(sheets.find((sheet) => sheet.name === activeSheet) || sheets[0] || null);
   const header = $derived(currentSheet?.rows[0] || []);
-  const bodyRows = $derived(currentSheet?.rows.slice(1, 500) || []);
+  const searchTerm = $derived(query.trim().toLowerCase());
+  const bodyRows = $derived.by(() => {
+    const rows = currentSheet?.rows.slice(1) || [];
+    const filtered = searchTerm
+      ? rows.filter((row) => row.some((cell) => cell.toLowerCase().includes(searchTerm)))
+      : rows;
+    return filtered.slice(0, 500);
+  });
+
+  function highlightedCell(value: string) {
+    const term = query.trim();
+    const escapedValue = escapeHtml(value);
+    if (!term) return escapedValue;
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return escapedValue.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  }
+
+  function escapeHtml(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   async function convertXlsx() {
     loading = true;
@@ -92,7 +117,7 @@
         {/if}
         <tbody>
           {#each bodyRows as row}
-            <tr>{#each row as cell}<td>{cell}</td>{/each}</tr>
+            <tr>{#each row as cell}<td>{@html highlightedCell(cell)}</td>{/each}</tr>
           {/each}
         </tbody>
       </table>
@@ -178,5 +203,12 @@
   td {
     max-width: 26rem;
     color: var(--text-secondary);
+  }
+
+  td :global(mark) {
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+    color: inherit;
+    padding: 0 0.08rem;
   }
 </style>

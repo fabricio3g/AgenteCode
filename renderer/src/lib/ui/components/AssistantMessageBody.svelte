@@ -43,8 +43,7 @@
   }: Props = $props();
 
   const hasActiveDeepResearch = $derived.by(() => {
-    const task = deepResearchStore.activeTask;
-    return !!task && task.messageId === message.id;
+    return !!deepResearchStore.getActiveTaskForMessage(message.id);
   });
 
   const hasSources = $derived((message.sources?.length || 0) > 0);
@@ -94,6 +93,21 @@
     }];
   });
   const visibleContent = $derived(isReportSurface ? reportIntro(displayContent, reportTitle) : displayContent);
+
+  function resolveTotalElapsed(metadata: MessageVersion['metadata'] | null | undefined) {
+    if (!metadata) return undefined;
+    if (typeof metadata.totalElapsedSeconds === 'number') return metadata.totalElapsedSeconds;
+    if ((message.mode === 'agent' || metadata.outcome === 'partial' || metadata.outcome === 'stopped') && typeof metadata.timing === 'number') {
+      return metadata.timing;
+    }
+    return undefined;
+  }
+
+  function resolveReasoningTiming(metadata: MessageVersion['metadata'] | null | undefined) {
+    if (!metadata) return undefined;
+    if (typeof metadata.reasoningTimingSeconds === 'number') return metadata.reasoningTimingSeconds;
+    return undefined;
+  }
 </script>
 
 {#if hasActiveDeepResearch}
@@ -105,7 +119,7 @@
     steps={message.agentSteps || []}
     reasoning={enableThinking ? displayReasoning : undefined}
     status={message.status}
-    timing={displayMetadata?.timing}
+    totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
     outcome={displayMetadata?.outcome}
     stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
     currentActivity={displayMetadata?.currentActivity}
@@ -127,7 +141,12 @@
 {/if}
 
 {#if enableThinking && displayReasoning && !message.agentSteps?.length}
-  <ReasoningBlock reasoning={displayReasoning} status={message.status} timing={displayMetadata?.timing || 0} />
+  <ReasoningBlock
+    reasoning={displayReasoning}
+    status={message.status}
+    timing={resolveReasoningTiming(displayMetadata) || 0}
+    totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+  />
 {/if}
 
 {#if message.status === 'error' && displayMetadata?.error}

@@ -24,6 +24,17 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full documentation.
 | `npm run build` | Build for production |
 | `npm run rebuild:native` | Rebuild native modules |
 | `npm run test` | Run tests |
+| `npm run fallow:summary` | Show Fallow dead code, duplication, and health summary |
+| `npm run fallow:audit` | Run the baseline-backed Fallow PR gate locally |
+
+### Static Analysis With Fallow
+
+ChateaLM uses [Fallow](https://docs.fallow.tools/cli/audit) as its codebase truth layer for dead code, duplication, and complexity review.
+
+- Run `npm run fallow:summary` for a quick overview.
+- Run `npm run fallow:audit` before opening a PR.
+- Baselines live in `fallow-baselines/` and are committed on purpose.
+- Local cache and scratch output stay under `.fallow/` and remain ignored.
 
 ### Native Module Issues?
 

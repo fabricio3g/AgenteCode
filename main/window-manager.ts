@@ -13,7 +13,7 @@ export function setPreloadPath(p: string) {
   preloadPath = p;
 }
 
-export function getPreloadPath() {
+function getPreloadPath() {
   return preloadPath;
 }
 

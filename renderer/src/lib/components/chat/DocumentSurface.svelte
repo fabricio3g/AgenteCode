@@ -19,21 +19,41 @@
     title?: string;
     sourceCount?: number;
     className?: string;
+    launcherMode?: 'tile' | 'strip';
     onDownloadSlides?: () => void;
   }
 
-  let { docs = [], title = '', sourceCount = 0, className = '', onDownloadSlides }: Props = $props();
+  let {
+    docs = [],
+    title = '',
+    sourceCount = 0,
+    className = '',
+    launcherMode = 'tile',
+    onDownloadSlides
+  }: Props = $props();
 
   let open = $state(false);
   let activeId = $state('');
   let query = $state('');
+  let previewEl = $state<HTMLElement | undefined>(undefined);
 
   const visibleDocs = $derived((docs || []).filter(Boolean));
   const activeDoc = $derived.by(() => {
     if (!visibleDocs.length) return null;
     return visibleDocs.find((doc) => doc.id === activeId) || visibleDocs[0];
   });
-  const surfaceTitle = $derived(title || activeDoc?.title || activeDoc?.name || (visibleDocs.length > 1 ? 'Documents' : 'Document'));
+  function cleanSurfaceTitle(value: string) {
+    const raw = (value || '').trim();
+    if (!raw || /^agent workspace\s*\(/i.test(raw) || raw.toLowerCase() === 'work product') {
+      if (activeDoc?.kind === 'report') return 'Report';
+      if (activeDoc?.kind === 'slides') return 'Slides';
+      if (visibleDocs.length > 1) return 'Documents';
+      return activeDoc?.title || baseName(activeDoc?.name || '') || 'Document';
+    }
+    return raw;
+  }
+
+  const surfaceTitle = $derived(cleanSurfaceTitle(title || activeDoc?.title || activeDoc?.name || ''));
   const primaryType = $derived(activeDoc ? fileTypeLabel(activeDoc.name, activeDoc.kind) : 'FILE');
   const primaryIcon = $derived(activeDoc ? getFileIcon(activeDoc.name, activeDoc.type || '') : FileText);
   const subtitle = $derived.by(() => {
@@ -46,7 +66,17 @@
   const warnings = $derived(Array.from(new Set(visibleDocs.flatMap((doc) => doc.warnings || []))));
   const status = $derived(visibleDocs.find((doc) => doc.status)?.status || (warnings.length ? 'partial' : 'ready'));
   const activeText = $derived((activeDoc?.content || '').toLowerCase());
-  const searchHit = $derived(query.trim() ? activeText.includes(query.trim().toLowerCase()) : false);
+  const searchTerm = $derived(query.trim());
+  const canSearch = $derived.by(() => {
+    if (!activeDoc) return false;
+    return isMarkdown(activeDoc) || viewerKind(activeDoc) === 'text' || viewerKind(activeDoc) === 'xlsx';
+  });
+  const searchMatchCount = $derived.by(() => {
+    const term = searchTerm.toLowerCase();
+    if (!term || !activeText) return 0;
+    return activeText.split(term).length - 1;
+  });
+  const searchHit = $derived(searchTerm ? (searchMatchCount > 0 || viewerKind(activeDoc) === 'xlsx') : false);
 
   function stop(event: Event) {
     event.stopPropagation();
@@ -56,6 +86,13 @@
     event?.preventDefault();
     event?.stopPropagation();
     activeId = activeDoc?.id || visibleDocs[0]?.id || '';
+    open = true;
+  }
+
+  function openReaderFor(doc: DocumentSurfaceItem, event?: Event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    activeId = doc.id;
     open = true;
   }
 
@@ -74,6 +111,13 @@
     event.preventDefault();
     event.stopPropagation();
     openReader();
+  }
+
+  function handleLauncherKeydown(doc: DocumentSurfaceItem, event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    openReaderFor(doc);
   }
 
   function utf8Base64(value: string) {
@@ -113,11 +157,18 @@
 
   function highlightedMarkdown(content: string) {
     const html = renderMarkdown(content || '');
-    const term = query.trim();
+    const term = searchTerm;
     if (!term) return html;
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return html.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
   }
+
+  $effect(() => {
+    if (!open || !searchTerm || !previewEl || !isMarkdown(activeDoc)) return;
+    requestAnimationFrame(() => {
+      previewEl?.querySelector('mark')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  });
 
   function downloadDoc(doc: DocumentSurfaceItem | null, event?: Event) {
     event?.preventDefault();
@@ -141,35 +192,75 @@
 
 {#if visibleDocs.length}
   <div class={`document-surface ${className}`}>
-    <div
-      class="work-product-tile"
-      role="button"
-      tabindex="0"
-      onclick={openReader}
-      onkeydown={handleCapsuleKeydown}
-      title="Open {surfaceTitle}"
-    >
-      <span class="document-icon">
-        {#each [primaryIcon] as Icon}
-          <Icon class="h-4 w-4" />
+    {#if launcherMode === 'strip'}
+      <div class="attachment-strip" aria-label={surfaceTitle}>
+        {#each visibleDocs as doc (doc.id)}
+          <div
+            class:attachment-image={viewerKind(doc) === 'image'}
+            class="attachment-launcher"
+            role="button"
+            tabindex="0"
+            onclick={(event) => openReaderFor(doc, event)}
+            onkeydown={(event) => handleLauncherKeydown(doc, event)}
+            title={`Open ${baseName(doc.name)}`}
+          >
+            {#if viewerKind(doc) === 'image' && docSource(doc)}
+              <img class="attachment-thumb" src={docSource(doc)} alt={doc.title || baseName(doc.name)} />
+            {:else}
+              <span class="attachment-icon">
+                {#each [getFileIcon(doc.name, doc.type || '')] as Icon}
+                  <Icon class="h-4 w-4" />
+                {/each}
+              </span>
+            {/if}
+            <span class="attachment-copy">
+              <span class="attachment-title">{doc.title || baseName(doc.name)}</span>
+              <span class="attachment-type">{fileTypeLabel(doc.name, doc.kind)}</span>
+            </span>
+            {#if docSource(doc) || doc.kind === 'slides'}
+              <button
+                type="button"
+                class="attachment-download"
+                onclick={(event) => downloadDoc(doc, event)}
+                title={`Download ${baseName(doc.name)}`}
+                aria-label={`Download ${baseName(doc.name)}`}
+              >
+                <Download class="h-3.5 w-3.5" />
+              </button>
+            {/if}
+          </div>
         {/each}
-      </span>
-      <span class="document-copy">
-        <span class="document-kicker">Work product</span>
-        <span class="document-title">{surfaceTitle}</span>
-        <span class="document-subtitle">{subtitle}{#if status !== 'ready'} · {status}{/if}</span>
-      </span>
-      <span class="document-actions">
-        {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
-          <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
-            <Download class="h-3.5 w-3.5" />
+      </div>
+    {:else}
+      <div
+        class="work-product-tile"
+        role="button"
+        tabindex="0"
+        onclick={openReader}
+        onkeydown={handleCapsuleKeydown}
+        title="Open {surfaceTitle}"
+      >
+        <span class="document-icon">
+          {#each [primaryIcon] as Icon}
+            <Icon class="h-4 w-4" />
+          {/each}
+        </span>
+        <span class="document-copy">
+          <span class="document-title">{surfaceTitle}</span>
+          <span class="document-subtitle">{subtitle}{#if status !== 'ready'} · {status}{/if}</span>
+        </span>
+        <span class="document-actions">
+          {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
+            <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
+              <Download class="h-3.5 w-3.5" />
+            </button>
+          {/if}
+          <button type="button" class="document-action" onclick={openReader} title="Open reader">
+            <ExternalLink class="h-3.5 w-3.5" />
           </button>
-        {/if}
-        <button type="button" class="document-action" onclick={openReader} title="Open reader">
-          <ExternalLink class="h-3.5 w-3.5" />
-        </button>
-      </span>
-    </div>
+        </span>
+      </div>
+    {/if}
 
     {#if open}
       <Portal className="document-reader-portal">
@@ -188,15 +279,21 @@
         >
           <header class="workspace-header">
             <div class="reader-title-wrap">
-              <div class="reader-kicker">Work product</div>
               <div class="reader-title">{surfaceTitle}</div>
               <div class="reader-subtitle">{subtitle || 'Document'}{#if status !== 'ready'} · {status}{/if}</div>
             </div>
             <div class="workspace-tools">
-              <label class="workspace-search" title="Search current document">
-                <Search class="h-3.5 w-3.5" />
-                <input bind:value={query} placeholder="Search" />
-              </label>
+              {#if canSearch}
+                <label class="workspace-search" title="Search current document">
+                  <Search class="h-3.5 w-3.5" />
+                  <input bind:value={query} placeholder="Search" />
+                  {#if query}
+                    <button type="button" class="search-clear" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">
+                      <X class="h-3 w-3" />
+                    </button>
+                  {/if}
+                </label>
+              {/if}
               {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
                 <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
                   <Download class="h-4 w-4" />
@@ -215,9 +312,17 @@
             </div>
           {/if}
 
-          {#if query.trim() && isMarkdown(activeDoc)}
+          {#if searchTerm && canSearch}
             <div class="workspace-search-status" class:miss={!searchHit}>
-              {searchHit ? 'Match found in current document' : 'No match in current document'}
+              {#if viewerKind(activeDoc) === 'xlsx'}
+                Filtering spreadsheet rows
+              {:else if searchMatchCount === 1}
+                1 match
+              {:else if searchMatchCount > 1}
+                {searchMatchCount} matches
+              {:else}
+                No matches
+              {/if}
             </div>
           {/if}
 
@@ -245,7 +350,7 @@
               </nav>
             {/if}
 
-            <main class="reader-preview">
+            <main class="reader-preview" bind:this={previewEl}>
               {#if activeDoc}
                 {#if activeDoc.kind === 'slides' && activeDoc.slides?.length}
                   <SlidesViewer slides={activeDoc.slides} onDownload={onDownloadSlides || (() => {})} />
@@ -260,11 +365,17 @@
                 {:else if viewerKind(activeDoc) === 'docx'}
                   <DocxViewer src={docSource(activeDoc)} filename={activeDoc.name} />
                 {:else if viewerKind(activeDoc) === 'xlsx'}
-                  <XlsxViewer src={docSource(activeDoc)} filename={activeDoc.name} />
+                  <XlsxViewer src={docSource(activeDoc)} filename={activeDoc.name} query={query} />
                 {:else if viewerKind(activeDoc) === 'text'}
-                  <TextViewer src={docSource(activeDoc)} filename={activeDoc.name} />
+                  <TextViewer src={docSource(activeDoc)} filename={activeDoc.name} query={query} />
                 {:else if viewerKind(activeDoc) === 'image'}
-                  <div class="reader-empty">Image preview is hidden in chat. Use download to inspect the file.</div>
+                  <div class="reader-image-stage">
+                    {#if docSource(activeDoc)}
+                      <img class="reader-image" src={docSource(activeDoc)} alt={activeDoc.title || baseName(activeDoc.name)} />
+                    {:else}
+                      <div class="reader-empty">Image preview is not available for this file.</div>
+                    {/if}
+                  </div>
                 {:else if viewerKind(activeDoc) === 'pptx'}
                   <div class="reader-empty">
                     <Files class="h-5 w-5" />
@@ -284,42 +395,125 @@
 
 <style>
   .document-surface {
-    margin-top: 0.75rem;
+    margin-top: 0.55rem;
+  }
+
+  .attachment-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: stretch;
+  }
+
+  .attachment-launcher {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 3.15rem;
+    min-width: min(16rem, 100%);
+    max-width: min(19rem, 100%);
+    padding: 0.45rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: transparent;
+    text-align: left;
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+
+  .attachment-launcher:hover {
+    border-color: var(--border-hover);
+    background: color-mix(in srgb, var(--surface-hover) 62%, transparent);
+  }
+
+  .attachment-launcher.attachment-image {
+    grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  }
+
+  .attachment-thumb,
+  .attachment-icon {
+    display: inline-flex;
+    width: 2.35rem;
+    height: 2.35rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
+    color: var(--text-secondary);
+    object-fit: cover;
+    overflow: hidden;
+  }
+
+  .attachment-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .attachment-title,
+  .attachment-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attachment-title {
+    color: var(--text);
+    font-size: 0.77rem;
+    font-weight: 550;
+  }
+
+  .attachment-type {
+    color: var(--text-muted);
+    font-size: 0.65rem;
+  }
+
+  .attachment-download {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+    transition: background 150ms ease, color 150ms ease;
+  }
+
+  .attachment-download:hover {
+    background: var(--surface-hover);
+    color: var(--text);
   }
 
   .work-product-tile {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.7rem;
-    width: min(25rem, 100%);
-    min-height: 4.6rem;
+    gap: 0.6rem;
+    width: min(21rem, 100%);
+    min-height: 3.35rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface) 78%, transparent);
-    padding: 0.75rem;
+    background: transparent;
+    padding: 0.55rem 0.6rem;
     text-align: left;
-    box-shadow: var(--shadow-xs);
-    transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+    transition: border-color 150ms ease, background 150ms ease;
   }
 
   .work-product-tile:hover {
     border-color: var(--border-hover);
-    background: var(--surface);
-  }
-
-  .work-product-tile:active {
-    transform: translateY(1px);
+    background: color-mix(in srgb, var(--surface-hover) 62%, transparent);
   }
 
   .document-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.15rem;
-    height: 2.15rem;
+    width: 1.9rem;
+    height: 1.9rem;
     border-radius: var(--radius-sm);
-    background: var(--surface-hover);
+    background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
     color: var(--text-secondary);
   }
 
@@ -330,21 +524,12 @@
     gap: 0.12rem;
   }
 
-  .document-kicker,
-  .reader-kicker {
-    color: var(--text-tertiary);
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
   .document-title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     font-weight: 600;
   }
 
@@ -353,8 +538,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
-    font-size: 0.7rem;
-    font-weight: 500;
+    font-size: 0.68rem;
+    font-weight: 450;
   }
 
   .document-actions {
@@ -463,6 +648,22 @@
     background: transparent;
     color: var(--text);
     font-size: 0.75rem;
+  }
+
+  .search-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    color: var(--text-tertiary);
+  }
+
+  .search-clear:hover {
+    background: var(--surface-hover);
+    color: var(--text);
   }
 
   .workspace-warning,
@@ -576,6 +777,23 @@
     background: #fff;
   }
 
+  .reader-image-stage {
+    display: flex;
+    min-height: calc(96vh - 9rem);
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+  }
+
+  .reader-image {
+    display: block;
+    max-width: 100%;
+    max-height: calc(96vh - 10rem);
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+  }
+
   .reader-empty {
     display: flex;
     min-height: 18rem;
@@ -606,6 +824,12 @@
     .reader-body {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .attachment-launcher {
+      max-width: 100%;
+      min-width: min(100%, 14rem);
+      width: 100%;
     }
 
     .reader-rail {

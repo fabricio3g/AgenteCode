@@ -7,3 +7,12 @@ out/
 web-browser/
 *.log
 models/
+.claude/
+.qwen/
+.fallow/
+.codex-check.txt
+dead-code.json
+fallow-dead-code.json
+fallow-report.txt
+fallow-dead-code-full.json
+nul

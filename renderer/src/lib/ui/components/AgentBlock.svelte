@@ -11,7 +11,7 @@
     steps?: ChatMessage['agentSteps'];
     reasoning?: string;
     status?: ChatMessage['status'];
-    timing?: number;
+    totalElapsedSeconds?: number;
     outcome?: AgentOutcome;
     stopReason?: AgentStopReason;
     currentActivity?: AgentActivity;
@@ -23,7 +23,7 @@
     steps = [],
     reasoning,
     status = 'idle',
-    timing = 0,
+    totalElapsedSeconds = 0,
     outcome = 'completed',
     stopReason = 'none',
     currentActivity,
@@ -54,6 +54,16 @@
     const safeSeconds = Number(seconds || 0);
     if (safeSeconds <= 0) return null;
     return `Worked for ${safeSeconds.toFixed(1)}s`;
+  }
+
+  function totalElapsedLabel(): string | null {
+    const safeSeconds = Number(totalElapsedSeconds || 0);
+    if (safeSeconds <= 0 || status === 'streaming') return null;
+    if (outcome === 'failed') return `Failed after ${safeSeconds.toFixed(1)}s`;
+    if (outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none' || stoppedByUser) {
+      return `Stopped after ${safeSeconds.toFixed(1)}s`;
+    }
+    return `Completed in ${safeSeconds.toFixed(1)}s`;
   }
 
   function activityLabelFor(step?: NonNullable<ChatMessage['agentSteps']>[number] | null): string {
@@ -106,7 +116,7 @@
       if (errCount) parts.push(`${errCount} error${errCount !== 1 ? 's' : ''}`);
       return parts.length ? `Agent finished · ${parts.join(' · ')}` : 'Agent finished';
     }
-    const thoughtDuration = formatThoughtDuration(timing);
+    const thoughtDuration = formatThoughtDuration(totalElapsedSeconds);
     if (thoughtDuration) return thoughtDuration;
     if (reasoning) return 'Reasoning';
     return activityLabel || 'Agent is planning';
@@ -151,6 +161,10 @@
       <span class="flex-1" class:text-shimmer={status === 'streaming'}>{headerLabel()}</span>
       <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
+
+    {#if totalElapsedLabel()}
+      <div class="agent-total">{totalElapsedLabel()}</div>
+    {/if}
 
     {#if status === 'streaming' && latestInlineSteps.length}
       <div class="agent-inline-steps">
@@ -236,6 +250,12 @@
     flex-direction: column;
     gap: 0.18rem;
     margin: 0.15rem 0 0.25rem 1.55rem;
+  }
+  .agent-total {
+    margin: 0.05rem 0 0.2rem 1.55rem;
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+    font-weight: 450;
   }
   .agent-inline-step {
     display: inline-flex;

@@ -261,6 +261,66 @@
 
   const downloadedVoiceCount = $derived(Object.values(voiceModels).filter((m: any) => m.downloaded).length);
   const downloadedWhisperCount = $derived(Object.values(whisperModels).filter((m: any) => m.downloaded).length);
+  const primaryVoiceEntry = $derived.by(() => {
+    const entries = Object.entries(voiceModels);
+    return entries.find(([, item]: [string, any]) => item.is_active)
+      || entries.find(([key]) => key === 'kokoro_v11')
+      || entries[0]
+      || null;
+  });
+
+  async function activateVoiceModel(key: string, item: any) {
+    try {
+      await appStore.updateTtsSettings({
+        engine: item.engine,
+        model_path: item.model_path || '',
+        voices_path: item.voices_path || '',
+        tokens_path: item.tokens_path || '',
+        lexicon_path: item.lexicon_path || '',
+        dict_dir: item.dict_dir || '',
+        data_dir: item.data_dir || '',
+        model_variant: key
+      });
+      ttsVoice = item.voices?.[0] || ttsVoice;
+      if (ttsVoice) await appStore.updateTtsSettings({ voice: ttsVoice });
+      toastStore.success(`Using ${item.label || key}`);
+      await loadVoiceModelCatalog();
+    } catch (err) {
+      toastStore.error(`Failed to activate: ${(err as Error)?.message || err}`);
+    }
+  }
+
+  async function downloadVoiceModel(key: string, item: any, clearErrors = false) {
+    if (!item.repo_id) {
+      toastStore.error('No repo ID');
+      return;
+    }
+    if (clearErrors) {
+      const errorJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'error');
+      for (const job of errorJobs) await downloadsStore.removeJob(job.id);
+    }
+    try {
+      downloadingVoice = key;
+      const dir = await getModelsDirPath();
+      for (const file of item.files || []) {
+        await startDownloadHf({ repo_id: item.repo_id, file, models_dir: dir, dest_rel: `${item.dir}/${file}` });
+      }
+      downloadsStore.startPolling();
+      await downloadsStore.refresh();
+      toastStore.success(`Downloading ${item.label || key}...`);
+    } catch (err) {
+      toastStore.error(`Download failed: ${(err as Error)?.message || err}`);
+    } finally {
+      downloadingVoice = null;
+    }
+  }
+
+  async function cancelVoiceDownloads(item: any) {
+    const activeJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && (j.status === 'starting' || j.status === 'running'));
+    for (const job of activeJobs) await cancelDownloadJob(job.id);
+    downloadingVoice = null;
+    await downloadsStore.refresh();
+  }
 
   const refreshedJobIds = new Set<string>();
 
@@ -1491,193 +1551,100 @@
         {:else if activeSection === 'voices'}
           <div class="flex-1 overflow-y-auto p-5">
             <header class="mb-5">
-              <h2 class="text-base font-semibold text-[var(--text)]">Voice Models</h2>
-              <p class="mt-0.5 text-sm text-[var(--text-muted)]">Text-to-speech models for reading responses aloud</p>
+              <h2 class="text-base font-semibold text-[var(--text)]">Voice</h2>
+              <p class="mt-0.5 text-sm text-[var(--text-muted)]">Local text-to-speech for reading responses aloud</p>
             </header>
 
             {#if voiceCatalogLoading}
               <div class="flex items-center justify-center py-16">
                 <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
               </div>
-            {:else if !Object.keys(voiceModels).length}
+            {:else if !primaryVoiceEntry}
               <div class="p-8 text-center text-sm text-[var(--text-muted)]">
                 No voice models available
               </div>
             {:else}
-              <div class="grid gap-3">
-                {#each Object.entries(voiceModels) as [key, item] (key)}
-                  {@const voiceCount = Array.isArray(item.voices) ? item.voices.length : 0}
-                  {@const sizeLabel = item.size_mb ? `${item.size_mb} MB` : (item.size_human || item.sizeHuman || '')}
-                  {@const activeJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && (j.status === 'starting' || j.status === 'running'))}
-                  {@const errorJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'error')}
-                  {@const isDownloading = activeJobs.length > 0 || downloadingVoice === key}
-                  {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
-                  {@const totalFiles = Array.isArray(item.files) ? item.files.length : 0}
-                  {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'done')}
-                  <div class="border-b border-[var(--border)] pb-4 last:border-b-0 {item.is_active ? '' : ''}">
-                    <div class="flex items-start justify-between gap-4">
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2">
-                          <h3 class="text-sm font-semibold text-[var(--text)]">{item.label || key}</h3>
-                          {#if item.is_active}
-                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-primary-fg">Active</span>
-                          {/if}
-                        </div>
-                        <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">
-                          {item.engine === 'kokoro' ? 'Kokoro' : 'WASM'}{sizeLabel ? ` · ${sizeLabel}` : ''}{voiceCount ? ` · ${voiceCount} voices` : ''}
-                        </p>
-                        {#if item.description}
-                          <p class="mt-1 text-xs text-[var(--text-muted)]">{item.description}</p>
-                        {/if}
-                      </div>
-                      <div class="flex shrink-0 items-center gap-2">
-                        {#if item.downloaded && !item.is_active}
-                          <button
-                            type="button"
-                            class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-                          onclick={async () => {
-                              try {
-                                await appStore.updateTtsSettings({
-                                  engine: item.engine,
-                                  model_path: item.model_path || '',
-                                  voices_path: item.voices_path || '',
-                                  tokens_path: item.tokens_path || '',
-                                  lexicon_path: item.lexicon_path || '',
-                                  dict_dir: item.dict_dir || '',
-                                  data_dir: item.data_dir || '',
-                                  model_variant: key
-                                });
-                                ttsVoice = item.voices?.[0] || '';
-                                if (ttsVoice) await appStore.updateTtsSettings({ voice: ttsVoice });
-                                toastStore.success(`Using ${item.label || key}`);
-                                await loadVoiceModelCatalog();
-                              } catch (err) {
-                                toastStore.error(`Failed to activate: ${(err as Error)?.message || err}`);
-                              }
-                            }}
-                          >
-                            Use
-                          </button>
-                        {/if}
-                        {#if item.is_active}
-                          <button
-                            type="button"
-                            class="rounded-lg border border-[var(--border-hover)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
-                            onclick={() => unloadTts()}
-                          >
-                            Unload
-                          </button>
-                        {/if}
-                        {#if isDownloading}
-                          <div class="flex items-center gap-2">
-                            <div class="flex flex-col gap-1 min-w-[100px]">
-                              <div class="text-[10px] text-[var(--text-muted)]">
-                                Downloading {activeJobs.length}/{totalFiles} files
-                              </div>
-                              {#if activeJobs[0]}
-                                <div class="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-active)]">
-                                  <div class="h-full rounded-full bg-[var(--primary)] transition-all animate-pulse" style="width: {activeJobs[0].progress}%"></div>
-                                </div>
-                              {/if}
-                            </div>
-                            <button
-                              type="button"
-                              class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
-                              onclick={async () => {
-                                for (const j of activeJobs) { await cancelDownloadJob(j.id); }
-                                downloadingVoice = null;
-                                await downloadsStore.refresh();
-                              }}
-                              aria-label="Cancel"
-                              title="Cancel all"
-                            >
-                              <Ban class="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        {:else if hasError}
-                          <div class="flex items-center gap-2">
-                            <span class="text-xs text-[var(--text-secondary)]">Failed</span>
-                            <button
-                              type="button"
-                              class="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-                              onclick={async () => {
-                                try {
-                                  for (const j of errorJobs) { await downloadsStore.removeJob(j.id); }
-                                  if (!item.repo_id) { toastStore.error('No repo ID'); return; }
-                                  downloadingVoice = key;
-                                  const dir = await getModelsDirPath();
-                                  for (const file of item.files || []) {
-                                    await startDownloadHf({ repo_id: item.repo_id, file, models_dir: dir, dest_rel: `${item.dir}/${file}` });
-                                  }
-                                  downloadsStore.startPolling();
-                                  await downloadsStore.refresh();
-                                } catch (err) {
-                                  toastStore.error(`Retry failed: ${(err as Error)?.message || err}`);
-                                } finally { downloadingVoice = null; }
-                              }}
-                            >
-                              <RotateCcw class="h-3 w-3" />
-                              Retry
-                            </button>
-                          </div>
-                        {:else if !item.downloaded}
-                          <button
-                            type="button"
-                            class="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-                            disabled={downloadingVoice === key}
-                            onclick={async () => {
-                              try {
-                                if (!item.repo_id) { toastStore.error('No repo ID'); return; }
-                                downloadingVoice = key;
-                                const dir = await getModelsDirPath();
-                                for (const file of item.files || []) {
-                                  await startDownloadHf({ repo_id: item.repo_id, file, models_dir: dir, dest_rel: `${item.dir}/${file}` });
-                                }
-                                downloadsStore.startPolling();
-                                await downloadsStore.refresh();
-                                toastStore.success(`Downloading ${item.label || key}…`);
-                              } catch (err) {
-                                console.error('Voice download error:', err);
-                                toastStore.error(`Download failed: ${(err as Error)?.message || err}`);
-                              } finally { downloadingVoice = null; }
-                            }}
-                          >
-                            <Download class="h-3 w-3" />
-                            Download
-                          </button>
-                        {/if}
-                      </div>
+              {@const key = primaryVoiceEntry[0]}
+              {@const item = primaryVoiceEntry[1]}
+              {@const activeJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && (j.status === 'starting' || j.status === 'running'))}
+              {@const errorJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'error')}
+              {@const isDownloading = activeJobs.length > 0 || downloadingVoice === key}
+              {@const hasError = errorJobs.length > 0 && activeJobs.length === 0}
+              {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'done')}
+              {@const totalFiles = Array.isArray(item.files) ? item.files.length : 0}
+              <div class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-4">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-sm font-semibold text-[var(--text)]">{item.label || 'Kokoro Voice'}</h3>
+                      {#if item.is_active}
+                        <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-primary-fg">Active</span>
+                      {:else if item.downloaded}
+                        <span class="text-xs text-[var(--text-muted)]">Ready</span>
+                      {:else}
+                        <span class="text-xs text-[var(--text-muted)]">Not installed</span>
+                      {/if}
                     </div>
-                    {#if doneJobs.length > 0 && doneJobs.length >= totalFiles && !item.downloaded}
-                        <div class="mt-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        <Check class="h-3.5 w-3.5" />
-                        <span>Download complete — refresh to see model</span>
-                        <button
-                          type="button"
-                          class="rounded-lg px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-overlay-light"
-                          onclick={() => loadVoiceModelCatalog()}
-                        >
-                          Refresh
+                    <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">
+                      Kokoro{item.size_mb ? ` · ${item.size_mb} MB` : ''}
+                    </p>
+                  </div>
+
+                  <div class="flex shrink-0 items-center gap-2">
+                    {#if isDownloading}
+                      <div class="flex min-w-[9rem] items-center gap-2">
+                        <div class="h-1 flex-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
+                          <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {activeJobs[0]?.progress || 8}%"></div>
+                        </div>
+                        <button type="button" class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={() => cancelVoiceDownloads(item)} aria-label="Cancel" title="Cancel">
+                          <Ban class="h-3.5 w-3.5" />
                         </button>
                       </div>
-                    {/if}
-
-                    <!-- Voice picker for active model -->
-                    {#if item.is_active && Array.isArray(item.voices) && item.voices.length > 0}
-                      <div class="mt-3 border-t border-[var(--border)] pt-3">
-                        <p class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Select Voice</p>
-                        <VoiceLanguageSelector
-                          selectedVoice={ttsVoice}
-                          onSelect={async (voice) => {
-                            ttsVoice = voice;
-                            await appStore.updateTtsSettings({ voice });
-                            toastStore.success(`Voice set to ${voice}`);
-                          }}
-                        />
-                      </div>
+                    {:else if hasError}
+                      <button type="button" class="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => downloadVoiceModel(key, item, true)}>
+                        <RotateCcw class="h-3 w-3" />
+                        Retry
+                      </button>
+                    {:else if item.downloaded && !item.is_active}
+                      <button type="button" class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => activateVoiceModel(key, item)}>
+                        Use
+                      </button>
+                    {:else if item.is_active}
+                      <button type="button" class="rounded-lg border border-[var(--border-hover)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={() => unloadTts()}>
+                        Unload
+                      </button>
+                    {:else}
+                      <button type="button" class="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingVoice === key} onclick={() => downloadVoiceModel(key, item)}>
+                        <Download class="h-3 w-3" />
+                        Download
+                      </button>
                     {/if}
                   </div>
-                {/each}
+                </div>
+
+                {#if doneJobs.length > 0 && doneJobs.length >= totalFiles && !item.downloaded}
+                  <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                    <Check class="h-3.5 w-3.5" />
+                    <span>Download complete</span>
+                    <button type="button" class="rounded-lg px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-overlay-light" onclick={() => loadVoiceModelCatalog()}>
+                      Refresh
+                    </button>
+                  </div>
+                {/if}
+
+                {#if item.is_active && Array.isArray(item.voices) && item.voices.length > 0}
+                  <div>
+                    <p class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Voice</p>
+                    <VoiceLanguageSelector
+                      selectedVoice={ttsVoice}
+                      onSelect={async (voice) => {
+                        ttsVoice = voice;
+                        await appStore.updateTtsSettings({ voice });
+                        toastStore.success(`Voice set to ${voice}`);
+                      }}
+                    />
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>

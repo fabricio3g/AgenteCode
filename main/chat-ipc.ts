@@ -167,11 +167,14 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       };
 
       const toolCallAccumulator = new Map();
+      let finalUsage = null;
 
       for await (const delta of provider.streamChat(streamParams)) {
         if (abortController.signal.aborted) {
           break;
         }
+
+        if (delta.usage) finalUsage = delta.usage;
 
         emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
 
@@ -192,7 +195,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       }
 
       const finalToolCalls = finalizeToolCalls(toolCallAccumulator);
-      emit({ type: 'done', toolCalls: finalToolCalls });
+      emit({ type: 'done', toolCalls: finalToolCalls, usage: finalUsage });
     } catch (error) {
       if (abortController.signal.aborted) {
         emit({ type: 'cancelled' });

@@ -38,10 +38,35 @@
   );
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
   const displayMetadata = $derived(activeVersion?.metadata || message.metadata || null);
+  const footerMetadata = $derived.by(() => {
+    const versionMeta = activeVersion?.metadata || null;
+    const messageMeta = message.metadata || null;
+    if (!versionMeta) return messageMeta;
+    if (!messageMeta) return versionMeta;
+    return {
+      ...messageMeta,
+      ...versionMeta
+    };
+  });
+  const hasReliableUsage = $derived(footerMetadata?.usageSource === 'provider' || footerMetadata?.usageSource === 'runtime');
+  const displayTokenCount = $derived(footerMetadata?.outputTokens || footerMetadata?.totalTokens || footerMetadata?.tokens || 0);
+  const displayModelTiming = $derived.by(() => {
+    if (!footerMetadata || !hasReliableUsage) return undefined;
+    if (typeof footerMetadata.modelTimingSeconds === 'number') return footerMetadata.modelTimingSeconds;
+    if (typeof footerMetadata.timing === 'number') return footerMetadata.timing;
+    return undefined;
+  });
+  const footerModelName = $derived(footerMetadata?.modelName || message.model || '');
+  const footerBackendHint = $derived(
+    footerMetadata?.executionBackend === 'local'
+      ? 'local'
+      : footerMetadata?.executionBackend === 'api'
+        ? 'api'
+        : ''
+  );
   const displaySearchMeta = $derived(message.searchMeta || inferSearchMeta(message));
   const hasActiveDeepResearch = $derived.by(() => {
-    const task = deepResearchStore.activeTask;
-    return !!task && task.messageId === message.id;
+    return !!deepResearchStore.getActiveTaskForMessage(message.id);
   });
   const cleanContent = $derived(stripChartBlocks(displayContent));
   const userHtml = $derived(renderMarkdown(message.content || ''));
@@ -56,7 +81,7 @@
   const hasTtsAudio = $derived(
     ttsStore.hasStoredAudio(message.id) || !!message.ttsAudio
   );
-  const hasActiveTtsPlayer = $derived(isTtsGenerating || isTtsPlaying || hasTtsAudio);
+  const hasActiveTtsPlayer = $derived(isTtsPlaying || hasTtsAudio);
 
   function inferSearchMeta(entry: ChatMessage): SearchMeta | null {
     if (!entry.sources?.length || entry.searchMode === 'chat') return null;
@@ -154,17 +179,7 @@
       <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7 shadow-[var(--shadow-xs)]">
         <div class="markdown-body user-markdown">{@html userHtml}</div>
         {#if message.attachments?.length}
-          <div class="mt-3 flex flex-wrap justify-end gap-2">
-            {#each message.attachments as attachment (attachment.id)}
-              {#if attachment.kind === 'image' && (attachment.preview || attachment.base64)}
-                <img
-                  src={attachment.base64 || attachment.preview}
-                  alt={attachment.name}
-                  class="h-16 w-16 rounded-lg border border-[var(--border)] object-cover shadow-[var(--shadow-xs)]"
-                  title={attachment.name}
-                />
-              {/if}
-            {/each}
+          <div class="mt-3 flex justify-end">
             <AttachmentDocumentsBlock attachments={message.attachments} />
           </div>
         {/if}
@@ -213,14 +228,19 @@
 
       <!-- Model name + token usage (always visible) -->
       <div class="mt-1 flex items-center gap-2 flex-wrap">
-        {#if message.status !== 'streaming' && (displayMetadata?.modelName || message.model)}
-          <span class="text-xs text-[var(--text-muted)]">{displayMetadata?.modelName || message.model}</span>
-        {/if}
-        {#if displayMetadata?.tokens}
+        {#if message.status !== 'streaming' && footerModelName}
           <span class="text-xs text-[var(--text-muted)]">
-            {displayMetadata.tokens} tok
-            {#if displayMetadata.timing}· {displayMetadata.timing.toFixed(1)}s{/if}
-            {#if displayMetadata.tokensPerSecond}· {displayMetadata.tokensPerSecond.toFixed(0)}/s{/if}
+            {footerModelName}
+            {#if footerBackendHint}
+              <span class="text-[var(--text-tertiary)]"> · {footerBackendHint}</span>
+            {/if}
+          </span>
+        {/if}
+        {#if hasReliableUsage && displayTokenCount}
+          <span class="text-xs text-[var(--text-muted)]">
+            {displayTokenCount} tok
+            {#if displayModelTiming}· {displayModelTiming.toFixed(1)}s{/if}
+            {#if footerMetadata?.tokensPerSecond}· {footerMetadata.tokensPerSecond.toFixed(0)}/s{/if}
           </span>
         {/if}
       </div>

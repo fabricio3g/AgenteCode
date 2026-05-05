@@ -38,11 +38,17 @@ export class OpenAICompatibleProvider extends BaseProvider {
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
       const toolCallDeltas = delta.tool_calls;
+      const usage = chunk.usage || null;
 
-      if (content || reasoning || toolCallDeltas) {
+      if (content || reasoning || toolCallDeltas || usage) {
         yield {
           content: content ?? '',
           reasoning: reasoning ?? '',
+          ...(usage ? { usage: {
+            input_tokens: usage.prompt_tokens,
+            output_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens
+          } } : {}),
           ...(toolCallDeltas ? {
             toolCallDeltas: toolCallDeltas.map(tc => ({
               index: tc.index ?? 0,

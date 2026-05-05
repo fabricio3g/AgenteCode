@@ -145,6 +145,89 @@ function normalizeReportDocument(args: Record<string, unknown>): ReportDocument 
   };
 }
 
+function wordCount(value: unknown): number {
+  return text(value).split(/\s+/).filter((word) => /[a-zA-Z0-9]/.test(word)).length;
+}
+
+function sectionBodyWordCount(section: SectionInput): number {
+  return wordCount(section.content) + (section.bullets || []).reduce((sum, bullet) => sum + wordCount(bullet), 0);
+}
+
+function hasMeaningfulNarrative(report: ReportDocument): boolean {
+  if (wordCount(report.executiveSummary) >= 18) return true;
+  return (report.sections || []).some((section) => {
+    const heading = (section.title || section.heading || '').toLowerCase();
+    if (['sources', 'source', 'limitations', 'methodology', 'appendix'].includes(heading)) return false;
+    return sectionBodyWordCount(section) >= 18 || (section.bullets || []).filter((bullet) => wordCount(bullet) >= 5).length >= 2;
+  });
+}
+
+function hasTableRows(report: ReportDocument): boolean {
+  return !!report.tables?.some((table) => Array.isArray(table.rows) && table.rows.length > 0);
+}
+
+function hasSourceRows(report: ReportDocument): boolean {
+  return !!report.sources?.some((source) => source.title || source.url || source.snippet);
+}
+
+function hasLimitations(report: ReportDocument): boolean {
+  return !!report.limitations?.some((item) => wordCount(item) >= 3);
+}
+
+function validateReportForFormats(report: ReportDocument, formats: string[]): string | null {
+  const formatSet = new Set(formats.map((format) => format.toLowerCase()));
+  const wantsNarrative = ['md', 'html', 'docx', 'pdf'].some((format) => formatSet.has(format));
+  const wantsSlides = formatSet.has('pptx');
+  const wantsSheet = formatSet.has('xlsx');
+  const hasEvidenceContext = hasSourceRows(report);
+
+  if ((wantsNarrative || wantsSlides) && !hasMeaningfulNarrative(report)) {
+    return 'Document content is too thin: sections need body content, not only titles.';
+  }
+  if (hasEvidenceContext && !hasSourceRows(report) && !hasLimitations(report)) {
+    return 'Document content is too thin: include sources or limitations for evidence-based work.';
+  }
+  if (wantsSheet && !hasTableRows(report) && !hasSourceRows(report) && !hasMeaningfulNarrative(report)) {
+    return 'Spreadsheet content is too thin: provide data rows, source rows, or an evidence-backed summary.';
+  }
+  if (wantsSlides) {
+    const contentSlides = reportToSlides(report).slice(1).filter((slide) =>
+      Array.isArray(slide.content) && slide.content.some((item) => wordCount(item) >= 4)
+    );
+    if (!contentSlides.length) return 'Presentation content is too thin: add at least one content slide with meaningful bullets.';
+  }
+  return null;
+}
+
+export function validateGeneratedDocumentArgs(args: Record<string, unknown>, formats: string[]): { ok: boolean; error?: string } {
+  const report = normalizeReportDocument(args);
+  const formatSet = new Set(formats.map((format) => format.toLowerCase()));
+  const rawSlides = Array.isArray(args.slides) ? args.slides as Array<Record<string, unknown>> : [];
+  const rawRows = Array.isArray(args.rows) ? args.rows : [];
+  const rawSheets = Array.isArray(args.sheets) ? args.sheets as Array<Record<string, unknown>> : [];
+  const hasMeaningfulRawSlides = rawSlides.some((slide) => {
+    const content = Array.isArray(slide.content)
+      ? slide.content
+      : Array.isArray(slide.bullets)
+        ? slide.bullets
+        : [slide.content];
+    return content.some((item) => wordCount(item) >= 4);
+  });
+  if (formatSet.size === 1 && formatSet.has('pptx') && hasMeaningfulRawSlides) {
+    return { ok: true };
+  }
+  if (formatSet.size === 1 && formatSet.has('xlsx') && (rawRows.length > 0 || rawSheets.some((sheet) => Array.isArray(sheet.rows) && sheet.rows.length > 0))) {
+    return { ok: true };
+  }
+  const error = validateReportForFormats(report, formats);
+  return error ? { ok: false, error } : { ok: true };
+}
+
+function assertValidGeneratedDocument(args: Record<string, unknown>, formats: string[]) {
+  const result = validateGeneratedDocumentArgs(args, formats);
+  if (!result.ok) throw new Error(result.error || 'Document content is too thin.');
+}
+
 function reportSections(report: ReportDocument): SectionInput[] {
   const sections: SectionInput[] = [];
   if (report.executiveSummary) sections.push({ title: 'Executive summary', content: report.executiveSummary });
@@ -304,6 +387,7 @@ function buildFile(path: string, mime: string, bytes: number[], previewHtml: str
 }
 
 export async function createDocxArtifactFile(args: Record<string, unknown>): Promise<GeneratedArtifactFile> {
+  assertValidGeneratedDocument(args, ['docx']);
   const report = normalizeReportDocument(args);
   const title = report.title;
   const sections = reportSections(report);
@@ -313,6 +397,7 @@ export async function createDocxArtifactFile(args: Record<string, unknown>): Pro
 }
 
 export async function createXlsxArtifactFile(args: Record<string, unknown>): Promise<GeneratedArtifactFile> {
+  assertValidGeneratedDocument(args, ['xlsx']);
   const report = normalizeReportDocument(args);
   const title = report.title || text(args.title, 'Workbook');
   const sheets = Array.isArray(args.sheets) ? args.sheets as SheetInput[] : [{
@@ -327,6 +412,7 @@ export async function createXlsxArtifactFile(args: Record<string, unknown>): Pro
 }
 
 export async function createPptxArtifactFile(args: Record<string, unknown>): Promise<GeneratedArtifactFile> {
+  assertValidGeneratedDocument(args, ['pptx']);
   const report = normalizeReportDocument(args);
   const title = report.title || text(args.title, 'Presentation');
   const rawSlides = Array.isArray(args.slides) ? args.slides as Array<Record<string, unknown>> : reportToSlides(report);
@@ -347,6 +433,7 @@ export async function createPptxArtifactFile(args: Record<string, unknown>): Pro
 }
 
 export async function createPdfArtifactFile(args: Record<string, unknown>): Promise<GeneratedArtifactFile> {
+  assertValidGeneratedDocument(args, ['pdf']);
   const report = normalizeReportDocument(args);
   const title = report.title;
   const sections = reportSections(report);
@@ -411,6 +498,7 @@ export async function createWorkProductArtifactFiles(args: Record<string, unknow
   const formats = (requested.length ? requested : ['md']).filter((format): format is WorkProductFormat =>
     ['md', 'html', 'docx', 'xlsx', 'pdf', 'pptx'].includes(format)
   );
+  assertValidGeneratedDocument(args, formats);
   const base = normalizePath(args.path || args.basePath, report.title || 'report').replace(/\.(md|html|docx|xlsx|pdf|pptx)$/i, '');
   const files: GeneratedArtifactFile[] = [];
   const warnings: string[] = [];

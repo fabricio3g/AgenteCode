@@ -7,14 +7,32 @@
     src: string;
     filename: string;
     lang?: string;
+    query?: string;
   }
 
-  let { src, filename, lang = '' }: Props = $props();
+  let { src, filename, lang = '', query = '' }: Props = $props();
 
   let loading = $state(true);
   let error = $state<string | null>(null);
   let textContent = $state('');
   let highlightedHtml = $state('');
+
+  const renderedHtml = $derived.by(() => {
+    const term = query.trim();
+    const rawHtml = term ? escapeHtml(textContent) : (highlightedHtml || escapeHtml(textContent));
+    if (!term) return rawHtml;
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return rawHtml.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  });
+
+  function escapeHtml(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   async function loadText() {
     loading = true;
@@ -83,11 +101,7 @@
     </div>
   {:else}
     <div class="text-frame">
-      {#if highlightedHtml}
-        <pre class="text-pre"><code>{@html highlightedHtml}</code></pre>
-      {:else}
-        <pre class="text-pre">{textContent}</pre>
-      {/if}
+      <pre class="text-pre"><code>{@html renderedHtml}</code></pre>
     </div>
     {#if textContent.length > 50000}
       <div class="text-truncated">
@@ -139,6 +153,13 @@
     font-family: inherit;
     background: none;
     padding: 0;
+  }
+
+  .text-pre :global(mark) {
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+    color: inherit;
+    padding: 0 0.08rem;
   }
 
   .text-truncated {

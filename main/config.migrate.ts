@@ -232,8 +232,6 @@ export function migrateConfig(cfg: AppConfig, modelsRoot: string): MigrationResu
 export {
   URL_FIXES,
   LEGACY_TTS_VARIANTS,
-  TTS_DIR_MAP,
-  TTS_MODEL_MAP,
   LEGACY_DEFAULT_MODELS,
   LEGACY_STT_PROVIDERS,
 };

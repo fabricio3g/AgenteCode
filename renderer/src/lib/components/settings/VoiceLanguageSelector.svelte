@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Volume2, VolumeX, Check, ChevronDown, LoaderCircle, Star } from 'lucide-svelte';
+  import { Volume2, VolumeX, Check, ChevronDown, LoaderCircle } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { KOKORO_QUALITY_VOICES, getAvailableLanguages } from '$lib/services/kokoro-tts';
 
@@ -70,17 +70,6 @@
     return voice.charAt(1) === 'f' ? 'Female' : 'Male';
   }
 
-  function getVoiceQuality(voice: string): { grade: string; stars: number } {
-    const qualityMap: Record<string, { grade: string; stars: number }> = {
-      // English (US)
-      'af_heart': { grade: 'A', stars: 3 },
-      'af_bella': { grade: 'A-', stars: 3 },
-      'af_nicole': { grade: 'B-', stars: 2 },
-      // English (UK)
-      'bf_emma': { grade: 'B-', stars: 2 },
-    };
-    return qualityMap[voice] ?? { grade: '', stars: 1 };
-  }
 </script>
 
 <div class="flex items-center gap-2">
@@ -139,7 +128,6 @@
           </p>
         {:else if voices.length > 0}
           {#each voices as voice}
-            {@const quality = getVoiceQuality(voice)}
             <button
               type="button"
               class="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)] transition {voice === selectedVoice ? 'text-[var(--primary)] bg-[var(--primary)]/5' : 'text-[var(--text)]'}"
@@ -148,12 +136,6 @@
               <Volume2 class="h-3 w-3 shrink-0 {voice === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
               <span class="truncate">{getVoiceLabel(voice)}</span>
               <span class="text-[10px] text-[var(--text-muted)]">{getVoiceGender(voice)}</span>
-              {#if quality.grade}
-                <span class="text-[10px] text-[var(--text-muted)]">{quality.grade}</span>
-              {/if}
-              {#each Array(quality.stars) as _}
-                <Star class="h-2.5 w-2.5 text-amber-400 fill-amber-400" />
-              {/each}
               {#if voice === selectedVoice}
                 <Check class="ml-auto h-3 w-3 shrink-0" />
               {/if}

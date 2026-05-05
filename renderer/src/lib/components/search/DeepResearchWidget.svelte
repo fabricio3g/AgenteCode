@@ -11,9 +11,7 @@
   let { messageId = null }: Props = $props();
 
   const activeTask = $derived.by(() => {
-    const task = deepResearchStore.activeTask;
-    if (!task || !messageId) return null;
-    return task.messageId === messageId ? task : null;
+    return deepResearchStore.getActiveTaskForMessage(messageId);
   });
 
   let answers = $state<Record<string, string>>({});
