@@ -12,9 +12,16 @@ type WrkMsg =
   | { type: 'cancel'; id: number }
   | { type: 'unload' };
 
+type WrkOutMsg =
+  | { type: 'ready'; voices: string[] }
+  | { type: 'start'; id: number; total: number }
+  | { type: 'chunk'; id: number; index: number; total: number; base64: string }
+  | { type: 'done'; id: number; total: number }
+  | { type: 'error'; id: number; message: string };
+
 let _activeId: number | null = null;
 
-function post(data: any) {
+function post(data: WrkOutMsg) {
   parentPort?.postMessage(data);
 }
 
@@ -128,18 +135,9 @@ parentPort?.on('message', async (msg: WrkMsg) => {
         break;
       }
     }
-  } catch (err: any) {
-    post({ type: 'error', id: (msg as any).id ?? 0, message: err.message || String(err) });
+  } catch (err: unknown) {
+    const id = 'id' in msg && typeof msg.id === 'number' ? msg.id : 0;
+    const message = err instanceof Error ? err.message : String(err);
+    post({ type: 'error', id, message });
   }
 });
-
-function concatFloat32(arrays: Float32Array[]): Float32Array {
-  const totalLen = arrays.reduce((sum, a) => sum + a.length, 0);
-  const result = new Float32Array(totalLen);
-  let offset = 0;
-  for (const a of arrays) {
-    result.set(a, offset);
-    offset += a.length;
-  }
-  return result;
-}

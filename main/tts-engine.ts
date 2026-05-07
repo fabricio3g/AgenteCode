@@ -5,6 +5,12 @@ import { Worker } from 'worker_threads';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
 
+type TtsWorkerMessage =
+  | { type: 'ready'; voices?: string[] }
+  | { type: string; [key: string]: unknown };
+
+const LOG_PREFIX = '[TTS]';
+
 let _worker: Worker | null = null;
 let _ready = false;
 let _voices: string[] = [];
@@ -14,10 +20,10 @@ let _genId = 0;
 function getWorker(): Worker {
   if (!_worker) {
     const workerPath = path.resolve(__dirname, 'tts-worker.cjs');
-    console.log('[TTS Engine] Spawning worker at:', workerPath);
+    console.log(`${LOG_PREFIX} Spawning worker at:`, workerPath);
     _worker = new Worker(workerPath);
-    _worker.on('error', (err) => console.error('[TTS Worker] Error:', err));
-    _worker.on('exit', (code) => console.log('[TTS Worker] Exited with code', code));
+    _worker.on('error', (err) => console.error(`${LOG_PREFIX} Worker error:`, err));
+    _worker.on('exit', (code) => console.log(`${LOG_PREFIX} Worker exited with code`, code));
   }
   return _worker;
 }
@@ -29,9 +35,9 @@ export async function initTts(): Promise<string[]> {
 
 export async function generateTtsStream(
   request: { text: string; voice?: string; speed?: number; volume?: number },
-  _win: any
+  _win: BrowserWindow | null
 ): Promise<void> {
-  console.log('[TTS Main] generateTtsStream called:', JSON.stringify({ text: request.text.slice(0, 30), voice: request.voice }));
+  console.log(`${LOG_PREFIX} generateTtsStream called:`, JSON.stringify({ text: request.text.slice(0, 30), voice: request.voice }));
   await initWorker();
   if (!_worker) throw new Error('Worker not available');
   _worker.postMessage({
@@ -42,11 +48,11 @@ export async function generateTtsStream(
     speed: Number(request.speed || 1),
     volume: Number(request.volume ?? 1),
   });
-  console.log('[TTS Main] Sent to worker, id:', _genId);
+  console.log(`${LOG_PREFIX} Sent to worker, id:`, _genId);
 }
 
 // Handle worker messages for streaming
-export function onWorkerMessage(handler: (msg: any) => void): void {
+export function onWorkerMessage(handler: (msg: TtsWorkerMessage) => void): void {
   getWorker().on('message', handler);
 }
 
@@ -55,12 +61,12 @@ async function initWorker(): Promise<void> {
   if (_initPromise) return _initPromise;
   _initPromise = new Promise((resolve) => {
     const w = getWorker();
-    w.on('message', function h(msg: any) {
+    w.on('message', function h(msg: TtsWorkerMessage) {
       if (msg.type === 'ready') {
         w.off('message', h);
         _ready = true;
-        _voices = msg.voices || [];
-        console.log('[TTS Worker] Ready,', _voices.length, 'voices');
+        _voices = Array.isArray(msg.voices) ? msg.voices : [];
+        console.log(`${LOG_PREFIX} Worker ready,`, _voices.length, 'voices');
         resolve();
       }
     });

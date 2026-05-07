@@ -1,12 +1,28 @@
 import type { TtsRequest } from '$lib/types/tauri';
 import { invoke } from './tauri';
 
+type TtsEvent = Record<string, unknown>;
+type ElectronApi = {
+  on: (event: string, cb: (evt: TtsEvent) => void) => () => void;
+};
+
+const LOG_PREFIX = '[TTS]';
+
+function getElectronApi(): ElectronApi | null {
+  const api = (window as Window & { electronAPI?: ElectronApi }).electronAPI;
+  if (!api) {
+    console.warn(`${LOG_PREFIX} electronAPI not available`);
+    return null;
+  }
+  return api;
+}
+
 export async function unloadTts(): Promise<void> {
   await invoke<void>('unload_tts');
 }
 
 export function generateTtsStream(request: TtsRequest & { volume?: number }): void {
-  console.log('[TTS] Sending generate_tts_stream:', (request as any).text?.slice(0, 30));
+  console.log(`${LOG_PREFIX} Sending generate_tts_stream:`, request.text?.slice(0, 30));
   invoke<{ ok: boolean }>('generate_tts_stream', { request });
 }
 
@@ -27,31 +43,34 @@ export function base64ToFloat32Pcm(base64: string): Float32Array {
   return float32;
 }
 
-export function onTtsChunk(cb: (evt: any) => void): () => void {
-  const api = (window as any).electronAPI;
-  if (!api) { console.warn('[TTS] electronAPI not available'); return () => {}; }
-  console.log('[TTS] Subscribing to tts-chunk');
-  return api.on('tts-chunk', (evt: any) => {
-    console.log('[TTS] tts-chunk event received:', JSON.stringify(evt).slice(0, 200));
+export function onTtsChunk(cb: (evt: TtsEvent) => void): () => void {
+  const api = getElectronApi();
+  if (!api) return () => {};
+
+  console.log(`${LOG_PREFIX} Subscribing to tts-chunk`);
+  return api.on('tts-chunk', (evt) => {
+    console.log(`${LOG_PREFIX} tts-chunk event received:`, JSON.stringify(evt).slice(0, 200));
     cb(evt);
   });
 }
 
-export function onTtsStart(cb: (evt: any) => void): () => void {
-  const api = (window as any).electronAPI;
-  if (!api) { console.warn('[TTS] electronAPI not available'); return () => {}; }
-  return api.on('tts-start', (evt: any) => {
-    console.log('[TTS] tts-start event received:', JSON.stringify(evt));
+export function onTtsStart(cb: (evt: TtsEvent) => void): () => void {
+  const api = getElectronApi();
+  if (!api) return () => {};
+
+  return api.on('tts-start', (evt) => {
+    console.log(`${LOG_PREFIX} tts-start event received:`, JSON.stringify(evt));
     cb(evt);
   });
 }
 
-export function onTtsDone(cb: (evt: any) => void): () => void {
-  const api = (window as any).electronAPI;
-  if (!api) { console.warn('[TTS] electronAPI not available'); return () => {}; }
-  console.log('[TTS] Subscribing to tts-done');
-  return api.on('tts-done', (evt: any) => {
-    console.log('[TTS] tts-done event received:', JSON.stringify(evt));
+export function onTtsDone(cb: (evt: TtsEvent) => void): () => void {
+  const api = getElectronApi();
+  if (!api) return () => {};
+
+  console.log(`${LOG_PREFIX} Subscribing to tts-done`);
+  return api.on('tts-done', (evt) => {
+    console.log(`${LOG_PREFIX} tts-done event received:`, JSON.stringify(evt));
     cb(evt);
   });
 }

@@ -2,7 +2,10 @@ import { BrowserWindow, dialog, nativeImage } from 'electron';
 
 let mainWindow: BrowserWindow | null = null;
 let webviewerWindow: BrowserWindow | null = null;
-let activeWorkState = { active: false, reasons: [] as string[] };
+type ActiveWorkState = { active: boolean; reasons: string[] };
+type ActiveWorkStateInput = { active?: unknown; reasons?: unknown };
+
+let activeWorkState: ActiveWorkState = { active: false, reasons: [] };
 let preloadPath = '';
 
 export function setMainWindow(win: BrowserWindow | null) {
@@ -21,10 +24,10 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
 }
 
-export function setActiveWorkState(state: Record<string, any> = {}) {
-  const active = !!state.active;
+export function setActiveWorkState(state: ActiveWorkStateInput = {}) {
+  const active = Boolean(state.active);
   const reasons = Array.isArray(state.reasons)
-    ? state.reasons.map((value: any) => String(value || '').trim()).filter(Boolean)
+    ? state.reasons.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
   activeWorkState = { active, reasons };
   return activeWorkState;

@@ -11,6 +11,10 @@ const LEGACY_API_PROVIDER_NAMES = new Set([
   'openai', 'openrouter', 'lmstudio', 'groq', 'mistral', 'anthropic', 'gemini', 'perplexity', 'xai'
 ]);
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function resolveSttProviderMode(cfg, localAvailable) {
   const raw = String(cfg?.stt?.provider || '').trim().toLowerCase();
   if (STT_PROVIDER_MODES.has(raw)) return raw;
@@ -42,8 +46,8 @@ async function getSherpa() {
 
     _sherpa = resolved;
     return _sherpa;
-  } catch (err) {
-    console.error('[stt-engine] Failed to load sherpa-onnx-node:', err?.message || err);
+  } catch (err: unknown) {
+    console.error('[stt-engine] Failed to load sherpa-onnx-node:', errorMessage(err));
     return null; // graceful fallback if native module is missing
   }
 }
@@ -179,7 +183,7 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
     // Fallback: manually parse WAV
     const wavBuffer = fs.readFileSync(outputFile);
     return parseWavToFloat32(wavBuffer);
-  } catch (err) {
+  } catch (err: unknown) {
     if (ext === 'wav') {
       try {
         return parseWavToFloat32(audioBytes);
@@ -187,8 +191,10 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
         // ignored - handled below with detailed ffmpeg error
       }
     }
-    const stderr = err?.stderr ? String(err.stderr) : '';
-    const detail = stderr.trim() || err?.message || 'unknown ffmpeg decode failure';
+    const stderr = typeof err === 'object' && err !== null && 'stderr' in err
+      ? String((err as { stderr?: unknown }).stderr || '')
+      : '';
+    const detail = stderr.trim() || errorMessage(err) || 'unknown ffmpeg decode failure';
     throw new Error(`Unable to decode recorded audio (${mimeType}). ${detail}`);
   } finally {
     try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
@@ -353,8 +359,8 @@ export async function transcribeAudio(args = {}) {
     }
     try {
       return await transcribeLocal(audioBytes, mime_type, quality);
-    } catch (err) {
-      throw new Error(`Local transcription failed: ${err?.message || err}`);
+    } catch (err: unknown) {
+      throw new Error(`Local transcription failed: ${errorMessage(err)}`);
     }
   }
 
@@ -366,8 +372,8 @@ export async function transcribeAudio(args = {}) {
   if (available && sherpa) {
     try {
       return await transcribeLocal(audioBytes, mime_type, quality);
-    } catch (err) {
-      console.error('[stt-engine] Local transcription failed, falling back to API:', err?.message || err);
+    } catch (err: unknown) {
+      console.error('[stt-engine] Local transcription failed, falling back to API:', errorMessage(err));
     }
   }
 
