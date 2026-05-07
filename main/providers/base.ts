@@ -76,8 +76,8 @@ export class BaseProvider {
       // If we get a response without an error, assume tools are supported
       const hasTools = !!(result?.toolCalls?.length || result?.content);
       return { supportsTools: hasTools, source: 'probe' };
-    } catch (err) {
-      const msg = String(err?.message || err || '').toLowerCase();
+    } catch (err: unknown) {
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
       // Tool-related errors mean the API rejected tools
       if (/tool|function.?call|unsupported|not.?support/i.test(msg)) {
         return { supportsTools: false, source: 'probe_rejected' };

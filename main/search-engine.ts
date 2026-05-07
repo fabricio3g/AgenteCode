@@ -43,7 +43,7 @@ const DEFAULT_CONTEXT_BUDGET = {
 };
 
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
-const searchCache = new Map();
+const searchCache = new Map<string, { result: unknown; expires: number }>();
 
 function getCacheKey(query, mode, provider) {
   return `${provider}:${mode}:${query}`.toLowerCase();
@@ -67,9 +67,14 @@ function setCachedResult(key, result) {
   searchCache.set(key, { result, expires: Date.now() + SEARCH_CACHE_TTL_MS });
 }
 
-function classifyNetworkError(err) {
-  const msg = String(err?.message || err || '').toLowerCase();
-  if (err?.name === 'AbortError' || msg.includes('timeout')) {
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function classifyNetworkError(err: unknown) {
+  const msg = toErrorMessage(err).toLowerCase();
+  const errorName = (err && typeof err === 'object' && 'name' in err) ? String((err as { name?: string }).name) : '';
+  if (errorName === 'AbortError' || msg.includes('timeout')) {
     return { error_type: 'timeout', retryable: true, hint: 'Request timed out.' };
   }
   if (msg.includes('enotfound') || msg.includes('dns')) {
@@ -98,7 +103,7 @@ async function fetchWithRetry(url, opts = {}) {
       });
       clearTimeout(timer);
       return resp;
-    } catch (err) {
+    } catch (err: unknown) {
       clearTimeout(timer);
       lastErr = err;
       if (i >= retries) throw lastErr;
@@ -879,7 +884,7 @@ async function searchElectron(query, maxResults) {
       full_content: item.snippet || '',
       metadata: { source: 'electron_browser' }
     }, index));
-  } catch (err) {
+  } catch (err: unknown) {
     if (electronSearchWindow && !electronSearchWindow.isDestroyed()) {
       electronSearchWindow.close();
       electronSearchWindow = null;
@@ -1033,8 +1038,8 @@ export async function webSearch({ query, context, deep, mode, options }, win = n
       providerResults = await runProviderSearch(explicitProvider, effectiveQuery, searchMode === 'max' ? Math.max(maxResults * 2, maxResults + 4) : maxResults, searchOptions);
       providerUsed = explicitProvider;
       providerAttempts.push({ provider: explicitProvider, success: providerResults.length > 0, resultCount: providerResults.length });
-    } catch (err) {
-      providerAttempts.push({ provider: explicitProvider, success: false, resultCount: 0, error: err?.message || String(err || 'Search failed') });
+    } catch (err: unknown) {
+      providerAttempts.push({ provider: explicitProvider, success: false, resultCount: 0, error: toErrorMessage(err) });
       const error = providerSearchError(explicitProvider, err);
       return { ...error, query: normalizedQuery, effective_query: effectiveQuery, search_mode: searchMode, provider_attempts: providerAttempts };
     }
@@ -1073,9 +1078,9 @@ export async function webSearch({ query, context, deep, mode, options }, win = n
           if (results.length >= minimumUsefulResults || searchMode === 'search') break;
           emit('provider_failed', `${providerDisplayName(provider)} returned only ${results.length} result(s); trying another provider...`);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         lastError = err;
-        providerAttempts.push({ provider, success: false, resultCount: 0, error: err?.message || String(err || 'Search failed') });
+        providerAttempts.push({ provider, success: false, resultCount: 0, error: toErrorMessage(err) });
         emit('provider_failed', `${providerDisplayName(provider)} failed: ${classifyNetworkError(err).hint}`);
       }
     }

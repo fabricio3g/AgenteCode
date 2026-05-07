@@ -119,11 +119,11 @@ export async function indexWorkspaceFolder(folderPath, chatId) {
 
   try {
     walk(folderPath);
-  } catch (err) {
+  } catch (err: unknown) {
     return {
       root_path: folderPath, root_name: rootName,
       file_count: 0, indexed_count: 0, skipped_count: 0, files: [],
-      error: err.message
+      error: err instanceof Error ? err.message : String(err)
     };
   }
 
@@ -488,10 +488,10 @@ async function indexWorkspaceRag(workspaceRoot, chatId, options = {}) {
           char_count: content.length,
           name: entry.name
         });
-      } catch (err) {
+      } catch (err: unknown) {
         errors.push({
           path: path.relative(normalizedRoot, fullPath),
-          error: err.message || String(err)
+          error: err instanceof Error ? err.message : String(err)
         });
       }
     }
@@ -517,10 +517,10 @@ async function indexWorkspaceRag(workspaceRoot, chatId, options = {}) {
         fingerprint: item.fingerprint
       });
       totalChars += item.char_count;
-    } catch (err) {
+    } catch (err: unknown) {
       errors.push({
         path: item.source,
-        error: err.message || String(err)
+        error: err instanceof Error ? err.message : String(err)
       });
     }
   }

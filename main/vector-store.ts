@@ -53,8 +53,8 @@ class VectorStore {
         await table.createIndex('vector');
       }
       this.indexState.set(tableName, true);
-    } catch (err) {
-      console.warn('[RAG] Could not ensure vector index:', err?.message || err);
+    } catch (err: unknown) {
+      console.warn('[RAG] Could not ensure vector index:', err instanceof Error ? err.message : String(err));
       this.indexState.set(tableName, false);
     }
   }

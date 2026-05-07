@@ -32,7 +32,7 @@ function fetchWithRetry(url, opts = {}) {
           }
         }
         return resp;
-      } catch (err) {
+      } catch (err: unknown) {
         clearTimeout(t);
         lastErr = err;
         if (i >= retries) throw lastErr;

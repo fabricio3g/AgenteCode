@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import type { BrowserWindow } from 'electron';
 import { getHardwareLimits } from './system-info.ts';
 import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs } from './process-manager.ts';
 import {
@@ -8,6 +9,10 @@ import {
 import { getAppPaths } from './paths.ts';
 import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-resolver.ts';
 import { setEmbeddingStatus, getEmbeddingStatus as getEmbeddingStatusState } from './embedding-state.ts';
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 // ── Managed process instances ──
 
@@ -23,15 +28,15 @@ const embedding = new ManagedProcess({
 
 let llamaStatus = llama.status;
 
-function isMmprojFileName(fileName) {
+function isMmprojFileName(fileName: string): boolean {
   return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
 }
 
-function resolveModelPath(inputPath) {
+function resolveModelPath(inputPath: string): string {
   if (!inputPath) return inputPath;
   if (!fs.existsSync(inputPath)) return inputPath;
 
-  let stat;
+  let stat: fs.Stats;
   try {
     stat = fs.statSync(inputPath);
   } catch {
@@ -41,12 +46,12 @@ function resolveModelPath(inputPath) {
   if (stat.isFile()) return inputPath;
   if (!stat.isDirectory()) return inputPath;
 
-  const candidates = [];
+  const candidates: { fullPath: string; size: number }[] = [];
   const stack = [inputPath];
 
   while (stack.length) {
-    const dir = stack.pop();
-    let entries = [];
+    const dir = stack.pop()!;
+    let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -77,19 +82,19 @@ function resolveModelPath(inputPath) {
   return candidates[0].fullPath;
 }
 
-function emitStatus(win, patch) {
+function emitStatus(win: BrowserWindow | null | undefined, patch: Record<string, unknown>): void {
   llama.setStatus(patch);
   if (win && !win.isDestroyed()) {
     win.webContents.send('supervisor-event', {
       type: 'state_change',
       from: llamaStatus.state,
-      to: patch.state || llamaStatus.state,
+      to: (patch.state as string) || llamaStatus.state,
       ...patch
     });
   }
 }
 
-async function clearEmbeddingCacheSafe() {
+async function clearEmbeddingCacheSafe(): Promise<void> {
   try {
     const embeddingClient = await import('./embedding-client.js');
     if (typeof embeddingClient.clearEmbeddingCache === 'function') {
@@ -102,12 +107,12 @@ async function clearEmbeddingCacheSafe() {
 
 // ── LLM server ──
 
-export async function startLlama(config, win) {
-  const runtimePath = resolveRuntimeBinary(config.runtime_path);
+export async function startLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined): Promise<string> {
+  const runtimePath = resolveRuntimeBinary(config.runtime_path as string);
   if (!runtimePath || !fs.existsSync(runtimePath)) {
     throw new Error('llama-server binary not found. Install a runtime first.');
   }
-  const resolvedModelPath = resolveModelPath(config.model_path);
+  const resolvedModelPath = resolveModelPath(config.model_path as string);
   if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
     throw new Error(`Model file not found: ${config.model_path}`);
   }
@@ -119,17 +124,17 @@ export async function startLlama(config, win) {
   // Get system info for runtime config resolution
   const systemInfo = await getHardwareLimits();
 
-  const port = launchConfig.port || 11435;
+  const port = (launchConfig.port as number) || 11435;
   const args = buildLlamaArgs(launchConfig, runtimePath, systemInfo);
 
   // Override the default onStatusChange to emit IPC events
-  llama._onStatusChange = (status) => {
+  llama._onStatusChange = (status: Record<string, unknown>) => {
     llamaStatus = { ...llamaStatus, ...status };
   };
 
   emitStatus(win, {
     state: 'starting',
-    model_id: path.basename(launchConfig.model_path),
+    model_id: path.basename(launchConfig.model_path as string),
     model_path: launchConfig.model_path,
     runtime_path: runtimePath
   });
@@ -141,40 +146,40 @@ export async function startLlama(config, win) {
       healthPort: port,
       statusFields: {
         port,
-        model_id: path.basename(launchConfig.model_path),
+        model_id: path.basename(launchConfig.model_path as string),
         model_path: launchConfig.model_path,
         runtime_path: runtimePath
       }
     });
-    emitStatus(win, { state: 'ready', port, model_id: path.basename(launchConfig.model_path), model_path: launchConfig.model_path, runtime_path: runtimePath });
+    emitStatus(win, { state: 'ready', port, model_id: path.basename(launchConfig.model_path as string), model_path: launchConfig.model_path, runtime_path: runtimePath });
     return 'started';
-  } catch (err) {
-    emitStatus(win, { state: 'error', message: err.message });
+  } catch (err: unknown) {
+    emitStatus(win, { state: 'error', message: toErrorMessage(err) });
     throw err;
   }
 }
 
-export async function stopLlama(win) {
+export async function stopLlama(win: BrowserWindow | null | undefined): Promise<void> {
   await llama.stop({ runtime_path: null, model_path: null, model_id: null, port: null });
   emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
 }
 
 // ── Embedding server ──
 
-export async function startEmbeddingServer(config, win) {
+export async function startEmbeddingServer(config: Record<string, unknown>, _win: BrowserWindow | null | undefined): Promise<string> {
   await clearEmbeddingCacheSafe();
-  const runtimePath = resolveRuntimeBinary(config.runtime_path);
+  const runtimePath = resolveRuntimeBinary(config.runtime_path as string);
   if (!runtimePath || !fs.existsSync(runtimePath)) {
     throw new Error('llama-server binary not found for embedding server.');
   }
-  if (!config.embedding_model_path || !fs.existsSync(config.embedding_model_path)) {
+  if (!config.embedding_model_path || !fs.existsSync(config.embedding_model_path as string)) {
     throw new Error(`Embedding model file not found: ${config.embedding_model_path}`);
   }
 
   // Get system info for runtime config resolution
   const systemInfo = await getHardwareLimits();
 
-  const port = config.embedding_port || 11436;
+  const port = (config.embedding_port as number) || 11436;
   const args = buildEmbeddingArgs(config, systemInfo, runtimePath);
 
   await embedding.start({
@@ -213,7 +218,7 @@ export async function getInstalledRuntimes() {
   return { runtimes: listRuntimeBinaries() };
 }
 
-export async function deleteRuntimeBinary(binPath) {
+export async function deleteRuntimeBinary(binPath: string): Promise<void> {
   if (fs.existsSync(binPath)) {
     const stat = fs.statSync(binPath);
     if (stat.isDirectory()) {
@@ -244,7 +249,7 @@ export async function getSupervisorStatus() {
   };
 }
 
-export async function supervisorHealthCheck() {
+export async function supervisorHealthCheck(): Promise<boolean> {
   if (!llama.isRunning()) return false;
   try {
     const port = llamaStatus.port || 11435;
@@ -278,11 +283,16 @@ export async function getLoadedModels() {
   return models;
 }
 
-export async function unloadModel(_modelId, win) {
+export async function unloadModel(_modelId: string, win: BrowserWindow | null | undefined): Promise<void> {
   await stopLlama(win);
 }
 
-export async function getRecommendedSettings(modelPath, userContext, userGpuLayers, runtimePath) {
+export async function getRecommendedSettings(
+  modelPath: string,
+  userContext: unknown,
+  userGpuLayers: unknown,
+  runtimePath: string
+): Promise<Record<string, unknown>> {
   const resolvedModelPath = resolveModelPath(modelPath);
   if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);

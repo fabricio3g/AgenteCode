@@ -5,7 +5,55 @@ import { loadConfig } from './config.ts';
 import { slugify } from './config.utils.ts';
 import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.ts';
 
-function getModelsDir() {
+type GgufMetadata = {
+  architecture: string;
+  context_length: number;
+  context_length_source: string;
+  parameter_count: number;
+  block_count: number;
+  size_label: string;
+  quantization: string;
+  head_count: number;
+  head_count_kv: number;
+  embedding_length: number;
+  file_size_bytes: number;
+  quantization_name: string;
+  chat_template_uses_tools: boolean;
+};
+
+type LocalModel = {
+  id: string;
+  name: string;
+  path: string;
+  size_gb: number;
+  modified: number;
+  architecture?: string;
+  parameter_count?: number;
+  size_label?: string;
+  quantization_name?: string;
+  context_length?: number;
+  block_count?: number;
+  chat_template_uses_tools?: boolean;
+};
+
+type ModelIndexEntry = {
+  id: string;
+  name: string;
+  path: string;
+  size_gb: number;
+  modified_time: number;
+  architecture?: string;
+  context_length?: number;
+  parameter_count?: number;
+  size_label?: string;
+  quantization_name?: string;
+  block_count?: number;
+  chat_template_uses_tools?: boolean;
+  indexed_at: number;
+  cache_key: string;
+};
+
+function getModelsDir(): string {
   try {
     const cfg = loadConfig();
     return cfg?.llm?.local?.models_dir || getAppPaths().localModelsRoot;
@@ -14,17 +62,17 @@ function getModelsDir() {
   }
 }
 
-function isMmprojFile(fileName) {
+function isMmprojFile(fileName: string): boolean {
   return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
 }
 
-function collectGgufFilesRecursive(rootDir) {
-  const out = [];
+function collectGgufFilesRecursive(rootDir: string): string[] {
+  const out: string[] = [];
   const stack = [rootDir];
 
   while (stack.length) {
-    const current = stack.pop();
-    let entries = [];
+    const current = stack.pop()!;
+    let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
     } catch {
@@ -47,18 +95,18 @@ function collectGgufFilesRecursive(rootDir) {
   return out;
 }
 
-const ggufMetaCache = new Map();
+const ggufMetaCache = new Map<string, GgufMetadata>();
 const GGUF_META_CACHE_MAX = 500;
 const GGUF_MAGIC = 0x46554747;
 
-function getGgufMetaCacheKey(filePath, mtime) {
+function getGgufMetaCacheKey(filePath: string, mtime: number): string {
   return `${filePath}:${mtime}`;
 }
 
-function readGgufMetadata(filePath) {
+function readGgufMetadata(filePath: string): GgufMetadata {
   const stat = fs.statSync(filePath);
   const cacheKey = getGgufMetaCacheKey(filePath, stat.mtimeMs);
-  if (ggufMetaCache.has(cacheKey)) return ggufMetaCache.get(cacheKey);
+  if (ggufMetaCache.has(cacheKey)) return ggufMetaCache.get(cacheKey)!;
 
   const fd = fs.openSync(filePath, 'r');
   try {
@@ -81,7 +129,7 @@ function readGgufMetadata(filePath) {
 
     const fileName = path.basename(filePath);
 
-    const result = {
+    const result: GgufMetadata = {
       architecture: ggufFields?.architecture || guessArchitecture(fileName),
       context_length: contextLength,
       context_length_source: ggufContext ? 'gguf' : 'filename_guess',
@@ -110,7 +158,7 @@ function readGgufMetadata(filePath) {
   }
 }
 
-function guessArchitecture(fileName) {
+function guessArchitecture(fileName: string): string {
   const lower = fileName.toLowerCase();
   if (lower.includes('llama')) return 'llama';
   if (lower.includes('qwen')) return 'qwen2';
@@ -120,25 +168,25 @@ function guessArchitecture(fileName) {
   return 'unknown';
 }
 
-function guessContextLength(fileName) {
+function guessContextLength(fileName: string): number {
   const m = fileName.match(/(\d+)k/i);
   if (m) return parseInt(m[1], 10) * 1024;
   return 4096;
 }
 
-function guessQuantization(fileName) {
+function guessQuantization(fileName: string): string {
   const m = fileName.match(/(Q\d+_K_[SMLX]|Q\d+_[01]|IQ\d+_[SMLX]{1,2}|F16|F32|BF16)/i);
   return m ? m[1].toUpperCase() : 'unknown';
 }
 
-function formatSizeLabel(bytes) {
+function formatSizeLabel(bytes: number): string {
   const gb = bytes / (1024 ** 3);
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
   const mb = bytes / (1024 ** 2);
   return `${mb.toFixed(0)} MB`;
 }
 
-export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified', order = 'desc' } = {}) {
+export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified', order = 'desc' } = {}): Promise<{ models: LocalModel[]; total: number; offset: number; limit: number }> {
   const modelsDir = getModelsDir();
 
   if (!fs.existsSync(modelsDir)) {
@@ -146,7 +194,7 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
     return { models: [], total: 0, offset, limit };
   }
 
-  const allModels = [];
+  const allModels: LocalModel[] = [];
   const ggufFiles = collectGgufFilesRecursive(modelsDir);
 
   for (const fullPath of ggufFiles) {
@@ -203,7 +251,7 @@ export async function getLocalModels({ offset = 0, limit = 50, sort = 'modified'
   return { models: paginated, total, offset, limit };
 }
 
-export async function getGgufMetadata(filePath) {
+export async function getGgufMetadata(filePath: string): Promise<GgufMetadata> {
   try {
     return readGgufMetadata(filePath);
   } catch {
@@ -233,21 +281,21 @@ export async function getGgufMetadata(filePath) {
   }
 }
 
-export async function deleteLocalModel(modelPath) {
+export async function deleteLocalModel(modelPath: string): Promise<void> {
   if (fs.existsSync(modelPath)) {
     fs.unlinkSync(modelPath);
   }
 }
 
-export async function getModelsDirPath() {
+export async function getModelsDirPath(): Promise<string> {
   return getModelsDir();
 }
 
 // Model index cache
-let modelIndexCache = [];
+let modelIndexCache: ModelIndexEntry[] = [];
 let modelIndexSignature = '';
 
-function buildModelIndexSignature(modelsDir) {
+function buildModelIndexSignature(modelsDir: string): string {
   const ggufFiles = collectGgufFilesRecursive(modelsDir);
   let newestMtime = 0;
   let totalSize = 0;
@@ -263,11 +311,11 @@ function buildModelIndexSignature(modelsDir) {
   return `${modelsDir}:${ggufFiles.length}:${Math.floor(newestMtime)}:${Math.floor(totalSize / 1024)}`;
 }
 
-export async function getIndexedModels() {
+export async function getIndexedModels(): Promise<ModelIndexEntry[]> {
   return modelIndexCache;
 }
 
-export async function refreshModelIndex({ force = false } = {}) {
+export async function refreshModelIndex({ force = false } = {}): Promise<number> {
   const modelsDir = getModelsDir();
   const signature = buildModelIndexSignature(modelsDir);
   if (!force && modelIndexCache.length && signature === modelIndexSignature) {
@@ -295,7 +343,7 @@ export async function refreshModelIndex({ force = false } = {}) {
   return modelIndexCache.length;
 }
 
-export async function invalidateModelCache(modelPath) {
+export async function invalidateModelCache(modelPath: string): Promise<void> {
   modelIndexCache = modelIndexCache.filter(m => m.path !== modelPath);
   modelIndexSignature = '';
 }
@@ -304,7 +352,7 @@ export async function invalidateModelCache(modelPath) {
  * Import an existing GGUF file from an arbitrary path into the app's model registry.
  * If copy_to_managed is true, copies the file to the managed models directory first.
  */
-export async function importLocalModel({ filePath, copy_to_managed = false }) {
+export async function importLocalModel({ filePath, copy_to_managed = false }: { filePath: string; copy_to_managed?: boolean }): Promise<{ success: boolean; model: Record<string, unknown> }> {
   const { loadConfig, saveConfig, slugify } = await import('./config.js');
   if (!filePath || typeof filePath !== 'string') throw new Error('filePath is required');
   if (!fs.existsSync(filePath)) throw new Error(`File not found: ${filePath}`);
@@ -344,7 +392,7 @@ export async function importLocalModel({ filePath, copy_to_managed = false }) {
   if (!cfg.llm.local) cfg.llm.local = {};
   if (!cfg.llm.local.models) cfg.llm.local.models = [];
 
-  const existing = cfg.llm.local.models.findIndex(m => m.id === id);
+  const existing = cfg.llm.local.models.findIndex((m: { id: string }) => m.id === id);
   if (existing >= 0) cfg.llm.local.models[existing] = record;
   else cfg.llm.local.models.push(record);
 

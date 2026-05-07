@@ -12,22 +12,29 @@ import {
   deleteRagDocumentsByChat
 } from './chat-db.ts';
 
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 let vectorStoreReady = false;
 
-async function ensureVectorStore() {
+async function ensureVectorStore(): Promise<void> {
   if (vectorStoreReady) return;
   try {
     await vectorStore.init();
     vectorStoreReady = true;
-  } catch (err) {
-    console.warn('[RAG] LanceDB init failed, falling back to JSON store:', err?.message || err);
+  } catch (err: unknown) {
+    console.warn('[RAG] LanceDB init failed, falling back to JSON store:', toErrorMessage(err));
   }
 }
 
-const chatDocuments = new Map();
+type QueryCacheEntry = { embedding: number[]; expires: number };
+type ChatDocStore = Map<string, { doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> }>;
+
+const chatDocuments = new Map<string, ChatDocStore>();
 let storeLoaded = false;
 let storeMtime = 0;
-const queryEmbeddingCache = new Map();
+const queryEmbeddingCache = new Map<string, QueryCacheEntry>();
 const QUERY_EMBEDDING_CACHE_TTL_MS = 2 * 60 * 1000;
 const QUERY_EMBEDDING_CACHE_MAX = 200;
 const SMALL_DATASET_FAST_PATH_CHUNKS = 200;
@@ -44,11 +51,11 @@ function getRagRuntimeSettings() {
   }
 }
 
-function queryEmbeddingCacheKey(query, chatId) {
+function queryEmbeddingCacheKey(query: string, chatId: string): string {
   return `${requireChatId(chatId)}:${String(query || '').trim().toLowerCase()}`;
 }
 
-function setQueryEmbeddingCache(key, embedding) {
+function setQueryEmbeddingCache(key: string, embedding: number[] | null | undefined): void {
   if (!embedding) return;
   if (queryEmbeddingCache.size >= QUERY_EMBEDDING_CACHE_MAX) {
     const oldestKey = queryEmbeddingCache.keys().next().value;
@@ -60,7 +67,7 @@ function setQueryEmbeddingCache(key, embedding) {
   });
 }
 
-function getQueryEmbeddingCache(key) {
+function getQueryEmbeddingCache(key: string): number[] | null {
   const cached = queryEmbeddingCache.get(key);
   if (!cached) return null;
   if (Date.now() > cached.expires) {
@@ -72,7 +79,7 @@ function getQueryEmbeddingCache(key) {
   return cached.embedding;
 }
 
-async function getCachedQueryEmbedding(query, chatId) {
+async function getCachedQueryEmbedding(query: string, chatId: string): Promise<number[] | null> {
   const key = queryEmbeddingCacheKey(query, chatId);
   const fromCache = getQueryEmbeddingCache(key);
   if (fromCache) return fromCache;
@@ -81,7 +88,7 @@ async function getCachedQueryEmbedding(query, chatId) {
   return embedding;
 }
 
-async function indexRecordEmbeddings(chatId, record) {
+async function indexRecordEmbeddings(chatId: string, record: { doc: Record<string, unknown>; chunks: Array<{ text: string }> }): Promise<void> {
   const chunkTexts = record.chunks.map((chunk) => chunk.text).filter((text) => text.trim());
   if (chunkTexts.length === 0) return;
 
@@ -97,8 +104,8 @@ async function indexRecordEmbeddings(chatId, record) {
 
   try {
     await vectorStore.addChunks(chatId, record.doc, record.chunks, embeddings);
-  } catch (err) {
-    console.warn('[RAG] LanceDB addChunks failed:', err?.message || err);
+  } catch (err: unknown) {
+    console.warn('[RAG] LanceDB addChunks failed:', toErrorMessage(err));
   }
 }
 
@@ -107,7 +114,7 @@ function getStorePath() {
   return path.join(cacheRoot, 'rag-store-v2.json');
 }
 
-function chunkTextSemantic(text, chunkSize = 512) {
+function chunkTextSemantic(text: string, chunkSize = 512): string[] {
   const targetSize = Math.max(128, Number(chunkSize) || 512);
 
   // Phase 1: Split on structural boundaries
@@ -163,7 +170,7 @@ function chunkTextSemantic(text, chunkSize = 512) {
   return finalChunks.length > 0 ? finalChunks : [text.slice(0, targetSize)];
 }
 
-function splitByStructure(text) {
+function splitByStructure(text: string): string[] {
   const parts = [];
   let current = '';
   let inCodeBlock = false;
@@ -200,16 +207,16 @@ function splitByStructure(text) {
   return parts.filter(p => p.length > 0);
 }
 
-function tokenize(text) {
+function tokenize(text: string): string[] {
   return String(text || '').toLowerCase().match(/[a-z0-9]+/g) || [];
 }
 
-function scoreChunk(queryTokens, chunkText) {
+function scoreChunk(queryTokens: string[], chunkText: string): number {
   if (!queryTokens.length) return 0;
   const tokens = tokenize(chunkText);
   if (!tokens.length) return 0;
 
-  const counts = new Map();
+  const counts = new Map<string, number>();
   for (const token of tokens) {
     counts.set(token, (counts.get(token) || 0) + 1);
   }
@@ -229,21 +236,21 @@ function scoreChunk(queryTokens, chunkText) {
   return (coverage * 3) + (density * 2) + phrase;
 }
 
-function requireChatId(chatId) {
+function requireChatId(chatId: string | unknown): string {
   const key = String(chatId || '').trim();
   if (!key) throw new Error('chat_id is required for RAG isolation');
   return key;
 }
 
-function ensureChatStore(chatId) {
+function ensureChatStore(chatId: string): ChatDocStore {
   const key = requireChatId(chatId);
   if (!chatDocuments.has(key)) {
     chatDocuments.set(key, new Map());
   }
-  return chatDocuments.get(key);
+  return chatDocuments.get(key)!;
 }
 
-function serializeStore() {
+function serializeStore(): { version: number; chats: unknown[] } {
   return {
     version: 2,
     chats: Array.from(chatDocuments.entries()).map(([chatId, docs]) => ({
@@ -256,7 +263,7 @@ function serializeStore() {
   };
 }
 
-function persistStore() {
+function persistStore(): void {
   const storePath = getStorePath();
   const directory = path.dirname(storePath);
   const tmpPath = `${storePath}.tmp`;
@@ -265,14 +272,15 @@ function persistStore() {
   fs.renameSync(tmpPath, storePath);
 }
 
-function hydrateStore(raw) {
+function hydrateStore(raw: unknown): void {
   chatDocuments.clear();
-  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.chats)) return;
+  if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { chats?: unknown[] }).chats)) return;
 
-  for (const chatEntry of raw.chats) {
-    const chatId = String(chatEntry?.chatId || 'default');
-    const docs = new Map();
-    for (const docEntry of Array.isArray(chatEntry?.documents) ? chatEntry.documents : []) {
+  for (const chatEntry of (raw as { chats?: unknown[] }).chats || []) {
+    const entry = chatEntry as { chatId?: string; documents?: Array<{ doc?: Record<string, unknown>; chunks?: unknown[] }> };
+    const chatId = String(entry?.chatId || 'default');
+    const docs = new Map<string, { doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> }>();
+    for (const docEntry of Array.isArray(entry?.documents) ? entry.documents : []) {
       const doc = docEntry?.doc;
       if (!doc?.id) continue;
       docs.set(String(doc.id), {
@@ -288,12 +296,15 @@ function hydrateStore(raw) {
           fingerprint: String(doc.fingerprint || '')
         },
         chunks: Array.isArray(docEntry?.chunks)
-          ? docEntry.chunks.map((chunk, index) => ({
-              id: String(chunk.id || `${doc.id}_${index}`),
-              doc_id: String(chunk.doc_id || doc.id),
-              text: String(chunk.text || ''),
-              index: Number.isFinite(chunk.index) ? Number(chunk.index) : index
-            }))
+          ? docEntry.chunks.map((chunk: unknown, index: number) => {
+              const c = chunk as { id?: string; doc_id?: string; text?: string; index?: number };
+              return {
+                id: String(c.id || `${doc.id}_${index}`),
+                doc_id: String(c.doc_id || doc.id),
+                text: String(c.text || ''),
+                index: Number.isFinite(c.index) ? Number(c.index) : index
+              };
+            })
           : []
       });
     }
@@ -301,7 +312,7 @@ function hydrateStore(raw) {
   }
 }
 
-function ensureStoreLoaded() {
+function ensureStoreLoaded(): void {
   const storePath = getStorePath();
   if (fs.existsSync(storePath)) {
     try {
@@ -312,18 +323,18 @@ function ensureStoreLoaded() {
       storeMtime = stat.mtimeMs;
       storeLoaded = true;
       return;
-    } catch (err) {
-      console.warn('[RAG] Failed to load persisted store, starting fresh:', err?.message || err);
+    } catch (err: unknown) {
+      console.warn('[RAG] Failed to load persisted store, starting fresh:', toErrorMessage(err));
       chatDocuments.clear();
     }
   }
   storeLoaded = true;
 }
 
-async function extractText(filePath) {
+async function extractText(filePath: string): Promise<{ text: string; fileType: string }> {
   const ext = path.extname(filePath).toLowerCase();
 
-  function hasUsablePdfText(text) {
+  function hasUsablePdfText(text: string): boolean {
     const normalized = String(text || '').replace(/\u0000/g, ' ').trim();
     if (normalized.length < 80) return false;
     const wordMatches = normalized.match(/[\p{L}\p{N}]{2,}/gu) || [];
@@ -340,9 +351,8 @@ async function extractText(filePath) {
         throw new Error('PDF parser returned insufficient readable text');
       }
       return { text, fileType: 'pdf' };
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err || 'unknown parser error');
-      throw new Error(`Could not parse PDF text: ${reason}`);
+    } catch (err: unknown) {
+      throw new Error(`Could not parse PDF text: ${toErrorMessage(err)}`);
     }
   }
 
@@ -360,13 +370,13 @@ async function extractText(filePath) {
   return { text: fs.readFileSync(filePath, 'utf8'), fileType };
 }
 
-function makeDocumentFingerprint(source, text, fileType) {
+function makeDocumentFingerprint(source: string, text: string, fileType: string): string {
   return createHash('sha1')
     .update(`${source || 'unknown'}\n${fileType || 'text'}\n${text || ''}`)
     .digest('hex');
 }
 
-function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
+function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): { doc: Record<string, unknown>; chunks: Array<Record<string, unknown>> } {
   const chatId = requireChatId(chat_id);
   const normalizedText = String(text || '').trim();
   const chunks = chunkTextSemantic(normalizedText, chunk_size || 512);
@@ -395,25 +405,25 @@ function buildDocumentRecord({ source, text, chat_id, file_type, chunk_size }) {
   };
 }
 
-async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background = false }) {
+async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background = false }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number; background?: boolean }): Promise<Record<string, unknown>> {
   ensureStoreLoaded();
   const chatId = requireChatId(chat_id);
   const store = ensureChatStore(chatId);
   const record = buildDocumentRecord({ source, text, chat_id: chatId, file_type, chunk_size });
-  store.set(record.doc.id, record);
+  store.set(record.doc.id as string, record);
   persistStore();
 
   // Save metadata to SQLite
   try {
     saveRagDocument(record.doc);
-  } catch (err) {
-    console.warn('[RAG] Failed to save doc metadata to SQLite:', err?.message || err);
+  } catch (err: unknown) {
+    console.warn('[RAG] Failed to save doc metadata to SQLite:', toErrorMessage(err));
   }
 
   const indexTask = indexRecordEmbeddings(chatId, record);
   if (background) {
-    void indexTask.catch((err) => {
-      console.warn('[RAG] Background indexing failed:', err?.message || err);
+    void indexTask.catch((err: unknown) => {
+      console.warn('[RAG] Background indexing failed:', toErrorMessage(err));
     });
   } else {
     await indexTask;
@@ -422,7 +432,7 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
   return record.doc;
 }
 
-export async function ingestDocument({ file_path, chat_id, chunk_size }) {
+export async function ingestDocument({ file_path, chat_id, chunk_size }: { file_path: string; chat_id: string; chunk_size?: number }): Promise<Record<string, unknown>> {
   const chatId = requireChatId(chat_id);
   const fileName = path.basename(file_path);
   const { text, fileType } = await extractText(file_path);
@@ -435,22 +445,22 @@ export async function ingestDocument({ file_path, chat_id, chunk_size }) {
   });
 }
 
-export async function ingestText({ source, text, chat_id, file_type, chunk_size }) {
+export async function ingestText({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): Promise<Record<string, unknown>> {
   requireChatId(chat_id);
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size });
 }
 
-export async function ingestTextFast({ source, text, chat_id, file_type, chunk_size }) {
+export async function ingestTextFast({ source, text, chat_id, file_type, chunk_size }: { source: string; text: string; chat_id: string; file_type: string; chunk_size?: number }): Promise<Record<string, unknown>> {
   requireChatId(chat_id);
   return ingestTextInternal({ source, text, chat_id, file_type, chunk_size, background: true });
 }
 
-export async function queryDocuments({ query, chat_id, top_k }) {
+export async function queryDocuments({ query, chat_id, top_k }: { query: string; chat_id: string; top_k?: number }): Promise<Record<string, unknown>> {
   requireChatId(chat_id);
   return queryDocumentsHybrid({ query, chat_id, top_k });
 }
 
-async function queryDocumentsHybrid({ query, chat_id, top_k }) {
+async function queryDocumentsHybrid({ query, chat_id, top_k }: { query: string; chat_id: string; top_k?: number }): Promise<Record<string, unknown>> {
   const chatId = requireChatId(chat_id);
   await ensureVectorStore().catch(() => {});
   await ensureRagEmbeddingRuntime().catch(() => {});
@@ -512,8 +522,8 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   if (vectorStoreReady && queryEmbedding) {
     try {
       vectorResults = await vectorStore.search(chatId, queryEmbedding, Math.max(k * 2, 8));
-    } catch (err) {
-      console.warn('[RAG] LanceDB search failed, using in-memory scoring:', err?.message || err);
+    } catch (err: unknown) {
+      console.warn('[RAG] LanceDB search failed, using in-memory scoring:', toErrorMessage(err));
     }
   }
 
@@ -583,8 +593,8 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }) {
         });
       }
     } catch {
-      // Reranker unavailable, use hybrid scores
-    }
+    // Reranker unavailable, use hybrid scores
+  }
   }
 
   const perDocCount = new Map();
@@ -613,14 +623,14 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }) {
   };
 }
 
-export async function listRagDocuments(chatId) {
+export async function listRagDocuments(chatId: string): Promise<Record<string, unknown>[]> {
   const key = requireChatId(chatId);
   ensureStoreLoaded();
   const store = ensureChatStore(key);
   return Array.from(store.values()).map((entry) => entry.doc);
 }
 
-export async function removeRagDocument(docId, chatId) {
+export async function removeRagDocument(docId: string, chatId: string): Promise<boolean> {
   const key = requireChatId(chatId);
   ensureStoreLoaded();
   const store = ensureChatStore(key);
@@ -637,7 +647,7 @@ export async function removeRagDocument(docId, chatId) {
   return removed;
 }
 
-export async function clearRagDocuments(chatId) {
+export async function clearRagDocuments(chatId: string): Promise<boolean> {
   const key = requireChatId(chatId);
   ensureStoreLoaded();
   const removed = chatDocuments.delete(key);
@@ -653,7 +663,7 @@ export async function clearRagDocuments(chatId) {
   return removed;
 }
 
-export async function hasRagDocuments(chatId) {
+export async function hasRagDocuments(chatId: string): Promise<boolean> {
   const key = requireChatId(chatId);
   ensureStoreLoaded();
   const store = chatDocuments.get(key);
@@ -694,8 +704,8 @@ async function migrateFromJsonStore() {
         await vectorStore.addChunks(chatId, doc, chunks, embeddings);
         saveRagDocument(doc);
         migrated++;
-      } catch (err) {
-        console.warn(`[RAG] Migration failed for doc ${doc.id}:`, err?.message || err);
+      } catch (err: unknown) {
+        console.warn(`[RAG] Migration failed for doc ${doc.id}:`, toErrorMessage(err));
       }
     }
   }

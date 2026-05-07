@@ -426,7 +426,7 @@ function probeRuntimeCapabilities(runtimePath) {
       source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
     };
     console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
-  } catch (err) {
+  } catch (err: unknown) {
     console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} error=${String(err)}`);
     parsed.source = 'probe_exception';
   }
