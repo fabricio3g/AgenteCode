@@ -11,10 +11,13 @@ import {
   saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
   deleteRagDocumentsByChat
 } from './chat-db.ts';
+import { createLogger } from './utils/logger.ts';
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+const log = createLogger('[RAG]');
 
 let vectorStoreReady = false;
 
@@ -24,7 +27,7 @@ async function ensureVectorStore(): Promise<void> {
     await vectorStore.init();
     vectorStoreReady = true;
   } catch (err: unknown) {
-    console.warn('[RAG] LanceDB init failed, falling back to JSON store:', toErrorMessage(err));
+    log.warn('LanceDB init failed, falling back to JSON store:', toErrorMessage(err));
   }
 }
 
@@ -105,7 +108,7 @@ async function indexRecordEmbeddings(chatId: string, record: { doc: Record<strin
   try {
     await vectorStore.addChunks(chatId, record.doc, record.chunks, embeddings);
   } catch (err: unknown) {
-    console.warn('[RAG] LanceDB addChunks failed:', toErrorMessage(err));
+    log.warn('LanceDB addChunks failed:', toErrorMessage(err));
   }
 }
 
@@ -324,7 +327,7 @@ function ensureStoreLoaded(): void {
       storeLoaded = true;
       return;
     } catch (err: unknown) {
-      console.warn('[RAG] Failed to load persisted store, starting fresh:', toErrorMessage(err));
+      log.warn('Failed to load persisted store, starting fresh:', toErrorMessage(err));
       chatDocuments.clear();
     }
   }
@@ -417,13 +420,13 @@ async function ingestTextInternal({ source, text, chat_id, file_type, chunk_size
   try {
     saveRagDocument(record.doc);
   } catch (err: unknown) {
-    console.warn('[RAG] Failed to save doc metadata to SQLite:', toErrorMessage(err));
+    log.warn('Failed to save doc metadata to SQLite:', toErrorMessage(err));
   }
 
   const indexTask = indexRecordEmbeddings(chatId, record);
   if (background) {
     void indexTask.catch((err: unknown) => {
-      console.warn('[RAG] Background indexing failed:', toErrorMessage(err));
+      log.warn('Background indexing failed:', toErrorMessage(err));
     });
   } else {
     await indexTask;
@@ -523,7 +526,7 @@ async function queryDocumentsHybrid({ query, chat_id, top_k }: { query: string; 
     try {
       vectorResults = await vectorStore.search(chatId, queryEmbedding, Math.max(k * 2, 8));
     } catch (err: unknown) {
-      console.warn('[RAG] LanceDB search failed, using in-memory scoring:', toErrorMessage(err));
+      log.warn('LanceDB search failed, using in-memory scoring:', toErrorMessage(err));
     }
   }
 
@@ -681,14 +684,14 @@ async function migrateFromJsonStore() {
 
   await ensureVectorStore();
   if (!vectorStoreReady) {
-    console.warn('[RAG] Skipping migration — LanceDB not available');
+    log.warn('Skipping migration — LanceDB not available');
     return;
   }
 
   const markerPath = storePath + '.migrated';
   if (fs.existsSync(markerPath)) return;
 
-  console.log('[RAG] Migrating JSON store to LanceDB...');
+  log.info('Migrating JSON store to LanceDB...');
   ensureStoreLoaded();
 
   let migrated = 0;
@@ -705,12 +708,12 @@ async function migrateFromJsonStore() {
         saveRagDocument(doc);
         migrated++;
       } catch (err: unknown) {
-        console.warn(`[RAG] Migration failed for doc ${doc.id}:`, toErrorMessage(err));
+        log.warn(`Migration failed for doc ${doc.id}:`, toErrorMessage(err));
       }
     }
   }
 
   // Mark migration as done (backup old file, don't delete)
   fs.writeFileSync(markerPath, JSON.stringify({ migrated, at: new Date().toISOString() }));
-  console.log(`[RAG] Migration complete: ${migrated} documents migrated to LanceDB`);
+  log.info(`Migration complete: ${migrated} documents migrated to LanceDB`);
 }

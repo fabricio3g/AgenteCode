@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolveRuntimeBinary } from './runtime-resolver.ts';
+import { createLogger } from './utils/logger.ts';
 
 // ── Constants ──
 
@@ -13,6 +14,8 @@ const MIN_CONTEXT_SIZE = 512;
 const RUNTIME_PROBE_CACHE = new Map();
 const GGUF_FIELDS_CACHE = new Map();
 const GGUF_FIELDS_CACHE_MAX = 500;
+
+const log = createLogger('[runtime-config]');
 
 // ── GGUF Metadata Reader ──
 
@@ -425,9 +428,9 @@ function probeRuntimeCapabilities(runtimePath) {
       ...parseRuntimeListDevicesOutput(combined),
       source: result.status === 0 ? 'list_devices' : 'list_devices_error_output'
     };
-    console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
+    log.info(`probeRuntimeCapabilities runtime=${runtimePath} source=${parsed.source} backends=${JSON.stringify(parsed.availableBackends)}`);
   } catch (err: unknown) {
-    console.log(`[probeRuntimeCapabilities] runtime=${runtimePath} error=${String(err)}`);
+    log.info(`probeRuntimeCapabilities runtime=${runtimePath} error=${String(err)}`);
     parsed.source = 'probe_exception';
   }
 
@@ -483,7 +486,7 @@ export function resolveRuntimeConfig(options = {}) {
   const runtimeCaps = probeRuntimeCapabilities(effectiveRuntimePath);
   const runtimeBackends = new Set((runtimeCaps.availableBackends || []).map(normalizeBackendName));
 
-  console.log(`[resolveRuntimeConfig] model=${modelPath ? path.basename(modelPath) : 'none'} runtime=${effectiveRuntimePath ? path.basename(effectiveRuntimePath) : 'null'} runtimeSource=${runtimeSource} runtimeBackends=${JSON.stringify(runtimeCaps.availableBackends)} userBackend=${userBackend}`);
+  log.info(`resolveRuntimeConfig model=${modelPath ? path.basename(modelPath) : 'none'} runtime=${effectiveRuntimePath ? path.basename(effectiveRuntimePath) : 'null'} runtimeSource=${runtimeSource} runtimeBackends=${JSON.stringify(runtimeCaps.availableBackends)} userBackend=${userBackend}`);
 
   // 2. Backend resolution
   let backend = normalizeBackendName(userBackend || 'auto');

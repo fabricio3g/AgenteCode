@@ -69,8 +69,9 @@ import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
+import { createLogger } from './utils/logger.ts';
 
-const IPC_LOG_PREFIX = '[IPC]';
+const log = createLogger('[IPC]');
 
 const toErrorMessage: ErrorMessageFn = (err: unknown): string => {
   return err instanceof Error ? err.message : String(err);
@@ -152,7 +153,7 @@ export function registerIpcHandlers() {
     checkEspeakData,
     listVoices,
     onWorkerMessage,
-    logger: (message, ...args) => console.log(`${IPC_LOG_PREFIX} ${message}`, ...args),
+    logger: (message, ...args) => log.info(message, ...args),
   });
 
   // ── STT (speech-to-text) ──

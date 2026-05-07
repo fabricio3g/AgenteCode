@@ -4,12 +4,13 @@
 import { Worker } from 'worker_threads';
 import path from 'path';
 import type { BrowserWindow } from 'electron';
+import { createLogger } from './utils/logger.ts';
 
 type TtsWorkerMessage =
   | { type: 'ready'; voices?: string[] }
   | { type: string; [key: string]: unknown };
 
-const LOG_PREFIX = '[TTS]';
+const log = createLogger('[TTS]');
 
 let _worker: Worker | null = null;
 let _ready = false;
@@ -20,10 +21,10 @@ let _genId = 0;
 function getWorker(): Worker {
   if (!_worker) {
     const workerPath = path.resolve(__dirname, 'tts-worker.cjs');
-    console.log(`${LOG_PREFIX} Spawning worker at:`, workerPath);
+    log.info('Spawning worker at:', workerPath);
     _worker = new Worker(workerPath);
-    _worker.on('error', (err) => console.error(`${LOG_PREFIX} Worker error:`, err));
-    _worker.on('exit', (code) => console.log(`${LOG_PREFIX} Worker exited with code`, code));
+    _worker.on('error', (err) => log.error('Worker error:', err));
+    _worker.on('exit', (code) => log.info('Worker exited with code', code));
   }
   return _worker;
 }
@@ -37,7 +38,7 @@ export async function generateTtsStream(
   request: { text: string; voice?: string; speed?: number; volume?: number },
   _win: BrowserWindow | null
 ): Promise<void> {
-  console.log(`${LOG_PREFIX} generateTtsStream called:`, JSON.stringify({ text: request.text.slice(0, 30), voice: request.voice }));
+  log.info('generateTtsStream called:', JSON.stringify({ text: request.text.slice(0, 30), voice: request.voice }));
   await initWorker();
   if (!_worker) throw new Error('Worker not available');
   _worker.postMessage({
@@ -48,7 +49,7 @@ export async function generateTtsStream(
     speed: Number(request.speed || 1),
     volume: Number(request.volume ?? 1),
   });
-  console.log(`${LOG_PREFIX} Sent to worker, id:`, _genId);
+  log.info('Sent to worker, id:', _genId);
 }
 
 // Handle worker messages for streaming
@@ -66,7 +67,7 @@ async function initWorker(): Promise<void> {
         w.off('message', h);
         _ready = true;
         _voices = Array.isArray(msg.voices) ? msg.voices : [];
-        console.log(`${LOG_PREFIX} Worker ready,`, _voices.length, 'voices');
+        log.info('Worker ready,', _voices.length, 'voices');
         resolve();
       }
     });
