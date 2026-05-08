@@ -5,11 +5,12 @@ import { loadAppConfig } from '$lib/utils/storage';
 import { hasConfiguredVisionModel, toRequestMessages } from '$lib/services/chat-api';
 import type { AppConfig } from '$lib/types/chat';
 import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
+import { toErrorMessage } from '$lib/utils/errors';
 
 export type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 
-function shouldDebugAgentLogs(config: any): boolean {
-  return !!config?.ui?.agent_debug_logs;
+function shouldDebugAgentLogs(config: unknown): boolean {
+  return !!(config as { ui?: { agent_debug_logs?: boolean } })?.ui?.agent_debug_logs;
 }
 
 function debugLog(enabled: boolean, message: string) {
@@ -48,7 +49,7 @@ async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport 
       params: {
         ...(Number.isFinite(local.temperature) ? { temperature: local.temperature } : {}),
         ...(local.max_tokens ? { max_tokens: local.max_tokens } : {}),
-        ...(Number.isFinite((local as any).top_p) ? { top_p: (local as any).top_p } : {})
+        ...(Number.isFinite((local as { top_p?: number }).top_p) ? { top_p: (local as { top_p?: number }).top_p } : {})
       }
     };
   }
@@ -96,7 +97,7 @@ export async function agentComplete(options: {
   messages: RequestMessage[];
   tools?: ToolDefinition[];
   signal?: AbortSignal;
-  config?: any;
+  config?: unknown;
 }): Promise<CompletionResult | null> {
   if (!isTauri()) return null;
 
@@ -107,7 +108,7 @@ export async function agentComplete(options: {
   debugLog(debugLogs, `[agent-llm] route | backend=${transport.backend} | transport=${transport.transport} | model=${transport.model} | stream=false`);
 
   try {
-    const payload = await invoke<any>('chat_complete', {
+    const payload = await invoke<Record<string, unknown>>('chat_complete', {
       baseUrl: transport.baseUrl,
       apiKey: transport.apiKey,
       providerName: transport.providerName,
@@ -115,8 +116,8 @@ export async function agentComplete(options: {
     });
 
     return readCompletionWithTools(payload);
-  } catch (err) {
-    console.warn('[agent-llm] agentComplete failed:', err);
+  } catch (err: unknown) {
+    console.warn('[agent-llm] agentComplete failed:', toErrorMessage(err));
     return null;
   }
 }
@@ -125,7 +126,7 @@ export async function agentStreamComplete(options: {
   messages: RequestMessage[];
   tools?: ToolDefinition[];
   signal?: AbortSignal;
-  config?: any;
+  config?: unknown;
   onReasoning?: (text: string) => void;
   onContent?: (text: string) => void;
 }): Promise<CompletionResult | null> {
@@ -156,7 +157,7 @@ export async function agentStreamComplete(options: {
     delayMs: transport.backend === 'local' ? 55 : 40
   });
 
-  const off = await listen<any>('chat-stream-event', (event) => {
+  const off = await listen<Record<string, unknown>>('chat-stream-event', (event) => {
     if (!event || event.streamId !== streamId) return;
 
     if (event.type !== 'delta') {
@@ -179,18 +180,19 @@ export async function agentStreamComplete(options: {
 
     if (event.type === 'done') {
       dispatcher.flush();
-      debugLog(debugLogs, `[agent-llm] stream done | contentLen=${finalResult.content.length} | reasoningLen=${finalResult.reasoning.length} | toolCalls=${event.toolCalls?.length ?? 0}${event.toolCalls?.length ? ' names=[' + event.toolCalls.map((tc: any) => tc.name || tc.function?.name || '?').join(',') + ']' : ''}`);
+      const eventToolCalls = Array.isArray(event.toolCalls) ? event.toolCalls as Array<Record<string, unknown>> : [];
+      debugLog(debugLogs, `[agent-llm] stream done | contentLen=${finalResult.content.length} | reasoningLen=${finalResult.reasoning.length} | toolCalls=${eventToolCalls.length}${eventToolCalls.length ? ' names=[' + eventToolCalls.map((tc) => String(tc.name || ((tc.function as Record<string, unknown> | undefined)?.name) || '?')).join(',') + ']' : ''}`);
       if (event.usage) {
         finalResult.usage = event.usage;
       }
-      if (event.toolCalls?.length) {
-        finalResult.toolCalls = event.toolCalls.map((tc: any) => ({
-          id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
+      if (eventToolCalls.length) {
+        finalResult.toolCalls = eventToolCalls.map((tc) => ({
+          id: String(tc.id || `call_${Math.random().toString(36).slice(2, 9)}`),
           name: String(tc.name || ''),
           arguments: typeof tc.arguments === 'string'
             ? (parseJson(tc.arguments) || {})
-            : (tc.arguments || {})
-        })).filter((tc: NativeToolCall) => !!tc.name);
+            : ((tc.arguments as Record<string, unknown>) || {})
+        })).filter((toolCall: NativeToolCall) => !!toolCall.name);
       }
       resolveStream?.();
       return;
@@ -229,8 +231,8 @@ export async function agentStreamComplete(options: {
 
     await streamPromise;
     return finalResult;
-  } catch (err) {
-    const errStr = String(err);
+  } catch (err: unknown) {
+    const errStr = toErrorMessage(err);
     const isCloneError = errStr.includes('could not be cloned') || errStr.includes('DataCloneError');
     debugLog(debugLogs, `[agent-llm] agentStreamComplete FAILED | err=${errStr.slice(0, 200)} | hasPartialContent=${!!(finalResult.content || finalResult.toolCalls?.length)} | isCloneError=${isCloneError}`);
     console.warn('[agent-llm] agentStreamComplete failed:', err);
@@ -251,16 +253,20 @@ function parseJson(str: string): Record<string, unknown> | null {
   try { return JSON.parse(str); } catch { return null; }
 }
 
-function readCompletionWithTools(payload: any): CompletionResult {
+function readCompletionWithTools(payload: Record<string, unknown>): CompletionResult {
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
-    const toolCalls: NativeToolCall[] = (payload.toolCalls || []).map((tc: any) => ({
-      id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-      name: String(tc.function?.name || tc.name || ''),
-      arguments: (() => {
-        if (tc.arguments && typeof tc.arguments === 'object') return tc.arguments;
-        try { return JSON.parse(tc.function?.arguments || tc.arguments || '{}'); } catch { return {}; }
-      })()
-    })).filter((tc: NativeToolCall) => !!tc.name);
+    const toolCalls: NativeToolCall[] = (Array.isArray(payload.toolCalls) ? payload.toolCalls : []).map((tc) => {
+      const call = (tc || {}) as Record<string, unknown>;
+      const fn = (call.function as Record<string, unknown> | undefined) || {};
+      return {
+        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+        name: String(fn.name || call.name || ''),
+        arguments: (() => {
+          if (call.arguments && typeof call.arguments === 'object') return call.arguments as Record<string, unknown>;
+          try { return JSON.parse(String(fn.arguments || call.arguments || '{}')); } catch { return {}; }
+        })()
+      };
+    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
     return {
       content: payload.content,
@@ -270,12 +276,17 @@ function readCompletionWithTools(payload: any): CompletionResult {
     };
   }
 
-  const message = payload?.choices?.[0]?.message || {};
-  const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
-    id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-    name: String(tc.function?.name || ''),
-    arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
-  })).filter((tc: NativeToolCall) => !!tc.name);
+  const choices = Array.isArray(payload?.choices) ? payload.choices as Array<Record<string, unknown>> : [];
+  const message = (choices[0]?.message as Record<string, unknown> | undefined) || {};
+  const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc) => {
+    const call = (tc || {}) as Record<string, unknown>;
+    const fn = (call.function as Record<string, unknown> | undefined) || {};
+    return {
+      id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+      name: String(fn.name || ''),
+      arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
+    };
+  }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
   return {
     content: String(message.content || ''),

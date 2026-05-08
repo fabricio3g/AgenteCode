@@ -6,8 +6,12 @@ import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { invoke, listen, isTauri } from '$lib/services/tauri';
 import { loadAppConfig } from '$lib/utils/storage';
+import { toErrorMessage } from '$lib/utils/errors';
 
 const _openaiClients = new Map<string, OpenAI>();
+
+type UnknownRecord = Record<string, unknown>;
+type AppConfigLike = AppConfig & UnknownRecord;
 
 function getOpenAIClient(apiKey: string, baseUrl: string): OpenAI {
   const normalized = String(baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -44,11 +48,11 @@ function toolSupportCacheKey(providerName: string, modelId: string): string {
   return `${providerName}:${modelId}`;
 }
 
-function resolveLocalModelName(config: AppConfig | any): string {
+function resolveLocalModelName(config: AppConfigLike): string {
   return String(config?.llm?.local?.model || '').trim() || 'local-model';
 }
 
-function toolSupportIdentity(config: any): { providerName: string; modelId: string; provider: any } {
+function toolSupportIdentity(config: AppConfigLike): { providerName: string; modelId: string; provider: UnknownRecord } {
   if (config?.llm?.backend_mode === 'local') {
     const local = config?.llm?.local || {};
     return {
@@ -65,7 +69,7 @@ function toolSupportIdentity(config: any): { providerName: string; modelId: stri
   return { providerName, modelId: provider?.model || '', provider };
 }
 
-function debugToolSupport(config: any, message: string) {
+function debugToolSupport(config: AppConfigLike, message: string) {
   if (config?.ui?.agent_debug_logs) console.log(message);
 }
 
@@ -76,7 +80,7 @@ function debugToolSupport(config: any, message: string) {
  * agent's error handler will fall back to XML if the model rejects tools).
  * Call detectToolSupport() on model selection to populate the cache.
  */
-export function supportsNativeTools(config: any): boolean {
+export function supportsNativeTools(config: AppConfigLike): boolean {
   const { providerName, modelId } = toolSupportIdentity(config);
   const key = toolSupportCacheKey(providerName, modelId);
 
@@ -137,7 +141,7 @@ export async function detectToolSupport(): Promise<boolean> {
     toolSupportCache.set(key, supports);
     debugToolSupport(config, `[agent] detectToolSupport | ${providerName}/${modelId} -> ${supports} (source: ${result?.source})`);
     return supports;
-  } catch (err) {
+  } catch (err: unknown) {
     console.warn('[agent] detectToolSupport probe failed, defaulting to true:', err);
     // Don't cache on probe failure — try again next time
     return true;
@@ -148,7 +152,7 @@ export async function detectToolSupport(): Promise<boolean> {
  * Record that a model does NOT support native tools.
  * Called by the agent when native tool calling fails at runtime.
  */
-export function setToolSupportCache(config: any, supports: boolean): void {
+export function setToolSupportCache(config: AppConfigLike, supports: boolean): void {
   const { providerName, modelId } = toolSupportIdentity(config);
   const key = toolSupportCacheKey(providerName, modelId);
   toolSupportCache.set(key, supports);
@@ -549,22 +553,22 @@ export async function streamAssistantReply(args: {
   const stream = await client.chat.completions.create({
     model: provider.model,
     stream: true,
-    messages: toRequestMessages(args.messages, provider.model) as any,
+    messages: toRequestMessages(args.messages, provider.model),
     ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
     ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {}),
   });
 
   for await (const chunk of stream) {
-    const delta = chunk.choices?.[0]?.delta || {};
-    const content = (delta as any).content;
-    const reasoning = (delta as any).reasoning_content ?? (delta as any).reasoning ?? (delta as any).thinking;
+    const delta = (chunk.choices?.[0]?.delta || {}) as UnknownRecord;
+    const content = delta.content;
+    const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
     if (reasoning) args.onReasoning?.(String(reasoning));
     if (content) args.onChunk(String(content));
   }
 }
 
-function readCompletionPayload(payload: any): CompletionResult {
+function readCompletionPayload(payload: UnknownRecord): CompletionResult {
   // Flat format from main-process providers: { content: "...", reasoning: "..." }
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
     return {
@@ -574,7 +578,8 @@ function readCompletionPayload(payload: any): CompletionResult {
     };
   }
   // Raw OpenAI API format: { choices: [{ message: { content: "..." } }] }
-  const message = payload?.choices?.[0]?.message || {};
+  const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
+  const message = (choices[0]?.message as UnknownRecord | undefined) || {};
   const rawContent = message.content;
   const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
   return {
@@ -630,7 +635,7 @@ export async function completeAssistantReply(args: {
   };
 
   if (isTauri()) {
-    const payload = await invoke<any>('chat_complete', {
+    const payload = await invoke<UnknownRecord>('chat_complete', {
       baseUrl: provider.base_url,
       apiKey,
       providerName,
@@ -650,13 +655,13 @@ export async function completeAssistantReply(args: {
   const response = await client.chat.completions.create({
     model: provider.model,
     stream: false,
-    messages: toRequestMessages(args.messages) as any,
+    messages: toRequestMessages(args.messages),
     ...genParams
-  } as any);
+  });
 
-  const message = response?.choices?.[0]?.message || {};
+  const message = (response?.choices?.[0]?.message || {}) as UnknownRecord;
   const rawContent = message.content;
-  const rawReasoning = (message as any).reasoning_content ?? (message as any).reasoning ?? (message as any).thinking;
+  const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
   return {
     content: rawContent != null ? String(rawContent) : '',
     reasoning: rawReasoning != null ? String(rawReasoning) : '',
@@ -668,17 +673,21 @@ export async function completeAssistantReply(args: {
   };
 }
 
-export function readCompletionWithTools(payload: any): CompletionResult {
+export function readCompletionWithTools(payload: UnknownRecord): CompletionResult {
   // Flat format from main-process providers: { content: "...", reasoning: "...", toolCalls: [...] }
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
-    const toolCalls: NativeToolCall[] = (payload.toolCalls || []).map((tc: any) => ({
-      id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-      name: String(tc.function?.name || tc.name || ''),
-      arguments: (() => {
-        if (tc.arguments && typeof tc.arguments === 'object') return tc.arguments;
-        try { return JSON.parse(tc.function?.arguments || tc.arguments || '{}'); } catch { return {}; }
-      })()
-    })).filter((tc: NativeToolCall) => !!tc.name);
+    const toolCalls: NativeToolCall[] = (Array.isArray(payload.toolCalls) ? payload.toolCalls : []).map((tc: unknown) => {
+      const call = (tc || {}) as UnknownRecord;
+      const fn = (call.function as UnknownRecord | undefined) || {};
+      return {
+        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+        name: String(fn.name || call.name || ''),
+        arguments: (() => {
+          if (call.arguments && typeof call.arguments === 'object') return call.arguments as Record<string, unknown>;
+          try { return JSON.parse(String(fn.arguments || call.arguments || '{}')); } catch { return {}; }
+        })()
+      };
+    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
     return {
       content: payload.content,
       reasoning: String(payload.reasoning || ''),
@@ -687,16 +696,21 @@ export function readCompletionWithTools(payload: any): CompletionResult {
     };
   }
   // Raw OpenAI API format: { choices: [{ message: { content: "...", tool_calls: [...] } }] }
-  const message = payload?.choices?.[0]?.message || {};
-  const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
-    id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-    name: String(tc.function?.name || ''),
-    arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
-  })).filter((tc: NativeToolCall) => !!tc.name);
+  const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
+  const message = (choices[0]?.message as UnknownRecord | undefined) || {};
+  const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc: unknown) => {
+    const call = (tc || {}) as UnknownRecord;
+    const fn = (call.function as UnknownRecord | undefined) || {};
+    return {
+      id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+      name: String(fn.name || ''),
+      arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
+    };
+  }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
   return {
     content: String(message.content || ''),
-    reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
+    reasoning: String(message.reasoning_content || message.reasoning || message.thinking || ''),
     usage: payload?.usage || null,
     toolCalls: toolCalls.length ? toolCalls : undefined
   };
@@ -1018,7 +1032,7 @@ export async function completeWithTools(args: {
 
   if (isTauri()) {
     try {
-      const payload = await invoke<any>('chat_complete', {
+      const payload = await invoke<UnknownRecord>('chat_complete', {
         baseUrl: provider.base_url,
         apiKey,
         providerName,
@@ -1033,8 +1047,8 @@ export async function completeWithTools(args: {
       });
       const result = readCompletionWithTools(payload);
       return result;
-    } catch (err) {
-      console.warn('[chat-api] completeWithTools IPC call failed:', err);
+    } catch (err: unknown) {
+      console.warn('[chat-api] completeWithTools IPC call failed:', toErrorMessage(err));
       return null;
     }
   }
@@ -1044,26 +1058,30 @@ export async function completeWithTools(args: {
     const response = await client.chat.completions.create({
       model: provider.model,
       stream: false,
-      messages: toRequestMessages(args.messages, provider.model) as any,
-      tools: args.tools as any,
-      tool_choice: 'auto' as any,
+      messages: toRequestMessages(args.messages, provider.model),
+      tools: args.tools,
+      tool_choice: 'auto',
       ...genParams
-    } as any);
+    });
 
-    const message = response?.choices?.[0]?.message || {};
-    const toolCalls: NativeToolCall[] = (message.tool_calls || []).map((tc: any) => ({
-      id: tc.id || `call_${Math.random().toString(36).slice(2, 9)}`,
-      name: String(tc.function?.name || ''),
-      arguments: (() => { try { return JSON.parse(tc.function?.arguments || '{}'); } catch { return {}; } })()
-    })).filter((tc: NativeToolCall) => !!tc.name);
+    const message = (response?.choices?.[0]?.message || {}) as UnknownRecord;
+    const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc: unknown) => {
+      const call = (tc || {}) as UnknownRecord;
+      const fn = (call.function as UnknownRecord | undefined) || {};
+      return {
+        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+        name: String(fn.name || ''),
+        arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
+      };
+    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
     return {
       content: String(message.content || ''),
-      reasoning: String((message as any).reasoning_content || (message as any).reasoning || (message as any).thinking || ''),
+      reasoning: String(message.reasoning_content || message.reasoning || message.thinking || ''),
       toolCalls: toolCalls.length ? toolCalls : undefined
     };
-  } catch (err) {
-    console.warn('[chat-api] completeWithTools direct call failed:', err);
+  } catch (err: unknown) {
+    console.warn('[chat-api] completeWithTools direct call failed:', toErrorMessage(err));
     return null;
   }
 }
@@ -1081,7 +1099,7 @@ export async function completeStructuredOutput<T>(
   const apiKey = provider.api_key || '';
 
   if (isTauri()) {
-    const payload = await invoke<any>('chat_complete', {
+    const payload = await invoke<UnknownRecord>('chat_complete', {
       baseUrl: provider.base_url,
       apiKey,
       providerName,
@@ -1105,12 +1123,12 @@ export async function completeStructuredOutput<T>(
     const response = await client.chat.completions.create({
       model: provider.model,
       stream: false,
-      messages: toRequestMessages(args.messages, provider.model) as any,
+      messages: toRequestMessages(args.messages, provider.model),
       response_format: {
         type: 'json_schema',
-        json_schema: args.schema as any,
+        json_schema: args.schema,
       },
-    } as any);
+    });
 
     const content = response?.choices?.[0]?.message?.content;
     if (!content) return null;
