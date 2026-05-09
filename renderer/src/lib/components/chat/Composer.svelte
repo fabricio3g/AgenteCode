@@ -884,7 +884,7 @@
         </button>
         {#if appStore.composer.trim() || currentChatGenerating}
           <button
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            class="send-btn flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
             onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
             disabled={sendDisabled}
             aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
@@ -892,7 +892,9 @@
             {#if currentChatGenerating}
               <Square class="h-3.5 w-3.5 fill-current" />
             {:else}
-              <ArrowUp class="h-3.5 w-3.5" />
+              <span class="send-icon-wrap inline-flex">
+                <ArrowUp class="h-3.5 w-3.5" />
+              </span>
             {/if}
           </button>
         {:else}
@@ -977,6 +979,23 @@
 
   .composer-divider {
     opacity: 0.5;
+  }
+
+  .send-btn {
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease;
+  }
+
+  .send-icon-wrap {
+    transform-origin: center;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .send-btn:hover:not(:disabled) .send-icon-wrap {
+    transform: rotate(35deg) translate(1px, -1px);
+  }
+
+  .send-btn:active:not(:disabled) {
+    transform: scale(0.96);
   }
 
   .mic-icon {

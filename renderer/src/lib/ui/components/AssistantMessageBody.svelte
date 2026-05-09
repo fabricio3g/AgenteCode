@@ -69,12 +69,21 @@
     return headingCount >= 2 && (listCount >= 3 || content.length > 2200);
   }
 
+  function cleanReportTitle(value: string) {
+    return String(value || '')
+      .replace(/^#+\s*/, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .trim();
+  }
+
   const isReportSurface = $derived(
     !!displayContent
     && (displayMetadata?.documentSurface?.kind === 'report' || looksLikeStructuredReport(displayContent))
     && message.status !== 'error'
   );
-  const reportTitle = $derived(displayMetadata?.documentSurface?.title || (displayContent.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() || 'Document'));
+  const reportTitle = $derived(cleanReportTitle(displayMetadata?.documentSurface?.title || (displayContent.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() || 'Document')));
   const reportDocs = $derived.by((): DocumentSurfaceItem[] => {
     if (!isReportSurface) return [];
     return [{

@@ -20,6 +20,8 @@
   let previousChatId = $state<string | null>(null);
   let previousMessageCount = $state(0);
   let scrollTicket = 0;
+  let restoredActionsMessageId = $state<string | null>(null);
+  let restoreTimer: ReturnType<typeof setTimeout> | null = null;
   const messages = $derived(appStore.currentChat?.messages || []);
   const hasMessages = $derived(messages.length > 0);
   const contentBottomInset = $derived(Math.max(composerInset + 24, 200));
@@ -48,6 +50,15 @@
   function jumpToLatest() {
     scrollToBottom('smooth');
     showJumpToLatest = false;
+  }
+
+  function restoreActionsFor(messageId: string) {
+    restoredActionsMessageId = messageId;
+    if (restoreTimer) clearTimeout(restoreTimer);
+    restoreTimer = setTimeout(() => {
+      restoredActionsMessageId = null;
+      restoreTimer = null;
+    }, 1400);
   }
 
   $effect(() => {
@@ -95,16 +106,18 @@
         <div class="mx-auto flex max-w-[55rem] flex-col gap-7">
           {#each messages as message (message.id)}
             <div class="message-slot">
-              <ChatMessage {message} />
               {#if appStore.editingMessageId === message.id}
-                <div class="edit-overlay">
+                <div class={`edit-inline-container ${message.role === 'user' ? 'is-user' : 'is-assistant'}`}>
                   <EditMessageInline
                     messageId={message.id}
                     initialContent={appStore.editingMessageContent}
                     role={message.role}
                     onCancel={() => appStore.closeEditMessage()}
+                    onDone={() => restoreActionsFor(message.id)}
                   />
                 </div>
+              {:else}
+                <ChatMessage {message} forceActionsVisible={restoredActionsMessageId === message.id} />
               {/if}
             </div>
           {/each}
@@ -174,13 +187,17 @@
     position: relative;
   }
 
-  .edit-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    animation: editFadeSlide 200ms ease-out forwards;
+  .edit-inline-container {
+    animation: editFadeSlide 180ms ease-out forwards;
+  }
+
+  .edit-inline-container.is-user {
+    margin-left: auto;
+    max-width: min(46rem, 84%);
+  }
+
+  .edit-inline-container.is-assistant {
+    max-width: 100%;
   }
 
   @keyframes editFadeSlide {

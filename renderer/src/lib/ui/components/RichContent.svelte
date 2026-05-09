@@ -20,28 +20,48 @@
 
   let { content, status = 'idle', metadataError = false, sources = [], onAction }: Props = $props();
 
-  const STREAM_RENDER_DELAY = 48;
+  const STREAM_RENDER_DELAY = 26;
+  const STREAM_MAX_CHARS_PER_FLUSH = 72;
 
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
   let displayedContent = $state(content);
   let pendingContent = $state(content);
-  let renderTimer: ReturnType<typeof setTimeout> | undefined;
+  let renderRaf: number | undefined;
+  let lastFlushAt = $state(0);
   let isStreamingActive = $state(false);
+  let streamRenderMode = $state<'ui' | 'segments' | 'markdown' | null>(null);
 
   function flushRenderedContent() {
-    renderTimer = undefined;
-    if (displayedContent !== pendingContent) displayedContent = pendingContent;
+    if (displayedContent !== pendingContent) {
+      if (pendingContent.startsWith(displayedContent)) {
+        const delta = pendingContent.slice(displayedContent.length);
+        displayedContent += delta.slice(0, STREAM_MAX_CHARS_PER_FLUSH);
+      } else {
+        displayedContent = pendingContent;
+      }
+    }
+    lastFlushAt = performance.now();
   }
 
   function scheduleStreamingRender() {
-    if (renderTimer !== undefined) return;
-    renderTimer = setTimeout(flushRenderedContent, STREAM_RENDER_DELAY);
+    if (renderRaf !== undefined) return;
+    const tick = () => {
+      renderRaf = undefined;
+      const now = performance.now();
+      if (now - lastFlushAt >= STREAM_RENDER_DELAY) {
+        flushRenderedContent();
+      }
+      if (status === 'streaming' && displayedContent !== pendingContent) {
+        renderRaf = requestAnimationFrame(tick);
+      }
+    };
+    renderRaf = requestAnimationFrame(tick);
   }
 
   function clearStreamingRender() {
-    if (renderTimer !== undefined) {
-      clearTimeout(renderTimer);
-      renderTimer = undefined;
+    if (renderRaf !== undefined) {
+      cancelAnimationFrame(renderRaf);
+      renderRaf = undefined;
     }
   }
 
@@ -65,7 +85,21 @@
   const rendersUI = $derived(hasUIContent(sanitizedContent));
   const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
   const markdownHtml = $derived(renderMarkdown(markdownSource));
+  const detectedRenderMode = $derived.by<'ui' | 'segments' | 'markdown'>(() => {
+    if (rendersUI) return 'ui';
+    if (hasCharts) return 'segments';
+    return 'markdown';
+  });
+  const activeRenderMode = $derived(status === 'streaming' ? (streamRenderMode || detectedRenderMode) : detectedRenderMode);
   const useStreamingEffects = $derived(status === 'streaming');
+
+  $effect(() => {
+    if (status === 'streaming') {
+      if (!streamRenderMode) streamRenderMode = detectedRenderMode;
+      return;
+    }
+    streamRenderMode = null;
+  });
 
   function replaceCitations(container: HTMLElement, refs: NonNullable<ChatMessage['sources']>) {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -115,14 +149,14 @@
   const checkIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
   $effect(() => {
-    if (!contentEl || !sources?.length || rendersUI) return;
+    if (!contentEl || !sources?.length || activeRenderMode === 'ui') return;
     replaceCitations(contentEl, sources);
   });
 
   const readyForPostRender = $derived(status !== 'streaming' && markdownSource.length > 0);
 
   $effect(() => {
-    if (!contentEl || rendersUI || !readyForPostRender) return;
+    if (!contentEl || activeRenderMode === 'ui' || !readyForPostRender) return;
     const pres = contentEl.querySelectorAll('pre');
     for (const pre of pres) {
       if (pre.querySelector('.copy-btn')) continue;
@@ -144,15 +178,15 @@
   });
 
   $effect(() => {
-    if (!contentEl || rendersUI || !readyForPostRender) return;
+    if (!contentEl || activeRenderMode === 'ui' || !readyForPostRender) return;
     return observeLazyHighlight(contentEl);
   });
 </script>
 
 {#if status !== 'error' || (content && !metadataError)}
-  {#if rendersUI}
+  {#if activeRenderMode === 'ui'}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
-  {:else if hasCharts}
+  {:else if activeRenderMode === 'segments'}
     <div bind:this={contentEl} class="space-y-3" class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects}>
       {#each contentSegments as segment}
         {#if segment.kind === 'text'}
@@ -179,37 +213,12 @@
   :global(.streaming-active > .markdown-body > :last-child),
   :global(.streaming-active.markdown-body > :last-child),
   :global(.streaming-active > .markdown-segment:last-child) {
-    animation: streamFadeIn 150ms ease-out;
-  }
-
-  :global(.stream-caret)::after {
-    content: '';
-    display: inline-block;
-    width: 0.4rem;
-    height: 1em;
-    margin-left: 0.12rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--text-muted) 85%, transparent);
-    vertical-align: -0.12em;
-    animation: streamCaret 0.95s ease-in-out infinite;
+    animation: streamFadeIn 170ms ease-out;
   }
 
   @keyframes streamFadeIn {
-    from {
-      opacity: 0.45;
-      transform: translateY(2px);
-      filter: blur(0.4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-      filter: blur(0);
-    }
-  }
-
-  @keyframes streamCaret {
-    0%, 100% { opacity: 0.2; }
-    50% { opacity: 0.9; }
+    from { opacity: 0.78; }
+    to { opacity: 1; }
   }
 
   :global(.copy-btn) {

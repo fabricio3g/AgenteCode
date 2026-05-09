@@ -21,9 +21,10 @@
 
   interface Props {
     message: ChatMessage;
+    forceActionsVisible?: boolean;
   }
 
-  let { message }: Props = $props();
+  let { message, forceActionsVisible = false }: Props = $props();
 
   let hovering = $state(false);
   let copyFeedback = $state<string | null>(null);
@@ -205,7 +206,7 @@
           </div>
         </div>
       {/if}
-      <div class={`message-action-bar justify-end ${hovering ? 'visible' : ''}`}>
+      <div class={`message-action-bar justify-end ${hovering || forceActionsVisible ? 'visible' : ''}`}>
           <button class="msg-action-btn" onclick={copyContent} aria-label="Copy message" title="Copy">
             {#if copyFeedback === 'copied'}
               <Check class="h-3.5 w-3.5 action-icon copied" />
@@ -254,7 +255,7 @@
 
       <!-- Action buttons + version nav (visible on hover) -->
       {#if !hasActiveDeepResearch}
-      <div class="message-action-bar" class:visible={hovering}>
+      <div class="message-action-bar" class:visible={hovering || forceActionsVisible}>
           {#if (message.versions?.length || 0) > 1}
             <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
               <ChevronLeft class="h-3.5 w-3.5 action-icon" />

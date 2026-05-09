@@ -51,7 +51,7 @@ export function baseName(name: string) {
 }
 
 export function fileTypeLabel(name: string, kind?: DocumentSurfaceKind) {
-  if (kind === 'report') return 'Report';
+  if (kind === 'report') return 'Document';
   if (kind === 'slides') return 'Slides';
   const ext = documentExtension(name) || 'file';
   return ext.length <= 4 ? ext.toUpperCase() : ext;

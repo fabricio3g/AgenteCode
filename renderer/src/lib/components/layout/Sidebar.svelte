@@ -8,7 +8,6 @@
   import { isTauri } from '$lib/services/tauri';
   import { t } from 'svelte-i18n';
   import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
-  import RenameChatModal from './RenameChatModal.svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -18,6 +17,7 @@
   let renamingChatTitle = $state('');
   let renameValue = $state('');
   let openMenuChatId = $state<string | null>(null);
+  let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
 
   function startOfDay(ts: number) {
     const d = new Date(ts);
@@ -95,11 +95,25 @@
   function startRename(chatId: string, title: string) {
     renamingChatId = chatId;
     renamingChatTitle = title;
+    renameValue = title;
+    setTimeout(() => {
+      renameInputEl?.focus();
+      renameInputEl?.select();
+    }, 0);
   }
 
   function closeRename() {
     renamingChatId = null;
     renamingChatTitle = '';
+    renameValue = '';
+  }
+
+  function commitRename(chatId: string) {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== renamingChatTitle) {
+      appStore.renameChat(chatId, trimmed);
+    }
+    closeRename();
   }
 
   function exportChat(chat: (typeof appStore.chats)[0]) {
@@ -213,19 +227,45 @@
                   }}
                 >
                   <div class="min-w-0 flex-1 pr-1">
-                    <div class="chat-title truncate text-[13px]">{chat.title}</div>
+                    {#if renamingChatId === chat.id}
+                      <input
+                        bind:this={renameInputEl}
+                        class="chat-rename-input w-full"
+                        bind:value={renameValue}
+                        onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+                        onclick={(e) => e.stopPropagation()}
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            commitRename(chat.id);
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            closeRename();
+                          }
+                        }}
+                        onblur={() => closeRename()}
+                        maxlength="120"
+                      />
+                    {:else}
+                      <div class="chat-title truncate text-[13px]">{chat.title}</div>
+                    {/if}
                   </div>
-                  <button
-                    type="button"
-                    class="menu-btn ml-0.5 rounded-[var(--radius-sm)] p-1 opacity-0 transition group-hover:opacity-100"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
-                    }}
-                    aria-label="Chat options"
-                  >
-                    <MoreHorizontal class="h-3.5 w-3.5" />
-                  </button>
+                  {#if renamingChatId !== chat.id}
+                    <button
+                      type="button"
+                      class="menu-btn ml-0.5 rounded-[var(--radius-sm)] p-1 opacity-0 transition group-hover:opacity-100"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
+                      }}
+                      aria-label="Chat options"
+                    >
+                      <MoreHorizontal class="h-3.5 w-3.5" />
+                    </button>
+                  {/if}
 
                   {#if openMenuChatId === chat.id}
                     <div
@@ -312,13 +352,6 @@
   </div>
 </aside>
 
-{#if renamingChatId}
-  <RenameChatModal
-    chatId={renamingChatId}
-    currentTitle={renamingChatTitle}
-    onClose={closeRename}
-  />
-{/if}
 
 <style>
   .new-chat-btn {
@@ -390,6 +423,31 @@
 
   .chat-item.is-active {
     background: var(--surface-hover);
+  }
+
+  .chat-rename-input {
+    height: 30px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface-hover) 70%, var(--surface));
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.2;
+    padding: 0 10px;
+    outline: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .chat-rename-input::selection {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .chat-rename-input:focus {
+    border-color: var(--border-active);
+    background: var(--surface);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
   }
 
   .menu-btn {

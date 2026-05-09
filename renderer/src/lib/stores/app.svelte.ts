@@ -1558,9 +1558,14 @@ class AppStore {
     if (!chat) return null;
     chat.messages = [...chat.messages, message];
     chat.updatedAt = Date.now();
+
+    // Fast provisional title so history updates instantly.
     if (chat.title === 'New chat' && message.role === 'user') {
-      chat.title = message.content.slice(0, 48) || 'New chat';
+      const firstUser = chat.messages.find((m) => m.role === 'user');
+      const preview = (firstUser?.content || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+      if (preview) chat.title = preview;
     }
+
     this.touchChats(); // notify reactive subscribers of array mutation
     this.persist();
     return message;
@@ -2885,12 +2890,14 @@ class AppStore {
   private async generateChatTitle(chatId = this.currentChatId || '', apiKey = this.activeProvider?.api_key) {
     const chat = this.findChat(chatId);
     if (!chat) return;
-    // Only generate for chats that still have the default title
-    if (chat.title !== 'New chat') return;
     // Need at least one user + one assistant message
     const userMsg = chat.messages.find((m) => m.role === 'user');
     const assistantMsg = chat.messages.find((m) => m.role === 'assistant' && m.done && m.content);
     if (!userMsg || !assistantMsg) return;
+
+    const provisional = userMsg.content.trim().replace(/\s+/g, ' ').slice(0, 48);
+    // Only auto-rewrite if title is still default or provisional quick title.
+    if (chat.title !== 'New chat' && chat.title !== provisional) return;
 
     try {
       const result = await completeAssistantReply({
@@ -2913,7 +2920,7 @@ class AppStore {
         .replace(/[.!?]+$/, '')         // strip trailing punctuation
         .trim();
 
-      if (generated && generated.length >= 4 && generated.length <= 80 && chat.title === 'New chat') {
+      if (generated && generated.length >= 4 && generated.length <= 80 && (chat.title === 'New chat' || chat.title === provisional)) {
         chat.title = generated;
         this.touchChats();
         this.persist();

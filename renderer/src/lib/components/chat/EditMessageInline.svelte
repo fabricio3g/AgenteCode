@@ -10,9 +10,10 @@
     initialContent: string;
     role: 'user' | 'assistant';
     onCancel: () => void;
+    onDone?: () => void;
   }
 
-  let { messageId, initialContent, role, onCancel }: Props = $props();
+  let { messageId, initialContent, role, onCancel, onDone }: Props = $props();
 
   let textarea: HTMLTextAreaElement | undefined;
   let content = $state(initialContent);
@@ -48,6 +49,7 @@
     appStore.editingMessageContent = '';
     appStore.touchChats();
     appStore.persist();
+    onDone?.();
   }
 
   function onKeydown(event: KeyboardEvent) {
@@ -58,30 +60,43 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       onCancel();
+      onDone?.();
     }
   }
 </script>
 
-<div class="rounded-xl border border-[var(--border-hover)] bg-[var(--surface)] overflow-hidden">
-  <div class="p-3">
+<div class="edit-card overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-sm)]">
+  <div class="p-3.5">
     <textarea
       bind:this={textarea}
-      class="w-full min-h-[80px] max-h-[320px] resize-y rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]"
+      class="edit-input w-full min-h-[96px] max-h-[320px] resize-y rounded-xl border border-[var(--border)] bg-transparent px-3 py-2.5 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
       value={content}
       oninput={(e) => content = (e.currentTarget as HTMLTextAreaElement).value}
       onkeydown={onKeydown}
     ></textarea>
 
-    <div class="flex items-center justify-end gap-2 mt-3">
-      <span class="mr-auto text-xs text-[var(--text-muted)]">Esc to cancel</span>
-      <button class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={onCancel}>
+    <div class="mt-3 flex items-center justify-end gap-2">
+      <span class="mr-auto text-[11px] text-[var(--text-muted)]">Esc to cancel · Ctrl/Cmd+Enter to save</span>
+      <button class="edit-btn inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition" onclick={onCancel}>
         <X class="h-3 w-3" />
         Cancel
       </button>
-      <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90" onclick={save}>
+      <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90" onclick={save}>
         <Check class="h-3.5 w-3.5" />
         Save
       </button>
     </div>
   </div>
 </div>
+
+<style>
+  .edit-input:focus {
+    border-color: var(--border-hover);
+    background: color-mix(in srgb, var(--surface-hover) 60%, transparent);
+  }
+
+  .edit-btn:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+</style>
