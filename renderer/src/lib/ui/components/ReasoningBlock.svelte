@@ -24,22 +24,11 @@
   });
 
   $effect(() => {
-    if (!userToggled) {
-      open = status === 'streaming';
-    }
+    if (!userToggled) open = status === 'streaming';
   });
 
-  function label() {
-    const safeTiming = Number(timing || 0);
-    if (status === 'streaming') return 'Thinking...';
-    return `Thought for ${Math.max(0, safeTiming).toFixed(1)}s`;
-  }
-
-  function totalLabel() {
-    const safeTotal = Number(totalElapsedSeconds || 0);
-    if (status === 'streaming' || safeTotal <= 0) return '';
-    return `Completed in ${safeTotal.toFixed(1)}s`;
-  }
+  const elapsed = $derived(Math.max(0, Number(timing || 0)));
+  const total = $derived(Math.max(0, Number(totalElapsedSeconds || 0)));
 
   function toggle() {
     userToggled = true;
@@ -49,23 +38,21 @@
 
 {#if reasoning}
   <div class="reasoning-block mb-4 w-full">
-    <button
-      type="button"
-      class="cot-trigger"
-      onclick={toggle}
-    >
+    <button type="button" class="cot-trigger" onclick={toggle}>
       <Brain class="h-4 w-4 shrink-0" />
-      <span class="flex flex-1 flex-col">
-        <span class:text-shimmer={status === 'streaming'}>{label()}</span>
-        {#if totalLabel()}
-          <span class="cot-total">{totalLabel()}</span>
+      <span class="flex flex-1 items-center gap-2">
+        <span class:text-shimmer={status === 'streaming'}>
+          {status === 'streaming' ? 'Thinking…' : `Reasoning · ${elapsed.toFixed(1)}s`}
+        </span>
+        {#if status !== 'streaming' && total > 0}
+          <span class="cot-total">Total · {total.toFixed(1)}s</span>
         {/if}
       </span>
       <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
 
     {#if open}
-      <div class="cot-body" transition:slide={{ duration: 200, easing: quintOut }}>
+      <div class="cot-body" transition:slide={{ duration: 180, easing: quintOut }}>
         <div class="cot-timeline-line"></div>
         <div bind:this={reasoningLiveEl} class="cot-content">
           <p>{reasoning}</p>
@@ -76,9 +63,8 @@
 {/if}
 
 <style>
-  .reasoning-block {
-    margin-top: 0.75rem;
-  }
+  .reasoning-block { margin-top: 0.75rem; }
+
   .cot-trigger {
     display: flex;
     align-items: center;
@@ -92,26 +78,29 @@
     font-weight: 500;
     transition: color 0.15s ease;
   }
-  .cot-trigger:hover {
-    color: var(--text);
-  }
+
+  .cot-trigger:hover { color: var(--text); }
+
   .cot-body {
     display: grid;
     grid-template-columns: 2px 1fr;
     gap: 0.75rem;
     padding: 0.5rem 0;
   }
+
   .cot-total {
     margin-top: 0.08rem;
     color: var(--text-tertiary);
     font-size: 0.68rem;
     font-weight: 450;
   }
+
   .cot-timeline-line {
     width: 2px;
     background: var(--border);
     border-radius: 1px;
   }
+
   .cot-content p {
     color: var(--text-tertiary);
     font-size: 0.8125rem;

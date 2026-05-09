@@ -4,8 +4,10 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, PanelLeftClose, PanelLeftOpen, MessageSquare } from 'lucide-svelte';
+  import { Search, PanelLeftClose, PanelLeftOpen, MessageSquare, ExternalLink, SlidersHorizontal, MoonStar, SunMedium } from 'lucide-svelte';
+  import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import { themeStore } from '$lib/stores/theme.svelte';
 
   let isMaximized = $state(false);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
@@ -26,7 +28,7 @@
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
-  <div class="titlebar-left flex items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
+  <div class="titlebar-left flex min-w-0 flex-1 items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
     <div class="titlebar-icon flex h-7 w-7 items-center justify-center">
       <MessageSquare class="h-5 w-5 text-[var(--text)]" />
     </div>
@@ -38,6 +40,16 @@
         style="-webkit-app-region: no-drag"
       >
         <Search class="h-4 w-4" />
+      </button>
+    </Tooltip>
+    <Tooltip label="LLM settings">
+      <button
+        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+        onclick={() => (appStore.llmDrawerOpen = true)}
+        aria-label="LLM settings"
+        style="-webkit-app-region: no-drag"
+      >
+        <SlidersHorizontal class="h-4 w-4" />
       </button>
     </Tooltip>
     {#if appStore.sidebarOpen}
@@ -65,15 +77,54 @@
     {/if}
   </div>
 
+  <div class="titlebar-center flex min-w-0 flex-1 items-center justify-center gap-2 px-3" style="-webkit-app-region: no-drag">
+    <ModelSwitcher />
+    <Tooltip label="Open Model Hub">
+      <button
+        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+        onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
+        aria-label="Open Model Hub"
+      >
+        <ExternalLink class="h-4 w-4" />
+      </button>
+    </Tooltip>
+  </div>
+
   <div class="titlebar-right flex flex-1 items-center justify-end">
     {#if isMac}
       <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
+        <Tooltip label="Toggle theme" position="left">
+          <button
+            class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+            onclick={() => themeStore.toggle()}
+            aria-label="Toggle theme"
+          >
+            {#if themeStore.current === 'dark'}
+              <SunMedium class="h-4 w-4" />
+            {:else}
+              <MoonStar class="h-4 w-4" />
+            {/if}
+          </button>
+        </Tooltip>
         <button class="dot dot-close" onclick={() => appWindow.close()} aria-label="Close" title="Close"></button>
         <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize"></button>
         <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
       </div>
     {:else}
       <div class="win-controls flex h-full items-center" style="-webkit-app-region: no-drag">
+        <Tooltip label="Toggle theme" position="left">
+          <button
+            class="titlebar-btn flex h-7 w-7 items-center justify-center transition mr-1"
+            onclick={() => themeStore.toggle()}
+            aria-label="Toggle theme"
+          >
+            {#if themeStore.current === 'dark'}
+              <SunMedium class="h-4 w-4" />
+            {:else}
+              <MoonStar class="h-4 w-4" />
+            {/if}
+          </button>
+        </Tooltip>
         <button class="win-btn" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize">
           <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
         </button>
@@ -127,6 +178,10 @@
   .titlebar-btn:hover {
     color: var(--text);
     background: var(--surface-hover);
+  }
+
+  .titlebar-center {
+    background: var(--titlebar-bg, var(--surface));
   }
 
   .titlebar-right {

@@ -219,11 +219,17 @@ function finalizeAssistantMetadata(options: {
 function startReasoningTimer() {
   return {
     startedAt: 0,
+    stoppedAt: 0,
     markStarted() {
       if (!this.startedAt) this.startedAt = Date.now();
     },
+    markStopped() {
+      if (this.startedAt && !this.stoppedAt) this.stoppedAt = Date.now();
+    },
     elapsedSeconds() {
-      return this.startedAt ? (Date.now() - this.startedAt) / 1000 : undefined;
+      if (!this.startedAt) return undefined;
+      const end = this.stoppedAt || Date.now();
+      return (end - this.startedAt) / 1000;
     }
   };
 }
@@ -2656,6 +2662,7 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           onChunk: (value) => {
+            reasoningTimer.markStopped();
             appendStreamingContent(
               assistantMessage,
               value,
@@ -3188,6 +3195,7 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           onChunk: (value) => {
+            reasoningTimer.markStopped();
             nextVersion.content += value;
             message.content = nextVersion.content;
             nextVersion.reasoning = message.reasoning;

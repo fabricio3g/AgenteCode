@@ -20,52 +20,43 @@
 
   let { content, status = 'idle', metadataError = false, sources = [], onAction }: Props = $props();
 
+  const STREAM_RENDER_DELAY = 48;
+
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
   let displayedContent = $state(content);
   let pendingContent = $state(content);
-  let renderRaf: number | undefined;
   let renderTimer: ReturnType<typeof setTimeout> | undefined;
-  let lastRenderedLength = $state(0);
   let isStreamingActive = $state(false);
+
+  function flushRenderedContent() {
+    renderTimer = undefined;
+    if (displayedContent !== pendingContent) displayedContent = pendingContent;
+  }
+
+  function scheduleStreamingRender() {
+    if (renderTimer !== undefined) return;
+    renderTimer = setTimeout(flushRenderedContent, STREAM_RENDER_DELAY);
+  }
+
+  function clearStreamingRender() {
+    if (renderTimer !== undefined) {
+      clearTimeout(renderTimer);
+      renderTimer = undefined;
+    }
+  }
 
   $effect(() => {
     pendingContent = content;
+
     if (status !== 'streaming') {
-      if (renderTimer !== undefined) {
-        clearTimeout(renderTimer);
-        renderTimer = undefined;
-      }
-      if (renderRaf !== undefined) {
-        cancelAnimationFrame(renderRaf);
-        renderRaf = undefined;
-      }
+      clearStreamingRender();
       isStreamingActive = false;
-      if (displayedContent !== content) {
-        displayedContent = content;
-      }
-      lastRenderedLength = displayedContent.length;
+      if (displayedContent !== content) displayedContent = content;
       return;
     }
-    isStreamingActive = true;
-    if (renderTimer !== undefined || renderRaf !== undefined) return;
-    renderTimer = setTimeout(() => {
-      renderTimer = undefined;
-      renderRaf = requestAnimationFrame(() => {
-        renderRaf = undefined;
-        if (displayedContent !== pendingContent) {
-          displayedContent = pendingContent;
-        }
-      });
-    }, 60);
-  });
 
-  // Track new block count to trigger CSS-based fade on newly appended blocks
-  $effect(() => {
-    if (!contentEl || !isStreamingActive) return;
-    const newLength = displayedContent.length;
-    if (newLength > lastRenderedLength) {
-      lastRenderedLength = newLength;
-    }
+    isStreamingActive = true;
+    scheduleStreamingRender();
   });
 
   const sanitizedContent = $derived(sanitizeAssistantArtifacts(displayedContent));
@@ -73,7 +64,6 @@
   const hasCharts = $derived(contentSegments.some((segment) => segment.kind === 'chart'));
   const rendersUI = $derived(hasUIContent(sanitizedContent));
   const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
-
   const markdownHtml = $derived(renderMarkdown(markdownSource));
 
   function replaceCitations(container: HTMLElement, refs: NonNullable<ChatMessage['sources']>) {
@@ -154,8 +144,7 @@
 
   $effect(() => {
     if (!contentEl || rendersUI || !readyForPostRender) return;
-    const cleanup = observeLazyHighlight(contentEl);
-    return cleanup;
+    return observeLazyHighlight(contentEl);
   });
 </script>
 
@@ -189,39 +178,37 @@
   :global(.streaming-active > .markdown-body > :last-child),
   :global(.streaming-active.markdown-body > :last-child),
   :global(.streaming-active > .markdown-segment:last-child) {
-    animation: streamFadeIn 140ms ease-out;
+    animation: streamFadeIn 150ms ease-out;
   }
 
   :global(.stream-caret)::after {
     content: '';
     display: inline-block;
-    width: 0.45rem;
+    width: 0.4rem;
     height: 1em;
     margin-left: 0.12rem;
     border-radius: 999px;
-    background: var(--text-muted);
+    background: color-mix(in srgb, var(--text-muted) 85%, transparent);
     vertical-align: -0.12em;
-    animation: streamCaret 1.05s ease-in-out infinite;
+    animation: streamCaret 0.95s ease-in-out infinite;
   }
 
   @keyframes streamFadeIn {
     from {
-      opacity: 0.35;
+      opacity: 0.45;
       transform: translateY(2px);
+      filter: blur(0.4px);
     }
     to {
       opacity: 1;
       transform: translateY(0);
+      filter: blur(0);
     }
   }
 
   @keyframes streamCaret {
-    0%, 100% {
-      opacity: 0.22;
-    }
-    45% {
-      opacity: 0.85;
-    }
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 0.9; }
   }
 
   :global(.copy-btn) {

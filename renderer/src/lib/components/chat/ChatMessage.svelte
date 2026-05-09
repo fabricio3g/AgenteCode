@@ -49,21 +49,18 @@
     };
   });
   const hasReliableUsage = $derived(footerMetadata?.usageSource === 'provider' || footerMetadata?.usageSource === 'runtime');
-  const displayTokenCount = $derived(footerMetadata?.outputTokens || footerMetadata?.totalTokens || footerMetadata?.tokens || 0);
+  const displayTokenCount = $derived(
+    footerMetadata?.usageSource === 'runtime'
+      ? (footerMetadata?.outputTokens || footerMetadata?.tokens || footerMetadata?.totalTokens || 0)
+      : (footerMetadata?.outputTokens || footerMetadata?.totalTokens || footerMetadata?.tokens || 0)
+  );
   const displayModelTiming = $derived.by(() => {
     if (!footerMetadata || !hasReliableUsage) return undefined;
     if (typeof footerMetadata.modelTimingSeconds === 'number') return footerMetadata.modelTimingSeconds;
     if (typeof footerMetadata.timing === 'number') return footerMetadata.timing;
     return undefined;
   });
-  const footerModelName = $derived(footerMetadata?.modelName || message.model || '');
-  const footerBackendHint = $derived(
-    footerMetadata?.executionBackend === 'local'
-      ? 'local'
-      : footerMetadata?.executionBackend === 'api'
-        ? 'api'
-        : ''
-  );
+  const footerBackendHint = $derived('');
   const displaySearchMeta = $derived(message.searchMeta || inferSearchMeta(message));
   const hasActiveDeepResearch = $derived.by(() => {
     return !!deepResearchStore.getActiveTaskForMessage(message.id);
@@ -228,14 +225,6 @@
 
       <!-- Model name + token usage (always visible) -->
       <div class="mt-1 flex items-center gap-2 flex-wrap">
-        {#if message.status !== 'streaming' && footerModelName}
-          <span class="text-xs text-[var(--text-muted)]">
-            {footerModelName}
-            {#if footerBackendHint}
-              <span class="text-[var(--text-tertiary)]"> · {footerBackendHint}</span>
-            {/if}
-          </span>
-        {/if}
         {#if hasReliableUsage && displayTokenCount}
           <span class="text-xs text-[var(--text-muted)]">
             {displayTokenCount} tok

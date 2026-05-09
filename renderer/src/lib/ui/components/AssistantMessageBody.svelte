@@ -108,6 +108,14 @@
     if (typeof metadata.reasoningTimingSeconds === 'number') return metadata.reasoningTimingSeconds;
     return undefined;
   }
+
+  function resolveDisplayTotalElapsed(metadata: MessageVersion['metadata'] | null | undefined) {
+    const total = resolveTotalElapsed(metadata);
+    const reasoning = resolveReasoningTiming(metadata);
+    if (typeof total !== 'number' || total <= 0) return undefined;
+    if (typeof reasoning === 'number' && reasoning > 0 && Math.abs(total - reasoning) < 0.25) return undefined;
+    return total;
+  }
 </script>
 
 {#if hasActiveDeepResearch}
@@ -145,7 +153,7 @@
     reasoning={displayReasoning}
     status={message.status}
     timing={resolveReasoningTiming(displayMetadata) || 0}
-    totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+    totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
   />
 {/if}
 
