@@ -117,7 +117,7 @@ async function extractZipImages(
 }
 
 class OcrEngine {
-  private worker: any | null = null;
+  private worker: { recognize: (imageSource: string | Blob | File | HTMLCanvasElement) => Promise<{ data: { text: string; confidence: number } }>; reinitialize: (lang: string) => Promise<void>; terminate: () => Promise<void> } | null = null;
   private ready = false;
   private busy = false;
   private lang = 'eng';
@@ -147,7 +147,7 @@ class OcrEngine {
       const result = await this.worker!.recognize(imageSource);
       emitProgress(1, 1, 'done');
       return { text: result.data.text, confidence: result.data.confidence };
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[OcrEngine] recognize failed:', err);
       return { text: '', confidence: 0 };
     } finally {
@@ -189,7 +189,7 @@ class OcrEngine {
 
       emitProgress(total, total, 'done');
       return { pages, fullText: pages.map((p) => p.text).join('\n\n') };
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[OcrEngine] ocrPdfPages failed:', err);
       return { pages: [], fullText: '' };
     } finally {
@@ -221,7 +221,7 @@ class OcrEngine {
       }
 
       return { text: texts.join('\n\n'), pageCount };
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[OcrEngine] extractPdfText failed:', err);
       return { text: '', pageCount: 0 };
     }
@@ -250,7 +250,7 @@ class OcrEngine {
 
       emitProgress(total, total, 'done');
       return { images, fullText: images.map((img) => img.text).join('\n\n') };
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[OcrEngine] ocrDocxImages failed:', err);
       return { images: [], fullText: '' };
     } finally {

@@ -673,6 +673,23 @@ export async function completeAssistantReply(args: {
   };
 }
 
+function tryParseJsonObject(value: unknown): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(String(value || '{}'));
+    return (parsed && typeof parsed === 'object') ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function tryParseJsonValue<T>(value: unknown): T | null {
+  try {
+    return JSON.parse(String(value)) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function readCompletionWithTools(payload: UnknownRecord): CompletionResult {
   // Flat format from main-process providers: { content: "...", reasoning: "...", toolCalls: [...] }
   if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
@@ -682,10 +699,9 @@ export function readCompletionWithTools(payload: UnknownRecord): CompletionResul
       return {
         id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
         name: String(fn.name || call.name || ''),
-        arguments: (() => {
-          if (call.arguments && typeof call.arguments === 'object') return call.arguments as Record<string, unknown>;
-          try { return JSON.parse(String(fn.arguments || call.arguments || '{}')); } catch { return {}; }
-        })()
+        arguments: call.arguments && typeof call.arguments === 'object'
+          ? call.arguments as Record<string, unknown>
+          : tryParseJsonObject(fn.arguments || call.arguments || '{}')
       };
     }).filter((toolCall: NativeToolCall) => !!toolCall.name);
     return {
@@ -704,7 +720,7 @@ export function readCompletionWithTools(payload: UnknownRecord): CompletionResul
     return {
       id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
       name: String(fn.name || ''),
-      arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
+      arguments: tryParseJsonObject(fn.arguments || '{}')
     };
   }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
@@ -1071,7 +1087,7 @@ export async function completeWithTools(args: {
       return {
         id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
         name: String(fn.name || ''),
-        arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
+        arguments: tryParseJsonObject(fn.arguments || '{}')
       };
     }).filter((toolCall: NativeToolCall) => !!toolCall.name);
 
@@ -1115,7 +1131,7 @@ export async function completeStructuredOutput<T>(
     });
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) return null;
-    try { return JSON.parse(content) as T; } catch { return null; }
+    return tryParseJsonValue<T>(content);
   }
 
   try {
@@ -1132,7 +1148,7 @@ export async function completeStructuredOutput<T>(
 
     const content = response?.choices?.[0]?.message?.content;
     if (!content) return null;
-    try { return JSON.parse(content) as T; } catch { return null; }
+    return tryParseJsonValue<T>(content);
   } catch {
     return null;
   }

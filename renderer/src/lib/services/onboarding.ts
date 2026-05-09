@@ -61,15 +61,9 @@ export function getModelCatalog(): OnboardingModel[] {
 
 export function getRecommendedModels(hardware: HardwareInfo | null): OnboardingModel[] {
   const ramGb = hardware?.total_ram_gb ?? 4;
-  const models = MODEL_CATALOG.filter(m => m.minRamGb <= ramGb);
-  // If hardware is known, promote the best fit
-  if (models.length > 0) {
-    const recommended = models.find(m => m.recommended);
-    if (recommended) {
-      return [recommended, ...models.filter(m => m.id !== recommended.id)];
-    }
-  }
-  return models;
+  const models = MODEL_CATALOG.filter((model) => model.minRamGb <= ramGb);
+  const recommended = models.find((model) => model.recommended);
+  return recommended ? [recommended, ...models.filter((model) => model.id !== recommended.id)] : models;
 }
 
 export async function checkIsFirstRun(): Promise<boolean> {
@@ -85,7 +79,7 @@ export async function markOnboardingComplete(): Promise<void> {
     await invoke('update_config', {
       onboarding: { completed: true, completed_at: Date.now() },
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[onboarding] Failed to mark onboarding complete:', err);
   }
 }

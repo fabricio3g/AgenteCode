@@ -13,7 +13,7 @@ vi.mock('$lib/services/downloads', () => ({
 }));
 
 describe('DownloadsStore', () => {
-  let downloadsStore: any;
+  let downloadsStore: Awaited<typeof import('./downloads.svelte')>['downloadsStore'];
 
   beforeEach(async () => {
     vi.clearAllMocks();

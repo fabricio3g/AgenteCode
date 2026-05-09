@@ -90,15 +90,19 @@ function normalizeWhitespace(text: unknown) {
 }
 
 function parseGeneratedQuestions(data: unknown): ResearchQuestion[] {
-  const entries = Array.isArray((data as any)?.questions) ? (data as any).questions : [];
+  const payload = (data && typeof data === 'object') ? data as { questions?: unknown } : {};
+  const entries = Array.isArray(payload.questions) ? payload.questions : [];
   return entries
-    .map((entry: any, index: number) => ({
-      id: `rq_${index + 1}`,
-      question: normalizeWhitespace(entry?.q ?? entry?.question),
-      hint: normalizeWhitespace(entry?.h ?? entry?.hint),
-      suggestedAnswer: normalizeWhitespace(entry?.a ?? entry?.answer ?? entry?.suggested_answer ?? entry?.suggestedAnswer),
-      suggestedAnswerSource: 'ai' as const
-    }))
+    .map((entry, index) => {
+      const item = (entry && typeof entry === 'object') ? entry as Record<string, unknown> : {};
+      return {
+        id: `rq_${index + 1}`,
+        question: normalizeWhitespace(item.q ?? item.question),
+        hint: normalizeWhitespace(item.h ?? item.hint),
+        suggestedAnswer: normalizeWhitespace(item.a ?? item.answer ?? item.suggested_answer ?? item.suggestedAnswer),
+        suggestedAnswerSource: 'ai' as const
+      };
+    })
     .filter((entry: ResearchQuestion) => entry.question && entry.suggestedAnswer)
     .slice(0, 3);
 }

@@ -6,6 +6,10 @@ import { cleanTextForTTS } from '$lib/utils/tts-text';
 
 const SAMPLE_RATE = 24000;
 
+type TtsChunkEvent = { seq?: number; index?: number; total?: number; base64?: string };
+type TtsStartEvent = { seq?: number; total?: number };
+type TtsDoneEvent = { seq?: number };
+
 class TtsStore {
   playing = $state(false);
   isGenerating = $state(false);
@@ -146,23 +150,30 @@ class TtsStore {
       this.lastScheduledEnd = 0;
       this.pendingEndSource = null;
 
-      this.unsubChunk = onTtsChunk((evt: any) => {
-        if (evt.seq !== this.currentGenId || this.currentMessageId !== messageId) return;
-        this.progress = { index: evt.index + 1, total: evt.total };
-        const samples = base64ToFloat32Pcm(evt.base64);
-        this.collectedChunks.push({ index: evt.index, samples });
-        this.chunkQueue.push({ index: evt.index, samples });
+      this.unsubChunk = onTtsChunk((evt) => {
+        const chunk = evt as TtsChunkEvent;
+        if (chunk.seq !== this.currentGenId || this.currentMessageId !== messageId) return;
+        const index = Number(chunk.index ?? 0);
+        const total = Number(chunk.total ?? 0);
+        const base64 = String(chunk.base64 || '');
+        if (!base64) return;
+        this.progress = { index: index + 1, total };
+        const samples = base64ToFloat32Pcm(base64);
+        this.collectedChunks.push({ index, samples });
+        this.chunkQueue.push({ index, samples });
         this.chunkQueue.sort((a, b) => a.index - b.index);
         this.scheduleAhead();
       });
 
-      this.unsubStart = onTtsStart((evt: any) => {
-        if (evt.seq !== this.currentGenId) return;
-        this.progress = { index: 0, total: evt.total };
+      this.unsubStart = onTtsStart((evt) => {
+        const start = evt as TtsStartEvent;
+        if (start.seq !== this.currentGenId) return;
+        this.progress = { index: 0, total: Number(start.total ?? 0) };
       });
 
-      this.unsubDone = onTtsDone((evt: any) => {
-        if (evt.seq !== this.currentGenId) return;
+      this.unsubDone = onTtsDone((evt) => {
+        const done = evt as TtsDoneEvent;
+        if (done.seq !== this.currentGenId) return;
         this.doneReceived = true;
         // If all chunks already scheduled, set up end detection immediately
         if (this.scheduledCount >= this.chunkQueue.length) {
@@ -174,7 +185,7 @@ class TtsStore {
       });
 
       this.startProgressTracking();
-      generateTtsStream({ text: cleaned, voice, speed, volume } as any);
+      generateTtsStream({ text: cleaned, voice, speed, volume });
       return;
     }
 

@@ -16,6 +16,22 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
+import { toErrorMessage } from '$lib/utils/errors';import {
+  type ApiModelMetadataValue,
+  type ContextBudgetValue
+} from '$lib/stores/app-context-budget';
+import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
+import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
+import {
+  applyLocalContextBudgetTruncation,
+  buildOutboundMessages,
+  buildRequestMessagesWithPatchedUser
+} from '$lib/stores/app-message-pipeline';
+import {
+  buildApiModelMetadataCacheKey,
+  fetchApiModelMetadataFromProvider,
+  getCachedOrFetchApiModelMetadata
+} from '$lib/stores/app-model-metadata';
 
 interface PersistedState {
   chats: ChatSession[];
@@ -23,24 +39,12 @@ interface PersistedState {
   currentChatId: string | null;
 }
 
-interface ContextBudget {
-  maxContext: number;
-  usedTokens: number;
-  remaining: number;
-  usagePercent: number;
-  isOverflow: boolean;
-  reservedForCompletion: number;
-  promptCostPerMillionUsd?: number;
-  completionCostPerMillionUsd?: number;
-  estimatedInputCostUsd?: number;
-}
+type ContextBudget = ContextBudgetValue;
+type ApiModelMetadata = ApiModelMetadataValue;
 
-interface ApiModelMetadata {
-  context_window: number;
-  max_completion_tokens?: number;
-  prompt_cost_per_million?: number;
-  completion_cost_per_million?: number;
-}
+type ElectronApi = {
+  invoke: <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
+};
 
 type GenerationBackendMode = 'api' | 'local';
 type GenerationComposerMode = 'chat' | 'agent';
@@ -75,6 +79,15 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function getElectronApi(): ElectronApi | null {
+  if (typeof window === 'undefined') return null;
+  return (window as { electronAPI?: ElectronApi }).electronAPI || null;
+}
+
+function toInvoke(api: ElectronApi): ElectronApi['invoke'] {
+  return (channel, payload) => api.invoke(channel, payload);
 }
 
 function createId(prefix: string) {
@@ -213,15 +226,6 @@ function startReasoningTimer() {
       return this.startedAt ? (Date.now() - this.startedAt) / 1000 : undefined;
     }
   };
-}
-
-function sharedAssistantStylePrompt(): string {
-  return [
-    'Write in ChateaLM\'s normal assistant style regardless of backend.',
-    'Keep answers clear, polished, and concise unless the user asks for depth.',
-    'Use markdown structure only when it helps scanning.',
-    'Never expose internal tool traces, raw payloads, model chatter, or hidden reasoning in the visible answer.'
-  ].join('\n');
 }
 
 function activityFromProgress(text: string): { currentActivity: AgentActivity; activityLabel: string } {
@@ -842,95 +846,31 @@ class AppStore {
       });
     }
 
-    let systemPrompt = this.getSystemPrompt();
-    const outboundMessages: RequestMessage[] = systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...currentMessages]
-      : currentMessages;
-
+    const systemPrompt = this.getSystemPrompt();
+    const outboundMessages = buildOutboundMessages({ messages: currentMessages, systemPrompt });
     try {
-      if (this.backendMode === 'local') {
-        const budget = await (window as any).electronAPI.invoke('build_context_budget', {
-          config: {
-            context_length: this.config.llm?.local?.context_length || 4096,
-            max_tokens: this.config.llm?.local?.max_tokens
-          },
-          messages: outboundMessages
-        });
-
-        if (requestId !== this.contextBudgetRequestId) return;
-
-        if (!budget || typeof budget !== 'object') {
-          this.contextBudget = null;
-          return;
-        }
-
-        const value = budget as Partial<ContextBudget>;
-        this.contextBudget = {
-          maxContext: Number(value.maxContext) || 4096,
-          usedTokens: Math.max(0, Number(value.usedTokens) || 0),
-          remaining: Math.max(0, Number(value.remaining) || 0),
-          usagePercent: Math.min(100, Math.max(0, Number(value.usagePercent) || 0)),
-          isOverflow: Boolean(value.isOverflow),
-          reservedForCompletion: Math.max(0, Number(value.reservedForCompletion) || 0)
-        };
-      } else {
-        const provider = this.activeProvider;
-        const model = provider?.model;
-        if (!provider || !model) {
-          this.contextBudget = null;
-          return;
-        }
-
-        const cacheKey = `${this.activeProviderName}:${model}`;
-        let modelMetadata: ApiModelMetadata | null = this.apiModelMetadataByKey[cacheKey] || null;
-        if (!modelMetadata) {
-          modelMetadata = await this.fetchApiModelMetadata(this.activeProviderName, model);
-        }
-
-        if (requestId !== this.contextBudgetRequestId) return;
-
-        const contextWindow = modelMetadata?.context_window || null;
-        if (!contextWindow) {
-          this.contextBudget = null;
-          return;
-        }
-
-        let totalTokens = 0;
-        for (const msg of outboundMessages) {
-          const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-          const tokens = await (window as any).electronAPI.invoke('count_tokens', { text });
-          totalTokens += typeof tokens === 'number' ? tokens : 0;
-        }
-
-        if (requestId !== this.contextBudgetRequestId) return;
-
-        const maxTokensSetting = provider?.max_tokens
-          || modelMetadata?.max_completion_tokens
-          || Math.floor(contextWindow * 0.1);
-        const reserved = Math.min(maxTokensSetting, Math.floor(contextWindow * 0.2));
-        const effectiveMax = contextWindow - reserved;
-        const usagePercent = Math.min(100, Math.round((totalTokens / effectiveMax) * 100));
-        const remaining = Math.max(0, effectiveMax - totalTokens);
-        const isOverflow = totalTokens > effectiveMax;
-
-        const promptCostPerMillionUsd = modelMetadata?.prompt_cost_per_million;
-        const completionCostPerMillionUsd = modelMetadata?.completion_cost_per_million;
-        const estimatedInputCostUsd = promptCostPerMillionUsd
-          ? (totalTokens / 1_000_000) * promptCostPerMillionUsd
-          : undefined;
-
-        this.contextBudget = {
-          maxContext: contextWindow,
-          usedTokens: totalTokens,
-          remaining,
-          usagePercent,
-          isOverflow,
-          reservedForCompletion: reserved,
-          promptCostPerMillionUsd,
-          completionCostPerMillionUsd,
-          estimatedInputCostUsd
-        };
+      const electronApi = getElectronApi();
+      if (!electronApi) {
+        this.contextBudget = null;
+        return;
       }
+
+      const provider = this.activeProvider;
+      const budget = await resolveContextBudgetPreview({
+        backendMode: this.backendMode,
+        invoke: toInvoke(electronApi),
+        messages: outboundMessages,
+        localContextLength: this.config.llm?.local?.context_length,
+        localMaxTokens: this.config.llm?.local?.max_tokens,
+        providerMaxTokens: provider?.max_tokens,
+        activeProviderModel: provider?.model,
+        activeProviderName: this.activeProviderName,
+        readCachedMetadata: (cacheKey) => this.apiModelMetadataByKey[cacheKey] || null,
+        fetchMetadata: (providerName, model) => this.fetchApiModelMetadata(providerName, model)
+      });
+
+      if (requestId !== this.contextBudgetRequestId) return;
+      this.contextBudget = budget;
     } catch {
       if (requestId === this.contextBudgetRequestId) {
         this.contextBudget = null;
@@ -943,32 +883,31 @@ class AppStore {
       return null;
     }
 
-    const cacheKey = `${providerName}:${model}`;
-    const cached = this.apiModelMetadataByKey[cacheKey];
-    if (cached) return cached;
+    const cacheKey = buildApiModelMetadataCacheKey(providerName, model);
 
     const provider = this.activeProvider;
     if (!provider) return null;
 
     try {
-      const result = await (window as any).electronAPI.invoke('get_api_model_context', {
+      const metadata = await getCachedOrFetchApiModelMetadata({
         providerName,
-        baseUrl: provider.base_url || '',
-        apiKey: provider.api_key || '',
-        modelId: model
-      });
-
-      if (result && typeof result === 'object') {
-        const metadata: ApiModelMetadata = {
-          context_window: Number((result as any).context_window) || 0,
-          max_completion_tokens: Number((result as any).max_completion_tokens) || undefined,
-          prompt_cost_per_million: Number((result as any).prompt_cost_per_million) || undefined,
-          completion_cost_per_million: Number((result as any).completion_cost_per_million) || undefined
-        };
-        if (metadata.context_window > 0) {
-          this.apiModelMetadataByKey = { ...this.apiModelMetadataByKey, [cacheKey]: metadata };
-          return metadata;
+        model,
+        cache: this.apiModelMetadataByKey,
+        fetchFresh: async () => {
+          const electronApi = getElectronApi();
+          if (!electronApi) return null;
+          return fetchApiModelMetadataFromProvider({
+            invoke: toInvoke(electronApi),
+            providerName,
+            model,
+            baseUrl: provider.base_url || '',
+            apiKey: provider.api_key || ''
+          });
         }
+      });
+      if (metadata) {
+        this.apiModelMetadataByKey = { ...this.apiModelMetadataByKey, [cacheKey]: metadata };
+        return metadata;
       }
     } catch {
       // ignore
@@ -978,23 +917,31 @@ class AppStore {
   }
 
   private getSystemPrompt(): string {
-    const localPrompt = this.config.llm?.local?.system_prompt?.trim() || '';
-    const providerPrompt = this.config.llm?.providers?.[this.activeProviderName]?.system_prompt?.trim() || '';
-    let systemPrompt = this.backendMode === 'local' ? localPrompt : providerPrompt;
-    const stylePrompt = sharedAssistantStylePrompt();
-    systemPrompt = systemPrompt ? `${stylePrompt}\n\n${systemPrompt}` : stylePrompt;
+    return this.buildSystemPromptForMode({
+      backendMode: this.backendMode,
+      providerPrompt: this.config.llm?.providers?.[this.activeProviderName]?.system_prompt,
+      includeChartHint: true
+    });
+  }
 
-    if (this.userName?.trim()) {
-      const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
-      systemPrompt = systemPrompt ? `${userIdentity}\n\n${systemPrompt}` : userIdentity;
-    }
-
-    const chartHint = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
-      '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
-      '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
-      '</chart>\n' +
-      'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
-    return systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
+  private buildSystemPromptForMode(args: {
+    backendMode: GenerationBackendMode;
+    providerPrompt?: string;
+    includeChartHint?: boolean;
+    searchSystemPrefix?: string;
+  }): string {
+    const basePrompt = selectBaseSystemPrompt({
+      backendMode: args.backendMode,
+      localPrompt: this.config.llm?.local?.system_prompt,
+      providerPrompt: args.providerPrompt,
+      globalPrompt: this.config.llm?.system_prompt
+    });
+    return buildSystemPrompt({
+      basePrompt,
+      userName: this.userName,
+      searchSystemPrefix: args.searchSystemPrefix,
+      includeChartHint: args.includeChartHint
+    });
   }
 
   private syncArtifactState(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {
@@ -1324,7 +1271,7 @@ class AppStore {
 
     try {
       const CONFIG_TIMEOUT_SENTINEL = Symbol('timeout');
-      const configResult = await withTimeout(loadChatConfig(), 5000, CONFIG_TIMEOUT_SENTINEL as any);
+      const configResult = await withTimeout<AppConfig | typeof CONFIG_TIMEOUT_SENTINEL>(loadChatConfig(), 5000, CONFIG_TIMEOUT_SENTINEL);
       if (configResult === CONFIG_TIMEOUT_SENTINEL) {
         console.warn('[appStore.init] Config load timed out after 5s — using empty config fallback. Backend mode will default to local.');
         this.config = {};
@@ -1360,7 +1307,7 @@ class AppStore {
         this.currentChatId = this.chats[0]?.id || null;
       }
     } catch (error) {
-      this.error = String((error as Error)?.message || error || 'Failed to initialize application');
+      this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
         this.createChat();
       }
@@ -1773,7 +1720,7 @@ class AppStore {
       });
     } catch (error) {
       this.setSearchStateForChat(targetChatId, { results: [], loading: false, query: trimmed });
-      toastStore.error(String((error as Error)?.message || error || 'Search failed'));
+      toastStore.error(toErrorMessage(error) || 'Search failed');
     }
   }
 
@@ -1897,7 +1844,7 @@ class AppStore {
             const { extractTextFromFile } = await import('$lib/services/ocr');
             const ocrText = await extractTextFromFile(file);
             if (ocrText.trim()) attachment.ocrText = ocrText.trim();
-          } catch (err) {
+          } catch (err: unknown) {
             console.warn('[addFiles] OCR failed for image:', err);
           }
         }
@@ -1929,7 +1876,7 @@ class AppStore {
         console.warn('[addFiles] Backend ingest failed, trying client-side extraction:', error);
 
         const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-        const errorMessage = String((error as Error)?.message || error || 'Failed to process file');
+        const errorMessage = toErrorMessage(error) || 'Failed to process file';
         const parserFailed = isPdf && /could not parse pdf text|pdf parser returned insufficient readable text/i.test(errorMessage);
 
         if (parserFailed) {
@@ -1951,7 +1898,7 @@ class AppStore {
           }
         } catch (ocrErr) {
           attachment.status = 'error';
-          attachment.error = String((error as Error)?.message || error || 'Failed to process file');
+          attachment.error = toErrorMessage(error) || 'Failed to process file';
         }
         nextAttachments.push(attachment);
       }
@@ -2102,7 +2049,7 @@ class AppStore {
           }
         } catch (error) {
           workspaceFile.status = 'error';
-          workspaceFile.reason = String((error as Error)?.message || error || 'Failed to index file');
+          workspaceFile.reason = toErrorMessage(error) || 'Failed to index file';
           skippedCount += 1;
         }
 
@@ -2233,18 +2180,46 @@ class AppStore {
     toastStore.info(`Folder created`, 2000);
   }
 
+  private canStartGeneration(params: {
+    backendMode: GenerationBackendMode;
+    targetChatId: string;
+    activeProvider?: { has_api_key?: boolean; api_key?: string } | null;
+    localBusyActionText?: string;
+  }): boolean {
+    if (this.isChatGenerating(params.targetChatId)) return false;
+
+    if (params.backendMode === 'local' && this.hasOtherChatGeneration(params.targetChatId)) {
+      const actionText = params.localBusyActionText || 'starting a local response here';
+      toastStore.info(`Local model is busy in another chat. Stop that run before ${actionText}.`, 3200);
+      return false;
+    }
+
+    if (params.backendMode === 'local') {
+      if (!this.selectedLocalModelPath) {
+        toastStore.error('No local model selected. Open Model Hub to download and load a model.');
+        return false;
+      }
+      if (!this.localModelActive) {
+        toastStore.error('No model is loaded yet. Load a model from the Model Hub first, then try again.');
+        return false;
+      }
+    }
+
+    if (params.backendMode === 'api' && !params.activeProvider?.has_api_key && !params.activeProvider?.api_key) {
+      toastStore.error('No API key configured. Open Settings to add a provider key.');
+      return false;
+    }
+
+    return true;
+  }
+
   async sendCurrentMessage() {
     const content = this.composer.trim();
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
     if ((!content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
-    if (this.isChatGenerating(targetChatId)) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
-    if (activeBackendMode === 'local' && this.hasOtherChatGeneration(targetChatId)) {
-      toastStore.info('Local model is busy in another chat. Stop that run before starting a local response here.', 3200);
-      return;
-    }
 
     const activeModelLabel = this.activeModelLabel;
     const activeProvider = this.activeProvider;
@@ -2255,24 +2230,11 @@ class AppStore {
     const activeWorkspace = activeContextMode === 'work' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
-    // Guard: local mode with no model loaded
-    if (activeBackendMode === 'local') {
-      if (!this.selectedLocalModelPath) {
-        toastStore.error('No local model selected. Open Model Hub to download and load a model.');
-        return;
-      }
-      if (!this.localModelActive) {
-        toastStore.error('No model is loaded yet. Load a model from the Model Hub first, then try again.');
-        return;
-      }
-    }
-    // Guard: API mode with no provider configured
-    if (activeBackendMode === 'api') {
-      if (!activeProvider?.has_api_key && !activeProvider?.api_key) {
-        toastStore.error('No API key configured. Open Settings to add a provider key.');
-        return;
-      }
-    }
+    if (!this.canStartGeneration({
+      backendMode: activeBackendMode,
+      targetChatId,
+      activeProvider
+    })) return;
 
     this.error = null;
     const targetChatTitle = targetChat?.title || 'New chat';
@@ -2443,7 +2405,7 @@ class AppStore {
             providerAttempts: [],
             searchFallbackReason: '',
             providerWarnings: [],
-            searchError: String((error as Error)?.message || error || 'Search did not return a result')
+            searchError: toErrorMessage(error) || 'Search did not return a result'
           };
         }
       }
@@ -2465,77 +2427,46 @@ class AppStore {
       syncMsg(true); // push initial metadata (sources, searchMeta) to the reactive array
       this.persist();
 
-      const requestMessages: RequestMessage[] = targetChat.messages
-        .filter((message) => message.id !== assistantMessage.id)
-        .map((message) => {
-          if (message.id !== userMessage.id) return message;
-          return {
-            ...message,
-              content: this.buildContextualPrompt({
-                content,
-                searchContext,
-                researchSummary: searchMeta?.researchSummary || '',
-                ragContext,
-                workspaceContext,
-                mode: activeComposerMode,
-              searchMode: activeSearchMode
-            })
-          };
-        });
+      const requestMessages = buildRequestMessagesWithPatchedUser({
+        messages: targetChat.messages,
+        assistantMessageId: assistantMessage.id,
+        userMessageId: userMessage.id,
+        userContent: content,
+        buildContextualPrompt: (userContent) => this.buildContextualPrompt({
+          content: userContent,
+          searchContext,
+          researchSummary: searchMeta?.researchSummary || '',
+          ragContext,
+          workspaceContext,
+          mode: activeComposerMode,
+          searchMode: activeSearchMode
+        })
+      });
 
-      let systemPrompt = activeBackendMode === 'local'
-        ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
-        : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
-      const stylePrompt = sharedAssistantStylePrompt();
-      systemPrompt = systemPrompt ? `${stylePrompt}\n\n${systemPrompt}` : stylePrompt;
+      const searchSystemPrefix = searchContext ? buildSearchSystemPrefix() : undefined;
+      const systemPrompt = this.buildSystemPromptForMode({
+        backendMode: activeBackendMode,
+        providerPrompt: activeProvider?.system_prompt,
+        searchSystemPrefix,
+        includeChartHint: activeComposerMode !== 'agent'
+      });
 
-      if (this.userName?.trim()) {
-        const userIdentity = `The user's name is ${this.userName.trim()}. Address them by name when appropriate.`;
-        systemPrompt = systemPrompt ? `${userIdentity}\n\n${systemPrompt}` : userIdentity;
-      }
-
-      // Augment system prompt for search-grounded responses
-      if (searchContext) {
-        const searchSystemPrefix = 'You are a helpful assistant with access to real-time web search results. ' +
-          'The user\'s message includes fresh web data retrieved moments ago. ' +
-          'Ground your response in the provided search results — present facts, figures, and details from the sources. ' +
-          'Always attribute information to its source when possible. ' +
-          'If the search results are insufficient to answer fully, state what you found and what is missing.';
-        systemPrompt = systemPrompt
-          ? `${searchSystemPrefix}\n\n${systemPrompt}`
-          : searchSystemPrefix;
-      }
-
-      if (activeComposerMode !== 'agent') {
-        const chartHint = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
-          '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
-          '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
-          '</chart>\n' +
-          'Supported types: bar, line, pie, donut. The JSON must be valid. Do not return raw chart JSON by itself and do not wrap chart JSON in markdown code fences unless it is inside the chart block. You may include multiple chart blocks in a single response.';
-        systemPrompt = systemPrompt ? `${systemPrompt}${chartHint}` : chartHint.trim();
-      }
-
-      const outboundMessages: RequestMessage[] = systemPrompt
-        ? [{ role: 'system', content: systemPrompt }, ...requestMessages]
-        : requestMessages;
-
+      const outboundMessages = buildOutboundMessages({ messages: requestMessages, systemPrompt });
       // Context window budget check (local mode only)
       if (activeBackendMode === 'local' && isTauri()) {
         try {
-          const budget = await (window as any).electronAPI.invoke('build_context_budget', {
-            config: { context_length: this.config.llm?.local?.context_length || 4096, max_tokens: this.config.llm?.local?.max_tokens },
-            messages: outboundMessages
-          });
-          if (budget?.isOverflow) {
-            const truncated = await (window as any).electronAPI.invoke('truncate_messages', {
+          const electronApi = getElectronApi();
+          if (electronApi) {
+            await applyLocalContextBudgetTruncation({
+              backendMode: activeBackendMode,
+              isTauri: true,
+              config: this.config,
               messages: outboundMessages,
-              budget
+              invoke: toInvoke(electronApi),
+              onTruncated: (removed) => {
+                toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
+              }
             });
-            if (Array.isArray(truncated) && truncated.length < outboundMessages.length) {
-              const removed = outboundMessages.length - truncated.length;
-              (outboundMessages as RequestMessage[]).splice(0, outboundMessages.length, ...truncated);
-              toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
-            }
           }
         } catch {
           // Silently continue if budget check fails
@@ -2857,7 +2788,7 @@ class AppStore {
       // Auto-generate a smarter chat title after the first exchange
       void this.generateChatTitle(targetChatId, activeProviderApiKey);
     } catch (error) {
-      const errorMsg = String((error as Error)?.message || error || 'Request failed');
+      const errorMsg = toErrorMessage(error) || 'Request failed';
       const aborted = isAbortLikeError(errorMsg);
       // Don't show toast for user-initiated abort
       if (!aborted) {
@@ -2985,7 +2916,7 @@ class AppStore {
   async regenerateMessage(messageId: string) {
     const chat = this.currentChat;
     const targetChatId = this.currentChatId;
-    if (!chat || !targetChatId || this.isChatGenerating(targetChatId)) return;
+    if (!chat || !targetChatId) return;
     const index = chat.messages.findIndex((entry) => entry.id === messageId);
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
@@ -2994,12 +2925,14 @@ class AppStore {
     if (!previousMessages.length) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
-    if (activeBackendMode === 'local' && this.hasOtherChatGeneration(targetChatId)) {
-      toastStore.info('Local model is busy in another chat. Stop that run before retrying here.', 3200);
-      return;
-    }
     const activeModelLabel = this.activeModelLabel;
     const activeProvider = this.activeProvider;
+    if (!this.canStartGeneration({
+      backendMode: activeBackendMode,
+      targetChatId,
+      activeProvider,
+      localBusyActionText: 'retrying here'
+    })) return;
     const activeProviderApiKey = activeProvider?.api_key;
     const activeWorkspace = chat.workspace || null;
 
@@ -3058,14 +2991,11 @@ class AppStore {
     this.persist();
 
     try {
-      const systemPrompt = activeBackendMode === 'local'
-        ? (this.config.llm?.local?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '')
-        : (activeProvider?.system_prompt?.trim() || this.config.llm?.system_prompt?.trim() || '');
-      const styledSystemPrompt = systemPrompt
-        ? `${sharedAssistantStylePrompt()}\n\n${systemPrompt}`
-        : sharedAssistantStylePrompt();
-      const outboundMessages: RequestMessage[] = [{ role: 'system', content: styledSystemPrompt }, ...previousMessages];
-
+      const styledSystemPrompt = this.buildSystemPromptForMode({
+        backendMode: activeBackendMode,
+        providerPrompt: activeProvider?.system_prompt
+      });
+      const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const agentResult = await runAgentTask({
@@ -3319,7 +3249,7 @@ class AppStore {
       this.persist();
     } catch (error) {
       const timing = (Date.now() - startTime) / 1000;
-      const failure = String((error as Error)?.message || error || 'Request failed');
+      const failure = toErrorMessage(error) || 'Request failed';
       const aborted = isAbortLikeError(failure);
       nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
       nextVersion.metadata = {
@@ -3387,7 +3317,7 @@ class AppStore {
           source: 'local' as const,
           path: m.path,
           details: 'architecture' in m && m.architecture
-            ? [m.architecture, (m as any).size_label].filter(Boolean).join(' • ')
+            ? [m.architecture, (m as { size_label?: string }).size_label].filter(Boolean).join(' • ')
             : undefined
         }));
       } catch {

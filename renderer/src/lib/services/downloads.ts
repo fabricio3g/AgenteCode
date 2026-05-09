@@ -1,7 +1,7 @@
 import type { DownloadJob } from '$lib/types/tauri';
 import { invoke } from './tauri';
 
-export async function startDownloadHf(args: {
+type StartDownloadArgs = {
   repo_id?: string;
   repoId?: string;
   file: string;
@@ -12,15 +12,17 @@ export async function startDownloadHf(args: {
   hf_token?: string;
   hfToken?: string;
   branch?: string;
-}): Promise<string> {
+};
+
+export async function startDownloadHf(args: StartDownloadArgs): Promise<string> {
   // Tauri's JS <> Rust arg mapping expects camelCase keys (e.g. repoId, modelsDir).
   // Accept both snake_case and camelCase here for compatibility with existing call sites.
   const payload: Record<string, unknown> = {
-    repoId: (args as any).repoId ?? (args as any).repo_id,
+    repoId: args.repoId ?? args.repo_id,
     file: args.file,
-    modelsDir: (args as any).modelsDir ?? (args as any).models_dir,
-    destRel: (args as any).destRel ?? (args as any).dest_rel,
-    hfToken: (args as any).hfToken ?? (args as any).hf_token,
+    modelsDir: args.modelsDir ?? args.models_dir,
+    destRel: args.destRel ?? args.dest_rel,
+    hfToken: args.hfToken ?? args.hf_token,
     branch: args.branch,
   };
   return invoke<string>('start_download_hf', payload);

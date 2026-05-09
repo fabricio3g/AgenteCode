@@ -96,9 +96,9 @@ function recordAudio(
         if (recorder.state !== 'inactive') recorder.stop();
       }, maxMs);
 
-      // Expose stop function via returned promise resolution
-      // The caller controls stopping via the returned cleanup fn
-      (recorder as any)._stopFn = () => {
+      // Keep parity with existing recorder extension behavior.
+      const recorderWithStop = recorder as MediaRecorder & { _stopFn?: () => void };
+      recorderWithStop._stopFn = () => {
         if (recorder.state !== 'inactive') recorder.stop();
       };
     }).catch(reject);

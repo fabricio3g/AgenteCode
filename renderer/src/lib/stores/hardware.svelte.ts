@@ -43,8 +43,8 @@ class HardwareStore {
     this.error = null;
     try {
       this.info = await getHardwareLimits();
-    } catch (e: any) {
-      this.error = String(e?.message || e || 'Failed to get hardware info');
+    } catch (err: unknown) {
+      this.error = String((err as Error)?.message || err || 'Failed to get hardware info');
     } finally {
       this.loading = false;
     }

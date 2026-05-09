@@ -93,7 +93,7 @@ async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: 
     try {
       const response = await fetch(modelsUrl, { method: 'GET', signal });
       if (response.ok) return;
-    } catch (e) {
+    } catch (_err: unknown) {
       if (signal?.aborted) throw new Error('Aborted');
       // keep polling
     }
@@ -201,7 +201,7 @@ export async function loadLocalModel(args: {
   const desiredSignature = buildLocalLoadSignature(baseStartConfig);
 
   try {
-    const currentStatus = await getSupervisorStatus() as any;
+    const currentStatus = await getSupervisorStatus();
     const currentModelPath = currentStatus?.model_path || null;
     if (currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
       return baseUrl;

@@ -139,9 +139,17 @@ class ModelsStore {
     try {
       this.eventUnlisten = await onSupervisorEvent((event: SupervisorEvent) => {
         if (event.type === 'state_change') {
+          const stateEvent = event as SupervisorEvent & {
+            state?: unknown;
+            to?: unknown;
+            model_id?: unknown;
+            model_path?: unknown;
+          };
           this.status = {
-            state: (event as any).state ?? (event as any).to ?? null,
-            active_model: (event as any).model_id ?? (event as any).model_path ?? null,
+            state: stateEvent.state ?? stateEvent.to ?? null,
+            active_model: typeof stateEvent.model_id === 'string'
+              ? stateEvent.model_id
+              : (typeof stateEvent.model_path === 'string' ? stateEvent.model_path : null),
             port: event.port ?? null,
             uptime_secs: null,
             memory_mb: null,
