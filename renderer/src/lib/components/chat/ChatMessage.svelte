@@ -65,6 +65,19 @@
   const hasActiveDeepResearch = $derived.by(() => {
     return !!deepResearchStore.getActiveTaskForMessage(message.id);
   });
+  const isAssistantVisiblyEmpty = $derived.by(() => {
+    if (message.role !== 'assistant') return false;
+    if (hasActiveDeepResearch) return false;
+    if (message.status === 'streaming') return false;
+    if ((displayContent || '').trim()) return false;
+    if ((displayReasoning || '').trim()) return false;
+    if (message.sources?.length) return false;
+    if (message.slides?.length) return false;
+    if (message.filesCreated?.length) return false;
+    if (message.artifact) return false;
+    if (displayMetadata?.error || displayMetadata?.warning) return false;
+    return true;
+  });
   const cleanContent = $derived(stripChartBlocks(displayContent));
   const userHtml = $derived(renderMarkdown(message.content || ''));
 
@@ -208,7 +221,7 @@
         </button>
       </div>
     </div>
-  {:else}
+  {:else if !isAssistantVisiblyEmpty}
     <div class="flex items-start gap-2 w-full max-w-full">
       <div class="flex-1 min-w-0">
       <AssistantMessageBody
@@ -240,6 +253,7 @@
       {/if}
 
       <!-- Action buttons + version nav (visible on hover) -->
+      {#if !hasActiveDeepResearch}
       <div class="message-action-bar" class:visible={hovering}>
           {#if (message.versions?.length || 0) > 1}
             <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
@@ -276,6 +290,7 @@
             <Trash2 class="h-3.5 w-3.5 action-icon" />
           </button>
         </div>
+      {/if}
       </div>
     </div>
   {/if}

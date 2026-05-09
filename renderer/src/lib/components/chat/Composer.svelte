@@ -219,6 +219,24 @@
       : ''
   );
 
+  const welcomeHeadline = $derived.by(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    const day = now.getDay();
+
+    const daytime = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+
+    const variants: Record<string, string[]> = {
+      morning: ['Good morning', 'Fresh start', 'Let’s build something great'],
+      afternoon: ['Good afternoon', 'Keep the momentum', 'What are we solving today?'],
+      evening: ['Good evening', 'Quiet focus mode', 'Let’s finish strong'],
+      night: ['Late-night session', 'Night owl mode', 'Still curious? Let’s go']
+    };
+
+    const choices = variants[daytime];
+    return choices[day % choices.length];
+  });
+
   // True when the backend is ready to accept messages (mirrors guards in sendCurrentMessage)
   const backendReady = $derived(
     appStore.backendMode === 'local'
@@ -755,6 +773,7 @@
   <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="mx-auto w-full max-w-[55rem]">
     {#if centered}
       <div class="pointer-events-auto mb-4 text-center">
+        <h1 class="welcome-headline">{welcomeHeadline}</h1>
         {#if isModelLoading}
           <p class="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
             <LoaderCircle class="h-4 w-4 animate-spin" />
@@ -1001,6 +1020,18 @@
 
   .hint-text {
     color: var(--text-muted);
+  }
+
+  .welcome-headline {
+    margin: 0 0 0.55rem;
+    transform: translateY(-1.9rem);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    font-weight: 650;
+    color: var(--text);
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   @keyframes shimmer {

@@ -65,6 +65,7 @@
   const rendersUI = $derived(hasUIContent(sanitizedContent));
   const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
   const markdownHtml = $derived(renderMarkdown(markdownSource));
+  const useStreamingEffects = $derived(status === 'streaming');
 
   function replaceCitations(container: HTMLElement, refs: NonNullable<ChatMessage['sources']>) {
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
@@ -152,7 +153,7 @@
   {#if rendersUI}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
   {:else if hasCharts}
-    <div bind:this={contentEl} class="space-y-3" class:stream-caret={status === 'streaming' && !!content} class:streaming-active={isStreamingActive}>
+    <div bind:this={contentEl} class="space-y-3" class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects}>
       {#each contentSegments as segment}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
@@ -170,7 +171,7 @@
       {/each}
     </div>
   {:else if content}
-    <div bind:this={contentEl} class="markdown-body" class:stream-caret={status === 'streaming' && !!content} class:streaming-active={isStreamingActive} style="content-visibility: auto;">{@html markdownHtml}</div>
+    <div bind:this={contentEl} class="markdown-body" class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects} style="content-visibility: auto;">{@html markdownHtml}</div>
   {/if}
 {/if}
 

@@ -18,6 +18,7 @@
   import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
   import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
 
+
   interface Props {
     message: ChatMessage;
     displayContent: string;
@@ -59,40 +60,33 @@
 
   const hasContextBadges = $derived(!!message.workContext || (message.ragDocuments?.length || 0) > 0);
 
-  function reportTitleFromContent(content: string) {
-    return content.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() || displayMetadata?.documentSurface?.title || 'Report';
-  }
-
-  function isStructuredMarkdownReport(content: string) {
+  function looksLikeStructuredReport(content: string) {
     if (!content || message.status === 'streaming' || message.status === 'error') return false;
     if (message.artifact || message.slides?.length) return false;
-    if (displayMetadata?.documentSurface?.kind === 'report') return true;
     if (content.length < 1400) return false;
     const headingCount = content.match(/^#{1,3}\s+\S.+$/gm)?.length || 0;
     const listCount = content.match(/^\s*[-*]\s+\S.+$/gm)?.length || 0;
     return headingCount >= 2 && (listCount >= 3 || content.length > 2200);
   }
 
-  function reportIntro(content: string, title: string) {
-    const beforeHeading = content.split(/^#{1,3}\s+/m)[0]?.trim().replace(/\s+/g, ' ') || '';
-    if (beforeHeading.length >= 40 && beforeHeading.length <= 260) return beforeHeading;
-    return `I prepared ${title === 'Report' ? 'a report' : `"${title}"`} as a readable document. Open it below to read the full version.`;
-  }
-
-  const isReportSurface = $derived(isStructuredMarkdownReport(displayContent));
-  const reportTitle = $derived(reportTitleFromContent(displayContent));
+  const isReportSurface = $derived(
+    !!displayContent
+    && (displayMetadata?.documentSurface?.kind === 'report' || looksLikeStructuredReport(displayContent))
+    && message.status !== 'error'
+  );
+  const reportTitle = $derived(displayMetadata?.documentSurface?.title || (displayContent.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim() || 'Document'));
   const reportDocs = $derived.by((): DocumentSurfaceItem[] => {
     if (!isReportSurface) return [];
     return [{
       id: `${message.id}:report`,
-      name: `${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report'}.md`,
+      name: `${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'document'}.md`,
       title: reportTitle,
       content: displayContent,
       kind: 'report',
       status: displayMetadata?.workProduct?.status || 'ready'
     }];
   });
-  const visibleContent = $derived(isReportSurface ? reportIntro(displayContent, reportTitle) : displayContent);
+  const visibleContent = $derived(displayContent);
 
   function resolveTotalElapsed(metadata: MessageVersion['metadata'] | null | undefined) {
     if (!metadata) return undefined;

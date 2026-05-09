@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Switzer:wght@400;500;600;700&family=Newsreader:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'katex/dist/katex.min.css';
 @import 'highlight.js/styles/github.min.css';
 
@@ -7,9 +7,13 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: 'Switzer', 'SF Pro Display', system-ui, sans-serif;
-  --font-serif: 'Newsreader', 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Inter', 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-serif: 'Inter', 'SF Pro Text', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  --text-base: 14px;
+  --text-sm: 13px;
+  --text-xs: 12px;
+  --leading-base: 1.5;
   color-scheme: light;
 
   /* ─── Background & surface tokens (PromptKit-style unified system) ─── */
@@ -211,11 +215,15 @@ body,
 body {
   margin: 0;
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   background: var(--chat-bg);
   color: var(--text);
-  line-height: 1.6;
+  line-height: var(--leading-base);
 }
 
 * {
@@ -227,6 +235,7 @@ input,
 textarea,
 select {
   font: inherit;
+  font-size: var(--text-sm);
 }
 
 textarea {
@@ -678,8 +687,8 @@ kbd {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: inherit;
-  line-height: 1.7;
-  font-size: 0.9375rem;
+  line-height: 1.65;
+  font-size: 0.95rem;
 }
 
 .markdown-body > :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {

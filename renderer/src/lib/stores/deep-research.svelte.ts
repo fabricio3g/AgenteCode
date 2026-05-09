@@ -45,7 +45,7 @@ export interface DeepResearchTask {
 
 const STORAGE_KEY = 'chatealm_deep_research_tasks_v2';
 
-const QUESTION_TIMEOUT_MS = 3200;
+const QUESTION_TIMEOUT_MS = 20000;
 const questionCache = new Map<string, { questions: ResearchQuestion[]; expires: number }>();
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -95,33 +95,98 @@ function parseGeneratedQuestions(data: unknown): ResearchQuestion[] {
   return entries
     .map((entry, index) => {
       const item = (entry && typeof entry === 'object') ? entry as Record<string, unknown> : {};
+      const question = normalizeWhitespace(item.q ?? item.question);
+      const suggestedAnswer = normalizeWhitespace(item.a ?? item.answer ?? item.suggested_answer ?? item.suggestedAnswer);
       return {
         id: `rq_${index + 1}`,
-        question: normalizeWhitespace(item.q ?? item.question),
+        question,
         hint: normalizeWhitespace(item.h ?? item.hint),
-        suggestedAnswer: normalizeWhitespace(item.a ?? item.answer ?? item.suggested_answer ?? item.suggestedAnswer),
+        suggestedAnswer,
         suggestedAnswerSource: 'ai' as const
       };
     })
-    .filter((entry: ResearchQuestion) => entry.question && entry.suggestedAnswer)
-    .slice(0, 3);
+    .filter((entry: ResearchQuestion) => {
+      if (!entry.question) return false;
+      // drop generic low-signal suggestions
+      const v = (entry.suggestedAnswer || '').toLowerCase();
+      if (!v) return false;
+      if (v === 'n/a' || v === 'not sure' || v === 'depends') return false;
+      if (v.length < 12) return false;
+      return true;
+    })
+    .slice(0, 6);
 }
 
 function fallbackQuestionsFromQuery(query: string): ResearchQuestion[] {
-  const topic = normalizeWhitespace(query).slice(0, 100) || 'this topic';
+  const topic = normalizeWhitespace(query)
+    .replace(/conversation context:[\s\S]*?current research request:/i, '')
+    .replace(/^current research request:\s*/i, '')
+    .replace(/^query:\s*/i, '')
+    .slice(0, 90) || 'this topic';
+
+  const q = topic.toLowerCase();
+  const isMedical = /disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|pemphigus|vulgaris|autoimmune|trial|guideline/.test(q);
+
+  if (isMedical) {
+    return [
+      {
+        id: 'rq_1',
+        question: 'Which clinical focus is most useful?',
+        hint: 'diagnosis, first-line treatment, refractory cases, monitoring',
+        suggestedAnswer: `Focus on diagnosis criteria and evidence-based treatment pathway for ${topic}.`,
+        suggestedAnswerSource: 'fallback'
+      },
+      {
+        id: 'rq_2',
+        question: 'What evidence hierarchy should be prioritized?',
+        hint: 'guidelines, meta-analyses, RCTs, cohort studies',
+        suggestedAnswer: 'Prioritize recent clinical guidelines and systematic reviews, then RCT evidence.',
+        suggestedAnswerSource: 'fallback'
+      },
+      {
+        id: 'rq_3',
+        question: 'Which patient context should be emphasized?',
+        hint: 'adult vs pediatric, severe disease, comorbidities, pregnancy',
+        suggestedAnswer: 'Emphasize adult moderate-to-severe cases and note key special populations separately.',
+        suggestedAnswerSource: 'fallback'
+      },
+      {
+        id: 'rq_4',
+        question: 'What output format helps most?',
+        hint: 'step-by-step protocol, comparison table, red flags checklist',
+        suggestedAnswer: 'Provide a stepwise management summary plus a therapy comparison table and safety red flags.',
+        suggestedAnswerSource: 'fallback'
+      }
+    ];
+  }
+
   return [
     {
       id: 'rq_1',
-      question: 'What angle should we prioritize?',
-      hint: 'e.g., overview, technical depth, business impact',
-      suggestedAnswer: `Start with an overview of ${topic}`,
+      question: 'What exact decision should this research support?',
+      hint: 'choose tool/vendor/strategy, implementation plan, risk tradeoff',
+      suggestedAnswer: `Frame ${topic} as a decision brief with clear options and recommendation criteria.`,
       suggestedAnswerSource: 'fallback'
     },
     {
       id: 'rq_2',
-      question: 'What time scope should we focus on?',
-      hint: 'e.g., latest 12 months, historical background',
-      suggestedAnswer: 'Focus on recent developments with brief historical context',
+      question: 'What constraints matter most?',
+      hint: 'budget, timeline, team size, compliance, performance',
+      suggestedAnswer: 'Prioritize practical constraints: implementation complexity, cost, timeline, and risk.',
+      suggestedAnswerSource: 'fallback'
+    },
+    {
+      id: 'rq_3',
+      question: 'What comparisons should be included?',
+      hint: 'top alternatives, baseline approach, build vs buy',
+      suggestedAnswer: 'Compare the leading alternatives side-by-side with measurable pros/cons.',
+      suggestedAnswerSource: 'fallback'
+    },
+    {
+      id: 'rq_4',
+      question: 'How should results be presented?',
+      hint: 'executive summary, technical deep dive, action checklist',
+      suggestedAnswer: 'Deliver an executive summary first, then concise technical detail and an action checklist.',
       suggestedAnswerSource: 'fallback'
     }
   ];
@@ -215,39 +280,94 @@ async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max'): Prom
   }
 }
 
-async function generateQuestions(mainQuery: string, mode: 'deep' | 'max'): Promise<ResearchQuestion[]> {
-  const cacheKey = `${mode}:${normalizeWhitespace(mainQuery).toLowerCase()}`;
+async function generateQuestions(mainQuery: string, mode: 'deep' | 'max', conversationContext?: string): Promise<ResearchQuestion[]> {
+  const cacheKey = `${mode}:${normalizeWhitespace(mainQuery).toLowerCase()}:${normalizeWhitespace(conversationContext || '').toLowerCase()}`;
   const cached = questionCache.get(cacheKey);
   if (cached && Date.now() < cached.expires) return cached.questions;
 
-  async function request(prompt: string): Promise<ResearchQuestion[]> {
+  async function request(prompt: string, attemptLabel: string): Promise<ResearchQuestion[]> {
     const messages: RequestMessage[] = [
       { role: 'system', content: prompt },
-      { role: 'user', content: `Mode: ${mode}\nQuery: ${mainQuery}` }
+      { role: 'user', content: [
+        `Mode: ${mode}`,
+        `Query: ${mainQuery}`,
+        conversationContext ? `Conversation context (optional):\n${conversationContext}` : ''
+      ].filter(Boolean).join('\n\n') }
     ];
+
+    const startedAt = Date.now();
     const completion = await withTimeout(completeAssistantReply({ messages }), QUESTION_TIMEOUT_MS, { content: '', reasoning: '' });
-    if (!completion?.content) return [];
-    const parsed = extractJsonFromResponse(completion.content || '');
-    if (!parsed.parsed || !parsed.data) return [];
-    return parseGeneratedQuestions(parsed.data);
+    const elapsedMs = Date.now() - startedAt;
+
+    const raw = String(completion?.content || completion?.reasoning || '').trim();
+    if (!raw) {
+      console.warn('[deep-research] question generation failed: empty completion', {
+        attempt: attemptLabel,
+        mode,
+        query: mainQuery,
+        elapsedMs,
+        timeoutMs: QUESTION_TIMEOUT_MS
+      });
+      return [];
+    }
+
+    const parsed = extractJsonFromResponse(raw);
+    if (!parsed.parsed || !parsed.data) {
+      console.warn('[deep-research] question generation failed: invalid JSON payload', {
+        attempt: attemptLabel,
+        mode,
+        query: mainQuery,
+        elapsedMs,
+        preview: raw.slice(0, 320)
+      });
+      return [];
+    }
+
+    const questions = parseGeneratedQuestions(parsed.data);
+    if (!questions.length) {
+      console.warn('[deep-research] question generation failed: parsed but no valid options', {
+        attempt: attemptLabel,
+        mode,
+        query: mainQuery,
+        elapsedMs,
+        data: parsed.data
+      });
+    }
+    return questions;
   }
 
   try {
-    const generated = await request('Generate 2-3 clarifying questions for the query. For each question provide a query-specific suggested answer. Return JSON only: {"questions":[{"q":"...","h":"...","a":"..."}]}');
+    const generated = await request([
+      'Generate 4-6 high-signal clarifying options for the research query.',
+      'Each option must be SPECIFIC to the exact query context, not generic.',
+      'Never copy raw query framing text (e.g. "Conversation context" or "Current research request") into answers.',
+      'For each item provide: q (the question), h (short hint), a (a concrete default answer).',
+      'Default answers must contain concrete scope choices (time range, geography, audience level, comparison targets, deliverable style).',
+      'Avoid generic defaults like "depends", "not sure", "overview" without scope.',
+      'Return JSON only: {"questions":[{"q":"...","h":"...","a":"..."}]}'
+    ].join(' '), 'primary');
     if (generated.length) {
       questionCache.set(cacheKey, { questions: generated, expires: Date.now() + (5 * 60 * 1000) });
       return generated;
     }
 
-    const retry = await request('Retry with strict format. Output JSON only, no markdown, no extra text: {"questions":[{"q":"...","h":"...","a":"..."}]}. Ensure each answer is tailored to the user query.');
+    const retry = await request('Retry with strict format. Output JSON only, no markdown, no extra text: {"questions":[{"q":"...","h":"...","a":"..."}]}. Ensure each answer is concrete and query-specific with explicit scope.', 'retry-1');
     if (retry.length) {
       questionCache.set(cacheKey, { questions: retry, expires: Date.now() + (5 * 60 * 1000) });
       return retry;
     }
 
-    return fallbackQuestionsFromQuery(mainQuery);
-  } catch {
-    return fallbackQuestionsFromQuery(mainQuery);
+    const finalRetry = await request('Final retry. Return 4-6 options in strict JSON only. Every suggested answer must include at least one explicit scope constraint and one concrete deliverable preference. No generic wording.', 'retry-2');
+    if (finalRetry.length) {
+      questionCache.set(cacheKey, { questions: finalRetry, expires: Date.now() + (5 * 60 * 1000) });
+      return finalRetry;
+    }
+
+    console.warn('[deep-research] question generation exhausted all attempts', { mode, query: mainQuery });
+    return [];
+  } catch (error) {
+    console.warn('[deep-research] question generation exception', { mode, query: mainQuery, error });
+    return [];
   }
 }
 
@@ -386,7 +506,17 @@ class DeepResearchStore {
     this.init();
 
     const planningQuery = [args.conversationContext ? `Conversation context:\n${args.conversationContext}` : '', `Current research request:\n${args.query}`].filter(Boolean).join('\n\n');
-    const questions = await generateQuestions(planningQuery, args.mode);
+    const generatedQuestions = await generateQuestions(args.query, args.mode, args.conversationContext);
+    const questionGenerationFailed = generatedQuestions.length === 0;
+    const questions = questionGenerationFailed
+      ? [{
+          id: 'rq_custom',
+          question: 'Could not auto-generate options. Add your preferred research direction.',
+          hint: 'Example: focus on latest guidelines, severe cases, and treatment comparison',
+          suggestedAnswer: '',
+          suggestedAnswerSource: 'fallback' as const
+        }]
+      : generatedQuestions;
     const isAwaitingInput = questions.length > 0;
     const task: DeepResearchTask = {
       id: createId('research'),
@@ -400,10 +530,14 @@ class DeepResearchStore {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       currentStep: isAwaitingInput ? 'awaiting_input' : 'queued',
-      detail: isAwaitingInput ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
+      detail: isAwaitingInput
+        ? (questionGenerationFailed ? 'Auto-options failed. Waiting for your custom input.' : 'Waiting for clarifying answers')
+        : 'Waiting to start deep research',
       progressLog: [{
         step: isAwaitingInput ? 'awaiting_input' : 'queued',
-        detail: isAwaitingInput ? 'Waiting for clarifying answers' : 'Waiting to start deep research',
+        detail: isAwaitingInput
+          ? (questionGenerationFailed ? 'Auto-options failed. Waiting for custom input.' : 'Waiting for clarifying answers')
+          : 'Waiting to start deep research',
         at: Date.now()
       }],
       providerUsed: null,

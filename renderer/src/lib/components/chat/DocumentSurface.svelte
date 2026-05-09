@@ -5,6 +5,8 @@
   import { fade } from 'svelte/transition';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
+  import { parseContentSegments } from '$lib/utils/charts';
+  import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import type { ViewerKind } from '$lib/utils/doc-utils';
   import PdfViewer from './viewers/PdfViewer.svelte';
@@ -161,6 +163,10 @@
     if (!term) return html;
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return html.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+  }
+
+  function reportSegments(content: string) {
+    return parseContentSegments(content || '');
   }
 
   $effect(() => {
@@ -357,9 +363,29 @@
                 {:else if activeDoc.previewHtml}
                   <iframe class="reader-iframe" srcdoc={activeDoc.previewHtml} sandbox="allow-scripts allow-same-origin" title="{activeDoc.name} preview"></iframe>
                 {:else if isMarkdown(activeDoc)}
-                  <article class="reader-article markdown-body">
-                    {@html highlightedMarkdown(activeDoc.content || '')}
-                  </article>
+                  {#if activeDoc.kind === 'report'}
+                    <article class="reader-article">
+                      {#each reportSegments(activeDoc.content || '') as segment}
+                        {#if segment.kind === 'text'}
+                          {#if segment.content.trim()}
+                            <div class="markdown-body mb-3">{@html highlightedMarkdown(segment.content)}</div>
+                          {/if}
+                        {:else}
+                          <ChartBlock
+                            type={segment.type}
+                            title={segment.title}
+                            xlabel={segment.xlabel}
+                            ylabel={segment.ylabel}
+                            raw={segment.raw}
+                          />
+                        {/if}
+                      {/each}
+                    </article>
+                  {:else}
+                    <article class="reader-article markdown-body">
+                      {@html highlightedMarkdown(activeDoc.content || '')}
+                    </article>
+                  {/if}
                 {:else if viewerKind(activeDoc) === 'pdf'}
                   <PdfViewer src={docSource(activeDoc)} filename={activeDoc.name} />
                 {:else if viewerKind(activeDoc) === 'docx'}

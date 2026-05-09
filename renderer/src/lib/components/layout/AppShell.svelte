@@ -4,7 +4,6 @@
   import { onMount } from 'svelte';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
-  import Navbar from '$lib/components/layout/Navbar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
@@ -154,10 +153,8 @@
       </div>
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Navbar />
-
         <!-- Main area: chat only (sandbox opens as modal) -->
-        <div class="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <MessageList composerInset={composerHeight} />
           <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
         </div>
@@ -244,14 +241,16 @@
   .sidebar-outer {
     width: 44px;
     background: var(--sidebar-bg, var(--surface));
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-md);
-    transition: width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+    box-shadow: none;
+    transition: width 0.5s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.2s ease, box-shadow 0.2s ease;
     will-change: width;
   }
   .sidebar-outer.expanded {
     width: 260px;
+    border-color: var(--border);
+    box-shadow: var(--shadow-md);
   }
 
   .sidebar-view-full {
@@ -282,5 +281,11 @@
     transform: translateX(-6px);
     pointer-events: none;
     transition-delay: 0s, 0s, 0.18s;
+  }
+
+  .chat-panel {
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    background: var(--surface);
   }
 </style>

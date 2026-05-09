@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import { ArrowRight, LoaderCircle, SkipForward, Square } from 'lucide-svelte';
-  import { cancelDeepResearchTask, deepResearchStore, type ResearchQuestion } from '$lib/stores/deep-research.svelte';
+  import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
+  import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
     messageId?: string | null;
@@ -10,258 +11,232 @@
 
   let { messageId = null }: Props = $props();
 
-  const activeTask = $derived.by(() => {
-    return deepResearchStore.getActiveTaskForMessage(messageId);
-  });
+  const activeTask = $derived.by(() => deepResearchStore.getActiveTaskForMessage(messageId));
+  const isWorking = $derived(activeTask && ['queued', 'searching', 'crawling', 'synthesizing'].includes(activeTask.status));
 
-  let answers = $state<Record<string, string>>({});
+  let selectedOptionId = $state<string>('');
+  let customText = $state('');
+  let useCustom = $state(false);
 
   $effect(() => {
     if (!activeTask || activeTask.status !== 'awaiting_input') {
-      answers = {};
+      selectedOptionId = '';
+      customText = '';
+      useCustom = false;
       return;
     }
-    const next: Record<string, string> = {};
-    for (const question of activeTask.questions || []) {
-      next[question.id] = activeTask.answers?.[question.id] || question.suggestedAnswer || '';
-    }
-    answers = next;
+
+    const firstWithSuggestion = (activeTask.questions || []).find((q) => q.suggestedAnswer)?.id || activeTask.questions?.[0]?.id || '';
+    if (!selectedOptionId) selectedOptionId = firstWithSuggestion;
+    if (!(activeTask.questions || []).some((q) => q.suggestedAnswer)) useCustom = true;
   });
 
   function stopActiveTask() {
     if (!activeTask) return;
+    appStore.stopStreaming(activeTask.chatId || appStore.currentChatId || '');
     cancelDeepResearchTask(activeTask.id);
-  }
-
-  function phaseLabel(step: string) {
-    switch (step) {
-      case 'queued':
-        return 'Queued';
-      case 'awaiting_input':
-        return 'Needs input';
-      case 'searching':
-        return 'Searching';
-      case 'crawling':
-        return 'Crawling';
-      case 'synthesizing':
-        return 'Writing summary';
-      default:
-        return step.replace(/_/g, ' ');
-    }
-  }
-
-  function setAnswer(id: string, value: string) {
-    answers = { ...answers, [id]: value };
   }
 
   function submitAnswers(skip = false) {
     if (!activeTask) return;
-    deepResearchStore.submitTaskAnswers(activeTask.id, answers, skip);
-  }
+    if (skip) {
+      deepResearchStore.submitTaskAnswers(activeTask.id, {}, true);
+      return;
+    }
 
-  function isAiSuggested(question: ResearchQuestion) {
-    return question.suggestedAnswerSource === 'ai' && !!question.suggestedAnswer;
+    const answers: Record<string, string> = {};
+
+    if (useCustom) {
+      const firstId = activeTask.questions?.[0]?.id;
+      if (firstId && customText.trim()) answers[firstId] = customText.trim();
+    } else {
+      const selected = (activeTask.questions || []).find((q) => q.id === selectedOptionId);
+      if (selected?.suggestedAnswer?.trim()) answers[selected.id] = selected.suggestedAnswer.trim();
+    }
+
+    deepResearchStore.submitTaskAnswers(activeTask.id, answers, false);
   }
 </script>
 
 {#if activeTask}
-  <div class="research-row mb-4">
-    <div class="research-content">
-      <span class="research-label">
-        <LoaderCircle class="h-3.5 w-3.5 animate-spin text-[var(--text-muted)]" />
-        {activeTask.mode === 'max' ? 'Max research' : 'Deep research'}
-        <span class="research-phase">{phaseLabel(activeTask.currentStep)}</span>
-      </span>
-      <span class="research-query">{activeTask.query}</span>
+  <section class="research-card mb-4">
+    <header class="research-head">
+      <div class="left">
+        {#if isWorking}
+          <LoaderCircle class="h-3.5 w-3.5 animate-spin text-[var(--text-muted)]" />
+        {/if}
+      </div>
 
-      {#if activeTask.status === 'awaiting_input' && activeTask.questions?.length}
-        <div class="question-box">
-          {#each activeTask.questions as question (question.id)}
-            <label class="question-field" for={`research-question-${question.id}`}>
-              <span class="question-header">
-                <span class="question-label">{question.question}</span>
-                {#if isAiSuggested(question)}
-                  <span class="suggestion-badge">AI suggested</span>
-                {/if}
-              </span>
-              {#if question.hint}
-                <span class="question-hint">{question.hint}</span>
-              {/if}
-              <textarea
-                id={`research-question-${question.id}`}
-                class="question-input"
-                rows={2}
-                value={answers[question.id] || ''}
-                oninput={(event) => setAnswer(question.id, (event.currentTarget as HTMLTextAreaElement).value)}
-                placeholder="Optional"
-              ></textarea>
-            </label>
-          {/each}
-          <div class="question-actions">
-            <button class="question-btn" onclick={() => submitAnswers(true)}>
-              <SkipForward class="h-3.5 w-3.5" />
-              Skip & search
-            </button>
-            <button class="question-btn primary" onclick={() => submitAnswers(false)}>
-              <ArrowRight class="h-3.5 w-3.5" />
-              Apply answers
-            </button>
-          </div>
+    </header>
+
+    <p class="query">{activeTask.query}</p>
+    {#if activeTask.detail?.toLowerCase().includes('auto-options failed')}
+      <p class="query" style="margin-top:0.25rem;">Couldn’t generate suggestions this time. Please write your own direction.</p>
+    {/if}
+
+    {#if activeTask.status === 'awaiting_input' && activeTask.questions?.length}
+      <div class="questions">
+        <div class="selector-row">
+          <button class={`selector-chip ${!useCustom ? 'is-active' : ''}`} onclick={() => (useCustom = false)}>
+            Use suggested
+          </button>
+          <button class={`selector-chip ${useCustom ? 'is-active' : ''}`} onclick={() => (useCustom = true)}>
+            Write my own
+          </button>
         </div>
-      {/if}
-    </div>
-    <button class="stop-btn" onclick={stopActiveTask} aria-label="Stop" title="Stop">
-      <Square class="h-3 w-3 fill-current" />
-    </button>
-  </div>
+
+        {#if !useCustom}
+          <div class="options">
+            {#each activeTask.questions as question (question.id)}
+              <button
+                class={`option ${selectedOptionId === question.id ? 'is-active' : ''}`}
+                onclick={() => (selectedOptionId = question.id)}
+                disabled={!question.suggestedAnswer}
+              >
+                {question.suggestedAnswer || question.question}
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <textarea
+            rows={3}
+            class="input"
+            bind:value={customText}
+            placeholder="Write your own research direction"
+          ></textarea>
+        {/if}
+
+        <div class="actions">
+          <button class="btn" onclick={stopActiveTask} aria-label="Stop research" title="Stop">
+            <Square class="h-3 w-3 fill-current" />
+            Stop
+          </button>
+          <button class="btn" onclick={() => submitAnswers(true)}>
+            <SkipForward class="h-3.5 w-3.5" />
+            Skip
+          </button>
+          <button class="btn primary" onclick={() => submitAnswers(false)}>
+            <ArrowRight class="h-3.5 w-3.5" />
+            Continue
+          </button>
+        </div>
+      </div>
+    {/if}
+  </section>
 {/if}
 
 <style>
-  .research-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.625rem;
-  }
-
-  .research-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 0;
-    flex: 1;
-  }
-
-  .research-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text);
-  }
-
-  .research-phase {
-    margin-left: 0.375rem;
-    color: var(--text-muted);
-    font-weight: 400;
-  }
-
-  .research-query {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stop-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 0.375rem;
-    color: var(--text-muted);
-    background: transparent;
-    transition: background 0.15s, color 0.15s;
-    flex-shrink: 0;
-    margin-top: -0.125rem;
-  }
-
-  .stop-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .question-box {
-    margin-top: 0.5rem;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    border-radius: 0.65rem;
-    padding: 0.65rem;
-    display: grid;
-    gap: 0.55rem;
-  }
-
-  .question-field {
-    display: grid;
-    gap: 0.3rem;
-  }
-
-  .question-label {
-    font-size: 0.76rem;
-    color: var(--text);
-    font-weight: 600;
-  }
-
-  .question-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .suggestion-badge {
-    font-size: 0.62rem;
-    line-height: 1;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 0.2rem 0.45rem;
-    background: var(--surface);
-    white-space: nowrap;
-  }
-
-  .question-hint {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-  }
-
-  .question-input {
-    border: 1px solid var(--border);
-    border-radius: 0.45rem;
-    padding: 0.45rem 0.55rem;
-    font-size: 0.76rem;
-    color: var(--text);
-    background: var(--surface);
-    outline: none;
+  .research-card {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border-radius: 12px;
+    padding: 12px;
+    max-width: 680px;
     width: 100%;
-    min-height: 2.3rem;
+    margin-inline: auto;
+  }
+
+  .research-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  .left { display: inline-flex; align-items: center; gap: 0.42rem; min-width: 0; }
+
+  .query {
+    margin: 0.45rem 0 0;
+    font-size: 13px;
+    font-weight: 450;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .questions { margin-top: 0.7rem; display: grid; gap: 0.55rem; padding-top: 0.6rem; }
+  .selector-row { display: inline-flex; gap: 0.4rem; }
+
+  .selector-chip {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 5px 11px;
+    transition: all 120ms ease;
+  }
+  .selector-chip:hover { background: var(--surface-hover); color: var(--text); }
+  .selector-chip.is-active {
+    border-color: color-mix(in srgb, var(--border) 90%, transparent);
+    color: var(--text);
+    background: color-mix(in srgb, var(--surface-hover) 85%, transparent);
+  }
+
+  .options { display: grid; gap: 0.4rem; }
+
+  .option {
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    line-height: 1.45;
+    font-weight: 450;
+    padding: 9px 10px;
+    transition: all 120ms ease;
+  }
+  .option:hover { background: var(--surface-hover); color: var(--text); }
+  .option.is-active {
+    border-color: color-mix(in srgb, var(--border) 90%, transparent);
+    background: color-mix(in srgb, var(--surface-hover) 75%, transparent);
+    color: var(--text);
+  }
+
+  .input {
+    border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+    background: transparent;
+    border-radius: 9px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    font-weight: 450;
+    padding: 8px 10px;
     resize: vertical;
-    line-height: 1.35;
+    min-height: 52px;
+    outline: none;
   }
-
-  .question-input:focus {
+  .input:focus {
     border-color: var(--border-hover);
+    background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
   }
 
-  .question-actions {
+  .actions {
     display: flex;
     justify-content: flex-end;
     gap: 0.45rem;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity 140ms ease, transform 140ms ease;
   }
 
-  .question-btn {
-    border: 1px solid var(--border);
-    border-radius: 0.45rem;
-    background: var(--surface);
+  .research-card:hover .actions,
+  .research-card:focus-within .actions {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .btn {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 8px;
+    background: transparent;
     color: var(--text-secondary);
-    font-size: 0.72rem;
-    padding: 0.35rem 0.55rem;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 10px;
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
   }
-
-  .question-btn:hover {
+  .btn:hover { background: var(--surface-hover); color: var(--text); }
+  .btn.primary {
     color: var(--text);
-    border-color: var(--border);
-    background: var(--surface-hover);
-  }
-
-  .question-btn.primary {
-    background: var(--surface);
     border-color: var(--border-hover);
-    color: var(--text);
+    background: color-mix(in srgb, var(--surface-hover) 55%, transparent);
   }
 </style>

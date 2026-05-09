@@ -2855,6 +2855,9 @@ class AppStore {
       if (streamingAssistant) {
         streamingAssistant.status = 'idle';
         streamingAssistant.done = true;
+        if (!(streamingAssistant.content || '').trim()) {
+          streamingAssistant.content = 'Stopped by user.';
+        }
         if (streamingAssistant.mode === 'agent' && streamingAssistant.agentSteps?.length) {
           streamingAssistant.agentSteps = streamingAssistant.agentSteps.map((step, index, all) => {
             if (index === all.length - 1 && step.status === 'running') {
