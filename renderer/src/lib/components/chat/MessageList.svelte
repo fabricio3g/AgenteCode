@@ -22,6 +22,9 @@
   let scrollTicket = 0;
   let restoredActionsMessageId = $state<string | null>(null);
   let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+  let slotRefs = $state<Record<string, HTMLDivElement | undefined>>({});
+  let previousEditingMessageId = $state<string | null>(null);
+  let editAnchorTop = $state<number | null>(null);
   const messages = $derived(appStore.currentChat?.messages || []);
   const hasMessages = $derived(messages.length > 0);
   const contentBottomInset = $derived(Math.max(composerInset + 24, 200));
@@ -60,6 +63,47 @@
       restoreTimer = null;
     }, 1400);
   }
+
+  function captureEditAnchor(messageId: string | null) {
+    if (!messageId || !container) return;
+    const slot = slotRefs[messageId];
+    if (!slot) return;
+    editAnchorTop = slot.getBoundingClientRect().top;
+  }
+
+  function restoreEditAnchor(messageId: string | null) {
+    if (!messageId || !container || editAnchorTop == null) return;
+    const slot = slotRefs[messageId];
+    if (!slot) return;
+    const nextTop = slot.getBoundingClientRect().top;
+    const delta = nextTop - editAnchorTop;
+    if (Math.abs(delta) > 0.5) container.scrollTop += delta;
+    editAnchorTop = null;
+  }
+
+  function registerSlot(node: HTMLDivElement, messageId: string) {
+    slotRefs = { ...slotRefs, [messageId]: node };
+    return {
+      destroy() {
+        const next = { ...slotRefs };
+        delete next[messageId];
+        slotRefs = next;
+      }
+    };
+  }
+
+  $effect(() => {
+    const currentEditingMessageId = appStore.editingMessageId;
+    if (currentEditingMessageId !== previousEditingMessageId) {
+      if (currentEditingMessageId) {
+        captureEditAnchor(currentEditingMessageId);
+      } else {
+        const closedMessageId = previousEditingMessageId;
+        requestAnimationFrame(() => restoreEditAnchor(closedMessageId));
+      }
+      previousEditingMessageId = currentEditingMessageId;
+    }
+  });
 
   $effect(() => {
     const chatId = appStore.currentChatId;
@@ -105,7 +149,7 @@
       >
         <div class="mx-auto flex max-w-[55rem] flex-col gap-7">
           {#each messages as message (message.id)}
-            <div class="message-slot">
+            <div class="message-slot" use:registerSlot={message.id}>
               {#if appStore.editingMessageId === message.id}
                 <div class={`edit-inline-container ${message.role === 'user' ? 'is-user' : 'is-assistant'}`}>
                   <EditMessageInline

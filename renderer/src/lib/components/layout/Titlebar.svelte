@@ -10,6 +10,7 @@
   import { themeStore } from '$lib/stores/theme.svelte';
 
   let isMaximized = $state(false);
+  const composerCenterShift = $derived(appStore.sidebarOpen ? 134 : 26);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
 
@@ -77,7 +78,10 @@
     {/if}
   </div>
 
-  <div class="titlebar-center flex min-w-0 flex-1 items-center justify-center gap-2 px-3" style="-webkit-app-region: no-drag">
+  <div
+    class="titlebar-center flex min-w-0 flex-1 items-center justify-center gap-2 px-3"
+    style={`-webkit-app-region: no-drag; margin-left: ${composerCenterShift}px;`}
+  >
     <ModelSwitcher />
     <Tooltip label="Open Model Hub">
       <button
@@ -182,6 +186,7 @@
 
   .titlebar-center {
     background: var(--titlebar-bg, var(--surface));
+    transition: margin-left 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .titlebar-right {

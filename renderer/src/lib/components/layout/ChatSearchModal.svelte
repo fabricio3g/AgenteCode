@@ -107,13 +107,13 @@
   onkeydown={handleKeydown}
 >
   <div
-    class="w-full max-w-lg rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)] overflow-hidden"
+    class="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)] overflow-hidden"
     role="dialog"
     aria-modal="true"
     onclick={(e) => e.stopPropagation()}
   >
     <!-- Search input -->
-    <div class="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
+    <div class="flex items-center gap-2.5 border-b border-[var(--border)] px-3.5 py-2.5">
       <Search class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
       <input
         bind:this={searchInput}
@@ -136,8 +136,9 @@
 
     <!-- Results -->
     <div bind:this={resultsContainer} class="max-h-[50vh] overflow-y-auto p-2">
+      <div class="result-list space-y-1">
       {#if results.length === 0}
-        <div class="flex flex-col items-center justify-center py-10 text-center">
+        <div class="flex flex-col items-center justify-center py-8 text-center">
           <div class="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)] border border-[var(--border)]">
             <MessageSquare class="h-5 w-5 text-[var(--text-muted)]" />
           </div>
@@ -149,7 +150,7 @@
         {#each results as chat, i (chat.id)}
           <button
             type="button"
-            class="chat-result flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition border border-transparent"
+            class="chat-result flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition border border-transparent"
             class:is-selected={i === selectedIndex}
             class:is-active={appStore.currentChatId === chat.id}
             data-selected={i === selectedIndex}
@@ -166,6 +167,7 @@
           </button>
         {/each}
       {/if}
+      </div>
     </div>
   </div>
 </div>

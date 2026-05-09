@@ -119,6 +119,9 @@
               <Plus class="h-4 w-4" />
             </button>
           </Tooltip>
+
+          <div class="flex-1"></div>
+
           <Tooltip label="Model Hub">
             <button
               class="collapsed-btn flex h-8 w-8 items-center justify-center"
@@ -139,7 +142,6 @@
               </button>
             </Tooltip>
           {/if}
-          <div class="flex-1"></div>
           <Tooltip label="Settings">
             <button
               class="collapsed-btn flex h-8 w-8 items-center justify-center"
