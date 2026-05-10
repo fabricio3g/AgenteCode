@@ -2194,7 +2194,7 @@ class AppStore {
   private canStartGeneration(params: {
     backendMode: GenerationBackendMode;
     targetChatId: string;
-    activeProvider?: { has_api_key?: boolean; api_key?: string } | null;
+    activeProvider?: { has_api_key?: boolean; api_key?: string; model?: string } | null;
     localBusyActionText?: string;
   }): boolean {
     if (this.isChatGenerating(params.targetChatId)) return false;
@@ -2218,6 +2218,10 @@ class AppStore {
 
     if (params.backendMode === 'api' && !params.activeProvider?.has_api_key && !params.activeProvider?.api_key) {
       toastStore.error('No API key configured. Open Settings to add a provider key.');
+      return false;
+    }
+    if (params.backendMode === 'api' && !params.activeProvider?.model) {
+      toastStore.error('No API model selected. Choose a model in the selector first.');
       return false;
     }
 

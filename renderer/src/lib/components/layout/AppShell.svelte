@@ -156,9 +156,19 @@
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
         <!-- Main area: chat only (sandbox opens as modal) -->
-        <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          <MessageList composerInset={composerHeight} />
-          <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
+        <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden" class:welcome-bg={!hasMessages}>
+          {#if !hasMessages}
+            <div class="welcome-dots-layer" aria-hidden="true">
+              <span class="dots tl"></span>
+              <span class="dots tr"></span>
+              <span class="dots bl"></span>
+              <span class="dots br"></span>
+            </div>
+          {/if}
+          <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
+            <MessageList composerInset={composerHeight} />
+            <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
+          </div>
         </div>
       </div>
     {/if}
@@ -289,5 +299,52 @@
     border: 1px solid var(--border);
     border-radius: 22px;
     background: var(--surface);
+  }
+
+  .welcome-dots-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 18;
+  }
+
+  .welcome-dots-layer .dots {
+    position: absolute;
+    width: 220px;
+    height: 170px;
+    opacity: 0.46;
+    background: radial-gradient(circle, color-mix(in srgb, var(--text-secondary) 75%, transparent) 0 1px, transparent 1.9px) 0 0 / 14px 14px;
+    animation: cornerDotsDrift 8s ease-in-out infinite alternate;
+  }
+
+  .welcome-dots-layer .dots.tl {
+    top: 20px;
+    left: 18px;
+    clip-path: ellipse(56% 54% at 0% 0%);
+  }
+
+  .welcome-dots-layer .dots.tr {
+    top: 20px;
+    right: 18px;
+    clip-path: ellipse(56% 54% at 100% 0%);
+  }
+
+  .welcome-dots-layer .dots.bl {
+    bottom: 20px;
+    left: 18px;
+    clip-path: ellipse(56% 54% at 0% 100%);
+    animation-delay: 0.4s;
+  }
+
+  .welcome-dots-layer .dots.br {
+    bottom: 20px;
+    right: 18px;
+    clip-path: ellipse(56% 54% at 100% 100%);
+    animation-delay: 0.7s;
+  }
+
+  @keyframes cornerDotsDrift {
+    from { transform: translateY(0); opacity: 0.35; }
+    to { transform: translateY(-5px); opacity: 0.5; }
   }
 </style>

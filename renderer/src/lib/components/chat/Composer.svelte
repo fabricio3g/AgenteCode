@@ -241,7 +241,7 @@
   const backendReady = $derived(
     appStore.backendMode === 'local'
       ? !!(appStore.selectedLocalModelPath && appStore.localModelActive)
-      : !!(appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key)
+      : !!((appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key) && appStore.activeProvider?.model)
   );
   const sendDisabled = $derived(!currentChatGenerating && (!backendReady || localBusyElsewhere));
 
@@ -770,7 +770,7 @@
     </div>
   {/if}
 
-  <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="mx-auto w-full max-w-[55rem]">
+  <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="welcome-shell mx-auto w-full max-w-[55rem]">
     {#if centered}
       <div class="pointer-events-auto mb-4 text-center">
         <h1 class="welcome-headline">{welcomeHeadline}</h1>
@@ -803,11 +803,13 @@
           </p>
         {:else}
           <p class="text-sm text-[var(--text-secondary)]">
-            {#if appStore.localModelActive?.name}
-              {appStore.localModelActive.name.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || appStore.localModelActive.name}
-            {:else if activeModel}
-              {modelDisplayName}
-            {:else if apiProviderLabel}
+            {#if appStore.backendMode === 'local'}
+              {#if appStore.localModelActive?.name}
+                {appStore.localModelActive.name.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || appStore.localModelActive.name}
+              {:else if activeModel}
+                {modelDisplayName}
+              {/if}
+            {:else if appStore.backendMode === 'api' && apiProviderLabel}
               {apiProviderLabel}{appStore.activeModelLabel ? ` · ${appStore.activeModelLabel}` : ''}
             {/if}
           </p>
@@ -933,11 +935,16 @@
 </div>
 
 <style>
+  .welcome-shell {
+    position: relative;
+  }
+
   .composer-blur-wrapper {
     position: relative;
     border-radius: var(--radius-2xl);
     overflow: visible;
   }
+
 
   .composer-blur-wrapper::before {
     content: none;
