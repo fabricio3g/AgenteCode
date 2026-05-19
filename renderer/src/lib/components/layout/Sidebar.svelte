@@ -5,9 +5,9 @@
   import { modelsStore } from '$lib/stores/models.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { isTauri } from '$lib/services/tauri';
+  import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
-  import { Boxes, Cpu, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings2, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -87,6 +87,7 @@
 
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
+  const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0D2F5D');
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -166,7 +167,7 @@
         onclick={() => appStore.createChat()}
       >
         <span class="plus-badge flex items-center justify-center">
-          <Plus class="h-4 w-4" />
+          <Plus class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
         </span>
         <span class="btn-label">{$t('sidebar.newChat')}</span>
       </button>
@@ -175,7 +176,7 @@
     {#if isSearching || searchFocused}
       <div class="pb-3">
         <label class="relative block">
-          <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
+          <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={`color: ${sidebarIconColor};`} />
           <input
             bind:value={search}
             onfocus={() => (searchFocused = true)}
@@ -192,7 +193,7 @@
               onclick={() => (search = '')}
               aria-label="Clear search"
             >
-              <X class="h-3 w-3" />
+              <X class="h-3 w-3" style={`color: ${sidebarIconColor};`} />
             </button>
           {/if}
         </label>
@@ -263,7 +264,7 @@
                       }}
                       aria-label="Chat options"
                     >
-                      <MoreHorizontal class="h-3.5 w-3.5" />
+                      <MoreHorizontal class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
                     </button>
                   {/if}
 
@@ -280,7 +281,7 @@
                         class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
                         onclick={(e) => { e.stopPropagation(); startRename(chat.id, chat.title); openMenuChatId = null; }}
                       >
-                        <Pencil class="h-3.5 w-3.5" />
+                        <Pencil class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
                         Rename
                       </button>
                       <button
@@ -288,7 +289,7 @@
                         class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
                         onclick={(e) => { e.stopPropagation(); exportChat(chat); openMenuChatId = null; }}
                       >
-                        <FileDown class="h-3.5 w-3.5" />
+                        <FileDown class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
                         Export
                       </button>
                       <button
@@ -296,7 +297,7 @@
                         class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
                         onclick={(e) => { e.stopPropagation(); confirmStore.show({ title: 'Delete Chat?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteChat(chat.id) }); openMenuChatId = null; }}
                       >
-                        <Trash2 class="h-3.5 w-3.5" />
+                        <Trash2 class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
                         Delete
                       </button>
                     </div>
@@ -309,7 +310,7 @@
       {:else}
         <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
           <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
-            <MessageSquare class="h-4 w-4 text-[var(--text-muted)]" />
+            <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
           </div>
           {#if isSearching}
             <p class="text-[13px] text-[var(--text-secondary)]">No matches</p>
@@ -323,30 +324,20 @@
 
     <div class="sidebar-footer px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
-        onclick={() => (appStore.modelManagerOpen = true)}
-        title="Manage models"
+        class={`sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition ${appStore.mainView === 'developer' ? 'is-active' : ''}`}
+        onclick={() => appStore.openDeveloperMode()}
+        title="Developer Mode"
       >
-        <Boxes class="h-4 w-4" />
-        <span class="btn-label">Model Hub</span>
+        <Code2 class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <span class="btn-label">Developer Mode</span>
       </button>
-      {#if isTauri()}
-        <button
-          class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
-          onclick={() => (appStore.runtimeManagerOpen = true)}
-          title="Manage local runtime"
-        >
-          <Cpu class="h-4 w-4" />
-          <span class="btn-label">Runtime</span>
-        </button>
-      {/if}
       <button
         class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
-        onclick={() => (appStore.settingsOpen = true)}
-        title="Settings"
+        onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
+        title="Manage models"
       >
-        <Settings2 class="h-4 w-4" />
-        <span class="btn-label">Settings</span>
+        <Boxes class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <span class="btn-label">Model Hub</span>
       </button>
     </div>
   </div>
@@ -514,11 +505,15 @@
     background: var(--surface-hover);
   }
 
-  .sidebar-btn svg {
+  .sidebar-btn.is-active {
+    background: var(--surface-hover);
+  }
+
+  :global(.sidebar-btn svg) {
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .sidebar-btn:hover svg {
+  :global(.sidebar-btn:hover svg) {
     transform: rotate(-8deg);
   }
 </style>

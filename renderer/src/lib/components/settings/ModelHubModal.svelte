@@ -22,11 +22,14 @@
   import { unloadTts } from '$lib/services/tts';
   import { unloadWhisper } from '$lib/services/stt';
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
+  import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import SearchBar from './SearchBar.svelte';
   import SearchSettings from './SearchSettings.svelte';
   import VoiceLanguageSelector from './VoiceLanguageSelector.svelte';
+  import LocalRuntimePanel from './LocalRuntimePanel.svelte';
+  import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
 
-  type NavSection = 'models' | 'explore' | 'voices' | 'whisper' | 'runtime' | 'search' | 'extensions' | 'providers';
+  type NavSection = 'models' | 'explore' | 'voices' | 'whisper' | 'runtime' | 'settings' | 'search' | 'extensions' | 'providers';
   let activeSection = $state<NavSection>('models');
 
   let modelSearch = $state('');
@@ -705,6 +708,10 @@
     appStore.modelManagerOpen = false;
   }
 
+  function resolveSection(section: string): NavSection {
+    return resolveModelHubSection(section) as NavSection;
+  }
+
   onMount(() => {
     downloadsStore.startPolling();
     void loadRecommended();
@@ -724,8 +731,15 @@
     const openSection = appStore.modelManagerOpenSection;
     if (openSection) {
       appStore.modelManagerOpenSection = null;
-      activeSection = openSection as NavSection;
+      activeSection = resolveSection(openSection);
     }
+  });
+
+  $effect(() => {
+    const openSection = appStore.modelManagerOpenSection;
+    if (!openSection) return;
+    appStore.modelManagerOpenSection = null;
+    activeSection = resolveSection(openSection);
   });
 
   $effect(() => {
@@ -898,12 +912,12 @@
       <div class="chateaui-segmented">
         {#each [
           { id: 'models', label: 'Models' },
-          ...(appStore.backendMode === 'api' ? [{ id: 'providers', label: 'API', active: appStore.activeProvider?.has_api_key }] : []),
           { id: 'explore', label: 'Explore' },
+          ...(appStore.backendMode === 'api' ? [{ id: 'providers', label: 'API', active: appStore.activeProvider?.has_api_key }] : []),
+          { id: 'runtime', label: 'Runtime', active: hasRuntime },
+          { id: 'settings', label: 'Settings' },
           { id: 'voices', label: 'Voices' },
           { id: 'whisper', label: 'Whisper' },
-          { id: 'runtime', label: 'Runtime', active: hasRuntime },
-          { id: 'search', label: 'Search' },
         ] as tab}
           <button
             type="button"
@@ -1849,64 +1863,9 @@
           </div>
 
         {:else if activeSection === 'runtime'}
-          <div class="flex-1 overflow-y-auto p-5">
-            <header class="mb-6">
-              <h2 class="text-base font-semibold text-[var(--text)]">Local Runtime</h2>
-              <p class="mt-0.5 text-sm text-[var(--text-muted)]">llama.cpp server for running local models</p>
-            </header>
-
-            {#if hasRuntime === true}
-              <div class="flex items-center gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)]">
-                  <Check class="h-5 w-5 text-[var(--text-secondary)]" />
-                </div>
-                <div>
-                  <h3 class="text-sm font-semibold text-[var(--text)]">Runtime installed</h3>
-                  <p class="text-xs text-[var(--text-tertiary)]">Local models can be loaded and run</p>
-                </div>
-              </div>
-            {:else if hasRuntime === false}
-              <div class="flex items-start gap-3">
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)]">
-                  <AlertTriangle class="h-5 w-5 text-[var(--text-secondary)]" />
-                </div>
-                <div class="flex-1">
-                  <h3 class="text-sm font-semibold text-[var(--text)]">Runtime not installed</h3>
-                  <p class="mt-0.5 text-xs text-[var(--text-tertiary)]">Install llama.cpp to run local models</p>
-                  <button
-                    type="button"
-                    class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-                    onclick={() => { close(); appStore.runtimeManagerOpen = true; }}
-                  >
-                    <Settings class="h-3.5 w-3.5" />
-                    Open Runtime Settings
-                  </button>
-                </div>
-              </div>
-            {:else}
-              <div class="flex items-center justify-center py-4">
-                <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
-              </div>
-            {/if}
-
-            <div class="mt-6">
-              <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)] mb-2">About llama.cpp</h4>
-              <p class="text-xs text-[var(--text-secondary)] leading-relaxed">
-                llama.cpp is a high-performance inference engine for running large language models locally.
-                It supports GPU acceleration (CUDA, Metal, Vulkan), quantized models, and various optimization techniques
-                for efficient memory usage on consumer hardware.
-              </p>
-              <a
-                href="https://github.com/ggerganov/llama.cpp"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="mt-3 inline-flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-[var(--text)]"
-              >
-                <ExternalLink class="h-3 w-3" />
-                Learn more on GitHub
-              </a>
-            </div>
-          </div>
+          <LocalRuntimePanel />
+        {:else if activeSection === 'settings'}
+          <UnifiedSettingsPanel />
         {:else if activeSection === 'search'}
           <div class="flex-1 overflow-y-auto p-5">
             <header class="mb-5">

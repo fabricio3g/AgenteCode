@@ -6,12 +6,11 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
+  import DeveloperModeWorkspace from '$lib/components/developer/DeveloperModeWorkspace.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
-  import SettingsModal from '$lib/components/settings/SettingsModal.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
-  import LocalRuntimeModal from '$lib/components/settings/LocalRuntimeModal.svelte';
   import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
@@ -21,16 +20,22 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, Cpu, Settings2 } from 'lucide-svelte';
+  import { Plus, Boxes, Code2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isTauri } from '$lib/services/tauri';
+  import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
 
   let showShortcutsHelp = $state(false);
   let composerHeight = $state(320);
 
   const hasMessages = $derived((appStore.currentChat?.messages?.length || 0) > 0);
+
+  function openModelHub(section: string = 'models') {
+    appStore.modelManagerOpenSection = resolveModelHubSection(section);
+    appStore.modelManagerOpen = true;
+  }
 
   function handleKeydown(event: KeyboardEvent) {
     const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -45,7 +50,7 @@
       event.preventDefault(); appStore.chatSearchOpen = !appStore.chatSearchOpen; return;
     }
     if (ctrl && event.key === ',') {
-      event.preventDefault(); appStore.settingsOpen = true; return;
+      event.preventDefault(); openModelHub('settings'); return;
     }
     if (ctrl && event.key === 'b') {
       event.preventDefault(); appStore.sidebarOpen = !appStore.sidebarOpen; return;
@@ -90,6 +95,18 @@
     }
     return () => document.removeEventListener('keydown', handleKeydown);
   });
+
+  $effect(() => {
+    if (!appStore.settingsOpen) return;
+    appStore.settingsOpen = false;
+    openModelHub(legacyFlagToModelHubSection('settingsOpen'));
+  });
+
+  $effect(() => {
+    if (!appStore.runtimeManagerOpen) return;
+    appStore.runtimeManagerOpen = false;
+    openModelHub(legacyFlagToModelHubSection('runtimeManagerOpen'));
+  });
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
@@ -122,54 +139,47 @@
 
           <div class="flex-1"></div>
 
+          <Tooltip label="Developer Mode">
+            <button
+              class="collapsed-btn flex h-8 w-8 items-center justify-center"
+              onclick={() => appStore.openDeveloperMode()}
+              aria-label="Developer Mode"
+            >
+              <Code2 class="h-4 w-4" />
+            </button>
+          </Tooltip>
           <Tooltip label="Model Hub">
             <button
               class="collapsed-btn flex h-8 w-8 items-center justify-center"
-              onclick={() => { appStore.modelManagerOpen = true; appStore.modelManagerOpenSection = 'models'; }}
+              onclick={() => openModelHub('models')}
               aria-label="Model Hub"
             >
               <Boxes class="h-4 w-4" />
-            </button>
-          </Tooltip>
-          {#if isTauri()}
-            <Tooltip label="Runtime">
-              <button
-                class="collapsed-btn flex h-8 w-8 items-center justify-center"
-                onclick={() => (appStore.runtimeManagerOpen = true)}
-                aria-label="Runtime"
-              >
-                <Cpu class="h-4 w-4" />
-              </button>
-            </Tooltip>
-          {/if}
-          <Tooltip label="Settings">
-            <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center"
-              onclick={() => (appStore.settingsOpen = true)}
-              aria-label="Settings"
-            >
-              <Settings2 class="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
       </div>
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <!-- Main area: chat only (sandbox opens as modal) -->
-        <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden" class:welcome-bg={!hasMessages}>
-          {#if !hasMessages}
-            <div class="welcome-dots-layer" aria-hidden="true">
-              <span class="dots tl"></span>
-              <span class="dots tr"></span>
-              <span class="dots bl"></span>
-              <span class="dots br"></span>
+        {#if appStore.mainView === 'developer'}
+          <DeveloperModeWorkspace />
+        {:else}
+          <!-- Main area: chat only (sandbox opens as modal) -->
+          <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden" class:welcome-bg={!hasMessages}>
+            {#if !hasMessages}
+              <div class="welcome-dots-layer" aria-hidden="true">
+                <span class="dots tl"></span>
+                <span class="dots tr"></span>
+                <span class="dots bl"></span>
+                <span class="dots br"></span>
+              </div>
+            {/if}
+            <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
+              <MessageList composerInset={composerHeight} />
+              <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
             </div>
-          {/if}
-          <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
-            <MessageList composerInset={composerHeight} />
-            <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
           </div>
-        </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -177,9 +187,6 @@
   {#if appStore.workspaceMode === 'modern'}
     {#if appStore.promptConfigOpen}
       <SystemPromptModal />
-    {/if}
-    {#if appStore.settingsOpen}
-      <SettingsModal />
     {/if}
     {#if appStore.downloadsOpen}
       <DownloadsModal />
@@ -189,9 +196,6 @@
 
     {#if appStore.modelManagerOpen}
       <ModelHubModal />
-    {/if}
-    {#if appStore.runtimeManagerOpen}
-      <LocalRuntimeModal />
     {/if}
   {/if}
 </div>
@@ -231,7 +235,7 @@
         {#each [
           ['Ctrl+K', 'New chat'],
           ['Ctrl+Shift+K', 'Search chats'],
-          ['Ctrl+,', 'Open settings'],
+          ['Ctrl+,', 'Open Model Hub settings'],
           ['Ctrl+B', 'Show or hide sidebar'],
           ['Ctrl+`', 'Toggle code sandbox'],
           ['Ctrl+E', 'Export chat'],
@@ -287,6 +291,20 @@
     transform: translateX(0);
     transition: opacity 0.18s ease, transform 0.25s ease, visibility 0s linear;
   }
+
+  .collapsed-btn {
+    color: #0D2F5D;
+  }
+
+  :global(.collapsed-btn svg) {
+    color: #0D2F5D;
+  }
+
+  :global(.dark) .collapsed-btn,
+  :global(.dark .collapsed-btn svg) {
+    color: #ffffff;
+  }
+
   .sidebar-outer.expanded .sidebar-view-collapsed {
     opacity: 0;
     visibility: hidden;
@@ -312,9 +330,11 @@
     position: absolute;
     width: 220px;
     height: 170px;
-    opacity: 0.46;
-    background: radial-gradient(circle, color-mix(in srgb, var(--text-secondary) 75%, transparent) 0 1px, transparent 1.9px) 0 0 / 14px 14px;
+    border-radius: 18px;
+    opacity: 0.52;
+    background: radial-gradient(circle, rgba(13, 47, 93, 0.9) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
     animation: cornerDotsDrift 8s ease-in-out infinite alternate;
+    transform: translateZ(0);
   }
 
   .welcome-dots-layer .dots.tl {
@@ -341,6 +361,10 @@
     right: 18px;
     clip-path: ellipse(56% 54% at 100% 100%);
     animation-delay: 0.7s;
+  }
+
+  :global(.dark) .welcome-dots-layer .dots {
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
   }
 
   @keyframes cornerDotsDrift {

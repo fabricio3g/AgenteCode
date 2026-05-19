@@ -160,7 +160,7 @@
           </div>
           <button
             class="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
-            onclick={() => { appStore.llmDrawerOpen = false; appStore.settingsOpen = true; }}
+            onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
             title="Configure"
           ><ExternalLink class="h-3.5 w-3.5" /></button>
         </div>
@@ -209,11 +209,11 @@
           <div class="mt-3 flex gap-1.5">
             <button
               class="flex-1 rounded-lg border border-[var(--border)] py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
-              onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpen = true; }}
+              onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
             >Manage Models</button>
             <button
               class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
-              onclick={() => { appStore.llmDrawerOpen = false; appStore.settingsOpen = true; }}
+              onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'runtime'; appStore.modelManagerOpen = true; }}
               title="Settings"
             ><ExternalLink class="h-3.5 w-3.5" /></button>
           </div>
