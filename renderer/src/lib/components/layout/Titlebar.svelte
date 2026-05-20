@@ -31,7 +31,7 @@
 >
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
     <div class="titlebar-icon flex h-7 w-7 items-center justify-center">
-      <MessageSquare class="h-5 w-5 text-[var(--text)]" />
+      <MessageSquare class="h-5 w-5" />
     </div>
     <Tooltip label="Search conversations">
       <button
@@ -169,10 +169,11 @@
 
   .titlebar-icon {
     flex-shrink: 0;
+    color: #0D2F5D;
   }
 
   .titlebar-btn {
-    color: var(--text-muted);
+    color: #0D2F5D;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -240,7 +241,19 @@
     width: 46px; height: 100%;
     border: none; background: transparent; cursor: default;
     transition: background 0.1s;
-    color: var(--text-muted);
+    color: #0D2F5D;
+  }
+
+  :global(.dark) .titlebar-icon,
+  :global(.dark) .titlebar-btn,
+  :global(.dark) .win-btn {
+    color: #ffffff;
+  }
+
+  :global(.dark) .titlebar-icon svg,
+  :global(.dark) .titlebar-btn svg,
+  :global(.dark) .win-btn svg {
+    color: #ffffff;
   }
 
   .win-btn:hover {

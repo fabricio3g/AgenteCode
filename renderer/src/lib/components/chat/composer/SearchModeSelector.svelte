@@ -66,17 +66,17 @@
 <div class="relative inline-flex">
   <button
     bind:this={triggerEl}
-    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)]' : 'rounded-lg border border-[var(--border)]'}"
+    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)] bg-[var(--surface)]' : 'rounded-lg border border-[var(--border)] bg-[var(--surface)]'}"
     onclick={toggleDropdown}
     aria-haspopup="listbox"
     aria-expanded={dropdownOpen}
   >
     {#if currentModeId === 'chat'}
-      <WifiOff class="h-3.5 w-3.5" />
+      <WifiOff class="search-selector-icon h-3.5 w-3.5" />
     {:else}
       {getSearchLabel(currentModeId)}
     {/if}
-    <ChevronDown class={`h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
+    <ChevronDown class={`search-selector-icon h-3 w-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
   </button>
 
   {#if dropdownOpen}
@@ -88,7 +88,7 @@
     >
       {#each searchModeIds as modeId (modeId)}
         <button
-          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {searchMode === modeId ? 'text-[var(--text)] font-medium' : 'text-[var(--text-secondary)]'}"
+          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {searchMode === modeId ? 'bg-[var(--surface-hover)] font-medium text-[var(--text)]' : 'text-[var(--text-secondary)]'}"
           onclick={() => selectMode(modeId)}
           role="option"
           aria-selected={searchMode === modeId}
@@ -99,3 +99,13 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .search-selector-icon {
+    color: rgb(10, 53, 104);
+  }
+
+  :global(.dark) .search-selector-icon {
+    color: #ffffff;
+  }
+</style>

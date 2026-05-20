@@ -1,35 +1,22 @@
 import type { SearchResult } from '$lib/types/tauri';
-
-type ToolResultLike = {
-  success: boolean;
-  createdFiles?: string[];
-};
-
-type ToolObservationLike = {
-  success: boolean;
-  summary: string;
-};
-
-type ToolContextLike = {
-  files: Record<string, string>;
-  onArtifact: (artifact: unknown) => void;
-};
+import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
+import type { AgentArtifact } from '$lib/types/chat';
 
 export async function ensureRequestedArtifactsFromEvidence(params: {
   prompt: string;
   reason: string;
-  ctx: ToolContextLike;
-  observations: ToolObservationLike[];
+  ctx: ToolContext;
+  observations: ToolObservation[];
   sources: SearchResult[];
   requestedArtifactKinds: (prompt: string) => { docx: boolean; xlsx: boolean; pptx: boolean; pdf: boolean };
   missingRequestedArtifactExtensions: (files: Record<string, string>, prompt: string) => string[];
-  buildEvidenceText: (observations: ToolObservationLike[], sources: SearchResult[]) => string;
+  buildEvidenceText: (observations: ToolObservation[], sources: SearchResult[]) => string;
   fallbackTitle: (prompt: string) => string;
-  evidenceSources: (observations: ToolObservationLike[], sources: SearchResult[]) => SearchResult[];
+  evidenceSources: (observations: ToolObservation[], sources: SearchResult[]) => SearchResult[];
   sourceRows: (sources: SearchResult[]) => Array<Record<string, string>>;
   compactText: (value: unknown, max?: number) => string;
-  executeTool: (name: string, args: Record<string, unknown>, ctx: ToolContextLike) => Promise<ToolResultLike>;
-  buildArtifact: (ctx: ToolContextLike) => unknown;
+  executeTool: (name: string, args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
+  buildArtifact: (ctx: ToolContext) => AgentArtifact | null;
   normPath: (value: unknown) => string;
   buildMarkdownReport: (title: string, sections: Array<{ title?: string; content?: string }>) => string;
 }): Promise<string[]> {
@@ -136,17 +123,17 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
 export async function buildStrictFallbackContent(params: {
   prompt: string;
   reason: string;
-  ctx: ToolContextLike;
-  observations: ToolObservationLike[];
+  ctx: ToolContext;
+  observations: ToolObservation[];
   sources: SearchResult[];
   ensureRequestedArtifactsFromEvidence: (params: {
     prompt: string;
     reason: string;
-    ctx: ToolContextLike;
-    observations: ToolObservationLike[];
+    ctx: ToolContext;
+    observations: ToolObservation[];
     sources: SearchResult[];
   }) => Promise<string[]>;
-  evidenceSources: (observations: ToolObservationLike[], sources: SearchResult[]) => SearchResult[];
+  evidenceSources: (observations: ToolObservation[], sources: SearchResult[]) => SearchResult[];
   missingRequestedArtifactExtensions: (files: Record<string, string>, prompt: string) => string[];
 }): Promise<string> {
   const created = await params.ensureRequestedArtifactsFromEvidence({

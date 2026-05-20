@@ -207,6 +207,14 @@ export interface ModelOption {
   source: 'local' | 'api';
   path?: string;
   details?: string;
+  architecture?: string;
+  context_length?: number;
+  parameter_count?: number;
+  size_label?: string;
+  quantization_name?: string;
+  block_count?: number;
+  chat_template_uses_tools?: boolean;
+  has_mmproj?: boolean;
 }
 
 export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'mistral' | 'openai_compat' | 'local';
@@ -325,6 +333,7 @@ export interface AppConfig {
   ui?: {
     theme?: 'light' | 'dark';
     workspace_mode?: 'legacy' | 'modern';
+    shell_mode?: 'standard' | 'roleplay';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;

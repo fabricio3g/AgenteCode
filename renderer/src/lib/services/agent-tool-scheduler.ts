@@ -1,8 +1,8 @@
-type ToolCallLike = { name: string };
+type NamedToolCall = { name: string };
 
 const DEPENDENT_TOOLS: Set<string> = new Set(['preview_project']);
 
-export function groupParallelAndSequential<T extends ToolCallLike>(toolCalls: T[]): T[][] {
+export function groupParallelAndSequential<T extends NamedToolCall>(toolCalls: T[]): T[][] {
   const groups: T[][] = [];
   let currentBatch: T[] = [];
 

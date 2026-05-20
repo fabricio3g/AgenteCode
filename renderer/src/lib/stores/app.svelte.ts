@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceContext, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runAgentTask } from '$lib/services/agent';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -16,7 +16,8 @@ import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
-import { toErrorMessage } from '$lib/utils/errors';import {
+import { toErrorMessage } from '$lib/utils/errors';
+import {
   type ApiModelMetadataValue,
   type ContextBudgetValue
 } from '$lib/stores/app-context-budget';
@@ -32,12 +33,45 @@ import {
   fetchApiModelMetadataFromProvider,
   getCachedOrFetchApiModelMetadata
 } from '$lib/stores/app-model-metadata';
-
-interface PersistedState {
-  chats: ChatSession[];
-  folders: ChatFolder[];
-  currentChatId: string | null;
-}
+import {
+  mergeLocalSettingsConfig,
+  mergePromptSettingsConfig,
+  mergeProviderConfig,
+  mergeSearchSettingsConfig,
+  mergeTtsSettingsConfig,
+  mergeUiSettingsConfig,
+  mergeWorkspaceModeConfig,
+  setBackendModeConfig,
+  setLocalModelConfig
+} from '$lib/stores/app-store-config';
+import { applyArtifactToMessage, findLatestArtifactMessage, resolveArtifactForMessage } from '$lib/stores/app-store-artifacts';
+import {
+  buildLocalModelRuntimeRequest,
+  buildLocalModelSettingsPatch,
+  buildRememberedLocalModelSettingsEntry,
+  pickNumber,
+  readRememberedLocalModelSettings,
+  resolveLocalModelLoadState,
+  writeRememberedLocalModelSettings
+} from '$lib/stores/app-store-local-model';
+import {
+  buildWorkspaceFromIndexResult,
+  buildWorkspacePrompt,
+  getWorkspaceExtension,
+  getWorkspacePath,
+  isSupportedWorkspaceFile,
+  recalculateWorkspace,
+  shouldIgnoreWorkspacePath,
+  trimWorkspaceText
+} from '$lib/stores/app-store-workspace';
+import type {
+  ActiveGenerationRun,
+  ChatSearchState,
+  GenerationBackendMode,
+  GenerationComposerMode,
+  PersistedState
+} from '$lib/stores/app-store-types';
+import { buildLocalModelOption } from '$lib/utils/local-models';
 
 type ContextBudget = ContextBudgetValue;
 type ApiModelMetadata = ApiModelMetadataValue;
@@ -46,25 +80,9 @@ type ElectronApi = {
   invoke: <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
 };
 
-type GenerationBackendMode = 'api' | 'local';
-type GenerationComposerMode = 'chat' | 'agent';
+type LocalModelLoadTarget = Omit<ModelOption, 'source'> & { source?: string };
+type MainView = 'chat' | 'developer';
 
-interface ActiveGenerationRun {
-  controller: AbortController;
-  messageId: string;
-  backendMode: GenerationBackendMode;
-  mode: GenerationComposerMode;
-  startedAt: number;
-  researchTaskId?: string | null;
-}
-
-interface ChatSearchState {
-  results: SearchResult[];
-  loading: boolean;
-  query: string;
-}
-
-const LOCAL_MODEL_SETTINGS_KEY = 'chatealm_model_load_settings_by_model';
 const USER_NAME_KEY = 'chatealm_user_name';
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
@@ -317,27 +335,8 @@ function readBlobAsDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-const WORKSPACE_IGNORED_SEGMENTS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'build',
-  '.next',
-  '.nuxt',
-  '.svelte-kit',
-  'coverage',
-  'target'
-]);
-
-const WORKSPACE_TEXT_EXTENSIONS = new Set([
-  'c', 'cc', 'cpp', 'cs', 'css', 'csv', 'go', 'h', 'hpp', 'html', 'ini', 'java', 'js', 'json', 'jsonl',
-  'jsx', 'log', 'md', 'mjs', 'py', 'rb', 'rs', 'scss', 'sh', 'sql', 'svelte', 'toml', 'ts', 'tsx',
-  'txt', 'xml', 'yaml', 'yml'
-]);
-
 const WORKSPACE_MAX_FILES = 120;
 const WORKSPACE_MAX_FILE_SIZE_BYTES = 512 * 1024;
-const WORKSPACE_MAX_TEXT_CHARS = 120_000;
 
 const WEB_RAG_MIN_ANSWER_CHARS = 200;
 const WEB_RAG_MAX_SOURCES = 12;
@@ -371,45 +370,6 @@ function buildWebRagPayload({ query, answer, sources }: { query: string; answer:
   ].filter(Boolean);
 
   return sections.join('\n\n');
-}
-
-function getWorkspacePath(file: File) {
-  return file.webkitRelativePath || file.name;
-}
-
-function shouldIgnoreWorkspacePath(relativePath: string) {
-  const segments = relativePath.split('/').filter(Boolean);
-  return segments.some((segment) => WORKSPACE_IGNORED_SEGMENTS.has(segment));
-}
-
-function getWorkspaceExtension(relativePath: string) {
-  const match = relativePath.toLowerCase().match(/\.([a-z0-9]+)$/);
-  return match?.[1] || 'text';
-}
-
-function isSupportedWorkspaceFile(relativePath: string) {
-  return WORKSPACE_TEXT_EXTENSIONS.has(getWorkspaceExtension(relativePath));
-}
-
-function trimWorkspaceText(text: string) {
-  const normalized = text.replace(/\r\n/g, '\n').trim();
-  if (normalized.length <= WORKSPACE_MAX_TEXT_CHARS) return normalized;
-  return `${normalized.slice(0, WORKSPACE_MAX_TEXT_CHARS)}\n\n[truncated]`;
-}
-
-function buildWorkspacePrompt(workspace: WorkspaceContext) {
-  const visibleFiles = workspace.files
-    .filter((file) => file.status === 'ready')
-    .slice(0, 80)
-    .map((file) => `- ${file.path}`);
-
-  const summary = [
-    `Root: ${workspace.rootName}`,
-    `Indexed files: ${workspace.indexedCount}`,
-    `Skipped files: ${workspace.skippedCount}`
-  ].join('\n');
-
-  return `${summary}\nFiles:\n${visibleFiles.join('\n')}`;
 }
 
 function isAbortLikeError(value: unknown): boolean {
@@ -446,44 +406,6 @@ function stripWriteFileBlocks(text: string, created: Array<{ path: string }>): s
   // Remove double blank lines left behind
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
   return cleaned;
-}
-
-function recalculateWorkspace(workspace: WorkspaceContext): WorkspaceContext {
-  const indexedCount = workspace.files.filter((file) => file.status === 'ready' && !!file.docId).length;
-  const skippedCount = workspace.files.length - indexedCount;
-  return {
-    ...workspace,
-    fileCount: workspace.files.length,
-    indexedCount,
-    skippedCount
-  };
-}
-
-function readRememberedLocalModelSettings(): Record<string, Record<string, unknown>> {
-  try {
-    const raw = localStorage.getItem(LOCAL_MODEL_SETTINGS_KEY) || '{}';
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeRememberedLocalModelSettings(store: Record<string, Record<string, unknown>>) {
-  try {
-    localStorage.setItem(LOCAL_MODEL_SETTINGS_KEY, JSON.stringify(store));
-  } catch {
-    // ignore local storage failures
-  }
-}
-
-function pickNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    if (value === undefined || value === null || value === '') continue;
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 function getAssistantActiveVersion(message: Partial<ChatMessage>): MessageVersion | null {
@@ -603,6 +525,7 @@ class AppStore {
   sandboxOpen = $state(false);
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
+  mainView = $state<MainView>('chat');
   chatSearchOpen = $state(false);
   searchSidebarOpen = $state(false);
   searchStateByChat = $state<Record<string, ChatSearchState>>({});
@@ -623,7 +546,7 @@ class AppStore {
   apiModelMetadataByKey = $state<Record<string, ApiModelMetadata>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
-  localModelLoadTarget = $state<({ id: string; name: string; path?: string; details?: string; context_length?: number }) | null>(null);
+  localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
   localModelLoadContextLength = $state('4096');
   localModelLoadGpuLayers = $state('0');
   localModelLoadCpuThreads = $state('4');
@@ -783,6 +706,10 @@ class AppStore {
 
   get workspaceMode() {
     return this.config.ui?.workspace_mode || 'modern';
+  }
+
+  get shellMode() {
+    return this.config.ui?.shell_mode || 'standard';
   }
 
   get currentContextMode() {
@@ -954,14 +881,7 @@ class AppStore {
     this.currentArtifact = artifact;
     this.currentArtifactMessageId = artifact ? messageId : null;
 
-    if (messageId && this.currentChat) {
-      const index = this.currentChat.messages.findIndex((message) => message.id === messageId);
-      if (index >= 0) {
-        this.currentChat.messages[index] = {
-          ...this.currentChat.messages[index],
-          artifact
-        };
-      }
+    if (applyArtifactToMessage(this.currentChat, messageId, artifact)) {
       this.touchChats();
       this.persist();
     }
@@ -971,8 +891,7 @@ class AppStore {
 
   openArtifact(artifact: AgentArtifact | null, messageId: string | null = null) {
     if (!artifact && messageId && this.currentChat) {
-      const msg = this.currentChat.messages.find(m => m.id === messageId);
-      artifact = msg?.artifact || null;
+      artifact = resolveArtifactForMessage(this.currentChat, messageId);
     }
     if (!artifact) return;
     this.syncArtifactState(artifact, messageId, true);
@@ -982,7 +901,7 @@ class AppStore {
     this.syncArtifactState(artifact, messageId, open);
   }
 
-  async openLocalModelLoadDialog(model: { id: string; name: string; path?: string; details?: string; context_length?: number }) {
+  async openLocalModelLoadDialog(model: LocalModelLoadTarget) {
     if (!model.path) return;
     this.localModelLoadTarget = model;
     this.localModelLoadRuntimePath = this.config.llm?.local?.runtime_path || '';
@@ -992,89 +911,46 @@ class AppStore {
     this.localModelLoadMmprojPath = '';
     this.localModelLoadMmprojPath = await this.detectMmprojForModel(model.path);
     const remembered = readRememberedLocalModelSettings()[model.id] || {};
+    let recommended: Awaited<ReturnType<typeof getRecommendedSettings>> | null = null;
     try {
       const hasRememberedContext = Object.prototype.hasOwnProperty.call(remembered, 'context_length');
       const hasRememberedGpu = Object.prototype.hasOwnProperty.call(remembered, 'gpu_offload');
       const recommendedContextHint = hasRememberedContext ? pickNumber(remembered.context_length) : undefined;
       const recommendedGpuHint = hasRememberedGpu ? pickNumber(remembered.gpu_offload) : undefined;
-      const settings = await getRecommendedSettings(
+      recommended = await getRecommendedSettings(
         model.path,
         recommendedContextHint,
         recommendedGpuHint,
         this.localModelLoadRuntimePath || this.config.llm?.local?.runtime_path
       );
-      this.localModelLoadContextLength = String(pickNumber(
-        remembered.context_length,
-        settings.context_length,
-        model.context_length,
-        this.config.llm?.local?.context_length,
-        4096
-      ) ?? 4096);
-      this.localModelLoadGpuLayers = String(pickNumber(
-        remembered.gpu_offload,
-        settings.gpu_layers,
-        this.config.llm?.local?.gpu_layers,
-        0
-      ) ?? 0);
-      this.localModelLoadCpuThreads = String(pickNumber(
-        remembered.cpu_threads,
-        settings.cpu_threads,
-        this.config.llm?.local?.cpu_threads,
-        navigator.hardwareConcurrency,
-        4
-      ) ?? 4);
-      this.localModelLoadBatchSize = String(pickNumber(
-        remembered.batch_size,
-        settings.batch_size,
-        this.config.llm?.local?.batch_size,
-        512
-      ) ?? 512);
-      this.localModelLoadFlashAttention = remembered.flash_attention != null ? Boolean(remembered.flash_attention) : (this.config.llm?.local?.flash_attention ?? settings.flash_attention ?? true);
-      this.localModelLoadOffloadKvCache = remembered.offload_kv_cache != null ? Boolean(remembered.offload_kv_cache) : (this.config.llm?.local?.offload_kv_cache ?? settings.offload_kv ?? true);
-      this.localModelLoadKeepInMemory = remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (this.config.llm?.local?.keep_in_memory ?? true);
-      this.localModelLoadMmap = remembered.mmap != null ? Boolean(remembered.mmap) : (this.config.llm?.local?.mmap ?? settings.use_mmap ?? true);
-      this.localModelLoadSeed = remembered.seed != null ? String(remembered.seed) : String(this.config.llm?.local?.seed || '');
-      this.localModelLoadParallel = String(Number(remembered.parallel || this.config.llm?.local?.parallel || 1));
-      this.localModelLoadRopeFreqBase = remembered.rope_freq_base != null ? String(remembered.rope_freq_base) : String(this.config.llm?.local?.rope_freq_base || '');
-      this.localModelLoadRopeFreqScale = remembered.rope_freq_scale != null ? String(remembered.rope_freq_scale) : String(this.config.llm?.local?.rope_freq_scale || '');
-      this.localModelLoadCacheTypeK = String(remembered.cache_type_k || this.config.llm?.local?.cache_type_k || 'f16');
-      this.localModelLoadCacheTypeV = String(remembered.cache_type_v || this.config.llm?.local?.cache_type_v || 'f16');
-      this.localModelRememberSettings = Object.keys(remembered).length > 0;
     } catch {
-      this.localModelLoadContextLength = String(pickNumber(
-        remembered.context_length,
-        this.config.llm?.local?.context_length,
-        model.context_length,
-        4096
-      ) ?? 4096);
-      this.localModelLoadGpuLayers = String(pickNumber(
-        remembered.gpu_offload,
-        this.config.llm?.local?.gpu_layers,
-        0
-      ) ?? 0);
-      this.localModelLoadCpuThreads = String(pickNumber(
-        remembered.cpu_threads,
-        this.config.llm?.local?.cpu_threads,
-        navigator.hardwareConcurrency,
-        4
-      ) ?? 4);
-      this.localModelLoadBatchSize = String(pickNumber(
-        remembered.batch_size,
-        this.config.llm?.local?.batch_size,
-        512
-      ) ?? 512);
-      this.localModelLoadFlashAttention = remembered.flash_attention != null ? Boolean(remembered.flash_attention) : (this.config.llm?.local?.flash_attention ?? true);
-      this.localModelLoadOffloadKvCache = remembered.offload_kv_cache != null ? Boolean(remembered.offload_kv_cache) : (this.config.llm?.local?.offload_kv_cache ?? true);
-      this.localModelLoadKeepInMemory = remembered.keep_in_memory != null ? Boolean(remembered.keep_in_memory) : (this.config.llm?.local?.keep_in_memory ?? true);
-      this.localModelLoadMmap = remembered.mmap != null ? Boolean(remembered.mmap) : (this.config.llm?.local?.mmap ?? true);
-      this.localModelLoadSeed = remembered.seed != null ? String(remembered.seed) : String(this.config.llm?.local?.seed || '');
-      this.localModelLoadParallel = String(Number(remembered.parallel || this.config.llm?.local?.parallel || 1));
-      this.localModelLoadRopeFreqBase = remembered.rope_freq_base != null ? String(remembered.rope_freq_base) : String(this.config.llm?.local?.rope_freq_base || '');
-      this.localModelLoadRopeFreqScale = remembered.rope_freq_scale != null ? String(remembered.rope_freq_scale) : String(this.config.llm?.local?.rope_freq_scale || '');
-      this.localModelLoadCacheTypeK = String(remembered.cache_type_k || this.config.llm?.local?.cache_type_k || 'f16');
-      this.localModelLoadCacheTypeV = String(remembered.cache_type_v || this.config.llm?.local?.cache_type_v || 'f16');
-      this.localModelRememberSettings = Object.keys(remembered).length > 0;
+      recommended = null;
     }
+    const resolved = resolveLocalModelLoadState({
+      remembered,
+      config: this.config,
+      model,
+      runtimePath: this.localModelLoadRuntimePath,
+      recommended,
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      mmprojPath: this.localModelLoadMmprojPath
+    });
+    this.localModelLoadContextLength = resolved.contextLength;
+    this.localModelLoadGpuLayers = resolved.gpuLayers;
+    this.localModelLoadCpuThreads = resolved.cpuThreads;
+    this.localModelLoadBatchSize = resolved.batchSize;
+    this.localModelLoadFlashAttention = resolved.flashAttention;
+    this.localModelLoadOffloadKvCache = resolved.offloadKvCache;
+    this.localModelLoadKeepInMemory = resolved.keepInMemory;
+    this.localModelLoadMmap = resolved.mmap;
+    this.localModelLoadSeed = resolved.seed;
+    this.localModelLoadParallel = resolved.parallel;
+    this.localModelLoadRopeFreqBase = resolved.ropeFreqBase;
+    this.localModelLoadRopeFreqScale = resolved.ropeFreqScale;
+    this.localModelLoadCacheTypeK = resolved.cacheTypeK;
+    this.localModelLoadCacheTypeV = resolved.cacheTypeV;
+    this.localModelLoadMmprojPath = resolved.mmprojPath;
+    this.localModelRememberSettings = resolved.rememberSettings;
   }
 
   closeLocalModelLoadDialog() {
@@ -1160,43 +1036,29 @@ class AppStore {
         source: 'local',
         details: this.localModelLoadTarget.details
       });
-      await this.updateLocalSettings({
-        context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-        gpu_layers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
-        cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
-        batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
-        flash_attention: this.localModelLoadFlashAttention,
-        offload_kv_cache: this.localModelLoadOffloadKvCache,
-        keep_in_memory: this.localModelLoadKeepInMemory,
+      const loadState = {
+        contextLength: this.localModelLoadContextLength,
+        gpuLayers: this.localModelLoadGpuLayers,
+        cpuThreads: this.localModelLoadCpuThreads,
+        batchSize: this.localModelLoadBatchSize,
+        runtimePath: this.localModelLoadRuntimePath,
+        flashAttention: this.localModelLoadFlashAttention,
+        offloadKvCache: this.localModelLoadOffloadKvCache,
+        keepInMemory: this.localModelLoadKeepInMemory,
         mmap: this.localModelLoadMmap,
-        seed: this.localModelLoadSeed ? Number(this.localModelLoadSeed) : null,
-        parallel: this.localModelLoadParallel ? Number(this.localModelLoadParallel) : null,
-        rope_freq_base: this.localModelLoadRopeFreqBase ? Number(this.localModelLoadRopeFreqBase) : null,
-        rope_freq_scale: this.localModelLoadRopeFreqScale ? Number(this.localModelLoadRopeFreqScale) : null,
-        cache_type_k: this.localModelLoadCacheTypeK || undefined,
-        cache_type_v: this.localModelLoadCacheTypeV || undefined,
-        runtime_path: this.localModelLoadRuntimePath || undefined,
-        mmproj_path: this.localModelLoadMmprojPath || undefined
-      });
+        seed: this.localModelLoadSeed,
+        parallel: this.localModelLoadParallel,
+        ropeFreqBase: this.localModelLoadRopeFreqBase,
+        ropeFreqScale: this.localModelLoadRopeFreqScale,
+        cacheTypeK: this.localModelLoadCacheTypeK,
+        cacheTypeV: this.localModelLoadCacheTypeV,
+        mmprojPath: this.localModelLoadMmprojPath,
+        rememberSettings: this.localModelRememberSettings
+      };
+      await this.updateLocalSettings(buildLocalModelSettingsPatch(loadState));
       const remembered = readRememberedLocalModelSettings();
       if (this.localModelRememberSettings) {
-        remembered[this.localModelLoadTarget.id] = {
-          context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-          gpu_offload: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
-          cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
-          batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
-          flash_attention: this.localModelLoadFlashAttention,
-          offload_kv_cache: this.localModelLoadOffloadKvCache,
-          keep_in_memory: this.localModelLoadKeepInMemory,
-          mmap: this.localModelLoadMmap,
-          seed: this.localModelLoadSeed ? Number(this.localModelLoadSeed) : null,
-          parallel: this.localModelLoadParallel ? Number(this.localModelLoadParallel) : null,
-          rope_freq_base: this.localModelLoadRopeFreqBase ? Number(this.localModelLoadRopeFreqBase) : null,
-          rope_freq_scale: this.localModelLoadRopeFreqScale ? Number(this.localModelLoadRopeFreqScale) : null,
-          cache_type_k: this.localModelLoadCacheTypeK || 'f16',
-          cache_type_v: this.localModelLoadCacheTypeV || 'f16',
-          runtime_path: this.localModelLoadRuntimePath || ''
-        };
+        remembered[this.localModelLoadTarget.id] = buildRememberedLocalModelSettingsEntry(loadState);
       } else {
         delete remembered[this.localModelLoadTarget.id];
       }
@@ -1204,52 +1066,11 @@ class AppStore {
       const config = await loadChatConfig();
       this.localModelLoadProgress = 24;
       this.localModelLoadPhase = 'Launching local runtime';
-      await loadLocalModel({
-        config: {
-          ...config,
-          llm: {
-            ...config.llm,
-            local: {
-              ...(config.llm?.local || {}),
-              selected_model_path: this.localModelLoadTarget.path,
-              model: this.localModelLoadTarget.name,
-              context_length: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-              gpu_layers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
-              cpu_threads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
-              batch_size: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
-              flash_attention: this.localModelLoadFlashAttention,
-              offload_kv_cache: this.localModelLoadOffloadKvCache,
-              keep_in_memory: this.localModelLoadKeepInMemory,
-              mmap: this.localModelLoadMmap,
-              seed: this.localModelLoadSeed ? Number(this.localModelLoadSeed) : undefined,
-              parallel: this.localModelLoadParallel ? Number(this.localModelLoadParallel) : undefined,
-              rope_freq_base: this.localModelLoadRopeFreqBase ? Number(this.localModelLoadRopeFreqBase) : undefined,
-              rope_freq_scale: this.localModelLoadRopeFreqScale ? Number(this.localModelLoadRopeFreqScale) : undefined,
-              cache_type_k: this.localModelLoadCacheTypeK || undefined,
-              cache_type_v: this.localModelLoadCacheTypeV || undefined,
-              runtime_path: this.localModelLoadRuntimePath || undefined,
-              mmproj_path: this.localModelLoadMmprojPath || undefined
-            }
-          }
-        },
-        modelPath: this.localModelLoadTarget.path,
-        runtimePath: this.localModelLoadRuntimePath || undefined,
-        contextLength: this.localModelLoadContextLength ? Number(this.localModelLoadContextLength) : undefined,
-        gpuLayers: this.localModelLoadGpuLayers === '' ? undefined : Number(this.localModelLoadGpuLayers),
-        cpuThreads: this.localModelLoadCpuThreads ? Number(this.localModelLoadCpuThreads) : undefined,
-        batchSize: this.localModelLoadBatchSize ? Number(this.localModelLoadBatchSize) : undefined,
-        flashAttention: this.localModelLoadFlashAttention,
-        offloadKvCache: this.localModelLoadOffloadKvCache,
-        keepInMemory: this.localModelLoadKeepInMemory,
-        mmap: this.localModelLoadMmap,
-        seed: this.localModelLoadSeed ? Number(this.localModelLoadSeed) : undefined,
-        parallel: this.localModelLoadParallel ? Number(this.localModelLoadParallel) : undefined,
-        ropeFreqBase: this.localModelLoadRopeFreqBase ? Number(this.localModelLoadRopeFreqBase) : undefined,
-        ropeFreqScale: this.localModelLoadRopeFreqScale ? Number(this.localModelLoadRopeFreqScale) : undefined,
-        cacheTypeK: this.localModelLoadCacheTypeK || undefined,
-        cacheTypeV: this.localModelLoadCacheTypeV || undefined,
-        mmprojPath: this.localModelLoadMmprojPath || undefined
-      });
+      await loadLocalModel(buildLocalModelRuntimeRequest({
+        config,
+        target: this.localModelLoadTarget,
+        state: loadState
+      }));
       this.localModelLoadProgress = 88;
       this.localModelLoadPhase = 'Refreshing local model state';
       await modelsStore.refreshIndex();
@@ -1376,6 +1197,7 @@ class AppStore {
   }
 
   createChat() {
+    this.mainView = 'chat';
     const chat: ChatSession = {
       id: createId('chat'),
       title: 'New chat',
@@ -1398,6 +1220,7 @@ class AppStore {
   selectChat(chatId: string) {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
+    this.mainView = 'chat';
 
     for (const attachment of this.pendingAttachments) {
       if (attachment.preview?.startsWith('blob:')) {
@@ -1410,7 +1233,7 @@ class AppStore {
     this.refreshGenerationState();
     this.composer = match.draft || '';
     // Restore artifact from the selected chat's last agent message, or clear
-    const lastArtifactMsg = [...match.messages].reverse().find(m => m.artifact);
+    const lastArtifactMsg = findLatestArtifactMessage(match);
     this.currentArtifact = lastArtifactMsg?.artifact || null;
     this.currentArtifactMessageId = lastArtifactMsg?.id || null;
     if (!this.currentArtifact) this.sandboxOpen = false;
@@ -1951,23 +1774,7 @@ class AppStore {
       const result = await indexWorkspaceFolder(selectedPath, targetChatId);
       const chat = this.findChat(targetChatId);
       if (!chat) return;
-      chat.workspace = {
-        rootName: result.root_name,
-        rootPath: result.root_path,
-        attachedAt: Date.now(),
-        fileCount: result.file_count,
-        indexedCount: result.indexed_count,
-        skippedCount: result.skipped_count,
-        files: result.files.map((file) => ({
-          path: file.path,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          status: file.status,
-          docId: file.doc_id,
-          reason: file.reason
-        }))
-      };
+      chat.workspace = buildWorkspaceFromIndexResult(result, Date.now());
       chat.contextMode = 'work';
       this.touchChats();
       this.persist();
@@ -2119,18 +1926,7 @@ class AppStore {
     try {
       await this.clearWorkspaceDocs(chatId);
       const result = await indexWorkspaceFolder(rootPath, chatId);
-      chat!.workspace = {
-        rootName: result.root_name,
-        rootPath: result.root_path,
-        attachedAt: chat!.workspace!.attachedAt,
-        fileCount: result.file_count,
-        indexedCount: result.indexed_count,
-        skippedCount: result.skipped_count,
-        files: result.files.map((f) => ({
-          path: f.path, name: f.name, size: f.size, type: f.type,
-          status: f.status, docId: f.doc_id, reason: f.reason
-        }))
-      };
+      chat!.workspace = buildWorkspaceFromIndexResult(result, chat!.workspace!.attachedAt);
       this.touchChats();
       this.persist();
       await this.refreshRagDocuments(chatId);
@@ -3328,20 +3124,37 @@ class AppStore {
     return `${providerName}:${baseUrl}`;
   }
 
+  private async commitConfig(next: AppConfig, options: {
+    refreshModels?: boolean;
+    refreshLocalStatus?: boolean;
+    detectTools?: boolean;
+  } = {}) {
+    this.config = next;
+    await saveAppConfig(next);
+    if (options.refreshModels) {
+      await this.refreshModels();
+    }
+    if (isTauri() && options.detectTools) {
+      detectToolSupport().catch(() => {});
+    }
+    if (isTauri() && options.refreshLocalStatus) {
+      await modelsStore.refreshStatus();
+    }
+  }
+
+  openDeveloperMode() {
+    this.mainView = 'developer';
+  }
+
   async refreshModels(force?: boolean) {
     if (this.backendMode === 'local' && isTauri()) {
       this.modelsRefreshing = true;
       try {
         await modelsStore.refreshIndex();
-        this.models = modelsStore.availableModels.map((m) => ({
-          id: m.id,
-          name: m.name,
-          source: 'local' as const,
-          path: m.path,
-          details: 'architecture' in m && m.architecture
-            ? [m.architecture, (m as { size_label?: string }).size_label].filter(Boolean).join(' • ')
-            : undefined
-        }));
+        const localModels = await Promise.all(modelsStore.availableModels.map(async (m) =>
+          buildLocalModelOption(m, !!(m.path && await this.detectMmprojForModel(m.path)))
+        ));
+        this.models = localModels;
       } catch {
         this.models = [];
       } finally {
@@ -3382,85 +3195,28 @@ class AppStore {
     top_p?: number;
     system_prompt?: string;
   }) {
-    const existing: import('$lib/types/chat').ProviderConfig = this.config.llm?.providers?.[partial.provider] || { base_url: '', model: '' };
-    const hasApiKeyField = Object.prototype.hasOwnProperty.call(partial, 'api_key');
-    const nextApiKey = hasApiKeyField
-      ? (partial.api_key && partial.api_key.trim() ? partial.api_key : undefined)
-      : (existing.api_key || undefined);
-    const next: AppConfig = {
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        provider: partial.provider,
-        providers: {
-          ...(this.config.llm?.providers || {}),
-          [partial.provider]: {
-            ...existing,
-            base_url: partial.base_url ?? existing.base_url,
-            api_key: nextApiKey,
-            has_api_key: !!(nextApiKey || existing.has_api_key),
-            model: partial.model ?? existing.model,
-            ...(Number.isFinite(partial.temperature) ? { temperature: partial.temperature } : partial.temperature === undefined ? {} : { temperature: undefined }),
-            ...(partial.max_tokens !== undefined ? { max_tokens: partial.max_tokens || undefined } : {}),
-            ...(Number.isFinite(partial.top_p) ? { top_p: partial.top_p } : partial.top_p === undefined ? {} : { top_p: undefined }),
-            ...(partial.system_prompt !== undefined ? { system_prompt: partial.system_prompt || undefined } : {})
-          }
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
-    await this.refreshModels();
-    if (isTauri()) {
-      detectToolSupport().catch(() => {});
-    }
-    if (isTauri() && next.llm?.backend_mode === 'local') {
-      await modelsStore.refreshStatus();
-    }
+    const next = mergeProviderConfig(this.config, partial);
+    await this.commitConfig(next, {
+      refreshModels: true,
+      detectTools: true,
+      refreshLocalStatus: next.llm?.backend_mode === 'local'
+    });
   }
 
   async setBackendMode(mode: 'local' | 'api') {
     const current = this.config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
     if (current === mode) return;
-    const next: AppConfig = {
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        backend_mode: mode,
-        local: {
-          base_url: this.config.llm?.local?.base_url || 'http://127.0.0.1:11435/v1',
-          ...(this.config.llm?.local || {})
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
-    await this.refreshModels();
-    if (isTauri()) {
-      await modelsStore.refreshStatus();
-    }
+    await this.commitConfig(setBackendModeConfig(this.config, mode), {
+      refreshModels: true,
+      refreshLocalStatus: true
+    });
   }
 
   async updateLocalModel(model: ModelOption) {
-    const next: AppConfig = {
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        backend_mode: 'local',
-        local: {
-          ...(this.config.llm?.local || {}),
-          model: model.name,
-          selected_model_path: model.path,
-          base_url: this.config.llm?.local?.base_url || 'http://127.0.0.1:11435/v1'
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
-    await this.refreshModels();
-    if (isTauri()) {
-      await modelsStore.refreshStatus();
-    }
+    await this.commitConfig(setLocalModelConfig(this.config, model), {
+      refreshModels: true,
+      refreshLocalStatus: true
+    });
   }
 
   async updateLocalSettings(partial: {
@@ -3485,21 +3241,9 @@ class AppStore {
     temperature?: number;
     max_tokens?: number;
   }) {
-    const next: AppConfig = {
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        local: {
-          ...(this.config.llm?.local || {}),
-          ...partial
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
-    if (isTauri()) {
-      await modelsStore.refreshStatus();
-    }
+    await this.commitConfig(mergeLocalSettingsConfig(this.config, partial), {
+      refreshLocalStatus: true
+    });
   }
 
   async stopLocalModel() {
@@ -3517,30 +3261,23 @@ class AppStore {
   }
 
   async setWorkspaceMode(mode: 'legacy' | 'modern') {
-    const next: AppConfig = {
-      ...this.config,
-      ui: {
-        ...(this.config.ui || {}),
-        workspace_mode: mode
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
+    await this.commitConfig(mergeWorkspaceModeConfig(this.config, mode));
+  }
+
+  async setShellMode(mode: 'standard' | 'roleplay') {
+    await this.updateUiSettings({ shell_mode: mode });
+  }
+
+  async toggleRoleplayMode() {
+    await this.setShellMode(this.shellMode === 'roleplay' ? 'standard' : 'roleplay');
   }
 
   async updateUiSettings(partial: {
+    shell_mode?: 'standard' | 'roleplay';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
   }) {
-    const next: AppConfig = {
-      ...this.config,
-      ui: {
-        ...(this.config.ui || {}),
-        ...partial
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
+    await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
   }
 
   async updatePromptSettings(partial: {
@@ -3548,20 +3285,7 @@ class AppStore {
     user_prompt?: string;
     local_system_prompt?: string;
   }) {
-    const next: AppConfig = {
-      ...this.config,
-      llm: {
-        ...this.config.llm,
-        ...(partial.system_prompt !== undefined ? { system_prompt: partial.system_prompt } : {}),
-        ...(partial.user_prompt !== undefined ? { user_prompt: partial.user_prompt } : {}),
-        local: {
-          ...(this.config.llm?.local || {}),
-          ...(partial.local_system_prompt !== undefined ? { system_prompt: partial.local_system_prompt } : {})
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
+    await this.commitConfig(mergePromptSettingsConfig(this.config, partial));
   }
 
   async updateSearchSettings(partial: {
@@ -3570,19 +3294,7 @@ class AppStore {
     context_budget_chars?: number;
     providers?: NonNullable<AppConfig['search']>['providers'];
   }) {
-    const next: AppConfig = {
-      ...this.config,
-      search: {
-        ...(this.config.search || {}),
-        ...partial,
-        providers: {
-          ...(this.config.search?.providers || {}),
-          ...(partial.providers || {})
-        }
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
+    await this.commitConfig(mergeSearchSettingsConfig(this.config, partial));
   }
 
   async updateTtsSettings(partial: {
@@ -3600,15 +3312,7 @@ class AppStore {
     data_dir?: string;
     model_variant?: string;
   }) {
-    const next: AppConfig = {
-      ...this.config,
-      tts: {
-        ...(this.config.tts || {}),
-        ...partial
-      }
-    };
-    this.config = next;
-    await saveAppConfig(next);
+    await this.commitConfig(mergeTtsSettingsConfig(this.config, partial));
   }
 }
 

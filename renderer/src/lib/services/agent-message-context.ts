@@ -1,15 +1,10 @@
 import type { RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
-
-type ToolObservationLike = {
-  name: string;
-  success: boolean;
-  summary: string;
-};
+import type { ToolObservation } from '$lib/services/agent-types';
 
 export function injectEvidenceSummary(
   messages: RequestMessage[],
-  observations: ToolObservationLike[],
+  observations: ToolObservation[],
   liveSources: SearchResult[],
   compactText: (value: unknown, max?: number) => string
 ): void {

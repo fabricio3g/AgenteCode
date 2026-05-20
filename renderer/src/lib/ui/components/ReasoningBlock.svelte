@@ -10,9 +10,10 @@
     status?: 'idle' | 'streaming' | 'error';
     timing?: number | null;
     totalElapsedSeconds?: number | null;
+    autoOpenOnStreaming?: boolean;
   }
 
-  let { reasoning, status = 'idle', timing = 0, totalElapsedSeconds = 0 }: Props = $props();
+  let { reasoning, status = 'idle', timing = 0, totalElapsedSeconds = 0, autoOpenOnStreaming = true }: Props = $props();
   let open = $state(false);
   let userToggled = $state(false);
   let reasoningLiveEl = $state<HTMLDivElement | undefined>(undefined);
@@ -24,7 +25,7 @@
   });
 
   $effect(() => {
-    if (!userToggled) open = status === 'streaming';
+    if (!userToggled) open = autoOpenOnStreaming && status === 'streaming';
   });
 
   const elapsed = $derived(Math.max(0, Number(timing || 0)));

@@ -1,21 +1,5 @@
 import type { SearchResult } from '$lib/types/tauri';
-
-export type ToolResultLike = {
-  success: boolean;
-  output?: unknown;
-  error?: string;
-  createdFiles?: string[];
-  modifiedFiles?: string[];
-};
-
-export type ToolObservationLike = {
-  name: string;
-  args: Record<string, unknown>;
-  success: boolean;
-  summary: string;
-  sources?: SearchResult[];
-  createdFiles?: string[];
-};
+import type { ToolObservation, ToolResult } from '$lib/services/agent-types';
 
 export function compactText(value: unknown, max = 900): string {
   return String(value ?? '')
@@ -33,7 +17,7 @@ export function sourceRows(sources: SearchResult[]): Array<Record<string, string
   }));
 }
 
-export function summarizeToolObservation(name: string, args: Record<string, unknown>, result: ToolResultLike): ToolObservationLike {
+export function summarizeToolObservation(name: string, args: Record<string, unknown>, result: ToolResult): ToolObservation {
   const createdFiles = [
     ...(result.createdFiles || []),
     ...(result.modifiedFiles || [])
@@ -112,7 +96,7 @@ export function summarizeToolObservation(name: string, args: Record<string, unkn
   };
 }
 
-export function evidenceSources(observations: ToolObservationLike[], liveSources: SearchResult[]): SearchResult[] {
+export function evidenceSources(observations: ToolObservation[], liveSources: SearchResult[]): SearchResult[] {
   const byUrl = new Map<string, SearchResult>();
   for (const source of liveSources) {
     if (source.url) byUrl.set(source.url, source);
@@ -125,7 +109,7 @@ export function evidenceSources(observations: ToolObservationLike[], liveSources
   return Array.from(byUrl.values());
 }
 
-export function buildEvidenceText(observations: ToolObservationLike[], liveSources: SearchResult[]): string {
+export function buildEvidenceText(observations: ToolObservation[], liveSources: SearchResult[]): string {
   const successful = observations.filter((observation) => observation.success && observation.summary);
   const failed = observations.filter((observation) => !observation.success && observation.summary);
   const sources = evidenceSources(observations, liveSources);
@@ -187,7 +171,7 @@ export function hasAllRequestedArtifacts(files: Record<string, string>, prompt: 
 
 export function hasGatheredEvidence(params: {
   files: Record<string, string>;
-  observations: ToolObservationLike[];
+  observations: ToolObservation[];
   sources: SearchResult[];
   content?: string;
   hasVisibleArtifact: (files: Record<string, string>) => boolean;

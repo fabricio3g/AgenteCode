@@ -780,19 +780,29 @@
             {$t('welcome.loadingModel')}
           </p>
         {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
-          <p class="text-sm text-[var(--text-muted)]">
-            {$t('welcome.noModelLoaded')}
-            <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('explore')}>
-              {$t('welcome.browseAll')}
-              <ArrowRight class="h-3 w-3" />
-            </button>
-          </p>
-          <p class="mt-1.5 text-xs text-[var(--text-muted)]">
-            {$t('welcome.runtimeAutoSelected')}
-            <button class="text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('runtime')}>
-              {$t('welcome.changeRuntime')}
-            </button>
-          </p>
+          <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
+            <span class="whitespace-nowrap">{$t('welcome.noModelLoaded')}</span>
+            <span class="inline-flex items-center gap-2 whitespace-nowrap">
+              <span aria-hidden="true" class="text-[var(--text-tertiary)]">|</span>
+              <button
+                class="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+                style="background: #09305D;"
+                onclick={() => openModelHub('explore')}
+              >
+                {$t('welcome.browseAll')}
+                <ArrowRight class="h-3 w-3" />
+              </button>
+            </span>
+          </div>
+          <div class="mt-1.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
+            <span class="whitespace-nowrap">{$t('welcome.runtimeAutoSelected')}</span>
+            <span class="inline-flex items-center gap-2 whitespace-nowrap">
+              <span aria-hidden="true" class="text-[var(--text-tertiary)]">|</span>
+              <button class="underline underline-offset-2 transition hover:opacity-85" style="color: #77AF70; text-decoration-color: #77AF70;" onclick={() => openModelHub('runtime')}>
+                {$t('welcome.changeRuntime')}
+              </button>
+            </span>
+          </div>
         {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
           <p class="text-sm text-[var(--text-muted)]">
             {$t('welcome.noModel')}
@@ -886,16 +896,17 @@
         </button>
         {#if appStore.composer.trim() || currentChatGenerating}
           <button
-            class="send-btn flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            class="send-btn flex h-8 w-8 items-center justify-center rounded-full text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            style="background: #E20E0F;"
             onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
             disabled={sendDisabled}
             aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
           >
             {#if currentChatGenerating}
-              <Square class="h-3.5 w-3.5 fill-current" />
+              <Square class="h-3.5 w-3.5 fill-current stroke-[2.75]" />
             {:else}
               <span class="send-icon-wrap inline-flex">
-                <ArrowUp class="h-3.5 w-3.5" />
+                <ArrowUp class="h-3.5 w-3.5 stroke-[2.75]" />
               </span>
             {/if}
           </button>
@@ -1055,9 +1066,13 @@
     line-height: 1.05;
     letter-spacing: -0.03em;
     font-weight: 650;
-    color: var(--text);
+    color: rgb(9, 47, 90);
     user-select: text;
     -webkit-user-select: text;
+  }
+
+  :global(.dark) .welcome-headline {
+    color: #e6f0ff;
   }
 
   @keyframes shimmer {

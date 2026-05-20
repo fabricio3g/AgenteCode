@@ -7,7 +7,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
-  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -339,6 +339,14 @@
         <Boxes class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
         <span class="btn-label">Model Hub</span>
       </button>
+      <button
+        class={`sidebar-btn roleplay-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition ${appStore.shellMode === 'roleplay' ? 'is-active' : ''}`}
+        onclick={() => appStore.toggleRoleplayMode()}
+        title="Roleplay"
+      >
+        <Sparkles class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <span class="btn-label">Roleplay</span>
+      </button>
     </div>
   </div>
 </aside>
@@ -507,6 +515,15 @@
 
   .sidebar-btn.is-active {
     background: var(--surface-hover);
+  }
+
+  .sidebar-btn.roleplay-btn.is-active {
+    background: var(--surface-hover);
+    border-color: var(--border);
+  }
+
+  .sidebar-btn.roleplay-btn.is-active .btn-label {
+    color: var(--text-secondary);
   }
 
   :global(.sidebar-btn svg) {

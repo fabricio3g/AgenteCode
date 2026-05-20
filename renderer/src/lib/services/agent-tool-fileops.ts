@@ -1,30 +1,15 @@
 import type { WorkspaceFile } from '$lib/types/chat';
-
-type ToolResultLike = {
-  success: boolean;
-  output?: unknown;
-  error?: string;
-  createdFiles?: string[];
-  modifiedFiles?: string[];
-  deletedFiles?: string[];
-};
-
-type ToolContextLike = {
-  files: Record<string, string>;
-  workspaceRoot?: string;
-  workspaceFiles?: WorkspaceFile[];
-  signal?: AbortSignal;
-};
+import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 
 export async function handleReadFile(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   normPath: (value: unknown) => string;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
-  readWsText: (path: string, ctx: ToolContextLike) => Promise<string>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  isWorkspace: (ctx: ToolContext) => boolean;
+  readWsText: (path: string, ctx: ToolContext) => Promise<string>;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const path = params.normPath(params.args.path);
   if (!path) return params.fail('Missing path');
   if (params.isWorkspace(params.ctx)) {
@@ -42,16 +27,16 @@ export async function handleReadFile(params: {
 
 export async function handleWriteFile(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   normPath: (value: unknown) => string;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
-  readWsText: (path: string, ctx: ToolContextLike) => Promise<string>;
-  writeWorkspaceFile: (workspaceRoot: string, path: string, content: string) => Promise<void>;
-  getWsFiles: (ctx: ToolContextLike) => WorkspaceFile[];
-  upsertWsFile: (ctx: ToolContextLike, path: string, size?: number) => void;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  isWorkspace: (ctx: ToolContext) => boolean;
+  readWsText: (path: string, ctx: ToolContext) => Promise<string>;
+  writeWorkspaceFile: (workspaceRoot: string, path: string, content: string) => Promise<unknown>;
+  getWsFiles: (ctx: ToolContext) => WorkspaceFile[];
+  upsertWsFile: (ctx: ToolContext, path: string, size?: number) => void;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const path = params.normPath(params.args.path);
   const content = String(params.args.content || '');
   const mode = String(params.args.mode || 'overwrite');
@@ -76,13 +61,13 @@ export async function handleWriteFile(params: {
 
 export async function handleDeleteFile(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   normPath: (value: unknown) => string;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
+  isWorkspace: (ctx: ToolContext) => boolean;
   deleteWorkspaceFile: (workspaceRoot: string, path: string) => Promise<void>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const path = params.normPath(params.args.path);
   if (!path) return params.fail('Missing path');
   if (params.isWorkspace(params.ctx)) {
@@ -99,12 +84,12 @@ export async function handleDeleteFile(params: {
 
 export function handleListFiles(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
-  getWsFiles: (ctx: ToolContextLike) => WorkspaceFile[];
+  ctx: ToolContext;
+  isWorkspace: (ctx: ToolContext) => boolean;
+  getWsFiles: (ctx: ToolContext) => WorkspaceFile[];
   globToRegex: (pattern: string) => RegExp;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-}): ToolResultLike {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+}): ToolResult {
   if (params.isWorkspace(params.ctx)) {
     let files = [...params.getWsFiles(params.ctx)];
     const pattern = String(params.args.pattern || '');
@@ -120,13 +105,13 @@ export function handleListFiles(params: {
 
 export async function handleSearchFiles(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
-  getWsFiles: (ctx: ToolContextLike) => WorkspaceFile[];
-  readWsText: (path: string, ctx: ToolContextLike) => Promise<string>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ctx: ToolContext;
+  isWorkspace: (ctx: ToolContext) => boolean;
+  getWsFiles: (ctx: ToolContext) => WorkspaceFile[];
+  readWsText: (path: string, ctx: ToolContext) => Promise<string>;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const query = String(params.args.query || '');
   if (!query) return params.fail('query required');
   const caseSensitive = params.args.caseSensitive === true;
@@ -155,8 +140,8 @@ export function handlePreviewProject(params: {
   args: Record<string, unknown>;
   files: Record<string, string>;
   buildPreviewHtml: (files: Record<string, string>, entry?: string) => string | null;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-}): ToolResultLike {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+}): ToolResult {
   const entry = String(params.args.entryPoint || 'index.html');
   const html = params.buildPreviewHtml(params.files, entry);
   if (!html) {

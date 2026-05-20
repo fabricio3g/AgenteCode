@@ -50,7 +50,12 @@
   }
 
   .nav-btn svg {
+    color: #0D2F5D;
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  :global(.dark) .nav-btn svg {
+    color: #ffffff;
   }
 
   .nav-btn:hover svg {

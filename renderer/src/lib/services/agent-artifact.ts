@@ -1,4 +1,5 @@
 import type { AgentArtifact } from '$lib/types/chat';
+import type { ToolResult } from '$lib/services/agent-types';
 
 export type ArtifactContext = {
   files: Record<string, string>;
@@ -21,9 +22,9 @@ export function addGeneratedArtifactFile(params: {
   files: Record<string, string>;
   file: { path: string; dataUrl: string; mime: string; previewHtml?: string };
   viewerPathFor: (path: string) => string;
-  ok: (output: unknown, extra?: Record<string, unknown>) => { success: true } & Record<string, unknown>;
-  fail: (error: string, note?: string) => { success: false; error: string; note?: string };
-}) {
+  ok: (output: unknown, extra?: Partial<ToolResult>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
   if (params.executionMode === 'workspace') {
     return params.fail('Office/PDF artifact generation is currently available in chat sandbox mode only.');
   }

@@ -336,6 +336,7 @@ export async function loadChatConfig(): Promise<AppConfig> {
     ui: {
       theme: config.ui?.theme,
       workspace_mode: config.ui?.workspace_mode || 'modern',
+      shell_mode: config.ui?.shell_mode || 'standard',
       show_assistant_text: config.ui?.show_assistant_text ?? true,
       enable_thinking: config.ui?.enable_thinking ?? true
     }

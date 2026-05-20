@@ -1,6 +1,7 @@
 import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { RequestMessage, NativeToolCall } from '$lib/services/chat-api';
+import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
 import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupportsNativeTools } from '$lib/services/agent-llm';
 import { webSearch, fetchUrlContent } from '$lib/services/search';
@@ -69,59 +70,15 @@ import {
   ensureRequestedArtifactsFromEvidence as ensureRequestedArtifactsFromEvidenceCore,
   buildStrictFallbackContent as buildStrictFallbackContentCore
 } from '$lib/services/agent-strict-fallback';
-import { executeSingleTool as executeSingleToolCore } from '$lib/services/agent-tool-execution';type ToolCall = { id?: string; name: string; arguments: Record<string, unknown> };
-
-type AgentTaskResult = {
-  content: string;
-  reasoning: string;
-  steps: AgentStep[];
-  artifact: AgentArtifact | null;
-  sources: SearchResult[];
-  outcome: AgentOutcome;
-  stopReason: AgentStopReason;
-  publicFallback?: boolean;
-  diagnosticsRedacted?: boolean;
-  error?: string;
-  warning?: string;
-};
-
-type ToolResult = {
-  success: boolean;
-  output?: unknown;
-  error?: string;
-  note?: string;
-  createdFiles?: string[];
-  modifiedFiles?: string[];
-  deletedFiles?: string[];
-  nextTurnMods?: {
-    instructions?: string;
-    temperature?: number;
-    injectMessages?: RequestMessage[];
-    disableNativeTools?: boolean;
-  };
-};
-
-type ToolObservation = {
-  name: string;
-  args: Record<string, unknown>;
-  success: boolean;
-  summary: string;
-  sources?: SearchResult[];
-  createdFiles?: string[];
-};
-
-type ToolContext = {
-  chatId: string;
-  files: Record<string, string>;
-  conversationContext?: string;
-  workspaceRoot?: string;
-  workspaceFiles?: WorkspaceFile[];
-  executionMode: 'sandbox' | 'workspace';
-  debugLogs?: boolean;
-  signal?: AbortSignal;
-  onArtifact: (a: AgentArtifact | null) => void;
-  workProduct?: AgentArtifact['workProduct'];
-};
+import { executeSingleTool as executeSingleToolCore } from '$lib/services/agent-tool-execution';
+import {
+  applyNextTurnMods,
+  appendToolResultMessage,
+  createRunningToolStep,
+  finalizeToolStep,
+  mergeWebSearchSources,
+  publishArtifact
+} from '$lib/services/agent-tool-result';
 
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
@@ -471,10 +428,6 @@ async function buildStrictFallbackContent(params: {
   });
 }
 
-function injectEvidenceSummary(messages: RequestMessage[], observations: ToolObservation[], liveSources: SearchResult[]) {
-  injectEvidenceSummaryMessage(messages, observations, liveSources, compactText);
-}
-
 function pushMissingRequestedFilesStep(steps: AgentStep[], ctx: ToolContext, rawPrompt?: string): void {
   steps.push({
     id: uid('step'),
@@ -484,41 +437,6 @@ function pushMissingRequestedFilesStep(steps: AgentStep[], ctx: ToolContext, raw
     detail: `Could not create: ${missingRequestedArtifactExts(ctx.files, rawPrompt || '').map((ext) => `.${ext}`).join(', ')}`
   });
 }
-
-function trimContext(messages: RequestMessage[], _nativeMode: boolean, keepCount = KEEP_TOOL_PAIRS) {
-  trimContextMessages(messages, keepCount);
-}
-
-async function enforceTokenBudget(messages: RequestMessage[], config: unknown) {
-  await enforceTokenBudgetMessages({
-    messages,
-    config,
-    isTauri,
-    invoke,
-    debugLog
-  });
-}
-
-
-type RunAgentTaskArgs = {
-  chatId: string;
-  systemPrompt?: string;
-  messages: RequestMessage[];
-  rawPrompt?: string;
-  conversationContext?: string;
-  executionMode?: 'workspace' | 'sandbox';
-  workspaceRoot?: string;
-  workspaceName?: string;
-  workspaceFiles?: WorkspaceFile[];
-  onStep: (steps: AgentStep[]) => void;
-  onProgress?: (text: string) => void;
-  onReasoning?: (value: string) => void;
-  onArtifact: (artifact: AgentArtifact | null) => void;
-  onSources?: (sources: SearchResult[]) => void;
-  signal?: AbortSignal;
-  maxIterations?: number;
-  maxToolCalls?: number;
-};
 
 export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
 
@@ -550,9 +468,9 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
   const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');
-  let useNativeTools = isTauri() && agentSupportsNativeTools(config);
+  let useNativeTools = isTauri() && agentSupportsNativeTools(config as any);
   debugLog(debugLogs, `[agent] START | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isTauri=${isTauri()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls}`);
-  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config)}`);
+  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config as any)}`);
   let nativeFailed = false;
   let directMode = false;
   let consecutiveEmptyResponses = 0;
@@ -618,11 +536,16 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       args.onProgress?.(`Planning how to approach this\u2026`);
     }
 
-    trimContext(messages, useNativeTools && !nativeFailed, localMode ? 4 : KEEP_TOOL_PAIRS);
-    await enforceTokenBudget(messages, config);
+    trimContextMessages(messages, localMode ? 4 : KEEP_TOOL_PAIRS);
+    await enforceTokenBudgetMessages({
+      messages,
+      config,
+      isTauri,
+      invoke,
+      debugLog
+    });
 
-    // Inject evidence summary so the LLM always knows what it has found
-    injectEvidenceSummary(messages, toolObservations, sources);
+    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
 
     const sysCount = messages.filter(m => m.role === 'system').length;
     const userCount = messages.filter(m => m.role === 'user').length;
@@ -683,7 +606,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
         debugLog(debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
         nativeFailed = true;
-        setToolSupportCache(config, false);
+        setToolSupportCache(config as any, false);
         messages[0] = { role: 'system', content: xmlSys };
         try {
           completion = await completeAssistantReply({ messages, signal: args.signal });
@@ -1130,17 +1053,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
         const results = await Promise.allSettled(
           group.map(async (tc) => {
-            const toolStep: AgentStep = {
-              id: uid('step'),
-              type: STEP_TYPE[tc.name] || 'tool',
-              label: tc.name.replace(/_/g, ' '),
-              status: 'running',
-              detail: tc.name === 'write_file'
-                ? `path: ${String(tc.arguments.path || '').slice(0, 120)}`
-                : Object.keys(tc.arguments).length
-                  ? Object.entries(tc.arguments).slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(', ')
-                  : undefined
-            };
+            const toolStep = createRunningToolStep(tc, STEP_TYPE, uid);
             return { tc, toolStep, result: await executeToolWithTimeout(tc.name, tc.arguments, ctx) };
           })
         );
@@ -1150,66 +1063,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           if (entry.status === 'rejected') continue;
           const { tc, toolStep, result } = entry.value;
 
-          if (result.nextTurnMods?.disableNativeTools) nativeFailed = true;
-          if (result.nextTurnMods?.instructions) {
-            messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
-          }
-          if (result.nextTurnMods?.injectMessages) {
-            messages.push(...result.nextTurnMods.injectMessages);
-          }
-
+          if (applyNextTurnMods(messages, result)) nativeFailed = true;
           toolObservations.push(summarizeToolObservation(tc.name, tc.arguments, result));
-
-          if (tc.name === 'web_search' && result.success) {
-            const output = result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
-            let added = false;
-            for (const r of output?.results ?? []) {
-              if (r.url && !seenUrls.has(r.url)) {
-                seenUrls.add(r.url);
-                sources.push({ title: r.title || r.url, url: r.url, snippet: r.snippet || '' });
-                added = true;
-              }
-            }
-            if (added) args.onSources?.([...sources]);
-          }
-
-          toolStep.status = result.success ? 'done' : 'error';
-          if (!result.success && result.note) {
-            toolStep.detail = `${result.error} \u2014 ${result.note.slice(0, 120)}`;
-            toolStep.output = result.error;
-          } else if (!result.success) {
-            toolStep.detail = result.error?.slice(0, 200);
-            toolStep.output = result.error || '';
-          } else {
-            toolStep.detail = undefined;
-            const out = result.output as Record<string, unknown> | undefined;
-            if (out && typeof out === 'object') {
-              const lines: string[] = [];
-              for (const [k, v] of Object.entries(out)) {
-                if (typeof v === 'string') lines.push(`${k}: ${v.slice(0, 200)}`);
-              }
-              toolStep.output = lines.join('\n') || JSON.stringify(out, null, 2);
-            }
-          }
-
+          mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
+          finalizeToolStep(toolStep, result);
           steps.push(toolStep);
-
-          const artifact = buildArtifact(ctx);
-          args.onArtifact(artifact);
-
-          let resultPayload = result.success
-            ? (result.note ? { ...result.output as object, _note: result.note } : result.output)
-            : { error: result.error, ...(result.note ? { note: result.note } : {}) };
-          const rawResultJson = JSON.stringify(resultPayload);
-          if (rawResultJson.length > MAX_TOOL_RESULT_CHARS) {
-            resultPayload = { _truncated: true, _summary: rawResultJson.slice(0, MAX_TOOL_RESULT_CHARS) + '\u2026(truncated)', _result: 'ok' };
-          }
-
-          if (nativeActive && !nativeFailed && tc.id) {
-            messages.push({ role: 'tool', content: JSON.stringify(resultPayload), tool_call_id: tc.id, name: tc.name });
-          } else {
-            messages.push({ role: 'user', content: `Tool result for ${tc.name}:\n${JSON.stringify(resultPayload, null, 2)}` });
-          }
+          publishArtifact(args.onArtifact, () => buildArtifact(ctx));
+          appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars: MAX_TOOL_RESULT_CHARS });
         }
         args.onStep([...steps]);
       }
@@ -1239,7 +1099,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   if (!finalContent) {
     for (let attempt = 1; attempt <= MAX_FORCED_FINAL_ANSWER_ATTEMPTS; attempt++) {
       try {
-        injectEvidenceSummary(messages, toolObservations, sources);
+        injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
         messages[0] = { role: 'system', content: directSys };
         messages.push({
           role: 'user',

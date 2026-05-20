@@ -1,33 +1,19 @@
 import type { AgentArtifact } from '$lib/types/chat';
 import type { GeneratedArtifactFile } from '$lib/services/generated-documents';
-
-type ToolResultLike = {
-  success: boolean;
-  output?: unknown;
-  error?: string;
-  createdFiles?: string[];
-};
-
-type ToolContextLike = {
-  files: Record<string, string>;
-  workspaceRoot?: string;
-  executionMode: 'workspace' | 'sandbox';
-  workProduct?: AgentArtifact['workProduct'];
-  onArtifact: (artifact: AgentArtifact | null) => void;
-};
+import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 
 export async function handleCreateReport(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   normPath: (value: unknown) => string;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
+  isWorkspace: (ctx: ToolContext) => boolean;
   buildHtmlReport: (title: string, sections: Array<{ title?: string; heading?: string; content?: string }>, options?: { theme?: 'light' | 'dark' }) => string;
   buildMarkdownReport: (title: string, sections: Array<{ title?: string; heading?: string; content?: string }>) => string;
-  writeWorkspaceFile: (workspaceRoot: string, path: string, content: string) => Promise<void>;
+  writeWorkspaceFile: (workspaceRoot: string, path: string, content: string) => Promise<unknown>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const title = String(params.args.title || 'Report');
   const sections = Array.isArray(params.args.sections) ? params.args.sections as Array<{ title?: string; heading?: string; content?: string }> : [];
   const format = String(params.args.format || 'markdown');
@@ -56,18 +42,18 @@ export async function handleCreateReport(params: {
 
 export async function handleCreateWorkProduct(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   isTauri: () => boolean;
-  isWorkspace: (ctx: ToolContextLike) => boolean;
+  isWorkspace: (ctx: ToolContext) => boolean;
   uid: (prefix: string) => string;
   viewerPathFor: (path: string) => string;
   createWorkProductArtifactFiles: (args: Record<string, unknown>) => Promise<{ files: GeneratedArtifactFile[]; html?: string; warnings: string[] }>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
-  buildArtifact: (ctx: ToolContextLike) => AgentArtifact | null;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-  failFromError: (err: unknown, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  buildArtifact: (ctx: ToolContext) => AgentArtifact | null;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+  failFromError: (err: unknown, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   if (!params.isTauri()) return params.fail('Professional work product generation requires the desktop app.');
   if (params.isWorkspace(params.ctx)) return params.fail('Professional work products are currently available in chat sandbox mode only.');
 

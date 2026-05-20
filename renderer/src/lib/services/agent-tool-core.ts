@@ -1,23 +1,13 @@
-type ToolResultLike = {
-  success: boolean;
-  output?: unknown;
-  error?: string;
-  note?: string;
-};
-
-type ToolContextLike = {
-  chatId: string;
-  conversationContext?: string;
-};
+import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 
 export async function handleWebSearch(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   webSearch: (args: { query: string; context?: string; deep: boolean; mode: 'search' | 'deep' | 'max' }) => Promise<{ error?: string; results: Array<{ title: string; url: string; snippet?: string }>; context?: string }>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-  failFromError: (err: unknown, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+  failFromError: (err: unknown, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const query = String(params.args.query || '');
   const mode = (['search', 'deep', 'max'] as const).includes(params.args.mode as 'search' | 'deep' | 'max')
     ? (params.args.mode as 'search' | 'deep' | 'max')
@@ -52,7 +42,7 @@ export async function handleFetchUrl(params: {
     title?: string;
     excerpt?: string;
     content?: string;
-    links?: string[];
+    links?: Array<unknown>;
     site_name?: string;
     og_image?: string;
     status?: number;
@@ -61,10 +51,10 @@ export async function handleFetchUrl(params: {
     quality?: string;
   }>;
   isTauri: () => boolean;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-  failFromError: (err: unknown, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+  failFromError: (err: unknown, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   const url = String(params.args.url || '');
   if (!url) return params.fail('Missing url');
   try {
@@ -103,11 +93,11 @@ export async function handleFetchUrl(params: {
 
 export async function handleQueryKnowledge(params: {
   args: Record<string, unknown>;
-  ctx: ToolContextLike;
+  ctx: ToolContext;
   queryDocuments: (args: { query: string; chat_id: string; top_k: number }) => Promise<{ results: Array<{ chunk: { text: string }; score: number }>; context?: string }>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  failFromError: (err: unknown, note?: string) => ToolResultLike;
-}): Promise<ToolResultLike> {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  failFromError: (err: unknown, note?: string) => ToolResult;
+}): Promise<ToolResult> {
   try {
     const result = await params.queryDocuments({
       query: String(params.args.query || ''),
@@ -125,10 +115,10 @@ export async function handleQueryKnowledge(params: {
 
 export function handleCalculator(params: {
   args: Record<string, unknown>;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResultLike;
-  fail: (error: string, note?: string) => ToolResultLike;
-  failFromError: (err: unknown, note?: string) => ToolResultLike;
-}): ToolResultLike {
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+  failFromError: (err: unknown, note?: string) => ToolResult;
+}): ToolResult {
   const expression = String(params.args.expression || '');
   if (!expression) return params.fail('Missing expression');
   try {

@@ -62,7 +62,8 @@
 <div class="relative inline-flex">
   <button
     bind:this={triggerEl}
-    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)]' : 'rounded-lg border border-[var(--border)]'}"
+    class="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white transition hover:opacity-90 {dropdownOpen ? 'rounded-b-lg border border-t-0 border-[var(--border)]' : 'rounded-lg border border-[var(--border)]'}"
+    style="background: #09305D;"
     onclick={toggleDropdown}
     aria-haspopup="listbox"
     aria-expanded={dropdownOpen}
@@ -81,7 +82,8 @@
     >
       {#each modeOptionsIds as optionId (optionId)}
         <button
-          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {composerMode === optionId ? 'text-[var(--text)] font-medium' : 'text-[var(--text-secondary)]'}"
+          class="flex w-full items-center gap-2 border-0 px-3 py-1.5 text-left text-xs transition hover:bg-[var(--surface-hover)] {composerMode === optionId ? 'font-medium text-white' : 'text-[var(--text-secondary)]'}"
+          style={composerMode === optionId ? 'background: #09305D;' : undefined}
           onclick={() => selectMode(optionId)}
           role="option"
           aria-selected={composerMode === optionId}

@@ -1,7 +1,9 @@
 import type { AppConfig, ChatSession, ChatFolder } from '$lib/types/chat';
+import type { RoleplayPersistedState } from '$lib/types/roleplay';
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
 const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
+const ROLEPLAY_STATE_KEY = 'chatealm_roleplay_state_v1';
 const THEME_KEY = 'chatealm_theme';
 const DB_MIGRATED_KEY = 'chatealm_db_migrated';
 
@@ -181,6 +183,35 @@ export async function deleteChatFromDb(chatId: string): Promise<void> {
     await (window as any).electronAPI.invoke('chat_db_delete', { chatId });
   } catch (err) {
     console.error('[deleteChatFromDb] Failed:', err);
+  }
+}
+
+export function loadRoleplayState<T>(fallback: T): T {
+  return safeParse<T>(localStorage.getItem(ROLEPLAY_STATE_KEY), fallback);
+}
+
+export function saveRoleplayState<T>(value: T): void {
+  localStorage.setItem(ROLEPLAY_STATE_KEY, JSON.stringify(value));
+}
+
+export async function loadRoleplayStateFromDb(): Promise<RoleplayPersistedState | null> {
+  if (!isElectronEnv()) return null;
+  try {
+    const state = await (window as any).electronAPI.invoke('roleplay_db_load_state') as RoleplayPersistedState | null;
+    if (state && typeof state === 'object') return state;
+  } catch (err) {
+    console.error('[loadRoleplayStateFromDb] Failed:', err);
+  }
+  return null;
+}
+
+export async function saveRoleplayStateToDb(state: RoleplayPersistedState): Promise<void> {
+  if (!isElectronEnv()) return;
+  try {
+    const plain = JSON.parse(JSON.stringify(state));
+    await (window as any).electronAPI.invoke('roleplay_db_save_state', { state: plain });
+  } catch (err) {
+    console.error('[saveRoleplayStateToDb] Failed:', err);
   }
 }
 

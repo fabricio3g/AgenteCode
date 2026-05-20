@@ -5,14 +5,28 @@ import { invoke, listen } from './tauri';
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 let lastLocalLoadSignature: string | null = null;
 
-export function resolveLocalBaseUrl(config?: AppConfig): string {
-  const raw = config?.llm?.local?.base_url?.trim() || DEFAULT_LOCAL_BASE_URL;
+function normalizeLocalBaseUrl(rawBaseUrl?: string): string {
+  const raw = rawBaseUrl?.trim() || DEFAULT_LOCAL_BASE_URL;
   const normalized = raw.replace(/\/+$/, '');
   return normalized.endsWith('/v1') ? normalized : `${normalized}/v1`;
 }
 
+function toClientSafeBaseUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  if (url.hostname === '0.0.0.0') url.hostname = '127.0.0.1';
+  return url.toString().replace(/\/+$/, '');
+}
+
+export function resolveLocalBaseUrl(config?: AppConfig): string {
+  return toClientSafeBaseUrl(normalizeLocalBaseUrl(config?.llm?.local?.base_url));
+}
+
+function resolveLocalBindBaseUrl(config?: AppConfig): string {
+  return normalizeLocalBaseUrl(config?.llm?.local?.base_url);
+}
+
 function parseHostPort(baseUrl: string): { host: string; port: number } {
-  const url = new URL(resolveLocalBaseUrl({ llm: { local: { base_url: baseUrl } } }));
+  const url = new URL(normalizeLocalBaseUrl(baseUrl));
   return {
     host: url.hostname || '127.0.0.1',
     port: url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80
@@ -83,7 +97,7 @@ export async function getRecommendedSettings(
 
 async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {
   const startedAt = Date.now();
-  const modelsUrl = `${resolveLocalBaseUrl({ llm: { local: { base_url: baseUrl } } })}/models`;
+  const modelsUrl = `${toClientSafeBaseUrl(normalizeLocalBaseUrl(baseUrl))}/models`;
 
   let interval = 400;
   const MAX_INTERVAL = 4000;
@@ -125,7 +139,7 @@ export async function ensureLocalRuntime(config: AppConfig): Promise<string> {
     config.llm?.local?.gpu_layers,
     config.llm?.local?.runtime_path
   );
-  const { host, port } = parseHostPort(baseUrl);
+  const { host, port } = parseHostPort(resolveLocalBindBaseUrl(config));
 
   await startLlama({
     model_path: modelPath,
@@ -175,7 +189,7 @@ export async function loadLocalModel(args: {
     args.gpuLayers ?? args.config.llm?.local?.gpu_layers,
     args.runtimePath || args.config.llm?.local?.runtime_path
   );
-  const { host, port } = parseHostPort(baseUrl);
+  const { host, port } = parseHostPort(resolveLocalBindBaseUrl(args.config));
   const baseStartConfig: LlamaConfig = {
     model_path: args.modelPath,
     backend_mode: settings.backend,
@@ -202,7 +216,7 @@ export async function loadLocalModel(args: {
 
   try {
     const currentStatus = await getSupervisorStatus();
-    const currentModelPath = currentStatus?.model_path || null;
+    const currentModelPath = currentStatus?.active_model || null;
     if (currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
       return baseUrl;
     }
