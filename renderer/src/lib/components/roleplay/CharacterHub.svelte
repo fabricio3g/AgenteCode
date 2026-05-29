@@ -21,7 +21,6 @@
   );
   const activeCharacterIds = $derived(new Set(roleplayStore.currentChat?.activeCharacterIds || []));
   const attachedSceneLorebookIds = $derived(new Set(roleplayStore.currentChat?.lorebookIds || []));
-  const selectedCharacterLorebookIds = $derived(new Set(selectedCharacter?.attachedLorebookIds || []));
 
   function entryId() {
     if (crypto?.randomUUID) return `rp-entry-${crypto.randomUUID()}`;
@@ -147,7 +146,7 @@
   }
 </script>
 
-<div class="fixed inset-0 z-[250] flex bg-overlay p-4">
+<div class="fixed inset-0 z-[280] flex bg-overlay p-4">
   <section class="hub m-auto flex h-[min(840px,94vh)] w-[min(1080px,96vw)] flex-col overflow-hidden rounded-xl bg-[var(--surface)] shadow-2xl">
     <header class="hub-header flex items-center justify-between gap-4 px-4 py-3">
       <div class="min-w-0">
@@ -196,7 +195,7 @@
           <div class="space-y-1">
             {#each roleplayStore.characters as character (character.id)}
               <div class="list-row flex items-center gap-2 px-2 py-2" class:is-active={selectedCharacter?.id === character.id}>
-                <button class="min-w-0 flex flex-1 items-center gap-2 text-left" onclick={() => (selectedCharacterId = character.id)}>
+                <button class="character-row-btn min-w-0 flex flex-1 items-center gap-2 text-left" onclick={() => (selectedCharacterId = character.id)}>
                   {#if character.avatarDataUrl}
                     <img class="h-9 w-9 rounded-md object-cover" src={character.avatarDataUrl} alt="" />
                   {:else}
@@ -204,7 +203,7 @@
                   {/if}
                   <span class="min-w-0 flex-1">
                     <span class="block truncate text-sm text-[var(--text)]">{character.name}</span>
-                    <span class="block truncate text-xs text-[var(--text-muted)]">{(character.attachedLorebookIds || []).length} lorebooks</span>
+                    <span class="block truncate text-xs text-[var(--text-muted)]">Character profile</span>
                   </span>
                 </button>
                 <button class="selector-btn text-xs" class:is-selected={activeCharacterIds.has(character.id)} onclick={() => roleplayStore.toggleCharacter(character.id)}>
@@ -278,30 +277,6 @@
               </details>
             </div>
 
-            <section class="mt-6">
-              <div class="mb-2 flex items-center justify-between gap-2">
-                <div>
-                  <p class="text-sm font-semibold text-[var(--text)]">Character lorebooks</p>
-                  <p class="text-xs text-[var(--text-muted)]">Attached lore follows this character into any scene.</p>
-                </div>
-                <button class="row-action px-3 py-2 text-sm" onclick={() => (activeTab = 'lorebooks')}>Manage lorebooks</button>
-              </div>
-              <div class="attachment-list">
-                {#if roleplayStore.lorebooks.length}
-                  {#each roleplayStore.lorebooks as book (book.id)}
-                    <button class="attach-row" class:is-active={selectedCharacterLorebookIds.has(book.id)} onclick={() => roleplayStore.toggleCharacterLorebook(selectedCharacter.id, book.id)}>
-                      <span class="min-w-0">
-                        <span class="block truncate text-sm text-[var(--text)]">{book.name}</span>
-                        <span class="text-xs text-[var(--text-muted)]">{book.entries.length} entries</span>
-                      </span>
-                      <span class="text-xs font-semibold">{selectedCharacterLorebookIds.has(book.id) ? 'Attached' : 'Attach'}</span>
-                    </button>
-                  {/each}
-                {:else}
-                  <p class="py-3 text-sm text-[var(--text-muted)]">No lorebooks yet.</p>
-                {/if}
-              </div>
-            </section>
           {:else}
             <div class="empty flex h-full items-center justify-center text-sm text-[var(--text-muted)]">Create or import a character to start.</div>
           {/if}
@@ -329,7 +304,7 @@
             <div class="mb-5 flex items-center justify-between gap-3">
               <div class="min-w-0">
                 <h3 class="truncate text-base font-semibold text-[var(--text)]">{selectedLorebook.name}</h3>
-                <p class="text-xs text-[var(--text-muted)]">World info activated by keys, scene attachment, or character attachment.</p>
+                <p class="text-xs text-[var(--text-muted)]">World info activated by keys and scene attachment.</p>
               </div>
               {#if !selectedLorebook.sourceCharacterId}
                 <button class="danger-btn flex items-center gap-2 px-3 py-2 text-sm" onclick={() => roleplayStore.deleteLorebook(selectedLorebook.id)}>
@@ -349,15 +324,6 @@
                   </span>
                   <span class="text-xs font-semibold">{attachedSceneLorebookIds.has(selectedLorebook.id) ? 'Attached' : 'Attach'}</span>
                 </button>
-                {#if selectedCharacter}
-                  <button class="attach-row" class:is-active={selectedCharacterLorebookIds.has(selectedLorebook.id)} onclick={() => roleplayStore.toggleCharacterLorebook(selectedCharacter.id, selectedLorebook.id)}>
-                    <span>
-                      <span class="block text-sm font-semibold text-[var(--text)]">{selectedCharacter.name}</span>
-                      <span class="text-xs text-[var(--text-muted)]">Follow this character into scenes.</span>
-                    </span>
-                    <span class="text-xs font-semibold">{selectedCharacterLorebookIds.has(selectedLorebook.id) ? 'Attached' : 'Attach'}</span>
-                  </button>
-                {/if}
               </div>
             </div>
 
@@ -496,6 +462,12 @@
     border-radius: 10px;
     color: var(--text);
     transition: background 0.15s ease;
+  }
+  .character-row-btn {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
   }
   .list-row.is-active {
     background: var(--surface-hover);

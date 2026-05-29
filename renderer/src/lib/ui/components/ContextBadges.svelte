@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { WorkContextMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, Database, Globe } from 'lucide-svelte';
+  import { BriefcaseBusiness, Globe } from 'lucide-svelte';
 
   interface Props {
     workContext?: WorkContextMeta | null;
@@ -11,7 +11,7 @@
   let { workContext = null, sourceCount = 0, ragCount = 0 }: Props = $props();
 </script>
 
-{#if workContext || sourceCount > 0 || ragCount > 0}
+{#if workContext || sourceCount > 0}
   <div class="context-row mb-3">
     {#if workContext}
       <span class="context-pill work">
@@ -23,12 +23,6 @@
       <span class="context-pill">
         <Globe class="h-3 w-3" />
         {sourceCount}
-      </span>
-    {/if}
-    {#if ragCount > 0}
-      <span class="context-pill">
-        <Database class="h-3 w-3" />
-        {ragCount}
       </span>
     {/if}
   </div>

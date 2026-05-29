@@ -290,7 +290,7 @@
       <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[12px] text-[var(--text)]">{downloadError}</div>
     {/if}
 
-    <button class="flex items-center gap-1 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => (showAdvanced = !showAdvanced)}>
+    <button class="flex items-center gap-1 border-0 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => (showAdvanced = !showAdvanced)}>
       {#if showAdvanced}<ChevronUp class="h-3.5 w-3.5" />{:else}<ChevronDown class="h-3.5 w-3.5" />{/if}
       Custom / manual URL
     </button>

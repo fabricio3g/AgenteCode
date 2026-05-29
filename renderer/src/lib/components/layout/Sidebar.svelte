@@ -87,7 +87,7 @@
 
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
-  const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0D2F5D');
+  const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0A0A0A');
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -378,7 +378,7 @@
   }
 
   .btn-label {
-    color: var(--text-secondary);
+    color: var(--text);
   }
 
   .search-input {

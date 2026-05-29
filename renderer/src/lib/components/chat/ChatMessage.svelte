@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
@@ -80,7 +80,41 @@
     return true;
   });
   const cleanContent = $derived(stripChartBlocks(displayContent));
-  const userHtml = $derived(renderMarkdown(message.content || ''));
+
+  function splitSelectedTextQuestion(content: string): { selectedText: string; question: string; sourceMessageId: string } | null {
+    const raw = (content || '').trim();
+    const sourceMatch = raw.match(/^<!--\s*chatealm-selected-source:([^\s]+)\s*-->\n?/);
+    const sourceMessageId = sourceMatch?.[1] || '';
+    const normalized = sourceMatch ? raw.slice(sourceMatch[0].length).trim() : raw;
+    if (!normalized.startsWith('> ')) return null;
+
+    const separatorIndex = normalized.indexOf('\n\n');
+    if (separatorIndex < 0) return null;
+
+    const quoteBlock = normalized.slice(0, separatorIndex);
+    const question = normalized.slice(separatorIndex + 2).trim();
+    if (!question) return null;
+
+    const quoteLines = quoteBlock.split('\n');
+    if (!quoteLines.every((line) => line.startsWith('>'))) return null;
+
+    const selectedText = quoteLines
+      .map((line) => line.replace(/^> ?/, ''))
+      .join('\n')
+      .trim();
+
+    return selectedText ? { selectedText, question, sourceMessageId } : null;
+  }
+
+  function scrollToSelectedSource() {
+    const sourceMessageId = userSelectedTextQuestion?.sourceMessageId;
+    if (!sourceMessageId) return;
+    window.dispatchEvent(new CustomEvent('scroll-to-chat-message', { detail: { messageId: sourceMessageId } }));
+  }
+
+  const userSelectedTextQuestion = $derived(splitSelectedTextQuestion(message.content || ''));
+  const userHtml = $derived(renderMarkdown(userSelectedTextQuestion?.question || message.content || ''));
+  const userSelectedTextHtml = $derived(userSelectedTextQuestion ? renderMarkdown(userSelectedTextQuestion.selectedText) : '');
 
   // TTS state
   const isTtsGenerating = $derived(
@@ -186,15 +220,21 @@
 
 <article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
   {#if message.role === 'user'}
-    <div class="max-w-[min(46rem,84%)] space-y-3">
-      <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7 shadow-[var(--shadow-xs)]">
+    {#if userSelectedTextQuestion}
+      <button type="button" class="selected-text-message-bubble" data-chat-message-content data-chat-message-id={message.id} onclick={scrollToSelectedSource} title="Jump to original selection">
+        <CornerDownLeft class="selected-text-message-icon h-4 w-4" />
+        <div class="markdown-body user-markdown selected-text-message-markdown">{@html userSelectedTextHtml}</div>
+      </button>
+    {/if}
+    <div class="user-message-stack max-w-[min(46rem,84%)] space-y-3">
+      <div class="chateaui-user-bubble px-5 py-3.5 text-base leading-7 shadow-[var(--shadow-xs)]" data-chat-message-content data-chat-message-id={message.id}>
         <div class="markdown-body user-markdown">{@html userHtml}</div>
-        {#if message.attachments?.length}
-          <div class="mt-3 flex justify-end">
-            <AttachmentDocumentsBlock attachments={message.attachments} />
-          </div>
-        {/if}
       </div>
+      {#if message.attachments?.length}
+        <div class="user-attachments-row">
+          <AttachmentDocumentsBlock attachments={message.attachments} />
+        </div>
+      {/if}
       {#if message.workContext}
         <div class="flex flex-wrap justify-end gap-2">
           <div class="chateaui-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[color:var(--work-accent-strong)]" style="--chateaui-pill-border: var(--work-accent-border); --chateaui-pill-bg: var(--work-accent-soft);">
@@ -225,17 +265,19 @@
   {:else if !isAssistantVisiblyEmpty}
     <div class="flex items-start gap-2 w-full max-w-full">
       <div class="flex-1 min-w-0">
-      <AssistantMessageBody
-        {message}
-        {displayContent}
-        {displayReasoning}
-        {displayMetadata}
-        {displaySearchMeta}
-        enableThinking={!!appStore.config.ui?.enable_thinking}
-        onDownloadSlides={downloadSlides}
-        onOpenArtifact={() => appStore.openArtifact(message.artifact || null, message.id)}
-        onUIAction={handleUIAction}
-      />
+      <div data-chat-message-content data-chat-message-id={message.id}>
+        <AssistantMessageBody
+          {message}
+          {displayContent}
+          {displayReasoning}
+          {displayMetadata}
+          {displaySearchMeta}
+          enableThinking={!!appStore.config.ui?.enable_thinking}
+          onDownloadSlides={downloadSlides}
+          onOpenArtifact={() => appStore.openArtifact(message.artifact || null, message.id)}
+          onUIAction={handleUIAction}
+        />
+      </div>
 
       <!-- Model name + token usage (always visible) -->
       <div class="mt-1 flex items-center gap-2 flex-wrap">

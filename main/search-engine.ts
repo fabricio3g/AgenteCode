@@ -102,7 +102,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
   try {
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
-    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'Chatea LM/1.0' };
+    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'Chatea/1.0' };
     if (options.jina_api_key) {
       headers.Authorization = `Bearer ${options.jina_api_key as string}`;
     }

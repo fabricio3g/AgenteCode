@@ -1,4 +1,4 @@
-# Chatea LM - Development Documentation
+# Chatea - Development Documentation
 
 ## Native Module Rebuilding
 
@@ -111,7 +111,7 @@ npm run dev
 ### Architecture
 
 ```
-ChateaLM/
+Chatea/
 ├── main/           # Electron main process (TypeScript)
 ├── preload/        # Preload scripts (bridge between main/renderer)
 ├── renderer/       # Svelte frontend (Vite + TypeScript)

@@ -47,7 +47,7 @@ export async function generateDocx(data: Record<string, unknown>) {
   const docx = await import('docx') as any;
   const title = text(data.title, 'Document');
   const subtitle = text(data.subtitle);
-  const author = text(data.author, 'Chatea LM');
+  const author = text(data.author, 'Chatea');
   const date = text(data.date, new Date().toISOString().slice(0, 10));
   const sections = normalizeSections(data.sections);
   const children: any[] = [
@@ -119,7 +119,7 @@ export async function generateDocx(data: Record<string, unknown>) {
           children: [new docx.Paragraph({
             alignment: docx.AlignmentType.RIGHT,
             children: [
-              new docx.TextRun({ text: 'Chatea LM', color: '64748B', size: 16 }),
+              new docx.TextRun({ text: 'Chatea', color: '64748B', size: 16 }),
               new docx.TextRun({ text: '  |  Page ', color: '64748B', size: 16 }),
               docx.PageNumber.CURRENT
             ]
@@ -139,7 +139,7 @@ export async function generateDocx(data: Record<string, unknown>) {
 export async function generateXlsx(data: Record<string, unknown>) {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Chatea LM';
+  workbook.creator = 'Chatea';
   workbook.created = new Date();
 
   const sheets = Array.isArray(data.sheets) ? data.sheets as SheetInput[] : [];

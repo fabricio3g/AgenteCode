@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, PanelLeftClose, PanelLeftOpen, MessageSquare, ExternalLink, SlidersHorizontal, MoonStar, SunMedium } from 'lucide-svelte';
+  import { Search, PanelLeftClose, PanelLeftOpen, ExternalLink, SlidersHorizontal, MoonStar, SunMedium } from 'lucide-svelte';
   import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
@@ -31,7 +31,7 @@
 >
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
     <div class="titlebar-icon flex h-7 w-7 items-center justify-center">
-      <MessageSquare class="h-5 w-5" />
+      <img src="/app-icon.svg" alt="Chatea" class="h-5 w-5" draggable="false" />
     </div>
     <Tooltip label="Search conversations">
       <button
@@ -158,6 +158,9 @@
   .titlebar-row {
     display: flex;
     width: 100%;
+    background: var(--titlebar-bg, var(--surface));
+    overflow: hidden;
+    box-shadow: none;
   }
 
   .titlebar-left {
@@ -169,20 +172,25 @@
 
   .titlebar-icon {
     flex-shrink: 0;
-    color: #0D2F5D;
+    color: var(--text);
   }
 
   .titlebar-btn {
-    color: #0D2F5D;
+    color: var(--text);
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
     flex-shrink: 0;
+    box-shadow: none;
   }
 
   .titlebar-btn:hover {
     color: var(--text);
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    border-color: transparent;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
   }
 
   .titlebar-center {
@@ -241,7 +249,8 @@
     width: 46px; height: 100%;
     border: none; background: transparent; cursor: default;
     transition: background 0.1s;
-    color: #0D2F5D;
+    color: var(--text);
+    box-shadow: none;
   }
 
   :global(.dark) .titlebar-icon,
@@ -257,8 +266,11 @@
   }
 
   .win-btn:hover {
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
     color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
   }
 
   .win-btn-close:hover {
@@ -266,8 +278,12 @@
     color: white !important;
   }
 
+  :global(.dark) .titlebar-btn:hover,
   :global(.dark) .win-btn:hover {
-    background: rgba(255,255,255,0.08);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 rgba(0,0,0,0.18), var(--shadow-xs);
   }
   :global(.dark) .win-btn-close:hover {
     background: #e81123 !important;

@@ -50,7 +50,7 @@ export async function requestMainWindowClose() {
     defaultId: 0,
     cancelId: 0,
     noLink: true,
-    title: 'Quit Chatea LM?',
+    title: 'Quit Chatea?',
     message: 'Work is still in progress.',
     detail: `${reasonText}\n\nIf you quit now, in-progress work may be interrupted.`
   });

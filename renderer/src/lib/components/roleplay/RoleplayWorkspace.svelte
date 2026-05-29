@@ -228,7 +228,7 @@
 <div class="roleplay-workspace flex min-h-0 flex-1 overflow-hidden rounded-[22px] border border-[var(--border)] bg-[var(--surface)]">
   <aside class="rp-sidebar-outer relative flex shrink-0 flex-col overflow-hidden" class:expanded={appStore.sidebarOpen}>
     <div class="rp-sidebar-full absolute inset-0 flex flex-col">
-      <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      <div class="flex items-center justify-between px-4 py-3">
         <div class="min-w-0">
           <h2 class="text-sm font-semibold text-[var(--text)]">Roleplay</h2>
           <p class="text-xs text-[var(--text-muted)]">Separate scenes and characters</p>
@@ -581,7 +581,6 @@
     onClose={() => (sceneSettingsOpen = false)}
     onStart={() => (sceneSettingsOpen = false)}
     onCast={() => {
-      sceneSettingsOpen = false;
       castSelectorOpen = true;
     }}
   />
@@ -662,14 +661,18 @@
   }
   .collapsed-btn {
     color: var(--text);
-    border-radius: 4px;
+    border-radius: 8px;
+    border: 1px solid transparent;
   }
   .collapsed-btn:hover {
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.04), var(--shadow-xs);
   }
   .action-btn, .menu-btn {
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 8px;
     background: transparent;
     color: var(--text);
   }
@@ -689,17 +692,23 @@
     justify-content: center;
   }
   .action-btn:hover, .menu-btn:hover, .scene-row.is-active {
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), var(--shadow-xs);
   }
   .search-input {
-    border: 1px solid var(--border);
-    background: var(--surface-hover);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
     color: var(--text);
   }
   .search-input.focused {
-    border-color: var(--border-active);
-    background: var(--surface);
-    box-shadow: 0 0 0 2px var(--accent-soft);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), var(--shadow-xs);
   }
   .clear-btn {
     border: 1px solid transparent;
@@ -712,14 +721,18 @@
   }
   .scene-row {
     border: 1px solid transparent;
+    border-radius: var(--radius-xl);
     min-height: 76px;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .scene-row:hover {
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), var(--shadow-xs);
   }
   .scene-row.is-active {
-    border-color: var(--border);
+    border-color: transparent;
   }
   .rename-input {
     height: 30px;
@@ -736,8 +749,10 @@
     box-shadow: 0 0 0 2px var(--accent-soft);
   }
   .scene-menu {
-    border: 1px solid var(--border);
-    background: var(--surface-overlay);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface-overlay), var(--surface-overlay)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
     box-shadow: var(--shadow-xl);
     padding: 4px;
   }
@@ -944,27 +959,34 @@
     100% { background-position: 0 0; }
   }
   .start-adventure-btn {
-    border: 1px solid #E20E0F;
+    border: 1px solid transparent;
     border-radius: 999px;
-    background: #E20E0F;
-    color: var(--primary-fg);
-    font-weight: 700;
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    color: var(--text);
+    font-weight: 650;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.04), var(--shadow-xs);
+    transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   }
   .start-adventure-btn:hover {
-    opacity: 0.92;
+    filter: brightness(1.015);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.36), inset 0 -1px 0 rgba(0,0,0,0.06), var(--shadow-sm);
   }
   .start-adventure-btn:active {
     transform: scale(0.97);
   }
   .composer-shell {
-    border: 1px solid #EEDABC;
-    box-shadow: var(--shadow-xs);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.04), var(--shadow-xs);
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
   }
   .composer-shell:focus-within {
-    border-color: #EEDABC;
-    box-shadow: 0 0 0 1px color-mix(in srgb, #EEDABC 60%, transparent), var(--shadow-sm);
+    filter: brightness(1.01);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.36), inset 0 -1px 0 rgba(0,0,0,0.06), var(--shadow-sm);
   }
   .composer-textarea {
     min-height: 52px;
@@ -1004,16 +1026,19 @@
     opacity: 0.45;
   }
   .header-quick-group {
-    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+    border: 1px solid transparent;
     border-radius: 10px;
-    background: color-mix(in srgb, var(--surface-hover) 32%, transparent);
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.04);
     overflow: hidden;
   }
   .quick-menu {
     position: relative;
   }
   .group-btn {
-    border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-right: 1px solid var(--border);
   }
   .quick-menu:last-child .group-btn {
     border-right: none;
@@ -1025,13 +1050,39 @@
     min-height: 34px;
     transition: background 0.15s ease, color 0.15s ease;
   }
-  .header-quick-btn:hover {
-    background: color-mix(in srgb, var(--surface-hover) 70%, var(--surface));
-    color: var(--text);
-  }
+  .header-quick-btn:hover,
   .header-quick-btn.is-active {
-    background: var(--surface);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
     color: var(--text);
     font-weight: 650;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.04);
+  }
+
+  :global(.dark) .collapsed-btn:hover,
+  :global(.dark) .action-btn:hover,
+  :global(.dark) .menu-btn:hover,
+  :global(.dark) .scene-row:hover,
+  :global(.dark) .scene-row.is-active,
+  :global(.dark) .scene-menu,
+  :global(.dark) .start-adventure-btn,
+  :global(.dark) .composer-shell,
+  :global(.dark) .header-quick-group,
+  :global(.dark) .header-quick-btn:hover,
+  :global(.dark) .header-quick-btn.is-active,
+  :global(.dark) .search-input,
+  :global(.dark) .search-input.focused {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.35), var(--shadow-xs);
+  }
+
+  :global(.dark) .scene-row:hover,
+  :global(.dark) .scene-row.is-active {
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;
   }
 </style>

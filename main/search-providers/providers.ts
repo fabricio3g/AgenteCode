@@ -199,7 +199,7 @@ export async function searchExa(query: string, maxResults: number, options: Reco
 export async function searchJina(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const baseUrl = String(options?.jina_base_url || 'https://s.jina.ai').replace(/\/+$/, '');
   const url = `${baseUrl}/${encodeURIComponent(query)}`;
-  const headers: Record<string, string> = { Accept: 'text/plain', 'User-Agent': 'Chatea LM/1.0' };
+  const headers: Record<string, string> = { Accept: 'text/plain', 'User-Agent': 'Chatea/1.0' };
   if (options?.jina_api_key) {
     headers.Authorization = `Bearer ${options.jina_api_key as string}`;
   }
@@ -316,7 +316,7 @@ export async function searchPerplexity(query: string, maxResults: number, option
 export async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const resp = await fetchWithRetry(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Chatea LM/1.0)' },
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Chatea/1.0)' },
     timeout_ms: 12000
   });
   const html = await resp.text();

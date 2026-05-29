@@ -7,7 +7,7 @@ export async function generatePptx(data) {
 
   pptx.title = data.title || 'Presentation';
   pptx.layout = 'LAYOUT_WIDE';
-  pptx.author = 'Chatea LM';
+  pptx.author = 'Chatea';
   pptx.subject = data.subtitle || 'Generated work product';
   pptx.theme = {
     headFontFace: 'Aptos Display',
@@ -50,7 +50,7 @@ export async function generatePptx(data) {
       });
     }
 
-    s.addText(`Chatea LM · ${index + 1}`, {
+    s.addText(`Chatea · ${index + 1}`, {
       x: 0.65, y: 6.95, w: 2.5, h: 0.2,
       fontSize: 8,
       color: '94A3B8'

@@ -21,7 +21,7 @@ export class OpenRouterProvider extends BaseProvider {
         baseURL: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
         defaultHeaders: {
           'HTTP-Referer': 'https://chatea.app',
-          'X-Title': 'Chatea LM'
+          'X-Title': 'Chatea'
         }
       }));
     }

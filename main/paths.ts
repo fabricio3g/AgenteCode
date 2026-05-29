@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const APP_NAME = 'Chatea LM';
+const APP_NAME = 'Chatea';
 
 const nodeRequire: NodeRequire = (() => {
   try {
@@ -51,8 +51,9 @@ export function getAppPaths() {
   
   const envOverride = String(process.env.TALAMOLM_HOME || '').trim();
   const legacyAppData = path.join(app.getPath('home'), '.chatealm');
+  const previousPlatformAppData = path.join(app.getPath('appData'), 'Chatea LM');
   const platformAppData = path.join(app.getPath('appData'), APP_NAME);
-  const appData = envOverride || (fs.existsSync(legacyAppData) ? legacyAppData : platformAppData);
+  const appData = envOverride || (fs.existsSync(legacyAppData) ? legacyAppData : fs.existsSync(previousPlatformAppData) ? previousPlatformAppData : platformAppData);
   
   const isDev = !app.isPackaged;
   const projectRoot = isDev

@@ -14,7 +14,8 @@
 
   let { isListening, interimTranscript, exitVoiceMode, audioLevels }: Props = $props();
 
-  const state = $derived.by((): 'idle' | 'recording' | 'transcribing' | 'error' => {
+  const state = $derived.by((): 'idle' | 'permission' | 'recording' | 'transcribing' | 'error' => {
+    if (interimTranscript.includes('Requesting microphone')) return 'permission';
     if (interimTranscript.includes('Transcribing')) return 'transcribing';
     if (interimTranscript.includes('Recording')) return 'recording';
     if (interimTranscript.includes('Error') || interimTranscript.includes('Failed')) return 'error';
@@ -28,6 +29,7 @@
   });
 
   const title = $derived.by(() => {
+    if (state === 'permission') return 'Allow microphone';
     if (state === 'transcribing') return 'Transcribing...';
     if (state === 'recording') return 'Listening';
     if (state === 'error') return 'Error';
@@ -37,6 +39,7 @@
   });
 
   const caption = $derived(
+    state === 'permission' ? 'Waiting for permission...' :
     state === 'recording' ? 'Tap to stop' :
     state === 'transcribing' ? 'Processing...' :
     interimTranscript || ''
@@ -60,7 +63,7 @@
         {:else}
           <!-- Center icon -->
           <div class="icon-wrap">
-            {#if state === 'transcribing'}
+            {#if state === 'transcribing' || state === 'permission'}
               <Loader2 class="icon spin" />
             {:else if state === 'error'}
               <AlertCircle class="icon" />
@@ -97,9 +100,14 @@
     padding: 12px 16px;
     margin-bottom: 10px;
     border-radius: var(--radius-xl);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    box-shadow: var(--shadow-xl);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xl);
     animation: appear 0.3s ease-out;
   }
 
@@ -127,7 +135,7 @@
   }
 
   .pulse-ring.active {
-    border-color: rgba(0, 0, 0, 0.08);
+    border-color: color-mix(in srgb, #717CE2 45%, transparent);
     animation: pulseOut 2s ease-out infinite;
   }
 
@@ -143,7 +151,10 @@
     height: 64px;
     border-radius: 50%;
     overflow: hidden;
-    background: linear-gradient(135deg, #fdfbf7 0%, #f5f0e8 100%);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(135deg, #fbfbfb 0%, #f2f2f2 100%) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(210, 210, 210, 0.94) 48%, rgba(178, 178, 178, 0.92) 54%, rgba(232, 232, 232, 0.95) 100%) border-box;
     box-shadow:
       inset 0 0 20px rgba(255, 255, 255, 0.5),
       0 4px 20px rgba(0, 0, 0, 0.1);
@@ -191,12 +202,12 @@
     color: rgba(0, 0, 0, 0.8);
   }
 
-  .icon {
+  :global(.voice-card .icon) {
     width: 22px;
     height: 22px;
   }
 
-  .spin {
+  :global(.voice-card .spin) {
     animation: spinAnim 1s linear infinite;
   }
 
@@ -245,19 +256,29 @@
   }
 
   .end-btn:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-hover);
+    border-color: transparent;
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
     color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.05);
   }
 
   /* Dark mode */
   :global(.dark) .voice-card {
-    background: var(--surface);
-    border-color: var(--border);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      var(--shadow-xl);
   }
 
   :global(.dark) .orb {
-    background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+    background:
+      linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box;
     box-shadow:
       inset 0 0 20px rgba(255, 255, 255, 0.05),
       0 4px 20px rgba(0, 0, 0, 0.4);
@@ -288,7 +309,9 @@
   }
 
   :global(.dark) .end-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background:
+      linear-gradient(rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;
     color: white;
   }
 </style>

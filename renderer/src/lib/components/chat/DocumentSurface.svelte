@@ -223,7 +223,7 @@
               <span class="attachment-title">{doc.title || baseName(doc.name)}</span>
               <span class="attachment-type">{fileTypeLabel(doc.name, doc.kind)}</span>
             </span>
-            {#if docSource(doc) || doc.kind === 'slides'}
+            {#if viewerKind(doc) !== 'image' && (docSource(doc) || doc.kind === 'slides')}
               <button
                 type="button"
                 class="attachment-download"
@@ -275,7 +275,7 @@
         </div>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="document-workspace"
+          class={`document-workspace ${viewerKind(activeDoc) === 'image' ? 'image-workspace' : ''}`}
           role="dialog"
           aria-modal="true"
           aria-label={surfaceTitle}
@@ -283,33 +283,39 @@
           transition:fade={{ duration: 120 }}
           onpointerdown={stop}
         >
-          <header class="workspace-header">
-            <div class="reader-title-wrap">
-              <div class="reader-title">{surfaceTitle}</div>
-              <div class="reader-subtitle">{subtitle || 'Document'}{#if status !== 'ready'} · {status}{/if}</div>
-            </div>
-            <div class="workspace-tools">
-              {#if canSearch}
-                <label class="workspace-search" title="Search current document">
-                  <Search class="h-3.5 w-3.5" />
-                  <input bind:value={query} placeholder="Search" />
-                  {#if query}
-                    <button type="button" class="search-clear" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">
-                      <X class="h-3 w-3" />
-                    </button>
-                  {/if}
-                </label>
-              {/if}
-              {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
-                <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
-                  <Download class="h-4 w-4" />
+          {#if viewerKind(activeDoc) !== 'image'}
+            <header class="workspace-header">
+              <div class="reader-title-wrap">
+                <div class="reader-title">{surfaceTitle}</div>
+                <div class="reader-subtitle">{subtitle || 'Document'}{#if status !== 'ready'} · {status}{/if}</div>
+              </div>
+              <div class="workspace-tools">
+                {#if canSearch}
+                  <label class="workspace-search" title="Search current document">
+                    <Search class="h-3.5 w-3.5" />
+                    <input bind:value={query} placeholder="Search" />
+                    {#if query}
+                      <button type="button" class="search-clear" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">
+                        <X class="h-3 w-3" />
+                      </button>
+                    {/if}
+                  </label>
+                {/if}
+                {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
+                  <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
+                    <Download class="h-4 w-4" />
+                  </button>
+                {/if}
+                <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label="Close" title="Close">
+                  <X class="h-4 w-4" />
                 </button>
-              {/if}
-              <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label="Close" title="Close">
-                <X class="h-4 w-4" />
-              </button>
-            </div>
-          </header>
+              </div>
+            </header>
+          {:else}
+            <button type="button" class="image-viewer-close" onclick={closeReader} aria-label="Close image preview" title="Close">
+              <X class="h-5 w-5" />
+            </button>
+          {/if}
 
           {#if warnings.length}
             <div class="workspace-warning">
@@ -426,6 +432,8 @@
 
   .attachment-strip {
     display: flex;
+    min-width: 0;
+    max-width: 100%;
     flex-wrap: wrap;
     gap: 0.45rem;
     align-items: stretch;
@@ -436,9 +444,10 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.55rem;
+    width: min(17rem, 100%);
+    min-width: 0;
+    max-width: 100%;
     min-height: 3.15rem;
-    min-width: min(16rem, 100%);
-    max-width: min(19rem, 100%);
     padding: 0.45rem 0.5rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -453,7 +462,24 @@
   }
 
   .attachment-launcher.attachment-image {
-    grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+    display: block;
+    width: fit-content;
+    min-width: 0;
+    max-width: min(18rem, 100%);
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    overflow: hidden;
+  }
+
+  .attachment-launcher.attachment-image:hover {
+    background: transparent;
+  }
+
+  .attachment-launcher.attachment-image .attachment-copy {
+    display: none;
   }
 
   .attachment-thumb,
@@ -468,6 +494,17 @@
     color: var(--text-secondary);
     object-fit: cover;
     overflow: hidden;
+  }
+
+  .attachment-launcher.attachment-image .attachment-thumb {
+    display: block;
+    width: auto;
+    max-width: min(18rem, 100%);
+    max-height: 14rem;
+    height: auto;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    object-fit: contain;
   }
 
   .attachment-copy {
@@ -579,17 +616,23 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.85rem;
-    height: 1.85rem;
-    border-radius: var(--radius-sm);
+    width: 1.95rem;
+    height: 1.95rem;
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
     color: var(--text-tertiary);
-    transition: background 150ms ease, color 150ms ease;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255,255,255,0.72), rgba(142,151,168,0.5), rgba(255,255,255,0.45)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+    transition: filter 150ms ease, color 150ms ease, transform 150ms ease;
   }
 
   .document-action:hover,
   .reader-icon-btn:hover {
-    background: var(--surface-hover);
     color: var(--text);
+    filter: brightness(1.04);
+    transform: translateY(-1px);
   }
 
   .document-reader-layer {
@@ -608,14 +651,16 @@
 
   .document-workspace {
     position: fixed;
-    inset: 2vh 2vw;
+    inset: 1.5vh 1.5vw;
     z-index: 10001;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface);
+    border: 1px solid transparent;
+    border-radius: 1rem;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(160,168,184,0.42) 48%, rgba(255,255,255,0.48)) border-box;
     box-shadow: var(--shadow-xl);
   }
 
@@ -624,8 +669,10 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    border-bottom: 1px solid var(--border);
-    padding: 0.85rem 1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    padding: 0.6rem 0.75rem;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(12px);
   }
 
   .reader-title-wrap {
@@ -637,14 +684,14 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text);
-    font-size: 0.95rem;
+    font-size: 0.88rem;
     font-weight: 650;
   }
 
   .reader-subtitle {
     color: var(--text-muted);
-    font-size: 0.72rem;
-    margin-top: 0.1rem;
+    font-size: 0.68rem;
+    margin-top: 0.05rem;
   }
 
   .workspace-tools {
@@ -658,12 +705,15 @@
     align-items: center;
     gap: 0.35rem;
     width: min(14rem, 28vw);
-    height: 1.85rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 0 0.55rem;
+    height: 2rem;
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
+    padding: 0 0.6rem;
     color: var(--text-tertiary);
-    background: var(--surface);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255,255,255,0.72), rgba(142,151,168,0.5), rgba(255,255,255,0.45)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
   }
 
   .workspace-search input {
@@ -709,7 +759,7 @@
 
   .reader-body {
     display: grid;
-    grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
     min-height: 0;
     flex: 1;
   }
@@ -717,7 +767,7 @@
   .reader-rail {
     overflow: auto;
     border-right: 1px solid var(--border);
-    padding: 0.5rem;
+    padding: 0.4rem;
   }
 
   .reader-file {
@@ -726,15 +776,18 @@
     width: 100%;
     align-items: center;
     gap: 0.5rem;
-    border-radius: var(--radius-sm);
-    padding: 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 0.7rem;
+    padding: 0.5rem;
     text-align: left;
     color: var(--text-secondary);
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
   }
 
   .reader-file:hover,
   .reader-file.active {
-    background: var(--surface-hover);
+    border-color: color-mix(in srgb, var(--border) 75%, transparent);
+    background: color-mix(in srgb, var(--surface-hover) 76%, transparent);
     color: var(--text);
   }
 
@@ -774,7 +827,53 @@
     min-width: 0;
     overflow: auto;
     background: var(--surface);
-    padding: 1rem;
+    padding: 0.65rem;
+  }
+
+  .image-workspace {
+    inset: 3vh 3vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .image-workspace .reader-body,
+  .image-workspace .reader-preview {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .image-viewer-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, black 48%, transparent);
+    color: white;
+    backdrop-filter: blur(10px);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+
+  .image-viewer-close:hover {
+    background: color-mix(in srgb, black 62%, transparent);
+    transform: scale(1.03);
   }
 
   .reader-preview :global(mark) {
@@ -789,11 +888,11 @@
   }
 
   .reader-article {
-    width: min(52rem, 100%);
+    width: min(56rem, 100%);
     margin: 0 auto;
     color: var(--text);
     font-size: 0.95rem;
-    line-height: 1.72;
+    line-height: 1.68;
   }
 
   .reader-iframe {
@@ -818,6 +917,20 @@
     object-fit: contain;
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-sm);
+  }
+
+  .image-workspace .reader-image-stage {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .image-workspace .reader-image {
+    max-width: 100%;
+    max-height: 94vh;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
   }
 
   .reader-empty {

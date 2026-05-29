@@ -903,7 +903,7 @@
     aria-modal="true"
     aria-labelledby="model-hub-title"
     tabindex="-1"
-    class="modal-surface relative mx-4 flex max-h-[calc(100vh-4rem)] w-full max-w-[1100px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
+    class="modal-surface relative mx-2 my-2 flex h-[calc(100vh-6rem)] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden rounded-[22px] border border-[var(--border)] bg-[var(--surface)]"
     transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
   >
     <!-- Top bar -->
@@ -1179,14 +1179,14 @@
             <div class="flex items-center rounded-lg bg-[var(--surface-hover)] p-0.5">
               <button
                 type="button"
-                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'recommended' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
+                class="model-hub-subtab rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'recommended' ? 'is-active text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => (exploreSubTab = 'recommended')}
               >
                 Recommended
               </button>
               <button
                 type="button"
-                class="rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'search' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
+                class="model-hub-subtab rounded-md px-3 py-1.5 text-xs font-medium transition {exploreSubTab === 'search' ? 'is-active text-[var(--text)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
                 onclick={() => (exploreSubTab = 'search')}
               >
                 Search
@@ -2167,5 +2167,119 @@
   .mic-select option {
     background: var(--surface);
     color: var(--text);
+  }
+
+  .modal-surface :global(button) {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Always-on neutral metallic buttons in Model Hub.
+     Keep the top icon-only toolbar buttons plain. */
+  .modal-surface :global(button:not(.chateaui-icon-button):not(.chateaui-segment):not(.model-hub-subtab)) {
+    border: 1px solid transparent !important;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box !important;
+    color: var(--text) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs) !important;
+  }
+
+  .modal-surface :global(button:not(.chateaui-icon-button):not(.chateaui-segment):not(.model-hub-subtab):not(:disabled):hover) {
+    filter: brightness(1.015);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.36),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+      var(--shadow-sm) !important;
+  }
+
+  .modal-surface :global(.chateaui-segmented) {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.04);
+  }
+
+  .modal-surface :global(.chateaui-segment),
+  .modal-surface :global(.model-hub-subtab) {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+  }
+
+  .modal-surface :global(.chateaui-segment.is-active),
+  .modal-surface :global(.chateaui-segment:not(:disabled):hover),
+  .modal-surface :global(.model-hub-subtab.is-active),
+  .modal-surface :global(.model-hub-subtab:not(:disabled):hover) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box !important;
+    color: var(--text) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs) !important;
+  }
+
+  .modal-surface :global(article.scroll-animate),
+  .modal-surface :global(button.scroll-animate) {
+    overflow: hidden;
+    border: 1px solid transparent !important;
+    border-radius: var(--radius-xl) !important;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.2),
+      inset 0 -1px 0 rgba(0,0,0,0.04),
+      var(--shadow-xs);
+  }
+
+  :global(.dark) .modal-surface :global(button:not(.chateaui-icon-button):not(.chateaui-segment):not(.model-hub-subtab)) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      var(--shadow-xs) !important;
+  }
+
+  :global(.dark) .modal-surface :global(button:not(.chateaui-icon-button):not(.chateaui-segment):not(.model-hub-subtab):not(:disabled):hover) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+      var(--shadow-sm) !important;
+  }
+
+  :global(.dark) .modal-surface :global(.chateaui-segmented) {
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;
+  }
+
+  :global(.dark) .modal-surface :global(.chateaui-segment.is-active),
+  :global(.dark) .modal-surface :global(.chateaui-segment:not(:disabled):hover),
+  :global(.dark) .modal-surface :global(.model-hub-subtab.is-active),
+  :global(.dark) .modal-surface :global(.model-hub-subtab:not(:disabled):hover) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box !important;
+    color: var(--text) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      var(--shadow-xs) !important;
+  }
+
+  :global(.dark) .modal-surface :global(article.scroll-animate),
+  :global(.dark) .modal-surface :global(button.scroll-animate) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box !important;
   }
 </style>

@@ -167,8 +167,8 @@
   --user-bubble: #1A1A1A;
   --user-bubble-text: var(--text);
   --chat-bg: var(--background);
-  --titlebar-bg: var(--surface);
-  --sidebar-bg: var(--surface);
+  --titlebar-bg: #191A1B;
+  --sidebar-bg: #191A1B;
   --panel-bg: var(--surface);
   --panel-border: var(--border);
   --overlay: rgba(0, 0, 0, 0.60);
@@ -474,11 +474,42 @@ textarea {
   100% { background-position: 0% center; }
 }
 
+.user-message-stack {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
 .chateaui-user-bubble {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   background: var(--surface);
   color: var(--user-bubble-text);
   border-radius: var(--radius-lg);
   border: none;
+}
+
+.user-attachments-row {
+  display: flex;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.user-attachments-row .document-surface {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.user-attachments-row :where(.attachment-strip) {
+  max-width: 100%;
+  justify-content: flex-end;
 }
 
 kbd {
@@ -841,6 +872,51 @@ kbd {
 .dark .markdown-body blockquote {
   color: var(--text-secondary);
   border-color: var(--border);
+}
+
+.selected-text-message-bubble {
+  display: inline-flex;
+  width: fit-content;
+  max-width: min(46rem, 90%);
+  margin-bottom: 0.75rem;
+  align-items: flex-start;
+  gap: 0.55rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 0.25rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selected-text-message-bubble:hover {
+  color: var(--text-secondary);
+}
+
+.selected-text-message-icon {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.selected-text-message-markdown {
+  min-width: 0;
+  flex: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: currentColor;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.selected-text-message-markdown > :first-child {
+  margin-top: 0;
+}
+
+.selected-text-message-markdown > :last-child {
+  margin-bottom: 0;
 }
 
 /* Markdown headings */

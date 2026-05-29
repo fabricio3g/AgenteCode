@@ -49,6 +49,9 @@
   let composerWidth = $state(0);
   let composerHeight = $state(0);
   let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
+  let selectedTextInsert = $state('');
+  let selectedTextCardText = $state('');
+  let selectedTextSourceMessageId = $state('');
 
   // Rotating placeholder with typewriter + shimmer
   let placeholderIndex = $state(0);
@@ -184,9 +187,16 @@
     return !!(w.SpeechRecognition || w.webkitSpeechRecognition);
   });
 
-  // Can use mic: either Web Speech API or Whisper (when running in Electron/Tauri)
-  const hasMicSupport = $derived(hasSpeechRecognition || isTauri());
+  const hasMediaRecorderSupport = $derived(
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== 'undefined'
+  );
+
+  // Can use mic: either Web Speech API or Whisper (when running in Electron)
+  const hasMicSupport = $derived(hasSpeechRecognition || (isTauri() && hasMediaRecorderSupport));
   const activelyListening = $derived(isListening || isWhisperListening);
+  const micUiActive = $derived(activelyListening || interimTranscript.includes('Requesting microphone'));
 
   const voiceMode = $derived(appStore.voiceModeActive);
   const currentChatGenerating = $derived(appStore.currentChatGenerating);
@@ -250,13 +260,30 @@
     appStore.modelManagerOpen = true;
   }
 
-  function submit() {
+  async function submit() {
     clearOcrProgress();
     if (localBusyElsewhere) {
       toastStore.info('Local model is busy in another chat.', 2400);
       return;
     }
-    void appStore.sendCurrentMessage();
+
+    if (selectedTextCardText.trim() && appStore.composer.trim()) {
+      const userQuestion = appStore.composer.trim();
+      const quotedSelection = selectedTextCardText
+        .trim()
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+      const sourceMarker = selectedTextSourceMessageId ? `<!-- chatealm-selected-source:${selectedTextSourceMessageId} -->\n` : '';
+      appStore.updateComposer(`${sourceMarker}${quotedSelection}\n\n${userQuestion}`);
+      selectedTextInsert = '';
+      selectedTextCardText = '';
+      selectedTextSourceMessageId = '';
+      await appStore.sendCurrentMessage();
+      return;
+    }
+
+    await appStore.sendCurrentMessage();
   }
 
   async function onFilesSelected(event: Event) {
@@ -280,6 +307,38 @@
     appStore.updateComposer(el.value);
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }
+
+  function focusComposer(moveCursorToEnd = true) {
+    if (!textarea) return;
+    textarea.focus();
+    if (moveCursorToEnd) {
+      const length = textarea.value.length;
+      textarea.setSelectionRange(length, length);
+    }
+  }
+
+  function handleAskSelectedText(event: Event) {
+    const detail = (event as CustomEvent<{ text?: string; sourceMessageId?: string }>).detail;
+    const text = (detail?.text || '').trim();
+    if (!text) return;
+
+    selectedTextInsert = text;
+    selectedTextCardText = text;
+    selectedTextSourceMessageId = detail?.sourceMessageId || '';
+    requestAnimationFrame(() => focusComposer());
+  }
+
+  function discardSelectedTextInsert() {
+    if (!selectedTextInsert) return;
+    selectedTextInsert = '';
+    selectedTextCardText = '';
+    selectedTextSourceMessageId = '';
+    requestAnimationFrame(() => focusComposer());
+  }
+
+  function handleFocusComposer() {
+    focusComposer();
   }
 
   function getRecognitionCtor(): RecognitionCtor | null {
@@ -379,7 +438,32 @@
     };
   }
 
+  function microphoneAccessMessage(err: unknown): string {
+    const name = err instanceof DOMException ? err.name : '';
+    const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      if (platform === 'win32') {
+        return 'Microphone permission is blocked. Enable Windows Settings → Privacy & security → Microphone → Microphone access and Let desktop apps access your microphone.';
+      }
+      if (platform === 'darwin') {
+        return 'Microphone permission is blocked. Enable System Settings → Privacy & Security → Microphone for Electron/Terminal, then restart the app.';
+      }
+      return 'Microphone permission is blocked. Please allow microphone access and try again.';
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return 'No microphone was found. Connect a microphone and try again.';
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return 'Microphone is already in use by another app.';
+    }
+    return err instanceof Error ? err.message : 'Unable to access microphone.';
+  }
+
   function toggleSpeech() {
+    if (!hasMicSupport) {
+      toastStore.error('Microphone recording is not available in this environment.');
+      return;
+    }
     if (isTauri()) {
       void toggleWhisperRecording(false);
     } else if (hasSpeechRecognition) {
@@ -397,9 +481,13 @@
       return;
     }
 
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      toastStore.error('Microphone recording is not available in this environment.');
+      return;
+    }
+
     ttsStore.stop();
-    isWhisperListening = true;
-    interimTranscript = '🎤 Recording…';
+    interimTranscript = 'Requesting microphone access…';
     startPulse();
     whisperChunks = [];
 
@@ -410,6 +498,8 @@
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      isWhisperListening = true;
+      interimTranscript = '🎤 Recording…';
       // Start audio analyser for waveform visualization
       _micStream = stream;
       _startAnalyser(stream);
@@ -482,8 +572,7 @@
       interimTranscript = '';
       stopPulse();
       _stopAnalyser();
-      const message = err instanceof Error ? err.message : 'Unable to access microphone.';
-      toastStore.error(message);
+      toastStore.error(microphoneAccessMessage(err));
     }
   }
 
@@ -671,11 +760,15 @@
     document.addEventListener('dragleave', onWindowDragLeave);
     document.addEventListener('drop', onWindowDrop);
     window.addEventListener('ocr-progress', onOcrProgress as EventListener);
+    window.addEventListener('ask-selected-text', handleAskSelectedText as EventListener);
+    window.addEventListener('focus-composer', handleFocusComposer);
     return () => {
       document.removeEventListener('dragenter', onWindowDragEnter);
       document.removeEventListener('dragleave', onWindowDragLeave);
       document.removeEventListener('drop', onWindowDrop);
       window.removeEventListener('ocr-progress', onOcrProgress as EventListener);
+      window.removeEventListener('ask-selected-text', handleAskSelectedText as EventListener);
+      window.removeEventListener('focus-composer', handleFocusComposer);
       if (dragLeaveTimer) clearTimeout(dragLeaveTimer);
     };
   });
@@ -780,28 +873,20 @@
             {$t('welcome.loadingModel')}
           </p>
         {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
-          <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
-            <span class="whitespace-nowrap">{$t('welcome.noModelLoaded')}</span>
-            <span class="inline-flex items-center gap-2 whitespace-nowrap">
-              <span aria-hidden="true" class="text-[var(--text-tertiary)]">|</span>
-              <button
-                class="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
-                style="background: #09305D;"
-                onclick={() => openModelHub('explore')}
-              >
+          <div class="welcome-model-prompt mx-auto mt-3 flex max-w-md flex-col items-center gap-3">
+            <div class="text-center">
+              <p class="text-sm font-semibold text-[var(--text)]">{$t('welcome.noModelLoaded')}</p>
+              <p class="mt-0.5 text-xs font-medium text-[var(--text-secondary)]">{$t('welcome.runtimeAutoSelected')}</p>
+            </div>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <button class="welcome-action-btn primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold" onclick={() => openModelHub('explore')}>
                 {$t('welcome.browseAll')}
                 <ArrowRight class="h-3 w-3" />
               </button>
-            </span>
-          </div>
-          <div class="mt-1.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
-            <span class="whitespace-nowrap">{$t('welcome.runtimeAutoSelected')}</span>
-            <span class="inline-flex items-center gap-2 whitespace-nowrap">
-              <span aria-hidden="true" class="text-[var(--text-tertiary)]">|</span>
-              <button class="underline underline-offset-2 transition hover:opacity-85" style="color: #77AF70; text-decoration-color: #77AF70;" onclick={() => openModelHub('runtime')}>
+              <button class="welcome-action-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium" onclick={() => openModelHub('runtime')}>
                 {$t('welcome.changeRuntime')}
               </button>
-            </span>
+            </div>
           </div>
         {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
           <p class="text-sm text-[var(--text-muted)]">
@@ -848,7 +933,16 @@
       </div>
     {/if}
 
-    <div class="px-4 pb-1 pt-3 relative">
+    {#if selectedTextInsert}
+      <div class="selected-text-context px-4 pt-3">
+        <div class="selected-text-context-text">{selectedTextCardText}</div>
+        <button type="button" class="selected-text-context-close" aria-label="Discard selected text" onclick={discardSelectedTextInsert}>
+          <X class="h-3.5 w-3.5" />
+        </button>
+      </div>
+    {/if}
+
+    <div class={`px-4 pb-1 relative ${selectedTextInsert ? 'pt-1.5' : 'pt-3'}`}>
       {#if showAnimatedPlaceholder}
         <div class="placeholder-overlay pointer-events-none absolute left-4 right-4 top-3 z-10">
           <span class="placeholder-shimmer-text">{typedText}</span>
@@ -891,7 +985,7 @@
             estimatedInputCostUsd={contextBudget?.estimatedInputCostUsd}
           />
         {/if}
-        <button class="chateaui-icon-button h-8 w-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
+        <button class="chateaui-icon-button metal-hover-btn h-8 w-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
           <Paperclip class="h-4 w-4" />
         </button>
         {#if appStore.composer.trim() || currentChatGenerating}
@@ -912,7 +1006,7 @@
           </button>
         {:else}
           <button
-            class={`chateaui-icon-button mic-btn h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${activelyListening ? 'is-listening' : ''}`}
+            class={`chateaui-icon-button mic-btn metal-hover-btn h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${micUiActive ? 'is-listening' : ''}`}
             onclick={hasMicSupport ? toggleSpeech : undefined}
             disabled={!hasMicSupport}
             aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
@@ -962,16 +1056,34 @@
   }
 
   .composer-shell {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    box-shadow: var(--shadow-xs);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs);
     border-radius: var(--radius-2xl);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: box-shadow 0.15s ease, filter 0.15s ease;
+  }
+
+  :global(.dark) .composer-shell {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      var(--shadow-xs);
   }
 
   .composer-shell:focus-within {
-    border-color: var(--border-hover);
-    box-shadow: var(--shadow-sm);
+    filter: brightness(1.01);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-sm);
   }
 
   .composer-textarea {
@@ -979,6 +1091,42 @@
     max-height: 180px;
     font-size: 1rem;
     line-height: 1.6;
+  }
+
+  .selected-text-context {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    color: var(--text-muted);
+  }
+
+  .selected-text-context-text {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-left: 2px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+    padding-left: 0.65rem;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .selected-text-context-close {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 9999px;
+    color: var(--text-tertiary);
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+
+  .selected-text-context-close:hover {
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+    color: var(--text-secondary);
   }
 
   .composer-attach-btn {
@@ -999,8 +1147,63 @@
     opacity: 0.5;
   }
 
+  .metal-hover-btn {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid transparent;
+  }
+
+  .metal-hover-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(180deg, rgba(245, 245, 245, 0.96) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    transition: opacity 0.15s ease;
+  }
+
+  .metal-hover-btn:hover:not(:disabled)::before {
+    opacity: 1;
+  }
+
+  .metal-hover-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+      var(--shadow-xs);
+  }
+
+  :global(.dark) .metal-hover-btn::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%);
+  }
+
   .send-btn {
-    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease;
+    border: 1px solid transparent;
+    box-shadow: none;
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  }
+
+  .send-btn:hover:not(:disabled) {
+    border-color: color-mix(in srgb, #f5f5f5 55%, #b8b8b8 45%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+      0 0 0 1px rgba(232, 232, 232, 0.28);
+  }
+
+  :global(.dark) .send-btn:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.28);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(255, 255, 255, 0.12);
   }
 
   .send-icon-wrap {
@@ -1025,13 +1228,17 @@
   }
 
   .mic-btn.is-listening {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--primary-fg);
+    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
+    border-color: color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
+    color: #ffffff;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(226, 231, 255, 0.18);
   }
 
   .mic-btn.is-listening:hover {
-    opacity: 0.9;
+    opacity: 0.95;
   }
 
   .mic-lines-wrap {
@@ -1062,17 +1269,40 @@
   .welcome-headline {
     margin: 0 0 0.55rem;
     transform: translateY(-1.9rem);
-    font-size: clamp(1.75rem, 4vw, 2.5rem);
-    line-height: 1.05;
-    letter-spacing: -0.03em;
-    font-weight: 650;
-    color: rgb(9, 47, 90);
+    font-size: clamp(2rem, 4.6vw, 3rem);
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+    font-weight: 720;
+    color: var(--text);
     user-select: text;
     -webkit-user-select: text;
   }
 
-  :global(.dark) .welcome-headline {
-    color: #e6f0ff;
+  .welcome-action-btn {
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
+    transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  }
+
+  .welcome-action-btn:hover {
+    filter: brightness(1.02);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.035), var(--shadow-sm);
+  }
+
+  .welcome-action-btn:active {
+    transform: scale(0.97);
+  }
+
+  :global(.dark) .welcome-action-btn {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 rgba(0,0,0,0.18), var(--shadow-xs);
   }
 
   @keyframes shimmer {

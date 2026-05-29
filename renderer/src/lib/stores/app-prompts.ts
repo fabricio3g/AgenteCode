@@ -6,7 +6,7 @@ const CHART_HINT = '\n\nWhen the user asks for a graph, chart, or visual data re
 
 export function sharedAssistantStylePrompt(): string {
   return [
-    'Write in ChateaLM\'s normal assistant style regardless of backend.',
+    'Write in Chatea\'s normal assistant style regardless of backend.',
     'Keep answers clear, polished, and concise unless the user asks for depth.',
     'Use markdown structure only when it helps scanning.',
     'Never expose internal tool traces, raw payloads, model chatter, or hidden reasoning in the visible answer.'

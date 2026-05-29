@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog, systemPreferences } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
@@ -33,7 +33,10 @@ const __dirname: string = (() => {
 const IS_DEV = !app.isPackaged;
 const RENDERER_DEV_URL = 'http://localhost:5173';
 const RENDERER_PROD_PATH = path.join(__dirname, '..', 'renderer', 'dist', 'index.html');
-const APP_NAME = 'Chatea LM';
+const APP_ICON_PATH = IS_DEV
+  ? path.join(__dirname, '..', '..', 'renderer', 'public', 'app-icon.png')
+  : path.join(__dirname, '..', 'renderer', 'dist', 'app-icon.png');
+const APP_NAME = 'Chatea';
 
 let tray = null;
 
@@ -51,6 +54,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     title: APP_NAME,
+    icon: fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined,
     frame: false,
     titleBarStyle: 'hidden',
     webPreferences: {
@@ -87,7 +91,9 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createEmpty();
+  const icon = fs.existsSync(APP_ICON_PATH)
+    ? nativeImage.createFromPath(APP_ICON_PATH)
+    : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip(APP_NAME);
 
@@ -113,11 +119,19 @@ app.whenReady().then(async () => {
   });
 
   // Grant microphone and camera permissions for media devices (getUserMedia)
+  if (process.platform === 'darwin') {
+    systemPreferences.askForMediaAccess('microphone').catch(() => {});
+  }
+
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     if (permission === 'media' || permission === 'microphone' || permission === 'camera') {
       return true;
     }
     return null;
+  });
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media' || permission === 'microphone' || permission === 'camera');
   });
 
   session.defaultSession.setDevicePermissionHandler((details) => {

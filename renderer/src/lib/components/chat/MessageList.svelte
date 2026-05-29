@@ -7,6 +7,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import EditMessageInline from './EditMessageInline.svelte';
+  import SelectedTextAskAction from './SelectedTextAskAction.svelte';
 
   interface Props {
     composerInset?: number;
@@ -53,6 +54,14 @@
   function jumpToLatest() {
     scrollToBottom('smooth');
     showJumpToLatest = false;
+  }
+
+  function handleScrollToChatMessage(event: Event) {
+    const messageId = (event as CustomEvent<{ messageId?: string }>).detail?.messageId;
+    if (!messageId) return;
+    const slot = slotRefs[messageId];
+    slot?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    restoreActionsFor(messageId);
   }
 
   function restoreActionsFor(messageId: string) {
@@ -106,6 +115,11 @@
   });
 
   $effect(() => {
+    window.addEventListener('scroll-to-chat-message', handleScrollToChatMessage as EventListener);
+    return () => window.removeEventListener('scroll-to-chat-message', handleScrollToChatMessage as EventListener);
+  });
+
+  $effect(() => {
     const chatId = appStore.currentChatId;
     const messageCount = messages.length;
     const chatChanged = chatId !== previousChatId;
@@ -141,6 +155,7 @@
     <div class="h-full"></div>
   {:else}
     <div class="message-list-wrapper relative h-full">
+      <SelectedTextAskAction />
       <div
         bind:this={container}
         class="message-scroll h-full overflow-y-auto px-4 pt-6 md:px-8"

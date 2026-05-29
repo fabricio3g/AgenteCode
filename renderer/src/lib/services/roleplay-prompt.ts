@@ -32,13 +32,12 @@ export function matchRoleplayLorebookEntries(args: {
   chat: RoleplayChat;
   lorebooks: RoleplayLorebook[];
   latestUserMessage: string;
-  extraLorebookIds?: string[];
 }): RoleplayLorebookEntry[] {
   const recent = args.chat.messages.slice(-8).map((message) => message.content).join('\n');
   const haystack = `${args.latestUserMessage}\n${recent}`.toLowerCase();
-  const attached = new Set([...(args.chat.lorebookIds || []), ...(args.extraLorebookIds || [])]);
+  const attached = new Set(args.chat.lorebookIds || []);
   return args.lorebooks
-    .filter((book) => attached.has(book.id) || book.sourceCharacterId && args.chat.activeCharacterIds.includes(book.sourceCharacterId))
+    .filter((book) => attached.has(book.id))
     .flatMap((book) => book.entries)
     .filter((entry) => entryMatches(entry, haystack))
     .sort((a, b) => (a.insertionOrder || 0) - (b.insertionOrder || 0));
@@ -91,16 +90,11 @@ export function buildRoleplayMessages(args: {
 }): RequestMessage[] {
   const userName = args.chat.settings.userName || 'User';
   const cast = args.characters.filter((character) => args.chat.activeCharacterIds.includes(character.id));
-  const embeddedBooks = cast.map((character) => character.embeddedLorebook).filter(Boolean) as RoleplayLorebook[];
-  const characterLorebookIds = new Set(cast.flatMap((character) => character.attachedLorebookIds || []));
-  const characterBooks = args.lorebooks.filter((book) => characterLorebookIds.has(book.id));
-  const allLorebooks = [...args.lorebooks, ...embeddedBooks, ...characterBooks];
   const latestUserMessage = args.latestUserMessage || [...args.chat.messages].reverse().find((message) => message.role === 'user')?.content || '';
   const lore = renderLore(matchRoleplayLorebookEntries({
     chat: args.chat,
-    lorebooks: allLorebooks,
-    latestUserMessage,
-    extraLorebookIds: Array.from(characterLorebookIds)
+    lorebooks: args.lorebooks,
+    latestUserMessage
   }));
 
   const system = [

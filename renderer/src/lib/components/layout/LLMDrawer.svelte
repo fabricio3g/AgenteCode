@@ -131,24 +131,22 @@
 
     <!-- Backend pill tabs -->
     <div class="px-4 pt-4">
-      <div class="flex rounded-xl border border-[var(--border)] p-0.5" style="background:var(--surface-hover)">
+      <div class="flex gap-1 border-b border-[var(--border)] pb-2">
         <button
-          class="flex-1 rounded-[10px] py-1.5 text-[13px] font-medium transition {mode === 'api' ? 'shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-          style={mode === 'api' ? 'background:var(--surface)' : ''}
+          class="rounded-md px-3 py-1.5 text-[13px] font-medium transition {mode === 'api' ? 'text-[var(--text)] bg-[var(--surface-hover)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
           onclick={() => { mode = 'api'; }}
         >API</button>
         {#if isTauri()}
           <button
-            class="flex-1 rounded-[10px] py-1.5 text-[13px] font-medium transition {mode === 'local' ? 'shadow-sm text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-            style={mode === 'local' ? 'background:var(--surface)' : ''}
+            class="rounded-md px-3 py-1.5 text-[13px] font-medium transition {mode === 'local' ? 'text-[var(--text)] bg-[var(--surface-hover)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
             onclick={() => { mode = 'local'; }}
           >Local</button>
         {/if}
       </div>
     </div>
 
-    <!-- Status card -->
-    <div class="mx-4 mt-3 rounded-xl border border-[var(--border)] overflow-hidden" style="background:var(--surface-hover)">
+    <!-- Status -->
+    <div class="mx-4 mt-3 border-b border-[var(--border)] pb-3">
       {#if mode === 'api'}
         <div class="flex items-center gap-3 px-3.5 py-3">
           <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
@@ -178,7 +176,7 @@
           <div class="mb-2.5 truncate text-[13px] font-medium text-[var(--text)]">{activeModelShort}</div>
 
           {#if hardwareStore.info}
-            <div class="space-y-2 border-t border-[var(--border)] pt-2.5">
+            <div class="space-y-2 pt-1">
               <!-- RAM bar -->
               <div>
                 <div class="mb-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
@@ -206,16 +204,16 @@
             </div>
           {/if}
 
-          <div class="mt-3 flex gap-1.5">
+          <div class="mt-3 flex items-center gap-3">
             <button
-              class="flex-1 rounded-lg border border-[var(--border)] py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
+              class="text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
               onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-            >Manage Models</button>
+            >Manage models</button>
             <button
-              class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[var(--text-secondary)] transition hover:bg-[var(--border)]"
+              class="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)] transition hover:text-[var(--text)]"
               onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'runtime'; appStore.modelManagerOpen = true; }}
-              title="Settings"
-            ><ExternalLink class="h-3.5 w-3.5" /></button>
+              title="Runtime settings"
+            ><ExternalLink class="h-3.5 w-3.5" />Runtime</button>
           </div>
         </div>
       {/if}
@@ -230,7 +228,7 @@
           <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Temperature</span>
           <div class="flex items-center gap-1.5">
             <span class="text-[11px] text-[var(--text-muted)]">{tempLabel(temperature)}</span>
-            <span class="min-w-[2.5rem] rounded-md px-1.5 py-0.5 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]" style="background:var(--surface-hover)">{temperature.toFixed(2)}</span>
+            <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{temperature.toFixed(2)}</span>
           </div>
         </div>
         <input type="range" bind:value={temperature} min="0" max="2" step="0.05" class="w-full accent-[var(--primary)] cursor-pointer" />
@@ -244,7 +242,7 @@
         <div>
           <div class="mb-2 flex items-center justify-between">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Top P</span>
-            <span class="min-w-[2.5rem] rounded-md px-1.5 py-0.5 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]" style="background:var(--surface-hover)">{topP.toFixed(2)}</span>
+            <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{topP.toFixed(2)}</span>
           </div>
           <input type="range" bind:value={topP} min="0" max="1" step="0.01" class="w-full accent-[var(--primary)] cursor-pointer" />
         </div>
@@ -254,7 +252,7 @@
       <div>
         <div class="mb-2 flex items-center justify-between">
           <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Max tokens</span>
-          <span class="min-w-[2.5rem] rounded-md px-1.5 py-0.5 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]" style="background:var(--surface-hover)">{maxTokens > 0 ? maxTokens.toLocaleString() : 'Auto'}</span>
+          <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{maxTokens > 0 ? maxTokens.toLocaleString() : 'Auto'}</span>
         </div>
         <input type="range" bind:value={maxTokens} min="0" max="32768" step="256" class="w-full accent-[var(--primary)] cursor-pointer" />
       </div>
@@ -266,8 +264,7 @@
           id="llm-system-prompt"
           bind:value={systemPrompt}
           rows="5"
-          class="w-full rounded-xl border border-[var(--border)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text)] outline-none transition focus:border-[var(--border-hover)] placeholder:text-[var(--text-muted)] resize-none"
-          style="background:var(--surface-hover)"
+          class="w-full rounded-lg bg-[var(--surface)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] resize-none"
           placeholder="You are a helpful AI assistant."
         ></textarea>
       </div>
@@ -295,13 +292,12 @@
   .runtime-status {
     color: var(--text-tertiary);
     background: var(--surface-hover);
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius-sm);
   }
   .runtime-status.running {
     color: var(--status-success);
     background: var(--success-bg);
-    border-color: var(--success-border);
   }
   :global(.dark) .runtime-status.running {
     color: var(--status-success-dark);

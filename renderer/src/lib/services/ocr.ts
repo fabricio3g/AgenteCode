@@ -1,4 +1,4 @@
-// Chatea LM - OCR Engine (Tesseract.js + PDF.js)
+// Chatea - OCR Engine (Tesseract.js + PDF.js)
 // Ported from legacy web/components/ocr.js
 
 interface OcrResult {

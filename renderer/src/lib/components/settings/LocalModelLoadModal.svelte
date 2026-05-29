@@ -194,7 +194,7 @@
 
 {#if target}
   <div class="modal-backdrop fixed inset-0 z-[64] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
-  <div class="modal-surface max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-[var(--surface)] p-6 shadow-2xl ring-1 ring-border" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
+  <div class="modal-surface load-modal-surface max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-[var(--surface)] p-6 shadow-2xl ring-1 ring-border" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <div class="mb-5 flex items-start justify-between gap-4">
  <div class="min-w-0 space-y-2">
  <div>
@@ -210,14 +210,14 @@
  </button>
  </div>
 
- <div class="mb-5 border-l-2 border-[var(--border-hover)] pl-4 text-[13px] leading-5 text-[var(--text-secondary)]">
- <p>Tool template: {toolSupport.label}. {appStore.localModelLoadMmprojPath ? 'Vision projector detected.' : 'Vision needs an mmproj companion file.'}</p>
+ <div class="info-card mb-5 text-[13px] leading-5 text-[var(--text-secondary)]">
+ <p><span class="font-semibold text-[var(--text)]">Tool template:</span> {toolSupport.label}. {appStore.localModelLoadMmprojPath ? 'Vision projector detected.' : 'Vision needs an mmproj companion file.'}</p>
  <p class="mt-1">Recommended settings may cap context for local stability. Advanced “Parallel slots” maps to <code>--parallel</code>.</p>
  </div>
 
  <!-- Runtime missing warning -->
  {#if hasRuntime === false}
-  <div class="mb-4 flex items-start gap-3 rounded-lg border border-[var(--border-hover)] bg-[var(--surface-hover)] px-4 py-3">
+  <div class="runtime-warning mb-4 flex items-start gap-3 rounded-lg border border-[var(--border-hover)] bg-[var(--surface-hover)] px-4 py-3">
   <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
   <div class="flex-1 min-w-0">
   <p class="text-[13px] font-medium text-[var(--text)]">Runtime not installed</p>
@@ -594,7 +594,7 @@
   </section>
 
   <section class="rounded-xl border border-[var(--border)] p-4">
-  <button class="flex w-full items-center justify-between gap-3 text-left text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
+  <button class="advanced-toggle flex w-full items-center justify-between gap-3 text-left text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
   <span class="inline-flex items-center gap-2">
   <BrainCircuit class="h-3.5 w-3.5" />
   Advanced
@@ -760,3 +760,140 @@
  </div>
  </div>
 {/if}
+
+<style>
+  .load-modal-surface {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xl);
+  }
+
+  .info-card,
+  .runtime-warning,
+  .load-modal-surface section,
+  .load-modal-surface :global(.rounded-xl.border),
+  .load-modal-surface :global(.rounded-lg.border) {
+    border: 1px solid transparent !important;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs);
+  }
+
+  .info-card {
+    border-radius: var(--radius-xl);
+    padding: 0.85rem 1rem;
+  }
+
+  .load-modal-surface button {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .load-modal-surface button:not([aria-label='Close load dialog']):not(.chateaui-segment):not(.advanced-toggle) {
+    border: 1px solid transparent !important;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box !important;
+    color: var(--text) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs) !important;
+  }
+
+  .load-modal-surface button:not([aria-label='Close load dialog']):not(.chateaui-segment):not(.advanced-toggle):hover:not(:disabled) {
+    filter: brightness(1.015);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.36),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+      var(--shadow-sm) !important;
+  }
+
+  .load-modal-surface :global(.chateaui-segmented) {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.04);
+  }
+
+  .load-modal-surface :global(.chateaui-segment) {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+  }
+
+  .load-modal-surface :global(.chateaui-segment.is-active),
+  .load-modal-surface :global(.chateaui-segment:hover) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box !important;
+    color: var(--text) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+      var(--shadow-xs) !important;
+  }
+
+  .load-modal-surface .advanced-toggle {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--text) !important;
+  }
+
+  .load-modal-surface .advanced-toggle:hover {
+    background: transparent !important;
+    filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .load-modal-surface input:not([type='range']),
+  .load-modal-surface select,
+  .load-modal-surface textarea {
+    border: 1px solid transparent !important;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box !important;
+  }
+
+  :global(.dark) .load-modal-surface {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+      var(--shadow-xl);
+  }
+
+  :global(.dark) .info-card,
+  :global(.dark) .runtime-warning,
+  :global(.dark) .load-modal-surface section,
+  :global(.dark) .load-modal-surface :global(.rounded-xl.border),
+  :global(.dark) .load-modal-surface :global(.rounded-lg.border),
+  :global(.dark) .load-modal-surface button:not([aria-label='Close load dialog']):not(.chateaui-segment):not(.advanced-toggle),
+  :global(.dark) .load-modal-surface input:not([type='range']),
+  :global(.dark) .load-modal-surface select,
+  :global(.dark) .load-modal-surface textarea {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box !important;
+  }
+
+  :global(.dark) .load-modal-surface :global(.chateaui-segment.is-active),
+  :global(.dark) .load-modal-surface :global(.chateaui-segment:hover) {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box !important;
+  }
+</style>

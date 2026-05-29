@@ -75,13 +75,13 @@
             <div class="flex min-w-0 items-center gap-2">
               <span class="panel-icon"><BookOpen class="h-4 w-4" /></span>
               <div class="min-w-0">
-                <p class="text-sm font-semibold text-[var(--text)]">Lorebooks</p>
+                <p class="text-sm font-semibold text-[var(--text)]">Conversation Lorebooks</p>
                 <p class="truncate text-xs text-[var(--text-muted)]">
                   {attachedLorebooks.length ? attachedLorebooks.map((book) => book.name).join(', ') : 'No lorebooks loaded'}
                 </p>
               </div>
             </div>
-            <button class="ghost-btn px-3 py-2 text-sm" onclick={() => (lorebookSelectorOpen = true)}>Select</button>
+            <button class="ghost-btn px-3 py-2 text-sm" onclick={() => (lorebookSelectorOpen = true)}>Attach</button>
           </div>
           {#if attachedLorebooks.length}
             <div class="selected-list">
@@ -123,8 +123,9 @@
             <div class="min-w-0">
               <p class="text-sm font-semibold text-[var(--text)]">Cast</p>
               <p class="truncate text-xs text-[var(--text-muted)]">{cast.length ? cast.map((character) => character.name).join(', ') : 'No characters selected'}</p>
+              <p class="mt-0.5 text-xs text-[var(--text-muted)]">Pick who can speak in this scene.</p>
             </div>
-            <button class="ghost-btn px-3 py-2 text-sm" onclick={onCast}>Edit</button>
+            <button class="ghost-btn px-3 py-2 text-sm" onclick={onCast}>Select</button>
           </div>
           <div class="cast-strip">
             {#if cast.length}
@@ -188,7 +189,8 @@
   }
   .panel {
     border-radius: 16px;
-    background: color-mix(in srgb, var(--surface-hover) 34%, transparent);
+    border: 1px solid var(--border);
+    background: var(--surface);
     padding: 0.9rem;
   }
   .panel-icon {
@@ -231,7 +233,7 @@
     resize: vertical;
     border: 1px solid var(--border);
     border-radius: 14px;
-    background: var(--surface);
+    background: var(--background);
     color: var(--text);
     padding: 0.8rem;
     font-size: 0.9rem;
@@ -253,7 +255,7 @@
     width: 100%;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--background);
     color: var(--text);
     padding: 0.6rem 0.7rem;
     font-size: 0.875rem;
@@ -265,15 +267,15 @@
     gap: 0.5rem;
   }
   .mode-btn {
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
     border-radius: 12px;
-    background: var(--surface);
+    background: var(--background);
     color: var(--text);
     padding: 0.75rem;
     text-align: left;
   }
   .mode-btn.is-active {
-    border-color: var(--border);
+    border-color: var(--border-active);
     background: var(--surface-hover);
   }
   .selected-list {
@@ -282,8 +284,9 @@
     gap: 0.35rem;
   }
   .selected-pill {
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--background);
     color: var(--text-secondary);
     font-size: 0.75rem;
     padding: 0.3rem 0.6rem;
@@ -301,8 +304,9 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    border: 1px solid var(--border);
     border-radius: 999px;
-    background: var(--surface);
+    background: var(--background);
     color: var(--text);
     object-fit: cover;
     font-size: 0.8rem;

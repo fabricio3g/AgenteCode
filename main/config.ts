@@ -1,5 +1,5 @@
 /**
- * Main configuration module for Chatea LM.
+ * Main configuration module for Chatea.
  * 
  * This module orchestrates config loading, saving, and management.
  * It integrates:

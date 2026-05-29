@@ -306,17 +306,23 @@
   }
 
   .collapsed-btn {
-    color: #0D2F5D;
+    color: var(--text);
+    border: 1px solid transparent;
+    border-radius: 8px;
   }
 
+  .collapsed-btn:hover,
   .collapsed-btn.roleplay-toggle.is-active {
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
+    border-color: transparent;
     color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.04), var(--shadow-xs);
   }
 
   :global(.collapsed-btn svg) {
-    color: #0D2F5D;
+    color: var(--text);
   }
 
   :global(.collapsed-btn.roleplay-toggle.is-active svg) {
@@ -326,6 +332,14 @@
   :global(.dark) .collapsed-btn,
   :global(.dark .collapsed-btn svg) {
     color: #ffffff;
+  }
+
+  :global(.dark) .collapsed-btn:hover,
+  :global(.dark) .collapsed-btn.roleplay-toggle.is-active {
+    background:
+      linear-gradient(var(--sidebar-bg, var(--surface)), var(--sidebar-bg, var(--surface))) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.35), var(--shadow-xs);
   }
 
   .sidebar-outer.expanded .sidebar-view-collapsed {
@@ -355,7 +369,7 @@
     height: 170px;
     border-radius: 18px;
     opacity: 0.52;
-    background: radial-gradient(circle, rgba(13, 47, 93, 0.9) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
+    background: radial-gradient(circle, rgba(0, 0, 0, 0.95) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
     animation: cornerDotsDrift 8s ease-in-out infinite alternate;
     transform: translateZ(0);
   }
@@ -387,7 +401,7 @@
   }
 
   :global(.dark) .welcome-dots-layer .dots {
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 0.9px, transparent 1.55px) 0 0 / 12px 12px;
   }
 
   @keyframes cornerDotsDrift {

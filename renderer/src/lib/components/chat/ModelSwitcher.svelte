@@ -166,23 +166,26 @@
   });
 </script>
 
-<!-- Trigger: clean flat text button -->
+<!-- Trigger: compact model selector -->
 <button
   bind:this={triggerEl}
-  class="model-trigger flex h-7 max-w-[14rem] items-center gap-1.5 px-2 transition"
+  class="model-trigger flex h-8 max-w-[18rem] items-center gap-2 px-2.5 transition"
+  class:is-open={appStore.modelMenuOpen}
   onclick={toggleMenu}
 >
-    {#if appStore.backendMode === 'local'}
-      {#if localLoading}
-        <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
-      {/if}
-    <span class="truncate text-[12px] text-[var(--text-secondary)]">
+  <span class="model-status-dot" class:is-loading={localLoading} class:is-empty={appStore.backendMode === 'local' && !isAnyModelLoaded && !localLoading}></span>
+  <span class="trigger-mode shrink-0">{appStore.backendMode === 'local' ? 'Local' : 'API'}</span>
+  {#if appStore.backendMode === 'local'}
+    {#if localLoading}
+      <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
+    {/if}
+    <span class="trigger-label truncate">
       {triggerLabel}
     </span>
   {:else}
-    <span class="truncate text-[12px] text-[var(--text-secondary)]">{displayLabel || 'No model'}</span>
+    <span class="trigger-label truncate">{displayLabel || 'No model'}</span>
   {/if}
-  <ChevronDown class="h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150 {appStore.modelMenuOpen ? 'rotate-180' : ''}" />
+  <ChevronDown class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] transition-transform duration-150 {appStore.modelMenuOpen ? 'rotate-180' : ''}" />
 </button>
 
 <!-- Dropdown: fixed position to escape navbar stacking context -->
@@ -416,20 +419,95 @@
 
 <style>
   .model-trigger {
+    color: var(--text);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 999px;
+    box-shadow: none;
   }
 
-  .model-trigger:hover {
+  .model-trigger:hover,
+  .model-trigger.is-open {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    border-color: transparent;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
+      var(--shadow-xs);
+  }
+
+  .trigger-label {
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .trigger-mode {
+    border-radius: 999px;
     background: var(--surface-hover);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .model-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--success);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 14%, transparent);
+    flex-shrink: 0;
+  }
+
+  .model-status-dot.is-loading {
+    background: var(--warning);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent);
+    animation: modelDotPulse 1s ease-in-out infinite;
+  }
+
+  .model-status-dot.is-empty {
+    background: var(--text-muted);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 12%, transparent);
+  }
+
+  @keyframes modelDotPulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.25); opacity: 1; }
+  }
+
+  :global(.dark) .model-trigger:hover,
+  :global(.dark) .model-trigger.is-open {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+      var(--shadow-xs);
   }
 
   .model-dropdown {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    border: 1px solid transparent;
+    border-radius: 14px;
     box-shadow: var(--shadow-xl);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  :global(.dark) .model-dropdown {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
   }
 
   .refresh-btn {
@@ -447,26 +525,47 @@
   .mode-toggle {
     display: flex;
     gap: 4px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
   }
 
   .mode-btn {
     color: var(--text-secondary);
     background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: 500;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    min-height: 30px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    box-shadow: none;
   }
 
-  .mode-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-
+  .mode-btn:hover,
   .mode-btn.is-active {
     color: var(--text);
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    border-color: transparent;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
+      var(--shadow-xs);
+  }
+
+  :global(.dark) .mode-btn:hover,
+  :global(.dark) .mode-btn.is-active {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+      var(--shadow-xs);
   }
 
   .loading-indicator {
@@ -506,14 +605,22 @@
   }
 
   .search-wrapper .search-input {
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    background: var(--surface-hover);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.02);
   }
 
   .search-wrapper .search-input:focus {
-    border-color: var(--border-hover);
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+  }
+
+  :global(.dark) .search-wrapper .search-input:focus {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
   }
 
   .clear-btn {
@@ -549,15 +656,22 @@
   .model-item {
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 10px;
   }
 
-  .model-item:hover {
-    background: var(--surface-hover);
-  }
-
+  .model-item:hover,
   .model-item.is-loaded {
-    background: var(--surface-hover);
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), var(--shadow-xs);
+  }
+
+  :global(.dark) .model-item:hover,
+  :global(.dark) .model-item.is-loaded {
+    background:
+      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
   }
 
   :global(.dark) .live-badge {
@@ -569,7 +683,7 @@
     background: transparent;
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .action-btn:hover {
@@ -582,79 +696,55 @@
     color: var(--error);
   }
 
-  .action-btn.load:hover {
-    background: var(--primary);
-    color: var(--primary-fg);
-  }
-
-  .refresh-footer-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-
-  .refresh-footer-btn:hover:not(:disabled) {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-
-  .refresh-footer-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
+  .action-btn.load,
+  .refresh-footer-btn,
   .hub-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-
-  .hub-btn:hover {
     color: var(--text);
-    background: var(--surface-hover);
-  }
-
-  .action-btn:hover {
-    background: var(--surface-hover);
-  }
-
-  .action-btn.unload:hover {
-    background: var(--error-bg);
-    color: var(--error);
-  }
-
-  .action-btn.load:hover {
-    background: var(--primary);
-    color: var(--primary-fg);
-  }
-
-  .refresh-footer-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-
-  .refresh-footer-btn:hover:not(:disabled) {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .refresh-footer-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .hub-btn {
-    background: transparent;
-    color: var(--text-secondary);
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: 10px;
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
+      var(--shadow-xs);
   }
 
-  .hub-btn:hover {
-    background: var(--surface-hover);
+  .action-btn.load:hover:not(:disabled),
+  .refresh-footer-btn:hover:not(:disabled),
+  .hub-btn:hover:not(:disabled) {
+    color: var(--text);
+    filter: brightness(1.02);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.035),
+      var(--shadow-sm);
+  }
+
+  :global(.dark) .action-btn.load,
+  :global(.dark) .refresh-footer-btn,
+  :global(.dark) .hub-btn {
+    background:
+      linear-gradient(var(--surface), var(--surface)) padding-box,
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.09),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+      var(--shadow-xs);
+  }
+
+  :global(.dark) .action-btn.load:hover:not(:disabled),
+  :global(.dark) .refresh-footer-btn:hover:not(:disabled),
+  :global(.dark) .hub-btn:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.30),
+      var(--shadow-sm);
+  }
+
+  .refresh-footer-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>
