@@ -7,7 +7,8 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
-  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-svelte';
+  import { slide } from 'svelte/transition';
+  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -18,6 +19,7 @@
   let renameValue = $state('');
   let openMenuChatId = $state<string | null>(null);
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
+  let collapsedGroups = $state<Set<number>>(new Set([3]));
 
   function startOfDay(ts: number) {
     const d = new Date(ts);
@@ -29,7 +31,7 @@
     const now = startOfDay(Date.now());
     const day = startOfDay(ts);
     const diff = Math.floor((now - day) / 86400000);
-    if (diff === 0) return $t('sidebar.today') || 'Today';
+    if (diff === 0) return 'Recent';
     if (diff === 1) return $t('sidebar.yesterday') || 'Yesterday';
     if (diff <= 6) return $t('sidebar.thisWeek') || 'This week';
     return $t('sidebar.older') || 'Older';
@@ -117,6 +119,13 @@
     closeRename();
   }
 
+  function toggleGroup(key: number) {
+    const next = new Set(collapsedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    collapsedGroups = next;
+  }
+
   function exportChat(chat: (typeof appStore.chats)[0]) {
     const date = new Date().toISOString().slice(0, 10);
     const lines: string[] = [`# ${chat.title || 'Chat'}\n\n_Exported ${date}_\n`];
@@ -163,7 +172,7 @@
 
     <div class="flex flex-col gap-1.5 pb-3 pt-2">
       <button
-        class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[13px] font-medium transition"
+        class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[14px] font-medium transition"
         onclick={() => appStore.createChat()}
       >
         <span class="plus-badge flex items-center justify-center">
@@ -181,7 +190,7 @@
             bind:value={search}
             onfocus={() => (searchFocused = true)}
             onblur={() => (searchFocused = false)}
-            class="search-input w-full rounded-[var(--radius-sm)] py-1.5 pl-8 pr-8 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
+            class="search-input w-full rounded-[var(--radius-sm)] py-1.5 pl-8 pr-8 text-[14px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
             class:focused={searchFocused}
             placeholder={$t('sidebar.searchPlaceholder')}
             type="text"
@@ -208,11 +217,18 @@
     <div class="chat-list flex-1 overflow-y-auto">
       {#if groupedChats.length}
         {#each groupedChats as group (group.key)}
+          {@const isCollapsed = !isSearching && collapsedGroups.has(group.key)}
           <div class="mb-1.5">
-            <div class="group-label px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <button
+              type="button"
+              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+              aria-expanded={!isCollapsed}
+              onclick={() => toggleGroup(group.key)}
+            >
               {group.label}
-            </div>
-            <div class="space-y-0.5">
+            </button>
+            {#if !isCollapsed}
+            <div class="space-y-0.5" transition:slide={{ duration: 140 }}>
               {#each group.chats as chat (chat.id)}
                 <div
                   class={`chat-item group relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
@@ -251,7 +267,7 @@
                         maxlength="120"
                       />
                     {:else}
-                      <div class="chat-title truncate text-[13px]">{chat.title}</div>
+                      <div class="chat-title truncate text-[14px]">{chat.title}</div>
                     {/if}
                   </div>
                   {#if renamingChatId !== chat.id}
@@ -278,7 +294,7 @@
                     >
                       <button
                         type="button"
-                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
+                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
                         onclick={(e) => { e.stopPropagation(); startRename(chat.id, chat.title); openMenuChatId = null; }}
                       >
                         <Pencil class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
@@ -286,7 +302,7 @@
                       </button>
                       <button
                         type="button"
-                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
+                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
                         onclick={(e) => { e.stopPropagation(); exportChat(chat); openMenuChatId = null; }}
                       >
                         <FileDown class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
@@ -294,7 +310,7 @@
                       </button>
                       <button
                         type="button"
-                        class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition"
+                        class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
                         onclick={(e) => { e.stopPropagation(); confirmStore.show({ title: 'Delete Chat?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteChat(chat.id) }); openMenuChatId = null; }}
                       >
                         <Trash2 class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
@@ -305,6 +321,7 @@
                 </div>
               {/each}
             </div>
+            {/if}
           </div>
         {/each}
       {:else}
@@ -313,10 +330,10 @@
             <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
           </div>
           {#if isSearching}
-            <p class="text-[13px] text-[var(--text-secondary)]">No matches</p>
-            <p class="mt-0.5 text-[11px] text-[var(--text-muted)]">Try a different term</p>
+            <p class="text-[14px] text-[var(--text-secondary)]">No matches</p>
+            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">Try a different term</p>
           {:else}
-            <p class="text-[13px] text-[var(--text-muted)]">No conversations yet</p>
+            <p class="text-[14px] text-[var(--text-muted)]">No conversations yet</p>
           {/if}
         </div>
       {/if}
@@ -324,7 +341,7 @@
 
     <div class="sidebar-footer px-0.5 py-2">
       <button
-        class={`sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition ${appStore.mainView === 'developer' ? 'is-active' : ''}`}
+        class={`sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition ${appStore.mainView === 'developer' ? 'is-active' : ''}`}
         onclick={() => appStore.openDeveloperMode()}
         title="Developer Mode"
       >
@@ -332,20 +349,12 @@
         <span class="btn-label">Developer Mode</span>
       </button>
       <button
-        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition"
+        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         title="Manage models"
       >
         <Boxes class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
         <span class="btn-label">Model Hub</span>
-      </button>
-      <button
-        class={`sidebar-btn roleplay-btn flex w-full items-center gap-2 px-3 py-[5px] text-[13px] transition ${appStore.shellMode === 'roleplay' ? 'is-active' : ''}`}
-        onclick={() => appStore.toggleRoleplayMode()}
-        title="Roleplay"
-      >
-        <Sparkles class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
-        <span class="btn-label">Roleplay</span>
       </button>
     </div>
   </div>
@@ -408,6 +417,28 @@
     background: var(--surface-hover);
   }
 
+  .group-label {
+    appearance: none;
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    font-family: inherit;
+  }
+
+  .group-label:focus,
+  .group-label:focus-visible,
+  .group-label:active {
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .group-label:hover {
+    color: var(--text-secondary);
+  }
+
   .chat-item {
     color: var(--text);
     background: transparent;
@@ -430,7 +461,7 @@
     border: 1px solid var(--border);
     background: color-mix(in srgb, var(--surface-hover) 70%, var(--surface));
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.2;
     padding: 0 10px;
@@ -515,15 +546,6 @@
 
   .sidebar-btn.is-active {
     background: var(--surface-hover);
-  }
-
-  .sidebar-btn.roleplay-btn.is-active {
-    background: var(--surface-hover);
-    border-color: var(--border);
-  }
-
-  .sidebar-btn.roleplay-btn.is-active .btn-label {
-    color: var(--text-secondary);
   }
 
   :global(.sidebar-btn svg) {

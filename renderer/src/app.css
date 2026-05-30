@@ -562,6 +562,7 @@ kbd {
 }
 
 .msg-action-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -578,6 +579,9 @@ kbd {
   background: var(--surface-hover);
   color: var(--text);
   border-color: var(--border);
+}
+.msg-action-btn[aria-label*="Copy"]:hover .action-icon {
+  transform: translateY(-1px) scale(1.08);
 }
 .msg-action-btn:active {
   transform: scale(0.92);
@@ -597,6 +601,45 @@ kbd {
   border-color: var(--error-border);
 }
 
+.msg-action-btn.copied {
+  overflow: visible;
+  background: color-mix(in srgb, var(--success) 14%, transparent) !important;
+  color: var(--success) !important;
+  border-color: color-mix(in srgb, var(--success) 34%, transparent) !important;
+  animation: copyButtonPulse 620ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.msg-action-btn.copied::before {
+  content: '';
+  position: absolute;
+  inset: -0.22rem;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--success) 42%, transparent);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  animation: copyRipple 760ms ease-out both;
+  pointer-events: none;
+}
+
+.msg-action-btn.copied::after {
+  content: 'Copied';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.4rem);
+  transform: translateX(-50%) translateY(4px) scale(0.96);
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--success));
+  border: 1px solid color-mix(in srgb, var(--success) 22%, var(--border));
+  color: var(--success);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: copyLabelIn 900ms ease-out both;
+}
+
 .msg-action-btn .action-icon {
   transition: color 0.12s ease, transform 0.12s ease;
 }
@@ -606,9 +649,28 @@ kbd {
 }
 
 @keyframes copyPopIn {
-  0% { transform: scale(0.6); opacity: 0.4; }
-  50% { transform: scale(1.25); opacity: 1; }
-  100% { transform: scale(1.1); opacity: 1; }
+  0% { transform: scale(0.6) rotate(-10deg); opacity: 0.35; }
+  45% { transform: scale(1.24) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1.05) rotate(0deg); opacity: 1; }
+}
+
+@keyframes copyButtonPulse {
+  0% { transform: scale(0.82) rotate(-8deg); }
+  38% { transform: scale(1.18) rotate(5deg); }
+  68% { transform: scale(0.96) rotate(0deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes copyRipple {
+  0% { opacity: 0.9; transform: scale(0.72); }
+  100% { opacity: 0; transform: scale(1.75); }
+}
+
+@keyframes copyLabelIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(5px) scale(0.94); }
+  18% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  78% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-3px) scale(0.98); }
 }
 
 .msg-action-badge {

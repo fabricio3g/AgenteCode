@@ -670,6 +670,10 @@
   <span>Memory map file</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadMmap} />
   </label>
+  <label class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2 text-[13px]">
+  <span>Disable thinking</span>
+  <input type="checkbox" bind:checked={appStore.localModelLoadDisableThinking} />
+  </label>
   </div>
   </div>
   {/if}

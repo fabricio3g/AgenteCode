@@ -165,6 +165,7 @@ export interface LlamaConfig {
   cache_type_v?: string;
   runtime_path?: string;
   mmproj_path?: string;
+  disable_thinking?: boolean;
 }
 
 export interface RagChunk {

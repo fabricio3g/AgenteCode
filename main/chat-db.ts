@@ -147,11 +147,7 @@ function migrate(database) {
 
     CREATE INDEX IF NOT EXISTS idx_rag_documents_chat_id ON rag_documents(chat_id);
 
-    CREATE TABLE IF NOT EXISTS roleplay_state (
-      id TEXT PRIMARY KEY,
-      payload TEXT NOT NULL DEFAULT '{}',
-      updated_at INTEGER NOT NULL
-    );
+
   `);
 
   // Migrations for older chat-history.db files.
@@ -435,23 +431,6 @@ export function migrateFromLocalStorage(persistedState) {
   });
   transaction();
   return migrated;
-}
-
-export function loadRoleplayState() {
-  const database = getDb();
-  const row = database.prepare('SELECT payload FROM roleplay_state WHERE id = ?').get('default');
-  return parseJson(row?.payload, null);
-}
-
-export function saveRoleplayState(state) {
-  const database = getDb();
-  database.prepare(`
-    INSERT INTO roleplay_state (id, payload, updated_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      payload = excluded.payload,
-      updated_at = excluded.updated_at
-  `).run('default', stringifyJson(state) || '{}', Date.now());
 }
 
 export function closeDb() {

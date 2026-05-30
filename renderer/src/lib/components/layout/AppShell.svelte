@@ -7,7 +7,6 @@
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
   import DeveloperModeWorkspace from '$lib/components/developer/DeveloperModeWorkspace.svelte';
-  import RoleplayWorkspace from '$lib/components/roleplay/RoleplayWorkspace.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
@@ -21,7 +20,7 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, Code2, Sparkles } from 'lucide-svelte';
+  import { Plus, Boxes, Code2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -118,8 +117,6 @@
   <div class="flex min-h-0 flex-1 gap-2 p-2">
     {#if appStore.workspaceMode === 'legacy'}
       <LegacyWorkspace />
-    {:else if appStore.shellMode === 'roleplay'}
-      <RoleplayWorkspace />
     {:else}
       <div
         class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden"
@@ -158,16 +155,6 @@
               aria-label="Model Hub"
             >
               <Boxes class="h-4 w-4" />
-            </button>
-          </Tooltip>
-          <Tooltip label="Roleplay">
-            <button
-              class="collapsed-btn roleplay-toggle flex h-8 w-8 items-center justify-center"
-              class:is-active={appStore.config.ui?.shell_mode === 'roleplay'}
-              onclick={() => appStore.toggleRoleplayMode()}
-              aria-label="Roleplay"
-            >
-              <Sparkles class="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -311,8 +298,7 @@
     border-radius: 8px;
   }
 
-  .collapsed-btn:hover,
-  .collapsed-btn.roleplay-toggle.is-active {
+  .collapsed-btn:hover {
     background:
       linear-gradient(var(--surface), var(--surface)) padding-box,
       linear-gradient(180deg, rgba(245, 245, 245, 0.95), rgba(196, 196, 196, 0.92), rgba(232, 232, 232, 0.95)) border-box;
@@ -325,17 +311,12 @@
     color: var(--text);
   }
 
-  :global(.collapsed-btn.roleplay-toggle.is-active svg) {
-    color: inherit;
-  }
-
   :global(.dark) .collapsed-btn,
   :global(.dark .collapsed-btn svg) {
     color: #ffffff;
   }
 
-  :global(.dark) .collapsed-btn:hover,
-  :global(.dark) .collapsed-btn.roleplay-toggle.is-active {
+  :global(.dark) .collapsed-btn:hover {
     background:
       linear-gradient(var(--sidebar-bg, var(--surface)), var(--sidebar-bg, var(--surface))) padding-box,
       linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.24)) border-box;

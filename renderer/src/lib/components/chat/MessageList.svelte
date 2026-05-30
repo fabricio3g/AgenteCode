@@ -101,15 +101,18 @@
     };
   }
 
+  $effect.pre(() => {
+    const currentEditingMessageId = appStore.editingMessageId;
+    if (currentEditingMessageId !== previousEditingMessageId) {
+      captureEditAnchor(currentEditingMessageId || previousEditingMessageId);
+    }
+  });
+
   $effect(() => {
     const currentEditingMessageId = appStore.editingMessageId;
     if (currentEditingMessageId !== previousEditingMessageId) {
-      if (currentEditingMessageId) {
-        captureEditAnchor(currentEditingMessageId);
-      } else {
-        const closedMessageId = previousEditingMessageId;
-        requestAnimationFrame(() => restoreEditAnchor(closedMessageId));
-      }
+      const anchorMessageId = currentEditingMessageId || previousEditingMessageId;
+      requestAnimationFrame(() => restoreEditAnchor(anchorMessageId));
       previousEditingMessageId = currentEditingMessageId;
     }
   });
@@ -223,7 +226,8 @@
     background: color-mix(in srgb, var(--chat-bg) 92%, var(--surface));
     color: var(--text-secondary);
     backdrop-filter: blur(8px);
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 150ms ease-out;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 150ms ease-out;
     animation: fadeInSoft 120ms ease-out;
   }
 
@@ -231,6 +235,7 @@
     border-color: var(--border);
     background: color-mix(in srgb, var(--surface-hover) 88%, var(--chat-bg));
     color: var(--text);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   }
 
   @keyframes fadeInSoft {

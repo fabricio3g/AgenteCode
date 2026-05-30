@@ -903,7 +903,7 @@
     aria-modal="true"
     aria-labelledby="model-hub-title"
     tabindex="-1"
-    class="modal-surface relative mx-2 my-2 flex h-[calc(100vh-6rem)] w-[calc(100%-1rem)] max-w-none flex-col overflow-hidden rounded-[22px] border border-[var(--border)] bg-[var(--surface)]"
+    class="modal-surface relative mx-2 my-2 flex h-[min(820px,calc(100vh-7rem))] w-[min(1180px,calc(100%-2rem))] flex-col overflow-hidden rounded-[22px] border border-[var(--border)] bg-[var(--surface)]"
     transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
   >
     <!-- Top bar -->

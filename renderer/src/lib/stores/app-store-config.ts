@@ -124,7 +124,6 @@ export function mergeWorkspaceModeConfig(config: AppConfig, mode: 'legacy' | 'mo
 export function mergeUiSettingsConfig(
   config: AppConfig,
   partial: {
-    shell_mode?: 'standard' | 'roleplay';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
   }

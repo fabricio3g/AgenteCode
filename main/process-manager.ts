@@ -226,6 +226,7 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null) {
   if (config.rope_freq_base) args.push('--rope-freq-base', String(config.rope_freq_base));
   if (config.rope_freq_scale) args.push('--rope-freq-scale', String(config.rope_freq_scale));
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
+  if (config.disable_thinking) args.push('--reasoning', 'off');
 
   // Log resolved configuration for debugging
   console.log(formatStartupLog(resolved));

@@ -274,8 +274,7 @@
         .split('\n')
         .map((line) => `> ${line}`)
         .join('\n');
-      const sourceMarker = selectedTextSourceMessageId ? `<!-- chatealm-selected-source:${selectedTextSourceMessageId} -->\n` : '';
-      appStore.updateComposer(`${sourceMarker}${quotedSelection}\n\n${userQuestion}`);
+      appStore.updateComposer(`${quotedSelection}\n\n${userQuestion}`);
       selectedTextInsert = '';
       selectedTextCardText = '';
       selectedTextSourceMessageId = '';
@@ -990,8 +989,7 @@
         </button>
         {#if appStore.composer.trim() || currentChatGenerating}
           <button
-            class="send-btn flex h-8 w-8 items-center justify-center rounded-full text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-            style="background: #E20E0F;"
+            class="send-btn flex h-8 w-8 items-center justify-center rounded-full text-white transition disabled:opacity-50"
             onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
             disabled={sendDisabled}
             aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
@@ -1185,25 +1183,22 @@
   }
 
   .send-btn {
-    border: 1px solid transparent;
-    box-shadow: none;
-    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
+    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(226, 231, 255, 0.18);
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 150ms ease, box-shadow 150ms ease;
   }
 
   .send-btn:hover:not(:disabled) {
-    border-color: color-mix(in srgb, #f5f5f5 55%, #b8b8b8 45%);
+    filter: brightness(1.03);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.35),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.16),
-      0 0 0 1px rgba(232, 232, 232, 0.28);
-  }
-
-  :global(.dark) .send-btn:hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.28);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-      0 0 0 1px rgba(255, 255, 255, 0.12);
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+      0 0 0 1px rgba(226, 231, 255, 0.24),
+      var(--shadow-xs);
   }
 
   .send-icon-wrap {
@@ -1217,6 +1212,10 @@
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.96);
+  }
+
+  .hint-text {
+    color: var(--text-muted);
   }
 
   .mic-icon {
@@ -1260,10 +1259,6 @@
   @keyframes micLineBounce {
     0%, 100% { height: 5px; opacity: 0.5; }
     50% { height: 14px; opacity: 1; }
-  }
-
-  .hint-text {
-    color: var(--text-muted);
   }
 
   .welcome-headline {

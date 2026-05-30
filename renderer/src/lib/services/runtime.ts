@@ -180,6 +180,7 @@ export async function loadLocalModel(args: {
   cacheTypeK?: string;
   cacheTypeV?: string;
   mmprojPath?: string;
+  disableThinking?: boolean;
 }): Promise<string> {
   const baseUrl = resolveLocalBaseUrl(args.config);
 
@@ -210,7 +211,8 @@ export async function loadLocalModel(args: {
     cache_type_k: args.cacheTypeK ?? args.config.llm?.local?.cache_type_k ?? undefined,
     cache_type_v: args.cacheTypeV ?? args.config.llm?.local?.cache_type_v ?? undefined,
     runtime_path: args.runtimePath || args.config.llm?.local?.runtime_path,
-    mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined
+    mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined,
+    disable_thinking: args.disableThinking ?? args.config.llm?.local?.disable_thinking ?? false
   };
   const desiredSignature = buildLocalLoadSignature(baseStartConfig);
 

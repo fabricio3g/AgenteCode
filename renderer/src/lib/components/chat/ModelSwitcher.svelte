@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Check, ChevronDown, LoaderCircle, Play, Power, RefreshCw, Search, Sparkles, Square, X } from 'lucide-svelte';
+  import { Check, ChevronDown, Cloud, Cpu, Play, Power, RefreshCw, Search, Square, X } from 'lucide-svelte';
   import { fade } from 'svelte/transition';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -30,9 +30,6 @@
   const activeProvider = $derived(appStore.activeProvider);
   const displayLabel = $derived(appStore.activeModelLabel);
   const localLoading = $derived(appStore.localModelLoading);
-  const triggerLabel = $derived(
-    isAnyModelLoaded ? loadedModelFilename : localLoading ? 'Loading model' : 'No model'
-  );
 
   const filteredModels = $derived(
     modelSearch.trim()
@@ -169,22 +166,24 @@
 <!-- Trigger: compact model selector -->
 <button
   bind:this={triggerEl}
-  class="model-trigger flex h-8 max-w-[18rem] items-center gap-2 px-2.5 transition"
+  class="model-trigger flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition"
   class:is-open={appStore.modelMenuOpen}
   onclick={toggleMenu}
 >
-  <span class="model-status-dot" class:is-loading={localLoading} class:is-empty={appStore.backendMode === 'local' && !isAnyModelLoaded && !localLoading}></span>
-  <span class="trigger-mode shrink-0">{appStore.backendMode === 'local' ? 'Local' : 'API'}</span>
   {#if appStore.backendMode === 'local'}
-    {#if localLoading}
-      <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
-    {/if}
-    <span class="trigger-label truncate">
-      {triggerLabel}
-    </span>
+    <Cpu class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
   {:else}
-    <span class="trigger-label truncate">{displayLabel || 'No model'}</span>
+    <Cloud class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
   {/if}
+  <span class="trigger-label truncate">
+    {#if appStore.backendMode === 'local' && isAnyModelLoaded}
+      {loadedModelFilename}
+    {:else if appStore.backendMode === 'local'}
+      On Device
+    {:else}
+      {displayLabel || 'Select model'}
+    {/if}
+  </span>
   <ChevronDown class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)] transition-transform duration-150 {appStore.modelMenuOpen ? 'rotate-180' : ''}" />
 </button>
 
@@ -199,7 +198,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-2.5 pb-2">
       <span class="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-        {appStore.backendMode === 'local' ? 'Local Models' : 'Models'}
+        {appStore.backendMode === 'local' ? 'On Device Models' : 'Cloud Models'}
       </span>
       {#if appStore.backendMode === 'api'}
         <button
@@ -212,17 +211,17 @@
       {/if}
     </div>
 
-    <!-- API / Local mode toggle -->
+    <!-- Cloud / On Device mode toggle -->
     {#if isTauri()}
       <div class="mode-toggle mx-3 mb-2.5">
         <button
           class={`mode-btn flex-1 transition ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('api')}
-        >API</button>
+        >Cloud</button>
         <button
           class={`mode-btn flex-1 transition ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('local')}
-        >Local</button>
+        >On Device</button>
       </div>
     {/if}
 
@@ -420,8 +419,8 @@
 <style>
   .model-trigger {
     color: var(--text);
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 999px;
     box-shadow: none;
   }
@@ -445,36 +444,8 @@
     letter-spacing: -0.01em;
   }
 
-  .trigger-mode {
-    border-radius: 999px;
-    background: var(--surface-hover);
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    padding: 1px 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-
-  .model-status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--success);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 14%, transparent);
-    flex-shrink: 0;
-  }
-
-  .model-status-dot.is-loading {
-    background: var(--warning);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent);
-    animation: modelDotPulse 1s ease-in-out infinite;
-  }
-
-  .model-status-dot.is-empty {
-    background: var(--text-muted);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 12%, transparent);
+  :global(.dark) .mode-info svg {
+    filter: invert(1);
   }
 
   @keyframes modelDotPulse {
@@ -546,26 +517,24 @@
 
   .mode-btn:hover,
   .mode-btn.is-active {
-    color: var(--text);
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    border-color: transparent;
+    color: #fff;
+    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
+    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
-      var(--shadow-xs);
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(226, 231, 255, 0.18);
   }
 
   :global(.dark) .mode-btn:hover,
   :global(.dark) .mode-btn.is-active {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    color: #fff;
+    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
+    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
-      var(--shadow-xs);
+      inset 0 1px 0 rgba(255, 255, 255, 0.45),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+      0 0 0 1px rgba(226, 231, 255, 0.18);
   }
 
   .loading-indicator {

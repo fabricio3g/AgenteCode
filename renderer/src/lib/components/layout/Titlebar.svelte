@@ -4,10 +4,11 @@
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, PanelLeftClose, PanelLeftOpen, ExternalLink, SlidersHorizontal, MoonStar, SunMedium } from 'lucide-svelte';
+  import { Search, PanelLeftClose, PanelLeftOpen, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
   import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import { downloadsStore } from '$lib/stores/downloads.svelte';
 
   let isMaximized = $state(false);
   const composerCenterShift = $derived(appStore.sidebarOpen ? 134 : 26);
@@ -20,6 +21,7 @@
 
   onMount(() => {
     void checkMaximized();
+    void downloadsStore.refresh();
   });
 </script>
 
@@ -97,6 +99,21 @@
   <div class="titlebar-right flex flex-1 items-center justify-end">
     {#if isMac}
       <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
+        <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+          <button
+            class="titlebar-btn download-btn relative flex h-7 w-7 items-center justify-center transition"
+            class:is-active={downloadsStore.hasActive}
+            onclick={() => { appStore.downloadsOpen = true; void downloadsStore.refresh(); }}
+            aria-label="Downloads"
+          >
+            {#if downloadsStore.hasActive}
+              <Loader2 class="h-4 w-4 animate-spin" />
+              <span class="download-badge">{downloadsStore.activeCount}</span>
+            {:else}
+              <Download class="h-4 w-4" />
+            {/if}
+          </button>
+        </Tooltip>
         <Tooltip label="Toggle theme" position="left">
           <button
             class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
@@ -116,6 +133,21 @@
       </div>
     {:else}
       <div class="win-controls flex h-full items-center" style="-webkit-app-region: no-drag">
+        <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+          <button
+            class="titlebar-btn download-btn relative mr-1 flex h-7 w-7 items-center justify-center transition"
+            class:is-active={downloadsStore.hasActive}
+            onclick={() => { appStore.downloadsOpen = true; void downloadsStore.refresh(); }}
+            aria-label="Downloads"
+          >
+            {#if downloadsStore.hasActive}
+              <Loader2 class="h-4 w-4 animate-spin" />
+              <span class="download-badge">{downloadsStore.activeCount}</span>
+            {:else}
+              <Download class="h-4 w-4" />
+            {/if}
+          </button>
+        </Tooltip>
         <Tooltip label="Toggle theme" position="left">
           <button
             class="titlebar-btn flex h-7 w-7 items-center justify-center transition mr-1"
@@ -184,13 +216,30 @@
     box-shadow: none;
   }
 
-  .titlebar-btn:hover {
+  .titlebar-btn:hover,
+  .titlebar-btn.is-active {
     color: var(--text);
     background:
       linear-gradient(var(--surface), var(--surface)) padding-box,
       linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
     border-color: transparent;
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
+  }
+
+  .download-badge {
+    position: absolute;
+    right: -3px;
+    top: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--primary, #717CE2);
+    color: var(--primary-fg, #fff);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
   }
 
   .titlebar-center {

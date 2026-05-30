@@ -262,6 +262,7 @@ export interface AppConfig {
       cache_type_k?: string;
       cache_type_v?: string;
       mmproj_path?: string;
+      disable_thinking?: boolean;
     };
   };
   search?: {
@@ -333,7 +334,6 @@ export interface AppConfig {
   ui?: {
     theme?: 'light' | 'dark';
     workspace_mode?: 'legacy' | 'modern';
-    shell_mode?: 'standard' | 'roleplay';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;

@@ -31,6 +31,7 @@ export interface LocalModelLoadState {
   cacheTypeV: string;
   mmprojPath: string;
   rememberSettings: boolean;
+  disableThinking: boolean;
 }
 
 export interface LocalModelRuntimeRequest {
@@ -52,6 +53,7 @@ export interface LocalModelRuntimeRequest {
   cacheTypeK?: string;
   cacheTypeV?: string;
   mmprojPath?: string;
+  disableThinking?: boolean;
 }
 
 export function readRememberedLocalModelSettings(): Record<string, Record<string, unknown>> {
@@ -133,6 +135,7 @@ export function resolveLocalModelLoadState(params: {
     cacheTypeK: String(remembered.cache_type_k || local?.cache_type_k || 'f16'),
     cacheTypeV: String(remembered.cache_type_v || local?.cache_type_v || 'f16'),
     mmprojPath: params.mmprojPath || '',
+    disableThinking: remembered.disable_thinking ? Boolean(remembered.disable_thinking) : (local?.disable_thinking ?? false),
     rememberSettings: Object.keys(remembered).length > 0
   };
 }
@@ -154,7 +157,8 @@ export function buildLocalModelSettingsPatch(state: LocalModelLoadState) {
     cache_type_k: state.cacheTypeK || undefined,
     cache_type_v: state.cacheTypeV || undefined,
     runtime_path: state.runtimePath || undefined,
-    mmproj_path: state.mmprojPath || undefined
+    mmproj_path: state.mmprojPath || undefined,
+    disable_thinking: state.disableThinking
   };
 }
 
@@ -174,7 +178,8 @@ export function buildRememberedLocalModelSettingsEntry(state: LocalModelLoadStat
     rope_freq_scale: state.ropeFreqScale ? Number(state.ropeFreqScale) : null,
     cache_type_k: state.cacheTypeK || 'f16',
     cache_type_v: state.cacheTypeV || 'f16',
-    runtime_path: state.runtimePath || ''
+    runtime_path: state.runtimePath || '',
+    disable_thinking: state.disableThinking
   };
 }
 
@@ -217,6 +222,7 @@ export function buildLocalModelRuntimeRequest(params: {
     ropeFreqScale: settings.rope_freq_scale ?? undefined,
     cacheTypeK: settings.cache_type_k,
     cacheTypeV: settings.cache_type_v,
-    mmprojPath: settings.mmproj_path
+    mmprojPath: settings.mmproj_path,
+    disableThinking: params.state.disableThinking
   };
 }

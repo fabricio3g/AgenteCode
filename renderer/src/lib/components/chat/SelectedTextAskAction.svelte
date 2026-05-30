@@ -12,6 +12,7 @@
   let x = $state(0);
   let y = $state(0);
   let updateTimer: ReturnType<typeof setTimeout> | null = null;
+  let pointerSelecting = false;
 
   function isEditableElement(node: Node | null): boolean {
     const element = node instanceof Element ? node : node?.parentElement;
@@ -23,9 +24,9 @@
     selectedText = '';
   }
 
-  function scheduleUpdate() {
+  function scheduleUpdate(delay = 120) {
     if (updateTimer) clearTimeout(updateTimer);
-    updateTimer = setTimeout(updateFromSelection, 30);
+    updateTimer = setTimeout(updateFromSelection, delay);
   }
 
   function rectFromRange(range: Range): DOMRect | null {
@@ -78,6 +79,7 @@
 
   function updateFromSelection() {
     updateTimer = null;
+    if (pointerSelecting) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
       hide();
@@ -131,11 +133,29 @@
     hide();
   }
 
+  function handleSelectionChange() {
+    scheduleUpdate();
+  }
+
+  function handleKeyUp() {
+    scheduleUpdate();
+  }
+
   function handlePointerDown(event: PointerEvent) {
     const target = event.target as Element | null;
-    if (!target?.closest('.selected-text-ask-action') && !target?.closest('[data-chat-message-content]')) {
+    if (target?.closest('.selected-text-ask-action')) return;
+    if (target?.closest('[data-chat-message-content]')) {
+      pointerSelecting = true;
       hide();
+      return;
     }
+    hide();
+  }
+
+  function handlePointerUp() {
+    if (!pointerSelecting) return;
+    pointerSelecting = false;
+    scheduleUpdate(160);
   }
 
   function handleScroll() {
@@ -143,17 +163,19 @@
   }
 
   onMount(() => {
-    document.addEventListener('selectionchange', scheduleUpdate);
-    document.addEventListener('mouseup', scheduleUpdate);
-    document.addEventListener('keyup', scheduleUpdate);
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mouseup', handlePointerUp);
+    document.addEventListener('keyup', handleKeyUp);
     document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointerup', handlePointerUp, true);
     window.addEventListener('scroll', handleScroll, true);
 
     return () => {
-      document.removeEventListener('selectionchange', scheduleUpdate);
-      document.removeEventListener('mouseup', scheduleUpdate);
-      document.removeEventListener('keyup', scheduleUpdate);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mouseup', handlePointerUp);
+      document.removeEventListener('keyup', handleKeyUp);
       document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointerup', handlePointerUp, true);
       window.removeEventListener('scroll', handleScroll, true);
       if (updateTimer) clearTimeout(updateTimer);
     };

@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, MoreHorizontal, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { fly } from 'svelte/transition';
   
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
@@ -29,6 +30,7 @@
   let hovering = $state(false);
   let copyFeedback = $state<string | null>(null);
   let copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let actionMenuOpen = $state(false);
 
   const activeVersionIndex = $derived(typeof message.activeVersion === 'number' ? Math.max(0, Math.min(message.activeVersion, (message.versions?.length || 1) - 1)) : 0);
   const activeVersion = $derived(message.versions?.[activeVersionIndex] || null);
@@ -144,13 +146,29 @@
   }
 
   async function copyContent() {
-    await navigator.clipboard.writeText(cleanContent || message.content || '');
     if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
-    copyFeedback = 'copied';
+    copyFeedback = null;
+    requestAnimationFrame(() => {
+      copyFeedback = 'copied';
+    });
     copyFeedbackTimer = setTimeout(() => {
       copyFeedback = null;
       copyFeedbackTimer = null;
     }, 1800);
+
+    try {
+      await navigator.clipboard.writeText(cleanContent || message.content || '');
+    } catch {
+      const text = cleanContent || message.content || '';
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    }
   }
 
   async function downloadSlides() {
@@ -246,20 +264,32 @@
           </div>
         </div>
       {/if}
-      <div class={`message-action-bar justify-end ${hovering || forceActionsVisible ? 'visible' : ''}`}>
-          <button class="msg-action-btn" onclick={copyContent} aria-label="Copy message" title="Copy">
+      <div class={`message-action-bar justify-end ${hovering || forceActionsVisible || copyFeedback === 'copied' ? 'visible' : ''}`}>
+          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy message" title={copyFeedback === 'copied' ? 'Copied' : 'Copy'}>
             {#if copyFeedback === 'copied'}
               <Check class="h-3.5 w-3.5 action-icon copied" />
             {:else}
               <Copy class="h-3.5 w-3.5 action-icon" />
             {/if}
           </button>
+          {#if copyFeedback === 'copied'}
+            <span class="copy-action-pill" transition:fly={{ y: 4, duration: 140 }}>Copied</span>
+          {/if}
         <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message" title="Edit">
           <Pencil class="h-3.5 w-3.5 action-icon" />
         </button>
-        <button class="msg-action-btn danger" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete message" title="Delete">
-          <Trash2 class="h-3.5 w-3.5 action-icon" />
-        </button>
+        <div class="msg-action-menu-wrap">
+          <button class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More actions" title="More">
+            <MoreHorizontal class="h-3.5 w-3.5 action-icon" />
+          </button>
+          {#if actionMenuOpen}
+            <div class="msg-action-menu">
+              <button class="msg-menu-item danger" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
+                <Trash2 class="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   {:else if !isAssistantVisiblyEmpty}
@@ -297,7 +327,7 @@
 
       <!-- Action buttons + version nav (visible on hover) -->
       {#if !hasActiveDeepResearch}
-      <div class="message-action-bar" class:visible={hovering || forceActionsVisible}>
+      <div class="message-action-bar" class:visible={hovering || forceActionsVisible || copyFeedback === 'copied'}>
           {#if (message.versions?.length || 0) > 1}
             <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
               <ChevronLeft class="h-3.5 w-3.5 action-icon" />
@@ -307,13 +337,16 @@
               <ChevronRight class="h-3.5 w-3.5 action-icon" />
             </button>
           {/if}
-          <button class="msg-action-btn" onclick={copyContent} aria-label="Copy response" title="Copy">
+          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy response" title={copyFeedback === 'copied' ? 'Copied' : 'Copy'}>
             {#if copyFeedback === 'copied'}
               <Check class="h-3.5 w-3.5 action-icon copied" />
             {:else}
               <Copy class="h-3.5 w-3.5 action-icon" />
             {/if}
           </button>
+          {#if copyFeedback === 'copied'}
+            <span class="copy-action-pill" transition:fly={{ y: 4, duration: 140 }}>Copied</span>
+          {/if}
           {#if message.role === 'assistant' && message.status !== 'streaming' && appStore.config.tts?.enable_voice_output}
             <button class="msg-action-btn" onclick={handleTtsAction} aria-label="Read aloud" title={isTtsGenerating ? 'Stop generation' : isTtsPlaying ? 'Stop playback' : 'Listen'}>
               {#if isTtsGenerating || isTtsPlaying}
@@ -329,12 +362,87 @@
           <button class="msg-action-btn" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun} aria-label="Retry" title="Retry">
             <RefreshCcw class="h-3.5 w-3.5 action-icon" />
           </button>
-          <button class="msg-action-btn danger" style="--chateaui-icon-button-hover-color: var(--error); --chateaui-icon-button-hover-bg: color-mix(in srgb, var(--error) 8%, transparent);" onclick={() => confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) })} aria-label="Delete" title="Delete">
-            <Trash2 class="h-3.5 w-3.5 action-icon" />
-          </button>
+          <div class="msg-action-menu-wrap">
+            <button class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More actions" title="More">
+              <MoreHorizontal class="h-3.5 w-3.5 action-icon" />
+            </button>
+            {#if actionMenuOpen}
+              <div class="msg-action-menu">
+                <button class="msg-menu-item danger" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
+                  <Trash2 class="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
       {/if}
       </div>
     </div>
   {/if}
 </article>
+
+<style>
+  .msg-action-menu-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .msg-action-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: 112px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .msg-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    border-radius: 7px;
+    padding: 7px 9px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .msg-menu-item:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .msg-menu-item.danger:hover {
+    background: color-mix(in srgb, var(--error) 10%, transparent);
+    color: var(--error);
+  }
+
+  .copy-action-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 1.55rem;
+    padding: 0 0.5rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--success) 22%, transparent);
+    color: var(--success);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1;
+    animation: copyPillGlow 900ms ease-out both;
+  }
+
+  @keyframes copyPillGlow {
+    0% { opacity: 0; transform: translateY(2px) scale(0.96); }
+    18% { opacity: 1; transform: translateY(0) scale(1); }
+    70% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0.85; transform: translateY(0) scale(1); }
+  }
+</style>

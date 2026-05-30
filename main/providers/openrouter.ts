@@ -28,18 +28,50 @@ export class OpenRouterProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
+  logRequestError(stage, error, details = {}) {
+    const status = error?.status ?? error?.code ?? error?.response?.status;
+    const headers = error?.headers ?? error?.response?.headers;
+    const body = error?.error ?? error?.response?.data ?? error?.body;
+    console.error('[OpenRouter] request failed', {
+      stage,
+      status,
+      message: error?.message || String(error),
+      code: error?.code,
+      type: error?.type,
+      details,
+      headers,
+      body
+    });
+  }
+
   async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
-
-    const stream = await client.chat.completions.create({
+    const requestDetails = {
       model,
-      messages,
-      ...(tools?.length ? { tools } : {}),
-      ...params,
-      stream: true
-    }, { signal });
+      baseUrl: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+      messageCount: messages?.length || 0,
+      toolCount: tools?.length || 0,
+      stream: true,
+      params: Object.keys(params || {})
+    };
 
-    for await (const chunk of stream) {
+    let stream;
+    try {
+      console.log('[OpenRouter] stream request', requestDetails);
+      stream = await client.chat.completions.create({
+        model,
+        messages,
+        ...(tools?.length ? { tools } : {}),
+        ...params,
+        stream: true
+      }, { signal });
+    } catch (error) {
+      this.logRequestError('stream.create', error, requestDetails);
+      throw error;
+    }
+
+    try {
+      for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
       const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
@@ -60,6 +92,10 @@ export class OpenRouterProvider extends BaseProvider {
         };
       }
     }
+    } catch (error) {
+      this.logRequestError('stream.iterate', error, requestDetails);
+      throw error;
+    }
   }
 
   async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
@@ -68,14 +104,29 @@ export class OpenRouterProvider extends BaseProvider {
     const cleanParams = Object.fromEntries(
       Object.entries(params).filter(([, v]) => v !== undefined)
     );
-
-    const response = await client.chat.completions.create({
+    const requestDetails = {
       model,
-      messages,
-      ...(tools?.length ? { tools } : {}),
-      ...cleanParams,
-      stream: false
-    }, { signal });
+      baseUrl: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+      messageCount: messages?.length || 0,
+      toolCount: tools?.length || 0,
+      stream: false,
+      params: Object.keys(cleanParams || {})
+    };
+
+    let response;
+    try {
+      console.log('[OpenRouter] completion request', requestDetails);
+      response = await client.chat.completions.create({
+        model,
+        messages,
+        ...(tools?.length ? { tools } : {}),
+        ...cleanParams,
+        stream: false
+      }, { signal });
+    } catch (error) {
+      this.logRequestError('completion.create', error, requestDetails);
+      throw error;
+    }
 
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};
