@@ -22,6 +22,7 @@
     sourceCount?: number;
     className?: string;
     launcherMode?: 'tile' | 'strip';
+    allowDownload?: boolean;
     onDownloadSlides?: () => void;
   }
 
@@ -31,6 +32,7 @@
     sourceCount = 0,
     className = '',
     launcherMode = 'tile',
+    allowDownload = true,
     onDownloadSlides
   }: Props = $props();
 
@@ -223,7 +225,7 @@
               <span class="attachment-title">{doc.title || baseName(doc.name)}</span>
               <span class="attachment-type">{fileTypeLabel(doc.name, doc.kind)}</span>
             </span>
-            {#if viewerKind(doc) !== 'image' && (docSource(doc) || doc.kind === 'slides')}
+            {#if allowDownload && viewerKind(doc) !== 'image' && (docSource(doc) || doc.kind === 'slides')}
               <button
                 type="button"
                 class="attachment-download"
@@ -256,7 +258,7 @@
           <span class="document-subtitle">{subtitle}{#if status !== 'ready'} · {status}{/if}</span>
         </span>
         <span class="document-actions">
-          {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
+          {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
             <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
               <Download class="h-3.5 w-3.5" />
             </button>
@@ -301,7 +303,7 @@
                     {/if}
                   </label>
                 {/if}
-                {#if activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
+                {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
                   <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
                     <Download class="h-4 w-4" />
                   </button>

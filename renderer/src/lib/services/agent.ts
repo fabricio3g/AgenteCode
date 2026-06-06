@@ -83,6 +83,7 @@ import {
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
 const MAX_TIME_MS = 2 * 60 * 1000;
+const SEARCH_TOOL_NAMES = new Set(['web_search', 'fetch_url', 'calculator']);
 const KEEP_TOOL_PAIRS = 6;
 const TOOL_CALLS_PER_STEP = 3;
 const LOCAL_TOOL_CALLS_PER_STEP = 2;
@@ -103,6 +104,22 @@ function debugLog(enabled: boolean, message: string) {
 
 function getToolCallLimit(maxIterations: number, localMode = false): number {
   return Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : TOOL_CALLS_PER_STEP));
+}
+
+function buildResearchSynthesisInstruction(params: { prompt?: string; searchMode?: 'search' | 'deep' | 'max'; sourceCount: number; toolCalls: number }): string {
+  const mode = params.searchMode || 'search';
+  return [
+    `Tool gathering has reached the configured research budget after ${params.toolCalls} tool calls and ${params.sourceCount} gathered source${params.sourceCount === 1 ? '' : 's'}.`,
+    'Do not call any more tools. Continue by writing the final answer now from the gathered evidence.',
+    mode === 'max'
+      ? 'This is MAX research: produce a complete, polished report with methodology/evidence-quality notes, deep synthesis, tables where useful, unresolved gaps, and a full references section.'
+      : mode === 'deep'
+        ? 'This is DEEP research: produce a thorough, polished report with synthesis, evidence-quality notes, practical takeaways, caveats, and references.'
+        : 'Produce a complete answer using the gathered evidence.',
+    'Follow APA 7 report norms: clear heading hierarchy, formal objective tone, evidence-based synthesis, in-text citations where metadata allows, and a References section.',
+    'Format references as APA 7 web references using available metadata only: author/organization when present, year/date when present, title, site/publisher when distinct, and URL. Use (n.d.) when no date is available. Never invent authors, dates, titles, or facts.',
+    params.prompt ? `Current user request: ${params.prompt}` : ''
+  ].filter(Boolean).join('\n');
 }
 
 function countBudgetedToolCalls(toolCalls: ToolCall[]): number {
@@ -451,6 +468,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     chatId: args.chatId,
     files: {},
     conversationContext: args.conversationContext,
+    searchMode: args.searchMode,
     workspaceRoot: args.workspaceRoot,
     workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
     executionMode,
@@ -478,14 +496,27 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
   );
 
-  const toolDefs = getToolDefinitions();
+  const toolMode = args.toolMode || 'agent';
+  const toolDefs = toolMode === 'search_chat'
+    ? getToolDefinitions().filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
+    : getToolDefinitions();
   const modeNote = executionMode === 'workspace'
     ? 'You are attached to a real workspace folder. Only use persistent file operations when the app explicitly enables workspace mode.'
     : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
   const requestReminder = buildCurrentRequestReminder(args.rawPrompt, compactText);
-  const agentExtra = [modeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
-  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations);
-  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs);
+  const searchModeNote = toolMode === 'search_chat'
+    ? [
+      `Selected search depth: ${args.searchMode || 'search'}.`,
+      args.searchMode === 'max'
+        ? 'Max search means keep broadening and deepening with additional searches/source reads until the answer is strongly supported or the tool/time budget is exhausted.'
+        : args.searchMode === 'deep'
+          ? 'Deep search means use multiple high-signal searches and source reads to improve accuracy before answering.'
+          : 'Search mode means use web search for current information and follow up if the first search is insufficient.'
+    ].join(' ')
+    : '';
+  const agentExtra = [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
+  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode);
+  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode);
   const directSys = buildDirectSystemPrompt(agentExtra);
 
   const messages: RequestMessage[] = [
@@ -514,12 +545,47 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     args.signal?.throwIfAborted?.();
   };
 
+  const isResearchChat = toolMode === 'search_chat' && (args.searchMode === 'deep' || args.searchMode === 'max');
+  const forceResearchSynthesis = async (reason: string): Promise<string> => {
+    steps.push({
+      id: uid('step'),
+      type: 'thinking',
+      label: 'Synthesizing final research report',
+      status: 'running',
+      detail: reason
+    });
+    args.onStep([...steps]);
+    args.onProgress?.('Synthesizing final research report…');
+    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
+    messages[0] = { role: 'system', content: directSys };
+    messages.push({
+      role: 'user',
+      content: buildResearchSynthesisInstruction({
+        prompt: args.rawPrompt,
+        searchMode: args.searchMode,
+        sourceCount: sources.length,
+        toolCalls: totalToolCalls
+      })
+    });
+    const completion = await completeAssistantReply({ messages, signal: args.signal });
+    checkAbort();
+    const content = stripToolCallArtifacts(String(completion?.content || '')).trim();
+    if (completion?.reasoning) finalReasoning = finalReasoning || String(completion.reasoning);
+    const lastStep = steps[steps.length - 1];
+    if (lastStep?.label === 'Synthesizing final research report') {
+      lastStep.status = content ? 'done' : 'error';
+      lastStep.detail = content ? 'Final research report ready' : 'The model did not return final report text';
+      args.onStep([...steps]);
+    }
+    return content;
+  };
+
   for (let iter = 0; iter < maxIterations; iter++) {
     debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
     checkAbort();
     throwIfAborted();
-    if (Date.now() - startTime > MAX_TIME_MS) {
-      errorReason = errorReason || 'Agent timed out after 3 minutes.';
+    if (Date.now() - startTime > (args.maxTimeMs || MAX_TIME_MS)) {
+      errorReason = errorReason || 'Agent timed out before completing the requested depth.';
       stopReason = 'timeout';
       break;
     }
@@ -917,6 +983,19 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     const budgetedToolCalls = countBudgetedToolCalls(toolCalls);
 
     if (totalToolCalls >= maxToolCalls) {
+      if (isResearchChat) {
+        try {
+          finalContent = await forceResearchSynthesis(`Research budget reached (${totalToolCalls}/${maxToolCalls}); writing final report from gathered evidence.`);
+          if (finalContent) {
+            stopReason = 'none';
+            warningReason = undefined;
+            break;
+          }
+        } catch (e: unknown) {
+          if (isAbortError(e)) throw e;
+          debugLog(debugLogs, `[agent] research synthesis after tool limit failed: ${toErrorMessage(e).slice(0, 200)}`);
+        }
+      }
       steps.push({
         id: uid('step'), type: 'error', label: 'Tool limit reached',
         status: 'error', detail: `Used ${totalToolCalls} tools across ${maxIterations} steps. Forcing final answer.`
@@ -1083,6 +1162,19 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     }
 
     if (totalToolCalls >= maxToolCalls) {
+      if (isResearchChat) {
+        try {
+          finalContent = await forceResearchSynthesis(`Research budget reached (${totalToolCalls}/${maxToolCalls}); writing final report from gathered evidence.`);
+          if (finalContent) {
+            stopReason = 'none';
+            warningReason = undefined;
+            break;
+          }
+        } catch (e: unknown) {
+          if (isAbortError(e)) throw e;
+          debugLog(debugLogs, `[agent] research synthesis after tool limit failed: ${toErrorMessage(e).slice(0, 200)}`);
+        }
+      }
       finalContent = await buildStrictFallbackContent({
         prompt: args.rawPrompt || '',
         reason: `the available tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
@@ -1093,6 +1185,20 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
       stopReason = 'tool_limit';
       break;
+    }
+  }
+
+  if (!finalContent && isResearchChat) {
+    try {
+      finalContent = await forceResearchSynthesis('Research step budget reached; writing final report from gathered evidence.');
+      if (finalContent) {
+        stopReason = 'none';
+        warningReason = undefined;
+        errorReason = undefined;
+      }
+    } catch (e: unknown) {
+      if (isAbortError(e)) throw e;
+      debugLog(debugLogs, `[agent] research synthesis after iteration limit failed: ${toErrorMessage(e).slice(0, 200)}`);
     }
   }
 

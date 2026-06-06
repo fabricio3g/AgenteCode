@@ -141,7 +141,7 @@ export function buildEvidenceText(observations: ToolObservation[], liveSources: 
 export function requestedArtifactKinds(prompt: string): { docx: boolean; xlsx: boolean; pptx: boolean; pdf: boolean } {
   const text = String(prompt || '').toLowerCase();
   return {
-    docx: /\b(document|docx|word|report|informe|documento)\b/.test(text),
+    docx: /\b(docx|word document|microsoft word|\.docx|documento word)\b/.test(text),
     xlsx: /\b(excel|xlsx|spreadsheet|workbook|sheet|planilla|hoja de calculo|hoja de cálculo)\b/.test(text),
     pptx: /\b(slide|slides|ppt|pptx|presentation|deck|diapositiva|presentacion|presentación)\b/.test(text),
     pdf: /\b(pdf)\b/.test(text)

@@ -2,6 +2,8 @@ import type { SearchResult } from '$lib/types/tauri';
 import { completeAssistantReply, extractJsonFromResponse, type RequestMessage } from '$lib/services/chat-api';
 import { listen, invoke, isTauri } from '$lib/services/tauri';
 import { webSearch } from '$lib/services/search';
+import { createId } from '$lib/utils/id';
+import { safeParse, normalizeWhitespace } from '$lib/utils/storage';
 
 type DeepResearchStatus = 'queued' | 'awaiting_input' | 'searching' | 'crawling' | 'synthesizing' | 'completed' | 'failed' | 'cancelled';
 
@@ -48,45 +50,18 @@ const STORAGE_KEY = 'chatealm_deep_research_tasks_v2';
 const QUESTION_TIMEOUT_MS = 20000;
 const questionCache = new Map<string, { questions: ResearchQuestion[]; expires: number }>();
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve(fallback);
-    }, timeoutMs);
-
-    void promise.then((value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    }).catch(() => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(fallback);
-    });
-  });
-}
-
-function createId(prefix: string) {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
-}
-
-function normalizeWhitespace(text: unknown) {
-  return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 function parseGeneratedQuestions(data: unknown): ResearchQuestion[] {
@@ -208,37 +183,131 @@ function loadTasks(): DeepResearchTask[] {
   }));
 }
 
-async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
-  const sourceLines = task.results
-    .slice(0, 14)
-    .map((entry, index) => `${index + 1}. ${entry.title}\nURL: ${entry.url}\nSnippet: ${entry.snippet || 'No snippet available.'}`)
-    .join('\n\n');
+function isMedicalResearchQuery(query: string): boolean {
+  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|pemphigus|autoimmune|dermatology|medicine|medical)\b/i.test(query);
+}
 
-  const answerContext = Object.entries(task.answers || {})
+function buildSourceLines(task: DeepResearchTask, limit: number): string {
+  return task.results
+    .slice(0, limit)
+    .map((entry, index) => `[${index + 1}] ${entry.title || entry.url}\nURL: ${entry.url}\nSnippet: ${entry.snippet || 'No snippet available.'}`)
+    .join('\n\n');
+}
+
+function buildAnswerContext(task: DeepResearchTask): string {
+  return Object.entries(task.answers || {})
     .map(([id, value]) => {
       const q = task.questions.find((entry) => entry.id === id)?.question || id;
       return `${q}\nAnswer: ${value || '[skipped]'}`;
     })
     .join('\n\n');
+}
 
+async function compressResearchEvidence(task: DeepResearchTask, sourceLines: string, answerContext: string): Promise<string> {
+  const query = task.enhancedQuery || task.query;
+  const medical = isMedicalResearchQuery(query);
   const messages: RequestMessage[] = [
     {
       role: 'system',
       content: [
-        'You are a deep research synthesizer.',
-        'Summarize the gathered online evidence into a detailed, precise research brief.',
-        'Prioritize concrete facts, key comparisons, contradictions, dates, and actionable takeaways.',
-        'Use concise markdown sections and bullets when useful.',
-        'Cite sources inline by title when possible.'
+        'You are the compression stage of a deep research pipeline.',
+        'Turn noisy crawled web evidence into a compact evidence dossier for a final report writer.',
+        'Deduplicate repeated facts, preserve source IDs, call out contradictions, rank source authority, and identify gaps.',
+        medical ? 'For medical topics, rank evidence as guidelines/consensus first, then systematic reviews and trials, then peer-reviewed reviews, then clinical references, then patient resources.' : 'Rank evidence by primary/authoritative sources first, then reputable secondary sources, then low-authority or contextual sources.',
+        'Do not write the final report. Output only the dossier.'
       ].join(' ')
     },
     {
       role: 'user',
       content: [
-        task.conversationContext ? `Conversation context:\n${task.conversationContext}` : '',
-        `Research query: ${task.enhancedQuery || task.query}`,
+        `Research query: ${query}`,
         `Search mode: ${task.mode}`,
         answerContext ? `<clarifications>\n${answerContext}\n</clarifications>` : '',
+        '<source_index>',
+        sourceLines,
+        '</source_index>',
+        '<crawled_evidence>',
+        task.context,
+        '</crawled_evidence>',
+        '',
+        'Create an evidence dossier with these exact headings:',
+        '1. Priority Sources and Why They Matter',
+        '2. Verified Claims by Theme with source IDs',
+        '3. Conflicts, Uncertainties, and Weak Evidence',
+        '4. Missing Information to Verify',
+        '5. Suggested Final Report Outline'
+      ].filter(Boolean).join('\n')
+    }
+  ];
+
+  const completion = await completeAssistantReply({ messages });
+  return completion.content.trim();
+}
+
+function finalReportRequest(mode: 'deep' | 'max', medical: boolean): string {
+  const shared = [
+    'Write the final answer as an extensive, polished research report, not notes.',
+    'Use inline source IDs like [1], [2] for important factual claims whenever the evidence provides source IDs.',
+    'Synthesize across sources instead of listing search results.',
+    'Include tables in markdown where they improve readability.',
+    'Separate established facts from emerging, uncertain, or weakly supported claims.',
+    'Follow APA 7 report norms: clear heading hierarchy, formal objective tone, evidence-based synthesis, and a References section.',
+    'Format references as APA 7 web references using available metadata only: author/organization when present, year/date when present, title, site/publisher when distinct, and URL. Use (n.d.) when no date is available and never invent missing metadata.',
+    'End with a numbered APA-style References list using the provided source index.'
+  ];
+
+  const depth = mode === 'max'
+    ? [
+        'This is MAX research: use the compressed evidence dossier as the primary source of truth, then use crawled evidence only to fill gaps.',
+        'Include a methodology/evidence-quality section and explicit unresolved gaps.',
+        'Be comprehensive enough to serve as a second-stage deep research deliverable.'
+      ]
+    : [
+        'This is DEEP research: provide a thorough report with concise evidence-quality notes and practical takeaways.'
+      ];
+
+  const domain = medical
+    ? [
+        'For this medical topic, use this report structure: Medical disclaimer; Executive summary; Definition and clinical importance; Epidemiology; Etiology and pathophysiology; Clinical presentation; Diagnosis and differential diagnosis; Treatment and management; Complications; Prognosis and follow-up; Patient education; Emerging research; Evidence gaps; References.',
+        'Include tables for diagnostic tests, differential diagnosis, treatment options, and complications when evidence supports them.',
+        'Do not present treatment advice as personal medical advice; write for a medically literate audience and recommend specialist care where appropriate.'
+      ]
+    : [
+        'Use a domain-appropriate structure: Executive summary; Background; Key findings; Detailed analysis; Comparison/decision tables where useful; Risks and caveats; Practical recommendations; Evidence gaps; References.'
+      ];
+
+  return [...shared, ...depth, ...domain].join('\n');
+}
+
+async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
+  const sourceLines = buildSourceLines(task, task.mode === 'max' ? 40 : 24);
+  const answerContext = buildAnswerContext(task);
+  const query = task.enhancedQuery || task.query;
+  const medical = isMedicalResearchQuery(query);
+  const evidenceDossier = task.mode === 'max'
+    ? await compressResearchEvidence(task, sourceLines, answerContext)
+    : '';
+
+  const messages: RequestMessage[] = [
+    {
+      role: 'system',
+      content: [
+        'You are the final-report writer in a staged deep research pipeline.',
+        'Your job is to produce a high-quality synthesized report from gathered evidence, not a raw evidence dump.',
+        'Be precise, source-aware, and transparent about uncertainty.',
+        finalReportRequest(task.mode, medical)
+      ].join('\n')
+    },
+    {
+      role: 'user',
+      content: [
+        task.conversationContext ? `Conversation context:\n${task.conversationContext}` : '',
+        `Research query: ${query}`,
+        `Search mode: ${task.mode}`,
+        answerContext ? `<clarifications>\n${answerContext}\n</clarifications>` : '',
+        evidenceDossier ? '<compressed_evidence_dossier>' : '',
+        evidenceDossier,
+        evidenceDossier ? '</compressed_evidence_dossier>' : '',
         '<web_search_results>',
         task.context,
         '</web_search_results>',
@@ -247,7 +316,7 @@ async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
         sourceLines,
         '</sources>',
         '',
-        'Create sections: Overview, Detailed Findings, Evidence, Caveats, and What to verify next.'
+        finalReportRequest(task.mode, medical)
       ].filter(Boolean).join('\n')
     }
   ];
@@ -257,7 +326,7 @@ async function synthesizeResearch(task: DeepResearchTask): Promise<string> {
 }
 
 async function generateSubQueries(mainQuery: string, mode: 'deep' | 'max'): Promise<string[]> {
-  const numQueries = mode === 'max' ? 5 : 3;
+  const numQueries = mode === 'max' ? 8 : 4;
   const messages: RequestMessage[] = [
     {
       role: 'system',
@@ -644,7 +713,7 @@ class DeepResearchStore {
         progressLog: [...entry.progressLog, { step: 'search_found', detail: `Collected ${dedupedResults.length} base sources`, at: Date.now() }].slice(-40)
       }));
 
-      const crawlSeeds = dedupedResults.map((item) => item.url).filter(Boolean).slice(0, task.mode === 'max' ? 10 : 6);
+      const crawlSeeds = dedupedResults.map((item) => item.url).filter(Boolean).slice(0, task.mode === 'max' ? 16 : 8);
       const crawl = await invoke<{
         results: SearchResult[];
         context: string;
@@ -659,11 +728,11 @@ class DeepResearchStore {
         context: task.conversationContext,
         mode: task.mode,
         seed_urls: crawlSeeds,
-        context_budget_chars: task.mode === 'max' ? 12000 : 8500
+        context_budget_chars: task.mode === 'max' ? 30000 : 16000
       });
 
-      const merged = dedupeResults([...(dedupedResults || []), ...((crawl?.results || []) as SearchResult[])]).slice(0, task.mode === 'max' ? 44 : 26);
-      const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n').slice(0, 42000);
+      const merged = dedupeResults([...(dedupedResults || []), ...((crawl?.results || []) as SearchResult[])]).slice(0, task.mode === 'max' ? 70 : 36);
+      const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n').slice(0, task.mode === 'max' ? 90000 : 52000);
 
       this.updateTask(taskId, (entry) => ({
         ...entry,
@@ -822,8 +891,9 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     deep: true,
     mode,
     options: {
-      provider: 'duckduckgo',
-      max_results: mode === 'max' ? 10 : 8
+      provider: 'aggregator',
+      max_results: mode === 'max' ? 18 : 12,
+      context_budget_chars: mode === 'max' ? 26000 : 14000
     }
   });
 
@@ -836,8 +906,9 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     deep: true,
     mode,
     options: {
-      provider: 'electron',
-      max_results: mode === 'max' ? 10 : 8
+      provider: 'duckduckgo',
+      max_results: mode === 'max' ? 18 : 12,
+      context_budget_chars: mode === 'max' ? 26000 : 14000
     }
   });
 

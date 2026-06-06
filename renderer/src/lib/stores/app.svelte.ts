@@ -1570,17 +1570,17 @@ class AppStore {
       searchMode: activeSearchMode,
       mode: activeComposerMode,
       reasoning: '',
-      metadata: activeComposerMode === 'agent'
+      metadata: (activeComposerMode === 'agent' || activeSearchMode !== 'chat')
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
             currentActivity: 'planning',
-            activityLabel: 'Agent is planning'
+            activityLabel: activeComposerMode === 'agent' ? 'Agent is planning' : 'Preparing search'
           }
         : undefined,
       workContext,
-      agentSteps: activeComposerMode === 'agent'
-        ? [{ id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: 'Preparing tools and context' }]
+      agentSteps: (activeComposerMode === 'agent' || activeSearchMode !== 'chat')
+        ? [{ id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: activeComposerMode === 'agent' ? 'Preparing tools and context' : 'Preparing search tools and context' }]
         : [],
       artifact: null
     };
@@ -1638,70 +1638,6 @@ class AppStore {
       let ragContext = '';
       let ragDocuments: IndexedDocument[] = [];
       const workspaceContext = activeWorkspace ? buildWorkspacePrompt(activeWorkspace) : '';
-
-      if (isTauri() && activeSearchMode !== 'chat') {
-        try {
-          const searchResponse = activeSearchMode === 'deep' || activeSearchMode === 'max'
-            ? await deepResearchStore.runTask({
-                chatId: targetChatId || 'unknown-chat',
-                messageId: assistantMessage.id,
-                chatTitle: targetChatTitle,
-                query: content,
-                mode: activeSearchMode,
-                conversationContext: searchConversationContext
-              }).then((task) => ({
-                context: task.context,
-                results: task.results,
-                provider_used: task.providerUsed || 'auto',
-                researchTaskId: task.id,
-                researchSummary: task.summary,
-                researchStatus: task.status,
-                researchStats: task.crawlStats || null
-              }))
-            : await webSearch({
-                query: content,
-                context: searchConversationContext,
-                deep: activeSearchMode !== 'search',
-                mode: activeSearchMode
-              });
-          searchContext = searchResponse.context || '';
-          sources = searchResponse.results || [];
-          searchMeta = {
-            searchRequested: true,
-            searchSucceeded: !('error' in searchResponse && searchResponse.error),
-            contextAvailable: !!(searchResponse.context || searchResponse.results?.length),
-            sourceCount: searchResponse.results?.length || 0,
-            requestedProvider: this.config.search?.provider || 'auto',
-            providerUsed: searchResponse.provider_used || null,
-            researchTaskId: 'researchTaskId' in searchResponse ? String(searchResponse.researchTaskId || '') || null : null,
-            researchStatus: 'researchStatus' in searchResponse ? (searchResponse.researchStatus as SearchMeta['researchStatus']) : ('researchSummary' in searchResponse ? 'completed' : null),
-            researchSummary: 'researchSummary' in searchResponse ? String(searchResponse.researchSummary || '') || null : null,
-            researchStats: 'researchStats' in searchResponse ? (searchResponse.researchStats as SearchMeta['researchStats']) : null,
-            providerAttempts: 'provider_attempts' in searchResponse ? (searchResponse.provider_attempts as SearchMeta['providerAttempts']) : [],
-            searchFallbackReason: '',
-            providerWarnings: [],
-            searchError: 'error' in searchResponse ? (searchResponse.error || '') : ''
-          };
-
-        } catch (error) {
-          searchMeta = {
-            searchRequested: true,
-            searchSucceeded: false,
-            contextAvailable: false,
-            sourceCount: 0,
-            requestedProvider: this.config.search?.provider || 'auto',
-            providerUsed: null,
-            researchTaskId: null,
-            researchStatus: activeSearchMode === 'deep' || activeSearchMode === 'max' ? 'failed' : null,
-            researchSummary: null,
-            researchStats: null,
-            providerAttempts: [],
-            searchFallbackReason: '',
-            providerWarnings: [],
-            searchError: toErrorMessage(error) || 'Search did not return a result'
-          };
-        }
-      }
 
       if (isTauri() && targetRagDocuments.length && activeSearchMode === 'chat') {
         const ragResponse = await queryDocuments({
@@ -1766,7 +1702,14 @@ class AppStore {
         }
       }
 
-      if (activeComposerMode === 'agent' && targetChatId) {
+      const useToolLoop = (activeComposerMode === 'agent' || activeSearchMode !== 'chat') && targetChatId;
+      const searchToolBudget = activeSearchMode === 'max'
+        ? { maxIterations: 60, maxToolCalls: 180, maxTimeMs: 25 * 60 * 1000 }
+        : activeSearchMode === 'deep'
+          ? { maxIterations: 36, maxToolCalls: 108, maxTimeMs: 15 * 60 * 1000 }
+          : { maxIterations: 12, maxToolCalls: 30, maxTimeMs: 6 * 60 * 1000 };
+
+      if (useToolLoop) {
         const agentResult = await runAgentTask({
           chatId: targetChatId,
           systemPrompt,
@@ -1776,6 +1719,9 @@ class AppStore {
           executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
+          toolMode: activeComposerMode === 'agent' ? 'agent' : 'search_chat',
+          searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
+          ...(activeSearchMode === 'chat' ? {} : searchToolBudget),
           signal: controller.signal,
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
@@ -1934,6 +1880,17 @@ class AppStore {
             searchSucceeded: true,
             contextAvailable: true,
             sourceCount: assistantMessage.sources.length,
+            stopReason
+          };
+        } else if (activeSearchMode !== 'chat') {
+          assistantMessage.searchMeta = {
+            ...(assistantMessage.searchMeta || {}),
+            searchRequested: true,
+            searchSucceeded: !agentResult.error,
+            contextAvailable: false,
+            sourceCount: assistantMessage.sources?.length || 0,
+            requestedProvider: this.config.search?.provider || 'aggregator',
+            searchError: agentResult.error || agentResult.warning || '',
             stopReason
           };
         }
@@ -2765,6 +2722,8 @@ class AppStore {
     provider?: string;
     max_results?: number;
     context_budget_chars?: number;
+    aggregator_engines?: string[];
+    safe_search?: number;
     providers?: NonNullable<AppConfig['search']>['providers'];
   }) {
     await this.commitConfig(mergeSearchSettingsConfig(this.config, partial));
