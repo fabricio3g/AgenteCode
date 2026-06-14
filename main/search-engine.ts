@@ -13,6 +13,8 @@ import {
   searchTavily, searchBrave, searchGoogleCse, searchSerpApi, searchSearxng,
   searchBing, searchSerper, searchExa, searchJina, searchYouCom, searchPerplexity, searchDuckDuckGo
 } from './search-providers/providers.ts';
+import { searchAggregator } from './search-providers/aggregator.ts';
+import { scrapeUrlStructured } from './web-scraper.ts';
 
 let electronSearchWindow: BrowserWindow | null = null;
 
@@ -81,6 +83,7 @@ async function searchElectron(query: string, maxResults: number): Promise<Search
 
 async function runProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   switch (provider) {
+    case 'aggregator': return searchAggregator(query, maxResults, options);
     case 'tavily': return searchTavily(query, maxResults, options);
     case 'brave': return searchBrave(query, maxResults, options);
     case 'google_cse': return searchGoogleCse(query, maxResults, options);
@@ -100,6 +103,19 @@ async function runProviderSearch(provider: string, query: string, maxResults: nu
 
 async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<string | null> {
   try {
+    if (options?.use_local_readability !== false) {
+      const scraped = await scrapeUrlStructured({
+        url,
+        maxLength: 30000,
+        timeoutMs: 18000,
+        maxLinks: 80,
+      }) as { content?: string; excerpt?: string; title?: string; error?: string };
+      const readable = compactPageContent(scraped?.content || '', String(options?.search_query || ''), 9000);
+      const header = [scraped?.title, scraped?.excerpt].map(normalizeWhitespace).filter(Boolean).join('\n\n');
+      const content = [header, readable].filter(Boolean).join('\n\n');
+      if (content) return content.slice(0, 10000);
+    }
+
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
     const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'Chatea/1.0' };
@@ -115,13 +131,80 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
   }
 }
 
+function scoreParagraph(text: string, terms: string[]): number {
+  const haystack = normalizeWhitespace(text).toLowerCase();
+  if (!haystack || !terms.length) return 0;
+  let score = 0;
+  for (const term of terms) {
+    if (!term) continue;
+    if (haystack.includes(term)) score += 1;
+    const hits = haystack.match(new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')) || [];
+    score += Math.min(hits.length, 3) * 0.25;
+  }
+  return score;
+}
+
+function compactPageContent(content: string, query: string, maxChars: number): string {
+  const normalized = String(content || '').trim();
+  if (!normalized) return '';
+  const budget = Math.max(1200, Math.min(Number(maxChars) || 6000, 12000));
+  if (normalizeWhitespace(normalized).length <= budget) return normalized;
+
+  const terms = normalizeWhitespace(query).toLowerCase().match(/[a-z0-9]+/g)?.filter((term) => term.length > 2).slice(0, 12) || [];
+  const rawBlocks = normalized.split(/\n\s*\n+/);
+
+  let currentHeading = '';
+  const paragraphs: Array<{ paragraph: string; index: number; score: number; heading: string }> = [];
+  for (let i = 0; i < rawBlocks.length; i += 1) {
+    const block = rawBlocks[i].trim();
+    if (!block) continue;
+    if (/^#{1,4}\s+/.test(block)) {
+      currentHeading = block;
+    } else if (block.length > 80) {
+      paragraphs.push({ paragraph: block, index: i, score: scoreParagraph(block, terms), heading: currentHeading });
+    }
+  }
+
+  if (!paragraphs.length) return normalizeWhitespace(normalized).slice(0, budget);
+
+  const ranked = [...paragraphs].sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    return left.index - right.index;
+  });
+
+  const selected: typeof paragraphs = [];
+  const includedHeadings = new Set<string>();
+  let used = 0;
+  for (const item of ranked) {
+    if (used >= budget) break;
+    const headingCost = item.heading && !includedHeadings.has(item.heading) ? item.heading.length + 4 : 0;
+    if (used + item.paragraph.length + headingCost > budget * 1.15) continue;
+    selected.push(item);
+    used += item.paragraph.length + 2 + headingCost;
+    if (headingCost) includedHeadings.add(item.heading);
+  }
+
+  selected.sort((left, right) => left.index - right.index);
+  const result: string[] = [];
+  let lastHeading = '';
+  for (const item of selected) {
+    if (item.heading && item.heading !== lastHeading) {
+      result.push(item.heading);
+      lastHeading = item.heading;
+    }
+    result.push(item.paragraph);
+  }
+
+  return result.join('\n\n').slice(0, budget);
+}
+
 async function enrichWithDeepContent(results: SearchResult[], limit: number, emit: (step: string, detail: string) => void, options: Record<string, unknown> = {}): Promise<SearchResult[]> {
   const items = results.slice(0, limit);
   const fetched = await Promise.allSettled(
     items.map(async (result, index) => {
       if (!result.url) return null;
       emit('fetching_page', `Reading page ${index + 1}: ${result.url}`);
-      const content = await fetchPageContent(result.url, options);
+      const content = await fetchPageContent(result.url, { ...options, search_query: options?.search_query || result.title || result.snippet || '' });
       return content ? { ...result, full_content: content } : result;
     })
   );
@@ -142,7 +225,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const explicitProvider = normalizeProviderName(options?.provider || 'auto');
   const maxResults = Math.max(1, Math.min(Number(options?.max_results) || 6, 20));
   const contextBudget = Math.max(500, Number(options?.context_budget_chars) || DEFAULT_CONTEXT_BUDGET[searchMode as keyof typeof DEFAULT_CONTEXT_BUDGET] || DEFAULT_CONTEXT_BUDGET.search);
-  const searchOptions = { ...(options || {}), conversation_context: conversationContext };
+  const searchOptions = { ...(options || {}), conversation_context: conversationContext, search_query: effectiveQuery || normalizedQuery };
 
   const emit = (step: string, detail: string) => {
     try {
@@ -174,7 +257,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const minimumUsefulResults = searchMode === 'search' ? 1 : Math.min(3, maxResults);
 
   if (explicitProvider !== 'auto') {
-    if (!providerHasCredentials(explicitProvider, searchOptions) && explicitProvider !== 'duckduckgo' && explicitProvider !== 'jina' && explicitProvider !== 'electron') {
+    if (!providerHasCredentials(explicitProvider, searchOptions) && explicitProvider !== 'aggregator' && explicitProvider !== 'duckduckgo' && explicitProvider !== 'jina' && explicitProvider !== 'electron') {
       const credHint = explicitProvider === 'google_cse'
         ? 'Google CSE requires an API key and Search Engine ID — configure them in Settings > Search'
         : `Missing credentials for ${providerDisplayName(explicitProvider)} — add an API key in Settings > Search`;
@@ -251,22 +334,27 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   }
 
   const responseLimit = searchMode === 'max'
-    ? Math.min(24, Math.max(maxResults * 2, 12))
+    ? Math.min(40, Math.max(maxResults * 2, 18))
     : searchMode === 'deep'
-      ? Math.max(maxResults, 8)
+      ? Math.max(maxResults, 12)
       : maxResults;
 
   let mergedResults = mergeAndRankResults(providerResults, effectiveQuery, responseLimit);
 
   if (searchMode !== 'search') {
-    const deepLimit = Math.min(mergedResults.length, searchMode === 'max' ? 6 : 3);
+    const deepLimit = Math.min(mergedResults.length, searchMode === 'max' ? 10 : 5);
     emit('deep_fetching', `Fetching full content from top ${deepLimit} pages...`);
     const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, searchOptions);
     mergedResults = mergeAndRankResults(enriched, effectiveQuery, responseLimit);
     emit('deep_done', 'Deep content ready');
   }
 
-  const searchContext = buildContext(mergedResults, contextBudget);
+  const searchedAt = new Date().toISOString();
+  const searchContext = [
+    `Search performed at: ${searchedAt}`,
+    `Search query: ${effectiveQuery || normalizedQuery}`,
+    buildContext(mergedResults, contextBudget)
+  ].filter(Boolean).join('\n\n');
   emit('results', `Found ${mergedResults.length} results via ${providerUsed}`);
 
   const result = {
@@ -276,6 +364,7 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     context: searchContext,
     provider_used: providerUsed,
     search_mode: searchMode,
+    searched_at: searchedAt,
     provider_attempts: providerAttempts
   };
 

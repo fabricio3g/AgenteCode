@@ -55,7 +55,7 @@
   let ttsVoice = $state(appStore.config.tts?.voice || '');
 
   // Search settings state
-  let searchProvider = $state(appStore.config.search?.provider || 'auto');
+  let searchProvider = $state(appStore.config.search?.provider || 'aggregator');
   let searchMaxResults = $state(String(appStore.config.search?.max_results ?? 6));
   let searchApiKey = $state('');
   let searchEngineId = $state(appStore.config.search?.providers?.google_cse?.engine_id || '');

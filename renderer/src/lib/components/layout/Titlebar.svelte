@@ -6,11 +6,35 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { Search, PanelLeftClose, PanelLeftOpen, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
   import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
+  import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
 
   let isMaximized = $state(false);
+  let downloadBtnEl: HTMLButtonElement | undefined = $state();
+  let downloadDropdownEl: HTMLDivElement | undefined = $state();
+
+  function toggleDownloads() {
+    appStore.downloadsOpen = !appStore.downloadsOpen;
+    if (appStore.downloadsOpen) void downloadsStore.refresh();
+  }
+
+  function handleDocMouseDown(event: MouseEvent) {
+    if (!appStore.downloadsOpen) return;
+    if (!downloadBtnEl || !downloadDropdownEl) return;
+    const target = event.target as Node;
+    if (!downloadBtnEl.contains(target) && !downloadDropdownEl.contains(target)) {
+      appStore.downloadsOpen = false;
+    }
+  }
+
+  function handleDocKeydown(event: KeyboardEvent) {
+    if (appStore.downloadsOpen && event.key === 'Escape') {
+      appStore.downloadsOpen = false;
+    }
+  }
+
   const composerCenterShift = $derived(appStore.sidebarOpen ? 134 : 26);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
@@ -22,6 +46,12 @@
   onMount(() => {
     void checkMaximized();
     void downloadsStore.refresh();
+    document.addEventListener('mousedown', handleDocMouseDown);
+    document.addEventListener('keydown', handleDocKeydown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocMouseDown);
+      document.removeEventListener('keydown', handleDocKeydown);
+    };
   });
 </script>
 
@@ -99,21 +129,29 @@
   <div class="titlebar-right flex flex-1 items-center justify-end">
     {#if isMac}
       <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
-        <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
-          <button
-            class="titlebar-btn download-btn relative flex h-7 w-7 items-center justify-center transition"
-            class:is-active={downloadsStore.hasActive}
-            onclick={() => { appStore.downloadsOpen = true; void downloadsStore.refresh(); }}
-            aria-label="Downloads"
-          >
-            {#if downloadsStore.hasActive}
-              <Loader2 class="h-4 w-4 animate-spin" />
-              <span class="download-badge">{downloadsStore.activeCount}</span>
-            {:else}
-              <Download class="h-4 w-4" />
-            {/if}
-          </button>
-        </Tooltip>
+        <div class="relative flex items-center">
+          <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+            <button
+              bind:this={downloadBtnEl}
+              class="titlebar-btn download-btn relative flex h-7 w-7 items-center justify-center transition"
+              class:is-active={downloadsStore.hasActive}
+              onclick={toggleDownloads}
+              aria-label="Downloads"
+            >
+              {#if downloadsStore.hasActive}
+                <Loader2 class="h-4 w-4 animate-spin" />
+                <span class="download-badge">{downloadsStore.activeCount}</span>
+              {:else}
+                <Download class="h-4 w-4" />
+              {/if}
+            </button>
+          </Tooltip>
+          {#if appStore.downloadsOpen}
+            <div bind:this={downloadDropdownEl} class="absolute right-0 top-full z-[200] mt-1">
+              <DownloadsModal />
+            </div>
+          {/if}
+        </div>
         <Tooltip label="Toggle theme" position="left">
           <button
             class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
@@ -133,21 +171,29 @@
       </div>
     {:else}
       <div class="win-controls flex h-full items-center" style="-webkit-app-region: no-drag">
-        <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
-          <button
-            class="titlebar-btn download-btn relative mr-1 flex h-7 w-7 items-center justify-center transition"
-            class:is-active={downloadsStore.hasActive}
-            onclick={() => { appStore.downloadsOpen = true; void downloadsStore.refresh(); }}
-            aria-label="Downloads"
-          >
-            {#if downloadsStore.hasActive}
-              <Loader2 class="h-4 w-4 animate-spin" />
-              <span class="download-badge">{downloadsStore.activeCount}</span>
-            {:else}
-              <Download class="h-4 w-4" />
-            {/if}
-          </button>
-        </Tooltip>
+        <div class="relative flex items-center">
+          <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+            <button
+              bind:this={downloadBtnEl}
+              class="titlebar-btn download-btn relative mr-1 flex h-7 w-7 items-center justify-center transition"
+              class:is-active={downloadsStore.hasActive}
+              onclick={toggleDownloads}
+              aria-label="Downloads"
+            >
+              {#if downloadsStore.hasActive}
+                <Loader2 class="h-4 w-4 animate-spin" />
+                <span class="download-badge">{downloadsStore.activeCount}</span>
+              {:else}
+                <Download class="h-4 w-4" />
+              {/if}
+            </button>
+          </Tooltip>
+          {#if appStore.downloadsOpen}
+            <div bind:this={downloadDropdownEl} class="absolute right-0 top-full z-[200] mt-1">
+              <DownloadsModal />
+            </div>
+          {/if}
+        </div>
         <Tooltip label="Toggle theme" position="left">
           <button
             class="titlebar-btn flex h-7 w-7 items-center justify-center transition mr-1"
@@ -191,7 +237,6 @@
     display: flex;
     width: 100%;
     background: var(--titlebar-bg, var(--surface));
-    overflow: hidden;
     box-shadow: none;
   }
 

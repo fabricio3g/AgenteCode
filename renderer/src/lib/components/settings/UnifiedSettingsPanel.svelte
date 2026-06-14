@@ -18,7 +18,7 @@
   let enableThinking = $state(appStore.config.ui?.enable_thinking ?? true);
   let hfToken = $state('');
 
-  let searchProvider = $state(appStore.config.search?.provider || 'auto');
+  let searchProvider = $state(appStore.config.search?.provider || 'aggregator');
   let searchMaxResults = $state(String(appStore.config.search?.max_results ?? 6));
   let searchApiKey = $state('');
   let searchEngineId = $state(appStore.config.search?.providers?.google_cse?.engine_id || '');

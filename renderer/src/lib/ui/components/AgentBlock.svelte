@@ -2,10 +2,8 @@
 
 <script lang="ts">
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { slide } from 'svelte/transition';
-  import { quintOut } from 'svelte/easing';
-  import { Bot, Brain, ChevronDown, Loader, Globe, FileSearch, FilePen, Code2, Terminal, Eye, AlertCircle, Wrench, Zap } from 'lucide-svelte';
-  import ToolCallBlock from './ToolCallBlock.svelte';
+  import { Bot, Brain, ChevronRight, Loader, Globe, FileSearch, FilePen, Code2, Terminal, Eye, AlertCircle, Wrench, Zap } from 'lucide-svelte';
+  import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
     steps?: ChatMessage['agentSteps'];
@@ -17,6 +15,7 @@
     currentActivity?: AgentActivity;
     activityLabel?: string;
     sourceCount?: number;
+    messageId?: string;
   }
 
   let {
@@ -28,26 +27,21 @@
     stopReason = 'none',
     currentActivity,
     activityLabel,
-    sourceCount = 0
+    sourceCount = 0,
+    messageId = ''
   }: Props = $props();
-  let open = $state(false);
-  let userToggled = $state(false);
 
   const hasRunning = $derived(steps.some((s) => s.status === 'running'));
   const runningStep = $derived(steps.find((s) => s.status === 'running'));
   const errCount = $derived(steps.filter((s) => s.status === 'error').length);
   const doneCount = $derived(steps.filter((s) => s.status === 'done').length);
   const stoppedByUser = $derived(steps.some((s) => /stopped by user/i.test(s.detail || s.label || '')));
-  const filteredSteps = $derived(steps.filter((s) => !(s.status === 'running' && s.type === 'thinking')));
-  const relevantSteps = $derived(steps.filter((s) => !(s.type === 'thinking' && s.status === 'running' && s.label === 'Planning')));
-  const latestInlineSteps = $derived(relevantSteps.slice(-2));
 
   const isThinking = $derived(status === 'streaming' && !steps.length && !reasoning);
   const hasRelevance = $derived(!!(steps.length || reasoning) || isThinking);
 
-  function toggle() {
-    userToggled = true;
-    open = !open;
+  function openActivity() {
+    if (messageId) appStore.openActivityDrawer(messageId);
   }
 
   function formatThoughtDuration(seconds?: number | null): string | null {
@@ -94,6 +88,25 @@
     return count > 0 ? `${label} · ${count} step${count !== 1 ? 's' : ''}` : label;
   }
 
+  function compactDetail(value?: string) {
+    const clean = String(value || '')
+      .replace(/^query:\s*/i, '')
+      .replace(/^url:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!clean) return '';
+    return clean.length > 92 ? `${clean.slice(0, 92)}…` : clean;
+  }
+
+  function activityText() {
+    if (status === 'streaming' && runningStep) {
+      const label = activityLabelFor(runningStep);
+      const detail = compactDetail(runningStep.detail);
+      return detail ? `${label}: ${detail}` : label;
+    }
+    return headerLabel();
+  }
+
   function headerLabel() {
     if (status === 'streaming') return liveLabel();
     if (stoppedByUser) return 'Agent stopped by user';
@@ -137,19 +150,12 @@
     }
   }
 
-  const TOOL_TYPES = new Set(['tool', 'writing', 'reading', 'searching', 'preview', 'coding', 'executing']);
   const headerIconStep = $derived(status === 'streaming' ? runningStep : null);
-
-  $effect(() => {
-    if (!userToggled) {
-      open = status === 'streaming' || hasRunning;
-    }
-  });
 </script>
 
 {#if hasRelevance}
   <div class="agent-block mb-4 w-full">
-    <button type="button" class="agent-trigger" onclick={toggle}>
+    <button type="button" class="agent-trigger" onclick={openActivity} aria-label="Open agent activity">
       {#if isThinking}
         <Loader class="h-4 w-4 shrink-0 animate-spin" />
       {:else if headerIconStep}
@@ -158,70 +164,13 @@
       {:else}
         <Bot class="h-4 w-4 shrink-0" />
       {/if}
-      <span class="flex-1" class:text-shimmer={status === 'streaming'}>{headerLabel()}</span>
-      <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      <span class="agent-trigger-text" class:text-shimmer={status === 'streaming'}>{activityText()}</span>
+      <span class="agent-trigger-count">{steps.length || 1}</span>
+      <ChevronRight class="h-4 w-4 shrink-0" />
     </button>
 
     {#if totalElapsedLabel()}
       <div class="agent-total">{totalElapsedLabel()}</div>
-    {/if}
-
-    {#if status === 'streaming' && latestInlineSteps.length}
-      <div class="agent-inline-steps">
-        {#each latestInlineSteps as step (step.id)}
-          {@const Icon = step.status === 'running' ? Loader : stepIcon(step.type)}
-          <div class="agent-inline-step" class:active={step.status === 'running'}>
-            <Icon class={`h-3 w-3 shrink-0 ${step.status === 'running' ? 'animate-spin' : ''}`} />
-            <span>{activityLabelFor(step)}</span>
-          </div>
-        {/each}
-      </div>
-    {/if}
-
-    {#if open}
-      <div class="agent-content" transition:slide={{ duration: 150, easing: quintOut }}>
-        <div class="agent-bar"></div>
-        <div class="agent-steps-list">
-          {#if filteredSteps.length}
-            {#each filteredSteps as step (step.id)}
-              {@const Icon = step.status === 'running' ? Loader : stepIcon(step.type)}
-
-              {#if TOOL_TYPES.has(step.type)}
-                <div class="agent-step-item">
-                  <ToolCallBlock
-                    name={step.label}
-                    status={step.status}
-                    detail={step.detail}
-                    output={step.output}
-                  />
-                </div>
-              {:else}
-                <div class="agent-step-item">
-                  <div class="step-header">
-                    <Icon class={`h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)] ${step.status === 'running' ? 'animate-spin' : ''}`} />
-                    <span class="step-label" class:muted={step.status === 'done'} class:err={step.status === 'error'}>{step.label}</span>
-                  </div>
-                  {#if step.detail}
-                    <div class="step-detail">{step.detail}</div>
-                  {/if}
-                  {#if step.output}
-                    <details class="step-output">
-                      <summary class="step-output-toggle">Output</summary>
-                      <pre class="step-output-pre">{step.output}</pre>
-                    </details>
-                  {/if}
-                </div>
-              {/if}
-            {/each}
-          {/if}
-
-          {#if reasoning}
-            <div class="reasoning-section">
-              <div class="reasoning-text">{reasoning}</div>
-            </div>
-          {/if}
-        </div>
-      </div>
     {/if}
   </div>
 {/if}
@@ -231,9 +180,10 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.25rem 0;
-    border: none;
-    background: transparent;
+    padding: 0.45rem 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 0.72rem;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
     color: var(--text-muted);
     cursor: pointer;
     font-size: 0.78rem;
@@ -243,115 +193,34 @@
     transition: color 0.15s ease;
   }
   .agent-trigger:hover {
+    border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+    background: color-mix(in srgb, var(--surface-hover) 80%, transparent);
     color: var(--text-secondary);
   }
-  .agent-inline-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 0.18rem;
-    margin: 0.15rem 0 0.25rem 1.55rem;
+  .agent-trigger-text {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .agent-total {
-    margin: 0.05rem 0 0.2rem 1.55rem;
+    margin: 0.25rem 0 0 0.55rem;
     color: var(--text-tertiary);
     font-size: 0.68rem;
     font-weight: 450;
   }
-  .agent-inline-step {
+  .agent-trigger-count {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    width: fit-content;
-    max-width: 100%;
-    font-size: 0.72rem;
-    line-height: 1.35;
-    color: var(--text-tertiary);
-    opacity: 0.82;
-  }
-  .agent-inline-step.active {
-    color: var(--text-secondary);
-    opacity: 1;
-  }
-  .agent-content {
-    display: grid;
-    grid-template-columns: 1px 1fr;
-    gap: 0.65rem;
-    padding-top: 0.35rem;
-    overflow: hidden;
-  }
-  .agent-bar {
-    width: 1px;
-    background: var(--border);
-  }
-  .agent-steps-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-  .agent-step-item {
-    padding-bottom: 0.1rem;
-  }
-  .step-header {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-  }
-  .step-label {
-    font-size: 0.78rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-  .step-label.muted {
-    color: var(--text-tertiary);
-    font-weight: 400;
-  }
-  .step-label.err {
-    color: var(--error);
-  }
-  .step-detail {
-    font-size: 0.72rem;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.15rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 9%, transparent);
     color: var(--text-muted);
-    padding-top: 0.125rem;
-  }
-  .step-output {
-    margin-top: 0.25rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: transparent;
-    overflow: hidden;
-  }
-  .step-output-toggle {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
-  .step-output-toggle:hover {
-    color: var(--text);
-  }
-  .step-output-pre {
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    border-top: 1px solid var(--border);
-    max-height: 16rem;
-    overflow: auto;
-  }
-  .reasoning-section {
-    padding-top: 0.35rem;
-    margin-top: 0.25rem;
-    border-top: 1px solid var(--border);
-  }
-  .reasoning-text {
-    color: var(--text-tertiary);
-    font-size: 0.78rem;
-    line-height: 1.65;
-    white-space: pre-wrap;
+    font-size: 0.66rem;
+    font-weight: 700;
   }
 
   .text-shimmer {

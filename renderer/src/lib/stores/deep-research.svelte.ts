@@ -100,7 +100,7 @@ function fallbackQuestionsFromQuery(query: string): ResearchQuestion[] {
     .slice(0, 90) || 'this topic';
 
   const q = topic.toLowerCase();
-  const isMedical = /disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|pemphigus|vulgaris|autoimmune|trial|guideline/.test(q);
+  const isMedical = /disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|autoimmune|trial|guideline/.test(q);
 
   if (isMedical) {
     return [
@@ -184,7 +184,7 @@ function loadTasks(): DeepResearchTask[] {
 }
 
 function isMedicalResearchQuery(query: string): boolean {
-  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|pemphigus|autoimmune|dermatology|medicine|medical)\b/i.test(query);
+  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|autoimmune|dermatology|medicine|medical)\b/i.test(query);
 }
 
 function buildSourceLines(task: DeepResearchTask, limit: number): string {

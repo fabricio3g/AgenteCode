@@ -2,16 +2,17 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { cubicOut } from 'svelte/easing';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
   import DeveloperModeWorkspace from '$lib/components/developer/DeveloperModeWorkspace.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
+  import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
-  import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
@@ -85,6 +86,20 @@
       event.preventDefault(); showShortcutsHelp = !showShortcutsHelp; return;
     }
     if (event.key === 'Escape' && showShortcutsHelp) showShortcutsHelp = false;
+  }
+
+  function drawerSlotTransition(node: Element) {
+    const width = node.getBoundingClientRect().width;
+    return {
+      duration: 260,
+      easing: cubicOut,
+      css: (t: number, u: number) => `
+        width: ${Math.max(0.001, width * t)}px;
+        min-width: ${Math.max(0.001, width * t)}px;
+        opacity: ${t};
+        transform: translateX(${u * 14}px) scale(${0.985 + t * 0.015});
+      `
+    };
   }
 
   onMount(() => {
@@ -181,6 +196,12 @@
           </div>
         {/if}
       </div>
+
+      {#if appStore.activityDrawerOpen}
+        <div class="activity-drawer-slot" transition:drawerSlotTransition>
+          <ActivityDrawer />
+        </div>
+      {/if}
     {/if}
   </div>
 
@@ -188,10 +209,6 @@
     {#if appStore.promptConfigOpen}
       <SystemPromptModal />
     {/if}
-    {#if appStore.downloadsOpen}
-      <DownloadsModal />
-    {/if}
-
     <LocalModelLoadModal />
 
     {#if appStore.modelManagerOpen}
@@ -335,6 +352,15 @@
     border: 1px solid var(--border);
     border-radius: 22px;
     background: var(--surface);
+  }
+
+  .activity-drawer-slot {
+    display: flex;
+    height: 100%;
+    flex: 0 0 auto;
+    overflow: hidden;
+    transform-origin: right center;
+    will-change: width, min-width, opacity, transform;
   }
 
   .welcome-dots-layer {

@@ -137,7 +137,7 @@
       searchSucceeded: true,
       contextAvailable: !!entry.sources.length,
       sourceCount: entry.sources.length,
-      requestedProvider: appStore.config.search?.provider || 'auto',
+      requestedProvider: appStore.config.search?.provider || 'aggregator',
       providerUsed: undefined,
       searchFallbackReason: '',
       providerWarnings: [],

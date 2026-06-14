@@ -205,7 +205,7 @@ export async function agentStreamComplete(options: {
     }
 
     if (event.type === 'error') {
-      rejectStream?.(new Error(event.error || 'Streaming request failed'));
+      rejectStream?.(new Error(typeof event.error === 'string' ? event.error : 'Streaming request failed'));
     }
   });
 

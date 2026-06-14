@@ -37,6 +37,7 @@ export type ToolContext = {
   chatId: string;
   files: Record<string, string>;
   conversationContext?: string;
+  searchMode?: 'search' | 'deep' | 'max';
   workspaceRoot?: string;
   workspaceFiles?: WorkspaceFile[];
   executionMode: 'sandbox' | 'workspace';
@@ -78,4 +79,7 @@ export type RunAgentTaskArgs = {
   signal?: AbortSignal;
   maxIterations?: number;
   maxToolCalls?: number;
+  maxTimeMs?: number;
+  toolMode?: 'agent' | 'search_chat';
+  searchMode?: 'search' | 'deep' | 'max';
 };

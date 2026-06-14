@@ -8,6 +8,7 @@ import {
   migrateTTS,
   migrateSTT,
   ensureOnboarding,
+  ensureSearchConfig,
   migrateConfig,
   URL_FIXES,
   LEGACY_TTS_VARIANTS,
@@ -343,6 +344,7 @@ describe('migrateConfig', () => {
       tts: { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'model.int8.onnx' },
       stt: { provider: 'local' },
       onboarding: { completed: true },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -374,6 +376,7 @@ describe('migrateConfig', () => {
     const cfg = {
       llm: { providers: {} },
       onboarding: { completed: false },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -384,6 +387,7 @@ describe('migrateConfig', () => {
       custom_field: 'should_remain',
       llm: { providers: {} },
       onboarding: { completed: true },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -394,5 +398,24 @@ describe('migrateConfig', () => {
     const cfg = { onboarding: { completed: true } };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.config, cfg);
+  });
+});
+
+describe('ensureSearchConfig', () => {
+  it('adds aggregator search defaults when missing', () => {
+    const cfg = {};
+    const dirty = ensureSearchConfig(cfg);
+    assert.strictEqual(dirty, true);
+    assert.strictEqual(cfg.search.provider, 'aggregator');
+    assert.strictEqual(cfg.search.max_results, 6);
+    assert.deepStrictEqual(cfg.search.aggregator_engines, ['duckduckgo', 'wikipedia']);
+  });
+
+  it('does not overwrite an explicit provider', () => {
+    const cfg = { search: { provider: 'brave', max_results: 8, aggregator_engines: ['duckduckgo'] } };
+    const dirty = ensureSearchConfig(cfg);
+    assert.strictEqual(dirty, false);
+    assert.strictEqual(cfg.search.provider, 'brave');
+    assert.strictEqual(cfg.search.max_results, 8);
   });
 });

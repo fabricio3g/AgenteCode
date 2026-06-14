@@ -11,7 +11,25 @@ import { toErrorMessage } from '$lib/utils/errors';
 const _openaiClients = new Map<string, OpenAI>();
 
 type UnknownRecord = Record<string, unknown>;
-type AppConfigLike = AppConfig & UnknownRecord;
+type ProviderLike = {
+  model?: unknown;
+  base_url?: unknown;
+  api_key?: unknown;
+};
+type LocalConfigLike = {
+  model?: unknown;
+  base_url?: unknown;
+  selected_model_path?: unknown;
+};
+type AppConfigLike = {
+  llm?: {
+    backend_mode?: string;
+    provider?: string;
+    local?: LocalConfigLike;
+    providers?: Record<string, ProviderLike>;
+  };
+  ui?: { agent_debug_logs?: boolean };
+};
 
 function getOpenAIClient(apiKey: string, baseUrl: string): OpenAI {
   const normalized = String(baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -65,8 +83,8 @@ function toolSupportIdentity(config: AppConfigLike): { providerName: string; mod
     };
   }
   const providerName = config?.llm?.provider || 'openai';
-  const provider = config?.llm?.providers?.[providerName];
-  return { providerName, modelId: provider?.model || '', provider };
+  const provider = config?.llm?.providers?.[providerName] || {};
+  return { providerName, modelId: String(provider?.model || ''), provider };
 }
 
 function debugToolSupport(config: AppConfigLike, message: string) {
@@ -324,7 +342,7 @@ export async function loadChatConfig(): Promise<AppConfig> {
       }
     },
     search: {
-      provider: config.search?.provider || 'auto',
+      provider: config.search?.provider || 'aggregator',
       max_results: config.search?.max_results || 6
     },
     tts: {
@@ -336,7 +354,6 @@ export async function loadChatConfig(): Promise<AppConfig> {
     ui: {
       theme: config.ui?.theme,
       workspace_mode: config.ui?.workspace_mode || 'modern',
-      shell_mode: config.ui?.shell_mode || 'standard',
       show_assistant_text: config.ui?.show_assistant_text ?? true,
       enable_thinking: config.ui?.enable_thinking ?? true
     }
@@ -554,7 +571,7 @@ export async function streamAssistantReply(args: {
   const stream = await client.chat.completions.create({
     model: provider.model,
     stream: true,
-    messages: toRequestMessages(args.messages, provider.model),
+    messages: toRequestMessages(args.messages, provider.model) as any,
     ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
     ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {}),
@@ -656,11 +673,11 @@ export async function completeAssistantReply(args: {
   const response = await client.chat.completions.create({
     model: provider.model,
     stream: false,
-    messages: toRequestMessages(args.messages),
+    messages: toRequestMessages(args.messages) as any,
     ...genParams
   });
 
-  const message = (response?.choices?.[0]?.message || {}) as UnknownRecord;
+  const message = (response?.choices?.[0]?.message || {}) as unknown as UnknownRecord;
   const rawContent = message.content;
   const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
   return {
@@ -1075,13 +1092,13 @@ export async function completeWithTools(args: {
     const response = await client.chat.completions.create({
       model: provider.model,
       stream: false,
-      messages: toRequestMessages(args.messages, provider.model),
-      tools: args.tools,
+      messages: toRequestMessages(args.messages, provider.model) as any,
+      tools: args.tools as any,
       tool_choice: 'auto',
       ...genParams
     });
 
-    const message = (response?.choices?.[0]?.message || {}) as UnknownRecord;
+    const message = (response?.choices?.[0]?.message || {}) as unknown as UnknownRecord;
     const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc: unknown) => {
       const call = (tc || {}) as UnknownRecord;
       const fn = (call.function as UnknownRecord | undefined) || {};
@@ -1130,7 +1147,9 @@ export async function completeStructuredOutput<T>(
         }
       }
     });
-    const content = payload?.choices?.[0]?.message?.content;
+    const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
+    const message = (choices[0]?.message || {}) as UnknownRecord;
+    const content = message.content;
     if (!content) return null;
     return tryParseJsonValue<T>(content);
   }
@@ -1140,12 +1159,12 @@ export async function completeStructuredOutput<T>(
     const response = await client.chat.completions.create({
       model: provider.model,
       stream: false,
-      messages: toRequestMessages(args.messages, provider.model),
+      messages: toRequestMessages(args.messages, provider.model) as any,
       response_format: {
         type: 'json_schema',
         json_schema: args.schema,
-      },
-    });
+      } as any,
+    } as any);
 
     const content = response?.choices?.[0]?.message?.content;
     if (!content) return null;

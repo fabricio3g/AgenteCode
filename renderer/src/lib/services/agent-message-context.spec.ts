@@ -41,4 +41,29 @@ describe('agent-message-context', () => {
     expect(String(summaries[0].content)).toContain('Found one result');
     expect(String(summaries[0].content)).toContain('Example');
   });
+
+  it('injectEvidenceSummary can preserve longer source text for research synthesis', () => {
+    const messages: RequestMessage[] = [{ role: 'system', content: 'base system' }];
+    const longSourceText = `Specific source detail ${'with important evidence '.repeat(40)}`;
+
+    injectEvidenceSummary(
+      messages,
+      [{ name: 'fetch_url', args: {}, success: true, summary: longSourceText }],
+      [{ title: 'Research Source', url: 'https://example.com/source', snippet: 'short snippet', full_content: longSourceText }],
+      compactText,
+      {
+        observationLimit: 2,
+        observationChars: 900,
+        sourceLimit: 2,
+        sourceChars: 900,
+        instruction: 'Use this detailed research evidence.'
+      }
+    );
+
+    const summary = String(messages.find((message) => typeof message.content === 'string' && message.content.includes('=== EVIDENCE SUMMARY ==='))?.content || '');
+    expect(summary).toContain('Use this detailed research evidence.');
+    expect(summary).toContain('https://example.com/source');
+    expect(summary).toContain('Specific source detail with important evidence');
+    expect(summary.length).toBeGreaterThan(900);
+  });
 });

@@ -5,17 +5,17 @@ import { summarizeCrawledPages } from './content-summarizer.ts';
 const MODE_CONFIG = {
   deep: {
     maxDepth: 2,
-    maxPages: 15,
-    linksPerPage: 5,
+    maxPages: 24,
+    linksPerPage: 7,
     maxCharsPerPage: 7000,
     minLinkScore: 0.08
   },
   max: {
-    maxDepth: 3,
-    maxPages: 40,
-    linksPerPage: 8,
-    maxCharsPerPage: 8000,
-    minLinkScore: 0.06
+    maxDepth: 4,
+    maxPages: 90,
+    linksPerPage: 12,
+    maxCharsPerPage: 10000,
+    minLinkScore: 0.045
   }
 };
 
@@ -98,14 +98,14 @@ export async function crawlWeb({
   const budgetChars = clampNumber(
     context_budget_chars,
     1000,
-    50000,
-    mode === 'max' ? 12000 : 8500
+    100000,
+    mode === 'max' ? 30000 : 16000
   );
 
   const scrapeFn = typeof deps.scrapeFn === 'function' ? deps.scrapeFn : scrapeUrlStructured;
   const scoreFn = typeof deps.scoreFn === 'function' ? deps.scoreFn : scoreLinksForQuery;
 
-  const seeds = uniqueSeedUrls(seed_urls).slice(0, mode === 'max' ? 12 : 8);
+  const seeds = uniqueSeedUrls(seed_urls).slice(0, mode === 'max' ? 20 : 10);
   if (!seeds.length) {
     return {
       query: normalizeWhitespace(query),

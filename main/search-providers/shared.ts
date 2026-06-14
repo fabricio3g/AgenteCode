@@ -1,6 +1,7 @@
 // Shared search utilities, constants, and result-processing helpers
 
 export const DEFAULT_PROVIDER_ORDER = [
+  'aggregator',
   'tavily',
   'brave',
   'google_cse',
@@ -16,9 +17,10 @@ export const DEFAULT_PROVIDER_ORDER = [
   'duckduckgo'
 ];
 
-export const FREE_PROVIDER_ORDER = ['duckduckgo', 'jina', 'electron'];
+export const FREE_PROVIDER_ORDER = ['aggregator', 'duckduckgo', 'jina', 'electron'];
 
 export const PROVIDER_PRIORITY: Record<string, number> = {
+  aggregator: 5.5,
   tavily: 5,
   brave: 4.5,
   google_cse: 4.2,
@@ -36,8 +38,8 @@ export const PROVIDER_PRIORITY: Record<string, number> = {
 
 export const DEFAULT_CONTEXT_BUDGET = {
   search: 4500,
-  deep: 9000,
-  max: 14000
+  deep: 14000,
+  max: 26000
 };
 
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -231,6 +233,7 @@ export function providerPriority(provider: string): number {
 export function providerDisplayName(provider: string): string {
   const names: Record<string, string> = {
     tavily: 'Tavily',
+    aggregator: 'Chatea Aggregator',
     brave: 'Brave Search',
     google_cse: 'Google CSE',
     serpapi: 'SerpAPI',
@@ -251,6 +254,8 @@ export function providerHasCredentials(provider: string, options: Record<string,
   switch (provider) {
     case 'tavily':
       return !!options?.tavily_api_key;
+    case 'aggregator':
+      return true;
     case 'brave':
       return !!options?.brave_api_key;
     case 'google_cse':
@@ -301,6 +306,31 @@ export interface SearchResult {
   score?: number;
   published_at: string | null;
   metadata: Record<string, unknown>;
+}
+
+export function requireOption(options: Record<string, unknown>, key: string, message: string): string {
+  const value = options?.[key];
+  if (!value) throw new Error(message);
+  return value as string;
+}
+
+export function pickFirstArray(data: unknown, keys: string[]): Record<string, unknown>[] {
+  for (const key of keys) {
+    const value = (data as Record<string, unknown> | undefined)?.[key];
+    if (Array.isArray(value)) return value as Record<string, unknown>[];
+  }
+  return [];
+}
+
+export function mapSearchResults(
+  provider: string,
+  items: Record<string, unknown>[],
+  mapper: (item: Record<string, unknown>, index: number) => Record<string, unknown>,
+  maxResults: number
+): SearchResult[] {
+  return items
+    .map((item, index) => normalizeSearchItem(provider, mapper(item, index), index))
+    .slice(0, maxResults);
 }
 
 export function normalizeSearchItem(provider: string, item: Record<string, unknown>, index: number): SearchResult {

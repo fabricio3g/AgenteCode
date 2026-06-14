@@ -153,6 +153,9 @@ class AppStore {
   apiModelMetadataByKey = $state<Record<string, ApiModelMetadata>>({});
   currentArtifact = $state<AgentArtifact | null>(null);
   currentArtifactMessageId = $state<string | null>(null);
+  activityDrawerOpen = $state(false);
+  activityMessageId = $state<string | null>(null);
+  activityDrawerTab = $state<'activity' | 'sources'>('activity');
   localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
   localModelLoadContextLength = $state('4096');
   localModelLoadGpuLayers = $state('0');
@@ -207,6 +210,12 @@ class AppStore {
 
   get currentRun() {
     return this.currentChatId ? (this.activeRunsByChat[this.currentChatId] || null) : null;
+  }
+
+  get activityMessage() {
+    const messageId = this.activityMessageId;
+    if (!messageId) return null;
+    return this.currentChat?.messages?.find((message) => message.id === messageId) || null;
   }
 
   get currentChatGenerating() {
@@ -503,6 +512,21 @@ class AppStore {
 
   setCurrentArtifact(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {
     this.syncArtifactState(artifact, messageId, open);
+  }
+
+  openActivityDrawer(messageId: string, tab: 'activity' | 'sources' = 'activity') {
+    if (!messageId) return;
+    if (this.activityDrawerOpen && this.activityMessageId === messageId && this.activityDrawerTab === tab) {
+      this.closeActivityDrawer();
+      return;
+    }
+    this.activityMessageId = messageId;
+    this.activityDrawerTab = tab;
+    this.activityDrawerOpen = true;
+  }
+
+  closeActivityDrawer() {
+    this.activityDrawerOpen = false;
   }
 
   async openLocalModelLoadDialog(model: LocalModelLoadTarget) {
@@ -1664,7 +1688,7 @@ class AppStore {
         buildContextualPrompt: (userContent) => this.buildContextualPrompt({
           content: userContent,
           searchContext,
-          researchSummary: searchMeta?.researchSummary || '',
+          researchSummary: (searchMeta as SearchMeta | null)?.researchSummary || '',
           ragContext,
           workspaceContext,
           mode: activeComposerMode,

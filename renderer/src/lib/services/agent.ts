@@ -28,7 +28,8 @@ import {
 } from '$lib/services/agent-parsing';
 import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
 import {
-  getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder
+  getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
+  buildResearchReportInstruction, isMedicalResearchQuery
 } from '$lib/services/agent-prompts';
 import {
   classifyStopReason, stoppedWarning, hasVisibleArtifact, visibleFileCount,
@@ -104,22 +105,6 @@ function debugLog(enabled: boolean, message: string) {
 
 function getToolCallLimit(maxIterations: number, localMode = false): number {
   return Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : TOOL_CALLS_PER_STEP));
-}
-
-function buildResearchSynthesisInstruction(params: { prompt?: string; searchMode?: 'search' | 'deep' | 'max'; sourceCount: number; toolCalls: number }): string {
-  const mode = params.searchMode || 'search';
-  return [
-    `Tool gathering has reached the configured research budget after ${params.toolCalls} tool calls and ${params.sourceCount} gathered source${params.sourceCount === 1 ? '' : 's'}.`,
-    'Do not call any more tools. Continue by writing the final answer now from the gathered evidence.',
-    mode === 'max'
-      ? 'This is MAX research: produce a complete, polished report with methodology/evidence-quality notes, deep synthesis, tables where useful, unresolved gaps, and a full references section.'
-      : mode === 'deep'
-        ? 'This is DEEP research: produce a thorough, polished report with synthesis, evidence-quality notes, practical takeaways, caveats, and references.'
-        : 'Produce a complete answer using the gathered evidence.',
-    'Follow APA 7 report norms: clear heading hierarchy, formal objective tone, evidence-based synthesis, in-text citations where metadata allows, and a References section.',
-    'Format references as APA 7 web references using available metadata only: author/organization when present, year/date when present, title, site/publisher when distinct, and URL. Use (n.d.) when no date is available. Never invent authors, dates, titles, or facts.',
-    params.prompt ? `Current user request: ${params.prompt}` : ''
-  ].filter(Boolean).join('\n');
 }
 
 function countBudgetedToolCalls(toolCalls: ToolCall[]): number {
@@ -517,7 +502,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const agentExtra = [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
   const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode);
   const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode);
-  const directSys = buildDirectSystemPrompt(agentExtra);
+  const directSys = buildDirectSystemPrompt(agentExtra, { toolMode, searchMode: args.searchMode });
 
   const messages: RequestMessage[] = [
     { role: 'system', content: useNativeTools ? nativeSys : xmlSys },
@@ -546,39 +531,20 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   };
 
   const isResearchChat = toolMode === 'search_chat' && (args.searchMode === 'deep' || args.searchMode === 'max');
-  const forceResearchSynthesis = async (reason: string): Promise<string> => {
-    steps.push({
-      id: uid('step'),
-      type: 'thinking',
-      label: 'Synthesizing final research report',
-      status: 'running',
-      detail: reason
-    });
-    args.onStep([...steps]);
-    args.onProgress?.('Synthesizing final research report…');
-    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
-    messages[0] = { role: 'system', content: directSys };
-    messages.push({
-      role: 'user',
-      content: buildResearchSynthesisInstruction({
-        prompt: args.rawPrompt,
-        searchMode: args.searchMode,
-        sourceCount: sources.length,
-        toolCalls: totalToolCalls
-      })
-    });
-    const completion = await completeAssistantReply({ messages, signal: args.signal });
-    checkAbort();
-    const content = stripToolCallArtifacts(String(completion?.content || '')).trim();
-    if (completion?.reasoning) finalReasoning = finalReasoning || String(completion.reasoning);
-    const lastStep = steps[steps.length - 1];
-    if (lastStep?.label === 'Synthesizing final research report') {
-      lastStep.status = content ? 'done' : 'error';
-      lastStep.detail = content ? 'Final research report ready' : 'The model did not return final report text';
-      args.onStep([...steps]);
-    }
-    return content;
-  };
+  const researchEvidenceOptions = isResearchChat ? {
+    observationLimit: args.searchMode === 'max' ? 30 : 22,
+    observationChars: args.searchMode === 'max' ? 1400 : 1000,
+    sourceLimit: args.searchMode === 'max' ? 28 : 18,
+    sourceChars: args.searchMode === 'max' ? 1000 : 700,
+    instruction: 'The following evidence was gathered during Deep/Max search. Use these source-specific facts, URLs, and excerpts as the primary source of truth for the final answer. Do not answer generically when evidence is present.'
+  } : undefined;
+  const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => buildStrictFallbackContent({
+    prompt: args.rawPrompt || '',
+    reason,
+    ctx,
+    observations: toolObservations,
+    sources
+  });
 
   for (let iter = 0; iter < maxIterations; iter++) {
     debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
@@ -611,7 +577,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       debugLog
     });
 
-    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
+    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
 
     const sysCount = messages.filter(m => m.role === 'system').length;
     const userCount = messages.filter(m => m.role === 'user').length;
@@ -983,42 +949,12 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     const budgetedToolCalls = countBudgetedToolCalls(toolCalls);
 
     if (totalToolCalls >= maxToolCalls) {
-      if (isResearchChat) {
-        try {
-          finalContent = await forceResearchSynthesis(`Research budget reached (${totalToolCalls}/${maxToolCalls}); writing final report from gathered evidence.`);
-          if (finalContent) {
-            stopReason = 'none';
-            warningReason = undefined;
-            break;
-          }
-        } catch (e: unknown) {
-          if (isAbortError(e)) throw e;
-          debugLog(debugLogs, `[agent] research synthesis after tool limit failed: ${toErrorMessage(e).slice(0, 200)}`);
-        }
-      }
       steps.push({
         id: uid('step'), type: 'error', label: 'Tool limit reached',
-        status: 'error', detail: `Used ${totalToolCalls} tools across ${maxIterations} steps. Forcing final answer.`
+        status: 'error', detail: `Used ${totalToolCalls} tools across ${maxIterations} steps. Returning gathered evidence only.`
       });
       args.onStep([...steps]);
-      messages.push({ role: 'user', content: `You have used ${totalToolCalls} tools. You MUST stop using tools and provide your final answer now based on everything gathered.` });
-      try {
-        finalContent = await buildStrictFallbackContent({
-          prompt: args.rawPrompt || '',
-          reason: `the tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
-          ctx,
-          observations: toolObservations,
-          sources
-        });
-      } catch {
-        finalContent = await buildStrictFallbackContent({
-          prompt: args.rawPrompt || '',
-          reason: `the tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
-          ctx,
-          observations: toolObservations,
-          sources
-        });
-      }
+      if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`the tool budget was reached (${totalToolCalls}/${maxToolCalls})`);
       warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
       stopReason = 'tool_limit';
       break;
@@ -1034,7 +970,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     recentProgress.push({
       sourceCount: sources.length,
       visibleFileCount: visibleFileCount(ctx.files),
-      draftChars: maxObservedDraftChars
+      draftChars: maxObservedDraftChars,
+      observationCount: toolObservations.filter((o) => o.success).length
     });
     if (recentProgress.length > 10) recentProgress.shift();
 
@@ -1078,6 +1015,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       const nameCounts = new Map<string, number>();
       for (const name of recentNames) {
         if (name === 'fetch_url' || LOW_IMPACT_LOOP_TOOLS.has(name)) continue;
+        if (isResearchChat && name === 'web_search') continue;
         nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
       }
       for (const [name, count] of nameCounts) {
@@ -1108,13 +1046,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         status: 'error', detail: `Repeated calls to ${stuckTool}`
       });
       args.onStep([...steps]);
-      finalContent = await buildStrictFallbackContent({
-        prompt: args.rawPrompt || '',
-        reason: `it detected repeated calls to ${stuckTool}`,
-        ctx,
-        observations: toolObservations,
-        sources
-      });
+      if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`it detected repeated calls to ${stuckTool}`);
       warningReason = 'Agent encountered a loop and returned only gathered evidence.';
       stopReason = 'loop';
       break;
@@ -1162,55 +1094,32 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     }
 
     if (totalToolCalls >= maxToolCalls) {
-      if (isResearchChat) {
-        try {
-          finalContent = await forceResearchSynthesis(`Research budget reached (${totalToolCalls}/${maxToolCalls}); writing final report from gathered evidence.`);
-          if (finalContent) {
-            stopReason = 'none';
-            warningReason = undefined;
-            break;
-          }
-        } catch (e: unknown) {
-          if (isAbortError(e)) throw e;
-          debugLog(debugLogs, `[agent] research synthesis after tool limit failed: ${toErrorMessage(e).slice(0, 200)}`);
-        }
-      }
-      finalContent = await buildStrictFallbackContent({
-        prompt: args.rawPrompt || '',
-        reason: `the available tool budget was reached (${totalToolCalls}/${maxToolCalls})`,
-        ctx,
-        observations: toolObservations,
-        sources
-      });
+      if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`the available tool budget was reached (${totalToolCalls}/${maxToolCalls})`);
       warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
       stopReason = 'tool_limit';
       break;
     }
   }
 
-  if (!finalContent && isResearchChat) {
-    try {
-      finalContent = await forceResearchSynthesis('Research step budget reached; writing final report from gathered evidence.');
-      if (finalContent) {
-        stopReason = 'none';
-        warningReason = undefined;
-        errorReason = undefined;
-      }
-    } catch (e: unknown) {
-      if (isAbortError(e)) throw e;
-      debugLog(debugLogs, `[agent] research synthesis after iteration limit failed: ${toErrorMessage(e).slice(0, 200)}`);
-    }
-  }
-
   if (!finalContent) {
     for (let attempt = 1; attempt <= MAX_FORCED_FINAL_ANSWER_ATTEMPTS; attempt++) {
       try {
-        injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText);
+        injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
         messages[0] = { role: 'system', content: directSys };
+        const researchNudge = isResearchChat
+          ? [
+            'You have reached the research step limit. Do NOT call tools.',
+            'Using only the gathered evidence above, write the final research report now.',
+            buildResearchReportInstruction(
+              (args.searchMode === 'max' ? 'max' : 'deep'),
+              isMedicalResearchQuery(args.rawPrompt || '')
+            )
+          ].join('\n\n')
+          : null;
         messages.push({
           role: 'user',
           content: attempt === 1
-            ? 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.'
+            ? (researchNudge || 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.')
             : 'Final attempt: no tools, no extra reasoning. Return the final answer now in plain text using only gathered evidence.'
         });
         const forced = await completeAssistantReply({ messages, signal: args.signal });
@@ -1218,8 +1127,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         if (!forcedContent) continue;
         finalContent = forcedContent;
         if (forced.reasoning) finalReasoning = finalReasoning || String(forced.reasoning);
-        if (stopReason === 'none') stopReason = 'iteration_limit';
-        warningReason = warningReason || 'Agent reached the iteration limit and produced a final answer from gathered evidence.';
+        if (isResearchChat) {
+          stopReason = 'none';
+          warningReason = undefined;
+        } else {
+          if (stopReason === 'none') stopReason = 'iteration_limit';
+          warningReason = warningReason || 'Agent reached the iteration limit and produced a final answer from gathered evidence.';
+        }
         break;
       } catch {
         // continue to next forced attempt, then fall through to strict fallback

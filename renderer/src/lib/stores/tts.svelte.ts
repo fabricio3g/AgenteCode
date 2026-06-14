@@ -185,7 +185,19 @@ class TtsStore {
       });
 
       this.startProgressTracking();
-      generateTtsStream({ text: cleaned, voice, speed, volume });
+      generateTtsStream({
+        text: cleaned,
+        voice,
+        speed,
+        volume,
+        engine: config.tts?.engine === 'wasm' ? 'wasm' : 'kokoro',
+        model_path: config.tts?.model_path || '',
+        voices_path: config.tts?.voices_path || '',
+        tokens_path: config.tts?.tokens_path || '',
+        lexicon_path: config.tts?.lexicon_path,
+        dict_dir: config.tts?.dict_dir,
+        data_dir: config.tts?.data_dir
+      });
       return;
     }
 

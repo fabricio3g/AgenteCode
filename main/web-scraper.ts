@@ -138,6 +138,49 @@ function extractLinks(document, baseUrl, maxLinks = DEFAULT_MAX_LINKS) {
   return links;
 }
 
+function htmlToStructuredText(htmlFragment, maxLength = DEFAULT_MAX_LENGTH) {
+  const { document: doc } = parseHTML(String(htmlFragment || ''));
+  const root = doc.body || doc.documentElement;
+  if (!root) return '';
+  const parts = [];
+
+  function walk(node) {
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) {
+        const t = normalizeWhitespace(child.textContent);
+        if (t) parts.push(t);
+      } else if (child.nodeType === 1) {
+        const tag = child.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag)) {
+          const level = Math.min(Number(tag[1]), 4);
+          parts.push('\n\n' + '#'.repeat(level) + ' ' + normalizeWhitespace(child.textContent) + '\n\n');
+        } else if (tag === 'p') {
+          parts.push('\n\n');
+          walk(child);
+          parts.push('\n\n');
+        } else if (tag === 'li') {
+          parts.push('\n- ' + normalizeWhitespace(child.textContent));
+        } else if (tag === 'br') {
+          parts.push('\n');
+        } else if (tag === 'blockquote') {
+          parts.push('\n\n> ');
+          walk(child);
+          parts.push('\n\n');
+        } else {
+          walk(child);
+        }
+      }
+    }
+  }
+
+  walk(root);
+
+  return cleanText(parts.join(''))
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
 function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH, maxLinks = DEFAULT_MAX_LINKS }) {
   const safeMaxLength = clampNumber(maxLength, 1000, 200000, DEFAULT_MAX_LENGTH);
   const safeMaxLinks = clampNumber(maxLinks, 10, 300, DEFAULT_MAX_LINKS);
@@ -158,7 +201,13 @@ function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH, maxLin
   }
 
   const bodyText = cleanText(document.body?.textContent || '');
-  const rawContent = cleanText(article?.textContent || bodyText);
+  let rawContent = '';
+  if (article?.content) {
+    rawContent = htmlToStructuredText(article.content, safeMaxLength);
+  }
+  if (!rawContent || rawContent.length < 200) {
+    rawContent = cleanText(article?.textContent || bodyText);
+  }
   const content = rawContent.slice(0, safeMaxLength);
   const title =
     normalizeWhitespace(article?.title || '')

@@ -829,6 +829,11 @@
     void appStore.composerMode;
     void appStore.currentContextMode;
     void appStore.backendMode;
+    void appStore.activeProviderName;
+    void appStore.activeProvider?.model;
+    void appStore.activeProvider?.max_tokens;
+    void appStore.activeProvider?.base_url;
+    void appStore.activeProvider?.has_api_key;
     void appStore.config.llm?.local?.context_length;
     void appStore.config.llm?.local?.max_tokens;
     void appStore.config.llm?.local?.system_prompt;
@@ -964,16 +969,14 @@
       ></textarea>
     </div>
 
-    <div class={`px-4 pb-3 pt-2 ${compactComposer ? 'space-y-1.5' : 'flex items-center justify-between'}`}>
-      <div class={`flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
+    <div class={`composer-action-row px-4 pb-3 pt-2 ${compactComposer ? 'compact' : ''}`}>
+      <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
         <ModeSelector />
 
-        {#if appStore.composerMode !== 'agent'}
-          <SearchModeSelector />
-        {/if}
+        <SearchModeSelector />
       </div>
 
-      <div class={`flex items-center gap-1.5 ${compactComposer ? 'justify-end' : 'pl-2'}`}>
+      <div class={`composer-right-actions flex items-center gap-1.5 ${compactComposer ? '' : 'pl-2'}`}>
         {#if showContextUsage}
           <ContextUsageRing
             usedTokens={contextBudget?.usedTokens ?? 0}
@@ -1143,6 +1146,23 @@
 
   .composer-divider {
     opacity: 0.5;
+  }
+
+  .composer-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .composer-left-actions {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .composer-right-actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
   }
 
   .metal-hover-btn {
@@ -1331,6 +1351,34 @@
   }
 
   @media (max-width: 640px) {
+    .composer-action-row.compact {
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .composer-action-row.compact .composer-left-actions {
+      flex: 1 1 12rem;
+      max-width: none;
+      min-width: min(100%, 10rem);
+      padding-bottom: 1px;
+      scrollbar-width: none;
+    }
+
+    .composer-action-row.compact .composer-left-actions::-webkit-scrollbar {
+      display: none;
+    }
+
+    .composer-action-row.compact .composer-right-actions {
+      margin-left: auto;
+      align-self: center;
+    }
+
+    .composer-action-row.compact .composer-left-actions :global(.mode-selector-trigger),
+    .composer-action-row.compact .composer-left-actions :global(.search-selector-trigger) {
+      white-space: nowrap;
+    }
+
     .composer-textarea {
       max-height: 160px;
       min-height: 24px;

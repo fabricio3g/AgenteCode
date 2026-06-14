@@ -8,17 +8,61 @@ export function createRunningToolStep(
   stepTypeMap: Record<string, AgentStep['type']>,
   uid: (prefix: string) => string
 ): AgentStep {
+  const label = displayToolLabel(toolCall.name);
+  const detail = displayToolDetail(toolCall.name, toolCall.arguments);
   return {
     id: uid('step'),
     type: stepTypeMap[toolCall.name] || 'tool',
-    label: toolCall.name.replace(/_/g, ' '),
+    label,
     status: 'running',
-    detail: toolCall.name === 'write_file'
-      ? `path: ${String(toolCall.arguments.path || '').slice(0, 120)}`
-      : Object.keys(toolCall.arguments).length
-        ? Object.entries(toolCall.arguments).slice(0, 3).map(([key, value]) => `${key}: ${String(value).slice(0, 80)}`).join(', ')
-        : undefined
+    detail
   };
+}
+
+export function displayToolLabel(name: string): string {
+  switch (name) {
+    case 'web_search': return 'Search';
+    case 'fetch_url': return 'Read';
+    case 'query_knowledge': return 'Read knowledge';
+    case 'read_file': return 'Read file';
+    case 'list_files': return 'List files';
+    case 'search_files': return 'Search files';
+    case 'write_file': return 'Write file';
+    case 'create_report': return 'Create report';
+    case 'create_work_product': return 'Create report';
+    case 'create_document': return 'Create document';
+    case 'create_spreadsheet': return 'Create spreadsheet';
+    case 'create_presentation': return 'Create presentation';
+    case 'create_pdf': return 'Create PDF';
+    case 'preview_project': return 'Preview';
+    case 'calculator': return 'Calculate';
+    default: return name.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+}
+
+function displayToolDetail(name: string, args: Record<string, unknown>): string | undefined {
+  if (name === 'web_search') {
+    const query = String(args.query || '').trim();
+    return query ? query.slice(0, 180) : undefined;
+  }
+  if (name === 'fetch_url') {
+    const title = String(args.title || args.name || '').trim();
+    const url = String(args.url || '').trim();
+    if (title && url) return `${title} · ${url}`.slice(0, 220);
+    return (title || url || undefined)?.slice(0, 220);
+  }
+  if (name === 'write_file' || name === 'read_file') {
+    const path = String(args.path || '').trim();
+    return path ? path.slice(0, 160) : undefined;
+  }
+  if (name.startsWith('create_')) {
+    const title = String(args.title || '').trim();
+    const path = String(args.path || '').trim();
+    return (title || path || undefined)?.slice(0, 180);
+  }
+  return Object.keys(args).length
+    ? Object.entries(args).slice(0, 3).map(([key, value]) => `${key}: ${String(value).slice(0, 80)}`).join(', ')
+    : undefined;
 }
 
 export function applyNextTurnMods(messages: RequestMessage[], result: ToolResult): boolean {

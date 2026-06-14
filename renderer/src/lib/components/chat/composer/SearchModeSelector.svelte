@@ -66,7 +66,7 @@
 <div class="relative inline-flex">
   <button
     bind:this={triggerEl}
-    class="search-selector-trigger inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[var(--text)] transition hover:opacity-90 {dropdownOpen ? 'open rounded-b-lg border-t-0' : 'rounded-lg'}"
+    class="search-selector-trigger inline-flex h-7 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-[var(--text)] transition hover:opacity-90"
     onclick={toggleDropdown}
     aria-haspopup="listbox"
     aria-expanded={dropdownOpen}

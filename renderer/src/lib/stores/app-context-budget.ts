@@ -55,7 +55,7 @@ export function buildApiContextBudget(params: {
     || Math.floor(params.contextWindow * 0.1);
   const reserved = Math.min(maxTokensSetting, Math.floor(params.contextWindow * 0.2));
   const effectiveMax = params.contextWindow - reserved;
-  const usagePercent = Math.min(100, Math.round((params.totalTokens / effectiveMax) * 100));
+  const usagePercent = Math.min(100, Math.round((params.totalTokens / params.contextWindow) * 100));
   const remaining = Math.max(0, effectiveMax - params.totalTokens);
 
   const promptCostPerMillionUsd = params.modelMetadata.prompt_cost_per_million;
@@ -74,6 +74,87 @@ export function buildApiContextBudget(params: {
     promptCostPerMillionUsd,
     completionCostPerMillionUsd,
     estimatedInputCostUsd
+  };
+}
+
+export function estimateTokensFromMessages(messages: RequestMessage[]): number {
+  let total = 0;
+  for (const msg of messages) {
+    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
+    total += 4 + Math.ceil(content.length / 4);
+    const reasoning = (msg as RequestMessage & { reasoning?: string }).reasoning;
+    if (reasoning) total += Math.ceil(String(reasoning).length / 4);
+  }
+  return total;
+}
+
+export function inferContextWindowFromModel(providerName?: string, modelId?: string): number | null {
+  const provider = String(providerName || '').toLowerCase();
+  const model = String(modelId || '').toLowerCase();
+  if (!model) return null;
+
+  if (provider.includes('anthropic') || model.includes('claude')) {
+    if (model.includes('instant')) return 100_000;
+    return 200_000;
+  }
+
+  if (provider.includes('gemini') || model.includes('gemini')) {
+    if (/gemini-(?:1\.5|2\.|2-|flash|pro)/.test(model)) return 1_000_000;
+    return 32_768;
+  }
+
+  if (model.includes('gpt-4.1') || model.includes('gpt-4o') || model.includes('gpt-4-turbo') || /o[134]\b/.test(model)) return 128_000;
+  if (model.includes('gpt-4-32k')) return 32_768;
+  if (model.includes('gpt-4')) return 8_192;
+  if (model.includes('gpt-3.5-turbo')) return 16_384;
+  if (model.includes('gpt-3.5')) return 4_096;
+
+  if (provider.includes('deepseek') || model.includes('deepseek')) {
+    if (model.includes('v3') || model.includes('r1')) return 128_000;
+    return 64_000;
+  }
+
+  if (provider.includes('mistral') || model.includes('mistral')) {
+    if (model.includes('large')) return 128_000;
+    if (model.includes('small') || model.includes('medium')) return 32_768;
+    if (model.includes('nemo') || model.includes('codestral')) return 256_000;
+    return 32_768;
+  }
+
+  if (provider.includes('groq') || model.includes('groq') || model.includes('llama') || model.includes('mixtral')) {
+    if (model.includes('llama-3.1') || model.includes('llama3.1')) return 131_072;
+    if (model.includes('llama-3') || model.includes('llama3')) return 8_192;
+    if (model.includes('mixtral')) return 32_768;
+    return 8_192;
+  }
+
+  if (model.includes('qwen')) {
+    if (model.includes('qwen2.5') || model.includes('qwen2-5')) return 131_072;
+    if (model.includes('qwen2')) return 32_768;
+    return 32_768;
+  }
+
+  return null;
+}
+
+export function buildFallbackContextBudget(params: {
+  messages: RequestMessage[];
+  contextWindow?: number;
+  maxTokens?: number;
+}): ContextBudgetValue {
+  const contextWindow = Math.max(1, Number(params.contextWindow) || 4096);
+  const maxTokensSetting = Number(params.maxTokens) || Math.floor(contextWindow * 0.1);
+  const reserved = Math.min(maxTokensSetting, Math.floor(contextWindow * 0.2));
+  const effectiveMax = Math.max(1, contextWindow - reserved);
+  const usedTokens = estimateTokensFromMessages(params.messages);
+
+  return {
+    maxContext: contextWindow,
+    usedTokens,
+    remaining: Math.max(0, effectiveMax - usedTokens),
+    usagePercent: Math.min(100, Math.round((usedTokens / contextWindow) * 100)),
+    isOverflow: usedTokens > effectiveMax,
+    reservedForCompletion: reserved
   };
 }
 

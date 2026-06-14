@@ -146,7 +146,9 @@ class ModelsStore {
             model_path?: unknown;
           };
           this.status = {
-            state: stateEvent.state ?? stateEvent.to ?? null,
+            state: typeof stateEvent.state === 'string'
+              ? stateEvent.state
+              : (typeof stateEvent.to === 'string' ? stateEvent.to : 'idle'),
             active_model: typeof stateEvent.model_id === 'string'
               ? stateEvent.model_id
               : (typeof stateEvent.model_path === 'string' ? stateEvent.model_path : null),

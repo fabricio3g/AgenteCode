@@ -14,6 +14,7 @@ import {
   getDefaultRAGConfig,
   getDefaultSTTConfig,
   getDefaultOnboardingConfig,
+  getDefaultSearchConfig,
   getDefaultConfig,
   createDefaultConfigWithPaths,
 } from '../../main/config.defaults.ts';
@@ -67,6 +68,15 @@ describe('getDefaultTTSConfig', () => {
     assert.ok(tts.model_dir);
     // Just verify it includes the TTS directory name
     assert.ok(tts.model_dir.includes('kokoro-multi-lang-v1_1'));
+  });
+});
+
+describe('getDefaultSearchConfig', () => {
+  it('uses the local aggregator by default', () => {
+    const search = getDefaultSearchConfig();
+    assert.strictEqual(search.provider, 'aggregator');
+    assert.strictEqual(search.max_results, 6);
+    assert.deepStrictEqual(search.aggregator_engines, ['duckduckgo', 'wikipedia']);
   });
 });
 

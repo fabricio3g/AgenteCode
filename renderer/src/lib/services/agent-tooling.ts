@@ -236,7 +236,7 @@ export function getToolDefinitions(): ToolDefinition[] {
 }
 
 export const STEP_TYPE: Record<string, AgentStep['type']> = {
-  web_search: 'searching', fetch_url: 'searching',
+  web_search: 'searching', fetch_url: 'reading',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
   write_file: 'writing', delete_file: 'writing',

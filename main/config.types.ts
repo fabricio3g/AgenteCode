@@ -178,6 +178,15 @@ export interface RAGConfig {
   fallback_embedding_models: string[];
 }
 
+export interface SearchConfig {
+  provider: string;
+  max_results: number;
+  context_budget_chars?: number;
+  aggregator_engines?: string[];
+  safe_search?: number;
+  providers?: Record<string, Record<string, unknown>>;
+}
+
 /**
  * Onboarding configuration.
  */
@@ -195,6 +204,7 @@ export interface AppConfig {
   rag: RAGConfig;
   stt: STTConfig;
   onboarding: OnboardingConfig;
+  search?: SearchConfig;
   [key: string]: unknown;
 }
 

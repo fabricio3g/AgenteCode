@@ -3,7 +3,7 @@ import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 export async function handleWebSearch(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
-  webSearch: (args: { query: string; context?: string; deep: boolean; mode: 'search' | 'deep' | 'max' }) => Promise<{ error?: string; results: Array<{ title: string; url: string; snippet?: string }>; context?: string }>;
+  webSearch: (args: { query: string; context?: string; deep: boolean; mode: 'search' | 'deep' | 'max'; options?: Record<string, unknown> }) => Promise<{ error?: string; results: Array<{ title: string; url: string; snippet?: string }>; context?: string }>;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -11,19 +11,41 @@ export async function handleWebSearch(params: {
   const query = String(params.args.query || '');
   const mode = (['search', 'deep', 'max'] as const).includes(params.args.mode as 'search' | 'deep' | 'max')
     ? (params.args.mode as 'search' | 'deep' | 'max')
-    : 'search';
+    : params.ctx.searchMode || 'search';
   try {
-    const result = await params.webSearch({ query, context: params.ctx.conversationContext, deep: mode !== 'search', mode });
+    const resultBudget = mode === 'max' ? 18 : mode === 'deep' ? 12 : 8;
+    const contextBudget = mode === 'max' ? 24000 : mode === 'deep' ? 14000 : 6500;
+    const result = await params.webSearch({
+      query,
+      context: params.ctx.conversationContext,
+      deep: mode !== 'search',
+      mode,
+      options: {
+        max_results: resultBudget,
+        context_budget_chars: contextBudget
+      }
+    });
     if (result.error) {
       return params.fail(
         result.error,
         'Web search is unavailable right now. Do not invent current facts; report that live search failed and use only already gathered evidence.'
       );
     }
+    const results = result.results.slice(0, resultBudget).map((entry, index) => ({
+      rank: index + 1,
+      title: entry.title,
+      url: entry.url,
+      snippet: entry.snippet?.slice(0, mode === 'search' ? 350 : 700)
+    }));
+
     return params.ok({
       query,
-      results: result.results.slice(0, 10).map((entry) => ({ title: entry.title, url: entry.url, snippet: entry.snippet?.slice(0, 250) })),
-      context: result.context?.slice(0, 2000)
+      searched_at: new Date().toISOString(),
+      mode,
+      results,
+      urls_to_consider: results.map((entry) => ({ rank: entry.rank, title: entry.title, url: entry.url })),
+      next_step: 'If the answer needs source text, choose the most authoritative/relevant URL from urls_to_consider and call fetch_url before finalizing. If results are thin, run another distinct web_search query.',
+      context: result.context?.slice(0, contextBudget)
     });
   } catch (err: unknown) {
     return params.failFromError(

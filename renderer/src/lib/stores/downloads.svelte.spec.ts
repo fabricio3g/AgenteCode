@@ -15,6 +15,12 @@ vi.mock('$lib/services/downloads', () => ({
 describe('DownloadsStore', () => {
   let downloadsStore: Awaited<typeof import('./downloads.svelte')>['downloadsStore'];
 
+  const mockJob = (overrides: Record<string, unknown>) => overrides as unknown as typeof downloadsStore.jobs[number];
+  const storeInternals = () => downloadsStore as unknown as {
+    _syncPoller: () => void;
+    _pollerHandle: ReturnType<typeof setInterval> | null;
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
     
@@ -32,17 +38,17 @@ describe('DownloadsStore', () => {
     });
 
     it('returns true when starting job exists', () => {
-      downloadsStore.jobs = [{ id: '1', status: 'starting' }];
+      downloadsStore.jobs = [mockJob({ id: '1', status: 'starting' })];
       expect(downloadsStore.hasActive).toBe(true);
     });
 
     it('returns true when running job exists', () => {
-      downloadsStore.jobs = [{ id: '1', status: 'running' }];
+      downloadsStore.jobs = [mockJob({ id: '1', status: 'running' })];
       expect(downloadsStore.hasActive).toBe(true);
     });
 
     it('returns false when only completed jobs', () => {
-      downloadsStore.jobs = [{ id: '1', status: 'done' }];
+      downloadsStore.jobs = [mockJob({ id: '1', status: 'done' })];
       expect(downloadsStore.hasActive).toBe(false);
     });
   });
@@ -50,9 +56,9 @@ describe('DownloadsStore', () => {
   describe('activeCount', () => {
     it('counts active jobs', () => {
       downloadsStore.jobs = [
-        { id: '1', status: 'starting' },
-        { id: '2', status: 'running' },
-        { id: '3', status: 'done' }
+        mockJob({ id: '1', status: 'starting' }),
+        mockJob({ id: '2', status: 'running' }),
+        mockJob({ id: '3', status: 'done' })
       ];
       expect(downloadsStore.activeCount).toBe(2);
     });
@@ -61,7 +67,7 @@ describe('DownloadsStore', () => {
   describe('jobFor', () => {
     it('finds job by repo and file', () => {
       downloadsStore.jobs = [
-        { id: '1', repo_id: 'owner/repo', file: 'model.gguf' }
+        mockJob({ id: '1', repo_id: 'owner/repo', file: 'model.gguf' })
       ];
       const job = downloadsStore.jobFor('owner/repo', 'model.gguf');
       expect(job?.id).toBe('1');
@@ -111,17 +117,19 @@ describe('DownloadsStore', () => {
 
   describe('polling', () => {
     it('starts polling when active jobs exist', () => {
-      downloadsStore.jobs = [{ id: '1', status: 'running' }];
-      downloadsStore._syncPoller();
-      expect(downloadsStore._pollerHandle).not.toBeNull();
+      const internals = storeInternals();
+      downloadsStore.jobs = [mockJob({ id: '1', status: 'running' })];
+      internals._syncPoller();
+      expect(internals._pollerHandle).not.toBeNull();
       downloadsStore.stopPolling();
     });
 
     it('stops polling when no active jobs', () => {
-      downloadsStore._pollerHandle = setInterval(() => {}, 999999);
-      downloadsStore.jobs = [{ id: '1', status: 'done' }];
-      downloadsStore._syncPoller();
-      expect(downloadsStore._pollerHandle).toBeNull();
+      const internals = storeInternals();
+      internals._pollerHandle = setInterval(() => {}, 999999);
+      downloadsStore.jobs = [mockJob({ id: '1', status: 'done' })];
+      internals._syncPoller();
+      expect(internals._pollerHandle).toBeNull();
     });
   });
 });

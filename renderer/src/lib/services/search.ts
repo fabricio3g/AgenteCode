@@ -24,7 +24,9 @@ export async function webSearch(args: {
     options: {
       max_results: stored.search?.max_results,
       context_budget_chars: stored.search?.context_budget_chars,
-      provider: stored.search?.provider,
+      provider: stored.search?.provider || 'aggregator',
+      aggregator_engines: stored.search?.aggregator_engines,
+      safe_search: stored.search?.safe_search,
       google_cse_api_key: searchProviders.google_cse?.api_key,
       google_cse_id: searchProviders.google_cse?.engine_id,
       brave_api_key: searchProviders.brave?.api_key,

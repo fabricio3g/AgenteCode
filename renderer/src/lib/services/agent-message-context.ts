@@ -6,7 +6,14 @@ export function injectEvidenceSummary(
   messages: RequestMessage[],
   observations: ToolObservation[],
   liveSources: SearchResult[],
-  compactText: (value: unknown, max?: number) => string
+  compactText: (value: unknown, max?: number) => string,
+  options: {
+    observationLimit?: number;
+    observationChars?: number;
+    sourceLimit?: number;
+    sourceChars?: number;
+    instruction?: string;
+  } = {}
 ): void {
   const evidenceIdx = messages.findIndex(
     (message) => message.role === 'system' && typeof message.content === 'string' && message.content.startsWith('=== EVIDENCE SUMMARY ===')
@@ -18,15 +25,22 @@ export function injectEvidenceSummary(
   const successful = observations.filter((observation) => observation.success && observation.summary);
   if (!successful.length && !liveSources.length) return;
 
+  const observationLimit = Math.max(1, options.observationLimit ?? 15);
+  const observationChars = Math.max(120, options.observationChars ?? 400);
+  const sourceLimit = Math.max(1, options.sourceLimit ?? 10);
+  const sourceChars = Math.max(120, options.sourceChars ?? 250);
   const lines: string[] = ['=== EVIDENCE SUMMARY ==='];
-  lines.push('The following facts have been gathered from tool results. Use ONLY this data when creating artifacts or answering:');
+  lines.push(options.instruction || 'The following facts have been gathered from tool results. Use ONLY this data when creating artifacts or answering:');
 
-  for (const observation of successful.slice(0, 15)) {
-    lines.push(`- [${observation.name}] ${compactText(observation.summary, 400)}`);
+  for (const observation of successful.slice(0, observationLimit)) {
+    lines.push(`- [${observation.name}] ${compactText(observation.summary, observationChars)}`);
   }
 
-  for (const source of liveSources.slice(0, 10)) {
-    lines.push(`- [source] ${source.title || source.url}: ${compactText(source.snippet || '', 250)}`);
+  for (const source of liveSources.slice(0, sourceLimit)) {
+    const title = source.title || source.url;
+    const url = source.url && source.title ? ` (${source.url})` : '';
+    const excerpt = source.full_content || source.snippet || '';
+    lines.push(`- [source] ${title}${url}: ${compactText(excerpt, sourceChars)}`);
   }
 
   lines.push('=== END EVIDENCE ===');

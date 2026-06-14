@@ -2,19 +2,17 @@ import type { SearchResult } from '$lib/types/tauri';
 import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import type { AgentArtifact } from '$lib/types/chat';
 
-type ReportSource = {
+type EvidenceSource = {
   id: string;
-  title?: string;
-  url?: string;
+  title: string;
+  url: string;
+  snippet: string;
   provider?: string;
-  snippet?: string;
 };
 
-type ReportSection = {
-  title: string;
-  content?: string;
-  bullets?: string[];
-  citations?: string[];
+type EvidenceItem = {
+  text: string;
+  sourceId?: string;
 };
 
 function cleanText(value: unknown, max = 900): string {
@@ -24,250 +22,156 @@ function cleanText(value: unknown, max = 900): string {
     .slice(0, max);
 }
 
-function isMedicalReportRequest(prompt: string): boolean {
-  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|pemphigus|autoimmune|dermatology|medicine|medical)\b/i.test(prompt);
-}
-
-function sourceAuthority(source: { title?: string; url?: string }): string {
-  const value = `${source.title || ''} ${source.url || ''}`.toLowerCase();
-  if (/guideline|consensus|eadv|bad\.org|british association|american academy|jaad|lancet|nejm|bmj/.test(value)) return 'High: guideline, society, or major journal source';
-  if (/ncbi|pubmed|pmc|nih|statpearls/.test(value)) return 'High: biomedical reference or indexed literature';
-  if (/dermnet|merckmanual|msdmanual|mayoclinic|clevelandclinic/.test(value)) return 'Moderate: clinical reference source';
-  if (/foundation|association|patient|support/.test(value)) return 'Contextual: patient/support resource';
-  return 'Unclassified: review before relying on specific claims';
-}
-
-function mapSources(sources: SearchResult[]): ReportSource[] {
-  return sources.map((source, index) => ({
-    id: String(index + 1),
-    title: source.title || source.url || `Source ${index + 1}`,
-    url: source.url || '',
-    provider: source.provider || '',
-    snippet: cleanText(source.snippet || source.full_content, 650)
-  }));
-}
-
-function sourceBullets(sources: ReportSource[], keywords: RegExp, fallbackCount = 5): string[] {
-  const matched = sources.filter((source) => keywords.test(`${source.title || ''} ${source.snippet || ''}`));
-  const selected = (matched.length ? matched : sources).slice(0, fallbackCount);
-  const seen = new Set<string>();
-  return selected
-    .map((source) => {
-      const snippet = cleanText(source.snippet || '', 360)
-        .replace(/^[-–—\s]+/, '')
-        .replace(/\s+read more\s*$/i, '')
-        .trim();
-      const fact = snippet || `Review ${source.title || source.url} for this point`;
-      return `${fact} [${source.id}]`;
-    })
-    .filter((line) => {
-      const key = line.toLowerCase().replace(/\[[0-9]+\]/g, '').slice(0, 120);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function sourceCitations(sources: ReportSource[], keywords: RegExp, fallbackCount = 5): string[] {
-  const matched = sources.filter((source) => keywords.test(`${source.title || ''} ${source.snippet || ''}`));
-  return (matched.length ? matched : sources).slice(0, fallbackCount).map((source) => source.id);
-}
-
-function inlineReportTitle(prompt: string): string {
-  const cleaned = cleanText(prompt, 140)
+function titleFromPrompt(prompt: string): string {
+  const cleaned = cleanText(prompt, 100)
     .replace(/^(give|create|make|write)\s+(me\s+)?(an?\s+)?((extense|extensive|detailed|full|comprehensive)\s+)?(report|informe)\s+(about|on|of|for|sobre|de)\s+/i, '')
     .replace(/^((extense|extensive|detailed|full|comprehensive)\s+)?(report|informe)\s+(about|on|of|for|sobre|de)\s+/i, '')
     .replace(/^(search|research|look up)\s+(about|on|for)?\s*/i, '')
-    .replace(/\s+and\s+(give|create|make|write)\s+me[\s\S]*$/i, '')
-    .replace(/\b(extense|extensive|detailed|full)\s+(report|informe)\b[\s\S]*$/i, '')
-    .replace(/\b(report|informe)\b[\s\S]*$/i, '')
     .trim();
-  if (!cleaned) return 'Research Report';
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  return cleaned || 'Gathered Evidence';
 }
 
-function apaReference(source: ReportSource): string {
-  const title = (source.title || source.url || `Source ${source.id}`).replace(/\.$/, '');
-  const site = source.provider ? ` ${source.provider}.` : '';
-  const url = source.url ? ` ${source.url}` : '';
-  return `${title}. (n.d.).${site}${url}`.replace(/\s+/g, ' ').trim();
+function sourceKey(source: { title?: string; url?: string }): string {
+  return cleanText(source.url || source.title || '').toLowerCase();
 }
 
-function buildReportFromEvidence(params: {
-  prompt: string;
-  reason: string;
-  title: string;
-  evidence: string;
-  sources: SearchResult[];
-}): {
-  title: string;
-  subtitle: string;
-  executiveSummary: string;
-  sections: ReportSection[];
-  sources: ReportSource[];
-  limitations: string[];
-  tables: Array<{ name: string; columns: string[]; rows: Array<Record<string, string>> }>;
-} {
-  const reportSources = mapSources(params.sources).slice(0, 60);
-  const sourceCount = reportSources.length;
-  const isMedical = isMedicalReportRequest(params.prompt);
-  const topSources = reportSources.slice(0, 8);
-  const sourceIds = topSources.map((source) => source.id);
-  const partialNote = `The agent stopped because ${params.reason}. This report is structured from gathered evidence only and should be treated as partial until reviewed against the original sources.`;
-  const sourceOverview = topSources.map((source) => `[${source.id}] ${source.title || source.url}`).join('\n');
+function mapSources(sources: SearchResult[]): EvidenceSource[] {
+  const seen = new Set<string>();
+  const mapped: EvidenceSource[] = [];
+  for (const source of Array.isArray(sources) ? sources : []) {
+    const key = sourceKey(source);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    mapped.push({
+      id: String(mapped.length + 1),
+      title: cleanText(source.title || source.url || `Source ${mapped.length + 1}`, 220),
+      url: cleanText(source.url || '', 500),
+      provider: cleanText(source.provider || '', 120),
+      snippet: cleanText(source.full_content || source.snippet || '', 1100)
+    });
+  }
+  return mapped;
+}
 
-  const sections: ReportSection[] = [
-    {
-      title: 'Methodology and Evidence Status',
-      content: [
-        partialNote,
-        `Evidence base captured before stopping: ${sourceCount} source${sourceCount === 1 ? '' : 's'}.`,
-        sourceOverview ? `Highest-priority gathered sources:\n${sourceOverview}` : 'No source metadata was captured.'
-      ].join('\n\n'),
-      citations: sourceIds
+function evidenceKey(text: string): string {
+  return cleanText(text, 260)
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\[[0-9][0-9,\s]*\]/g, '')
+    .trim();
+}
+
+function addEvidenceItem(items: EvidenceItem[], seen: Set<string>, text: string, sourceId?: string) {
+  const cleaned = cleanText(text, 700);
+  if (cleaned.length < 25) return;
+  if (/^(search query|searched_at|mode|urls_to_consider|next_step):/i.test(cleaned)) return;
+  const key = evidenceKey(cleaned);
+  if (!key || seen.has(key)) return;
+  seen.add(key);
+  items.push({ text: cleaned, sourceId });
+}
+
+function sourceEvidenceItems(sources: EvidenceSource[], seen: Set<string>): EvidenceItem[] {
+  const items: EvidenceItem[] = [];
+  for (const source of sources) {
+    if (!source.snippet) continue;
+    addEvidenceItem(items, seen, source.snippet, source.id);
+  }
+  return items;
+}
+
+function observationEvidenceItems(observations: ToolObservation[], seen: Set<string>): EvidenceItem[] {
+  const items: EvidenceItem[] = [];
+  for (const observation of observations) {
+    if (!observation.success || !observation.summary) continue;
+    const lines = String(observation.summary)
+      .split(/\n+/)
+      .map((line) => line
+        .replace(/^\d+\.\s*/, '')
+        .replace(/^(context excerpt|excerpt|content excerpt):\s*/i, '')
+        .trim());
+
+    for (const line of lines) {
+      addEvidenceItem(items, seen, line);
     }
-  ];
-
-  if (isMedical) {
-    sections.push(
-      {
-        title: 'Clinical Overview',
-        content: 'This section summarizes the disease definition, clinical relevance, epidemiology, and major evidence themes found in the gathered sources. Claims are limited to captured source excerpts and should be checked against the cited URLs before clinical use.',
-        bullets: sourceBullets(reportSources, /overview|definition|rare|autoimmune|epidemiology|incidence|prevalence|mucosa|skin|clinical/i, 6),
-        citations: sourceCitations(reportSources, /overview|definition|rare|autoimmune|epidemiology|incidence|prevalence|mucosa|skin|clinical/i, 6)
-      },
-      {
-        title: 'Etiology and Pathophysiology',
-        content: 'Use this section to distinguish established mechanisms from suspected triggers. For pemphigus-type diseases, prioritize evidence about autoantibodies, desmosomal proteins, acantholysis, genetic risk, and medication or environmental triggers when present in sources.',
-        bullets: sourceBullets(reportSources, /pathophysiology|etiology|cause|autoantib|desmoglein|dsg|acantholysis|keratinocyte|hla|trigger|drug-induced/i, 6),
-        citations: sourceCitations(reportSources, /pathophysiology|etiology|cause|autoantib|desmoglein|dsg|acantholysis|keratinocyte|hla|trigger|drug-induced/i, 6)
-      },
-      {
-        title: 'Clinical Presentation and Complications',
-        content: 'This section organizes symptoms, signs, common sites, disease variants, and complications. It should be read as a synthesis map rather than a final clinical guideline because source retrieval stopped early.',
-        bullets: sourceBullets(reportSources, /symptom|sign|presentation|mucosal|oral|blister|erosion|bullae|nikolsky|complication|infection|malnutrition|mortality/i, 7),
-        citations: sourceCitations(reportSources, /symptom|sign|presentation|mucosal|oral|blister|erosion|bullae|nikolsky|complication|infection|malnutrition|mortality/i, 7)
-      },
-      {
-        title: 'Diagnosis and Differential Diagnosis',
-        content: 'Prioritize diagnostic confirmation methods over nonspecific clinical impressions. For autoimmune blistering disease, source excerpts mentioning biopsy, histopathology, immunofluorescence, ELISA, and differential diagnoses are grouped here.',
-        bullets: sourceBullets(reportSources, /diagnos|biopsy|histolog|immunofluorescence|elisa|desmoglein|differential|pemphigoid|lichen|erythema|toxic epidermal|foliaceus/i, 7),
-        citations: sourceCitations(reportSources, /diagnos|biopsy|histolog|immunofluorescence|elisa|desmoglein|differential|pemphigoid|lichen|erythema|toxic epidermal|foliaceus/i, 7)
-      },
-      {
-        title: 'Treatment and Management',
-        content: 'Treatment statements require the strongest evidence hierarchy available: current guidelines and expert consensus first, then trials and reviews, then clinical summaries. This partial report surfaces gathered treatment evidence but does not replace specialist guidance.',
-        bullets: sourceBullets(reportSources, /treatment|management|corticosteroid|prednisone|rituximab|azathioprine|mycophenolate|ivig|plasmapheresis|wound|oral hygiene|monitoring|vaccine/i, 8),
-        citations: sourceCitations(reportSources, /treatment|management|corticosteroid|prednisone|rituximab|azathioprine|mycophenolate|ivig|plasmapheresis|wound|oral hygiene|monitoring|vaccine/i, 8)
-      },
-      {
-        title: 'Prognosis, Patient Education, and Follow-up',
-        content: 'This section groups prognosis, safety counseling, follow-up, and quality-of-life evidence. Patient-facing advice should be checked against clinician-authored sources before distribution.',
-        bullets: sourceBullets(reportSources, /prognosis|outcome|mortality|follow-up|education|diet|oral hygiene|infection|support|quality of life|relapse/i, 6),
-        citations: sourceCitations(reportSources, /prognosis|outcome|mortality|follow-up|education|diet|oral hygiene|infection|support|quality of life|relapse/i, 6)
-      }
-    );
-  } else {
-    sections.push(
-      {
-        title: 'Key Findings',
-        content: 'The following findings are organized from the gathered source excerpts. They should be expanded by reviewing the cited sources directly if higher confidence or publication-ready writing is required.',
-        bullets: sourceBullets(reportSources, /./, 10),
-        citations: sourceCitations(reportSources, /./, 10)
-      },
-      {
-        title: 'Evidence Quality and Gaps',
-        content: 'Use the source map to separate primary or authoritative sources from summaries, blogs, and secondary references. Claims without a captured excerpt should be verified before reuse.',
-        bullets: topSources.map((source) => `[${source.id}] ${source.title || source.url} - ${sourceAuthority(source)}`),
-        citations: sourceIds
-      },
-      {
-        title: 'Recommended Next Verification',
-        bullets: [
-          'Open the highest-authority sources and verify the most important claims directly.',
-          'Resolve contradictions across sources before final publication.',
-          'Replace snippet-derived language with synthesized prose after full source review.'
-        ]
-      }
-    );
   }
-
-  const diagnosticRows = isMedical ? [
-    { area: 'Clinical suspicion', evidence_needed: 'Characteristic symptoms, lesion distribution, red flags, severity', gathered_sources: sourceCitations(reportSources, /symptom|sign|presentation|clinical|oral|mucosal|blister|erosion/i, 8).join(', ') },
-    { area: 'Confirmatory testing', evidence_needed: 'Biopsy, histopathology, direct/indirect immunofluorescence, ELISA when applicable', gathered_sources: sourceCitations(reportSources, /biopsy|histolog|immunofluorescence|elisa|diagnos/i, 8).join(', ') },
-    { area: 'Treatment pathway', evidence_needed: 'Guideline-backed first-line, adjunctive, refractory, and monitoring recommendations', gathered_sources: sourceCitations(reportSources, /treatment|management|guideline|rituximab|corticosteroid|azathioprine|mycophenolate/i, 8).join(', ') },
-    { area: 'Patient safety', evidence_needed: 'Complications, infection risk, medication adverse effects, follow-up', gathered_sources: sourceCitations(reportSources, /complication|infection|adverse|follow-up|monitoring|prognosis/i, 8).join(', ') }
-  ] : [];
-
-  return {
-    title: params.title,
-    subtitle: isMedical ? 'Evidence-mapped clinical research report' : 'Evidence-mapped research report',
-    executiveSummary: [
-      partialNote,
-      sourceCount
-        ? `The report uses ${sourceCount} gathered source${sourceCount === 1 ? '' : 's'} and maps key claims back to source IDs.`
-        : 'No source list was available; only tool evidence could be preserved.',
-      isMedical
-        ? 'Medical claims are organized by clinical overview, pathophysiology, presentation, diagnosis, treatment, prognosis, and patient education so the document is usable for expert review.'
-        : 'Findings are organized into key evidence, quality gaps, and recommended verification steps.'
-    ].join(' '),
-    sections,
-    sources: reportSources,
-    limitations: [
-      'The agent stopped before normal completion, so the report is partial.',
-      'Some source excerpts may be snippets rather than full-page captures.',
-      'Claims should be verified against the original URLs before clinical, legal, financial, or publication use.',
-      params.evidence ? 'Raw tool evidence was preserved in the appendix for auditability.' : 'No raw tool evidence text was available.'
-    ],
-    tables: [
-      {
-        name: 'Source quality map',
-        columns: ['id', 'title', 'url', 'authority', 'excerpt'],
-        rows: reportSources.map((source) => ({
-          id: source.id,
-          title: source.title || '',
-          url: source.url || '',
-          authority: sourceAuthority(source),
-          excerpt: source.snippet || ''
-        }))
-      },
-      ...(diagnosticRows.length ? [{
-        name: 'Medical evidence map',
-        columns: ['area', 'evidence_needed', 'gathered_sources'],
-        rows: diagnosticRows
-      }] : [])
-    ]
-  };
+  return items;
 }
 
-function reportToMarkdown(report: ReturnType<typeof buildReportFromEvidence>): string {
-  const lines = [`# ${report.title}`, ''];
-  if (report.subtitle) lines.push(report.subtitle, '');
-  lines.push('## Executive Summary', '', report.executiveSummary, '');
+function collectEvidenceItems(observations: ToolObservation[], sources: EvidenceSource[]): EvidenceItem[] {
+  const seen = new Set<string>();
+  return [
+    ...sourceEvidenceItems(sources, seen),
+    ...observationEvidenceItems(observations, seen)
+  ].slice(0, 24);
+}
 
-  for (const section of report.sections) {
-    lines.push(`## ${section.title}`, '');
-    const bullets = section.bullets || [];
-    if (!bullets.length && section.content) lines.push(section.content, '');
-    for (const bullet of bullets) lines.push(`- ${bullet}`);
-    if (section.bullets?.length) lines.push('');
-  }
+function renderSource(source: EvidenceSource): string {
+  const title = source.title || source.url || `Source ${source.id}`;
+  return source.url ? `${source.id}. ${title} - ${source.url}` : `${source.id}. ${title}`;
+}
 
-  if (report.limitations.length) {
-    lines.push('## Limitations', '');
-    for (const limitation of report.limitations) lines.push(`- ${limitation}`);
-    lines.push('');
-  }
+function renderEvidenceOnlyMarkdown(params: {
+  observations: ToolObservation[];
+  sources: EvidenceSource[];
+  createdFiles?: string[];
+  visibleFiles?: string[];
+  missingExtensions?: string[];
+}): string {
+  const items = collectEvidenceItems(params.observations, params.sources);
+  const lines: string[] = [];
 
-  if (report.sources.length) {
-    lines.push('## References', '');
-    for (const source of report.sources.slice(0, 12)) {
-      lines.push(`${source.id}. ${apaReference(source)}`);
+  if (items.length) {
+    lines.push('## Gathered Evidence', '');
+    for (const item of items) {
+      const citation = item.sourceId ? ` [${item.sourceId}]` : '';
+      lines.push(`- ${item.text}${citation}`);
     }
-    lines.push('');
   }
 
+  if (params.sources.length) {
+    if (lines.length) lines.push('');
+    lines.push('## Sources', '');
+    for (const source of params.sources.slice(0, 24)) {
+      lines.push(renderSource(source));
+    }
+  }
+
+  const files = Array.from(new Set([...(params.createdFiles || []), ...(params.visibleFiles || [])]));
+  if (files.length) {
+    if (lines.length) lines.push('');
+    lines.push('## Files', '');
+    for (const file of files) lines.push(`- ${file}`);
+  }
+
+  if (params.missingExtensions?.length) {
+    if (lines.length) lines.push('');
+    lines.push('## Missing Files', '');
+    for (const ext of params.missingExtensions) lines.push(`- .${ext.replace(/^\./, '')}`);
+  }
+
+  if (!lines.length) return 'No reliable gathered evidence was available.';
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function evidenceSections(items: EvidenceItem[], sources: EvidenceSource[]) {
+  const sections: Array<{ title: string; content: string }> = [];
+  if (items.length) {
+    sections.push({
+      title: 'Gathered Evidence',
+      content: items.map((item) => `- ${item.text}${item.sourceId ? ` [${item.sourceId}]` : ''}`).join('\n')
+    });
+  }
+  if (sources.length) {
+    sections.push({
+      title: 'Sources',
+      content: sources.map(renderSource).join('\n')
+    });
+  }
+  if (!sections.length) {
+    sections.push({ title: 'Gathered Evidence', content: 'No reliable gathered evidence was available.' });
+  }
+  return sections;
 }
 
 export async function ensureRequestedArtifactsFromEvidence(params: {
@@ -301,18 +205,13 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
   const evidence = params.buildEvidenceText(params.observations, params.sources);
   if (!evidence) return [];
 
-  const title = params.fallbackTitle(params.prompt);
-  const sources = params.evidenceSources(params.observations, params.sources);
-  const report = buildReportFromEvidence({
-    prompt: params.prompt,
-    reason: params.reason,
-    title,
-    evidence,
-    sources
-  });
+  const rawSources = params.evidenceSources(params.observations, params.sources);
+  const mappedSources = mapSources(rawSources);
+  const items = collectEvidenceItems(params.observations, mappedSources);
+  const title = params.fallbackTitle(params.prompt) || titleFromPrompt(params.prompt);
   const sections = [
-    ...report.sections,
-    { title: 'Raw Evidence Appendix', content: params.compactText(evidence, 8000) }
+    ...evidenceSections(items, mappedSources),
+    { title: 'Raw Tool Evidence', content: params.compactText(evidence, 8000) }
   ];
   const created: string[] = [];
   const formats = [
@@ -326,12 +225,16 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     const result = await params.executeTool('create_work_product', {
       title,
       path: title,
-      subtitle: report.subtitle,
-      executiveSummary: report.executiveSummary,
+      subtitle: 'Gathered evidence only',
+      executiveSummary: items.slice(0, 4).map((item) => item.text).join('\n') || 'No reliable gathered evidence was available.',
       sections,
-      sources: report.sources,
-      limitations: report.limitations,
-      tables: report.tables,
+      sources: mappedSources,
+      limitations: ['Contains only gathered tool evidence and source excerpts. No unsupported conclusions were added.'],
+      tables: [{
+        name: 'Sources',
+        columns: ['id', 'title', 'url', 'excerpt'],
+        rows: mappedSources.map((source) => ({ id: source.id, title: source.title, url: source.url, excerpt: source.snippet }))
+      }],
       formats
     }, params.ctx);
     if (result.success) {
@@ -357,7 +260,7 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     await addFile('create_document', { title, path: `${title}.docx`, sections });
   }
   if (kinds.xlsx) {
-    const rows = params.sourceRows(params.evidenceSources(params.observations, params.sources));
+    const rows = params.sourceRows(rawSources);
     await addFile('create_spreadsheet', {
       title: `${title} - sources`,
       path: `${title}.xlsx`,
@@ -373,8 +276,8 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
       title,
       path: `${title}.pptx`,
       slides: [
-        { title: 'What was gathered', content: evidence.split('\n').filter(Boolean).slice(0, 5) },
-        { title: 'Sources', content: params.evidenceSources(params.observations, params.sources).slice(0, 6).map((source) => source.title || source.url) }
+        { title: 'Gathered Evidence', content: items.slice(0, 6).map((item) => item.text) },
+        { title: 'Sources', content: mappedSources.slice(0, 8).map(renderSource) }
       ]
     });
   }
@@ -410,42 +313,17 @@ export async function buildStrictFallbackContent(params: {
     sources: params.sources
   });
 
-  const sources = params.evidenceSources(params.observations, params.sources);
   const visibleFiles = Object.keys(params.ctx.files)
     .filter((path) => !path.startsWith('__'))
     .sort((a, b) => a.localeCompare(b));
   const missing = params.missingRequestedArtifactExtensions(params.ctx.files, params.prompt);
+  const sources = mapSources(params.evidenceSources(params.observations, params.sources));
 
-  const completedSegments: string[] = [];
-  if (sources.length) completedSegments.push(`${sources.length} source${sources.length === 1 ? '' : 's'} gathered`);
-  if (visibleFiles.length) {
-    completedSegments.push(`${visibleFiles.length} file${visibleFiles.length === 1 ? '' : 's'} available (${visibleFiles.slice(0, 4).join(', ')}${visibleFiles.length > 4 ? ', ...' : ''})`);
-  }
-  if (created.length) completedSegments.push(`created from evidence: ${Array.from(new Set(created)).join(', ')}`);
-  if (!completedSegments.length) completedSegments.push('no reliable evidence was gathered');
-
-  const missingLine = missing.length
-    ? `missing requested file type${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`
-    : 'none';
-
-  if (sources.length && !missing.length && !created.length) {
-    const evidence = params.observations
-      .filter((observation) => observation.success && observation.summary)
-      .map((observation, index) => `${index + 1}. ${observation.summary}`)
-      .join('\n\n');
-    const report = buildReportFromEvidence({
-      prompt: params.prompt,
-      reason: params.reason,
-      title: inlineReportTitle(params.prompt),
-      evidence,
-      sources
-    });
-    return reportToMarkdown(report);
-  }
-
-  return [
-    `Agent stopped because ${params.reason}.`,
-    `What was completed: ${completedSegments.join('; ')}.`,
-    `What is missing: ${missingLine}.`
-  ].join('\n');
+  return renderEvidenceOnlyMarkdown({
+    observations: params.observations,
+    sources,
+    createdFiles: created,
+    visibleFiles,
+    missingExtensions: missing
+  });
 }

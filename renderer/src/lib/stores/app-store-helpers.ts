@@ -4,6 +4,7 @@ import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isTauri } from '$lib/services/tauri';
+import { createId as createSharedId } from '$lib/utils/id';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import type { ApiModelMetadataValue, ContextBudgetValue } from '$lib/stores/app-context-budget';
 
@@ -42,10 +43,7 @@ export function toInvoke(api: ElectronApi): ElectronApi['invoke'] {
   return (channel, payload) => api.invoke(channel, payload);
 }
 
-export function createId(prefix: string) {
-  if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
+export const createId = createSharedId;
 
 type AgentStoreResult = Awaited<ReturnType<typeof runAgentTask>>;
 
@@ -515,6 +513,7 @@ export function buildContextualPrompt(args: {
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
 }) {
   const extras: string[] = [];
+  const guidance: string[] = [];
   if (args.ragContext) extras.push(`<documents>\n${args.ragContext}\n</documents>`);
   if (args.searchContext) {
     const now = new Date();
@@ -524,9 +523,6 @@ export function buildContextualPrompt(args: {
   }
   if (args.researchSummary) extras.push(`<deep_research_brief>\n${args.researchSummary}\n</deep_research_brief>`);
   if (args.workspaceContext) extras.push(`<workspace>\n${args.workspaceContext}\n</workspace>`);
-  if (!extras.length) return args.content;
-
-  const guidance: string[] = [];
   if (args.searchContext) {
     guidance.push([
       'You have access to real-time web search results retrieved just now.',
@@ -565,12 +561,16 @@ export function buildContextualPrompt(args: {
     guidance.push([
       'You are operating in autonomous agent mode.',
       `Current search mode preference: ${searchModeLabel}.`,
+      searchModeLabel !== 'chat'
+        ? `Use the web_search tool with mode "${searchModeLabel}" before answering when the task needs online or current information.`
+        : 'For current, recent, latest, news, price, weather, version, release, or today/now questions that need facts beyond the clock/calendar, call web_search before answering.',
       'Turn useful work into artifacts instead of only replying in chat.',
       'For research or competitor analysis, create a report file the user can open or download.',
       'When the user asks for slides, a deck, a document, an Excel workbook, or a PDF, use the matching artifact tool so the chat gets a real file and viewer.',
       'For code requests, create the actual files, test them when possible, and include a previewable HTML result when it helps.'
     ].join(' '));
   }
+  if (!extras.length && !guidance.length) return args.content;
   if (!guidance.length) guidance.push('Answer the user using the supplemental context when it is relevant. Cite concrete details from the context instead of inventing facts.');
 
   return [guidance.join(' '), extras.join('\n\n'), `User question:\n${args.content}`].join('\n\n');

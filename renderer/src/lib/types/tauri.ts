@@ -242,6 +242,8 @@ export interface SearchOptions {
   provider?: string;
   max_results?: number;
   context_budget_chars?: number;
+  aggregator_engines?: string[];
+  safe_search?: number;
   conversation_context?: string;
   google_cse_api_key?: string;
   google_cse_id?: string;

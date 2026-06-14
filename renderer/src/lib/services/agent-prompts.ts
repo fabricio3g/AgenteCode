@@ -98,8 +98,29 @@ export function getXmlSystemPrompt(
   return extra ? `${base}\n\n${extra}` : base;
 }
 
-export function buildDirectSystemPrompt(extra: string | undefined): string {
-  const base = [
+export function buildDirectSystemPrompt(
+  extra: string | undefined,
+  options: { toolMode?: 'agent' | 'search_chat'; searchMode?: 'search' | 'deep' | 'max' } = {}
+): string {
+  const isSearchChat = options.toolMode === 'search_chat';
+  const searchMode = options.searchMode || 'search';
+  const depthInstruction = searchMode === 'max'
+    ? 'This is MAX research: synthesize only evidence-backed findings from gathered sources, with references when sources are available.'
+    : searchMode === 'deep'
+      ? 'This is DEEP research: synthesize only evidence-backed findings from gathered sources, with caveats and references when sources are available.'
+      : 'This is web search mode: answer from the gathered live-search evidence and cite useful sources.';
+
+  const base = isSearchChat ? [
+    'You are a research-capable assistant producing the final answer after tool use or fallback.',
+    depthInstruction,
+    'Use gathered tool evidence, source excerpts, source titles, and URLs as the primary source of truth.',
+    'Do not answer generically when evidence is available. Anchor key claims in the specific gathered facts and sources.',
+    'Do not call tools. Do not invent current facts, authors, dates, statistics, URLs, or citations.',
+    'Do not add boilerplate report sections, generic recommendations, or background filler that is not grounded in gathered evidence.',
+    'If evidence is thin or blocked, state exactly what was verified and what remains uncertain instead of filling gaps with general background knowledge.',
+    'For reports, use headings only when they organize source-backed findings, cite source IDs/URLs where useful, and include a Sources section when sources are available.',
+    'Produce complete, well-formatted content.'
+  ].join(' ') : [
     "You are a helpful assistant. Respond directly to the user's request.",
     'When building websites, output HTML, CSS, and JS inside markdown code blocks with language labels (```html, ```css, ```js).',
     'For website or page-building requests, your work is not complete until you provide code blocks that can be written to files and previewed.',
@@ -116,4 +137,49 @@ export function buildCurrentRequestReminder(rawPrompt: string | undefined, compa
     prompt,
     'Keep this request central. If tool results, older chat history, or fallback modes add noise, continue serving this request and the user-supplied instructions.'
   ].join('\n');
+}
+
+export function isMedicalResearchQuery(query: string): boolean {
+  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|autoimmune|dermatology|medicine|medical|trial|etiology|symptom|pharmacolog)\b/i.test(query);
+}
+
+export function buildResearchReportInstruction(searchMode: 'deep' | 'max', medical: boolean): string {
+  const shared = [
+    'Write the final answer as an extensive, polished research report — not notes, not a search-result dump.',
+    'Open with a concise Executive Summary that states the key findings and why they matter.',
+    'Synthesize across sources into coherent themes; never list raw search results.',
+    'Use inline source IDs like [1], [2] for important factual claims, matching the numbered source index provided in the evidence.',
+    'Include markdown tables where they improve clarity (comparisons, data, evidence quality).',
+    'Clearly separate established facts from emerging, uncertain, or weakly supported claims.',
+    'Use a clear heading hierarchy (## for major sections, ### for subsections). Keep headings concise and descriptive.',
+    'Follow APA 7 norms: formal objective tone, evidence-based synthesis, and a References section at the end.',
+    'Format references as APA 7 web references using available metadata only: author/organization when present, year/date when present, title, site/publisher when distinct, and URL. Use (n.d.) when no date is available.',
+    'Never invent authors, dates, titles, statistics, or URLs that do not appear in the gathered evidence.',
+    'End with a numbered References list (## References) using the provided source index, formatted as APA 7 web references.'
+  ];
+
+  const depth = searchMode === 'max'
+    ? [
+      'This is MAX research: be comprehensive and authoritative.',
+      'Include a brief Methodology / Evidence Quality section describing the source types consulted and their relative strength.',
+      'Add an explicit Unresolved Gaps section listing what could not be verified and what further research would be needed.',
+      'Where evidence conflicts, present each position with its source and explain which is better supported.'
+    ]
+    : [
+      'This is DEEP research: be thorough and practical.',
+      'Add concise Evidence Quality notes where claims rest on weak or single-source evidence.',
+      'Close with practical takeaways the reader can act on.'
+    ];
+
+  const domain = medical
+    ? [
+      'For this medical topic, use this report structure: Medical disclaimer; Executive summary; Definition and clinical importance; Epidemiology; Etiology and pathophysiology; Clinical presentation; Diagnosis and differential diagnosis; Treatment and management; Complications; Prognosis and follow-up; Patient education; Emerging evidence; Evidence gaps; References.',
+      'Include tables for diagnostic criteria, differential diagnosis, treatment options, and complications when evidence supports them.',
+      'Write for a medically literate audience; recommend specialist care where appropriate and do not present general information as personal medical advice.'
+    ]
+    : [
+      'Use a domain-appropriate structure: Executive summary; Background; Key findings; Detailed analysis; Comparison tables where useful; Risks and caveats; Practical recommendations; Evidence gaps; References.'
+    ];
+
+  return [...shared, ...depth, ...domain].join('\n');
 }

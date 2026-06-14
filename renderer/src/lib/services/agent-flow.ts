@@ -4,6 +4,7 @@ export type ProgressSnapshot = {
   sourceCount: number;
   visibleFileCount: number;
   draftChars: number;
+  observationCount: number;
 };
 
 export function classifyStopReason(reason?: string): AgentStopReason {
@@ -28,7 +29,7 @@ export function stoppedWarning(stopReason: AgentStopReason, reason: string): str
     case 'iteration_limit':
       return 'Agent reached the iteration limit and returned only gathered evidence.';
     case 'missing_artifacts':
-      return 'Agent stopped because requested files could not all be created.';
+      return 'Requested files could not all be created; returned only gathered evidence.';
     default:
       return reason || 'Agent stopped before normal completion.';
   }
@@ -49,6 +50,7 @@ export function hasProgressSince(snapshots: ProgressSnapshot[], minDraftGrowth: 
   return (
     last.sourceCount > first.sourceCount ||
     last.visibleFileCount > first.visibleFileCount ||
+    last.observationCount > first.observationCount ||
     (last.draftChars - first.draftChars) >= minDraftGrowth
   );
 }

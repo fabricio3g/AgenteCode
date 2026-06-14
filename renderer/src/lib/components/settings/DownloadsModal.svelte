@@ -1,7 +1,6 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade } from 'svelte/transition';
   import { flyAndScale } from '$lib/utils/transitions';
   import { Ban, CheckCircle2, Download, Loader2, Pause, RefreshCw, RotateCcw, Trash2, X, XCircle } from 'lucide-svelte';
   import { onMount } from 'svelte';
@@ -81,171 +80,169 @@
   const hasFinished = $derived(downloadsStore.jobs.some((j) => !['starting', 'running'].includes(j.status)));
 </script>
 
-<div class="modal-backdrop fixed inset-0 z-[61] flex items-center justify-center bg-overlay px-4" transition:fade={{ duration: 150}}>
- <div class="modal-surface flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
- <!-- Header -->
- <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
- <h3 class="flex items-center gap-2 text-base font-semibold text-[var(--text)]">
- <Download class="h-4 w-4" />
- {#if activeCount > 0}
- Downloads ({activeCount} active)
- {:else}
- Downloads
- {/if}
- {#if activeCount > 0}
-  <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[11px] font-semibold text-primary-fg">{activeCount}</span>
- {/if}
- </h3>
- <button
- class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
- onclick={() => (appStore.downloadsOpen = false)}
- aria-label="Close downloads"
- >
- <X class="h-4 w-4" />
- </button>
- </div>
-
- <!-- Toolbar -->
- <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3 text-xs text-[var(--text-tertiary)]">
- <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
- <div class="flex items-center gap-2">
- <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
- onclick={() => downloadsStore.refresh()}
- >
- <RefreshCw class="h-3.5 w-3.5" />
- Refresh
- </button>
- {#if hasFinished}
- <button
- class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
- onclick={() => downloadsStore.clearFinished()}
- >
- <Trash2 class="h-3.5 w-3.5" />
- Clear finished
- </button>
- {/if}
- </div>
- </div>
-
- <!-- Job list -->
- <div class="flex-1 space-y-3 overflow-y-auto p-4">
- {#if !downloadsStore.jobs.length}
-  <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-lt px-4 py-14">
- <Download class="h-8 w-8 text-[var(--text-muted)]" />
- <p class="text-sm text-[var(--text-tertiary)]">No active downloads</p>
- </div>
- {:else}
- {#each downloadsStore.jobs as job (job.id)}
- <div class="rounded-2xl border border-[var(--border)] p-4">
- <div class="flex items-start justify-between gap-4">
- <!-- Status icon + info -->
- <div class="flex min-w-0 items-start gap-3">
- <div class={`mt-0.5 shrink-0 ${statusColor(job.status)}`}>
- {#if job.status === 'running'}
- <Loader2 class="h-4 w-4 animate-spin" />
- {:else if job.status === 'completed' || job.status === 'done'}
- <CheckCircle2 class="h-4 w-4" />
- {:else if job.status === 'error'}
- <XCircle class="h-4 w-4" />
- {:else if job.status === 'paused'}
- <Pause class="h-4 w-4" />
- {:else if job.status === 'cancelled'}
- <Ban class="h-4 w-4" />
- {:else}
- <Download class="h-4 w-4" />
- {/if}
- </div>
- <div class="min-w-0">
- <div class="truncate text-sm font-semibold text-[var(--text)]">{job.label}</div>
- <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-tertiary)]">
- <span class={statusColor(job.status)}>{statusLabel(job.status)}</span>
- <span>·</span>
- <span class="tabular-nums">{job.progress.toFixed(1)}%</span>
- {#if job.total_bytes > 0}
- <span>·</span>
- <span class="tabular-nums">{formatSize(job.downloaded_bytes)} / {formatSize(job.total_bytes)}</span>
- {/if}
- {#if job.status === 'running'}
- {@const speed = downloadsStore.getJobSpeed(job.id)}
- {#if speed}
- <span>·</span>
- <span class="tabular-nums">{formatSpeed(speed.speedBps)}</span>
- {#if speed.etaSeconds > 0}
- <span>·</span>
- <span class="tabular-nums">{formatEta(speed.etaSeconds)} remaining</span>
- {/if}
- {/if}
- {/if}
- </div>
- </div>
- </div>
-
- <!-- Action buttons -->
- <div class="flex shrink-0 items-center gap-1">
- {#if job.status === 'running'}
- <button
- class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
- onclick={() => pause(job.id)}
- aria-label="Pause download"
- title="Pause"
- >
- <Pause class="h-4 w-4" />
- </button>
- {/if}
- {#if job.status === 'error' || job.status === 'cancelled'}
- <button
-  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-success-bg hover:text-success"
- onclick={() => retry(job.id)}
- aria-label="Retry download"
- title="Retry"
- >
- <RotateCcw class="h-4 w-4" />
- </button>
- {/if}
- {#if job.status === 'running' || job.status === 'starting'}
- <button
-  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
-  onclick={() => cancel(job.id)}
- aria-label="Cancel download"
- title="Cancel"
- >
- <Ban class="h-4 w-4" />
- </button>
- {/if}
- {#if !['running', 'starting'].includes(job.status)}
- <button
-  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
-  onclick={() => remove(job.id)}
- aria-label="Remove from list"
- title="Remove"
- >
- <Trash2 class="h-3.5 w-3.5" />
- </button>
- {/if}
- </div>
- </div>
-
- <!-- Progress bar -->
- <div class="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-hover)]">
- <div
- class={`h-full rounded-full transition-all duration-300 ${progressBarColor(job.status)} ${job.status === 'running' ? 'animate-pulse' : ''}`}
- style={`width:${Math.max(0, Math.min(100, job.progress))}%`}
- ></div>
- </div>
-
- {#if job.error}
-  <div class="mt-2 flex items-start gap-2 rounded-lg bg-error-bg px-3 py-2">
-  <XCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
-  <div class="min-w-0 flex-1">
-  <p class="text-xs font-medium text-error">Download failed</p>
-  <p class="mt-0.5 text-xs text-error break-all opacity-70">{job.error}</p>
+<div class="downloads-panel flex max-h-[60vh] w-[380px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-xl" transition:flyAndScale={{ y: -4, start: 0.97, duration: 150}}>
+  <!-- Header -->
+  <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+    <h3 class="flex items-center gap-2 text-base font-semibold text-[var(--text)]">
+      <Download class="h-4 w-4" />
+      {#if activeCount > 0}
+        Downloads ({activeCount} active)
+      {:else}
+        Downloads
+      {/if}
+      {#if activeCount > 0}
+        <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[11px] font-semibold text-primary-fg">{activeCount}</span>
+      {/if}
+    </h3>
+    <button
+      class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+      onclick={() => (appStore.downloadsOpen = false)}
+      aria-label="Close downloads"
+    >
+      <X class="h-3.5 w-3.5" />
+    </button>
   </div>
+
+  <!-- Toolbar -->
+  <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3 text-xs text-[var(--text-tertiary)]">
+    <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
+    <div class="flex items-center gap-2">
+      <button
+        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
+        onclick={() => downloadsStore.refresh()}
+      >
+        <RefreshCw class="h-3.5 w-3.5" />
+        Refresh
+      </button>
+      {#if hasFinished}
+        <button
+          class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
+          onclick={() => downloadsStore.clearFinished()}
+        >
+          <Trash2 class="h-3.5 w-3.5" />
+          Clear finished
+        </button>
+      {/if}
+    </div>
   </div>
- {/if}
- </div>
- {/each}
- {/if}
- </div>
- </div>
+
+  <!-- Job list -->
+  <div class="flex-1 space-y-3 overflow-y-auto p-4">
+    {#if !downloadsStore.jobs.length}
+      <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-lt px-4 py-14">
+        <Download class="h-8 w-8 text-[var(--text-muted)]" />
+        <p class="text-sm text-[var(--text-tertiary)]">No active downloads</p>
+      </div>
+    {:else}
+      {#each downloadsStore.jobs as job (job.id)}
+        <div class="rounded-2xl border border-[var(--border)] p-4">
+          <div class="flex items-start justify-between gap-4">
+            <!-- Status icon + info -->
+            <div class="flex min-w-0 items-start gap-3">
+              <div class={`mt-0.5 shrink-0 ${statusColor(job.status)}`}>
+                {#if job.status === 'running'}
+                  <Loader2 class="h-4 w-4 animate-spin" />
+                {:else if job.status === 'completed' || job.status === 'done'}
+                  <CheckCircle2 class="h-4 w-4" />
+                {:else if job.status === 'error'}
+                  <XCircle class="h-4 w-4" />
+                {:else if job.status === 'paused'}
+                  <Pause class="h-4 w-4" />
+                {:else if job.status === 'cancelled'}
+                  <Ban class="h-4 w-4" />
+                {:else}
+                  <Download class="h-4 w-4" />
+                {/if}
+              </div>
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold text-[var(--text)]">{job.label}</div>
+                <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--text-tertiary)]">
+                  <span class={statusColor(job.status)}>{statusLabel(job.status)}</span>
+                  <span>·</span>
+                  <span class="tabular-nums">{job.progress.toFixed(1)}%</span>
+                  {#if job.total_bytes > 0}
+                    <span>·</span>
+                    <span class="tabular-nums">{formatSize(job.downloaded_bytes)} / {formatSize(job.total_bytes)}</span>
+                  {/if}
+                  {#if job.status === 'running'}
+                    {@const speed = downloadsStore.getJobSpeed(job.id)}
+                    {#if speed}
+                      <span>·</span>
+                      <span class="tabular-nums">{formatSpeed(speed.speedBps)}</span>
+                      {#if speed.etaSeconds > 0}
+                        <span>·</span>
+                        <span class="tabular-nums">{formatEta(speed.etaSeconds)} remaining</span>
+                      {/if}
+                    {/if}
+                  {/if}
+                </div>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex shrink-0 items-center gap-1">
+              {#if job.status === 'running'}
+                <button
+                  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                  onclick={() => pause(job.id)}
+                  aria-label="Pause download"
+                  title="Pause"
+                >
+                  <Pause class="h-4 w-4" />
+                </button>
+              {/if}
+              {#if job.status === 'error' || job.status === 'cancelled'}
+                <button
+                  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-success-bg hover:text-success"
+                  onclick={() => retry(job.id)}
+                  aria-label="Retry download"
+                  title="Retry"
+                >
+                  <RotateCcw class="h-4 w-4" />
+                </button>
+              {/if}
+              {#if job.status === 'running' || job.status === 'starting'}
+                <button
+                  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
+                  onclick={() => cancel(job.id)}
+                  aria-label="Cancel download"
+                  title="Cancel"
+                >
+                  <Ban class="h-4 w-4" />
+                </button>
+              {/if}
+              {#if !['running', 'starting'].includes(job.status)}
+                <button
+                  class="rounded-lg p-2 text-[var(--text-tertiary)] transition hover:bg-error-bg hover:text-error"
+                  onclick={() => remove(job.id)}
+                  aria-label="Remove from list"
+                  title="Remove"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                </button>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-[var(--surface-hover)]">
+            <div
+              class={`h-full rounded-full transition-all duration-300 ${progressBarColor(job.status)} ${job.status === 'running' ? 'animate-pulse' : ''}`}
+              style={`width:${Math.max(0, Math.min(100, job.progress))}%`}
+            ></div>
+          </div>
+
+          {#if job.error}
+            <div class="mt-2 flex items-start gap-2 rounded-lg bg-error-bg px-3 py-2">
+              <XCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-medium text-error">Download failed</p>
+                <p class="mt-0.5 text-xs text-error break-all opacity-70">{job.error}</p>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    {/if}
+  </div>
 </div>

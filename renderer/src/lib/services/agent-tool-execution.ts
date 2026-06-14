@@ -6,6 +6,7 @@ import {
   applyNextTurnMods,
   appendToolResultMessage,
   createRunningToolStep,
+  displayToolLabel,
   finalizeToolStep,
   mergeWebSearchSources,
   publishArtifact
@@ -41,7 +42,7 @@ export async function executeSingleTool(params: {
   } = params;
   let nativeFailed = params.nativeFailed;
 
-  args.onProgress?.(`Running ${tc.name.replace(/_/g, ' ')}…`);
+  args.onProgress?.(`${displayToolLabel(tc.name)}…`);
   const toolStep = createRunningToolStep(tc, stepTypeMap, uid);
   steps.push(toolStep);
   args.onStep([...steps]);

@@ -45,7 +45,7 @@
   const circumference = $derived.by(() => 2 * Math.PI * radius);
   const dashOffset = $derived.by(() => circumference * (1 - usagePercent / 100));
 
-  const strokeColor = $derived('var(--text-secondary)');
+  const accentColor = $derived('#717CE2');
 
   const usageLabel = $derived.by(() => `${formatTokenCount(safeUsed)} / ${formatTokenCount(safeMax)} tokens (${usagePercent}%)`);
   const reserveLabel = $derived.by(() => reservedTokens > 0 ? `Reserved: ${formatTokenCount(reservedTokens)} tokens` : '');
@@ -98,7 +98,7 @@
       cy={size / 2}
       r={radius}
       stroke-width={strokeWidth}
-      style={`stroke:${strokeColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
+      style={`stroke:${accentColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
     ></circle>
   </svg>
 

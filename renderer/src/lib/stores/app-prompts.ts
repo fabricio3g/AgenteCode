@@ -1,3 +1,5 @@
+import { buildCurrentDateTimeContext } from '../utils/current-time-context';
+
 const CHART_HINT = '\n\nWhen the user asks for a graph, chart, or visual data representation, output a chart block using this exact format:\n' +
   '<chart type="bar|line|pie|donut" title="Chart Title" xlabel="X axis label" ylabel="Y axis label">\n' +
   '{"labels":["A","B","C"],"datasets":[{"label":"Series","data":[10,20,30]}]}\n' +
@@ -25,8 +27,9 @@ export function selectBaseSystemPrompt(params: {
   return params.providerPrompt?.trim() || params.globalPrompt?.trim() || '';
 }
 
-export function buildSearchSystemPrefix(): string {
-  return 'You are a helpful assistant with access to real-time web search results. ' +
+export function buildSearchSystemPrefix(now = new Date()): string {
+  return `${buildCurrentDateTimeContext(now)} ` +
+    'You are a helpful assistant with access to real-time web search results. ' +
     'The user\'s message includes fresh web data retrieved moments ago. ' +
     'Ground your response in the provided search results — present facts, figures, and details from the sources. ' +
     'Always attribute information to its source when possible. ' +
@@ -38,10 +41,14 @@ export function buildSystemPrompt(params: {
   userName?: string | null;
   searchSystemPrefix?: string;
   includeChartHint?: boolean;
+  currentDate?: Date;
 }): string {
   let systemPrompt = params.basePrompt.trim();
   const stylePrompt = sharedAssistantStylePrompt();
   systemPrompt = systemPrompt ? `${stylePrompt}\n\n${systemPrompt}` : stylePrompt;
+
+  const dateTimeContext = buildCurrentDateTimeContext(params.currentDate);
+  systemPrompt = `${dateTimeContext}\n\n${systemPrompt}`;
 
   if (params.userName?.trim()) {
     const userIdentity = `The user's name is ${params.userName.trim()}. Address them by name when appropriate.`;

@@ -186,6 +186,33 @@ export function ensureOnboarding(cfg: AppConfig): boolean {
   return false;
 }
 
+export function ensureSearchConfig(cfg: AppConfig): boolean {
+  let dirty = false;
+  const search = (cfg.search || {}) as Record<string, unknown>;
+
+  if (!cfg.search) {
+    cfg.search = search as AppConfig['search'];
+    dirty = true;
+  }
+
+  if (!search.provider) {
+    search.provider = 'aggregator';
+    dirty = true;
+  }
+
+  if (!search.max_results) {
+    search.max_results = 6;
+    dirty = true;
+  }
+
+  if (!Array.isArray(search.aggregator_engines)) {
+    search.aggregator_engines = ['duckduckgo', 'wikipedia'];
+    dirty = true;
+  }
+
+  return dirty;
+}
+
 /**
  * Migrates the full configuration to the current schema.
  * @param cfg - Configuration object to migrate (mutated in place)
@@ -222,6 +249,10 @@ export function migrateConfig(cfg: AppConfig, modelsRoot: string): MigrationResu
 
   // Ensure onboarding exists
   if (ensureOnboarding(cfg)) {
+    dirty = true;
+  }
+
+  if (ensureSearchConfig(cfg)) {
     dirty = true;
   }
 

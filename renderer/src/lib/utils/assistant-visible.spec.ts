@@ -36,7 +36,7 @@ Here is the current USD/ARS summary.`;
 
 ## Tool evidence
 
-Search query: pemphigus vulgaris Argentina epidemiology
+Search query: distributed solar microgrids resilience planning
 Context excerpt: very long excerpt
 
 Agent stopped because it detected repeated calls to web_search.

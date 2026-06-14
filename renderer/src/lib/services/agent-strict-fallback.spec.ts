@@ -3,7 +3,7 @@ import { buildStrictFallbackContent } from '$lib/services/agent-strict-fallback'
 import type { ToolContext, ToolObservation } from '$lib/services/agent-types';
 
 describe('agent-strict-fallback', () => {
-  it('summarizes completed work and missing file types', async () => {
+  it('lists files and missing file types without fallback boilerplate', async () => {
     const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue(['brief.docx']);
     const ctx: ToolContext = {
       chatId: 'chat-1',
@@ -30,11 +30,13 @@ describe('agent-strict-fallback', () => {
 
     expect(ensureRequestedArtifactsFromEvidence).toHaveBeenCalledOnce();
     expect(content).toContain('brief.docx');
-    expect(content).toContain('missing requested file type');
-    expect(content).toContain('pdf');
+    expect(content).toContain('## Missing Files');
+    expect(content).toContain('.pdf');
+    expect(content).not.toContain('Agent stopped because');
+    expect(content).not.toContain('What was completed');
   });
 
-  it('renders a plain report request as inline markdown without creating artifacts', async () => {
+  it('renders only gathered evidence and sources without report boilerplate', async () => {
     const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue([]);
     const ctx: ToolContext = {
       chatId: 'chat-1',
@@ -43,24 +45,29 @@ describe('agent-strict-fallback', () => {
       onArtifact: vi.fn()
     };
     const observations: ToolObservation[] = [
-      { name: 'web_search', args: {}, success: true, summary: 'Pemphigus vulgaris is a rare autoimmune blistering disorder.' }
+      {
+        name: 'web_search',
+        args: {},
+        success: true,
+        summary: 'Distributed solar microgrids improve site resilience by pairing local generation with battery storage and controllable loads.'
+      }
     ];
 
     const content = await buildStrictFallbackContent({
-      prompt: 'Give me an extensive report on pemphigus vulgaris',
+      prompt: 'Give me an extensive report on distributed solar microgrids',
       reason: 'the tool budget was reached',
       ctx,
       observations,
       sources: [
         {
-          title: 'Pemphigus vulgaris overview',
-          url: 'https://example.com/pemphigus-overview',
-          snippet: 'Pemphigus vulgaris is an autoimmune blistering disease affecting skin and mucosa.'
+          title: 'Microgrid resilience overview',
+          url: 'https://example.com/microgrid-resilience',
+          snippet: 'Distributed solar microgrids can keep critical loads online during wider grid outages when paired with storage and controls.'
         },
         {
-          title: 'Pemphigus treatment guideline',
-          url: 'https://example.com/pemphigus-treatment',
-          snippet: 'Treatment commonly includes systemic corticosteroids and rituximab in appropriate patients.'
+          title: 'Battery storage economics',
+          url: 'https://example.com/storage-economics',
+          snippet: 'Battery storage can shift midday solar generation into evening demand periods and reduce peak-grid purchases.'
         }
       ],
       ensureRequestedArtifactsFromEvidence,
@@ -70,12 +77,18 @@ describe('agent-strict-fallback', () => {
 
     expect(ensureRequestedArtifactsFromEvidence).toHaveBeenCalledOnce();
     expect(ctx.files).toEqual({});
-    expect(content).toContain('# Pemphigus vulgaris');
-    expect(content).toContain('## Executive Summary');
-    expect(content).toContain('## Treatment and Management');
-    expect(content).toContain('Treatment commonly includes systemic corticosteroids and rituximab');
+    expect(content).toContain('## Gathered Evidence');
+    expect(content).toContain('Distributed solar microgrids improve site resilience');
+    expect(content).toContain('Battery storage can shift midday solar generation');
     expect(content).toContain('[2]');
-    expect(content).toContain('## References');
+    expect(content).toContain('## Sources');
+    expect(content).toContain('https://example.com/storage-economics');
+    expect(content).not.toContain('# Distributed solar microgrids');
+    expect(content).not.toContain('## Executive Summary');
+    expect(content).not.toContain('## Key Findings');
+    expect(content).not.toContain('## Recommended Next Verification');
+    expect(content).not.toContain('## References');
+    expect(content).not.toContain('Agent stopped because');
     expect(content).not.toContain('What was completed:');
   });
 });

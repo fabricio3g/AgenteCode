@@ -5,13 +5,17 @@ const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
 const THEME_KEY = 'chatealm_theme';
 const DB_MIGRATED_KEY = 'chatealm_db_migrated';
 
-function safeParse<T>(raw: string | null, fallback: T): T {
+export function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
   try {
     return JSON.parse(raw) as T;
   } catch {
     return fallback;
   }
+}
+
+export function normalizeWhitespace(text: unknown): string {
+  return String(text ?? '').replace(/\s+/g, ' ').trim();
 }
 
 function isElectronEnv(): boolean {

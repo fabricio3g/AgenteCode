@@ -2,6 +2,7 @@
 
 <script lang="ts">
   const SEARCH_PROVIDERS = [
+    { id: 'aggregator', label: 'Chatea Aggregator', needsKey: false },
     { id: 'auto', label: 'Auto', needsKey: false },
     { id: 'duckduckgo', label: 'DuckDuckGo', needsKey: false },
     { id: 'searxng', label: 'SearXNG', needsKey: false, needsUrl: true },
@@ -75,6 +76,12 @@
       {/each}
     </select>
   </label>
+
+  {#if searchProvider === 'aggregator'}
+    <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] p-4 text-xs leading-relaxed text-[var(--text-secondary)]">
+      Uses Chatea's local web search aggregator by default. It combines free engines such as DuckDuckGo and Wikipedia, then deep search reads pages locally with Mozilla Readability.
+    </div>
+  {/if}
 
   <label class="block space-y-2 text-sm">
     <span class="font-medium text-[var(--text-secondary)]">Max search results</span>

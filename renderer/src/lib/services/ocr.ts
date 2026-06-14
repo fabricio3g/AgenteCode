@@ -134,7 +134,7 @@ class OcrEngine {
       workerBlobURL: false,
       workerPath: TESSERACT_WORKER_PATH,
       corePath: TESSERACT_CORE_PATH,
-    });
+    }) as unknown as typeof this.worker;
     this.lang = lang;
     this.ready = true;
   }

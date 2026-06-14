@@ -8,6 +8,7 @@ import type {
   LLMConfig,
   OnboardingConfig,
   RAGConfig,
+  SearchConfig,
   STTConfig,
   TTSConfig,
   TTSVoiceMap,
@@ -141,6 +142,16 @@ export function getDefaultOnboardingConfig(): OnboardingConfig {
   };
 }
 
+export function getDefaultSearchConfig(): SearchConfig {
+  return {
+    provider: 'aggregator',
+    max_results: 6,
+    aggregator_engines: ['duckduckgo', 'wikipedia'],
+    safe_search: 2,
+    providers: {},
+  };
+}
+
 export function getDefaultConfig(paths: AppPaths): AppConfig {
   return {
     tts: getDefaultTTSConfig(paths.modelsRoot),
@@ -148,6 +159,7 @@ export function getDefaultConfig(paths: AppPaths): AppConfig {
     rag: getDefaultRAGConfig(),
     stt: getDefaultSTTConfig(),
     onboarding: getDefaultOnboardingConfig(),
+    search: getDefaultSearchConfig(),
   };
 }
 

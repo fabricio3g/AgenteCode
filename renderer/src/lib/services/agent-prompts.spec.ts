@@ -21,6 +21,19 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('Extra agent context');
   });
 
+  it('buildDirectSystemPrompt preserves research instructions for max search fallback', () => {
+    const prompt = buildDirectSystemPrompt('Extra research context', {
+      toolMode: 'search_chat',
+      searchMode: 'max'
+    });
+
+    expect(prompt).toContain('MAX research');
+    expect(prompt).toContain('Do not answer generically when evidence is available');
+    expect(prompt).toContain('Do not add boilerplate report sections');
+    expect(prompt).toContain('source excerpts, source titles, and URLs');
+    expect(prompt).toContain('Extra research context');
+  });
+
   it('getXmlSystemPrompt includes tool inventory and limits', () => {
     const prompt = getXmlSystemPrompt('Extra context', 7, 4, [
       {

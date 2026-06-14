@@ -48,26 +48,6 @@
   });
 
   const hasSources = $derived((message.sources?.length || 0) > 0);
-  const isDeepSearchMode = $derived(message.searchMode === 'deep' || message.searchMode === 'max');
-  const isStoppedResearchAnswer = $derived(
-    message.mode === 'agent'
-    && !!displayContent?.trim()
-    && hasSources
-    && (displayMetadata?.outcome === 'partial' || displayMetadata?.outcome === 'stopped' || displayMetadata?.stopReason === 'tool_limit')
-  );
-  const isInlineResearchAnswer = $derived(!!displayContent?.trim() && (isDeepSearchMode || isStoppedResearchAnswer));
-  const researchLabel = $derived(
-    message.searchMode === 'max'
-      ? 'Max research'
-      : message.searchMode === 'deep'
-        ? 'Deep research'
-        : 'Research result'
-  );
-  const researchMeta = $derived([
-    message.sources?.length ? `${message.sources.length} source${message.sources.length === 1 ? '' : 's'}` : '',
-    displayMetadata?.stopReason === 'tool_limit' ? 'stopped at tool limit' : '',
-    displayMetadata?.outcome === 'partial' || displayMetadata?.outcome === 'stopped' ? 'partial' : ''
-  ].filter(Boolean).join(' · '));
   const hasSearchStatus = $derived(
     !!displaySearchMeta && (
       !!displaySearchMeta.searchError ||
@@ -109,11 +89,9 @@
   const visibleContent = $derived(displayContent);
   const showSourcesBlock = $derived.by(() => {
     if (!hasSources) return false;
-    if (isInlineResearchAnswer) return false;
-    if (/^##\s+(references|sources)\b/im.test(displayContent || '')) return false;
     return true;
   });
-  const showSearchStatus = $derived(hasSearchStatus && !isInlineResearchAnswer);
+  const showSearchStatus = $derived(hasSearchStatus);
 
   function resolveTotalElapsed(metadata: MessageVersion['metadata'] | null | undefined) {
     if (!metadata) return undefined;
@@ -154,12 +132,12 @@
     currentActivity={displayMetadata?.currentActivity}
     activityLabel={displayMetadata?.activityLabel}
     sourceCount={message.sources?.length || 0}
-    defaultOpen={message.status === 'streaming'}
+    messageId={message.id}
   />
 {/if}
 
 {#if showSourcesBlock}
-  <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} />
+  <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} messageId={message.id} />
 {/if}
 
 {#if showSearchStatus}
@@ -198,17 +176,7 @@
 {/if}
 
 {#if visibleContent}
-  {#if isInlineResearchAnswer}
-    <section class="research-answer-panel" aria-label={researchLabel}>
-      <div class="research-answer-header">
-        <span class="research-answer-title">{researchLabel}</span>
-        {#if researchMeta}<span class="research-answer-meta">{researchMeta}</span>{/if}
-      </div>
-      <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
-    </section>
-  {:else}
-    <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
-  {/if}
+  <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
 {/if}
 
 {#if reportDocs.length}
@@ -218,76 +186,4 @@
 <SlidesBlock slides={message.slides} mode={message.mode} onDownload={onDownloadSlides} />
 <FilesCreatedBlock files={message.filesCreated || []} />
 <ArtifactBlock artifact={message.artifact} onOpen={onOpenArtifact} />
-
-<style>
-  .research-answer-panel {
-    border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary) 22%);
-    border-radius: 1rem;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--primary) 4%, transparent), transparent 7rem),
-      color-mix(in srgb, var(--surface) 96%, var(--primary) 4%);
-    box-shadow: var(--shadow-xs);
-    padding: 1rem 1.05rem;
-  }
-
-  .research-answer-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.85rem;
-    padding-bottom: 0.65rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-  }
-
-  .research-answer-title {
-    color: var(--text);
-    font-size: 0.78rem;
-    font-weight: 750;
-    letter-spacing: 0.015em;
-    text-transform: uppercase;
-  }
-
-  .research-answer-meta {
-    min-width: 0;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 520;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .research-answer-panel :global(.markdown-body > :first-child) {
-    margin-top: 0;
-  }
-
-  .research-answer-panel :global(.markdown-body > :last-child) {
-    margin-bottom: 0;
-  }
-
-  .research-answer-panel :global(.markdown-body h1) {
-    font-size: clamp(1.35rem, 2vw, 1.75rem);
-    letter-spacing: -0.035em;
-  }
-
-  .research-answer-panel :global(.markdown-body h2) {
-    margin-top: 1.25rem;
-    padding-top: 0.15rem;
-    font-size: 1.05rem;
-    letter-spacing: -0.02em;
-  }
-
-  .research-answer-panel :global(.markdown-body ul) {
-    padding-left: 1.1rem;
-  }
-
-  .research-answer-panel :global(.markdown-body li) {
-    margin: 0.38rem 0;
-  }
-
-  .research-answer-panel :global(.markdown-body table) {
-    font-size: 0.86rem;
-  }
-</style>
 
