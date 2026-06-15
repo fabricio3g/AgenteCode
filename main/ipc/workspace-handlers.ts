@@ -6,6 +6,7 @@ type WorkspaceHandlerDeps = {
   openModelsFolder: () => unknown;
   pickWorkspaceFolder: () => unknown;
   pickModelFile: () => unknown;
+  pickWhisperRuntimeFile: () => unknown;
   indexWorkspaceFolder: (path: string, chatId: string) => unknown;
   writeWorkspaceFile: (workspaceRoot: string, relativePath: string, content: string) => unknown;
   readWorkspaceFile: (workspaceRoot: string, relativePath: string) => unknown;
@@ -25,6 +26,7 @@ export function registerWorkspaceHandlers({
   openModelsFolder,
   pickWorkspaceFolder,
   pickModelFile,
+  pickWhisperRuntimeFile,
   indexWorkspaceFolder,
   writeWorkspaceFile,
   readWorkspaceFile,
@@ -41,6 +43,7 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('open_models_folder', () => openModelsFolder());
   ipcMain.handle('pick_workspace_folder', () => pickWorkspaceFolder());
   ipcMain.handle('pick_model_file', () => pickModelFile());
+  ipcMain.handle('pick_whisper_runtime_file', () => pickWhisperRuntimeFile());
   ipcMain.handle('index_workspace_folder', (_e, { path, chatId }) => indexWorkspaceFolder(path, chatId));
   ipcMain.handle('write_workspace_file', (_e, { workspaceRoot, relativePath, content }) => writeWorkspaceFile(workspaceRoot, relativePath, content));
   ipcMain.handle('read_workspace_file', (_e, { workspaceRoot, relativePath }) => readWorkspaceFile(workspaceRoot, relativePath));

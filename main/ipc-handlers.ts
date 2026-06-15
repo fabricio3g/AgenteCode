@@ -29,7 +29,7 @@ import {
 import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
 import {
-  pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile,
+  pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickWhisperRuntimeFile,
   indexWorkspaceFolder, writeWorkspaceFile, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
@@ -57,6 +57,7 @@ import { registerAppCapabilityHandlers } from './ipc/app-capability-handlers.ts'
 import { registerRuntimeHandlers } from './ipc/runtime-handlers.ts';
 import { registerTtsHandlers } from './ipc/tts-handlers.ts';
 import { registerSttHandlers } from './ipc/stt-handlers.ts';
+import { registerWhisperHandlers } from './ipc/whisper-handlers.ts';
 import { registerProviderHandlers } from './ipc/provider-handlers.ts';
 import { registerChatHandlers } from './ipc/chat-handlers.ts';
 import { registerChatDbHandlers } from './ipc/chat-db-handlers.ts';
@@ -164,6 +165,12 @@ export function registerIpcHandlers() {
     unloadWhisper,
   });
 
+  // ── Whisper runtime management ──
+  registerWhisperHandlers({
+    ipcMain,
+    getMainWindow,
+  });
+
 
 
   // ── Provider / model API handlers ──
@@ -250,6 +257,7 @@ export function registerIpcHandlers() {
     openModelsFolder,
     pickWorkspaceFolder,
     pickModelFile,
+    pickWhisperRuntimeFile,
     indexWorkspaceFolder,
     writeWorkspaceFile,
     readWorkspaceFile,

@@ -9,8 +9,29 @@ export interface SttStatus {
   model: string;
   ready: boolean;
   whisper_quality: string;
+  language?: string;
+  multilingual?: boolean;
   local_available: boolean;
-  loaded: boolean;
+  model_available?: boolean;
+  runtime_available?: boolean;
+  runtime_path?: string | null;
+  runtime_variant?: string | null;
+  backend?: string;
+  backend_reason?: string;
+  has_cuda?: boolean;
+  has_vulkan?: boolean;
+  installed_runtimes?: number;
+  loaded?: boolean;
+}
+
+export interface WhisperRuntime {
+  id: string;
+  name: string;
+  path: string;
+  variant: string;
+  size_gb: number;
+  modified: number;
+  is_active: boolean;
 }
 
 /**
@@ -40,6 +61,26 @@ export async function sttTranscribe(
 
 async function getSttStatus(): Promise<SttStatus> {
   return invoke<SttStatus>('get_stt_status');
+}
+
+export async function listWhisperRuntimes(): Promise<WhisperRuntime[]> {
+  return invoke<WhisperRuntime[]>('get_whisper_runtimes');
+}
+
+export async function deleteWhisperRuntime(path: string): Promise<{ success: boolean }> {
+  return invoke<{ success: boolean }>('delete_whisper_runtime', { path });
+}
+
+export async function downloadWhisperRuntime(payload: {
+  download_url: string;
+  asset_name: string;
+  release_tag: string;
+}): Promise<{ success: boolean; runtime_id: string; path: string }> {
+  return invoke<{ success: boolean; runtime_id: string; path: string }>('download_whisper_runtime', { payload });
+}
+
+export async function pickWhisperRuntimeFile(): Promise<string | null> {
+  return invoke<string | null>('pick_whisper_runtime_file');
 }
 
 export async function unloadWhisper(): Promise<void> {

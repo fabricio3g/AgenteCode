@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.ts';
 import { getAppPaths } from './paths.ts';
+import { resolveWhisperBinary, detectBestBackend, pickBestRuntime, listWhisperBinaries } from './whisper-resolver.ts';
 
-const MAX_STT_AUDIO_BYTES = 8 * 1024 * 1024; // 8MB input cap
+const MAX_STT_AUDIO_BYTES = 16 * 1024 * 1024;
 const FFMPEG_TIMEOUT_MS = 45_000;
+const WHISPER_TIMEOUT_MS = 60_000;
 const STT_PROVIDER_MODES = new Set(['local', 'api', 'auto']);
 const LEGACY_API_PROVIDER_NAMES = new Set([
   'openai', 'openrouter', 'lmstudio', 'groq', 'mistral', 'anthropic', 'gemini', 'perplexity', 'xai'
@@ -18,139 +21,77 @@ function errorMessage(err: unknown): string {
 function resolveSttProviderMode(cfg, localAvailable) {
   const raw = String(cfg?.stt?.provider || '').trim().toLowerCase();
   if (STT_PROVIDER_MODES.has(raw)) return raw;
-
-  // Legacy configs stored provider names (e.g. "openai") in stt.provider.
-  // Prefer local when a local Whisper model exists, otherwise fall back to API.
   if (LEGACY_API_PROVIDER_NAMES.has(raw)) {
     return localAvailable ? 'local' : 'api';
   }
-
   return localAvailable ? 'local' : 'api';
 }
 
-// ── Lazy sherpa-onnx import (optional native dep) ───────────────────────────
-let _sherpa = null;
+// ── Whisper binary resolution ────────────────────────────────────────────────
 
-async function getSherpa() {
-  if (_sherpa) return _sherpa;
+function getWhisperBinary(): { path: string; variant: string } | null {
+  const binaryPath = resolveWhisperBinary();
+  if (!binaryPath) return null;
+
+  const runtimes = listWhisperBinaries();
+  const match = runtimes.find(r => r.path === binaryPath);
+  const variant = match?.variant || 'unknown';
+
+  if (!fs.existsSync(binaryPath)) return null;
+
   try {
-    const mod = await import('sherpa-onnx-node');
-    const resolved = (mod?.default && (mod.default.OfflineRecognizer || mod.default.readWave))
-      ? mod.default
-      : mod;
-
-    if (!resolved?.OfflineRecognizer) {
-      console.error('[stt-engine] sherpa-onnx-node loaded but OfflineRecognizer is missing');
-      return null;
+    if (process.platform !== 'win32') {
+      fs.chmodSync(binaryPath, 0o755);
     }
+  } catch { /* ignore */ }
 
-    _sherpa = resolved;
-    return _sherpa;
-  } catch (err: unknown) {
-    console.error('[stt-engine] Failed to load sherpa-onnx-node:', errorMessage(err));
-    return null; // graceful fallback if native module is missing
-  }
+  return { path: binaryPath, variant };
 }
 
-// ── Cached recognizer (reused across transcriptions) ────────────────────────
-let _recognizer = null;
-let _recognizerKey = ''; // cache key = model dir
+// ── Model file resolution ────────────────────────────────────────────────────
 
-/**
- * Get or create an OfflineRecognizer for the given Whisper model directory.
- * Caches the instance so subsequent transcriptions are fast.
- */
-async function getOrCreateRecognizer(modelDir, catalog) {
-  const cacheKey = modelDir;
-  if (_recognizer && _recognizerKey === cacheKey) return _recognizer;
-
-  // Unload previous
-  _recognizer = null;
-  _recognizerKey = '';
-
-  const sherpa = await getSherpa();
-  if (!sherpa) throw new Error('sherpa-onnx-node is not available');
-
-  const encoderPath = path.join(modelDir, catalog.encoder);
-  const decoderPath = path.join(modelDir, catalog.decoder);
-  const tokensPath = path.join(modelDir, catalog.tokens);
-
-  if (!fs.existsSync(encoderPath)) throw new Error(`Whisper encoder not found: ${encoderPath}`);
-  if (!fs.existsSync(decoderPath)) throw new Error(`Whisper decoder not found: ${decoderPath}`);
-  if (!fs.existsSync(tokensPath)) throw new Error(`Whisper tokens not found: ${tokensPath}`);
-
-  const config = {
-    featConfig: { sampleRate: 16000, featureDim: 80 },
-    modelConfig: {
-      whisper: {
-        encoder: encoderPath,
-        decoder: decoderPath,
-        language: 'en',
-        task: 'transcribe',
-      },
-      tokens: tokensPath,
-      numThreads: Math.min(os.cpus().length, 4),
-      debug: 0,
-      provider: 'cpu',
-    },
-  };
-
-  _recognizer = new sherpa.OfflineRecognizer(config);
-  _recognizerKey = cacheKey;
-  return _recognizer;
+interface WhisperModelInfo {
+  available: boolean;
+  modelPath: string;
+  catalog: typeof WHISPER_QUALITY_CATALOG[keyof typeof WHISPER_QUALITY_CATALOG];
+  searchedDirs: string[];
 }
 
-/**
- * Unload the cached Whisper recognizer (frees memory).
- */
-export function unloadWhisper() {
-  _recognizer = null;
-  _recognizerKey = '';
-}
-
-/**
- * Check if a local Whisper model is available for the given quality.
- * Returns { available, modelDir, catalog } or { available: false }.
- */
-function checkLocalWhisper(quality) {
+function checkLocalWhisperModel(quality): WhisperModelInfo {
   const catalog = WHISPER_QUALITY_CATALOG[quality];
-  if (!catalog) return { available: false };
+  if (!catalog) return { available: false, modelPath: '', catalog: null, searchedDirs: [] };
 
   const cfg = loadConfig();
   const paths = getAppPaths();
   const configuredModelsDir = String(cfg?.llm?.local?.models_dir || '').trim();
   const candidateDirs = [
     configuredModelsDir ? path.join(configuredModelsDir, 'whisper', catalog.dir) : '',
-    configuredModelsDir ? path.join(configuredModelsDir, catalog.dir) : '', // legacy location
+    configuredModelsDir ? path.join(configuredModelsDir, catalog.dir) : '',
     path.join(paths.modelsRoot, 'whisper', catalog.dir),
-    path.join(paths.modelsRoot, catalog.dir) // legacy location
+    path.join(paths.modelsRoot, catalog.dir),
+    path.join(paths.localModelsRoot, 'whisper', catalog.dir),
   ].filter(Boolean);
 
   for (const modelDir of candidateDirs) {
-    const encoderPath = path.join(modelDir, catalog.encoder);
-    const decoderPath = path.join(modelDir, catalog.decoder);
-    const tokensPath = path.join(modelDir, catalog.tokens);
-
-    const available = fs.existsSync(encoderPath) && fs.existsSync(decoderPath) && fs.existsSync(tokensPath);
-    if (available) {
-      return { available: true, modelDir, catalog, searchedDirs: candidateDirs };
+    const modelPath = path.join(modelDir, catalog.file);
+    if (fs.existsSync(modelPath)) {
+      return { available: true, modelPath, catalog, searchedDirs: candidateDirs };
     }
   }
 
   return {
     available: false,
-    modelDir: candidateDirs[0] || path.join(paths.modelsRoot, 'whisper', catalog.dir),
+    modelPath: candidateDirs.length
+      ? path.join(candidateDirs[0], catalog.file)
+      : path.join(paths.modelsRoot, 'whisper', catalog.dir, catalog.file),
     catalog,
-    searchedDirs: candidateDirs
+    searchedDirs: candidateDirs,
   };
 }
 
-/**
- * Convert raw audio bytes (webm/wav/mp3) to 16kHz mono Float32 PCM.
- * Uses ffmpeg if available, otherwise falls back to basic WAV parsing.
- */
-async function decodeAudioToFloat32(audioBytes, mimeType) {
-  // Try ffmpeg first (most reliable for webm/opus)
+// ── Audio decoding ───────────────────────────────────────────────────────────
+
+async function decodeAudioToWav(audioBytes, mimeType): Promise<{ wavPath: string; inputPath: string }> {
   const { execFileSync } = await import('node:child_process');
   const tmpDir = path.join(os.tmpdir(), 'chatealm-stt');
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -163,42 +104,22 @@ async function decodeAudioToFloat32(audioBytes, mimeType) {
   try {
     fs.writeFileSync(inputFile, audioBytes);
 
-    // Convert to 16kHz mono s16le WAV using ffmpeg
     execFileSync('ffmpeg', [
       '-i', inputFile,
       '-ar', '16000',
       '-ac', '1',
       '-f', 'wav',
       '-y',
-      outputFile
+      outputFile,
     ], { stdio: 'pipe', timeout: FFMPEG_TIMEOUT_MS });
 
-    // Read the WAV file using sherpa-onnx's readWave (which returns Float32 samples)
-    const sherpa = await getSherpa();
-    if (sherpa && sherpa.readWave) {
-      const wave = sherpa.readWave(outputFile);
-      return wave; // { samples: Float32Array, sampleRate: number }
-    }
-
-    // Fallback: manually parse WAV
-    const wavBuffer = fs.readFileSync(outputFile);
-    return parseWavToFloat32(wavBuffer);
+    return { wavPath: outputFile, inputPath: inputFile };
   } catch (err: unknown) {
-    if (ext === 'wav') {
-      try {
-        return parseWavToFloat32(audioBytes);
-      } catch {
-        // ignored - handled below with detailed ffmpeg error
-      }
-    }
     const stderr = typeof err === 'object' && err !== null && 'stderr' in err
       ? String((err as { stderr?: unknown }).stderr || '')
       : '';
     const detail = stderr.trim() || errorMessage(err) || 'unknown ffmpeg decode failure';
     throw new Error(`Unable to decode recorded audio (${mimeType}). ${detail}`);
-  } finally {
-    try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
-    try { fs.unlinkSync(outputFile); } catch { /* ignore */ }
   }
 }
 
@@ -208,9 +129,6 @@ function normalizeAudioBytes({ audio_base64, audio_bytes }) {
   }
 
   if (audio_bytes instanceof Uint8Array || audio_bytes instanceof ArrayBuffer || Buffer.isBuffer(audio_bytes)) {
-    // Force a JS-owned copy to avoid Electron "External buffers are not allowed" errors.
-    // IPC-transferred Uint8Arrays use external backing stores that Node fs.writeFileSync
-    // cannot access directly. We allocate a fresh Buffer and memcpy the data.
     const view = audio_bytes instanceof Uint8Array
       ? audio_bytes
       : (audio_bytes instanceof ArrayBuffer ? new Uint8Array(audio_bytes) : new Uint8Array(audio_bytes.buffer, audio_bytes.byteOffset, audio_bytes.byteLength));
@@ -226,57 +144,140 @@ function normalizeAudioBytes({ audio_base64, audio_bytes }) {
   throw new Error('audio_base64 or audio_bytes is required');
 }
 
-/**
- * Parse a 16-bit PCM WAV buffer to Float32Array samples.
- */
-function parseWavToFloat32(wavBuffer) {
-  // Find 'data' chunk
-  let dataOffset = 44; // standard WAV header
-  let dataSize = wavBuffer.length - 44;
+// ── whisper.cpp CLI invocation ───────────────────────────────────────────────
 
-  // Try to find the actual data chunk
-  for (let i = 0; i < Math.min(wavBuffer.length - 8, 200); i++) {
-    if (wavBuffer[i] === 0x64 && wavBuffer[i + 1] === 0x61 &&
-        wavBuffer[i + 2] === 0x74 && wavBuffer[i + 3] === 0x61) { // 'data'
-      dataSize = wavBuffer.readUInt32LE(i + 4);
-      dataOffset = i + 8;
-      break;
+interface WhisperCliResult {
+  text: string;
+  language: string;
+}
+
+async function runWhisperCli(
+  binaryPath: string,
+  modelPath: string,
+  wavPath: string,
+  options: { language: string; threads: number }
+): Promise<WhisperCliResult> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-m', modelPath,
+      '-f', wavPath,
+      '-nt',
+      '-l', options.language || 'auto',
+      '-t', String(options.threads),
+      '-np',
+    ];
+
+    const child = spawn(binaryPath, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    const chunks: Buffer[] = [];
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('Whisper transcription timed out'));
+    }, WHISPER_TIMEOUT_MS);
+
+    child.stdout.on('data', (data: Buffer) => chunks.push(data));
+    child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(new Error(`Failed to run whisper-cli: ${errorMessage(err)}`));
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) {
+        const tail = stderr.trim().slice(-500);
+        reject(new Error(`whisper-cli exited with code ${code}${tail ? `: ${tail}` : ''}`));
+        return;
+      }
+
+      const output = Buffer.concat(chunks).toString();
+      const text = parseWhisperOutput(output);
+      const langMatch = stderr.match(/language\s*=\s*(\S+)/i);
+      const language = langMatch ? langMatch[1].toLowerCase() : 'unknown';
+
+      resolve({ text, language });
+    });
+  });
+}
+
+function parseWhisperOutput(output: string): string {
+  const lines = output.split('\n');
+  const transcription: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // whisper-cli output format: [timestamp] text
+    // e.g. "[00:00.000 --> 00:03.500]  Hello world"
+    const bracketMatch = trimmed.match(/^\[[\d:.\-\s>]+\]\s*(.*)$/);
+    if (bracketMatch) {
+      if (bracketMatch[1].trim()) transcription.push(bracketMatch[1].trim());
+      continue;
+    }
+
+    // With -nt flag, some versions still print raw text without brackets
+    // Skip system/whisper lines that start with known prefixes
+    if (/^(whisper_model_load|system_info|ggml_|main:|loading|print_|init |compute |ram:|processing)/i.test(trimmed)) {
+      continue;
+    }
+
+    // If it doesn't look like a system message, treat as transcription
+    if (trimmed.length > 1) {
+      transcription.push(trimmed);
     }
   }
 
-  const numSamples = Math.floor(dataSize / 2); // 16-bit = 2 bytes per sample
-  const samples = new Float32Array(numSamples);
-  for (let i = 0; i < numSamples; i++) {
-    const offset = dataOffset + i * 2;
-    if (offset + 1 < wavBuffer.length) {
-      samples[i] = wavBuffer.readInt16LE(offset) / 32768.0;
-    }
+  return transcription.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+// ── Transcription ────────────────────────────────────────────────────────────
+
+async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: string; language?: string }> {
+  const { available, modelPath, catalog, searchedDirs } = checkLocalWhisperModel(quality);
+  if (!available) {
+    const lookedIn = (searchedDirs || []).slice(0, 3).join(', ');
+    throw new Error(
+      `Whisper model "${quality}" not found. Expected: ${catalog?.file}` +
+      `${lookedIn ? `. Looked in: ${lookedIn}` : ''}`
+    );
   }
 
-  return { samples, sampleRate: 16000 };
+  const binary = getWhisperBinary();
+  if (!binary) {
+    throw new Error(
+      'whisper-cli binary not found. Download it from Model Hub → Whisper Runtime, ' +
+      'or set stt.runtime_path in settings.'
+    );
+  }
+
+  const cfg = loadConfig();
+  const language = String(cfg.stt?.language || 'auto').trim() || 'auto';
+  const threads = Math.min(os.cpus().length, 4);
+
+  let wavPath: string | null = null;
+  let inputPath: string | null = null;
+  try {
+    const decoded = await decodeAudioToWav(audioBytes, mimeType);
+    wavPath = decoded.wavPath;
+    inputPath = decoded.inputPath;
+    const result = await runWhisperCli(binary.path, modelPath, wavPath, { language, threads });
+    return { text: result.text, language: result.language };
+  } finally {
+    if (wavPath) {
+      try { fs.unlinkSync(wavPath); } catch { /* ignore */ }
+    }
+    if (inputPath) {
+      try { fs.unlinkSync(inputPath); } catch { /* ignore */ }
+    }
+  }
 }
 
-/**
- * Transcribe audio locally using sherpa-onnx Whisper.
- */
-async function transcribeLocal(audioBytes, mimeType, quality) {
-  const { available, modelDir, catalog } = checkLocalWhisper(quality);
-  if (!available) throw new Error(`Local Whisper model "${quality}" not found`);
-
-  const recognizer = await getOrCreateRecognizer(modelDir, catalog);
-  const waveform = await decodeAudioToFloat32(audioBytes, mimeType);
-
-  const stream = recognizer.createStream();
-  stream.acceptWaveform({ samples: waveform.samples, sampleRate: waveform.sampleRate });
-  recognizer.decode(stream);
-  const result = recognizer.getResult(stream);
-
-  return { text: result.text || '' };
-}
-
-/**
- * Transcribe audio via remote API (OpenAI Whisper or compatible endpoint).
- */
 async function transcribeApi(audioBytes, mimeType) {
   const cfg = loadConfig();
   const providerName = cfg.llm?.provider || 'openai';
@@ -302,11 +303,7 @@ async function transcribeApi(audioBytes, mimeType) {
   form.append('model', sttModel);
   form.append('file', new Blob([audioBytes], { type: mimeType }), `recording.${ext}`);
 
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: form
-  });
+  const resp = await fetch(endpoint, { method: 'POST', headers, body: form });
 
   if (!resp.ok) {
     const text = await resp.text();
@@ -321,16 +318,8 @@ async function transcribeApi(audioBytes, mimeType) {
   return { text };
 }
 
-/**
- * Transcribe audio (base64-encoded).
- * Prefers local Whisper model if available; falls back to API.
- *
- * @param {object} args
- * @param {string} [args.audio_base64]  - Base64-encoded audio data
- * @param {Uint8Array|ArrayBuffer|number[]} [args.audio_bytes] - Raw audio bytes
- * @param {string} [args.mime_type]   - MIME type (default: 'audio/webm')
- * @returns {Promise<{ text: string }>}
- */
+// ── Public API ───────────────────────────────────────────────────────────────
+
 export async function transcribeAudio(args = {}) {
   const mime_type = args?.mime_type || 'audio/webm';
   const audioBytes = normalizeAudioBytes(args);
@@ -338,24 +327,30 @@ export async function transcribeAudio(args = {}) {
     throw new Error('Recorded audio is empty');
   }
   if (audioBytes.length > MAX_STT_AUDIO_BYTES) {
-    throw new Error('Recording is too long. Please keep voice messages under about 30 seconds.');
+    throw new Error('Recording is too long. Please keep voice messages under 60 seconds.');
   }
 
   const cfg = loadConfig();
-  const quality = cfg.stt?.whisper_quality || 'base';
+  const quality = cfg.stt?.whisper_quality || 'medium_q5';
 
-  const localWhisper = checkLocalWhisper(quality);
-  const { available } = localWhisper;
+  const modelInfo = checkLocalWhisperModel(quality);
+  const binary = getWhisperBinary();
+  const available = modelInfo.available && !!binary;
+
   const sttProvider = resolveSttProviderMode(cfg, available);
-  const sherpa = await getSherpa();
 
   if (sttProvider === 'local') {
-    if (!available) {
-      const lookedIn = (localWhisper.searchedDirs || []).slice(0, 3).join(', ');
-      throw new Error(`Local Whisper model "${quality}" is not downloaded. Open Model Hub → Whisper to install it.${lookedIn ? ` Looked in: ${lookedIn}` : ''}`);
+    if (!modelInfo.available) {
+      const lookedIn = (modelInfo.searchedDirs || []).slice(0, 3).join(', ');
+      throw new Error(
+        `Whisper model "${quality}" is not downloaded. Open Model Hub → Whisper to install it.` +
+        `${lookedIn ? ` Looked in: ${lookedIn}` : ''}`
+      );
     }
-    if (!sherpa) {
-      throw new Error('Local Whisper runtime is unavailable (sherpa-onnx-node failed to load). Run npm install/rebuild and restart the app.');
+    if (!binary) {
+      throw new Error(
+        'whisper-cli runtime is not installed. Open Model Hub → Whisper Runtime to download it.'
+      );
     }
     try {
       return await transcribeLocal(audioBytes, mime_type, quality);
@@ -368,8 +363,8 @@ export async function transcribeAudio(args = {}) {
     return await transcribeApi(audioBytes, mime_type);
   }
 
-  // auto mode: prefer local, then fallback to API
-  if (available && sherpa) {
+  // auto mode: prefer local, fall back to API
+  if (available) {
     try {
       return await transcribeLocal(audioBytes, mime_type, quality);
     } catch (err: unknown) {
@@ -380,32 +375,47 @@ export async function transcribeAudio(args = {}) {
   return await transcribeApi(audioBytes, mime_type);
 }
 
-/**
- * Get STT status: which mode is active and whether it's ready.
- */
 export function getSttStatus() {
   const cfg = loadConfig();
-  const quality = cfg.stt?.whisper_quality || 'base';
-  const { available } = checkLocalWhisper(quality);
-  const sttProvider = resolveSttProviderMode(cfg, available);
+  const quality = cfg.stt?.whisper_quality || 'medium_q5';
+  const { available: modelAvailable, catalog } = checkLocalWhisperModel(quality);
+  const binary = getWhisperBinary();
+  const sttProvider = resolveSttProviderMode(cfg, modelAvailable && !!binary);
 
   const providerName = cfg.llm?.provider || 'openai';
   const provider = cfg.llm?.providers?.[providerName] || {};
   const hasApiKey = !!(provider.api_key && provider.api_key !== '***');
 
-  const usingLocal = sttProvider === 'local' || (sttProvider === 'auto' && available);
+  const usingLocal = sttProvider === 'local' || (sttProvider === 'auto' && modelAvailable && !!binary);
   const ready = sttProvider === 'api'
     ? hasApiKey
     : sttProvider === 'local'
-      ? available
-      : (available || hasApiKey);
+      ? (modelAvailable && !!binary)
+      : ((modelAvailable && !!binary) || hasApiKey);
+
+  const backend = detectBestBackend();
 
   return {
     provider: usingLocal ? 'local' : providerName,
     model: usingLocal ? `whisper-${quality}` : (cfg.stt?.model || 'whisper-1'),
     ready,
     whisper_quality: quality,
-    local_available: available,
-    loaded: !!_recognizer,
+    language: usingLocal ? (cfg.stt?.language || 'auto') : undefined,
+    multilingual: usingLocal ? (catalog?.multilingual ?? true) : undefined,
+    local_available: modelAvailable && !!binary,
+    model_available: modelAvailable,
+    runtime_available: !!binary,
+    runtime_path: binary?.path || null,
+    runtime_variant: binary?.variant || null,
+    backend: backend.backend,
+    backend_reason: backend.reason,
+    has_cuda: backend.hasCuda,
+    has_vulkan: backend.hasVulkan,
+    installed_runtimes: listWhisperBinaries().length,
   };
+}
+
+export function unloadWhisper() {
+  // No-op: whisper.cpp CLI runs as a one-shot subprocess per transcription.
+  // There's no persistent recognizer to unload.
 }

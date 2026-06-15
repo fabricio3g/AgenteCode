@@ -71,6 +71,11 @@ export function getAppPaths() {
     localModelsRoot: path.join(appData, 'models', 'llama-cpp'),
     localBinRoot: path.join(appData, 'bin'),
     localBinVersionsRoot: path.join(appData, 'bin', 'versions'),
+    whisperBinRoot: path.join(appData, 'bin', 'whisper'),
+    whisperBinVersionsRoot: path.join(appData, 'bin', 'whisper', 'versions'),
+    nativeBinRoot: isDev
+      ? path.join(projectRoot, 'resources', 'bin')
+      : path.join(process.resourcesPath, 'bin'),
     cacheRoot: path.join(appData, 'cache'),
     configPath: path.join(appData, 'config.json'),
     secretsPath: path.join(appData, 'secrets.json'),

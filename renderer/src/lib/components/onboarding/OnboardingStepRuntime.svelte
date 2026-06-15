@@ -3,7 +3,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Cpu, ArrowRight, ArrowLeft, CheckCircle2, Download, LoaderCircle, AlertTriangle, Ban } from 'lucide-svelte';
+  import { Cpu, ArrowRight, ArrowLeft, CheckCircle2, Download, LoaderCircle } from 'lucide-svelte';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
   import { getInstalledRuntimes, downloadRuntime } from '$lib/services/files';
   import { listen } from '$lib/services/tauri';
@@ -133,6 +133,21 @@
   }
 
   const hasInstalledRuntime = $derived(installedRuntimes.length > 0);
+  const selectedRuntimePath = $derived(pickRuntimePath());
+
+  function runtimeRank(runtime: any) {
+    const variant = String(runtime?.variant || runtime?.name || runtime?.id || '').toLowerCase();
+    if (runtime?.is_active) return 0;
+    if (platformInfo.platform === 'macos' && variant.includes('metal')) return 1;
+    if (platformInfo.gpu_backend === 'cuda' && variant.includes('cuda')) return 1;
+    if (platformInfo.gpu_backend === 'vulkan' && variant.includes('vulkan')) return 1;
+    if (variant.includes('cpu')) return 2;
+    return 3;
+  }
+
+  function pickRuntimePath() {
+    return [...installedRuntimes].sort((a, b) => runtimeRank(a) - runtimeRank(b))[0]?.path || '';
+  }
 
   onMount(async () => {
     loading = true;
@@ -161,9 +176,19 @@
       <LoaderCircle class="h-5 w-5 animate-spin" />
     </div>
   {:else if hasInstalledRuntime}
-    <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-      <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
-      <span>{$t('onboarding.runtimeInstalledReady')}</span>
+    <div class="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+        <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
+        <span>{$t('onboarding.runtimeInstalledReady')}</span>
+      </div>
+      <div class="space-y-1.5">
+        {#each installedRuntimes.slice(0, 3) as runtime}
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-hover)] px-3 py-2 text-xs">
+            <span class="min-w-0 truncate text-[var(--text)]">{runtime.name || runtime.id || 'runtime'}</span>
+            <span class="shrink-0 rounded-full border border-[var(--border)] px-2 py-0.5 text-[var(--text-muted)]">{runtime.variant || 'auto'}</span>
+          </div>
+        {/each}
+      </div>
     </div>
   {:else if releaseAssets.length > 0}
     <div class="space-y-1.5">
@@ -212,8 +237,7 @@
     <button
       class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
       onclick={() => {
-        const path = installedRuntimes[0]?.path || '';
-        onNext(path);
+        onNext(selectedRuntimePath);
       }}
       disabled={!hasInstalledRuntime}
     >

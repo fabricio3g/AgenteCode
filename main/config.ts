@@ -51,41 +51,45 @@ export const TTS_MODEL_CATALOG = {
 };
 
 export const WHISPER_QUALITY_CATALOG = {
-  tiny: {
-    label: 'Tiny',
-    repo: 'csukuangfj/sherpa-onnx-whisper-tiny.en',
-    dir: 'sherpa-onnx-whisper-tiny.en',
-    encoder: 'tiny.en-encoder.int8.onnx',
-    decoder: 'tiny.en-decoder.int8.onnx',
-    tokens: 'tiny.en-tokens.txt',
-    files: ['tiny.en-encoder.int8.onnx', 'tiny.en-decoder.int8.onnx', 'tiny.en-tokens.txt'],
+  tiny_q5: {
+    label: 'Tiny (Q5_1) — Fastest',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-tiny-q5_1.bin',
+    multilingual: true,
+    files: ['ggml-tiny-q5_1.bin'],
   },
-  base: {
-    label: 'Base',
-    repo: 'csukuangfj/sherpa-onnx-whisper-base.en',
-    dir: 'sherpa-onnx-whisper-base.en',
-    encoder: 'base.en-encoder.int8.onnx',
-    decoder: 'base.en-decoder.int8.onnx',
-    tokens: 'base.en-tokens.txt',
-    files: ['base.en-encoder.int8.onnx', 'base.en-decoder.int8.onnx', 'base.en-tokens.txt'],
+  base_q5: {
+    label: 'Base (Q5_1) — Fast',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-base-q5_1.bin',
+    multilingual: true,
+    files: ['ggml-base-q5_1.bin'],
   },
-  small: {
-    label: 'Small',
-    repo: 'csukuangfj/sherpa-onnx-whisper-small.en',
-    dir: 'sherpa-onnx-whisper-small.en',
-    encoder: 'small.en-encoder.int8.onnx',
-    decoder: 'small.en-decoder.int8.onnx',
-    tokens: 'small.en-tokens.txt',
-    files: ['small.en-encoder.int8.onnx', 'small.en-decoder.int8.onnx', 'small.en-tokens.txt'],
+  small_q5: {
+    label: 'Small (Q5_1) — Balanced',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-small-q5_1.bin',
+    multilingual: true,
+    files: ['ggml-small-q5_1.bin'],
   },
-  medium: {
-    label: 'Medium',
-    repo: 'csukuangfj/sherpa-onnx-whisper-medium.en',
-    dir: 'sherpa-onnx-whisper-medium.en',
-    encoder: 'medium.en-encoder.int8.onnx',
-    decoder: 'medium.en-decoder.int8.onnx',
-    tokens: 'medium.en-tokens.txt',
-    files: ['medium.en-encoder.int8.onnx', 'medium.en-decoder.int8.onnx', 'medium.en-tokens.txt'],
+  medium_q5: {
+    label: 'Medium (Q5_0) — Recommended',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-medium-q5_0.bin',
+    multilingual: true,
+    files: ['ggml-medium-q5_0.bin'],
+  },
+  large_v3_q5: {
+    label: 'Large v3 (Q5_0) — Best',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-large-v3-q5_0.bin',
+    multilingual: true,
+    files: ['ggml-large-v3-q5_0.bin'],
   },
 };
 

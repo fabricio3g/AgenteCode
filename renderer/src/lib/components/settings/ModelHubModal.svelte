@@ -20,7 +20,7 @@
   import { isTauri, invoke } from '$lib/services/tauri';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { unloadTts } from '$lib/services/tts';
-  import { unloadWhisper } from '$lib/services/stt';
+  import { deleteWhisperRuntime, listWhisperRuntimes, pickWhisperRuntimeFile, unloadWhisper, type WhisperRuntime } from '$lib/services/stt';
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import SearchBar from './SearchBar.svelte';
@@ -51,6 +51,8 @@
 
   let voiceModels = $state<Record<string, any>>({});
   let whisperModels = $state<Record<string, any>>({});
+  let whisperRuntimes = $state<WhisperRuntime[]>([]);
+  let whisperRuntimesLoading = $state(false);
   let voiceCatalogLoading = $state(false);
   let ttsVoice = $state(appStore.config.tts?.voice || '');
 
@@ -146,33 +148,40 @@
   };
 
   const VOICE_WHISPER_FALLBACK_CATALOG: Record<string, any> = {
-    tiny: {
-      label: 'Tiny', description: 'Fastest, basic quality',
-      repo: 'csukuangfj/sherpa-onnx-whisper-tiny.en',
-      dir: 'sherpa-onnx-whisper-tiny.en',
-      files: ['tiny.en-encoder.int8.onnx', 'tiny.en-decoder.int8.onnx', 'tiny.en-tokens.txt'],
-      size_mb: 98, speed: 'Fastest', quality: 'Basic',
+    tiny_q5: {
+      label: 'Tiny (Q5_1)', description: 'Fastest, 99 languages',
+      repo: 'ggerganov/whisper.cpp',
+      dir: 'whisper-ggml',
+      files: ['ggml-tiny-q5_1.bin'],
+      size_mb: 32, speed: 'Fastest', quality: 'Basic',
     },
-    base: {
-      label: 'Base', description: 'Fast with good accuracy',
-      repo: 'csukuangfj/sherpa-onnx-whisper-base.en',
-      dir: 'sherpa-onnx-whisper-base.en',
-      files: ['base.en-encoder.int8.onnx', 'base.en-decoder.int8.onnx', 'base.en-tokens.txt'],
-      size_mb: 153, speed: 'Fast', quality: 'Good',
+    base_q5: {
+      label: 'Base (Q5_1)', description: 'Fast, 99 languages',
+      repo: 'ggerganov/whisper.cpp',
+      dir: 'whisper-ggml',
+      files: ['ggml-base-q5_1.bin'],
+      size_mb: 62, speed: 'Fast', quality: 'Good',
     },
-    small: {
-      label: 'Small', description: 'Balanced speed and quality',
-      repo: 'csukuangfj/sherpa-onnx-whisper-small.en',
-      dir: 'sherpa-onnx-whisper-small.en',
-      files: ['small.en-encoder.int8.onnx', 'small.en-decoder.int8.onnx', 'small.en-tokens.txt'],
-      size_mb: 400, speed: 'Medium', quality: 'Better',
+    small_q5: {
+      label: 'Small (Q5_1)', description: 'Balanced, 99 languages',
+      repo: 'ggerganov/whisper.cpp',
+      dir: 'whisper-ggml',
+      files: ['ggml-small-q5_1.bin'],
+      size_mb: 206, speed: 'Medium', quality: 'Better',
     },
-    medium: {
-      label: 'Medium', description: 'Best quality, slower',
-      repo: 'csukuangfj/sherpa-onnx-whisper-medium.en',
-      dir: 'sherpa-onnx-whisper-medium.en',
-      files: ['medium.en-encoder.int8.onnx', 'medium.en-decoder.int8.onnx', 'medium.en-tokens.txt'],
-      size_mb: 770, speed: 'Slower', quality: 'Best',
+    medium_q5: {
+      label: 'Medium (Q5_0) — Recommended', description: 'Best balance, 99 languages',
+      repo: 'ggerganov/whisper.cpp',
+      dir: 'whisper-ggml',
+      files: ['ggml-medium-q5_0.bin'],
+      size_mb: 539, speed: 'Slower', quality: 'Best',
+    },
+    large_v3_q5: {
+      label: 'Large v3 (Q5_0)', description: 'Highest accuracy, 99 languages',
+      repo: 'ggerganov/whisper.cpp',
+      dir: 'whisper-ggml',
+      files: ['ggml-large-v3-q5_0.bin'],
+      size_mb: 1100, speed: 'Slowest', quality: 'Best+',
     },
   };
 
@@ -260,6 +269,52 @@
   async function setWhisperQuality(quality: string) {
     const current = await loadAppConfig();
     await saveAppConfig({ ...current, stt: { ...(current.stt || {}), whisper_quality: quality } });
+  }
+
+  async function loadWhisperRuntimeList() {
+    whisperRuntimesLoading = true;
+    try {
+      whisperRuntimes = await listWhisperRuntimes();
+    } catch (err) {
+      console.warn('load whisper runtimes failed:', err);
+      whisperRuntimes = [];
+    } finally {
+      whisperRuntimesLoading = false;
+    }
+  }
+
+  async function selectCustomWhisperRuntime() {
+    try {
+      const runtimePath = await pickWhisperRuntimeFile();
+      if (!runtimePath) return;
+      const current = await loadAppConfig();
+      await saveAppConfig({ ...current, stt: { ...(current.stt || {}), runtime_path: runtimePath } });
+      await loadWhisperRuntimeList();
+      toastStore.success('Custom whisper.cpp runtime selected');
+    } catch (err) {
+      toastStore.error(`Failed to select runtime: ${(err as Error)?.message || err}`);
+    }
+  }
+
+  async function useWhisperRuntime(runtime: WhisperRuntime) {
+    try {
+      const current = await loadAppConfig();
+      await saveAppConfig({ ...current, stt: { ...(current.stt || {}), runtime_path: runtime.path } });
+      await loadWhisperRuntimeList();
+      toastStore.success(`Using whisper.cpp ${runtime.variant} runtime`);
+    } catch (err) {
+      toastStore.error(`Failed to select runtime: ${(err as Error)?.message || err}`);
+    }
+  }
+
+  async function removeWhisperRuntime(runtime: WhisperRuntime) {
+    try {
+      await deleteWhisperRuntime(runtime.path);
+      await loadWhisperRuntimeList();
+      toastStore.success('Whisper runtime removed');
+    } catch (err) {
+      toastStore.error(`Failed to remove runtime: ${(err as Error)?.message || err}`);
+    }
   }
 
   const downloadedVoiceCount = $derived(Object.values(voiceModels).filter((m: any) => m.downloaded).length);
@@ -745,6 +800,12 @@
   $effect(() => {
     if ((activeSection === 'voices' || activeSection === 'whisper') && Object.keys(voiceModels).length === 0) {
       void loadVoiceModelCatalog();
+    }
+  });
+
+  $effect(() => {
+    if (activeSection === 'whisper' && !whisperRuntimesLoading && whisperRuntimes.length === 0) {
+      void loadWhisperRuntimeList();
     }
   });
 
@@ -1704,6 +1765,83 @@
                       Selected device will be used for speech recognition in this session.
                     </p>
                   {/if}
+                </div>
+              {/if}
+            </div>
+
+            <!-- ── whisper.cpp runtime selector ── -->
+            <div class="mb-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div class="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <Cpu class="h-4 w-4 text-[var(--text-muted)]" />
+                    <span class="text-sm font-semibold text-[var(--text)]">whisper.cpp runtime</span>
+                  </div>
+                  <p class="mt-1 text-xs text-[var(--text-muted)]">
+                    Auto-detects CUDA, Vulkan, or CPU from installed runtimes. You can also select a custom build.
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
+                    onclick={loadWhisperRuntimeList}
+                  >
+                    <RefreshCw class="inline h-3 w-3" />
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                    onclick={selectCustomWhisperRuntime}
+                  >
+                    <FolderInput class="inline h-3 w-3" />
+                    Custom build
+                  </button>
+                </div>
+              </div>
+
+              {#if whisperRuntimesLoading}
+                <div class="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                  <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
+                  Scanning runtimes...
+                </div>
+              {:else if whisperRuntimes.length === 0}
+                <div class="rounded-lg border border-dashed border-[var(--border)] px-3 py-3 text-xs text-[var(--text-muted)]">
+                  No managed whisper.cpp runtime is installed yet. Bundled builds will appear here when present in <code>resources/bin</code>; use Custom build to select an existing <code>whisper-cli</code> binary.
+                </div>
+              {:else}
+                <div class="space-y-2">
+                  {#each whisperRuntimes as runtime (runtime.path)}
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2">
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs font-semibold uppercase text-[var(--text)]">{runtime.variant}</span>
+                          {#if runtime.is_active}
+                            <span class="rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-bold text-[var(--primary-fg)]">Active</span>
+                          {/if}
+                        </div>
+                        <p class="truncate text-[11px] text-[var(--text-muted)]" title={runtime.path}>{runtime.path}</p>
+                      </div>
+                      <div class="flex shrink-0 items-center gap-2">
+                        {#if !runtime.is_active}
+                          <button
+                            type="button"
+                            class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                            onclick={() => useWhisperRuntime(runtime)}
+                          >Use</button>
+                        {/if}
+                        <button
+                          type="button"
+                          class="rounded-lg border border-[var(--border)] p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface)] hover:text-[var(--text)]"
+                          onclick={() => removeWhisperRuntime(runtime)}
+                          aria-label="Delete runtime"
+                        >
+                          <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  {/each}
                 </div>
               {/if}
             </div>

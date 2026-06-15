@@ -131,7 +131,9 @@ export function getDefaultSTTConfig(): STTConfig {
   return {
     provider: 'local',
     model: 'whisper-1',
-    whisper_quality: 'base',
+    whisper_quality: 'medium_q5',
+    language: 'auto',
+    backend: 'auto',
   };
 }
 

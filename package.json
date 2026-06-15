@@ -15,6 +15,7 @@
     "prebuild": "npm run rebuild:native",
     "build:main": "npx esbuild main/index.ts --bundle --outfile=dist-electron/main/index.cjs --platform=node --format=cjs --external:electron --external:better-sqlite3 --external:@lancedb/* --external:apache-arrow --external:sherpa-onnx-node --external:kokoro-js --external:@huggingface/transformers --external:onnxruntime-node --minify",
     "build:renderer": "cd renderer && npx vite build",
+    "build:native-runtimes": "node scripts/build-native-runtimes.mjs",
     "build": "npm run build:main && npm run build:renderer && electron-builder",
     "start": "npx electron . --no-sandbox",
     "check": "cd renderer && npx svelte-check --tsconfig ./tsconfig.json",
@@ -84,7 +85,9 @@
     "asarUnpack": [
       "node_modules/apache-arrow/**/*",
       "node_modules/@lancedb/**/*",
-      "node_modules/better-sqlite3/**/*"
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/kokoro-js/voices/**/*",
+      "resources/bin/**/*"
     ],
     "extraResources": [
       {
@@ -97,6 +100,13 @@
       {
         "from": "../assets",
         "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../resources/bin",
+        "to": "bin",
         "filter": [
           "**/*"
         ]

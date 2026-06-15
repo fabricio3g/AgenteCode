@@ -1,7 +1,54 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { getAppPaths } from './paths.ts';
 import { loadConfig, saveConfig } from './config.ts';
+
+function hasNvidiaGpu() {
+  try {
+    const result = spawnSync('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    return result.status === 0 && String(result.stdout || '').trim().length > 0;
+  } catch { return false; }
+}
+
+function hasVulkanSupport() {
+  try {
+    const result = spawnSync('vulkaninfo', ['--summary'], {
+      timeout: 5000,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    return result.status === 0 && /gpu|device/i.test(String(result.stdout || ''));
+  } catch { return false; }
+}
+
+function preferredRuntimeVariants(cfg) {
+  const requested = String(cfg?.llm?.local?.binary?.install_variant || 'auto').toLowerCase();
+  if (requested && requested !== 'auto') {
+    if (requested === 'cuda12' || requested === 'cuda13') return ['cuda', 'vulkan', 'cpu', 'unknown'];
+    return [requested, 'cuda', 'vulkan', 'metal', 'cpu', 'unknown'];
+  }
+
+  if (process.platform === 'darwin') return ['metal', 'cpu', 'unknown'];
+  if (hasNvidiaGpu()) return ['cuda', 'vulkan', 'cpu', 'unknown'];
+  if (hasVulkanSupport()) return ['vulkan', 'cpu', 'unknown'];
+  return ['cpu', 'vulkan', 'cuda', 'unknown'];
+}
+
+function orderRuntimesForPreference(runtimes, cfg) {
+  const order = preferredRuntimeVariants(cfg);
+  return [...runtimes].sort((left, right) => {
+    const leftRank = order.indexOf(left.variant);
+    const rightRank = order.indexOf(right.variant);
+    const normalizedLeftRank = leftRank === -1 ? order.length : leftRank;
+    const normalizedRightRank = rightRank === -1 ? order.length : rightRank;
+    if (normalizedLeftRank !== normalizedRightRank) return normalizedLeftRank - normalizedRightRank;
+    if ((right.modified || 0) !== (left.modified || 0)) return (right.modified || 0) - (left.modified || 0);
+    return String(left.name || '').localeCompare(String(right.name || ''));
+  });
+}
 
 function inferRuntimeVariant(runtimePath) {
   const value = String(runtimePath || '').toLowerCase();
@@ -106,6 +153,30 @@ export function listRuntimeBinaries() {
     });
   }
 
+  const bundledRoot = path.join(paths.nativeBinRoot || '', 'llama');
+  if (fs.existsSync(bundledRoot)) {
+    const bundledEntries = fs.readdirSync(bundledRoot, { withFileTypes: true });
+    for (const entry of bundledEntries) {
+      const candidate = entry.isDirectory() ? path.join(bundledRoot, entry.name) : bundledRoot;
+      for (const binPath of runtimeCandidatesFromDirectory(candidate)) {
+        const stat = fs.statSync(binPath);
+        const id = `bundled-${entry.isDirectory() ? entry.name : 'default'}`;
+        const selected = resolvedActiveRuntimePath ? resolvedActiveRuntimePath === binPath : false;
+        runtimes.push({
+          id,
+          name: id,
+          path: binPath,
+          variant: inferRuntimeVariant(entry.name || binPath),
+          size_gb: Math.round((stat.size / (1024 ** 3)) * 100) / 100,
+          modified: stat.mtimeMs,
+          is_active: selected
+        });
+        break;
+      }
+      if (!entry.isDirectory()) break;
+    }
+  }
+
   return runtimes.sort((left, right) => {
     if (!!right.is_active !== !!left.is_active) return Number(!!right.is_active) - Number(!!left.is_active);
     if ((right.modified || 0) !== (left.modified || 0)) return (right.modified || 0) - (left.modified || 0);
@@ -120,7 +191,7 @@ export function resolveRuntimeBinary(explicitPath = '') {
   if (cfg.llm?.local?.runtime_path) candidates.push(cfg.llm.local.runtime_path);
   if (cfg.llm?.local?.binary?.path) candidates.push(cfg.llm.local.binary.path);
 
-  for (const runtime of listRuntimeBinaries()) {
+  for (const runtime of orderRuntimesForPreference(listRuntimeBinaries(), cfg)) {
     candidates.push(runtime.path);
   }
 

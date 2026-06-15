@@ -70,6 +70,19 @@ export async function pickModelFile() {
   return result.filePaths[0];
 }
 
+export async function pickWhisperRuntimeFile() {
+  const result = await dialog.showOpenDialog({
+    title: 'Select whisper.cpp Runtime',
+    properties: ['openFile'],
+    filters: [
+      { name: 'whisper.cpp Runtime', extensions: process.platform === 'win32' ? ['exe'] : ['*'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+}
+
 export async function indexWorkspaceFolder(folderPath, chatId) {
   const rootName = path.basename(folderPath);
   const files = [];

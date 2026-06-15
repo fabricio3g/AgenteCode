@@ -154,8 +154,10 @@ export type STTProviderType = 'local' | 'api';
 
 /**
  * Whisper quality level.
+ * GGML quantized models for whisper.cpp (single .bin file per model).
  */
-export type WhisperQuality = 'tiny' | 'base' | 'small' | 'medium';
+export type WhisperQuality =
+  | 'tiny_q5' | 'base_q5' | 'small_q5' | 'medium_q5' | 'large_v3_q5';
 
 /**
  * STT configuration.
@@ -164,6 +166,11 @@ export interface STTConfig {
   provider: STTProviderType;
   model: string;
   whisper_quality: WhisperQuality;
+  language?: string;
+  /** Explicit path to whisper-cli binary (overrides auto-resolution). */
+  runtime_path?: string;
+  /** Backend preference: 'auto' | 'cpu' | 'cuda' | 'vulkan'. */
+  backend?: string;
   [key: string]: unknown;
 }
 
@@ -220,6 +227,9 @@ export interface AppPaths {
   assetsRoot: string;
   localBinRoot: string;
   localBinVersionsRoot: string;
+  whisperBinRoot: string;
+  whisperBinVersionsRoot: string;
+  nativeBinRoot: string;
   cacheRoot: string;
   projectRoot: string;
   IS_DEV: boolean;
@@ -238,15 +248,14 @@ export interface TTSModelCatalogEntry {
 }
 
 /**
- * Whisper quality catalog entry.
+ * Whisper quality catalog entry (GGML format for whisper.cpp).
  */
 export interface WhisperQualityCatalogEntry {
   label: string;
   repo: string;
   dir: string;
-  encoder: string;
-  decoder: string;
-  tokens: string;
+  file: string;
+  multilingual: boolean;
   files: string[];
 }
 

@@ -3,9 +3,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle } from 'lucide-svelte';
+  import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle, Check, ChevronDown } from 'lucide-svelte';
   import { startDownloadHf, getDownloadJobs, cancelDownloadJob } from '$lib/services/downloads';
   import { listen } from '$lib/services/tauri';
+  import { KOKORO_LANGUAGES, getVoiceInfo } from '$lib/services/kokoro-tts';
+  import { appStore } from '$lib/stores/app.svelte';
+  import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
 
   let { onNext, onBack } = $props<{
     onNext: () => void;
@@ -36,6 +39,21 @@
   let currentJobId = $state<string | null>(null);
   let overallProgress = $state(0);
 
+  // Voice selection state
+  let selectedVoice = $state(appStore.config.tts?.voice || 'af_heart');
+  let voiceOpen = $state(false);
+  let langOpen = $state(false);
+
+  let selectedLang = $derived.by(() => {
+    const info = getVoiceInfo(selectedVoice);
+    return info?.langCode ?? 'en-US';
+  });
+  let currentLangVoices = $derived(
+    KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.voices ?? []
+  );
+  let femaleVoices = $derived(currentLangVoices.filter(v => v.gender === 'female'));
+  let maleVoices = $derived(currentLangVoices.filter(v => v.gender === 'male'));
+
   const totalSize = TTS_FILES.reduce((sum, f) => sum + f.size_mb, 0);
   const downloadedSize = $derived(
     TTS_FILES.reduce((sum, f) => sum + (fileStatuses[f.file] === 'done' ? f.size_mb : 0), 0)
@@ -48,12 +66,30 @@
   );
 
   onMount(() => {
-    // Initialize statuses
     for (const f of TTS_FILES) {
       fileStatuses[f.file] = 'pending';
       fileProgress[f.file] = 0;
     }
   });
+
+  async function selectVoice(voiceId: string) {
+    selectedVoice = voiceId;
+    voiceOpen = false;
+    try {
+      const current = await loadAppConfig();
+      await saveAppConfig({ ...current, tts: { ...current.tts, voice: voiceId } });
+    } catch { /* ignore — saved on finish */ }
+  }
+
+  async function selectLang(code: string) {
+    const lang = KOKORO_LANGUAGES.find(l => l.code === code);
+    if (!lang?.voices.length) return;
+    const currentInLang = lang.voices.some(v => v.id === selectedVoice);
+    if (!currentInLang) {
+      await selectVoice(lang.voices[0].id);
+    }
+    langOpen = false;
+  }
 
   async function downloadFile(df: DownloadFile) {
     if (fileStatuses[df.file] === 'done' || fileStatuses[df.file] === 'downloading') return;
@@ -121,6 +157,11 @@
         fileStatuses[f.file] = 'pending';
       }
     }
+  }
+
+  function getVoiceLabel(voice: string): string {
+    const info = getVoiceInfo(voice);
+    return info?.name ?? voice;
   }
 </script>
 
@@ -190,6 +231,102 @@
       <p class="text-xs text-[var(--text-muted)]">{Math.round((downloadedSize / totalSize) * 100)}% — {downloadedSize.toFixed(0)} / {totalSize.toFixed(0)} MB</p>
     </div>
   {/if}
+
+  <!-- Voice selection -->
+  <div class="space-y-2">
+    <div class="flex items-center gap-2">
+      <Volume2 class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+      <span class="text-xs font-medium text-[var(--text)]">Choose your voice</span>
+      <span class="text-[10px] text-[var(--text-muted)]">{KOKORO_LANGUAGES.length} languages · {KOKORO_LANGUAGES.reduce((n, l) => n + l.voices.length, 0)} voices</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- Language picker -->
+      <div class="relative">
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:border-[var(--border-hover)] transition"
+          onclick={() => { langOpen = !langOpen; voiceOpen = false; }}
+        >
+          <span>{KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.label ?? 'Language'}</span>
+          <ChevronDown class="h-3 w-3 text-[var(--text-muted)]" />
+        </button>
+        {#if langOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="fixed inset-0 z-40" onclick={() => langOpen = false} onkeydown={() => {}}></div>
+          <div class="absolute left-0 top-full z-50 mt-1 min-w-[160px] max-h-[240px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg py-1">
+            {#each KOKORO_LANGUAGES as lang}
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--surface-hover)] transition"
+                onclick={() => selectLang(lang.code)}
+              >
+                <span>{lang.label}</span>
+                <span class="ml-auto text-[10px] text-[var(--text-muted)]">{lang.voices.length}</span>
+                {#if lang.code === selectedLang}
+                  <Check class="h-3 w-3 text-[var(--primary)]" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Voice picker -->
+      <div class="relative">
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:border-[var(--border-hover)] transition"
+          onclick={() => { voiceOpen = !voiceOpen; langOpen = false; }}
+        >
+          <Volume2 class="h-3 w-3 text-[var(--text-muted)]" />
+          <span>{getVoiceLabel(selectedVoice)}</span>
+          <span class="text-[10px] text-[var(--text-muted)]">{selectedVoice.charAt(1) === 'f' ? 'F' : 'M'}</span>
+          <ChevronDown class="h-3 w-3 text-[var(--text-muted)]" />
+        </button>
+        {#if voiceOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="fixed inset-0 z-40" onclick={() => voiceOpen = false} onkeydown={() => {}}></div>
+          <div class="absolute left-0 top-full z-50 mt-1 min-w-[180px] max-h-[300px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg py-1">
+            {#if femaleVoices.length > 0}
+              <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Female</div>
+              {#each femaleVoices as voice (voice.id)}
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)] transition {voice.id === selectedVoice ? 'text-[var(--primary)] bg-[var(--primary)]/5' : 'text-[var(--text)]'}"
+                  onclick={() => selectVoice(voice.id)}
+                >
+                  <Volume2 class="h-3 w-3 shrink-0 {voice.id === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
+                  <span class="truncate">{voice.name}</span>
+                  {#if voice.id === selectedVoice}
+                    <Check class="ml-auto h-3 w-3 shrink-0" />
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+            {#if maleVoices.length > 0}
+              <div class="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Male</div>
+              {#each maleVoices as voice (voice.id)}
+                <button
+                  type="button"
+                  class="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)] transition {voice.id === selectedVoice ? 'text-[var(--primary)] bg-[var(--primary)]/5' : 'text-[var(--text)]'}"
+                  onclick={() => selectVoice(voice.id)}
+                >
+                  <Volume2 class="h-3 w-3 shrink-0 {voice.id === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
+                  <span class="truncate">{voice.name}</span>
+                  {#if voice.id === selectedVoice}
+                    <Check class="ml-auto h-3 w-3 shrink-0" />
+                  {/if}
+                </button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
 
   <div class="mt-auto flex items-center justify-between pt-4">
     <button

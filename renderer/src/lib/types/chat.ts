@@ -330,6 +330,9 @@ export interface AppConfig {
   stt?: {
     whisper_quality?: string;
     whisper_model_path?: string;
+    runtime_path?: string;
+    backend?: 'auto' | 'cpu' | 'cuda' | 'vulkan' | string;
+    language?: string;
     enable_stt?: boolean;
     audio_input_device_id?: string;
   };

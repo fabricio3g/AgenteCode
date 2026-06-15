@@ -286,9 +286,9 @@ describe('getDefaultSTTConfig', () => {
     assert.strictEqual(stt.model, 'whisper-1');
   });
 
-  it('uses base quality by default', () => {
+  it('uses recommended quantized whisper.cpp model by default', () => {
     const stt = getDefaultSTTConfig();
-    assert.strictEqual(stt.whisper_quality, 'base');
+    assert.strictEqual(stt.whisper_quality, 'medium_q5');
   });
 });
 
