@@ -54,7 +54,7 @@
   const shellTitle = $derived(isModelSection ? 'Models' : 'Settings');
   const navAriaLabel = $derived(isModelSection ? 'Models sections' : 'Settings sections');
 
-  let modelSearch = $state('');
+  let searchQuery = $state('');
   let sortBy = $state<'date' | 'name' | 'size'>('date');
   let unloading = $state(false);
 
@@ -64,18 +64,23 @@
   let searching = $state(false);
   let selectedRepo = $state<any | null>(null);
   let repoFiles = $state<any[]>([]);
-  let recommended = $state<any[]>([]);
-  let recommendedLoading = $state(false);
   let hfToken = $state('');
   let showTokenInput = $state(false);
-  let exploreSubTab = $state<'search' | 'recommended'>('recommended');
+
 
   let showDownloadedOnly = $state(false);
   let modelsShowDownloadedOnly = $state(true);
   let showLoadedOnly = $state(false);
+  let localOnly = $state(false);
+  let showHfSearch = $state(false);
+  let showAllLocalModels = $state(false);
+  const LOCAL_MODEL_LIMIT = 6;
   let expandedCardIds = $state<Record<string, boolean>>({});
   let repoFilesMap = $state<Record<string, any[]>>({});
-  const visibleModels = $derived.by(() => showLoadedOnly ? installedModels.filter((m) => isLoaded(m)) : installedModels);
+  const visibleModels = $derived.by(() => {
+    let list = showLoadedOnly ? installedModels.filter((m) => isLoaded(m)) : installedModels;
+    return showAllLocalModels ? list : list.slice(0, LOCAL_MODEL_LIMIT);
+  });
 
   let voiceModels = $state<Record<string, any>>({});
   let whisperModels = $state<Record<string, any>>({});
@@ -417,7 +422,7 @@
   });
 
   const installedModels = $derived.by(() => {
-    const filter = modelSearch.trim().toLowerCase();
+    const filter = searchQuery.trim().toLowerCase();
     const items = [...modelsStore.availableModels].map((m) => ({
       ...m,
       details: [m.architecture, m.quantization_name, m.size_label, m.size_gb ? `${Number(m.size_gb).toFixed(1)} GB` : ''].filter(Boolean).join(' · ')
@@ -603,27 +608,8 @@
   let downloadingCuratedMain = $state(false);
   let downloadingCuratedVision = $state(false);
 
-  async function loadRecommended() {
-    recommendedLoading = true;
-    try {
-      const catalog = await fetchModelCatalog() as Record<string, any>;
-      const llmEntries = Object.entries(catalog?.llm || {}).map(([id, v]) => ({ id, ...(v as Record<string, unknown>) }));
-      if (llmEntries.length > 0) { recommended = llmEntries.slice(0, 16); return; }
-      const hf = await searchHfModels('', 'trending', 20) as any[];
-      recommended = (Array.isArray(hf) ? hf : []).map((r: any) => ({
-        id: r.repo_id, label: r.repo_id?.split('/').pop() || r.repo_id, repo_id: r.repo_id,
-        description: `${r.gguf_files_count ?? 0} GGUF variants`,
-        downloads: r.downloads,
-        likes: r.likes,
-        largest_gguf_human: r.largest_gguf_human,
-        gguf_files_count: r.gguf_files_count,
-      }));
-    } catch { recommended = []; }
-    finally { recommendedLoading = false; }
-  }
-
   async function performSearch() {
-    if (!exploreQuery.trim()) return;
+    exploreQuery = searchQuery.trim();
     searching = true; selectedRepo = null; repoFiles = [];
     try { searchResults = await searchHfModels(exploreQuery, hfSort, 24) as any[]; }
     catch { searchResults = []; }
@@ -726,21 +712,8 @@
     } finally { downloadingCuratedVision = false; }
   }
 
-  async function openRecommendedRepo(item: any) {
-    const repoId = item.repo_id || item.repo || item.id || '';
-    activeSection = 'models';
-    exploreQuery = repoId;
-    modelSearch = repoId;
-    searching = true;
-    searchResults = [];
-    try {
-      const results = await searchHfModels(repoId, 'trending', 24) as any[];
-      searchResults = results;
-    } catch { searchResults = []; }
-    finally { searching = false; }
-  }
-
   function findDownloadedModel(filename: string) {
+
     return modelsStore.availableModels.find((m) => m.path?.endsWith(filename) || m.name === filename);
   }
 
@@ -788,7 +761,6 @@
 
   onMount(() => {
     downloadsStore.startPolling();
-    void loadRecommended();
     void getInstalledRuntimes().then(r => { hasRuntime = (r.runtimes?.length ?? 0) > 0; }).catch(() => {});
     const preselect = appStore.modelManagerOpenModelId;
     if (preselect) {
@@ -1237,24 +1209,42 @@
         {#if activeSection === 'models' || activeSection === 'explore'}
           <header class="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-5 py-3">
             <div class="flex-1 min-w-[12rem] max-w-md">
-              <SearchBar bind:value={modelSearch} placeholder="Search models..." />
+              <SearchBar
+                bind:value={searchQuery}
+                placeholder={showHfSearch ? 'Search Hugging Face...' : localOnly ? 'Search installed models...' : 'Search models...'}
+                onkeydown={(e) => { if (e.key === 'Enter' && showHfSearch) performSearch(); }}
+                onclear={() => { if (showHfSearch) { exploreQuery = ''; searchResults = []; } }}
+              />
             </div>
-            <select
-              value={sortBy}
-              onchange={(e) => sortBy = (e.currentTarget as HTMLSelectElement).value as typeof sortBy}
-              class="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] outline-none"
-            >
-              <option value="date">Newest</option>
-              <option value="name">Name</option>
-              <option value="size">Size</option>
-            </select>
             <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <input type="checkbox" bind:checked={showLoadedOnly} class="peer sr-only" />
+              <input type="checkbox" bind:checked={showHfSearch} class="peer sr-only" onchange={() => { if (showHfSearch) { performSearch(); } else { exploreQuery = ''; searchResults = []; } }} />
               <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
               <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
-              Loaded only
+              Search HF
             </label>
-            <button type="button" class="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] {modelsShowDownloadedOnly ? 'bg-[var(--surface-active)] text-[var(--text)]' : ''}" onclick={() => modelsShowDownloadedOnly = !modelsShowDownloadedOnly}>Downloaded</button>
+            {#if !showHfSearch}
+              <select
+                value={sortBy}
+                onchange={(e) => sortBy = (e.currentTarget as HTMLSelectElement).value as typeof sortBy}
+                class="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] outline-none"
+              >
+                <option value="date">Newest</option>
+                <option value="name">Name</option>
+                <option value="size">Size</option>
+              </select>
+              <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <input type="checkbox" bind:checked={localOnly} class="peer sr-only" />
+                <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
+                <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
+                Installed only
+              </label>
+              <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <input type="checkbox" bind:checked={showLoadedOnly} class="peer sr-only" />
+                <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
+                <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
+                Loaded only
+              </label>
+            {/if}
           </header>
 
           {#if hasRuntime === false}
@@ -1306,71 +1296,70 @@
           {/if}
 
           <div class="flex-1 overflow-y-auto p-5">
-            <!-- Installed models -->
-            <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Your Models</h3>
-            {#if visibleModels.length === 0}
-              <div class="flex flex-col items-center justify-center py-12 text-center">
-                <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--surface-hover)]">
-                  <Box class="h-6 w-6 text-[var(--text-muted)]" />
+            {#if showHfSearch}
+              <!-- HF Search results -->
+              {#if searching}
+                <div class="flex items-center justify-center py-16">
+                  <LoaderCircle class="h-5 w-5 animate-spin text-[var(--text-muted)]" />
                 </div>
-                <p class="text-sm font-medium text-[var(--text-secondary)]">No local models</p>
-                <p class="mt-0.5 text-xs text-[var(--text-muted)]">Download from the Recommended section below or search on Hugging Face</p>
-                <button
-                  type="button"
-                  class="mt-3 inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90"
-                  onclick={() => { modelSearch = ''; performSearch(); }}
-                >
-                  <Search class="h-3.5 w-3.5" />
-                  Search Hugging Face
-                </button>
-              </div>
+              {:else if searchResults.length > 0}
+                <div class="space-y-3">
+                  {#each searchResults as result (result.repo_id)}
+                    {@render exploreCard(result, 'hf')}
+                  {/each}
+                </div>
+              {:else if exploreQuery}
+                <p class="text-xs text-[var(--text-muted)]">No results for "{exploreQuery}"</p>
+              {:else}
+                <p class="text-xs text-[var(--text-muted)]">Type a query and press Enter to search Hugging Face.</p>
+              {/if}
             {:else}
-              <div class="space-y-3">
-                {#each visibleModels as model (model.id)}
-                  {@render installedCard(model)}
-                {/each}
-              </div>
-            {/if}
-
-            <!-- Recommended curated models -->
-            {#if modelSearch.trim().length === 0 && CURATED_MODELS.length > 0}
-              <h3 class="mt-6 mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Recommended</h3>
-              <div class="space-y-3 mb-6">
-                {#each CURATED_MODELS as model (model.id)}
-                  {@render exploreCard(model, 'curated')}
-                {/each}
-              </div>
-            {/if}
-
-            <!-- HF Search -->
-            {#if modelSearch.trim().length > 0}
-              <div class="mt-6 border-t border-[var(--border)] pt-4">
-                <div class="flex items-center gap-3 mb-3">
-                  <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Search Hugging Face</h3>
+              <!-- Installed models -->
+              <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Your Models</h3>
+              {#if visibleModels.length === 0}
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                  <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--surface-hover)]">
+                    <Box class="h-6 w-6 text-[var(--text-muted)]" />
+                  </div>
+                  <p class="text-sm font-medium text-[var(--text-secondary)]">No local models</p>
+                  <p class="mt-0.5 text-xs text-[var(--text-muted)]">Download from the Recommended section below or search on Hugging Face</p>
+                  {#if !localOnly}
+                    <button
+                      type="button"
+                      class="mt-3 inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90"
+                      onclick={() => { searchQuery = ''; showHfSearch = true; performSearch(); }}
+                    >
+                      <Search class="h-3.5 w-3.5" />
+                      Browse Hugging Face
+                    </button>
+                  {/if}
+                </div>
+              {:else}
+                <div class="space-y-3">
+                  {#each visibleModels as model (model.id)}
+                    {@render installedCard(model)}
+                  {/each}
+                </div>
+                {#if !showAllLocalModels && installedModels.length > LOCAL_MODEL_LIMIT}
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1 text-[11px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-                    disabled={searching}
-                    onclick={() => { exploreQuery = modelSearch; performSearch(); }}
+                    class="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                    onclick={() => (showAllLocalModels = true)}
                   >
-                    <Search class="h-3 w-3" />
-                    {searching ? 'Searching…' : `Search for "${modelSearch}"`}
+                    View all {installedModels.length} models
                   </button>
-                </div>
-                {#if searching}
-                  <div class="flex items-center justify-center py-12">
-                    <LoaderCircle class="h-5 w-5 animate-spin text-[var(--text-muted)]" />
-                  </div>
-                {:else if searchResults.length > 0}
-                  <div class="space-y-3">
-                    {#each searchResults as result (result.repo_id)}
-                      {@render exploreCard(result, 'hf')}
-                    {/each}
-                  </div>
-                {:else if exploreQuery}
-                  <p class="text-xs text-[var(--text-muted)]">No results found</p>
                 {/if}
-              </div>
+              {/if}
+
+              {#if !localOnly && searchQuery.trim().length === 0 && CURATED_MODELS.length > 0}
+                <!-- Recommended curated models -->
+                <h3 class="mt-6 mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Recommended</h3>
+                <div class="space-y-3 mb-6">
+                  {#each CURATED_MODELS as model (model.id)}
+                    {@render exploreCard(model, 'curated')}
+                  {/each}
+                </div>
+              {/if}
             {/if}
           </div>
 

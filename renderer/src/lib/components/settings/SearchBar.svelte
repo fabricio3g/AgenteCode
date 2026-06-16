@@ -9,9 +9,10 @@
     autofocus?: boolean;
     onchange?: (value: string) => void;
     onclear?: () => void;
+    onkeydown?: (e: KeyboardEvent) => void;
   }
 
-  let { value = $bindable(), placeholder = 'Search...', autofocus = false, onchange, onclear }: Props = $props();
+  let { value = $bindable(), placeholder = 'Search...', autofocus = false, onchange, onclear, onkeydown }: Props = $props();
 
   function handleInput(e: Event) {
     const target = e.target as HTMLInputElement;
@@ -28,6 +29,7 @@
     if (e.key === 'Escape') {
       handleClear();
     }
+    onkeydown?.(e);
   }
 </script>
 
