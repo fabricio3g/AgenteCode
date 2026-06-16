@@ -482,11 +482,11 @@ export function canStartGeneration(args: {
 
   if (args.backendMode === 'local') {
     if (!args.selectedLocalModelPath) {
-      args.error('No local model selected. Open Model Hub to download and load a model.');
+      args.error('No local model selected. Open Models to download and load a model.');
       return false;
     }
     if (!args.localModelActive) {
-      args.error('No model is loaded yet. Load a model from the Model Hub first, then try again.');
+      args.error('No model is loaded yet. Load a model from Models first, then try again.');
       return false;
     }
   }

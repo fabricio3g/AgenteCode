@@ -8,7 +8,7 @@
   import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -351,10 +351,18 @@
       <button
         class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-        title="Manage models"
+        title="Models"
       >
         <Boxes class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
-        <span class="btn-label">Model Hub</span>
+        <span class="btn-label">Models</span>
+      </button>
+      <button
+        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
+        onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
+        title="Settings"
+      >
+        <Settings class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <span class="btn-label">Settings</span>
       </button>
     </div>
   </div>

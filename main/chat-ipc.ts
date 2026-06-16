@@ -84,7 +84,7 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
-    throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`);
+    throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > API.`);
   }
 
   const params = Object.fromEntries(
@@ -115,7 +115,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
     const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
-    const errorMsg = `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > Model Hub > API Providers.`;
+    const errorMsg = `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > API.`;
 
     const streamId = crypto.randomUUID();
     const emit = (payload) => {

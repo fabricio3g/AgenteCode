@@ -291,7 +291,7 @@
               {appStore.backendMode === 'local' ? 'No local models' : 'No models available'}
             </p>
             <p class="mt-0.5 text-xs text-[var(--text-muted)]">
-              {appStore.backendMode === 'local' ? 'Download models from the hub' : 'Configure a provider in settings'}
+              {appStore.backendMode === 'local' ? 'Download models from Models' : 'Configure a provider in Settings'}
             </p>
           </div>
           <button
@@ -304,7 +304,7 @@
               appStore.modelManagerOpen = true;
             }}
           >
-            {appStore.backendMode === 'local' ? 'Open Model Hub' : 'Configure Provider'}
+            {appStore.backendMode === 'local' ? 'Open Models' : 'Configure Provider'}
           </button>
         </div>
       {:else if filteredModels.length === 0}
@@ -410,7 +410,7 @@
         <button
           class="hub-btn flex w-full items-center justify-center gap-2 px-3 py-1.5 text-[12px] font-medium"
           onclick={() => { appStore.modelMenuOpen = false; appStore.modelManagerOpen = true; }}
-        >Browse Model Hub</button>
+        >Browse Models</button>
       {/if}
     </div>
   </div>

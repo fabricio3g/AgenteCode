@@ -80,9 +80,9 @@
   const hasFinished = $derived(downloadsStore.jobs.some((j) => !['starting', 'running'].includes(j.status)));
 </script>
 
-<div class="downloads-panel flex max-h-[60vh] w-[380px] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-xl" transition:flyAndScale={{ y: -4, start: 0.97, duration: 150}}>
+<div class="downloads-panel flex max-h-[60vh] w-[380px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-xl" transition:flyAndScale={{ y: -4, start: 0.97, duration: 150}}>
   <!-- Header -->
-  <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+  <div class="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5 py-4">
     <h3 class="flex items-center gap-2 text-base font-semibold text-[var(--text)]">
       <Download class="h-4 w-4" />
       {#if activeCount > 0}
@@ -108,7 +108,7 @@
     <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
     <div class="flex items-center gap-2">
       <button
-        class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
+        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
         onclick={() => downloadsStore.refresh()}
       >
         <RefreshCw class="h-3.5 w-3.5" />
@@ -116,7 +116,7 @@
       </button>
       {#if hasFinished}
         <button
-          class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
+          class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
           onclick={() => downloadsStore.clearFinished()}
         >
           <Trash2 class="h-3.5 w-3.5" />
@@ -129,13 +129,13 @@
   <!-- Job list -->
   <div class="flex-1 space-y-3 overflow-y-auto p-4">
     {#if !downloadsStore.jobs.length}
-      <div class="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-lt px-4 py-14">
+      <div class="flex flex-col items-center justify-center gap-3 rounded-lg bg-[var(--surface)] px-4 py-14">
         <Download class="h-8 w-8 text-[var(--text-muted)]" />
         <p class="text-sm text-[var(--text-tertiary)]">No active downloads</p>
       </div>
     {:else}
       {#each downloadsStore.jobs as job (job.id)}
-        <div class="rounded-2xl border border-[var(--border)] p-4">
+        <div class="rounded-lg bg-[var(--surface)] p-4">
           <div class="flex items-start justify-between gap-4">
             <!-- Status icon + info -->
             <div class="flex min-w-0 items-start gap-3">
@@ -233,7 +233,7 @@
           </div>
 
           {#if job.error}
-            <div class="mt-2 flex items-start gap-2 rounded-lg bg-error-bg px-3 py-2">
+            <div class="mt-2 flex items-start gap-2 rounded-md bg-error-bg px-3 py-2">
               <XCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
               <div class="min-w-0 flex-1">
                 <p class="text-xs font-medium text-error">Download failed</p>

@@ -251,7 +251,7 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
   const binary = getWhisperBinary();
   if (!binary) {
     throw new Error(
-      'whisper-cli binary not found. Download it from Model Hub → Whisper Runtime, ' +
+      'whisper-cli binary not found. Download it from Settings → Whisper, ' +
       'or set stt.runtime_path in settings.'
     );
   }
@@ -343,13 +343,13 @@ export async function transcribeAudio(args = {}) {
     if (!modelInfo.available) {
       const lookedIn = (modelInfo.searchedDirs || []).slice(0, 3).join(', ');
       throw new Error(
-        `Whisper model "${quality}" is not downloaded. Open Model Hub → Whisper to install it.` +
+        `Whisper model "${quality}" is not downloaded. Open Settings → Whisper to install it.` +
         `${lookedIn ? ` Looked in: ${lookedIn}` : ''}`
       );
     }
     if (!binary) {
       throw new Error(
-        'whisper-cli runtime is not installed. Open Model Hub → Whisper Runtime to download it.'
+        'whisper-cli runtime is not installed. Open Settings → Whisper to download it.'
       );
     }
     try {

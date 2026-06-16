@@ -2,7 +2,6 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Settings, Search, MonitorCheck, Sparkles } from 'lucide-svelte';
   import GeneralSettings from './GeneralSettings.svelte';
   import SearchSettings from './SearchSettings.svelte';
   import VoiceSettings from './VoiceSettings.svelte';
@@ -12,7 +11,7 @@
 
   type Tab = 'General' | 'Search' | 'Hardware';
 
-  let activeTab = $state<Tab>('General');
+  let { activeTab = 'General' }: { activeTab?: Tab } = $props();
 
   let showAssistantText = $state(appStore.config.ui?.show_assistant_text ?? true);
   let enableThinking = $state(appStore.config.ui?.enable_thinking ?? true);
@@ -68,6 +67,10 @@
   $effect(() => {
     const provider = String(searchProvider || 'auto').toLowerCase();
     searchApiKey = getStoredSearchApiKey(provider);
+  });
+
+  $effect(() => {
+    if (activeTab === 'Hardware') void hardwareStore.refresh();
   });
 
   function saveHfToken() {
@@ -133,85 +136,54 @@
   }
 </script>
 
-<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-  <div class="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-2.5">
-    <div class="chateaui-segmented">
-      {#each [
-        { id: 'General', label: 'General', icon: Settings },
-        { id: 'Search', label: 'Search', icon: Search },
-        { id: 'Hardware', label: 'Hardware', icon: MonitorCheck },
-      ] as tab}
-        <button
-          type="button"
-          class="chateaui-segment inline-flex items-center gap-1.5 {activeTab === tab.id ? 'is-active' : ''}"
-          onclick={() => {
-            activeTab = tab.id as Tab;
-            if (tab.id === 'Hardware') void hardwareStore.refresh();
-          }}
-        >
-          <tab.icon class="h-3.5 w-3.5" />
-          <span>{tab.label}</span>
-        </button>
-      {/each}
-    </div>
-
-    <button
-      type="button"
-      class="chateaui-icon-button h-7 w-7 p-0"
-      onclick={() => { appStore.modelManagerOpen = false; appStore.onboardingOpen = true; }}
-      title="Re-run Setup"
-    >
-      <Sparkles class="h-3.5 w-3.5" />
-    </button>
-  </div>
-
-  {#if activeTab === 'General'}
-    <div class="flex-1 overflow-y-auto p-5">
-      <GeneralSettings
-        bind:showAssistantText
-        bind:enableThinking
-        bind:hfToken
-        onsaveHfToken={saveHfToken}
-      />
-      <div class="mt-5 flex items-center justify-end border-t border-[var(--border)] pt-4">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-          onclick={saveGeneralSettings}
-          disabled={savingGeneral}
-        >
-          {savingGeneral ? 'Saving...' : 'Save'}
-        </button>
+<section class="min-h-0 flex-1 overflow-y-auto bg-[var(--background)] p-4 sm:p-5">
+    {#if activeTab === 'General'}
+      <div class="mx-auto flex max-w-3xl flex-col gap-4">
+        <GeneralSettings
+          bind:showAssistantText
+          bind:enableThinking
+          bind:hfToken
+          onsaveHfToken={saveHfToken}
+        />
+        <div class="flex items-center justify-end">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            onclick={saveGeneralSettings}
+            disabled={savingGeneral}
+          >
+            {savingGeneral ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if activeTab === 'Search'}
-    <div class="flex-1 overflow-y-auto p-5">
-      <SearchSettings
-        bind:searchProvider
-        bind:searchMaxResults
-        bind:searchApiKey
-        bind:searchEngineId
-        bind:searchBaseUrl
-        bind:searchModel
-      />
-      <div class="mt-5 flex items-center justify-end border-t border-[var(--border)] pt-4">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-          onclick={saveSearchSettings}
-          disabled={savingSearch}
-        >
-          {savingSearch ? 'Saving...' : 'Save'}
-        </button>
+    {#if activeTab === 'Search'}
+      <div class="mx-auto flex max-w-3xl flex-col gap-4">
+        <SearchSettings
+          bind:searchProvider
+          bind:searchMaxResults
+          bind:searchApiKey
+          bind:searchEngineId
+          bind:searchBaseUrl
+          bind:searchModel
+        />
+        <div class="flex items-center justify-end">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+            onclick={saveSearchSettings}
+            disabled={savingSearch}
+          >
+            {savingSearch ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  {#if activeTab === 'Hardware'}
-    <div class="flex-1 overflow-y-auto p-5">
-      <VoiceSettings />
-    </div>
-  {/if}
-</div>
+    {#if activeTab === 'Hardware'}
+      <div class="mx-auto max-w-3xl">
+        <VoiceSettings />
+      </div>
+    {/if}
+  </section>

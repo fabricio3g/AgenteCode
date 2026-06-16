@@ -25,12 +25,12 @@
     aria-modal="true"
     aria-labelledby="settings-title"
     tabindex="-1"
-    class="modal-surface relative mx-4 flex max-h-[calc(100vh-4rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]"
+    class="modal-surface relative mx-3 flex max-h-[calc(100vh-2rem)] w-[calc(100vw-1.5rem)] max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-2xl sm:mx-6 sm:max-h-[calc(100vh-4rem)]"
     transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
   >
-    <div class="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-2.5">
+    <div class="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5 py-3">
       <div>
-        <h3 id="settings-title" class="text-sm font-semibold text-[var(--text)]">Settings</h3>
+        <h3 id="settings-title" class="text-base font-semibold text-[var(--text)]">Settings</h3>
         <p class="text-xs text-[var(--text-muted)]">App preferences, search, and hardware</p>
       </div>
       <button type="button" class="chateaui-icon-button h-7 w-7 p-0" onclick={close} aria-label="Close">

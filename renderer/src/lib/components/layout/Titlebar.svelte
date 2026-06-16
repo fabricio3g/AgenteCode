@@ -115,11 +115,11 @@
     style={`-webkit-app-region: no-drag; margin-left: ${composerCenterShift}px;`}
   >
     <ModelSwitcher />
-    <Tooltip label="Open Model Hub">
+    <Tooltip label="Open Models">
       <button
         class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-        aria-label="Open Model Hub"
+        aria-label="Open Models"
       >
         <ExternalLink class="h-4 w-4" />
       </button>

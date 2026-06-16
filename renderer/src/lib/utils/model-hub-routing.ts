@@ -1,30 +1,33 @@
 export type ModelHubSection =
   | 'models'
   | 'explore'
+  | 'general'
+  | 'search'
+  | 'hardware'
   | 'providers'
   | 'runtime'
-  | 'settings'
   | 'voices'
-  | 'whisper'
-  | 'extensions';
+  | 'whisper';
 
 const MODEL_HUB_SECTIONS = new Set<ModelHubSection>([
   'models',
   'explore',
+  'general',
+  'search',
+  'hardware',
   'providers',
   'runtime',
-  'settings',
   'voices',
-  'whisper',
-  'extensions'
+  'whisper'
 ]);
 
 export function resolveModelHubSection(section?: string | null): ModelHubSection {
   if (!section) return 'models';
-  if (section === 'search') return 'settings';
+  if (section === 'settings') return 'general';
+  if (section === 'explore') return 'models';
   return MODEL_HUB_SECTIONS.has(section as ModelHubSection) ? section as ModelHubSection : 'models';
 }
 
 export function legacyFlagToModelHubSection(flag: 'settingsOpen' | 'runtimeManagerOpen'): ModelHubSection {
-  return flag === 'settingsOpen' ? 'settings' : 'runtime';
+  return flag === 'settingsOpen' ? 'general' : 'runtime';
 }

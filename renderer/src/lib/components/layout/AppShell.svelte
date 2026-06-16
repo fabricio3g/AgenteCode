@@ -21,7 +21,7 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, Code2 } from 'lucide-svelte';
+  import { Plus, Boxes, Code2, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -51,7 +51,7 @@
       event.preventDefault(); appStore.chatSearchOpen = !appStore.chatSearchOpen; return;
     }
     if (ctrl && event.key === ',') {
-      event.preventDefault(); openModelHub('settings'); return;
+      event.preventDefault(); openModelHub('general'); return;
     }
     if (ctrl && event.key === 'b') {
       event.preventDefault(); appStore.sidebarOpen = !appStore.sidebarOpen; return;
@@ -163,13 +163,22 @@
               <Code2 class="h-4 w-4" />
             </button>
           </Tooltip>
-          <Tooltip label="Model Hub">
+          <Tooltip label="Models">
             <button
               class="collapsed-btn flex h-8 w-8 items-center justify-center"
               onclick={() => openModelHub('models')}
-              aria-label="Model Hub"
+              aria-label="Models"
             >
               <Boxes class="h-4 w-4" />
+            </button>
+          </Tooltip>
+          <Tooltip label="Settings">
+            <button
+              class="collapsed-btn flex h-8 w-8 items-center justify-center"
+              onclick={() => openModelHub('general')}
+              aria-label="Settings"
+            >
+              <Settings class="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -252,7 +261,7 @@
         {#each [
           ['Ctrl+K', 'New chat'],
           ['Ctrl+Shift+K', 'Search chats'],
-          ['Ctrl+,', 'Open Model Hub settings'],
+          ['Ctrl+,', 'Open Settings'],
           ['Ctrl+B', 'Show or hide sidebar'],
           ['Ctrl+`', 'Toggle code sandbox'],
           ['Ctrl+E', 'Export chat'],

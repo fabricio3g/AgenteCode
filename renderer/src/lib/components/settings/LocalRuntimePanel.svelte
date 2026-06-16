@@ -202,7 +202,7 @@
 
 <div class="flex-1 overflow-y-auto">
   {#if runtimes.length === 0}
-    <div class="mx-5 mt-4 flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-3">
+    <div class="mx-5 mt-4 flex items-start gap-3 rounded-lg bg-[var(--surface)] px-4 py-3">
       <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
       <div>
         <p class="text-[13px] font-medium text-[var(--text)]">No runtime installed</p>
@@ -226,7 +226,7 @@
         {#if releaseTag}
           <span class="text-[12px] text-[var(--text-muted)]">{releaseTag}</span>
         {/if}
-        <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={fetchLatestRelease} disabled={loadingRelease}>
+        <button class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={fetchLatestRelease} disabled={loadingRelease}>
           <RefreshCw class={`h-3 w-3 ${loadingRelease ? 'animate-spin' : ''}`} />
           {loadingRelease ? '' : 'Refresh'}
         </button>
@@ -234,7 +234,7 @@
     </div>
 
     {#if releaseError}
-      <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[12px] text-[var(--text)]">{releaseError}</div>
+      <div class="rounded-lg bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--text)]">{releaseError}</div>
     {/if}
 
     {#if loadingRelease}
@@ -245,13 +245,13 @@
       <div class="space-y-2">
         {#each releaseAssets as asset}
           {@const isDownloading = downloading === asset.name}
-          <div class="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition">
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface)] px-4 py-3 transition">
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-1.5">
                 {#if asset.variant === 'recommended'}
                   <span class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-semibold text-[var(--primary-fg)]"><Zap class="h-2.5 w-2.5" />Recommended</span>
                 {:else if asset.variant === 'gpu'}
-                  <span class="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Zap class="h-2.5 w-2.5" />GPU</span>
+                  <span class="inline-flex items-center gap-1 rounded-full bg-[var(--background)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Zap class="h-2.5 w-2.5" />GPU</span>
                 {:else}
                   <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]"><Cpu class="h-2.5 w-2.5" />CPU</span>
                 {/if}
@@ -268,7 +268,7 @@
               {/if}
             </div>
             <button
-              class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50 {asset.variant === 'recommended' ? 'bg-[var(--primary)] text-[var(--primary-fg)] hover:opacity-90 border-[var(--border-hover)]' : 'bg-transparent'}"
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-50 {asset.variant === 'recommended' ? 'bg-[var(--primary)] text-[var(--primary-fg)] hover:opacity-90' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}"
               onclick={() => installAsset(asset)}
               disabled={!!downloading}
             >
@@ -287,7 +287,7 @@
     {/if}
 
     {#if downloadError}
-      <div class="rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-[12px] text-[var(--text)]">{downloadError}</div>
+      <div class="rounded-lg bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--text)]">{downloadError}</div>
     {/if}
 
     <button class="flex items-center gap-1 border-0 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => (showAdvanced = !showAdvanced)}>
@@ -295,11 +295,11 @@
       Custom / manual URL
     </button>
     {#if showAdvanced}
-      <div class="space-y-2 rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] px-4 py-3">
-        <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <input bind:value={customUrl} placeholder="Direct download URL" class="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50" onclick={installCustom} disabled={!!downloading || !customUrl.trim()}>
+      <div class="space-y-2 rounded-lg bg-[var(--surface)] px-4 py-3">
+        <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
+        <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
+        <input bind:value={customUrl} placeholder="Direct download URL" class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
+        <button class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={installCustom} disabled={!!downloading || !customUrl.trim()}>
           <Download class="h-3.5 w-3.5" />Install from URL
         </button>
       </div>
@@ -309,7 +309,7 @@
   <div class="border-t border-[var(--border)] p-5">
     <div class="mb-3 flex items-center justify-between">
       <p class="text-[13px] font-semibold text-[var(--text)]">Installed runtimes</p>
-      <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={refresh}>
+      <button class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={refresh}>
         <RefreshCw class="h-3 w-3" />Refresh
       </button>
     </div>
@@ -322,7 +322,7 @@
       <div class="space-y-2">
         {#each runtimes as rt}
           {@const isActive = rt.is_active ?? (appStore.config?.llm?.local?.runtime_path === rt.path)}
-          <div class="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition {isActive ? 'border-[var(--border-hover)] bg-[var(--surface-hover)]' : 'border-[var(--border)] bg-[var(--surface)]'}">
+          <div class="flex items-center justify-between gap-3 rounded-lg px-4 py-3 transition {isActive ? 'bg-[var(--surface-active)]' : 'bg-[var(--surface)]'}">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
                 {#if isActive}
@@ -334,7 +334,7 @@
             </div>
             <div class="flex shrink-0 items-center gap-1.5">
               {#if !isActive}
-                <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={() => useRuntime(rt.path)}>
+                <button class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => useRuntime(rt.path)}>
                   Use
                 </button>
               {:else}
@@ -361,7 +361,7 @@
           </p>
         </div>
         {#if supervisor.state !== 'idle' && supervisor.state !== 'unknown'}
-          <button class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={stopRuntime}>
+          <button class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={stopRuntime}>
             <Square class="h-3 w-3" />Stop
           </button>
         {/if}

@@ -40,7 +40,7 @@
  {autofocus}
  oninput={handleInput}
  onkeydown={handleKeydown}
- class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-hover)] py-2.5 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)] focus:bg-[var(--surface)]"
+  class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-2.5 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]"
  autocomplete="off"
  spellcheck="false"
  />
