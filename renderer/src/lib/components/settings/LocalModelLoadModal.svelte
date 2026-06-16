@@ -11,11 +11,12 @@
   import { getHardwareLimits } from '$lib/services/hardware';
   import { getGgufMetadata } from '$lib/services/models';
   import { getRecommendedSettings } from '$lib/services/runtime';
-  import { getInstalledRuntimes } from '$lib/services/files';
+  import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
 
   const contextPresets = [4096, 8192, 16384, 32768];
   const cacheTypes = ['f16', 'q8_0', 'q4_0'];
+  const mtpDraftNMaxPresets = [2, 3, 4, 6, 8];
 
   let metadata = $state<GgufMeta | null>(null);
   let hardware = $state<HardwareInfo | null>(null);
@@ -125,6 +126,66 @@
     return { label: 'Unknown', tone: 'text-fg-secondary' };
   });
 
+  const thinkingSupport = $derived.by(() => {
+    const supported = metadata?.chat_template_supports_thinking;
+    if (supported === true) return { label: 'Supported', tone: 'text-fg' };
+    if (supported === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
+    return { label: 'Unknown', tone: 'text-fg-secondary' };
+  });
+  const thinkingOn = $derived(!appStore.localModelLoadDisableThinking);
+  const thinkingLockedOff = $derived(thinkingSupport.label === 'Not supported');
+
+  const visionSupport = $derived.by(() => {
+    if (appStore.localModelLoadMmprojPath) {
+      return { label: 'Projector selected', tone: 'text-fg' };
+    }
+    return { label: 'Text only', tone: 'text-fg-secondary' };
+  });
+  const visionSelectedName = $derived(appStore.localModelLoadMmprojPath
+    ? (appStore.localModelLoadMmprojPath.split(/[/\\]/).pop() || '')
+    : '');
+
+  const mtpSupport = $derived.by(() => {
+    const builtIn = metadata?.has_mtp_layers === true
+      || (target?.name || '').toLowerCase().includes('mtp');
+    if (builtIn) return { label: 'Built-in MTP', tone: 'text-fg', allowToggle: true, requireDraft: false };
+    if (metadata?.has_mtp_layers === false) return { label: 'Not supported', tone: 'text-fg-secondary', allowToggle: false, requireDraft: false };
+    return { label: 'Unknown', tone: 'text-fg-secondary', allowToggle: true, requireDraft: true };
+  });
+  const mtpLockedOff = $derived(!mtpSupport.allowToggle);
+  const mtpDraftSelected = $derived(!!appStore.localModelLoadMtpDraftPath);
+
+  let projectorCandidates = $state<string[]>([]);
+  let loadingProjectorCandidates = $state(false);
+
+  $effect(() => {
+    const modelPath = target?.path;
+    if (!modelPath) {
+      projectorCandidates = [];
+      return;
+    }
+    loadingProjectorCandidates = true;
+    void appStore.listProjectorCandidates(modelPath).then((list) => {
+      projectorCandidates = list;
+      loadingProjectorCandidates = false;
+    });
+  });
+
+  async function pickProjector() {
+    if (!target?.path) return;
+    const selected = await pickMmprojFile();
+    if (!selected) return;
+    appStore.localModelLoadMmprojPath = selected;
+  }
+
+  async function clearProjector() {
+    appStore.localModelLoadMmprojPath = '';
+  }
+
+  async function applyProjectorCandidate(path: string) {
+    appStore.localModelLoadMmprojPath = path;
+  }
+
   function applyRecommendedPreset() {
     if (!recommended) return;
     localContextLength = Number(recommended.context_length || contextLength);
@@ -210,10 +271,12 @@
  </button>
  </div>
 
- <div class="info-card mb-5 text-[13px] leading-5 text-[var(--text-secondary)]">
- <p><span class="font-semibold text-[var(--text)]">Tool template:</span> {toolSupport.label}. {appStore.localModelLoadMmprojPath ? 'Vision projector detected.' : 'Vision needs an mmproj companion file.'}</p>
- <p class="mt-1">Recommended settings may cap context for local stability. Advanced “Parallel slots” maps to <code>--parallel</code>.</p>
- </div>
+  <div class="info-card mb-5 grid gap-2 sm:grid-cols-2 text-[13px] leading-5 text-[var(--text-secondary)]">
+  <div class="flex items-center justify-between gap-3"><span>Tools</span><span class={`font-medium ${toolSupport.tone}`}>{toolSupport.label}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Vision</span><span class={`font-medium ${visionSupport.tone}`}>{visionSupport.label}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Thinking</span><span class={`font-medium ${thinkingSupport.tone}`}>{thinkingSupport.label}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>MTP</span><span class={`font-medium ${mtpSupport.tone}`}>{mtpSupport.label}</span></div>
+  </div>
 
  <!-- Runtime missing warning -->
  {#if hasRuntime === false}
@@ -315,6 +378,100 @@
         class="flex-1 h-1 bg-[var(--border)] rounded-full appearance-none cursor-pointer accent-black dark:accent-white"
       />
       </div>
+    </div>
+
+    <!-- Thinking toggle -->
+    <div class="flex items-center justify-between gap-3 rounded-md bg-[var(--surface)] px-3 py-2">
+      <div>
+        <div class="text-[13px] font-medium text-[var(--text)]">Thinking</div>
+          <div class="text-[11px] text-[var(--text-tertiary)]">Lets the model show a thinking block before answering.</div>
+      </div>
+      <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+        <input
+          type="checkbox"
+          class="peer sr-only"
+          checked={thinkingOn}
+          disabled={thinkingLockedOff}
+          onchange={(e) => { appStore.localModelLoadDisableThinking = !(e.currentTarget as HTMLInputElement).checked; }}
+        />
+        <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)] peer-disabled:opacity-50"></span>
+        <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
+        <span class="text-[11px] font-semibold">{thinkingOn ? 'On' : 'Off'}</span>
+      </label>
+    </div>
+
+    <!-- Vision projector selector -->
+    <div class="rounded-md bg-[var(--surface)] px-3 py-2.5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-[13px] font-medium text-[var(--text)]">Vision projector</div>
+          <div class="text-[11px] text-[var(--text-tertiary)]">{visionSelectedName || 'Text only — pick a mmproj to enable vision.'}</div>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          {#if visionSelectedName}
+            <button type="button" class="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={clearProjector}>Clear</button>
+            <button type="button" class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Change</button>
+          {:else}
+            <button type="button" class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Select projector</button>
+          {/if}
+        </div>
+      </div>
+      {#if projectorCandidates.length > 0 && !visionSelectedName}
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          {#each projectorCandidates as candidate}
+            {@const candidateName = candidate.split(/[/\\]/).pop() || ''}
+            <button type="button" class="rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => applyProjectorCandidate(candidate)} title={candidate}>
+              {candidateName}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <!-- MTP toggle -->
+    <div class="rounded-md bg-[var(--surface)] px-3 py-2.5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-[13px] font-medium text-[var(--text)]">MTP (speculative decoding)</div>
+          <div class="text-[11px] text-[var(--text-tertiary)]">{mtpSupport.label === 'Built-in MTP' ? 'Built-in MTP head detected.' : 'Speculative decoding via an MTP draft head.'}</div>
+        </div>
+        <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+          <input
+            type="checkbox"
+            class="peer sr-only"
+            checked={appStore.localModelLoadMtpEnabled}
+            disabled={mtpLockedOff || (!mtpDraftSelected && mtpSupport.requireDraft)}
+            onchange={(e) => { appStore.localModelLoadMtpEnabled = (e.currentTarget as HTMLInputElement).checked; }}
+          />
+          <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)] peer-disabled:opacity-50"></span>
+          <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
+          <span class="text-[11px] font-semibold">{appStore.localModelLoadMtpEnabled ? 'On' : 'Off'}</span>
+        </label>
+      </div>
+      {#if mtpSupport.requireDraft && appStore.localModelLoadMtpEnabled}
+        <div class="mt-2 space-y-1.5">
+          <div class="text-[11px] text-[var(--text-tertiary)]">Draft head (MTP). Required when the target model does not include MTP layers.</div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              class="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
+              type="text"
+              bind:value={appStore.localModelLoadMtpDraftPath}
+              placeholder="C:/models/qwen3.6-mtp-draft.gguf"
+            />
+            <select
+              value={appStore.localModelLoadMtpDraftNMax}
+              onchange={(e) => { appStore.localModelLoadMtpDraftNMax = (e.currentTarget as HTMLSelectElement).value; }}
+              class="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] outline-none"
+              aria-label="MTP draft max tokens"
+            >
+              <option value="">n-max</option>
+              {#each mtpDraftNMaxPresets as preset}
+                <option value={String(preset)}>{preset}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
     </div>
 
     <!-- Memory info -->

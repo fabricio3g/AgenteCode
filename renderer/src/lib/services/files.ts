@@ -41,6 +41,10 @@ export async function pickModelFile(): Promise<string | null> {
   return invoke<string | null>('pick_model_file');
 }
 
+export async function pickMmprojFile(): Promise<string | null> {
+  return invoke<string | null>('pick_mmproj_file');
+}
+
 export async function indexWorkspaceFolder(path: string, chat_id: string): Promise<WorkspaceIndexResult> {
   return invoke<WorkspaceIndexResult>('index_workspace_folder', { path, chatId: chat_id });
 }

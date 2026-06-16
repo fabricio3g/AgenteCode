@@ -37,6 +37,9 @@ export interface GgufMeta {
   file_size_bytes: number;
   quantization_name: string;
   chat_template_uses_tools: boolean;
+  chat_template_supports_thinking?: boolean;
+  has_mtp_layers?: boolean;
+  is_mmproj?: boolean;
 }
 
 export interface LocalModel {
@@ -166,6 +169,9 @@ export interface LlamaConfig {
   runtime_path?: string;
   mmproj_path?: string;
   disable_thinking?: boolean;
+  mtp?: boolean;
+  mtp_draft_path?: string;
+  mtp_draft_n_max?: number;
 }
 
 export interface RagChunk {

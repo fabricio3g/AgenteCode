@@ -185,7 +185,9 @@ export function readGgufMetadataFields(filePath) {
         head_count: null,
         head_count_kv: null,
         parameter_count: null,
-        chat_template_uses_tools: null
+        chat_template_uses_tools: null,
+        chat_template_supports_thinking: null,
+        has_mtp_layers: null
       };
 
       let offset = 0;
@@ -228,6 +230,13 @@ export function readGgufMetadataFields(filePath) {
         if (key === 'tokenizer.chat_template' && typeof value === 'string') {
           const t = value.toLowerCase();
           out.chat_template_uses_tools = /tool|function[_\s-]?call|tool_calls/.test(t);
+          out.chat_template_supports_thinking = /enable_thinking|<think>|reasoning_content|thinking/i.test(t);
+        }
+        if (key === 'clip.has_vision_encoder' || key === 'general.has_vision') {
+          // Reserved for future: not consumed by metadata but recognized.
+        }
+        if (key === 'mtp.context_length' || key === 'mtp.context_size' || key === 'mtp.head_count') {
+          if (out.has_mtp_layers == null) out.has_mtp_layers = true;
         }
 
         offset += valueParsed.size;

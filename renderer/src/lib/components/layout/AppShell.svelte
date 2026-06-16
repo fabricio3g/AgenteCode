@@ -7,7 +7,6 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
-  import DeveloperModeWorkspace from '$lib/components/developer/DeveloperModeWorkspace.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
@@ -21,7 +20,7 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, Code2, Settings } from 'lucide-svelte';
+  import { Plus, Boxes, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -154,15 +153,6 @@
 
           <div class="flex-1"></div>
 
-          <Tooltip label="Developer Mode">
-            <button
-              class="collapsed-btn flex h-8 w-8 items-center justify-center"
-              onclick={() => appStore.openDeveloperMode()}
-              aria-label="Developer Mode"
-            >
-              <Code2 class="h-4 w-4" />
-            </button>
-          </Tooltip>
           <Tooltip label="Models">
             <button
               class="collapsed-btn flex h-8 w-8 items-center justify-center"
@@ -185,25 +175,21 @@
       </div>
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {#if appStore.mainView === 'developer'}
-          <DeveloperModeWorkspace />
-        {:else}
-          <!-- Main area: chat only (sandbox opens as modal) -->
-          <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden" class:welcome-bg={!hasMessages}>
-            {#if !hasMessages}
-              <div class="welcome-dots-layer" aria-hidden="true">
-                <span class="dots tl"></span>
-                <span class="dots tr"></span>
-                <span class="dots bl"></span>
-                <span class="dots br"></span>
-              </div>
-            {/if}
-            <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
-              <MessageList composerInset={composerHeight} />
-              <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
+        <!-- Main area: chat only (sandbox opens as modal) -->
+        <div class="chat-panel relative flex min-h-0 flex-1 flex-col overflow-hidden" class:welcome-bg={!hasMessages}>
+          {#if !hasMessages}
+            <div class="welcome-dots-layer" aria-hidden="true">
+              <span class="dots tl"></span>
+              <span class="dots tr"></span>
+              <span class="dots bl"></span>
+              <span class="dots br"></span>
             </div>
+          {/if}
+          <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
+            <MessageList composerInset={composerHeight} />
+            <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
           </div>
-        {/if}
+        </div>
       </div>
 
       {#if appStore.activityDrawerOpen}

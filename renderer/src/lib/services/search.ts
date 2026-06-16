@@ -1,6 +1,7 @@
 import type { SearchOptions, SearchResponse } from '$lib/types/tauri';
 import { invoke } from './tauri';
 import { loadAppConfig } from '$lib/utils/storage';
+import { getStoredHfToken } from './huggingface';
 
 function resolveSearchOptions(explicit?: SearchOptions): SearchOptions | undefined {
   if (explicit) return explicit;
@@ -64,11 +65,11 @@ export async function fetchModelCatalog(): Promise<unknown> {
 }
 
 export async function searchHfModels(query: string, sort = 'trending', limit = 20): Promise<unknown> {
-  return invoke<unknown>('search_hf_models', { query, sort, limit });
+  return invoke<unknown>('search_hf_models', { query, sort, limit, hfToken: getStoredHfToken() });
 }
 
 export async function hfRepoGguf(repo_id: string): Promise<unknown> {
-  return invoke<unknown>('hf_repo_gguf', { repoId: repo_id });
+  return invoke<unknown>('hf_repo_gguf', { repoId: repo_id, hfToken: getStoredHfToken() });
 }
 
 async function openUrlWindow(url: string): Promise<void> {

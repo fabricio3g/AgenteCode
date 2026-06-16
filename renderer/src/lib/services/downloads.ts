@@ -1,5 +1,6 @@
 import type { DownloadJob } from '$lib/types/tauri';
 import { invoke } from './tauri';
+import { getStoredHfToken } from './huggingface';
 
 type StartDownloadArgs = {
   repo_id?: string;
@@ -22,7 +23,7 @@ export async function startDownloadHf(args: StartDownloadArgs): Promise<string> 
     file: args.file,
     modelsDir: args.modelsDir ?? args.models_dir,
     destRel: args.destRel ?? args.dest_rel,
-    hfToken: args.hfToken ?? args.hf_token,
+    hfToken: args.hfToken ?? args.hf_token ?? getStoredHfToken(),
     branch: args.branch,
   };
   return invoke<string>('start_download_hf', payload);

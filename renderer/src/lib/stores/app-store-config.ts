@@ -94,6 +94,9 @@ export function mergeLocalSettingsConfig(
     cache_type_k?: string;
     cache_type_v?: string;
     mmproj_path?: string;
+    mtp?: boolean;
+    mtp_draft_path?: string | null;
+    mtp_draft_n_max?: number | null;
     system_prompt?: string;
     temperature?: number;
     max_tokens?: number;

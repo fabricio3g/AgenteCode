@@ -174,6 +174,9 @@ class AppStore {
   localModelLoadCacheTypeV = $state('f16');
   localModelLoadMmprojPath = $state('');
   localModelLoadDisableThinking = $state(false);
+  localModelLoadMtpEnabled = $state(false);
+  localModelLoadMtpDraftPath = $state('');
+  localModelLoadMtpDraftNMax = $state('');
   localModelRememberSettings = $state(false);
   localModelLoadProgress = $state(0);
   localModelLoadPhase = $state('');
@@ -578,6 +581,9 @@ class AppStore {
     this.localModelLoadCacheTypeK = resolved.cacheTypeK;
     this.localModelLoadCacheTypeV = resolved.cacheTypeV;
     this.localModelLoadMmprojPath = resolved.mmprojPath;
+    this.localModelLoadMtpEnabled = resolved.mtpEnabled;
+    this.localModelLoadMtpDraftPath = resolved.mtpDraftPath;
+    this.localModelLoadMtpDraftNMax = resolved.mtpDraftNMax;
     this.localModelRememberSettings = resolved.rememberSettings;
   }
 
@@ -588,7 +594,12 @@ class AppStore {
   }
 
   async detectMmprojForModel(modelPath: string): Promise<string> {
-    if (!modelPath) return '';
+    const candidates = await this.listProjectorCandidates(modelPath);
+    return candidates[0] || '';
+  }
+
+  async listProjectorCandidates(modelPath: string): Promise<string[]> {
+    if (!modelPath) return [];
     let dir = modelPath.replace(/[/\\][^/\\]+$/, '');
     try {
       const direct = await pathExists(modelPath);
@@ -600,48 +611,39 @@ class AppStore {
     }
     const normalizedDir = dir.replace(/\\/g, '/');
     const windowsDir = dir.replace(/\//g, '\\');
-    const candidates = ['mmproj-BF16.gguf', 'mmproj-F16.gguf', 'mmproj-F32.gguf', 'mmproj.gguf'];
-    for (const name of candidates) {
+    const orderedNames = [
+      'mmproj-BF16.gguf',
+      'mmproj-F16.gguf',
+      'mmproj-F32.gguf',
+      'mmproj.gguf'
+    ];
+    const modelBase = (modelPath.split(/[/\\]/).pop() || '').replace(/\.gguf$/i, '');
+    if (modelBase) {
+      orderedNames.push(
+        `mmproj-${modelBase}.gguf`,
+        `${modelBase}-mmproj.gguf`,
+        `${modelBase}.mmproj.gguf`,
+        `${modelBase}.projector.gguf`,
+        `projector-${modelBase}.gguf`
+      );
+    }
+
+    const found: string[] = [];
+    for (const name of orderedNames) {
       const fullPathCandidates = Array.from(new Set([
         `${normalizedDir}/${name}`,
         `${windowsDir}\\${name}`,
         `${dir}/${name}`,
         `${dir}\\${name}`
       ]));
-      try {
-        for (const fullPath of fullPathCandidates) {
-          const exists = await pathExists(fullPath);
-          if (exists) return fullPath;
-        }
-      } catch { /* ignore */ }
-    }
-
-    const modelBase = (modelPath.split(/[/\\]/).pop() || '').replace(/\.gguf$/i, '');
-    if (modelBase) {
-      const dynamicCandidates = Array.from(new Set([
-        `mmproj-${modelBase}.gguf`,
-        `${modelBase}-mmproj.gguf`,
-        `${modelBase}.mmproj.gguf`,
-        `${modelBase}.projector.gguf`,
-        `projector-${modelBase}.gguf`
-      ]));
-      for (const name of dynamicCandidates) {
-        const fullPathCandidates = Array.from(new Set([
-          `${normalizedDir}/${name}`,
-          `${windowsDir}\\${name}`,
-          `${dir}/${name}`,
-          `${dir}\\${name}`
-        ]));
+      for (const fullPath of fullPathCandidates) {
         try {
-          for (const fullPath of fullPathCandidates) {
-            const exists = await pathExists(fullPath);
-            if (exists) return fullPath;
-          }
+          const exists = await pathExists(fullPath);
+          if (exists && !found.includes(fullPath)) found.push(fullPath);
         } catch { /* ignore */ }
       }
     }
-
-    return '';
+    return found;
   }
 
   async confirmLocalModelLoad() {
@@ -682,6 +684,9 @@ class AppStore {
         cacheTypeV: this.localModelLoadCacheTypeV,
         mmprojPath: this.localModelLoadMmprojPath,
         disableThinking: this.localModelLoadDisableThinking,
+        mtpEnabled: this.localModelLoadMtpEnabled,
+        mtpDraftPath: this.localModelLoadMtpDraftPath,
+        mtpDraftNMax: this.localModelLoadMtpDraftNMax,
         rememberSettings: this.localModelRememberSettings
       };
       await this.updateLocalSettings(buildLocalModelSettingsPatch(loadState));
@@ -2603,10 +2608,6 @@ class AppStore {
     if (isTauri() && options.refreshLocalStatus) {
       await modelsStore.refreshStatus();
     }
-  }
-
-  openDeveloperMode() {
-    this.mainView = 'developer';
   }
 
   async refreshModels(force?: boolean) {

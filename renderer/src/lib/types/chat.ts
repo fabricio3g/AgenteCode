@@ -263,6 +263,9 @@ export interface AppConfig {
       cache_type_v?: string;
       mmproj_path?: string;
       disable_thinking?: boolean;
+      mtp?: boolean;
+      mtp_draft_path?: string | null;
+      mtp_draft_n_max?: number | null;
     };
   };
   search?: {

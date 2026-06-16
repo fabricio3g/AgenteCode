@@ -19,6 +19,9 @@ type GgufMetadata = {
   file_size_bytes: number;
   quantization_name: string;
   chat_template_uses_tools: boolean;
+  chat_template_supports_thinking?: boolean;
+  has_mtp_layers?: boolean;
+  is_mmproj?: boolean;
 };
 
 type LocalModel = {
@@ -144,7 +147,14 @@ function readGgufMetadata(filePath: string): GgufMetadata {
       quantization_name: guessQuantization(fileName),
       chat_template_uses_tools: typeof ggufFields?.chat_template_uses_tools === 'boolean'
         ? ggufFields.chat_template_uses_tools
-        : false
+        : false,
+      chat_template_supports_thinking: typeof ggufFields?.chat_template_supports_thinking === 'boolean'
+        ? ggufFields.chat_template_supports_thinking
+        : undefined,
+      has_mtp_layers: typeof ggufFields?.has_mtp_layers === 'boolean'
+        ? ggufFields.has_mtp_layers
+        : undefined,
+      is_mmproj: guessIsMmproj(fileName, ggufFields?.architecture)
     };
 
     if (ggufMetaCache.size >= GGUF_META_CACHE_MAX) {
@@ -177,6 +187,13 @@ function guessContextLength(fileName: string): number {
 function guessQuantization(fileName: string): string {
   const m = fileName.match(/(Q\d+_K_[SMLX]|Q\d+_[01]|IQ\d+_[SMLX]{1,2}|F16|F32|BF16)/i);
   return m ? m[1].toUpperCase() : 'unknown';
+}
+
+function guessIsMmproj(fileName: string, architecture: string | null | undefined): boolean {
+  const lower = String(fileName || '').toLowerCase();
+  if (lower.includes('mmproj') || lower.includes('projector')) return true;
+  if (architecture && /^clip$|vision/i.test(architecture)) return true;
+  return false;
 }
 
 function formatSizeLabel(bytes: number): string {
@@ -276,7 +293,8 @@ export async function getGgufMetadata(filePath: string): Promise<GgufMetadata> {
       embedding_length: 0,
       file_size_bytes: fileSize,
       quantization_name: guessQuantization(fileName),
-      chat_template_uses_tools: false
+      chat_template_uses_tools: false,
+      is_mmproj: guessIsMmproj(fileName, null)
     };
   }
 }

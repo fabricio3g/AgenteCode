@@ -228,6 +228,21 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null) {
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
   if (config.disable_thinking) args.push('--reasoning', 'off');
 
+  if (config.mtp) {
+    const draftPath = String(config.mtp_draft_path || '').trim();
+    const draftNMax = Number.isFinite(Number(config.mtp_draft_n_max))
+      ? Math.max(1, Math.min(16, Math.floor(Number(config.mtp_draft_n_max))))
+      : (draftPath ? 4 : 2);
+    if (draftPath) {
+      args.push('--model-draft', draftPath);
+      args.push('--spec-type', 'draft-mtp');
+      args.push('--spec-draft-n-max', String(draftNMax));
+    } else {
+      args.push('--spec-type', 'draft-mtp');
+      args.push('--spec-draft-n-max', String(draftNMax));
+    }
+  }
+
   // Log resolved configuration for debugging
   console.log(formatStartupLog(resolved));
 

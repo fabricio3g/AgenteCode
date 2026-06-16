@@ -16,7 +16,7 @@ export type ElectronApi = {
 };
 
 export type LocalModelLoadTarget = Omit<ModelOption, 'source'> & { source?: string };
-export type MainView = 'chat' | 'developer';
+export type MainView = 'chat';
 
 export const USER_NAME_KEY = 'chatealm_user_name';
 

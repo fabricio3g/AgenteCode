@@ -8,7 +8,7 @@
   import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, Code2, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { Boxes, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -340,14 +340,6 @@
     </div>
 
     <div class="sidebar-footer px-0.5 py-2">
-      <button
-        class={`sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition ${appStore.mainView === 'developer' ? 'is-active' : ''}`}
-        onclick={() => appStore.openDeveloperMode()}
-        title="Developer Mode"
-      >
-        <Code2 class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
-        <span class="btn-label">Developer Mode</span>
-      </button>
       <button
         class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}

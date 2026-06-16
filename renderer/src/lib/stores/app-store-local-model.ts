@@ -32,6 +32,9 @@ export interface LocalModelLoadState {
   mmprojPath: string;
   rememberSettings: boolean;
   disableThinking: boolean;
+  mtpEnabled: boolean;
+  mtpDraftPath: string;
+  mtpDraftNMax: string;
 }
 
 export interface LocalModelRuntimeRequest {
@@ -54,6 +57,9 @@ export interface LocalModelRuntimeRequest {
   cacheTypeV?: string;
   mmprojPath?: string;
   disableThinking?: boolean;
+  mtp?: boolean;
+  mtpDraftPath?: string;
+  mtpDraftNMax?: number;
 }
 
 export function readRememberedLocalModelSettings(): Record<string, Record<string, unknown>> {
@@ -136,6 +142,9 @@ export function resolveLocalModelLoadState(params: {
     cacheTypeV: String(remembered.cache_type_v || local?.cache_type_v || 'f16'),
     mmprojPath: params.mmprojPath || '',
     disableThinking: remembered.disable_thinking ? Boolean(remembered.disable_thinking) : (local?.disable_thinking ?? false),
+    mtpEnabled: remembered.mtp != null ? Boolean(remembered.mtp) : (local?.mtp ?? false),
+    mtpDraftPath: remembered.mtp_draft_path != null ? String(remembered.mtp_draft_path) : (local?.mtp_draft_path ? String(local.mtp_draft_path) : ''),
+    mtpDraftNMax: remembered.mtp_draft_n_max != null ? String(remembered.mtp_draft_n_max) : (local?.mtp_draft_n_max != null ? String(local.mtp_draft_n_max) : ''),
     rememberSettings: Object.keys(remembered).length > 0
   };
 }
@@ -158,7 +167,10 @@ export function buildLocalModelSettingsPatch(state: LocalModelLoadState) {
     cache_type_v: state.cacheTypeV || undefined,
     runtime_path: state.runtimePath || undefined,
     mmproj_path: state.mmprojPath || undefined,
-    disable_thinking: state.disableThinking
+    disable_thinking: state.disableThinking,
+    mtp: state.mtpEnabled,
+    mtp_draft_path: state.mtpDraftPath || null,
+    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null
   };
 }
 
@@ -179,7 +191,10 @@ export function buildRememberedLocalModelSettingsEntry(state: LocalModelLoadStat
     cache_type_k: state.cacheTypeK || 'f16',
     cache_type_v: state.cacheTypeV || 'f16',
     runtime_path: state.runtimePath || '',
-    disable_thinking: state.disableThinking
+    disable_thinking: state.disableThinking,
+    mtp: state.mtpEnabled,
+    mtp_draft_path: state.mtpDraftPath || null,
+    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null
   };
 }
 
@@ -223,6 +238,9 @@ export function buildLocalModelRuntimeRequest(params: {
     cacheTypeK: settings.cache_type_k,
     cacheTypeV: settings.cache_type_v,
     mmprojPath: settings.mmproj_path,
-    disableThinking: params.state.disableThinking
+    disableThinking: params.state.disableThinking,
+    mtp: settings.mtp,
+    mtpDraftPath: params.state.mtpDraftPath || settings.mtp_draft_path || undefined,
+    mtpDraftNMax: settings.mtp_draft_n_max ?? undefined
   };
 }

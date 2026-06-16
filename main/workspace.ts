@@ -70,6 +70,19 @@ export async function pickModelFile() {
   return result.filePaths[0];
 }
 
+export async function pickMmprojFile() {
+  const result = await dialog.showOpenDialog({
+    title: 'Select a Vision Projector (mmproj) GGUF',
+    properties: ['openFile'],
+    filters: [
+      { name: 'GGUF Models', extensions: ['gguf'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+}
+
 export async function pickWhisperRuntimeFile() {
   const result = await dialog.showOpenDialog({
     title: 'Select whisper.cpp Runtime',

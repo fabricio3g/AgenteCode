@@ -61,7 +61,10 @@ function buildLocalLoadSignature(config: LlamaConfig): string {
     rope_freq_scale: config.rope_freq_scale ?? null,
     cache_type_k: config.cache_type_k ?? null,
     cache_type_v: config.cache_type_v ?? null,
-    mmproj_path: config.mmproj_path ?? null
+    mmproj_path: config.mmproj_path ?? null,
+    mtp: config.mtp ?? null,
+    mtp_draft_path: config.mtp_draft_path ?? null,
+    mtp_draft_n_max: config.mtp_draft_n_max ?? null
   });
 }
 
@@ -181,6 +184,9 @@ export async function loadLocalModel(args: {
   cacheTypeV?: string;
   mmprojPath?: string;
   disableThinking?: boolean;
+  mtp?: boolean;
+  mtpDraftPath?: string;
+  mtpDraftNMax?: number;
 }): Promise<string> {
   const baseUrl = resolveLocalBaseUrl(args.config);
 
@@ -212,7 +218,10 @@ export async function loadLocalModel(args: {
     cache_type_v: args.cacheTypeV ?? args.config.llm?.local?.cache_type_v ?? undefined,
     runtime_path: args.runtimePath || args.config.llm?.local?.runtime_path,
     mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined,
-    disable_thinking: args.disableThinking ?? args.config.llm?.local?.disable_thinking ?? false
+    disable_thinking: args.disableThinking ?? args.config.llm?.local?.disable_thinking ?? false,
+    mtp: args.mtp ?? args.config.llm?.local?.mtp ?? false,
+    mtp_draft_path: args.mtpDraftPath || args.config.llm?.local?.mtp_draft_path || undefined,
+    mtp_draft_n_max: args.mtpDraftNMax ?? args.config.llm?.local?.mtp_draft_n_max ?? undefined
   };
   const desiredSignature = buildLocalLoadSignature(baseStartConfig);
 

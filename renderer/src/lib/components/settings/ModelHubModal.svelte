@@ -5,10 +5,9 @@
   import { fade, fly } from 'svelte/transition';
   import { flyAndScale } from '$lib/utils/transitions';
   import {
-    AlertTriangle, Box, Check, Compass, Download, Eye, FolderOpen,
-    HardDrive, Key, MemoryStick, Play, RefreshCw, RotateCcw, Search, Square, Trash2, Wrench, X, Zap,
-    Server, ChevronRight, Volume2, Mic, Cpu, Settings, ExternalLink, Ban, Activity, FolderInput, LoaderCircle,
-    Minus, Maximize2
+    Box, Check, Compass, Download, FolderOpen,
+    HardDrive, RefreshCw, RotateCcw, Search, Trash2, X, Zap,
+    Server, ChevronRight, Volume2, Mic, Cpu, Settings, Ban, FolderInput, LoaderCircle,
   } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -24,7 +23,6 @@
   import { deleteWhisperRuntime, listWhisperRuntimes, pickWhisperRuntimeFile, unloadWhisper, type WhisperRuntime } from '$lib/services/stt';
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
-  import SearchBar from './SearchBar.svelte';
   import VoiceLanguageSelector from './VoiceLanguageSelector.svelte';
   import LocalRuntimePanel from './LocalRuntimePanel.svelte';
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
@@ -55,30 +53,20 @@
   const navAriaLabel = $derived(isModelSection ? 'Models sections' : 'Settings sections');
 
   let searchQuery = $state('');
-  let sortBy = $state<'date' | 'name' | 'size'>('date');
+  let sortBy = $state<'date' | 'downloads' | 'likes'>('likes');
   let unloading = $state(false);
 
   let exploreQuery = $state('');
-  let hfSort = $state('trending');
+  let hfSort = $state('likes');
   let searchResults = $state<any[]>([]);
   let searching = $state(false);
-  let selectedRepo = $state<any | null>(null);
-  let repoFiles = $state<any[]>([]);
-  let hfToken = $state('');
-  let showTokenInput = $state(false);
-
-
   let showDownloadedOnly = $state(false);
-  let modelsShowDownloadedOnly = $state(true);
-  let showLoadedOnly = $state(false);
-  let localOnly = $state(false);
-  let showHfSearch = $state(false);
   let showAllLocalModels = $state(false);
   const LOCAL_MODEL_LIMIT = 6;
   let expandedCardIds = $state<Record<string, boolean>>({});
   let repoFilesMap = $state<Record<string, any[]>>({});
   const visibleModels = $derived.by(() => {
-    let list = showLoadedOnly ? installedModels.filter((m) => isLoaded(m)) : installedModels;
+    let list = installedModels;
     return showAllLocalModels ? list : list.slice(0, LOCAL_MODEL_LIMIT);
   });
 
@@ -432,8 +420,8 @@
       : items.filter((m) =>
           `${m.name} ${m.id} ${m.architecture || ''} ${m.quantization_name || ''}`.toLowerCase().includes(filter)
         );
-    if (sortBy === 'name') return filtered.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    if (sortBy === 'size') return filtered.sort((a, b) => Number(b.size_gb || 0) - Number(a.size_gb || 0));
+    if (sortBy === 'downloads') return filtered.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (sortBy === 'likes') return filtered.sort((a, b) => Number(b.size_gb || 0) - Number(a.size_gb || 0));
     return filtered.sort((a, b) => Number(b.modified || 0) - Number(a.modified || 0));
   });
 
@@ -610,16 +598,10 @@
 
   async function performSearch() {
     exploreQuery = searchQuery.trim();
-    searching = true; selectedRepo = null; repoFiles = [];
+    searching = true;
     try { searchResults = await searchHfModels(exploreQuery, hfSort, 24) as any[]; }
     catch { searchResults = []; }
     finally { searching = false; }
-  }
-
-  async function openRepo(repoId: string) {
-    selectedRepo = searchResults.find((e) => e.repo_id === repoId) || { repo_id: repoId };
-    const payload = await hfRepoGguf(repoId) as any;
-    repoFiles = Array.isArray(payload?.gguf_files) ? payload.gguf_files : [];
   }
 
   let busyId = $state<string | null>(null);
@@ -663,7 +645,7 @@
     busyId = `${repoId}/${file}`;
     try {
       const modelsDir = await getModelsDirPath();
-      await startDownloadHf({ repo_id: repoId, file, models_dir: modelsDir, dest_rel: `${repoId.replace('/', '_')}/${file}`, hf_token: hfToken.trim() || undefined });
+      await startDownloadHf({ repo_id: repoId, file, models_dir: modelsDir, dest_rel: `${repoId.replace('/', '_')}/${file}` });
       downloadsStore.startPolling();
       await downloadsStore.refresh();
     } catch (err) {
@@ -682,7 +664,6 @@
         file: selectedVariant,
         models_dir: modelsDir,
         dest_rel: `${selectedCurated.repo_id.replace('/', '_')}/${selectedVariant}`,
-        hf_token: hfToken.trim() || undefined,
       });
       downloadsStore.startPolling();
       await downloadsStore.refresh();
@@ -702,7 +683,6 @@
         file: selectedVisionFile,
         models_dir: modelsDir,
         dest_rel: `${selectedCurated.repo_id.replace('/', '_')}/${selectedVisionFile}`,
-        hf_token: hfToken.trim() || undefined,
       });
       downloadsStore.startPolling();
       await downloadsStore.refresh();
@@ -713,8 +693,88 @@
   }
 
   function findDownloadedModel(filename: string) {
-
     return modelsStore.availableModels.find((m) => m.path?.endsWith(filename) || m.name === filename);
+  }
+
+  function repoIdFor(item: any): string {
+    return String(item?.repo_id || item?.id || item?.modelId || '').trim();
+  }
+
+  function modelTitleFor(item: any, kind: 'curated' | 'hf'): string {
+    const repoId = repoIdFor(item);
+    if (kind === 'curated') return repoId.split('/').pop() || item?.label || 'Model';
+    return item?.label || repoId.split('/').pop() || repoId || 'Model';
+  }
+
+  function authorFor(item: any): string {
+    return item?.author || repoIdFor(item).split('/')[0] || 'Hugging Face';
+  }
+
+  function formatCompactCount(value: unknown): string {
+    const count = Number(value || 0);
+    if (!Number.isFinite(count) || count <= 0) return '';
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 1_000) return `${Math.round(count / 1_000)}K`;
+    return String(count);
+  }
+
+  function fileNameFor(file: any): string {
+    return String(file?.filename || file?.name || file?.rfilename || '').trim();
+  }
+
+  function fileListFromPayload(payload: any): any[] {
+    if (Array.isArray(payload?.gguf_files)) return payload.gguf_files;
+    if (Array.isArray(payload?.files)) return payload.files;
+    return [];
+  }
+
+  function isDownloadDone(job: any): boolean {
+    return job?.status === 'done' || job?.status === 'completed';
+  }
+
+  function isDownloadActive(job: any): boolean {
+    return job?.status === 'starting' || job?.status === 'running';
+  }
+
+  async function loadRepoFiles(repoId: string): Promise<any[]> {
+    if (!repoId) return [];
+    if (repoFilesMap[repoId]) return repoFilesMap[repoId];
+    const payload = await hfRepoGguf(repoId) as any;
+    const files = fileListFromPayload(payload);
+    repoFilesMap = { ...repoFilesMap, [repoId]: files };
+    return files;
+  }
+
+  async function toggleModelVariants(item: any, kind: 'curated' | 'hf', id: string) {
+    const expanded = !!expandedCardIds[id];
+    if (!expanded && kind === 'hf') await loadRepoFiles(repoIdFor(item));
+    expandedCardIds = { ...expandedCardIds, [id]: !expanded };
+  }
+
+  async function downloadFirstRepoFile(repoId: string) {
+    const files = await loadRepoFiles(repoId);
+    const file = fileNameFor(files[0]);
+    if (!file) {
+      toastStore.error('No GGUF files found for this Hugging Face repo.');
+      return;
+    }
+    await downloadRepoFile(repoId, file);
+  }
+
+  async function downloadCuratedVariant(item: typeof CURATED_MODELS[0], filename: string) {
+    selectedCurated = item;
+    selectedVariant = filename;
+    await downloadCuratedModel();
+  }
+
+  function recommendedFileFor(item: typeof CURATED_MODELS[0]): string {
+    return item.variants.find((variant) => variant.recommended)?.filename || item.variants[0]?.filename || '';
+  }
+
+  async function downloadCuratedVisionFile(item: typeof CURATED_MODELS[0], filename: string) {
+    selectedCurated = item;
+    selectedVisionFile = filename;
+    await downloadCuratedVision();
   }
 
   function formatBytes(bytes: number) {
@@ -761,6 +821,7 @@
 
   onMount(() => {
     downloadsStore.startPolling();
+    void performSearch();
     void getInstalledRuntimes().then(r => { hasRuntime = (r.runtimes?.length ?? 0) > 0; }).catch(() => {});
     const preselect = appStore.modelManagerOpenModelId;
     if (preselect) {
@@ -1016,49 +1077,40 @@
           {@const memoryWarning = fit === 'partial'}
           {@const params = model.size_label || ''}
           {@const context = model.context_length ? `${Math.round(model.context_length / 1024)}K` : ''}
-          <article class="group flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:bg-[var(--surface-hover)]">
-            <div class="flex items-start gap-3">
-              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] transition group-hover:bg-[var(--surface-active)]">
-                <Cpu class="h-6 w-6 text-[var(--text-muted)]" />
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <h3 class="text-sm font-semibold text-[var(--text)] truncate" title={title}>{title}</h3>
-                    <p class="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-[var(--text-secondary)]">
-                      <span>Local</span>
-                      {#if params}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> {params}</span>{/if}
-                      {#if context}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Zap class="h-3 w-3" /> {context}</span>{/if}
-                      {#if size}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><HardDrive class="h-3 w-3" /> {size}</span>{/if}
-                    </p>
-                  </div>
-                  {#if memoryWarning}
-                    <span class="shrink-0 rounded-full bg-[var(--warning-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--warning)]">Not enough memory</span>
-                  {:else if loaded}
-                    <span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--success-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--success)] animate-pulse"></span> Running</span>
-                  {:else if selected}
-                    <span class="shrink-0 rounded-full bg-[var(--surface-active)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Selected</span>
-                  {/if}
+          <article class="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--border-hover)]">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="truncate text-[15px] font-semibold leading-5 text-[var(--text)]" title={title}>{title}</h3>
+                <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                  <span>Local</span>
+                    {#if params}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> {params} params</span>{/if}
+                    {#if context}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Zap class="h-3 w-3" /> {context} context</span>{/if}
+                    {#if size}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><HardDrive class="h-3 w-3" /> {size}</span>{/if}
+                  </p>
                 </div>
-                <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                  {#if model.architecture}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{model.architecture}</span>{/if}
-                  {#if model.quantization_name}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-tertiary)]">{model.quantization_name}</span>{/if}
-                  {#if model.hasMmproj}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Eye class="h-3 w-3" /> Vision</span>{/if}
-                  {#if tools}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Wrench class="h-3 w-3" /> Tools</span>{/if}
-                  {#if fit === 'vram'}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Zap class="h-3 w-3" /> GPU</span>{:else if fit === 'ram'}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><MemoryStick class="h-3 w-3" /> CPU</span>{/if}
-                </div>
+                {#if memoryWarning}
+                  <span class="shrink-0 rounded-md border border-[var(--warning)]/30 bg-[var(--warning-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--warning)]">Not enough memory</span>
+                {:else if loaded}
+                  <span class="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--success)] animate-pulse"></span> Running</span>
+                {/if}
               </div>
-            </div>
-            <div class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
-              <span class="text-xs text-[var(--text-muted)]">{size}</span>
-              <div class="flex items-center gap-2">
+            <div class="mt-3 flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                {#if model.architecture}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">{model.architecture}</span>{/if}
+                {#if model.quantization_name}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">{model.quantization_name}</span>{/if}
+                {#if model.hasMmproj}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Vision</span>{/if}
+                {#if tools}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
+                {#if fit === 'vram'}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">GPU</span>{:else if fit === 'ram'}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">CPU</span>{/if}
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                {#if size}<span class="text-xs text-[var(--text-muted)]">{size}</span>{/if}
                 {#if loaded}
-                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50" onclick={unloadModel} disabled={unloading}><Square class="h-3.5 w-3.5" />{unloading ? 'Unloading…' : 'Unload'}</button>
+                  <button type="button" class="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50" onclick={unloadModel} disabled={unloading}>{unloading ? 'Unloading…' : 'Unload'}</button>
                 {:else}
-                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={() => appStore.openLocalModelLoadDialog(model)}><Play class="h-3.5 w-3.5" /> Load</button>
+                  <button type="button" class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={() => appStore.openLocalModelLoadDialog(model)}>Load</button>
                 {/if}
                 {#if !selected && !loaded}
-                  <button type="button" class="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => appStore.updateLocalModel({ id: model.id, name: model.name, path: model.path, source: 'local', details: model.details })}>Select</button>
+                  <button type="button" class="rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => appStore.updateLocalModel({ id: model.id, name: model.name, path: model.path, source: 'local', details: model.details })}>Select</button>
                 {/if}
                 <button type="button" class="rounded-md p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={() => model.path && removeModel(model.path)} title="Delete model" aria-label="Delete {model.name}"><Trash2 class="h-3.5 w-3.5" /></button>
               </div>
@@ -1067,139 +1119,132 @@
         {/snippet}
 
         {#snippet exploreCard(item: any, kind: any)}
-          {@const id = kind === 'curated' ? item.id : item.repo_id}
-          {@const title = kind === 'curated' ? item.label : (item.repo_id || '')}
-          {@const author = (item.repo_id || '').split('/')[0] || 'Hugging Face'}
-          {@const size = kind === 'curated' ? (item.variants.find((v: any) => v.recommended)?.size_human || item.variants[0]?.size_human || '?') : (item.largest_gguf_human || '?')}
+          {@const repoId = repoIdFor(item)}
+          {@const id = kind === 'curated' ? item.id : repoId}
+          {@const title = modelTitleFor(item, kind)}
+          {@const author = authorFor(item)}
+          {@const size = kind === 'curated' ? (item.variants.find((v: any) => v.recommended)?.size_human || item.variants[0]?.size_human || '?') : (item.largest_gguf_human || '')}
           {@const expanded = !!expandedCardIds[id]}
-          {@const isVision = item.has_vision || /vision/i.test(item.repo_id || '')}
-          {@const files = kind === 'hf' ? (repoFilesMap[item.repo_id] || []) : []}
-          <article class="group flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:bg-[var(--surface-hover)]">
-            <div class="flex items-start gap-3">
-              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] transition group-hover:bg-[var(--surface-active)]">
-                <Box class="h-6 w-6 text-[var(--text-muted)]" />
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <h3 class="text-sm font-semibold text-[var(--text)] truncate" title={title}>{title}</h3>
-                    <p class="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-[var(--text-secondary)]">
-                      <span>By {author}</span>
-                      {#if item.size_label}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> {item.size_label}</span>{/if}
-                      {#if item.downloads}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Download class="h-3 w-3" /> {Number(item.downloads).toLocaleString()}</span>{/if}
-                      {#if item.context_length}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Zap class="h-3 w-3" /> {Math.round(item.context_length / 1024)}K</span>{/if}
-                      {#if kind === 'hf' && item.gguf_files_count}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Box class="h-3 w-3" /> {item.gguf_files_count} variants</span>{/if}
-                    </p>
-                  </div>
-                  {#if kind === 'curated'}
-                    <span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--success-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--success)]"><Check class="h-3 w-3" /> Recommended</span>
-                  {/if}
+          {@const isVision = item.has_vision || /vision|vl|mmproj/i.test(repoId)}
+          {@const files = kind === 'hf' ? (repoFilesMap[repoId] || item.gguf_files || item.files || []) : []}
+          {@const downloads = formatCompactCount(item.downloads)}
+          {@const likes = formatCompactCount(item.likes)}
+          <article class="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--border-hover)]">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="truncate text-[15px] font-semibold leading-5 text-[var(--text)]" title={title}>{title}</h3>
+                <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                  <span>By {author}</span>
+                    {#if downloads}<span class="inline-flex items-center gap-1 text-[var(--text-muted)]"><Download class="h-3 w-3" /> {downloads}</span>{/if}
+                    {#if likes}<span class="text-[var(--text-muted)]">{likes} likes</span>{/if}
+                    {#if item.size_label}<span class="text-[var(--text-muted)]">{item.size_label} params</span>{/if}
+                    {#if item.context_length}<span class="text-[var(--text-muted)]">{Math.round(item.context_length / 1024)}K context</span>{/if}
+                    {#if kind === 'hf' && item.gguf_files_count}<span class="text-[var(--text-muted)]">{item.gguf_files_count} variants</span>{/if}
+                  </p>
                 </div>
-                <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">GGUF</span>
-                  {#if isVision}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Eye class="h-3 w-3" /> Vision</span>{/if}
-                  {#if item.has_tools}<span class="inline-flex items-center gap-1 rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]"><Wrench class="h-3 w-3" /> Tools</span>{/if}
-                </div>
-              </div>
-            </div>
-            <div class="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
-              <div class="flex items-center gap-2">
-                <button type="button" class="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={async () => { if (kind === 'hf' && !repoFilesMap[item.repo_id]) { const payload: any = await hfRepoGguf(item.repo_id); repoFilesMap = {...repoFilesMap, [item.repo_id]: Array.isArray(payload?.gguf_files) ? payload.gguf_files : []}; } expandedCardIds = {...expandedCardIds, [id]: !expanded}; }}>
-                  <ChevronRight class="h-3.5 w-3.5 transition {expanded ? 'rotate-90' : ''}" />
-                  Show variants
-                </button>
-                <span class="text-xs text-[var(--text-muted)]">{size}</span>
-              </div>
-              <div class="flex items-center gap-2">
+
                 {#if kind === 'curated'}
-                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedMain} onclick={() => { selectedCurated = item; selectedVariant = item.variants.find((v: any) => v.recommended)?.filename || item.variants[0]?.filename || ''; void downloadCuratedModel(); }}><Download class="h-3.5 w-3.5" /> Download</button>
+                  <span class="shrink-0 rounded-md border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]">Recommended</span>
+                {/if}
+              </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">GGUF</span>
+                {#if isVision}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Vision</span>{/if}
+                {#if item.has_tools}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
+              </div>
+
+              <div class="flex shrink-0 items-center gap-3">
+                <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-[var(--text)] transition hover:text-[var(--primary)]" onclick={() => toggleModelVariants(item, kind, id)}>
+                  {expanded ? 'Hide variants' : 'Show variants'}
+                  <ChevronRight class="h-3.5 w-3.5 transition {expanded ? 'rotate-90' : ''}" />
+                </button>
+                {#if size}<span class="text-xs text-[var(--text-muted)]">{size}</span>{/if}
+                {#if kind === 'curated'}
+                  <button type="button" class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedMain || !recommendedFileFor(item)} onclick={() => downloadCuratedVariant(item, recommendedFileFor(item))}>Download</button>
                 {:else}
-                  <button type="button" class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={busyId?.startsWith(item.repo_id)} onclick={async () => { let files = repoFilesMap[item.repo_id]; if (!files) { const payload: any = await hfRepoGguf(item.repo_id); files = Array.isArray(payload?.gguf_files) ? payload.gguf_files : []; repoFilesMap = {...repoFilesMap, [item.repo_id]: files}; } const file = files[0]?.filename; if (file) downloadRepoFile(item.repo_id, file); }}><Download class="h-3.5 w-3.5" /> Download</button>
+                  <button type="button" class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={!repoId || busyId?.startsWith(repoId)} onclick={() => downloadFirstRepoFile(repoId)}>Download</button>
                 {/if}
               </div>
             </div>
+
             {#if expanded}
-              <div class="border-t border-[var(--border)] pt-3">
+              <div class="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]">
                 {#if kind === 'curated'}
-                  <div class="space-y-1.5">
-                    {#each item.variants as v (v.filename)}
-                      {@const job = downloadsStore.jobFor(item.repo_id, v.filename)}
-                      {@const downloaded = findDownloadedModel(v.filename)}
-                      <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2">
-                        <div class="min-w-0 flex items-center gap-2">
-                          <span class="text-xs font-medium text-[var(--text)]">{v.quant}</span>
-                          <span class="truncate text-[11px] text-[var(--text-muted)]">{v.filename}</span>
-                          {#if v.recommended}<span class="rounded-full bg-[var(--success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">Recommended</span>{/if}
+                  {#each item.variants as v, index (v.filename)}
+                    {@const job = downloadsStore.jobFor(item.repo_id, v.filename)}
+                    {@const downloaded = findDownloadedModel(v.filename)}
+                    <div class="flex items-center justify-between gap-3 px-3 py-2 {index > 0 ? 'border-t border-[var(--border)]' : ''}">
+                      <div class="min-w-0 flex items-center gap-2">
+                        <span class="w-14 shrink-0 text-xs font-semibold text-[var(--text)]">{v.quant}</span>
+                        <span class="truncate text-xs text-[var(--text-muted)]">{v.filename}</span>
+                        {#if v.recommended}<span class="rounded-md bg-[var(--success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">Recommended</span>{/if}
+                      </div>
+                      <div class="flex shrink-0 items-center gap-2">
+                        <span class="text-xs text-[var(--text-muted)]">{v.size_human}</span>
+                        {#if downloaded || isDownloadDone(job)}
+                          <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={!downloaded} onclick={() => downloaded && appStore.openLocalModelLoadDialog(downloaded)}>Load</button>
+                        {:else if isDownloadActive(job)}
+                          <span class="text-[10px] text-[var(--text-muted)]">Downloading…</span>
+                        {:else if job && (job.status === 'error' || job.status === 'cancelled')}
+                          <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)]" onclick={() => downloadsStore.retryJob(job.id)}>Retry</button>
+                        {:else}
+                          <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedMain} onclick={() => downloadCuratedVariant(item, v.filename)}>Download</button>
+                        {/if}
+                      </div>
+                    </div>
+                  {/each}
+
+                  {#if item.vision_files?.length}
+                    {#each item.vision_files as vf (vf.filename)}
+                      {@const vjob = downloadsStore.jobFor(item.repo_id, vf.filename)}
+                      {@const vdownloaded = findDownloadedModel(vf.filename)}
+                      <div class="flex items-center justify-between gap-3 border-t border-[var(--border)] px-3 py-2">
+                        <div class="min-w-0">
+                          <p class="truncate text-xs font-medium text-[var(--text)]">{vf.filename}</p>
+                          <p class="truncate text-[11px] text-[var(--text-muted)]">{vf.description}</p>
                         </div>
                         <div class="flex shrink-0 items-center gap-2">
-                          <span class="text-xs text-[var(--text-muted)]">{v.size_human}</span>
-                          {#if downloaded || (job && job.status === 'done')}
-                            <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="h-3 w-3" /> Downloaded</span>
-                          {:else if job && (job.status === 'starting' || job.status === 'running')}
-                            <span class="text-[10px] text-[var(--text-muted)]">{downloadsStore.getJobSpeed(job.id)?.speedBps ? `${(downloadsStore.getJobSpeed(job.id)!.speedBps / 1048576).toFixed(1)} MB/s` : 'Downloading…'}</span>
+                          <span class="text-xs text-[var(--text-muted)]">{vf.size_human}</span>
+                          {#if vdownloaded || isDownloadDone(vjob)}
+                            <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={!vdownloaded} onclick={() => vdownloaded && appStore.openLocalModelLoadDialog(vdownloaded)}>Load</button>
+                          {:else if isDownloadActive(vjob)}
+                            <span class="text-[10px] text-[var(--text-muted)]">Downloading…</span>
                           {:else}
-                            <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[10px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedMain} onclick={() => { selectedCurated = item; selectedVariant = v.filename; void downloadCuratedModel(); }}><Download class="h-3 w-3" /> Download</button>
+                            <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedVision} onclick={() => downloadCuratedVisionFile(item, vf.filename)}>Download</button>
                           {/if}
                         </div>
                       </div>
                     {/each}
-                  </div>
-                  {#if item.vision_files?.length}
-                    <div class="mt-3 space-y-1.5">
-                      <p class="text-[11px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">Vision files</p>
-                      {#each item.vision_files as vf (vf.filename)}
-                        {@const vjob = downloadsStore.jobFor(item.repo_id, vf.filename)}
-                        {@const vdownloaded = findDownloadedModel(vf.filename)}
-                        <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2">
-                          <div class="min-w-0">
-                            <span class="text-xs font-medium text-[var(--text)]">{vf.filename}</span>
-                            <span class="text-[11px] text-[var(--text-muted)]">{vf.description}</span>
-                          </div>
-                          <div class="flex shrink-0 items-center gap-2">
-                            <span class="text-xs text-[var(--text-muted)]">{vf.size_human}</span>
-                            {#if vdownloaded || (vjob && vjob.status === 'done')}
-                              <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Check class="h-3 w-3" /> Downloaded</span>
-                            {:else if vjob && (vjob.status === 'starting' || vjob.status === 'running')}
-                              <span class="text-[10px] text-[var(--text-muted)]">Downloading…</span>
-                            {:else}
-                              <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[10px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingCuratedVision} onclick={() => { selectedCurated = item; selectedVisionFile = vf.filename; void downloadCuratedVision(); }}><Download class="h-3 w-3" /> Download</button>
-                            {/if}
-                          </div>
-                        </div>
-                      {/each}
-                    </div>
                   {/if}
                 {:else if kind === 'hf'}
                   {#if files.length === 0}
-                    <div class="flex items-center justify-center py-4 text-xs text-[var(--text-muted)]">Loading variants…</div>
+                    <div class="px-3 py-3 text-xs text-[var(--text-muted)]">No GGUF variants found for this repo.</div>
                   {:else}
-                    <div class="space-y-1.5">
-                      {#each files as file (file.filename)}
-                        {@const job = downloadsStore.jobFor(item.repo_id, file.filename)}
-                        {@const downloaded = findDownloadedModel(file.filename)}
-                        <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2">
-                          <div class="min-w-0">
-                            <span class="truncate text-xs font-medium text-[var(--text)]">{file.filename}</span>
-                          </div>
-                          <div class="flex shrink-0 items-center gap-2">
-                            <span class="text-xs text-[var(--text-muted)]">{file.size_human}</span>
-                            {#if downloaded || (job && job.status === 'done')}
-                              <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[10px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={!downloaded} onclick={() => downloaded && appStore.openLocalModelLoadDialog(downloaded)}><Check class="h-3 w-3" /> Load</button>
-                            {:else if job && (job.status === 'starting' || job.status === 'running')}
-                              {@const speed = downloadsStore.getJobSpeed(job.id)}
-                              <div class="flex items-center gap-2">
-                                <div class="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--surface-active)]"><div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {job.progress}%"></div></div>
-                                <button type="button" class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={async () => { await cancelDownloadJob(job.id); await downloadsStore.refresh(); }} aria-label="Cancel download"><Ban class="h-3.5 w-3.5" /></button>
-                              </div>
-                            {:else if job && (job.status === 'error' || job.status === 'cancelled')}
-                              <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[10px] font-medium text-[var(--primary-fg)] transition hover:opacity-90" onclick={async () => { await downloadsStore.retryJob(job.id); }}><RotateCcw class="h-3 w-3" /> Retry</button>
-                            {:else}
-                              <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-2.5 py-1 text-[10px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={busyId === `${item.repo_id}/${file.filename}`} onclick={() => downloadRepoFile(item.repo_id, file.filename)}><Download class="h-3 w-3" /> Download</button>
-                            {/if}
-                          </div>
+                    {#each files as file, index (fileNameFor(file))}
+                      {@const filename = fileNameFor(file)}
+                      {@const job = downloadsStore.jobFor(repoId, filename)}
+                      {@const downloaded = findDownloadedModel(filename)}
+                      <div class="flex items-center justify-between gap-3 px-3 py-2 {index > 0 ? 'border-t border-[var(--border)]' : ''}">
+                        <span class="min-w-0 truncate text-xs font-medium text-[var(--text)]">{filename}</span>
+                        <div class="flex shrink-0 items-center gap-2">
+                          <span class="min-w-16 text-right text-xs text-[var(--text-muted)]">{file.size_human || 'Size unavailable'}</span>
+                          {#if downloaded || isDownloadDone(job)}
+                            <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={!downloaded} onclick={() => downloaded && appStore.openLocalModelLoadDialog(downloaded)}>Load</button>
+                          {:else if isDownloadActive(job)}
+                            <div class="flex items-center gap-2">
+                              <div class="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--surface-active)]"><div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {job?.progress ?? 0}%"></div></div>
+                              <button type="button" class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={async () => { if (job) { await cancelDownloadJob(job.id); await downloadsStore.refresh(); } }} aria-label="Cancel download"><Ban class="h-3.5 w-3.5" /></button>
+                            </div>
+                          {:else if job && (job.status === 'error' || job.status === 'cancelled')}
+                            <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)]" onclick={() => downloadsStore.retryJob(job.id)}>Retry</button>
+                          {:else}
+                            <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={busyId === `${repoId}/${filename}`} onclick={() => downloadRepoFile(repoId, filename)}>Download</button>
+                          {/if}
                         </div>
-                      {/each}
-                    </div>
+                      </div>
+                    {/each}
                   {/if}
                 {/if}
               </div>
@@ -1207,160 +1252,116 @@
           </article>
         {/snippet}
         {#if activeSection === 'models' || activeSection === 'explore'}
-          <header class="flex min-h-14 shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-5 py-3">
-            <div class="flex-1 min-w-[12rem] max-w-md">
-              <SearchBar
+          <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-5">
+            <div class="flex min-w-0 flex-1 items-center gap-2">
+              <Search class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+              <input
                 bind:value={searchQuery}
-                placeholder={showHfSearch ? 'Search Hugging Face...' : localOnly ? 'Search installed models...' : 'Search models...'}
-                onkeydown={(e) => { if (e.key === 'Enter' && showHfSearch) performSearch(); }}
-                onclear={() => { if (showHfSearch) { exploreQuery = ''; searchResults = []; } }}
+                type="text"
+                class="h-10 min-w-0 flex-1 bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
+                placeholder="Search for models on Hugging Face..."
+                onkeydown={(e) => { if (e.key === 'Enter') void performSearch(); }}
+                autocomplete="off"
+                spellcheck="false"
               />
+              {#if searchQuery}
+                <button type="button" class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => { searchQuery = ''; void performSearch(); }} aria-label="Clear search">
+                  <X class="h-3.5 w-3.5" />
+                </button>
+              {/if}
             </div>
-            <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <input type="checkbox" bind:checked={showHfSearch} class="peer sr-only" onchange={() => { if (showHfSearch) { performSearch(); } else { exploreQuery = ''; searchResults = []; } }} />
-              <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
-              <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
-              Search HF
+
+            <select
+              value={sortBy}
+              onchange={(e) => { sortBy = (e.currentTarget as HTMLSelectElement).value as typeof sortBy; hfSort = sortBy === 'date' ? 'lastModified' : sortBy; void performSearch(); }}
+              class="h-9 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--text)] outline-none transition hover:bg-[var(--surface-hover)]"
+              aria-label="Sort models"
+            >
+              <option value="likes">Most liked</option>
+              <option value="downloads">Downloads</option>
+              <option value="date">Newest</option>
+            </select>
+
+            <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+              <input type="checkbox" bind:checked={showDownloadedOnly} class="peer sr-only" />
+              <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)]"></span>
+              <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
+              Downloaded
             </label>
-            {#if !showHfSearch}
-              <select
-                value={sortBy}
-                onchange={(e) => sortBy = (e.currentTarget as HTMLSelectElement).value as typeof sortBy}
-                class="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] outline-none"
-              >
-                <option value="date">Newest</option>
-                <option value="name">Name</option>
-                <option value="size">Size</option>
-              </select>
-              <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
-                <input type="checkbox" bind:checked={localOnly} class="peer sr-only" />
-                <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
-                <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
-                Installed only
-              </label>
-              <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
-                <input type="checkbox" bind:checked={showLoadedOnly} class="peer sr-only" />
-                <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] transition peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)]"></span>
-                <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text)] transition peer-checked:translate-x-3.5"></span>
-                Loaded only
-              </label>
-            {/if}
           </header>
 
-          {#if hasRuntime === false}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-lg bg-[var(--surface)] px-4 py-3" transition:fly={{ y: -10, duration: 200 }}>
-              <AlertTriangle class="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
-              <p class="flex-1 text-sm text-[var(--text)]">No runtime installed — models cannot be loaded.</p>
-              <button
-                type="button"
-                class="shrink-0 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-                onclick={() => (activeSection = 'runtime')}
-              >
-                Install
-              </button>
-            </div>
-          {/if}
-
-          <!-- Active model status banner -->
-          {#if appStore.localModelActive}
-            {@const isLoading = appStore.localModelLoading}
-            <div class="mx-5 mt-4 flex items-center gap-3 rounded-lg bg-[var(--surface)] px-4 py-3" transition:fly={{ y: -10, duration: 200 }}>
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--background)]">
-                {#if isLoading}
-                  <Activity class="h-4 w-4 text-[var(--text-secondary)] animate-pulse" />
-                {:else}
-                  <Activity class="h-4 w-4 text-[var(--text-secondary)]" />
-                {/if}
-              </div>
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium {!isLoading ? 'text-[var(--text)]' : 'text-[var(--text)]'}">
-                  {isLoading ? 'Loading model…' : 'Model running'}
-                </p>
-                <p class="truncate text-xs {!isLoading ? 'text-[var(--text-secondary)] opacity-80' : 'text-[var(--text-secondary)] opacity-70'}">
-                  {appStore.localModelActive.name}
-                  {#if appStore.localModelActive.hasMmproj}
-                    {' '}· Vision
+          <div class="flex-1 overflow-y-auto bg-[var(--background)]">
+            <div class="mx-auto max-w-[928px] px-4 py-6 sm:px-5">
+              {#if showDownloadedOnly}
+                <section>
+                  <h3 class="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Downloaded</h3>
+                  {#if visibleModels.length === 0}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                      <p class="text-sm font-semibold text-[var(--text)]">No downloaded models</p>
+                      <p class="mt-1 text-xs text-[var(--text-muted)]">Turn off Downloaded to browse Hugging Face models.</p>
+                    </div>
+                  {:else}
+                    <div class="space-y-2">
+                      {#each visibleModels as model (model.id)}
+                        {@render installedCard(model)}
+                      {/each}
+                    </div>
+                    {#if !showAllLocalModels && installedModels.length > LOCAL_MODEL_LIMIT}
+                      <button type="button" class="mt-3 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (showAllLocalModels = true)}>
+                        View all {installedModels.length} models
+                      </button>
+                    {/if}
                   {/if}
-                </p>
-              </div>
-              <button
-                type="button"
-                class="shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium {!isLoading ? 'text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text)]' : 'text-[var(--text-tertiary)]'} transition disabled:opacity-50"
-                onclick={unloadModel}
-                disabled={unloading || isLoading}
-              >
-                <Square class="h-3 w-3" />
-                {unloading ? 'Unloading…' : 'Unload'}
-              </button>
-            </div>
-          {/if}
-
-          <div class="flex-1 overflow-y-auto p-5">
-            {#if showHfSearch}
-              <!-- HF Search results -->
-              {#if searching}
-                <div class="flex items-center justify-center py-16">
-                  <LoaderCircle class="h-5 w-5 animate-spin text-[var(--text-muted)]" />
-                </div>
-              {:else if searchResults.length > 0}
-                <div class="space-y-3">
-                  {#each searchResults as result (result.repo_id)}
-                    {@render exploreCard(result, 'hf')}
-                  {/each}
-                </div>
-              {:else if exploreQuery}
-                <p class="text-xs text-[var(--text-muted)]">No results for "{exploreQuery}"</p>
+                </section>
               {:else}
-                <p class="text-xs text-[var(--text-muted)]">Type a query and press Enter to search Hugging Face.</p>
-              {/if}
-            {:else}
-              <!-- Installed models -->
-              <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Your Models</h3>
-              {#if visibleModels.length === 0}
-                <div class="flex flex-col items-center justify-center py-12 text-center">
-                  <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--surface-hover)]">
-                    <Box class="h-6 w-6 text-[var(--text-muted)]" />
-                  </div>
-                  <p class="text-sm font-medium text-[var(--text-secondary)]">No local models</p>
-                  <p class="mt-0.5 text-xs text-[var(--text-muted)]">Download from the Recommended section below or search on Hugging Face</p>
-                  {#if !localOnly}
-                    <button
-                      type="button"
-                      class="mt-3 inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-fg)] transition hover:opacity-90"
-                      onclick={() => { searchQuery = ''; showHfSearch = true; performSearch(); }}
-                    >
-                      <Search class="h-3.5 w-3.5" />
-                      Browse Hugging Face
-                    </button>
-                  {/if}
-                </div>
-              {:else}
-                <div class="space-y-3">
-                  {#each visibleModels as model (model.id)}
-                    {@render installedCard(model)}
-                  {/each}
-                </div>
-                {#if !showAllLocalModels && installedModels.length > LOCAL_MODEL_LIMIT}
-                  <button
-                    type="button"
-                    class="mt-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-                    onclick={() => (showAllLocalModels = true)}
-                  >
-                    View all {installedModels.length} models
-                  </button>
+                {#if visibleModels.length > 0}
+                  <section>
+                    <h3 class="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Downloaded</h3>
+                    <div class="space-y-2">
+                      {#each visibleModels as model (model.id)}
+                        {@render installedCard(model)}
+                      {/each}
+                    </div>
+                    {#if !showAllLocalModels && installedModels.length > LOCAL_MODEL_LIMIT}
+                      <button type="button" class="mt-3 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (showAllLocalModels = true)}>
+                        View all {installedModels.length} models
+                      </button>
+                    {/if}
+                  </section>
                 {/if}
-              {/if}
 
-              {#if !localOnly && searchQuery.trim().length === 0 && CURATED_MODELS.length > 0}
-                <!-- Recommended curated models -->
-                <h3 class="mt-6 mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Recommended</h3>
-                <div class="space-y-3 mb-6">
-                  {#each CURATED_MODELS as model (model.id)}
-                    {@render exploreCard(model, 'curated')}
-                  {/each}
-                </div>
+                {#if searchQuery.trim().length === 0 && CURATED_MODELS.length > 0}
+                  <section class={visibleModels.length > 0 ? 'mt-5 border-t border-[var(--border)] pt-5' : ''}>
+                    <h3 class="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Recommended</h3>
+                    <div class="space-y-2">
+                      {#each CURATED_MODELS as model (model.id)}
+                        {@render exploreCard(model, 'curated')}
+                      {/each}
+                    </div>
+                  </section>
+                {/if}
+
+                <section class="mt-5 border-t border-[var(--border)] pt-5">
+                  <h3 class="mb-3 text-sm font-semibold text-[var(--text-secondary)]">{exploreQuery ? `Results for "${exploreQuery}"` : 'All Models'}</h3>
+                  {#if searching}
+                    <div class="flex items-center justify-center py-16">
+                      <LoaderCircle class="h-5 w-5 animate-spin text-[var(--text-muted)]" />
+                    </div>
+                  {:else if searchResults.length > 0}
+                    <div class="space-y-2">
+                      {#each searchResults as result (result.repo_id || result.id || result.modelId)}
+                        {@render exploreCard(result, 'hf')}
+                      {/each}
+                    </div>
+                  {:else}
+                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                      <p class="text-sm font-semibold text-[var(--text)]">No models found</p>
+                      <p class="mt-1 text-xs text-[var(--text-muted)]">Try another Hugging Face search.</p>
+                    </div>
+                  {/if}
+                </section>
               {/if}
-            {/if}
+            </div>
           </div>
 
         {:else if activeSection === 'voices'}
