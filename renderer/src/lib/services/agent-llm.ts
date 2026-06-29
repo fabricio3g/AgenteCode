@@ -154,7 +154,7 @@ export async function agentStreamComplete(options: {
   const dispatcher = createBufferedStreamDispatcher({
     onContent: options.onContent,
     onReasoning: options.onReasoning,
-    delayMs: transport.backend === 'local' ? 55 : 40
+    delayMs: 40
   });
 
   const off = await listen<Record<string, unknown>>('chat-stream-event', (event) => {

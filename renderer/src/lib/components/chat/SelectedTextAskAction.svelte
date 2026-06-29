@@ -29,54 +29,6 @@
     updateTimer = setTimeout(updateFromSelection, delay);
   }
 
-  function rectFromRange(range: Range): DOMRect | null {
-    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width || rect.height);
-    const rect = rects[rects.length - 1] || range.getBoundingClientRect();
-    return rect.width || rect.height ? rect : null;
-  }
-
-  function getSelectionFocusRect(selection: Selection): DOMRect | null {
-    const focusNode = selection.focusNode;
-    if (!focusNode) return null;
-
-    const collapsedRange = document.createRange();
-    try {
-      collapsedRange.setStart(focusNode, selection.focusOffset);
-      collapsedRange.collapse(true);
-      const collapsedRect = rectFromRange(collapsedRange);
-      if (collapsedRect) return collapsedRect;
-    } catch {
-      // Fall back to nearby character/element ranges below.
-    } finally {
-      collapsedRange.detach();
-    }
-
-    if (focusNode.nodeType === Node.TEXT_NODE) {
-      const textLength = focusNode.textContent?.length || 0;
-      const offset = Math.max(0, Math.min(selection.focusOffset, textLength));
-      const charRange = document.createRange();
-      try {
-        if (offset > 0) {
-          charRange.setStart(focusNode, offset - 1);
-          charRange.setEnd(focusNode, offset);
-        } else if (textLength > 0) {
-          charRange.setStart(focusNode, 0);
-          charRange.setEnd(focusNode, 1);
-        } else {
-          return null;
-        }
-        return rectFromRange(charRange);
-      } catch {
-        return null;
-      } finally {
-        charRange.detach();
-      }
-    }
-
-    const element = focusNode instanceof Element ? focusNode : focusNode.parentElement;
-    return element?.getBoundingClientRect() || null;
-  }
-
   function updateFromSelection() {
     updateTimer = null;
     if (pointerSelecting) return;
@@ -109,17 +61,34 @@
     }
 
     const range = selection.getRangeAt(0);
-    const focusRect = getSelectionFocusRect(selection);
-    const fallbackRect = rectFromRange(range);
-    const targetRect = focusRect || fallbackRect;
-    if (!targetRect) {
+    const selRect = range.getBoundingClientRect();
+    if (!selRect || (!selRect.width && !selRect.height)) {
       hide();
       return;
     }
 
+    // Get the position of the last selected character (focus point)
+    let focusX = selRect.right;
+    let focusY = selRect.bottom;
+    if (selection.focusNode) {
+      const cr = document.createRange();
+      try {
+        cr.setStart(selection.focusNode, selection.focusOffset);
+        cr.collapse(true);
+        const crRect = cr.getBoundingClientRect();
+        if (crRect && (crRect.width || crRect.height)) {
+          focusX = crRect.right;
+          focusY = crRect.bottom;
+        }
+      } catch { /* use fallback */ }
+      cr.detach();
+    }
+
     selectedText = text.slice(0, MAX_SELECTION_CHARS);
-    x = Math.min(Math.max(targetRect.right, 72), window.innerWidth - 72);
-    y = Math.max(targetRect.top - 42, 12);
+    x = Math.min(Math.max(focusX, 72), window.innerWidth - 72);
+    const belowY = focusY + 8;
+    const aboveY = focusY - 8;
+    y = belowY + 40 < window.innerHeight ? belowY : Math.max(aboveY, 8);
     visible = true;
   }
 

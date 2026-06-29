@@ -52,6 +52,7 @@
   let selectedTextInsert = $state('');
   let selectedTextCardText = $state('');
   let selectedTextSourceMessageId = $state('');
+  let selectedTextExpanded = $state(false);
 
   // Rotating placeholder with typewriter + shimmer
   let placeholderIndex = $state(0);
@@ -278,6 +279,7 @@
       selectedTextInsert = '';
       selectedTextCardText = '';
       selectedTextSourceMessageId = '';
+      selectedTextExpanded = false;
       await appStore.sendCurrentMessage();
       return;
     }
@@ -325,6 +327,7 @@
     selectedTextInsert = text;
     selectedTextCardText = text;
     selectedTextSourceMessageId = detail?.sourceMessageId || '';
+    selectedTextExpanded = false;
     requestAnimationFrame(() => focusComposer());
   }
 
@@ -333,6 +336,7 @@
     selectedTextInsert = '';
     selectedTextCardText = '';
     selectedTextSourceMessageId = '';
+    selectedTextExpanded = false;
     requestAnimationFrame(() => focusComposer());
   }
 
@@ -938,11 +942,26 @@
     {/if}
 
     {#if selectedTextInsert}
-      <div class="selected-text-context px-4 pt-3">
-        <div class="selected-text-context-text">{selectedTextCardText}</div>
-        <button type="button" class="selected-text-context-close" aria-label="Discard selected text" onclick={discardSelectedTextInsert}>
-          <X class="h-3.5 w-3.5" />
-        </button>
+      <div class="px-4 pt-3">
+        <div class="selected-text-card" class:expanded={selectedTextExpanded}>
+          <button type="button" class="selected-text-card-float-close" aria-label="Discard selected text" onclick={discardSelectedTextInsert}>
+            <X class="h-3 w-3" />
+          </button>
+          <div class="selected-text-card-body">
+            {#if selectedTextExpanded}
+              <textarea
+                class="selected-text-card-textarea"
+                bind:value={selectedTextCardText}
+                rows="3"
+                onblur={() => (selectedTextExpanded = false)}
+              ></textarea>
+            {:else}
+              <button type="button" class="selected-text-card-preview" onclick={() => (selectedTextExpanded = true)}>
+                {selectedTextCardText}
+              </button>
+            {/if}
+          </div>
+        </div>
       </div>
     {/if}
 
@@ -1094,40 +1113,67 @@
     line-height: 1.6;
   }
 
-  .selected-text-context {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    color: var(--text-muted);
+  .selected-text-card {
+    position: relative;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    overflow: hidden;
   }
 
-  .selected-text-context-text {
-    min-width: 0;
-    flex: 1;
+  .selected-text-card-body {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .selected-text-card-preview {
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border-left: 2px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
-    padding-left: 0.65rem;
-    font-size: 12px;
-    line-height: 1.35;
   }
 
-  .selected-text-context-close {
+  .selected-text-card-textarea {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    resize: none;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text);
+    font-family: inherit;
+    padding: 0;
+  }
+
+  .selected-text-card-float-close {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
     display: inline-flex;
-    flex: 0 0 auto;
     align-items: center;
     justify-content: center;
     width: 1.35rem;
     height: 1.35rem;
+    padding: 0;
     border-radius: 9999px;
+    border: 0;
+    background: var(--surface);
     color: var(--text-tertiary);
+    cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease;
   }
 
-  .selected-text-context-close:hover {
-    background: color-mix(in srgb, var(--text) 7%, transparent);
-    color: var(--text-secondary);
+  .selected-text-card-float-close:hover {
+    background: var(--surface-hover);
+    color: var(--text);
   }
 
   .composer-attach-btn {

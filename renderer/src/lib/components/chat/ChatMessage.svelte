@@ -3,8 +3,6 @@
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
   import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, MoreHorizontal, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
-  import { fly } from 'svelte/transition';
-  
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
   import { sanitizeAssistantVisibleText } from '$lib/utils/assistant-visible';
@@ -36,7 +34,9 @@
   const activeVersion = $derived(message.versions?.[activeVersionIndex] || null);
   const displayContent = $derived(
     message.role === 'assistant'
-      ? sanitizeAssistantVisibleText(activeVersion?.content || message.content || '')
+      ? (message.status === 'streaming'
+          ? (activeVersion?.content || message.content || '')
+          : sanitizeAssistantVisibleText(activeVersion?.content || message.content || ''))
       : (activeVersion?.content || message.content || '')
   );
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
@@ -265,16 +265,13 @@
         </div>
       {/if}
       <div class={`message-action-bar justify-end ${hovering || forceActionsVisible || copyFeedback === 'copied' ? 'visible' : ''}`}>
-          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy message" title={copyFeedback === 'copied' ? 'Copied' : 'Copy'}>
+          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy message" title="Copy">
             {#if copyFeedback === 'copied'}
-              <Check class="h-3.5 w-3.5 action-icon copied" />
+              <Check class="h-3.5 w-3.5" />
             {:else}
-              <Copy class="h-3.5 w-3.5 action-icon" />
+              <Copy class="h-3.5 w-3.5" />
             {/if}
           </button>
-          {#if copyFeedback === 'copied'}
-            <span class="copy-action-pill" transition:fly={{ y: 4, duration: 140 }}>Copied</span>
-          {/if}
         <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message" title="Edit">
           <Pencil class="h-3.5 w-3.5 action-icon" />
         </button>
@@ -337,16 +334,13 @@
               <ChevronRight class="h-3.5 w-3.5 action-icon" />
             </button>
           {/if}
-          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy response" title={copyFeedback === 'copied' ? 'Copied' : 'Copy'}>
+          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy response" title="Copy">
             {#if copyFeedback === 'copied'}
-              <Check class="h-3.5 w-3.5 action-icon copied" />
+              <Check class="h-3.5 w-3.5" />
             {:else}
-              <Copy class="h-3.5 w-3.5 action-icon" />
+              <Copy class="h-3.5 w-3.5" />
             {/if}
           </button>
-          {#if copyFeedback === 'copied'}
-            <span class="copy-action-pill" transition:fly={{ y: 4, duration: 140 }}>Copied</span>
-          {/if}
           {#if message.role === 'assistant' && message.status !== 'streaming' && appStore.config.tts?.enable_voice_output}
             <button class="msg-action-btn" onclick={handleTtsAction} aria-label="Read aloud" title={isTtsGenerating ? 'Stop generation' : isTtsPlaying ? 'Stop playback' : 'Listen'}>
               {#if isTtsGenerating || isTtsPlaying}
@@ -424,25 +418,4 @@
     color: var(--error);
   }
 
-  .copy-action-pill {
-    display: inline-flex;
-    align-items: center;
-    height: 1.55rem;
-    padding: 0 0.5rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--success) 22%, transparent);
-    color: var(--success);
-    font-size: 11px;
-    font-weight: 650;
-    line-height: 1;
-    animation: copyPillGlow 900ms ease-out both;
-  }
-
-  @keyframes copyPillGlow {
-    0% { opacity: 0; transform: translateY(2px) scale(0.96); }
-    18% { opacity: 1; transform: translateY(0) scale(1); }
-    70% { opacity: 1; transform: translateY(0) scale(1); }
-    100% { opacity: 0.85; transform: translateY(0) scale(1); }
-  }
 </style>

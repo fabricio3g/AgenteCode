@@ -3,7 +3,7 @@ import type { AppConfig, ChatMessage, ModelOption } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/tauri';
 import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
-import { createBufferedStreamDispatcher } from '$lib/services/streaming';
+import { normalizeStreamingContentDelta, normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { invoke, listen, isTauri } from '$lib/services/tauri';
 import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
@@ -412,12 +412,6 @@ async function streamLocalReply(args: {
   const config = await loadChatConfig();
   const baseUrl = await ensureLocalRuntime(config);
   const hasVisionModel = await hasLocalVisionModel(config);
-  const dispatcher = createBufferedStreamDispatcher({
-    onContent: args.onChunk,
-    onReasoning: args.onReasoning,
-    delayMs: 55
-  });
-
   const response = await fetch(resolveLocalBaseUrl({
     llm: { local: { base_url: baseUrl } }
   } as AppConfig).replace(/\/+$/, '') + '/chat/completions', {
@@ -461,8 +455,14 @@ async function streamLocalReply(args: {
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) dispatcher.pushReasoning(String(reasoning));
-        if (content) dispatcher.pushContent(String(content));
+        if (reasoning) {
+          const normalized = normalizeStreamingReasoningDelta(String(reasoning));
+          if (normalized) args.onReasoning?.(normalized);
+        }
+        if (content) {
+          const normalized = normalizeStreamingContentDelta(String(content));
+          if (normalized) args.onChunk(normalized);
+        }
       } catch { /* skip */ }
     }
   }
@@ -476,12 +476,17 @@ async function streamLocalReply(args: {
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) dispatcher.pushReasoning(String(reasoning));
-        if (content) dispatcher.pushContent(String(content));
+        if (reasoning) {
+          const normalized = normalizeStreamingReasoningDelta(String(reasoning));
+          if (normalized) args.onReasoning?.(normalized);
+        }
+        if (content) {
+          const normalized = normalizeStreamingContentDelta(String(content));
+          if (normalized) args.onChunk(normalized);
+        }
       } catch { /* skip */ }
     }
   }
-  dispatcher.flush();
 }
 
 export async function streamAssistantReply(args: {

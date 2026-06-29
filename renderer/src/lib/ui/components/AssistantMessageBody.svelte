@@ -175,6 +175,14 @@
   </div>
 {/if}
 
+{#if message.status === 'streaming' && !visibleContent && !displayReasoning && !message.agentSteps?.length && !hasActiveDeepResearch}
+  <div class="my-2 flex items-center gap-1">
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+    <span class="typing-dot"></span>
+  </div>
+{/if}
+
 {#if visibleContent}
   <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
 {/if}

@@ -1044,7 +1044,7 @@
           {#each currentNavItems as item}
             <button
               type="button"
-              class={`flex items-center gap-2 rounded-md px-2.5 transition sm:min-w-0
+              class={`flex items-center gap-2 rounded-md px-2.5 transition sm:min-w-0 !border-0 !shadow-none
                 ${isModelSection ? 'min-w-40 py-2 text-sm font-medium' : 'py-1.5 text-[13px] font-medium'}
                 ${activeSection === item.id ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
               onclick={() => (activeSection = item.id)}
