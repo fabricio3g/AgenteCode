@@ -9,6 +9,7 @@
   import Composer from '$lib/components/chat/Composer.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
+  import CodeWorkspaceDrawer from '$lib/components/agent/CodeWorkspaceDrawer.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
@@ -192,7 +193,11 @@
         </div>
       </div>
 
-      {#if appStore.activityDrawerOpen}
+      {#if appStore.activeSpace === 'code'}
+        <div class="activity-drawer-slot">
+          <CodeWorkspaceDrawer />
+        </div>
+      {:else if appStore.activityDrawerOpen}
         <div class="activity-drawer-slot" transition:drawerSlotTransition>
           <ActivityDrawer />
         </div>

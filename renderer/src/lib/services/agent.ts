@@ -792,7 +792,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               type: 'writing',
               label: 'Created requested files',
               status: 'done',
-              detail: created.join(', ')
+              detail: created.join(', '),
+              fileChanges: created.map((path) => ({ path, kind: 'created' as const }))
             });
             args.onStep([...steps]);
           }
@@ -923,7 +924,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               type: 'writing',
               label: 'Created requested files',
               status: 'done',
-              detail: created.join(', ')
+              detail: created.join(', '),
+              fileChanges: created.map((path) => ({ path, kind: 'created' as const }))
             });
             args.onStep([...steps]);
           }

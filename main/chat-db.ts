@@ -56,6 +56,7 @@ function migrate(database) {
       folder_id TEXT,
       draft TEXT NOT NULL DEFAULT '',
       context_mode TEXT DEFAULT 'chat',
+      code_agent TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -161,6 +162,7 @@ function migrate(database) {
   addColumn(database, 'messages', 'slides', 'TEXT');
   addColumn(database, 'messages', 'work_context', 'TEXT');
   addColumn(database, 'messages', 'files_created', 'TEXT');
+  addColumn(database, 'chats', 'code_agent', 'TEXT');
   addColumn(database, 'message_versions', 'metadata', 'TEXT');
   addColumn(database, 'attachments', 'data', 'TEXT');
 }
@@ -168,13 +170,14 @@ function migrate(database) {
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
       draft = excluded.draft,
       context_mode = excluded.context_mode,
+      code_agent = excluded.code_agent,
       updated_at = excluded.updated_at
   `);
 
@@ -222,6 +225,7 @@ export function saveChatSession(session) {
       session.folderId || null,
       session.draft || '',
       session.contextMode || 'chat',
+      stringifyJson(session.codeAgent),
       session.createdAt || Date.now(),
       session.updatedAt || Date.now()
     );
@@ -376,6 +380,7 @@ export function loadAllChats() {
       folderId: chat.folder_id,
       draft: chat.draft || '',
       contextMode: chat.context_mode || 'chat',
+      codeAgent: parseJson(chat.code_agent, null),
       messages
     };
     return session;

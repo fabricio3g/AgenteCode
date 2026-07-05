@@ -6,6 +6,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
+  import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import { Boxes, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
@@ -20,6 +21,12 @@
   let openMenuChatId = $state<string | null>(null);
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([3]));
+
+  const spaceTabs: Array<{ id: ChatContextMode; label: string }> = [
+    { id: 'chat', label: 'Chat' },
+    { id: 'work', label: 'Work' },
+    { id: 'code', label: 'Code' }
+  ];
 
   function startOfDay(ts: number) {
     const d = new Date(ts);
@@ -39,8 +46,9 @@
 
   const filteredChats = $derived.by(() => {
     const query = debouncedSearch.trim().toLowerCase();
-    if (!query) return appStore.chats;
-    return appStore.chats.filter((chat) => {
+    const chats = appStore.visibleChats;
+    if (!query) return chats;
+    return chats.filter((chat) => {
       return (
         chat.title.toLowerCase().includes(query) ||
         chat.messages.some((message) => message.content.toLowerCase().includes(query))
@@ -90,6 +98,7 @@
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
   const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0A0A0A');
+  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : appStore.activeSpace === 'code' ? 'New Code' : $t('sidebar.newChat'));
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -171,14 +180,28 @@
   <div class="flex min-h-0 flex-1 flex-col px-3 pt-0 pb-1">
 
     <div class="flex flex-col gap-1.5 pb-3 pt-2">
+      <div class="space-tabs" role="tablist" aria-label="Session type">
+        {#each spaceTabs as tab (tab.id)}
+          <button
+            type="button"
+            class="space-tab"
+            class:active={appStore.activeSpace === tab.id}
+            role="tab"
+            aria-selected={appStore.activeSpace === tab.id}
+            onclick={() => appStore.setActiveSpace(tab.id)}
+          >
+            {tab.label}
+          </button>
+        {/each}
+      </div>
       <button
         class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[14px] font-medium transition"
-        onclick={() => appStore.createChat()}
+        onclick={() => appStore.createChat(appStore.activeSpace)}
       >
         <span class="plus-badge flex items-center justify-center">
           <Plus class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
         </span>
-        <span class="btn-label">{$t('sidebar.newChat')}</span>
+        <span class="btn-label">{newButtonLabel}</span>
       </button>
     </div>
 
@@ -367,6 +390,39 @@
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
+  }
+
+  .space-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+    padding: 0.2rem;
+  }
+
+  .space-tab {
+    min-width: 0;
+    flex: 1 1 0;
+    height: 1.85rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 720;
+    line-height: 1;
+    transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .space-tab:hover {
+    background: color-mix(in srgb, var(--surface-hover) 88%, var(--primary) 12%);
+    color: var(--text);
+  }
+
+  .space-tab.active {
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+    color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--shadow-xs);
   }
 
   .new-chat-btn:hover {

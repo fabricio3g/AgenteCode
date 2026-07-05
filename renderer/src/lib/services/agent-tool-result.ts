@@ -1,4 +1,4 @@
-import type { AgentArtifact, AgentStep } from '$lib/types/chat';
+import type { AgentArtifact, AgentStep, CodeAgentFileChange, CodeAgentFileChangeKind } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 import type { ToolCall, ToolResult } from '$lib/services/agent-types';
@@ -102,6 +102,9 @@ export function mergeWebSearchSources(params: {
 
 export function finalizeToolStep(step: AgentStep, result: ToolResult): void {
   step.status = result.success ? 'done' : 'error';
+  const fileChanges = fileChangesFromResult(result);
+  if (fileChanges.length) step.fileChanges = fileChanges;
+  else delete step.fileChanges;
   if (!result.success && result.note) {
     step.detail = `${result.error} — ${result.note.slice(0, 120)}`;
     step.output = result.error;
@@ -122,6 +125,20 @@ export function finalizeToolStep(step: AgentStep, result: ToolResult): void {
     }
     step.output = lines.join('\n') || JSON.stringify(output, null, 2);
   }
+}
+
+function fileChangesFromResult(result: ToolResult): CodeAgentFileChange[] {
+  const changes: CodeAgentFileChange[] = [];
+  const add = (paths: string[] | undefined, kind: CodeAgentFileChangeKind) => {
+    for (const path of paths || []) {
+      const normalized = String(path || '').trim();
+      if (normalized) changes.push({ path: normalized, kind });
+    }
+  };
+  add(result.createdFiles, 'created');
+  add(result.modifiedFiles, 'modified');
+  add(result.deletedFiles, 'deleted');
+  return changes;
 }
 
 export function appendToolResultMessage(params: {

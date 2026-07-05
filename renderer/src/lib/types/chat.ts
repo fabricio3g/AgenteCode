@@ -112,6 +112,7 @@ export interface AgentStep {
   status: 'pending' | 'running' | 'awaiting_approval' | 'done' | 'error';
   detail?: string;
   output?: string;
+  fileChanges?: CodeAgentFileChange[];
 }
 
 export interface AgentArtifact {
@@ -123,6 +124,30 @@ export interface AgentArtifact {
 
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
 export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
+
+export type CodeAgentProviderId = 'builtin' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
+
+export interface CodeAgentProvider {
+  id: CodeAgentProviderId;
+  label: string;
+  driver: string;
+  detail: string;
+  status: CodeAgentProviderStatus;
+}
+
+export interface CodeAgentSessionMeta {
+  providerId: CodeAgentProviderId;
+  status?: CodeAgentProviderStatus;
+  updatedAt: number;
+}
+
+export type CodeAgentFileChangeKind = 'created' | 'modified' | 'deleted';
+
+export interface CodeAgentFileChange {
+  path: string;
+  kind: CodeAgentFileChangeKind;
+}
 
 export interface GeneratedWorkProductFile {
   path: string;
@@ -189,6 +214,8 @@ export interface ChatFolder {
   createdAt: number;
 }
 
+export type ChatContextMode = 'chat' | 'work' | 'code';
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -196,7 +223,8 @@ export interface ChatSession {
   updatedAt: number;
   folderId: string | null;
   draft: string;
-  contextMode?: 'chat' | 'work';
+  contextMode?: ChatContextMode;
+  codeAgent?: CodeAgentSessionMeta | null;
   workspace?: WorkspaceContext | null;
   messages: ChatMessage[];
 }

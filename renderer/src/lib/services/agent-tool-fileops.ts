@@ -47,10 +47,10 @@ export async function handleWriteFile(params: {
     if (mode === 'append') {
       try { finalContent = (await params.readWsText(path, params.ctx)) + '\n' + content; } catch { /* new file */ }
     }
+    const existed = params.getWsFiles(params.ctx).some((file) => file.path === path);
     await params.writeWorkspaceFile(params.ctx.workspaceRoot, path, finalContent);
     params.ctx.files[path] = finalContent;
     params.upsertWsFile(params.ctx, path, finalContent.length);
-    const existed = params.getWsFiles(params.ctx).some((file) => file.path === path);
     return params.ok({ path, size: finalContent.length, mode }, { [existed ? 'modifiedFiles' : 'createdFiles']: [path] });
   }
   const existed = path in params.ctx.files;

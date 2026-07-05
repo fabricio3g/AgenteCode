@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runAgentTask } from '$lib/services/agent';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -92,6 +92,7 @@ import {
   isAbortLikeError,
   markAgentWriting,
   normalizeChat,
+  normalizeContextMode,
   normalizeFolder,
   normalizeMessage,
   normalizeText,
@@ -117,6 +118,8 @@ class AppStore {
   chats = $state<ChatSession[]>([]);
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
+  activeSpace = $state<ChatContextMode>('chat');
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ chat: null, work: null, code: null });
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
@@ -329,7 +332,11 @@ class AppStore {
   }
 
   get currentContextMode() {
-    return this.currentChat?.contextMode || 'chat';
+    return this.currentChat?.contextMode || this.activeSpace || 'chat';
+  }
+
+  get visibleChats() {
+    return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === this.activeSpace);
   }
 
   get currentWorkspace() {
@@ -751,11 +758,15 @@ class AppStore {
         // Restore currentChatId from localStorage (not stored in DB)
         const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
         currentChatId = persisted.currentChatId;
+        this.activeSpace = normalizeContextMode(persisted.activeSpace);
+        this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
       } else {
         const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
         chats = Array.isArray(persisted.chats) ? persisted.chats : [];
         folders = Array.isArray(persisted.folders) ? persisted.folders : [];
         currentChatId = persisted.currentChatId;
+        this.activeSpace = normalizeContextMode(persisted.activeSpace);
+        this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
       }
 
       this.chats = chats.map((chat, index) => normalizeChat(chat, index));
@@ -763,14 +774,16 @@ class AppStore {
       this.currentChatId = currentChatId;
 
       if (!this.chats.length) {
-        this.createChat();
+        this.createChat(this.activeSpace);
       } else if (!this.currentChat) {
-        this.currentChatId = this.chats[0]?.id || null;
+        this.currentChatId = this.resolveChatIdForSpace(this.activeSpace) || this.chats[0]?.id || null;
       }
+      this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
+      this.rebuildChatIdBySpace();
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
-        this.createChat();
+        this.createChat(this.activeSpace);
       }
       console.error('[appStore.init] failed', error);
     } finally {
@@ -816,7 +829,9 @@ class AppStore {
     saveChatState<PersistedState>({
       chats: this.chats,
       folders: this.folders,
-      currentChatId: this.currentChatId
+      currentChatId: this.currentChatId,
+      activeSpace: this.activeSpace,
+      currentChatIdBySpace: this.currentChatIdBySpace
     });
     // Also persist the visible chat and any background chats with active runs to SQLite.
     const chatIds = new Set<string>();
@@ -830,23 +845,98 @@ class AppStore {
     }
   }
 
-  createChat() {
+  private normalizeChatIdBySpace(value: unknown): Record<ChatContextMode, string | null> {
+    const raw = value && typeof value === 'object' ? value as Partial<Record<ChatContextMode, unknown>> : {};
+    return {
+      chat: typeof raw.chat === 'string' ? raw.chat : null,
+      work: typeof raw.work === 'string' ? raw.work : null,
+      code: typeof raw.code === 'string' ? raw.code : null
+    };
+  }
+
+  private defaultTitleForMode(mode: ChatContextMode) {
+    if (mode === 'work') return 'New work';
+    if (mode === 'code') return 'New code';
+    return 'New chat';
+  }
+
+  private isDefaultTitle(chat: ChatSession, title = chat.title) {
+    return title === 'New chat' || title === 'New work' || title === 'New code' || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
+  }
+
+  private applyContextModeDefaults(mode: ChatContextMode) {
+    if (mode === 'work' || mode === 'code') {
+      this.searchMode = 'chat';
+      this.composerMode = 'agent';
+      return;
+    }
+    if (this.composerMode === 'agent') {
+      this.composerMode = 'chat';
+    }
+  }
+
+  private resolveChatIdForSpace(mode: ChatContextMode) {
+    const remembered = this.currentChatIdBySpace[mode];
+    if (remembered) {
+      const chat = this.findChat(remembered);
+      if (chat && normalizeContextMode(chat.contextMode) === mode) return remembered;
+    }
+    return this.chats.find((chat) => normalizeContextMode(chat.contextMode) === mode)?.id || null;
+  }
+
+  private rebuildChatIdBySpace() {
+    const next: Record<ChatContextMode, string | null> = { chat: null, work: null, code: null };
+    for (const chat of this.chats) {
+      const mode = normalizeContextMode(chat.contextMode);
+      if (!next[mode]) next[mode] = chat.id;
+    }
+    if (this.currentChat) {
+      next[normalizeContextMode(this.currentChat.contextMode)] = this.currentChat.id;
+    }
+    this.currentChatIdBySpace = next;
+  }
+
+  setActiveSpace(mode: ChatContextMode) {
+    const nextMode = normalizeContextMode(mode);
+    if (this.currentChat) {
+      const currentMode = normalizeContextMode(this.currentChat.contextMode);
+      this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [currentMode]: this.currentChat.id };
+    }
+    this.activeSpace = nextMode;
+    const targetId = this.resolveChatIdForSpace(nextMode);
+    if (targetId) {
+      this.selectChat(targetId);
+      return;
+    }
+    this.createChat(nextMode);
+  }
+
+  createChat(mode: ChatContextMode = this.activeSpace) {
+    const contextMode = normalizeContextMode(mode);
     this.mainView = 'chat';
+    const now = Date.now();
     const chat: ChatSession = {
       id: createId('chat'),
-      title: 'New chat',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      title: this.defaultTitleForMode(contextMode),
+      createdAt: now,
+      updatedAt: now,
       folderId: null,
       draft: '',
-      contextMode: 'chat',
+      contextMode,
+      codeAgent: contextMode === 'code' ? { providerId: 'builtin', updatedAt: now } : null,
       workspace: null,
       messages: []
     };
     this.chats = [chat, ...this.chats];
+    this.activeSpace = contextMode;
     this.currentChatId = chat.id;
+    this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [contextMode]: chat.id };
     this.refreshGenerationState();
     this.composer = '';
+    this.currentArtifact = null;
+    this.currentArtifactMessageId = null;
+    this.sandboxOpen = false;
+    this.applyContextModeDefaults(contextMode);
     this.persist();
     return chat;
   }
@@ -855,6 +945,9 @@ class AppStore {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
     this.mainView = 'chat';
+    const mode = normalizeContextMode(match.contextMode);
+    this.activeSpace = mode;
+    this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [mode]: chatId };
 
     for (const attachment of this.pendingAttachments) {
       if (attachment.preview?.startsWith('blob:')) {
@@ -866,6 +959,7 @@ class AppStore {
     this.currentChatId = chatId;
     this.refreshGenerationState();
     this.composer = match.draft || '';
+    this.applyContextModeDefaults(mode);
     // Restore artifact from the selected chat's last agent message, or clear
     const lastArtifactMsg = findLatestArtifactMessage(match);
     this.currentArtifact = lastArtifactMsg?.artifact || null;
@@ -895,6 +989,7 @@ class AppStore {
       this.stopStreaming(chatId);
     }
     const title = this.chats.find((c) => c.id === chatId)?.title;
+    const deletedMode = normalizeContextMode(this.chats.find((c) => c.id === chatId)?.contextMode || this.activeSpace);
     this.chats = this.chats.filter((chat) => chat.id !== chatId);
     const activeRuns = { ...this.activeRunsByChat };
     delete activeRuns[chatId];
@@ -905,14 +1000,16 @@ class AppStore {
     delete searchStates[chatId];
     this.searchStateByChat = searchStates;
     if (this.currentChatId === chatId) {
-      this.currentChatId = this.chats[0]?.id || null;
+      this.currentChatId = this.resolveChatIdForSpace(deletedMode) || this.chats[0]?.id || null;
+      this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || deletedMode);
       this.composer = this.currentChat?.draft || '';
       // Clear sandbox when current chat is deleted
       this.currentArtifact = null;
       this.currentArtifactMessageId = null;
       this.sandboxOpen = false;
     }
-    if (!this.chats.length) this.createChat();
+    this.rebuildChatIdBySpace();
+    if (!this.chats.length) this.createChat(this.activeSpace);
     this.persist();
     if (isTauri()) {
       clearRagDocuments(chatId).catch(() => {});
@@ -924,7 +1021,7 @@ class AppStore {
   renameChat(chatId: string, title: string) {
     const chat = this.chats.find((c) => c.id === chatId);
     if (!chat) return;
-    chat.title = title.trim() || 'New chat';
+    chat.title = title.trim() || this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
     this.touchChats();
     this.persist();
   }
@@ -1017,7 +1114,7 @@ class AppStore {
     chat.updatedAt = Date.now();
 
     // Fast provisional title so history updates instantly.
-    if (chat.title === 'New chat' && message.role === 'user') {
+    if (this.isDefaultTitle(chat) && message.role === 'user') {
       const firstUser = chat.messages.find((m) => m.role === 'user');
       const preview = (firstUser?.content || '').trim().replace(/\s+/g, ' ').slice(0, 48);
       if (preview) chat.title = preview;
@@ -1045,14 +1142,28 @@ class AppStore {
     return buildContextualPromptHelper(args);
   }
 
-  setContextMode(mode: 'chat' | 'work') {
+  setContextMode(mode: ChatContextMode) {
     if (!this.currentChat) return;
-    this.currentChat.contextMode = mode;
-    if (mode === 'work') {
-      this.composerMode = 'agent';
-    } else if (this.composerMode === 'agent') {
-      this.composerMode = 'chat';
-    }
+    const nextMode = normalizeContextMode(mode);
+    this.currentChat.contextMode = nextMode;
+    this.currentChat.codeAgent = nextMode === 'code'
+      ? (this.currentChat.codeAgent || { providerId: 'builtin', updatedAt: Date.now() })
+      : null;
+    this.activeSpace = nextMode;
+    this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [nextMode]: this.currentChat.id };
+    this.applyContextModeDefaults(nextMode);
+    this.touchChats();
+    this.persist();
+  }
+
+  setCodeAgentProvider(providerId: CodeAgentProviderId) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
+    chat.codeAgent = {
+      ...(chat.codeAgent || {}),
+      providerId,
+      updatedAt: Date.now()
+    };
     this.touchChats();
     this.persist();
   }
@@ -1135,7 +1246,7 @@ class AppStore {
     if (targetChat.workspace) {
       targetChat.workspace = null;
       if (targetChat.contextMode === 'work') {
-        targetChat.contextMode = 'chat';
+        this.setContextMode('chat');
       }
       this.touchChats();
       this.persist();
@@ -1171,7 +1282,7 @@ class AppStore {
             })
           : null;
         if (!this.currentChat.workspace && this.currentChat.contextMode === 'work') {
-          this.currentChat.contextMode = 'chat';
+          this.setContextMode('chat');
         }
         this.touchChats();
         this.persist();
@@ -1306,9 +1417,7 @@ class AppStore {
       const chat = this.findChat(targetChatId);
       if (!chat) return;
       chat.workspace = buildWorkspaceFromIndexResult(result, Date.now());
-      chat.contextMode = 'work';
-      this.touchChats();
-      this.persist();
+      this.setContextMode('work');
       await this.refreshRagDocuments(targetChatId);
       toastStore.success(
         result.indexed_count > 0
@@ -1417,9 +1526,7 @@ class AppStore {
         skippedCount,
         files: workspaceFiles
       };
-      chat.contextMode = 'work';
-      this.touchChats();
-      this.persist();
+      this.setContextMode('work');
       await this.refreshRagDocuments(targetChatId);
 
       toastStore.success(
@@ -1441,9 +1548,7 @@ class AppStore {
       .filter((docId): docId is string => !!docId);
     await Promise.allSettled(docIds.map((docId) => removeRagDocument(docId, targetChatId)));
     targetChat.workspace = null;
-    targetChat.contextMode = 'chat';
-    this.touchChats();
-    this.persist();
+    this.setContextMode('chat');
     await this.refreshRagDocuments(targetChatId);
     toastStore.info('Workspace removed from this chat.', 2200);
   }
@@ -1559,7 +1664,7 @@ class AppStore {
     })) return;
 
     this.error = null;
-    const targetChatTitle = targetChat?.title || 'New chat';
+    const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
     const workContext = activeWorkspace
       ? {
           rootName: activeWorkspace.rootName,
@@ -2165,7 +2270,7 @@ class AppStore {
 
     const provisional = userMsg.content.trim().replace(/\s+/g, ' ').slice(0, 48);
     // Only auto-rewrite if title is still default or provisional quick title.
-    if (chat.title !== 'New chat' && chat.title !== provisional) return;
+    if (!this.isDefaultTitle(chat) && chat.title !== provisional) return;
 
     try {
       const result = await completeAssistantReply({
@@ -2188,7 +2293,7 @@ class AppStore {
         .replace(/[.!?]+$/, '')         // strip trailing punctuation
         .trim();
 
-      if (generated && generated.length >= 4 && generated.length <= 80 && (chat.title === 'New chat' || chat.title === provisional)) {
+      if (generated && generated.length >= 4 && generated.length <= 80 && (this.isDefaultTitle(chat) || chat.title === provisional)) {
         chat.title = generated;
         this.touchChats();
         this.persist();

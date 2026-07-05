@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentOutcome, AgentStopReason, ChatFolder, ChatMessage, ChatSession, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
+import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentProviderStatus, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
@@ -409,10 +409,27 @@ export function normalizeMessage(message: Partial<ChatMessage>, index: number): 
   };
 }
 
+export function normalizeContextMode(mode: unknown): ChatContextMode {
+  return mode === 'work' || mode === 'code' ? mode : 'chat';
+}
+
+function normalizeCodeAgentProviderId(providerId: unknown): CodeAgentProviderId {
+  return providerId === 'codex' || providerId === 'claude' || providerId === 'cursor' || providerId === 'opencode' || providerId === 'pi'
+    ? providerId
+    : 'builtin';
+}
+
+function normalizeCodeAgentStatus(status: unknown): CodeAgentProviderStatus | undefined {
+  return status === 'ready' || status === 'missing' || status === 'login' || status === 'soon' || status === 'disabled'
+    ? status
+    : undefined;
+}
+
 export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSession {
   const messages = Array.isArray(chat.messages)
     ? chat.messages.map((message, messageIndex) => normalizeMessage(message, messageIndex))
     : [];
+  const codeAgent = chat.codeAgent && typeof chat.codeAgent === 'object' ? chat.codeAgent : null;
 
   return {
     id: String(chat.id || createId(`chat-${index}`)),
@@ -421,7 +438,14 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     updatedAt: Number.isFinite(chat.updatedAt) ? Number(chat.updatedAt) : Date.now(),
     folderId: chat.folderId ?? null,
     draft: String(chat.draft || ''),
-    contextMode: chat.contextMode === 'work' ? 'work' : 'chat',
+    contextMode: normalizeContextMode(chat.contextMode),
+    codeAgent: codeAgent
+      ? {
+          providerId: normalizeCodeAgentProviderId(codeAgent.providerId),
+          status: normalizeCodeAgentStatus(codeAgent.status),
+          updatedAt: Number.isFinite(codeAgent.updatedAt) ? Number(codeAgent.updatedAt) : Date.now()
+        }
+      : null,
     workspace: chat.workspace || null,
     messages
   };
