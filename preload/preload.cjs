@@ -11,7 +11,6 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'start_llama', 'stop_llama', 'get_supervisor_status', 'supervisor_health_check',
   'start_embedding_server', 'stop_embedding_server', 'get_embedding_status',
   'get_loaded_models', 'unload_model', 'get_recommended_settings',
-  'ingest_workspace_files',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'read_file_base64',
   'stt_transcribe', 'get_stt_status', 'unload_whisper', 'fetch_provider_models', 'get_api_model_context', 'detect_tool_support',

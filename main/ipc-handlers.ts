@@ -33,8 +33,9 @@ import {
   indexWorkspaceFolder, writeWorkspaceFile, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
-  resetMediaPermissions, downloadRuntime
-} from './workspace.ts';
+  resetMediaPermissions
+} from './filesystem.ts';
+import { downloadRuntime } from './runtime-download.ts';
 
 import { sandboxExec } from './sandbox.ts';
 import {
