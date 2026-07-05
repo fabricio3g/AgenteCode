@@ -127,6 +127,7 @@ export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
 
 export type CodeAgentProviderId = 'builtin' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
+export type CodeAgentRuntimeMode = 'full' | 'supervised';
 
 export interface CodeAgentProvider {
   id: CodeAgentProviderId;
@@ -139,6 +140,7 @@ export interface CodeAgentProvider {
 export interface CodeAgentSessionMeta {
   providerId: CodeAgentProviderId;
   status?: CodeAgentProviderStatus;
+  runtimeMode?: CodeAgentRuntimeMode;
   updatedAt: number;
 }
 

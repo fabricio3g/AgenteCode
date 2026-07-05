@@ -2,10 +2,11 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Activity, AlertCircle, Bot, CheckCircle2, ChevronDown, Code2, FileCode2, Files, GitCompare, Terminal } from 'lucide-svelte';
+  import { Activity, AlertCircle, Bot, CheckCircle2, ChevronDown, Code2, FileCode2, Files, GitCompare, Shield, Terminal } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { detectProviderStatus, getProviderRegistry } from '$lib/services/agent-provider';
-  import type { AgentStep, CodeAgentFileChangeKind, CodeAgentProvider, CodeAgentProviderId, CodeAgentProviderStatus } from '$lib/types/chat';
+  import { isTauri, invoke } from '$lib/services/tauri';
+  import type { AgentStep, CodeAgentFileChangeKind, CodeAgentProvider, CodeAgentProviderId, CodeAgentProviderStatus, CodeAgentRuntimeMode } from '$lib/types/chat';
 
   type DrawerTab = 'activity' | 'diff' | 'files' | 'terminal';
 
@@ -22,6 +23,11 @@
 
   let activeTab = $state<DrawerTab>('activity');
   let providerMenuOpen = $state(false);
+  let commandInput = $state('');
+  let commandOutput = $state('');
+  let commandRunning = $state(false);
+  let terminalHistory = $state<Array<{ command: string; output: string; error?: boolean }>>([]);
+  let expandedDiffFile = $state<string | null>(null);
 
   const currentChat = $derived(appStore.currentChat);
   const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.providerId || 'builtin');
@@ -47,6 +53,7 @@
     return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
   });
   const changedFilePaths = $derived(fileChanges.map((change) => change.path));
+  const runtimeMode = $derived<CodeAgentRuntimeMode>(currentChat?.codeAgent?.runtimeMode || 'full');
 
   function statusLabel(status: CodeAgentProviderStatus) {
     switch (status) {
@@ -86,6 +93,54 @@
     return !!artifact?.files?.[path];
   }
 
+  function getFileContent(path: string): string | null {
+    return artifact?.files?.[path] || null;
+  }
+
+  function toggleDiffFile(path: string) {
+    expandedDiffFile = expandedDiffFile === path ? null : path;
+  }
+
+  async function runTerminalCommand() {
+    const cmd = commandInput.trim();
+    if (!cmd || commandRunning) return;
+    commandRunning = true;
+    commandInput = '';
+    commandOutput = '';
+    try {
+      if (isTauri()) {
+        const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>('workspace_exec', {
+          workspace_root: '',
+          command: cmd,
+          shell: true,
+          timeout_ms: 30000
+        });
+        const output = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
+        commandOutput = output || `(exit code ${result.exit_code})`;
+        terminalHistory = [...terminalHistory, { command: cmd, output: commandOutput, error: result.exit_code !== 0 }];
+      } else {
+        commandOutput = 'Terminal available in desktop app only.';
+        terminalHistory = [...terminalHistory, { command: cmd, output: commandOutput, error: true }];
+      }
+    } catch (error) {
+      commandOutput = String((error as { message?: string })?.message || error);
+      terminalHistory = [...terminalHistory, { command: cmd, output: commandOutput, error: true }];
+    } finally {
+      commandRunning = false;
+    }
+  }
+
+  function handleTerminalKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      runTerminalCommand();
+    }
+  }
+
+  function toggleRuntimeMode() {
+    appStore.setCodeAgentRuntimeMode(runtimeMode === 'full' ? 'supervised' : 'full');
+  }
+
   function selectProvider(providerId: CodeAgentProviderId) {
     const provider = providers.find((entry) => entry.id === providerId);
     if (!provider || provider.status !== 'ready') return;
@@ -111,6 +166,11 @@
         {currentChat?.title || 'New code'}{#if runningStep} · {runningStep.label}{/if}
       </div>
     </div>
+
+    <button type="button" class="runtime-toggle" class:supervised={runtimeMode === 'supervised'} onclick={toggleRuntimeMode} title={runtimeMode === 'supervised' ? 'Supervised mode' : 'Full access'}>
+      <Shield class="h-3 w-3" />
+      <span>{runtimeMode === 'supervised' ? 'Sup' : 'Full'}</span>
+    </button>
 
     <div class="provider-picker">
       <button
@@ -188,9 +248,19 @@
       {#if fileChanges.length}
         <div class="file-change-list">
           {#each fileChanges as change (`${change.kind}:${change.path}`)}
-            <section class="file-change-row">
-              <span class={`change-kind ${change.kind}`}>{changeLabel(change.kind)}</span>
-              <span class="change-path">{change.path}</span>
+            {@const expanded = expandedDiffFile === change.path}
+            {@const fileContent = getFileContent(change.path)}
+            <section class="diff-block" class:expanded>
+              <button type="button" class="diff-row" onclick={() => toggleDiffFile(change.path)} disabled={!fileContent}>
+                <span class={`change-kind ${change.kind}`}>{changeLabel(change.kind)}</span>
+                <span class="change-path">{change.path}</span>
+                {#if fileContent}
+                  <ChevronDown class={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                {/if}
+              </button>
+              {#if expanded && fileContent}
+                <pre class="diff-content">{fileContent.slice(0, 6000)}{fileContent.length > 6000 ? '\n\n\u2026 (truncated)' : ''}</pre>
+              {/if}
             </section>
           {/each}
         </div>
@@ -221,22 +291,56 @@
         </div>
       {/if}
     {:else if activeTab === 'terminal'}
-      {#if executingSteps.length}
-        <div class="panel-stack">
-          {#each executingSteps as step (step.id)}
-            <section class="mini-card mono-card">
-              <div class="mini-card-title"><Terminal class="h-3.5 w-3.5" />{step.label}</div>
-              <p>{step.detail || 'Command'}</p>
-              {#if step.output}<pre>{step.output}</pre>{/if}
-            </section>
+      <div class="terminal-pane">
+        {#if executingSteps.length}
+          <div class="panel-stack">
+            {#each executingSteps as step (step.id)}
+              <section class="mini-card mono-card">
+                <div class="mini-card-title"><Terminal class="h-3.5 w-3.5" />{step.label}</div>
+                <p>{step.detail || 'Command'}</p>
+                {#if step.output}<pre>{step.output}</pre>{/if}
+              </section>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="terminal-history">
+          {#each terminalHistory as entry (`${entry.command}-${terminalHistory.length}`)}
+            <div class="term-entry">
+              <div class="term-prompt">$ {entry.command}</div>
+              {#if entry.output}
+                <pre class="term-output" class:term-error={entry.error}>{entry.output}</pre>
+              {/if}
+            </div>
           {/each}
+          {#if commandRunning}
+            <div class="term-entry">
+              <div class="term-prompt running">Running…</div>
+            </div>
+          {/if}
+          {#if !executingSteps.length && !terminalHistory.length && !commandRunning}
+            <div class="empty-state">
+              <Terminal class="h-6 w-6" />
+              <p>Run commands in the workspace. Agent commands will also appear here.</p>
+            </div>
+          {/if}
         </div>
-      {:else}
-        <div class="empty-state">
-          <Terminal class="h-6 w-6" />
-          <p>Commands and terminal output will appear here.</p>
+
+        <div class="terminal-input-row">
+          <span class="term-prompt-symbol">$</span>
+          <input
+            type="text"
+            class="terminal-input"
+            bind:value={commandInput}
+            onkeydown={handleTerminalKeydown}
+            placeholder="command…"
+            disabled={commandRunning}
+          />
+          <button type="button" class="term-run-btn" onclick={runTerminalCommand} disabled={commandRunning || !commandInput.trim()}>
+            Run
+          </button>
         </div>
-      {/if}
+      </div>
     {/if}
   </div>
 </aside>
@@ -440,15 +544,50 @@
     gap: 0.5rem;
   }
 
-  .file-change-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.45rem;
+  .diff-block {
     border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--surface-hover) 42%, transparent);
+    overflow: hidden;
+  }
+
+  .diff-block.expanded {
+    border-color: var(--border);
+  }
+
+  .diff-row {
+    display: grid;
+    width: 100%;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+    border: 0;
+    background: transparent;
     padding: 0.5rem;
+    text-align: left;
+    cursor: default;
+  }
+
+  .diff-row:not(:disabled):hover {
+    background: color-mix(in srgb, var(--surface-hover) 58%, transparent);
+  }
+
+  .diff-row:disabled {
+    opacity: 0.7;
+  }
+
+  .diff-content {
+    margin: 0;
+    padding: 0.4rem 0.55rem 0.55rem;
+    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow: auto;
+    max-height: 18rem;
+    line-height: 1.45;
   }
 
   .change-kind,
@@ -592,7 +731,7 @@
 
   .empty-state {
     display: flex;
-    min-height: 12rem;
+    min-height: 6rem;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -602,5 +741,129 @@
     color: var(--text-muted);
     padding: 1rem;
     text-align: center;
+  }
+
+  .runtime-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.85rem;
+    border: 1px solid color-mix(in srgb, var(--success, #16a34a) 42%, var(--border) 58%);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
+    color: var(--success, #16a34a);
+    padding: 0 0.55rem;
+    font-size: 0.62rem;
+    font-weight: 760;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .runtime-toggle.supervised {
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--border) 58%);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    color: var(--primary);
+  }
+
+  .terminal-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+    gap: 0.5rem;
+  }
+
+  .terminal-history {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .terminal-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-hover) 64%, transparent);
+    padding: 0.3rem 0.45rem;
+  }
+
+  .term-prompt-symbol {
+    color: var(--success, #16a34a);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding-left: 0.15rem;
+  }
+
+  .terminal-input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    outline: none;
+  }
+
+  .terminal-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .term-run-btn {
+    height: 1.5rem;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+    color: var(--primary);
+    padding: 0 0.5rem;
+    font-size: 0.62rem;
+    font-weight: 720;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .term-run-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .term-entry {
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--surface-hover) 32%, transparent);
+    padding: 0.4rem 0.5rem;
+  }
+
+  .term-prompt {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .term-prompt.running {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  .term-output {
+    margin: 0.3rem 0 0;
+    max-height: 10rem;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .term-output.term-error {
+    color: var(--error);
   }
 </style>

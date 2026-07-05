@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentRuntimeMode, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runCodeAgent } from '$lib/services/agent-provider';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -1162,6 +1162,18 @@ class AppStore {
     chat.codeAgent = {
       ...(chat.codeAgent || {}),
       providerId,
+      updatedAt: Date.now()
+    };
+    this.touchChats();
+    this.persist();
+  }
+
+  setCodeAgentRuntimeMode(mode: CodeAgentRuntimeMode) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
+    chat.codeAgent = {
+      ...(chat.codeAgent || { providerId: 'builtin', updatedAt: Date.now() }),
+      runtimeMode: mode,
       updatedAt: Date.now()
     };
     this.touchChats();

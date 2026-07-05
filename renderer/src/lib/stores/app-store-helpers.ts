@@ -425,6 +425,10 @@ function normalizeCodeAgentStatus(status: unknown): CodeAgentProviderStatus | un
     : undefined;
 }
 
+function normalizeRuntimeMode(mode: unknown): 'full' | 'supervised' | undefined {
+  return mode === 'full' || mode === 'supervised' ? mode : undefined;
+}
+
 export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSession {
   const messages = Array.isArray(chat.messages)
     ? chat.messages.map((message, messageIndex) => normalizeMessage(message, messageIndex))
@@ -443,6 +447,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
       ? {
           providerId: normalizeCodeAgentProviderId(codeAgent.providerId),
           status: normalizeCodeAgentStatus(codeAgent.status),
+          runtimeMode: normalizeRuntimeMode(codeAgent.runtimeMode),
           updatedAt: Number.isFinite(codeAgent.updatedAt) ? Number(codeAgent.updatedAt) : Date.now()
         }
       : null,
