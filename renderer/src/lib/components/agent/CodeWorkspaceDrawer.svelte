@@ -1,20 +1,24 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Activity, AlertCircle, Bot, CheckCircle2, ChevronDown, Code2, FileCode2, Files, GitCompare, Terminal } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { detectProviderStatus, getProviderRegistry } from '$lib/services/agent-provider';
   import type { AgentStep, CodeAgentFileChangeKind, CodeAgentProvider, CodeAgentProviderId, CodeAgentProviderStatus } from '$lib/types/chat';
 
   type DrawerTab = 'activity' | 'diff' | 'files' | 'terminal';
 
-  const providers: CodeAgentProvider[] = [
-    { id: 'builtin', label: 'Chatea Agent', driver: 'Built-in', detail: 'Current local agent', status: 'ready' },
-    { id: 'codex', label: 'Codex', driver: 'CLI', detail: 'OpenAI Codex CLI', status: 'missing' },
-    { id: 'claude', label: 'Claude Code', driver: 'CLI', detail: 'Anthropic Claude Code', status: 'login' },
-    { id: 'cursor', label: 'Cursor Agent', driver: 'CLI/ACP', detail: 'Cursor coding agent', status: 'disabled' },
-    { id: 'opencode', label: 'OpenCode', driver: 'CLI/server', detail: 'OpenCode runtime', status: 'missing' },
-    { id: 'pi', label: 'Pi Agent', driver: 'Agent', detail: 'Pi coding agent', status: 'soon' }
-  ];
+  const registry = getProviderRegistry();
+  const providers: CodeAgentProvider[] = $state(
+    (Object.values(registry) as Array<{ id: CodeAgentProviderId; label: string; driver: string; detail: string }>).map(({ id, label, driver, detail }) => ({
+      id,
+      label,
+      driver,
+      detail,
+      status: id === 'builtin' ? 'ready' : ('missing' as CodeAgentProviderStatus)
+    }))
+  );
 
   let activeTab = $state<DrawerTab>('activity');
   let providerMenuOpen = $state(false);
@@ -88,6 +92,15 @@
     appStore.setCodeAgentProvider(providerId);
     providerMenuOpen = false;
   }
+
+  onMount(() => {
+    for (const provider of providers) {
+      detectProviderStatus(provider.id).then((status) => {
+        const match = providers.find((entry) => entry.id === provider.id);
+        if (match) match.status = status;
+      });
+    }
+  });
 </script>
 
 <aside class="code-drawer" aria-label="Code workspace">

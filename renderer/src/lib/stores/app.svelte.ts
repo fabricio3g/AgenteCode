@@ -1,6 +1,6 @@
 import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
-import { runAgentTask } from '$lib/services/agent';
+import { runCodeAgent } from '$lib/services/agent-provider';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
@@ -1844,7 +1844,8 @@ class AppStore {
           : { maxIterations: 12, maxToolCalls: 30, maxTimeMs: 6 * 60 * 1000 };
 
       if (useToolLoop) {
-        const agentResult = await runAgentTask({
+        const codeProviderId = activeContextMode === 'code' ? targetChat.codeAgent?.providerId : undefined;
+        const agentResult = await runCodeAgent({
           chatId: targetChatId,
           systemPrompt,
           messages: requestMessages,
@@ -1897,7 +1898,7 @@ class AppStore {
               this.persist();
             }
           }
-        });
+        }, codeProviderId);
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
@@ -2388,7 +2389,7 @@ class AppStore {
       const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-        const agentResult = await runAgentTask({
+        const agentResult = await runCodeAgent({
           chatId: targetChatId,
           systemPrompt: styledSystemPrompt,
           messages: previousMessages,
@@ -2448,7 +2449,7 @@ class AppStore {
               this.persist();
             }
           }
-        });
+        }, chat.codeAgent?.providerId);
         markAgentWriting(message);
         nextVersion.metadata = {
           ...(nextVersion.metadata || {}),
