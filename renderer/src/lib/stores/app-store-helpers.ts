@@ -451,6 +451,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
           updatedAt: Number.isFinite(codeAgent.updatedAt) ? Number(codeAgent.updatedAt) : Date.now()
         }
       : null,
+    projectId: typeof chat.projectId === 'string' ? chat.projectId : null,
     workspace: chat.workspace || null,
     messages
   };

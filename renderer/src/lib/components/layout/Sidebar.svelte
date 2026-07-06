@@ -9,7 +9,7 @@
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { Boxes, ChevronRight, FileDown, Folder, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -21,6 +21,7 @@
   let openMenuChatId = $state<string | null>(null);
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([3]));
+  let collapsedProjects = $state<Set<string>>(new Set());
 
   const spaceTabs: Array<{ id: ChatContextMode; label: string }> = [
     { id: 'chat', label: 'Chat' },
@@ -98,7 +99,18 @@
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
   const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0A0A0A');
-  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : appStore.activeSpace === 'code' ? 'New Code' : $t('sidebar.newChat'));
+  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : appStore.activeSpace === 'code' ? 'New Project' : $t('sidebar.newChat'));
+
+  const projectGroups = $derived.by(() => {
+    const query = debouncedSearch.trim().toLowerCase();
+    return appStore.codeProjects.map((project) => {
+      const chats = appStore.chats
+        .filter((chat) => chat.contextMode === 'code' && chat.projectId === project.id)
+        .filter((chat) => !query || chat.title.toLowerCase().includes(query) || chat.messages.some((message) => message.content.toLowerCase().includes(query)))
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+      return { project, chats };
+    }).filter((group) => group.chats.length || !query);
+  });
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -133,6 +145,21 @@
     if (next.has(key)) next.delete(key);
     else next.add(key);
     collapsedGroups = next;
+  }
+
+  function toggleProject(projectId: string) {
+    const next = new Set(collapsedProjects);
+    if (next.has(projectId)) next.delete(projectId);
+    else next.add(projectId);
+    collapsedProjects = next;
+  }
+
+  function createForActiveSpace() {
+    if (appStore.activeSpace === 'code') {
+      void appStore.pickCodeProjectFolder();
+      return;
+    }
+    appStore.createChat(appStore.activeSpace);
   }
 
   function exportChat(chat: (typeof appStore.chats)[0]) {
@@ -196,7 +223,7 @@
       </div>
       <button
         class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[14px] font-medium transition"
-        onclick={() => appStore.createChat(appStore.activeSpace)}
+        onclick={createForActiveSpace}
       >
         <span class="plus-badge flex items-center justify-center">
           <Plus class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
@@ -238,7 +265,84 @@
     {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
-      {#if groupedChats.length}
+      {#if appStore.activeSpace === 'code'}
+        <div class="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Projects</div>
+        {#if projectGroups.length}
+          <div class="space-y-1">
+            {#each projectGroups as group (group.project.id)}
+              {@const projectCollapsed = !isSearching && collapsedProjects.has(group.project.id)}
+              <section class="project-group">
+                <div class="project-header" class:active={appStore.currentProjectId === group.project.id}>
+                  <button type="button" class="project-toggle" onclick={() => toggleProject(group.project.id)} aria-expanded={!projectCollapsed}>
+                    <ChevronRight class={`h-3.5 w-3.5 transition-transform ${projectCollapsed ? '' : 'rotate-90'}`} />
+                    <Folder class="h-3.5 w-3.5" />
+                    <span class="project-name">{group.project.rootName}</span>
+                    <span class="project-count">{group.chats.length}</span>
+                  </button>
+                  <button type="button" class="project-new" onclick={() => appStore.createCodeChat(group.project.id)} aria-label="New code conversation">
+                    <Plus class="h-3 w-3" />
+                  </button>
+                </div>
+                {#if !projectCollapsed}
+                  <div class="project-chats" transition:slide={{ duration: 140 }}>
+                    {#each group.chats as chat (chat.id)}
+                      <div
+                        class={`chat-item project-chat relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
+                        role="button"
+                        tabindex="0"
+                        onclick={() => appStore.selectChat(chat.id)}
+                        ondblclick={() => startRename(chat.id, chat.title)}
+                        onkeydown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            appStore.selectChat(chat.id);
+                          }
+                        }}
+                      >
+                        <div class="min-w-0 flex-1 pr-1">
+                          {#if renamingChatId === chat.id}
+                            <input
+                              bind:this={renameInputEl}
+                              class="chat-rename-input w-full"
+                              bind:value={renameValue}
+                              onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+                              onclick={(e) => e.stopPropagation()}
+                              onkeydown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  commitRename(chat.id);
+                                }
+                                if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  closeRename();
+                                }
+                              }}
+                              onblur={() => closeRename()}
+                              maxlength="120"
+                            />
+                          {:else}
+                            <div class="chat-title truncate text-[14px]">{chat.title}</div>
+                          {/if}
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </section>
+            {/each}
+          </div>
+        {:else}
+          <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
+            <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
+              <Folder class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            </div>
+            <p class="text-[14px] text-[var(--text-muted)]">No projects yet</p>
+            <button type="button" class="mt-2 text-[12px] font-semibold text-[var(--primary)]" onclick={() => appStore.pickCodeProjectFolder()}>Create project</button>
+          </div>
+        {/if}
+      {:else if groupedChats.length}
         {#each groupedChats as group (group.key)}
           {@const isCollapsed = !isSearching && collapsedGroups.has(group.key)}
           <div class="mb-1.5">
@@ -509,6 +613,79 @@
 
   .chat-item.is-active {
     background: var(--surface-hover);
+  }
+
+  .project-group {
+    border-radius: var(--radius-md);
+  }
+
+  .project-header {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+  }
+
+  .project-header.active {
+    color: var(--text);
+  }
+
+  .project-toggle {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.4rem;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: inherit;
+    padding: 0.45rem 0.5rem;
+    text-align: left;
+  }
+
+  .project-toggle:hover,
+  .project-new:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .project-name {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.88rem;
+    font-weight: 680;
+  }
+
+  .project-count {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+  }
+
+  .project-new {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  .project-chats {
+    margin-left: 1.45rem;
+    padding-left: 0.45rem;
+    border-left: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  }
+
+  .project-chat {
+    color: var(--text-secondary);
   }
 
   .chat-rename-input {

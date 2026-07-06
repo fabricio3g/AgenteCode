@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentRuntimeMode, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runCodeAgent } from '$lib/services/agent-provider';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -14,7 +14,7 @@ import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
-import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
+import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb, loadCodeProjectsFromDb, saveCodeProjectToDb, deleteCodeProjectFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
@@ -117,6 +117,8 @@ class AppStore {
   config = $state<AppConfig>({});
   chats = $state<ChatSession[]>([]);
   folders = $state<ChatFolder[]>([]);
+  codeProjects = $state<CodeProject[]>([]);
+  currentProjectId = $state<string | null>(null);
   currentChatId = $state<string | null>(null);
   activeSpace = $state<ChatContextMode>('chat');
   currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ chat: null, work: null, code: null });
@@ -336,7 +338,14 @@ class AppStore {
   }
 
   get visibleChats() {
+    if (this.activeSpace === 'code' && this.currentProjectId) {
+      return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === 'code' && chat.projectId === this.currentProjectId);
+    }
     return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === this.activeSpace);
+  }
+
+  get currentProject() {
+    return this.codeProjects.find((p) => p.id === this.currentProjectId) || null;
   }
 
   get currentWorkspace() {
@@ -748,6 +757,7 @@ class AppStore {
       }
       // In Electron: load from SQLite (primary). Falls back to localStorage migration.
       const dbResult = await loadChatStateFromDb();
+      const dbProjects = await loadCodeProjectsFromDb();
       let chats: ChatSession[];
       let folders: ChatFolder[];
       let currentChatId: string | null;
@@ -760,17 +770,27 @@ class AppStore {
         currentChatId = persisted.currentChatId;
         this.activeSpace = normalizeContextMode(persisted.activeSpace);
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
+        this.currentProjectId = persisted.currentProjectId || null;
       } else {
         const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
         chats = Array.isArray(persisted.chats) ? persisted.chats : [];
         folders = Array.isArray(persisted.folders) ? persisted.folders : [];
+        if (!dbProjects.length && Array.isArray(persisted.codeProjects)) {
+          dbProjects.push(...persisted.codeProjects);
+        }
         currentChatId = persisted.currentChatId;
         this.activeSpace = normalizeContextMode(persisted.activeSpace);
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
+        this.currentProjectId = persisted.currentProjectId || null;
       }
 
       this.chats = chats.map((chat, index) => normalizeChat(chat, index));
       this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
+      this.codeProjects = dbProjects;
+      this.ensureLooseCodeProject();
+      if (this.currentProjectId && !this.codeProjects.some((project) => project.id === this.currentProjectId)) {
+        this.currentProjectId = this.codeProjects[0]?.id || null;
+      }
       this.currentChatId = currentChatId;
 
       if (!this.chats.length) {
@@ -829,9 +849,11 @@ class AppStore {
     saveChatState<PersistedState>({
       chats: this.chats,
       folders: this.folders,
+      codeProjects: this.codeProjects,
       currentChatId: this.currentChatId,
       activeSpace: this.activeSpace,
-      currentChatIdBySpace: this.currentChatIdBySpace
+      currentChatIdBySpace: this.currentChatIdBySpace,
+      currentProjectId: this.currentProjectId
     });
     // Also persist the visible chat and any background chats with active runs to SQLite.
     const chatIds = new Set<string>();
@@ -856,8 +878,34 @@ class AppStore {
 
   private defaultTitleForMode(mode: ChatContextMode) {
     if (mode === 'work') return 'New work';
-    if (mode === 'code') return 'New code';
+    if (mode === 'code') return 'Codebase overview';
     return 'New chat';
+  }
+
+  private projectNameFromPath(rootPath: string) {
+    return String(rootPath || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'Project';
+  }
+
+  private ensureLooseCodeProject() {
+    const looseChats = this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === 'code' && !chat.projectId);
+    if (!looseChats.length) return;
+    let loose = this.codeProjects.find((project) => project.id === 'project-loose');
+    if (!loose) {
+      const now = Date.now();
+      loose = {
+        id: 'project-loose',
+        rootPath: '',
+        rootName: 'Loose sessions',
+        icon: null,
+        createdAt: now,
+        updatedAt: now
+      };
+      this.codeProjects = [loose, ...this.codeProjects];
+      void saveCodeProjectToDb(loose);
+    }
+    for (const chat of looseChats) {
+      chat.projectId = loose.id;
+    }
   }
 
   private isDefaultTitle(chat: ChatSession, title = chat.title) {
@@ -911,7 +959,7 @@ class AppStore {
     this.createChat(nextMode);
   }
 
-  createChat(mode: ChatContextMode = this.activeSpace) {
+  createChat(mode: ChatContextMode = this.activeSpace, options: { projectId?: string | null; workspace?: ChatSession['workspace'] } = {}) {
     const contextMode = normalizeContextMode(mode);
     this.mainView = 'chat';
     const now = Date.now();
@@ -924,11 +972,13 @@ class AppStore {
       draft: '',
       contextMode,
       codeAgent: contextMode === 'code' ? { providerId: 'builtin', updatedAt: now } : null,
-      workspace: null,
+      projectId: contextMode === 'code' ? (options.projectId || this.currentProjectId || null) : null,
+      workspace: options.workspace || null,
       messages: []
     };
     this.chats = [chat, ...this.chats];
     this.activeSpace = contextMode;
+    if (contextMode === 'code') this.currentProjectId = chat.projectId || this.currentProjectId;
     this.currentChatId = chat.id;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [contextMode]: chat.id };
     this.refreshGenerationState();
@@ -941,12 +991,125 @@ class AppStore {
     return chat;
   }
 
+  async pickCodeProjectFolder() {
+    if (!isTauri()) {
+      toastStore.error('Code projects are only available in the desktop app.');
+      return null;
+    }
+    const selectedPath = await pickWorkspaceFolderDialog();
+    if (!selectedPath) return null;
+    return this.createCodeProjectFromPath(selectedPath);
+  }
+
+  async createCodeProjectFromPath(rootPath: string) {
+    const now = Date.now();
+    const existing = this.codeProjects.find((project) => project.rootPath === rootPath);
+    if (existing) {
+      this.selectCodeProject(existing.id);
+      return existing;
+    }
+
+    const project: CodeProject = {
+      id: createId('project'),
+      rootPath,
+      rootName: this.projectNameFromPath(rootPath),
+      icon: null,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.codeProjects = [project, ...this.codeProjects];
+    this.currentProjectId = project.id;
+    this.activeSpace = 'code';
+    await saveCodeProjectToDb(project);
+
+    let workspace: ChatSession['workspace'] = {
+      rootName: project.rootName,
+      rootPath,
+      attachedAt: now,
+      fileCount: 0,
+      indexedCount: 0,
+      skippedCount: 0,
+      files: []
+    };
+    if (isTauri()) {
+      try {
+        const result = await indexWorkspaceFolder(rootPath, project.id);
+        workspace = buildWorkspaceFromIndexResult(result, now);
+      } catch (error) {
+        toastStore.info(`Project created, but indexing failed: ${toErrorMessage(error)}`, 4000);
+      }
+    }
+
+    this.createChat('code', { projectId: project.id, workspace });
+    toastStore.success(`Project ready: ${project.rootName}`, 2500);
+    return project;
+  }
+
+  selectCodeProject(projectId: string) {
+    const project = this.codeProjects.find((entry) => entry.id === projectId);
+    if (!project) return;
+    this.currentProjectId = projectId;
+    this.activeSpace = 'code';
+    const chatId = this.chats.find((chat) => normalizeContextMode(chat.contextMode) === 'code' && chat.projectId === projectId)?.id;
+    if (chatId) {
+      this.selectChat(chatId);
+      return;
+    }
+    this.createChat('code', {
+      projectId,
+      workspace: {
+        rootName: project.rootName,
+        rootPath: project.rootPath,
+        attachedAt: Date.now(),
+        fileCount: 0,
+        indexedCount: 0,
+        skippedCount: 0,
+        files: []
+      }
+    });
+  }
+
+  createCodeChat(projectId = this.currentProjectId || '') {
+    const project = this.codeProjects.find((entry) => entry.id === projectId);
+    if (!project) {
+      void this.pickCodeProjectFolder();
+      return null;
+    }
+    return this.createChat('code', {
+      projectId: project.id,
+      workspace: {
+        rootName: project.rootName,
+        rootPath: project.rootPath,
+        attachedAt: Date.now(),
+        fileCount: 0,
+        indexedCount: 0,
+        skippedCount: 0,
+        files: []
+      }
+    });
+  }
+
+  async deleteCodeProject(projectId: string) {
+    const project = this.codeProjects.find((entry) => entry.id === projectId);
+    if (!project) return;
+    this.codeProjects = this.codeProjects.filter((entry) => entry.id !== projectId);
+    for (const chat of this.chats) {
+      if (chat.projectId === projectId) chat.projectId = null;
+    }
+    if (this.currentProjectId === projectId) this.currentProjectId = this.codeProjects[0]?.id || null;
+    await deleteCodeProjectFromDb(projectId);
+    this.persist();
+    toastStore.info(`Project removed: ${project.rootName}`, 2200);
+  }
+
   selectChat(chatId: string) {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
     this.mainView = 'chat';
     const mode = normalizeContextMode(match.contextMode);
     this.activeSpace = mode;
+    if (mode === 'code') this.currentProjectId = match.projectId || this.currentProjectId;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [mode]: chatId };
 
     for (const attachment of this.pendingAttachments) {

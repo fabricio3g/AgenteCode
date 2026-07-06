@@ -6,6 +6,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'get_config', 'save_config', 'update_config',
   'chat_db_save_session', 'chat_db_load_all', 'chat_db_delete', 'chat_db_migrate',
   'chat_db_load_folders', 'chat_db_save_folder', 'chat_db_delete_folder',
+  'chat_db_load_code_projects', 'chat_db_save_code_project', 'chat_db_delete_code_project',
   'get_local_models', 'get_gguf_metadata', 'delete_local_model', 'get_models_dir_path',
   'get_indexed_models', 'refresh_model_index', 'invalidate_model_cache', 'import_local_model',
   'start_llama', 'stop_llama', 'get_supervisor_status', 'supervisor_health_check',

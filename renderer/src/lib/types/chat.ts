@@ -218,6 +218,15 @@ export interface ChatFolder {
 
 export type ChatContextMode = 'chat' | 'work' | 'code';
 
+export interface CodeProject {
+  id: string;
+  rootPath: string;
+  rootName: string;
+  icon?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -227,6 +236,7 @@ export interface ChatSession {
   draft: string;
   contextMode?: ChatContextMode;
   codeAgent?: CodeAgentSessionMeta | null;
+  projectId?: string | null;
   workspace?: WorkspaceContext | null;
   messages: ChatMessage[];
 }

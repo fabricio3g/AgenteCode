@@ -1,4 +1,4 @@
-import type { AppConfig, ChatSession, ChatFolder } from '$lib/types/chat';
+import type { AppConfig, ChatSession, ChatFolder, CodeProject } from '$lib/types/chat';
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
 const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
@@ -185,6 +185,35 @@ export async function deleteChatFromDb(chatId: string): Promise<void> {
     await (window as any).electronAPI.invoke('chat_db_delete', { chatId });
   } catch (err) {
     console.error('[deleteChatFromDb] Failed:', err);
+  }
+}
+
+export async function loadCodeProjectsFromDb(): Promise<CodeProject[]> {
+  if (!isElectronEnv()) return [];
+  try {
+    const projects = await (window as any).electronAPI.invoke('chat_db_load_code_projects') as CodeProject[];
+    return projects || [];
+  } catch (err) {
+    console.error('[loadCodeProjectsFromDb] Failed:', err);
+    return [];
+  }
+}
+
+export async function saveCodeProjectToDb(project: CodeProject): Promise<void> {
+  if (!isElectronEnv()) return;
+  try {
+    await (window as any).electronAPI.invoke('chat_db_save_code_project', { project });
+  } catch (err) {
+    console.error('[saveCodeProjectToDb] Failed:', err);
+  }
+}
+
+export async function deleteCodeProjectFromDb(projectId: string): Promise<void> {
+  if (!isElectronEnv()) return;
+  try {
+    await (window as any).electronAPI.invoke('chat_db_delete_code_project', { projectId });
+  } catch (err) {
+    console.error('[deleteCodeProjectFromDb] Failed:', err);
   }
 }
 

@@ -57,6 +57,7 @@ function migrate(database) {
       draft TEXT NOT NULL DEFAULT '',
       context_mode TEXT DEFAULT 'chat',
       code_agent TEXT,
+      project_id TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -128,6 +129,15 @@ function migrate(database) {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS code_projects (
+      id TEXT PRIMARY KEY,
+      root_path TEXT NOT NULL,
+      root_name TEXT NOT NULL,
+      icon TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
     CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON attachments(message_id);
     CREATE INDEX IF NOT EXISTS idx_folders_parent_id ON folders(parent_id);
@@ -163,6 +173,7 @@ function migrate(database) {
   addColumn(database, 'messages', 'work_context', 'TEXT');
   addColumn(database, 'messages', 'files_created', 'TEXT');
   addColumn(database, 'chats', 'code_agent', 'TEXT');
+  addColumn(database, 'chats', 'project_id', 'TEXT');
   addColumn(database, 'message_versions', 'metadata', 'TEXT');
   addColumn(database, 'attachments', 'data', 'TEXT');
 }
@@ -170,14 +181,15 @@ function migrate(database) {
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
       draft = excluded.draft,
       context_mode = excluded.context_mode,
       code_agent = excluded.code_agent,
+      project_id = excluded.project_id,
       updated_at = excluded.updated_at
   `);
 
@@ -226,6 +238,7 @@ export function saveChatSession(session) {
       session.draft || '',
       session.contextMode || 'chat',
       stringifyJson(session.codeAgent),
+      session.projectId || null,
       session.createdAt || Date.now(),
       session.updatedAt || Date.now()
     );
@@ -381,6 +394,7 @@ export function loadAllChats() {
       draft: chat.draft || '',
       contextMode: chat.context_mode || 'chat',
       codeAgent: parseJson(chat.code_agent, null),
+      projectId: chat.project_id || null,
       messages
     };
     return session;
@@ -409,6 +423,44 @@ export function saveFolder(folder) {
 export function deleteFolder(folderId) {
   const database = getDb();
   database.prepare('DELETE FROM folders WHERE id = ?').run(folderId);
+}
+
+export function loadAllCodeProjects() {
+  const database = getDb();
+  return database.prepare('SELECT * FROM code_projects ORDER BY updated_at DESC').all().map(p => ({
+    id: p.id,
+    rootPath: p.root_path,
+    rootName: p.root_name,
+    icon: p.icon || null,
+    createdAt: p.created_at,
+    updatedAt: p.updated_at
+  }));
+}
+
+export function saveCodeProject(project) {
+  const database = getDb();
+  database.prepare(`
+    INSERT INTO code_projects (id, root_path, root_name, icon, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      root_path = excluded.root_path,
+      root_name = excluded.root_name,
+      icon = excluded.icon,
+      updated_at = excluded.updated_at
+  `).run(
+    project.id,
+    project.rootPath,
+    project.rootName,
+    project.icon || null,
+    project.createdAt || Date.now(),
+    project.updatedAt || Date.now()
+  );
+}
+
+export function deleteCodeProject(projectId) {
+  const database = getDb();
+  database.prepare('UPDATE chats SET project_id = NULL WHERE project_id = ?').run(projectId);
+  database.prepare('DELETE FROM code_projects WHERE id = ?').run(projectId);
 }
 
 export function deleteChat(chatId) {

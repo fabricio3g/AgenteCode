@@ -50,7 +50,7 @@ import {
 } from './generated-documents.ts';
 import { completeChatRequest, startChatStream, cancelChatStream, resolveApiKey } from './chat-ipc.ts';
 import { resolveProvider } from './providers/registry.ts';
-import { saveChatSession, loadAllChats, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder } from './chat-db.ts';
+import { saveChatSession, loadAllChats, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder, loadAllCodeProjects, saveCodeProject, deleteCodeProject } from './chat-db.ts';
 import { countTokens, buildContextBudget, truncateMessages } from './token-counter.ts';
 import { registerWindowHandlers } from './ipc/window-handlers.ts';
 import { registerConfigHandlers } from './ipc/config-handlers.ts';
@@ -201,6 +201,9 @@ export function registerIpcHandlers() {
     loadAllFolders,
     saveFolder,
     deleteFolder,
+    loadAllCodeProjects,
+    saveCodeProject,
+    deleteCodeProject,
   });
 
   // ── Token counting / context budget ──
