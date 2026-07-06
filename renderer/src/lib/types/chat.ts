@@ -113,6 +113,7 @@ export interface AgentStep {
   detail?: string;
   output?: string;
   fileChanges?: CodeAgentFileChange[];
+  diffStats?: CodeAgentDiffStat[];
 }
 
 export interface AgentArtifact {
@@ -149,6 +150,15 @@ export type CodeAgentFileChangeKind = 'created' | 'modified' | 'deleted';
 export interface CodeAgentFileChange {
   path: string;
   kind: CodeAgentFileChangeKind;
+}
+
+export interface CodeAgentDiffStat {
+  path: string;
+  kind: CodeAgentFileChangeKind;
+  additions: number;
+  deletions: number;
+  before?: string;
+  after?: string;
 }
 
 export interface GeneratedWorkProductFile {

@@ -30,7 +30,7 @@ import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
 import {
   pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
-  indexWorkspaceFolder, writeWorkspaceFile, readWorkspaceFile,
+  indexWorkspaceFolder, snapshotWorkspaceFiles, writeWorkspaceFile, readWorkspaceFile,
   createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile,
   openWorkspaceFile, createWorkspaceFolder, workspaceExec, writeTempFile,
   resetMediaPermissions
@@ -264,6 +264,7 @@ export function registerIpcHandlers() {
     pickMmprojFile,
     pickWhisperRuntimeFile,
     indexWorkspaceFolder,
+    snapshotWorkspaceFiles,
     writeWorkspaceFile,
     readWorkspaceFile,
     createWorkspaceDocument,

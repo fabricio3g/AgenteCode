@@ -25,7 +25,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'web_search', 'ingest_search_context', 'fetch_model_catalog',
   'search_hf_models', 'hf_repo_gguf', 'open_url_window', 'open_webviewer',
   'path_exists', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
-  'index_workspace_folder', 'write_workspace_file', 'read_workspace_file',
+  'index_workspace_folder', 'snapshot_workspace_files', 'write_workspace_file', 'read_workspace_file',
   'create_workspace_document', 'rename_workspace_file', 'delete_workspace_file',
   'open_workspace_file', 'create_workspace_folder', 'workspace_exec', 'write_temp_file',
   'reset_media_permissions',

@@ -1,6 +1,7 @@
 import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { runCodeAgent } from '$lib/services/agent-provider';
+import { computeSnapshotDiff, snapshotWorkspace } from '$lib/services/workspace-diff';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
@@ -1093,14 +1094,30 @@ class AppStore {
   async deleteCodeProject(projectId: string) {
     const project = this.codeProjects.find((entry) => entry.id === projectId);
     if (!project) return;
+    const projectChats = this.chats.filter((chat) => chat.projectId === projectId);
+    const deletingCurrentChat = !!this.currentChatId && projectChats.some((chat) => chat.id === this.currentChatId);
+    for (const chat of projectChats) {
+      if (this.isChatGenerating(chat.id)) this.stopStreaming(chat.id);
+      delete this.ragDocumentsByChat[chat.id];
+      deleteChatFromDb(chat.id).catch(() => {});
+      if (isTauri()) clearRagDocuments(chat.id).catch(() => {});
+    }
     this.codeProjects = this.codeProjects.filter((entry) => entry.id !== projectId);
-    for (const chat of this.chats) {
-      if (chat.projectId === projectId) chat.projectId = null;
+    this.chats = this.chats.filter((chat) => chat.projectId !== projectId);
+    if (deletingCurrentChat) {
+      this.currentChatId = null;
     }
     if (this.currentProjectId === projectId) this.currentProjectId = this.codeProjects[0]?.id || null;
     await deleteCodeProjectFromDb(projectId);
+    if (!this.currentChatId) {
+      const nextCodeChat = this.currentProjectId
+        ? this.chats.find((chat) => chat.projectId === this.currentProjectId)?.id
+        : this.chats.find((chat) => normalizeContextMode(chat.contextMode) === 'code')?.id;
+      this.currentChatId = nextCodeChat || this.chats[0]?.id || null;
+    }
+    this.rebuildChatIdBySpace();
     this.persist();
-    toastStore.info(`Project removed: ${project.rootName}`, 2200);
+    toastStore.info(`Project deleted: ${project.rootName}`, 2200);
   }
 
   selectChat(chatId: string) {
@@ -1829,7 +1846,7 @@ class AppStore {
     const activeSearchMode = this.searchMode;
     const activeComposerMode = this.composerMode;
     const activeContextMode = targetChat.contextMode || 'chat';
-    const activeWorkspace = activeContextMode === 'work' ? targetChat.workspace : null;
+    const activeWorkspace = activeContextMode === 'work' || activeContextMode === 'code' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -2020,6 +2037,7 @@ class AppStore {
 
       if (useToolLoop) {
         const codeProviderId = activeContextMode === 'code' ? targetChat.codeAgent?.providerId : undefined;
+        const beforeSnapshot = activeContextMode === 'code' ? await snapshotWorkspace(activeWorkspace?.rootPath) : null;
         const agentResult = await runCodeAgent({
           chatId: targetChatId,
           systemPrompt,
@@ -2074,6 +2092,24 @@ class AppStore {
             }
           }
         }, codeProviderId);
+        if (activeContextMode === 'code') {
+          const afterSnapshot = await snapshotWorkspace(activeWorkspace?.rootPath);
+          const diffStats = computeSnapshotDiff(beforeSnapshot, afterSnapshot);
+          if (diffStats.length) {
+            assistantMessage.agentSteps = [
+              ...(assistantMessage.agentSteps || []),
+              {
+                id: createId('step'),
+                type: 'writing',
+                label: 'Changed files',
+                status: 'done',
+                detail: `${diffStats.length} file${diffStats.length === 1 ? '' : 's'} changed`,
+                diffStats,
+                fileChanges: diffStats.map((stat) => ({ path: stat.path, kind: stat.kind }))
+              }
+            ];
+          }
+        }
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();

@@ -14,6 +14,7 @@
   import { ttsStore } from '$lib/stores/tts.svelte';
   import AssistantMessageBody from '$lib/ui/components/AssistantMessageBody.svelte';
   import AttachmentDocumentsBlock from './AttachmentDocumentsBlock.svelte';
+  import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
   import { buildUIActionMessage } from '$lib/ui';
   import type { ActionEvent } from '$lib/ui';
   import { APP_NAME } from '$lib/app-meta';
@@ -82,6 +83,7 @@
     return true;
   });
   const cleanContent = $derived(stripChartBlocks(displayContent));
+  const diffStats = $derived(message.agentSteps?.flatMap((step) => step.diffStats || []) || []);
 
   function splitSelectedTextQuestion(content: string): { selectedText: string; question: string; sourceMessageId: string } | null {
     const raw = (content || '').trim();
@@ -305,6 +307,10 @@
           onUIAction={handleUIAction}
         />
       </div>
+
+      {#if diffStats.length}
+        <FileChangesCard stats={diffStats} />
+      {/if}
 
       <!-- Model name + token usage (always visible) -->
       <div class="mt-1 flex items-center gap-2 flex-wrap">
