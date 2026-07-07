@@ -1,3 +1,5 @@
+import type { ChildProcess } from 'node:child_process';
+
 export type CodeAgentEvent =
   | { type: 'agent_start'; chatId: string }
   | { type: 'agent_end'; chatId: string }
@@ -20,6 +22,21 @@ export type CodeAgentEvent =
       files: Array<{ path: string; additions: number; deletions: number; kind: string }>;
     }
   | { type: 'error'; chatId: string; message: string };
+
+export type ChateaCommand =
+  | { type: 'initialize'; chatId: string; projectRoot: string; provider: string; model: string; runtimeMode: 'full' | 'supervised'; thinkingLevel?: string; checkpointsEnabled?: boolean; systemPromptOverride?: string }
+  | { type: 'prompt'; chatId: string; text: string; images?: Array<{ data: string; mimeType: string }> }
+  | { type: 'abort'; chatId: string }
+  | { type: 'steer'; chatId: string; text: string }
+  | { type: 'follow_up'; chatId: string; text: string }
+  | { type: 'compact'; chatId: string; customInstructions?: string }
+  | { type: 'set_model'; chatId: string; provider: string; model: string; thinkingLevel?: string }
+  | { type: 'set_runtime_mode'; chatId: string; mode: 'full' | 'supervised' }
+  | { type: 'set_thinking_level'; chatId: string; level: string }
+  | { type: 'respond_approval'; chatId: string; requestId: string; decision: 'allow' | 'deny' }
+  | { type: 'new_session'; chatId: string }
+  | { type: 'cycle_model'; chatId: string; direction: 1 | -1 }
+  | { type: 'shutdown'; chatId: string };
 
 export interface ChateaAgentStartSessionArgs {
   chatId: string;
@@ -135,4 +152,5 @@ export interface ChateaAgentSessionEntry {
   sessionId: string;
   createdAt: number;
   disposed: boolean;
+  childProcess?: ChildProcess;
 }

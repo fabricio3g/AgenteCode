@@ -1,10 +1,17 @@
 import type { BrowserWindow } from 'electron';
 import type { CodeAgentEvent } from './types.ts';
 
+let getMainWindow: (() => BrowserWindow | null) | null = null;
+
+export function setMainWindowGetter(fn: () => BrowserWindow | null): void {
+  getMainWindow = fn;
+}
+
 export function emitCodeAgentEvent(win: BrowserWindow | null, event: CodeAgentEvent): void {
-  if (!win) return;
+  const target = win ?? getMainWindow?.() ?? null;
+  if (!target) return;
   try {
-    win.webContents?.send('code_agent_event', event);
+    target.webContents?.send('code_agent_event', event);
   } catch {
     // window may be closed
   }

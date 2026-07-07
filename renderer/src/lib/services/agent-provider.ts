@@ -10,6 +10,7 @@ import type {
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
 import { isTauri, invoke } from '$lib/services/tauri';
+import { runChateaAgentSession } from '$lib/services/chatea-agent-session';
 
 export interface CodeAgentAdapter {
   readonly instance: CodeAgentInstance;
@@ -134,7 +135,21 @@ function createChateaAgentDriver(): CodeAgentDriverDefinition {
       supportsMultipleInstances: false
     },
     defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', async (args) => runAgentTask(args))
+    createAdapter: (entry) => makeAdapter(
+      entry,
+      async () => 'ready',
+      async (args) => runChateaAgentSession(
+        {
+          chatId: args.chatId,
+          projectRoot: args.workspaceRoot || '',
+          provider: 'chatea',
+          model: 'default',
+          runtimeMode: args.runtimeMode || 'full',
+          systemPromptOverride: args.systemPrompt,
+        },
+        args,
+      ),
+    ),
   };
 }
 
