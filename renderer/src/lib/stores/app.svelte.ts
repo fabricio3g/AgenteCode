@@ -2210,7 +2210,9 @@ class AppStore {
           };
         }
         assistantMessage.reasoning = agentResult.reasoning;
-        assistantMessage.agentSteps = agentResult.steps;
+        const prevSteps = assistantMessage.agentSteps || [];
+        const diffSteps = prevSteps.filter((s) => s.diffStats?.length && !agentResult.steps.some((rs) => rs.id === s.id));
+        assistantMessage.agentSteps = [...agentResult.steps, ...diffSteps];
         assistantMessage.artifact = agentResult.artifact;
         if (agentResult.sources?.length) {
           const existingUrls = new Set((assistantMessage.sources || []).map((s) => s.url));

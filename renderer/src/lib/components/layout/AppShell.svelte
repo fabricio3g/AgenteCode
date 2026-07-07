@@ -9,6 +9,7 @@
   import Composer from '$lib/components/chat/Composer.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
+  import CodeWorkspaceDrawer from '$lib/components/agent/CodeWorkspaceDrawer.svelte';
   import CodeTopbar from '$lib/components/agent/CodeTopbar.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
@@ -34,6 +35,7 @@
   let showShortcutsHelp = $state(false);
   let composerHeight = $state(320);
   let pendingApproval = $state<PendingApproval | null>(null);
+  let codeDrawerOpen = $state(false);
 
   $effect(() => {
     const unsub = subscribe(() => {
@@ -198,7 +200,7 @@
             </div>
           {/if}
           <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
-            <CodeTopbar />
+            <CodeTopbar onToggleDrawer={() => (codeDrawerOpen = !codeDrawerOpen)} />
             <MessageList composerInset={composerHeight} />
             <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
           </div>
@@ -208,6 +210,10 @@
       {#if appStore.activeSpace !== 'code' && appStore.activityDrawerOpen}
         <div class="activity-drawer-slot" transition:drawerSlotTransition>
           <ActivityDrawer />
+        </div>
+      {:else if appStore.activeSpace === 'code' && codeDrawerOpen}
+        <div class="activity-drawer-slot" transition:drawerSlotTransition>
+          <CodeWorkspaceDrawer />
         </div>
       {/if}
     {/if}

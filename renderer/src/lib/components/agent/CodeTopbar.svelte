@@ -1,10 +1,15 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Box, ChevronDown, GitBranch, Plus } from 'lucide-svelte';
+  import { Box, ChevronDown, GitBranch, PanelRight, Plus } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { openWorkspaceFile } from '$lib/services/files';
+  import { invoke } from '$lib/services/tauri';
+
+  interface Props { onToggleDrawer?: () => void }
+
+  let { onToggleDrawer }: Props = $props();
 
   const project = $derived(appStore.currentProject);
   const chat = $derived(appStore.currentChat);
@@ -20,8 +25,25 @@
     await openWorkspaceFile(path);
   }
 
-  function notReady(label: string) {
-    toastStore.info(`${label} is not wired yet.`, 2200);
+  async function commitAndPush() {
+    const root = project?.rootPath || chat?.workspace?.rootPath;
+    if (!root) {
+      toastStore.info('No project directory available.', 2200);
+      return;
+    }
+    try {
+      await invoke('workspace_exec', { workspace_root: root, command: 'git', args: ['add', '-A'], timeout_ms: 15000 });
+      await invoke('workspace_exec', { workspace_root: root, command: 'git', args: ['commit', '-m', `chatea: ${title}`], timeout_ms: 15000 });
+      await invoke('workspace_exec', { workspace_root: root, command: 'git', args: ['push'], timeout_ms: 30000 });
+      toastStore.success('Commited and pushed.', 2500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toastStore.error(`Git failed: ${msg}`, 3500);
+    }
+  }
+
+  function addAction() {
+    toastStore.info('Type your action in the composer below.', 2200);
   }
 </script>
 
@@ -33,7 +55,7 @@
     </div>
 
     <div class="code-actions">
-      <button type="button" class="code-action" onclick={() => notReady('Add action')}>
+      <button type="button" class="code-action" onclick={addAction}>
         <Plus class="h-3.5 w-3.5" />
         Add action
       </button>
@@ -42,11 +64,16 @@
         Open
         <ChevronDown class="h-3 w-3" />
       </button>
-      <button type="button" class="code-action" onclick={() => notReady('Commit & push')}>
+      <button type="button" class="code-action" onclick={commitAndPush}>
         <GitBranch class="h-3.5 w-3.5" />
         Commit & push
         <ChevronDown class="h-3 w-3" />
       </button>
+      {#if onToggleDrawer}
+        <button type="button" class="code-action" onclick={onToggleDrawer}>
+          <PanelRight class="h-3.5 w-3.5" />
+        </button>
+      {/if}
     </div>
   </header>
 {/if}
