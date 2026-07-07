@@ -4,21 +4,14 @@
   import { onMount } from 'svelte';
   import { Activity, AlertCircle, Bot, CheckCircle2, ChevronDown, Code2, FileCode2, Files, GitCompare, Shield, Terminal } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { detectProviderStatus, getProviderRegistry } from '$lib/services/agent-provider';
+  import { detectProviderStatus, listCodeAgentProviders } from '$lib/services/agent-provider';
   import { isTauri, invoke } from '$lib/services/tauri';
   import type { AgentStep, CodeAgentFileChangeKind, CodeAgentProvider, CodeAgentProviderId, CodeAgentProviderStatus, CodeAgentRuntimeMode } from '$lib/types/chat';
 
   type DrawerTab = 'activity' | 'diff' | 'files' | 'terminal';
 
-  const registry = getProviderRegistry();
   const providers: CodeAgentProvider[] = $state(
-    (Object.values(registry) as Array<{ id: CodeAgentProviderId; label: string; driver: string; detail: string }>).map(({ id, label, driver, detail }) => ({
-      id,
-      label,
-      driver,
-      detail,
-      status: id === 'builtin' ? 'ready' : ('missing' as CodeAgentProviderStatus)
-    }))
+    listCodeAgentProviders()
   );
 
   let activeTab = $state<DrawerTab>('activity');
@@ -30,7 +23,7 @@
   let expandedDiffFile = $state<string | null>(null);
 
   const currentChat = $derived(appStore.currentChat);
-  const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.providerId || 'builtin');
+  const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.instanceId || 'chatea');
   const activeProvider = $derived(providers.find((provider) => provider.id === activeProviderId) || providers[0]);
   const latestAgentMessage = $derived.by(() => {
     const messages = currentChat?.messages || [];

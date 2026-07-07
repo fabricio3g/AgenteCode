@@ -1,20 +1,44 @@
-import type { CodeAgentProviderId, CodeAgentProviderStatus } from '$lib/types/chat';
+import type {
+  CodeAgentDriver,
+  CodeAgentDriverKind,
+  CodeAgentInstance,
+  CodeAgentInstanceId,
+  CodeAgentProvider,
+  CodeAgentProviderId,
+  CodeAgentProviderStatus
+} from '$lib/types/chat';
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
 import { isTauri, invoke } from '$lib/services/tauri';
 
 export interface CodeAgentAdapter {
-  readonly id: CodeAgentProviderId;
-  readonly label: string;
-  readonly driver: string;
-  readonly detail: string;
+  readonly instance: CodeAgentInstance;
   detect(): Promise<CodeAgentProviderStatus>;
   run(args: RunAgentTaskArgs): Promise<AgentTaskResult>;
 }
 
+export interface CodeAgentDriverDefinition {
+  readonly driver: CodeAgentDriver;
+  readonly defaultInstance: CodeAgentInstance;
+  createAdapter(instance: CodeAgentInstance): CodeAgentAdapter;
+}
+
+export type CodeAgentDriverRegistry = Record<CodeAgentDriverKind, CodeAgentDriverDefinition>;
+export type CodeAgentInstanceRegistry = Record<CodeAgentInstanceId, CodeAgentAdapter>;
 export type ProviderRegistry = Record<CodeAgentProviderId, CodeAgentAdapter>;
 
-let _registry: ProviderRegistry | null = null;
+const LEGACY_PROVIDER_TO_INSTANCE: Record<string, CodeAgentInstanceId> = {
+  builtin: 'chatea',
+  chatea: 'chatea',
+  codex: 'codex',
+  claude: 'claude',
+  cursor: 'cursor',
+  opencode: 'opencode',
+  pi: 'pi'
+};
+
+let driverRegistry: CodeAgentDriverRegistry | null = null;
+let instanceRegistry: CodeAgentInstanceRegistry | null = null;
 
 async function cliExists(command: string): Promise<boolean> {
   if (!isTauri()) return false;
@@ -31,102 +55,158 @@ async function cliExists(command: string): Promise<boolean> {
   }
 }
 
-function createBuiltinAdapter(): CodeAgentAdapter {
+function defaultInstance(input: {
+  id: CodeAgentInstanceId;
+  driverKind: CodeAgentDriverKind;
+  displayName: string;
+  detail: string;
+  status?: CodeAgentProviderStatus;
+  accentColor?: string;
+}): CodeAgentInstance {
   return {
-    id: 'builtin',
-    label: 'Chatea Agent',
-    driver: 'Built-in',
-    detail: 'Current local agent',
-    detect: async () => 'ready',
-    run: async (args) => runAgentTask(args)
+    id: input.id,
+    driverKind: input.driverKind,
+    displayName: input.displayName,
+    detail: input.detail,
+    enabled: true,
+    status: input.status || 'missing',
+    accentColor: input.accentColor
   };
 }
 
-function createCodexAdapter(): CodeAgentAdapter {
+function makeAdapter(
+  instance: CodeAgentInstance,
+  detect: () => Promise<CodeAgentProviderStatus>,
+  run: (args: RunAgentTaskArgs) => Promise<AgentTaskResult>
+): CodeAgentAdapter {
+  return { instance, detect, run };
+}
+
+function createUnavailableRun(displayName: string) {
+  return async (): Promise<AgentTaskResult> => ({
+    content: `${displayName} is detected as a provider instance, but its runtime adapter is not implemented in Chatea yet.`,
+    reasoning: '',
+    steps: [],
+    artifact: null,
+    sources: [],
+    outcome: 'failed',
+    stopReason: 'error',
+    error: `${displayName} adapter not implemented`,
+  });
+}
+
+function createChateaDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({
+    id: 'chatea',
+    driverKind: 'chatea',
+    displayName: 'Chatea Agent',
+    detail: 'Local-model coding agent',
+    status: 'ready',
+    accentColor: '#717CE2'
+  });
   return {
-    id: 'codex',
-    label: 'Codex',
-    driver: 'CLI',
-    detail: 'OpenAI Codex CLI',
-    detect: async () => (await cliExists('codex')) ? 'ready' : 'missing',
-    run: () => {
-      throw new Error('Codex adapter not implemented');
-    }
+    driver: {
+      driverKind: 'chatea',
+      displayName: 'Chatea Agent',
+      detail: 'Built-in local-model coding agent',
+      supportsMultipleInstances: false
+    },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', async (args) => runAgentTask(args))
   };
 }
 
-function createClaudeAdapter(): CodeAgentAdapter {
+function createCodexDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({ id: 'codex', driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', accentColor: '#10a37f' });
   return {
-    id: 'claude',
-    label: 'Claude Code',
-    driver: 'CLI',
-    detail: 'Anthropic Claude Code',
-    detect: async () => (await cliExists('claude')) ? 'login' : 'missing',
-    run: () => {
-      throw new Error('Claude Code adapter not implemented');
-    }
+    driver: { driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', supportsMultipleInstances: true },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('codex')) ? 'ready' : 'missing', createUnavailableRun(entry.displayName))
   };
 }
 
-function createCursorAdapter(): CodeAgentAdapter {
+function createClaudeDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({ id: 'claude', driverKind: 'claude', displayName: 'Claude Code', detail: 'Anthropic Claude Code', accentColor: '#d97706' });
   return {
-    id: 'cursor',
-    label: 'Cursor Agent',
-    driver: 'CLI/ACP',
-    detail: 'Cursor coding agent',
-    detect: async () => 'disabled',
-    run: () => {
-      throw new Error('Cursor Agent adapter not implemented');
-    }
+    driver: { driverKind: 'claude', displayName: 'Claude Code', detail: 'Anthropic Claude Code', supportsMultipleInstances: true },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('claude')) ? 'login' : 'missing', createUnavailableRun(entry.displayName))
   };
 }
 
-function createOpencodeAdapter(): CodeAgentAdapter {
+function createCursorDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({ id: 'cursor', driverKind: 'cursor', displayName: 'Cursor Agent', detail: 'Cursor coding agent', status: 'disabled', accentColor: '#f8fafc' });
   return {
-    id: 'opencode',
-    label: 'OpenCode',
-    driver: 'CLI/server',
-    detail: 'OpenCode runtime',
-    detect: async () => (await cliExists('opencode')) ? 'ready' : 'missing',
-    run: () => {
-      throw new Error('OpenCode adapter not implemented');
-    }
+    driver: { driverKind: 'cursor', displayName: 'Cursor Agent', detail: 'Cursor coding agent', supportsMultipleInstances: true },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'disabled', createUnavailableRun(entry.displayName))
   };
 }
 
-function createPiAdapter(): CodeAgentAdapter {
+function createOpenCodeDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({ id: 'opencode', driverKind: 'opencode', displayName: 'OpenCode', detail: 'OpenCode runtime', accentColor: '#22c55e' });
   return {
-    id: 'pi',
-    label: 'Pi Agent',
-    driver: 'Agent',
-    detail: 'Pi coding agent',
-    detect: async () => 'soon',
-    run: () => {
-      throw new Error('Pi Agent adapter not implemented');
-    }
+    driver: { driverKind: 'opencode', displayName: 'OpenCode', detail: 'OpenCode runtime', supportsMultipleInstances: true },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('opencode')) ? 'ready' : 'missing', createUnavailableRun(entry.displayName))
   };
 }
 
-export function getProviderRegistry(): ProviderRegistry {
-  if (!_registry) {
-    _registry = {
-      builtin: createBuiltinAdapter(),
-      codex: createCodexAdapter(),
-      claude: createClaudeAdapter(),
-      cursor: createCursorAdapter(),
-      opencode: createOpencodeAdapter(),
-      pi: createPiAdapter()
+function createPiDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({ id: 'pi', driverKind: 'pi', displayName: 'Pi Agent', detail: 'Pi coding agent', status: 'soon', accentColor: '#ec4899' });
+  return {
+    driver: { driverKind: 'pi', displayName: 'Pi Agent', detail: 'Pi coding agent', supportsMultipleInstances: true },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'soon', createUnavailableRun(entry.displayName))
+  };
+}
+
+export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceId {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return 'chatea';
+  return LEGACY_PROVIDER_TO_INSTANCE[raw] || raw;
+}
+
+export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
+  if (!driverRegistry) {
+    driverRegistry = {
+      chatea: createChateaDriver(),
+      codex: createCodexDriver(),
+      claude: createClaudeDriver(),
+      cursor: createCursorDriver(),
+      opencode: createOpenCodeDriver(),
+      pi: createPiDriver()
     };
   }
-  return _registry;
+  return driverRegistry;
 }
 
-export function resolveProvider(id: CodeAgentProviderId): CodeAgentAdapter {
-  return getProviderRegistry()[id] || getProviderRegistry().builtin;
+export function getCodeAgentInstanceRegistry(): CodeAgentInstanceRegistry {
+  if (!instanceRegistry) {
+    const drivers = getCodeAgentDriverRegistry();
+    instanceRegistry = Object.fromEntries(
+      Object.values(drivers).map((definition) => {
+        const instance = definition.defaultInstance;
+        return [instance.id, definition.createAdapter(instance)];
+      })
+    );
+  }
+  return instanceRegistry;
 }
 
-export async function detectProviderStatus(id: CodeAgentProviderId): Promise<CodeAgentProviderStatus> {
-  const adapter = resolveProvider(id);
+export function listCodeAgentInstances(): CodeAgentInstance[] {
+  return Object.values(getCodeAgentInstanceRegistry()).map((adapter) => adapter.instance);
+}
+
+export function resolveCodeAgentInstance(id?: CodeAgentInstanceId | null): CodeAgentAdapter {
+  const registry = getCodeAgentInstanceRegistry();
+  const instanceId = normalizeCodeAgentInstanceId(id);
+  return registry[instanceId] || registry.chatea;
+}
+
+export async function detectCodeAgentInstanceStatus(id: CodeAgentInstanceId): Promise<CodeAgentProviderStatus> {
+  const adapter = resolveCodeAgentInstance(id);
+  if (!adapter.instance.enabled) return 'disabled';
   try {
     return await adapter.detect();
   } catch {
@@ -134,18 +214,52 @@ export async function detectProviderStatus(id: CodeAgentProviderId): Promise<Cod
   }
 }
 
-export async function detectAllProviderStatuses(): Promise<Record<CodeAgentProviderId, CodeAgentProviderStatus>> {
-  const registry = getProviderRegistry();
-  const results = {} as Record<CodeAgentProviderId, CodeAgentProviderStatus>;
+export async function detectAllCodeAgentInstanceStatuses(): Promise<Record<CodeAgentInstanceId, CodeAgentProviderStatus>> {
+  const registry = getCodeAgentInstanceRegistry();
+  const results: Record<CodeAgentInstanceId, CodeAgentProviderStatus> = {};
   await Promise.all(
-    (Object.entries(registry) as Array<[CodeAgentProviderId, CodeAgentAdapter]>).map(async ([id, adapter]) => {
-      results[id] = await adapter.detect().catch(() => 'missing' as CodeAgentProviderStatus);
+    Object.entries(registry).map(async ([id, adapter]) => {
+      results[id] = adapter.instance.enabled ? await adapter.detect().catch(() => 'missing' as CodeAgentProviderStatus) : 'disabled';
     })
   );
   return results;
 }
 
-export async function runCodeAgent(args: RunAgentTaskArgs, providerId?: CodeAgentProviderId): Promise<AgentTaskResult> {
-  const adapter = resolveProvider(providerId || 'builtin');
+export async function runCodeAgent(args: RunAgentTaskArgs, instanceId?: CodeAgentInstanceId | null): Promise<AgentTaskResult> {
+  const adapter = resolveCodeAgentInstance(instanceId);
   return adapter.run(args);
+}
+
+function adapterToProvider(adapter: CodeAgentAdapter): CodeAgentProvider {
+  return {
+    id: adapter.instance.id,
+    instanceId: adapter.instance.id,
+    driverKind: adapter.instance.driverKind,
+    label: adapter.instance.displayName,
+    driver: adapter.instance.driverKind,
+    detail: adapter.instance.detail,
+    status: adapter.instance.status,
+    enabled: adapter.instance.enabled,
+    accentColor: adapter.instance.accentColor
+  };
+}
+
+export function getProviderRegistry(): ProviderRegistry {
+  return getCodeAgentInstanceRegistry();
+}
+
+export function listCodeAgentProviders(): CodeAgentProvider[] {
+  return Object.values(getCodeAgentInstanceRegistry()).map(adapterToProvider);
+}
+
+export function resolveProvider(id: CodeAgentProviderId): CodeAgentAdapter {
+  return resolveCodeAgentInstance(id);
+}
+
+export async function detectProviderStatus(id: CodeAgentProviderId): Promise<CodeAgentProviderStatus> {
+  return detectCodeAgentInstanceStatus(id);
+}
+
+export async function detectAllProviderStatuses(): Promise<Record<CodeAgentProviderId, CodeAgentProviderStatus>> {
+  return detectAllCodeAgentInstanceStatuses();
 }

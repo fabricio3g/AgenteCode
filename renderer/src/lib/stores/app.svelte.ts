@@ -1,6 +1,6 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentInstanceId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
-import { runCodeAgent } from '$lib/services/agent-provider';
+import { resolveCodeAgentInstance, runCodeAgent } from '$lib/services/agent-provider';
 import { computeSnapshotDiff, snapshotWorkspace } from '$lib/services/workspace-diff';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
@@ -972,7 +972,7 @@ class AppStore {
       folderId: null,
       draft: '',
       contextMode,
-      codeAgent: contextMode === 'code' ? { providerId: 'builtin', updatedAt: now } : null,
+      codeAgent: contextMode === 'code' ? { instanceId: 'chatea', driverKind: 'chatea', updatedAt: now } : null,
       projectId: contextMode === 'code' ? (options.projectId || this.currentProjectId || null) : null,
       workspace: options.workspace || null,
       messages: []
@@ -1327,7 +1327,7 @@ class AppStore {
     const nextMode = normalizeContextMode(mode);
     this.currentChat.contextMode = nextMode;
     this.currentChat.codeAgent = nextMode === 'code'
-      ? (this.currentChat.codeAgent || { providerId: 'builtin', updatedAt: Date.now() })
+      ? (this.currentChat.codeAgent || { instanceId: 'chatea', driverKind: 'chatea', updatedAt: Date.now() })
       : null;
     this.activeSpace = nextMode;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [nextMode]: this.currentChat.id };
@@ -1336,12 +1336,15 @@ class AppStore {
     this.persist();
   }
 
-  setCodeAgentProvider(providerId: CodeAgentProviderId) {
+  setCodeAgentProvider(instanceId: CodeAgentInstanceId) {
     const chat = this.currentChat;
     if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
+    const instance = resolveCodeAgentInstance(instanceId).instance;
     chat.codeAgent = {
       ...(chat.codeAgent || {}),
-      providerId,
+      instanceId: instance.id,
+      driverKind: instance.driverKind,
+      status: instance.status,
       updatedAt: Date.now()
     };
     this.touchChats();
@@ -1352,7 +1355,7 @@ class AppStore {
     const chat = this.currentChat;
     if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
     chat.codeAgent = {
-      ...(chat.codeAgent || { providerId: 'builtin', updatedAt: Date.now() }),
+      ...(chat.codeAgent || { instanceId: 'chatea', driverKind: 'chatea', updatedAt: Date.now() }),
       runtimeMode: mode,
       updatedAt: Date.now()
     };
@@ -2036,7 +2039,7 @@ class AppStore {
           : { maxIterations: 12, maxToolCalls: 30, maxTimeMs: 6 * 60 * 1000 };
 
       if (useToolLoop) {
-        const codeProviderId = activeContextMode === 'code' ? targetChat.codeAgent?.providerId : undefined;
+        const codeInstanceId = activeContextMode === 'code' ? targetChat.codeAgent?.instanceId : undefined;
         const beforeSnapshot = activeContextMode === 'code' ? await snapshotWorkspace(activeWorkspace?.rootPath) : null;
         const agentResult = await runCodeAgent({
           chatId: targetChatId,
@@ -2091,7 +2094,7 @@ class AppStore {
               this.persist();
             }
           }
-        }, codeProviderId);
+        }, codeInstanceId);
         if (activeContextMode === 'code') {
           const afterSnapshot = await snapshotWorkspace(activeWorkspace?.rootPath);
           const diffStats = computeSnapshotDiff(beforeSnapshot, afterSnapshot);
@@ -2660,7 +2663,7 @@ class AppStore {
               this.persist();
             }
           }
-        }, chat.codeAgent?.providerId);
+        }, chat.codeAgent?.instanceId);
         markAgentWriting(message);
         nextVersion.metadata = {
           ...(nextVersion.metadata || {}),

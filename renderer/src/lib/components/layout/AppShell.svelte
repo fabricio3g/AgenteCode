@@ -9,7 +9,7 @@
   import Composer from '$lib/components/chat/Composer.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
-  import CodeWorkspaceDrawer from '$lib/components/agent/CodeWorkspaceDrawer.svelte';
+  import CodeTopbar from '$lib/components/agent/CodeTopbar.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
@@ -187,17 +187,14 @@
             </div>
           {/if}
           <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
+            <CodeTopbar />
             <MessageList composerInset={composerHeight} />
             <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
           </div>
         </div>
       </div>
 
-      {#if appStore.activeSpace === 'code'}
-        <div class="activity-drawer-slot">
-          <CodeWorkspaceDrawer />
-        </div>
-      {:else if appStore.activityDrawerOpen}
+      {#if appStore.activeSpace !== 'code' && appStore.activityDrawerOpen}
         <div class="activity-drawer-slot" transition:drawerSlotTransition>
           <ActivityDrawer />
         </div>

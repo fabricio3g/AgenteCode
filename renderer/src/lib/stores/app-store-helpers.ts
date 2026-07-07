@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentProviderId, CodeAgentProviderStatus, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
+import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentDriverKind, CodeAgentInstanceId, CodeAgentProviderStatus, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
@@ -413,10 +413,21 @@ export function normalizeContextMode(mode: unknown): ChatContextMode {
   return mode === 'work' || mode === 'code' ? mode : 'chat';
 }
 
-function normalizeCodeAgentProviderId(providerId: unknown): CodeAgentProviderId {
-  return providerId === 'codex' || providerId === 'claude' || providerId === 'cursor' || providerId === 'opencode' || providerId === 'pi'
-    ? providerId
-    : 'builtin';
+function normalizeCodeAgentInstanceId(instanceId: unknown, legacyProviderId?: unknown): CodeAgentInstanceId {
+  const raw = typeof instanceId === 'string' && instanceId.trim()
+    ? instanceId.trim()
+    : typeof legacyProviderId === 'string'
+      ? legacyProviderId.trim()
+      : '';
+  if (raw === 'builtin' || raw === 'chatea' || !raw) return 'chatea';
+  return raw;
+}
+
+function normalizeCodeAgentDriverKind(driverKind: unknown, instanceId: CodeAgentInstanceId): CodeAgentDriverKind | undefined {
+  if (driverKind === 'chatea' || driverKind === 'codex' || driverKind === 'claude' || driverKind === 'cursor' || driverKind === 'opencode' || driverKind === 'pi') return driverKind;
+  if (instanceId === 'chatea') return 'chatea';
+  if (instanceId === 'codex' || instanceId === 'claude' || instanceId === 'cursor' || instanceId === 'opencode' || instanceId === 'pi') return instanceId;
+  return undefined;
 }
 
 function normalizeCodeAgentStatus(status: unknown): CodeAgentProviderStatus | undefined {
@@ -434,6 +445,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     ? chat.messages.map((message, messageIndex) => normalizeMessage(message, messageIndex))
     : [];
   const codeAgent = chat.codeAgent && typeof chat.codeAgent === 'object' ? chat.codeAgent : null;
+  const codeAgentInstanceId = codeAgent ? normalizeCodeAgentInstanceId(codeAgent.instanceId, codeAgent.providerId) : 'chatea';
 
   return {
     id: String(chat.id || createId(`chat-${index}`)),
@@ -445,7 +457,8 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     contextMode: normalizeContextMode(chat.contextMode),
     codeAgent: codeAgent
       ? {
-          providerId: normalizeCodeAgentProviderId(codeAgent.providerId),
+          instanceId: codeAgentInstanceId,
+          driverKind: normalizeCodeAgentDriverKind(codeAgent.driverKind, codeAgentInstanceId),
           status: normalizeCodeAgentStatus(codeAgent.status),
           runtimeMode: normalizeRuntimeMode(codeAgent.runtimeMode),
           updatedAt: Number.isFinite(codeAgent.updatedAt) ? Number(codeAgent.updatedAt) : Date.now()

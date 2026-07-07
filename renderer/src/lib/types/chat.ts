@@ -126,20 +126,47 @@ export interface AgentArtifact {
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
 export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
 
-export type CodeAgentProviderId = 'builtin' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentDriverKind = 'chatea' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentInstanceId = string;
+export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
 export type CodeAgentRuntimeMode = 'full' | 'supervised';
 
 export interface CodeAgentProvider {
-  id: CodeAgentProviderId;
+  id: CodeAgentInstanceId;
+  instanceId?: CodeAgentInstanceId;
+  driverKind: CodeAgentDriverKind;
   label: string;
   driver: string;
   detail: string;
   status: CodeAgentProviderStatus;
+  enabled?: boolean;
+  accentColor?: string;
+}
+
+export interface CodeAgentDriver {
+  driverKind: CodeAgentDriverKind;
+  displayName: string;
+  detail: string;
+  supportsMultipleInstances?: boolean;
+}
+
+export interface CodeAgentInstance {
+  id: CodeAgentInstanceId;
+  driverKind: CodeAgentDriverKind;
+  displayName: string;
+  detail: string;
+  enabled: boolean;
+  status: CodeAgentProviderStatus;
+  config?: unknown;
+  environment?: Array<{ name: string; value: string; sensitive?: boolean }>;
+  accentColor?: string;
 }
 
 export interface CodeAgentSessionMeta {
-  providerId: CodeAgentProviderId;
+  instanceId: CodeAgentInstanceId;
+  driverKind?: CodeAgentDriverKind;
+  providerId?: CodeAgentProviderId;
   status?: CodeAgentProviderStatus;
   runtimeMode?: CodeAgentRuntimeMode;
   updatedAt: number;

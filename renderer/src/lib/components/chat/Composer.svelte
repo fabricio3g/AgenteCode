@@ -13,6 +13,7 @@
 
   import ModeSelector from './composer/ModeSelector.svelte';
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
+  import CodeComposerControls from './composer/CodeComposerControls.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ContextUsageRing from './composer/ContextUsageRing.svelte';
@@ -70,6 +71,7 @@
   );
 
   const isHomescreen = $derived(!appStore.currentChat?.messages?.length);
+  const isCodeMode = $derived(appStore.currentContextMode === 'code');
   const staticPlaceholderText = $derived(
     showErrorPlaceholder
       ? errorPlaceholderText
@@ -990,9 +992,13 @@
 
     <div class={`composer-action-row px-4 pb-3 pt-2 ${compactComposer ? 'compact' : ''}`}>
       <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
-        <ModeSelector />
+        {#if isCodeMode}
+          <CodeComposerControls />
+        {:else}
+          <ModeSelector />
 
-        <SearchModeSelector />
+          <SearchModeSelector />
+        {/if}
       </div>
 
       <div class={`composer-right-actions flex items-center gap-1.5 ${compactComposer ? '' : 'pl-2'}`}>
