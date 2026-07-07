@@ -1,9 +1,10 @@
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
+import type { SearchResult } from '$lib/types/tauri';
 
 export async function handleWebSearch(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
-  webSearch: (args: { query: string; context?: string; deep: boolean; mode: 'search' | 'deep' | 'max'; options?: Record<string, unknown> }) => Promise<{ error?: string; results: Array<{ title: string; url: string; snippet?: string }>; context?: string }>;
+  webSearch: (args: { query: string; context?: string; deep: boolean; mode: 'search' | 'deep' | 'max'; options?: Record<string, unknown> }) => Promise<{ error?: string; results: SearchResult[]; context?: string }>;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -14,15 +15,13 @@ export async function handleWebSearch(params: {
     : params.ctx.searchMode || 'search';
   try {
     const resultBudget = mode === 'max' ? 18 : mode === 'deep' ? 12 : 8;
-    const contextBudget = mode === 'max' ? 24000 : mode === 'deep' ? 14000 : 6500;
     const result = await params.webSearch({
       query,
       context: params.ctx.conversationContext,
       deep: mode !== 'search',
       mode,
       options: {
-        max_results: resultBudget,
-        context_budget_chars: contextBudget
+        max_results: resultBudget
       }
     });
     if (result.error) {
@@ -32,10 +31,11 @@ export async function handleWebSearch(params: {
       );
     }
     const results = result.results.slice(0, resultBudget).map((entry, index) => ({
+      ...entry,
       rank: index + 1,
       title: entry.title,
       url: entry.url,
-      snippet: entry.snippet?.slice(0, mode === 'search' ? 350 : 700)
+      snippet: entry.snippet
     }));
 
     return params.ok({
@@ -45,7 +45,7 @@ export async function handleWebSearch(params: {
       results,
       urls_to_consider: results.map((entry) => ({ rank: entry.rank, title: entry.title, url: entry.url })),
       next_step: 'If the answer needs source text, choose the most authoritative/relevant URL from urls_to_consider and call fetch_url before finalizing. If results are thin, run another distinct web_search query.',
-      context: result.context?.slice(0, contextBudget)
+      context: result.context
     });
   } catch (err: unknown) {
     return params.failFromError(
@@ -67,6 +67,7 @@ export async function handleFetchUrl(params: {
     links?: Array<unknown>;
     site_name?: string;
     og_image?: string;
+    file_type?: string;
     status?: number;
     truncated?: boolean;
     warning?: string;
@@ -81,9 +82,9 @@ export async function handleFetchUrl(params: {
   if (!url) return params.fail('Missing url');
   try {
     if (params.isTauri()) {
-      const result = await params.fetchUrlContent(url, 50000);
+      const result = await params.fetchUrlContent(url, 0);
       if (result.error) return params.fail(result.error);
-      const content = String(result.content || '').slice(0, 12000);
+      const content = String(result.content || '');
       return params.ok({
         url: result.url,
         title: result.title,
@@ -92,6 +93,7 @@ export async function handleFetchUrl(params: {
         links: (result.links || []).slice(0, 80),
         site_name: result.site_name,
         og_image: result.og_image,
+        file_type: result.file_type,
         status: result.status,
         truncated: result.truncated,
         warning: result.warning,
@@ -105,7 +107,7 @@ export async function handleFetchUrl(params: {
       .map((entry) => entry.snippet || '')
       .filter(Boolean)
       .join('\n\n')
-      .slice(0, 8000);
+      .trim();
 
     return params.ok({ url, content: content || result.context || 'Could not extract content' });
   } catch (err: unknown) {

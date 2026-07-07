@@ -88,14 +88,21 @@ export function mergeWebSearchSources(params: {
 }): void {
   if (params.toolCall.name !== 'web_search' || !params.result.success) return;
 
-  const output = params.result.output as { results?: Array<{ title: string; url: string; snippet?: string }> } | undefined;
+  const output = params.result.output as { results?: SearchResult[] } | undefined;
   let added = false;
   for (const entry of output?.results ?? []) {
-    if (entry.url && !params.seenUrls.has(entry.url)) {
-      params.seenUrls.add(entry.url);
-      params.sources.push({ title: entry.title || entry.url, url: entry.url, snippet: entry.snippet || '' });
-      added = true;
+    if (!entry.url) continue;
+    if (params.seenUrls.has(entry.url)) {
+      const existing = params.sources.find((source) => source.url === entry.url);
+      if (existing && ((entry.full_content || '').length > (existing.full_content || '').length || (entry.snippet || '').length > (existing.snippet || '').length)) {
+        Object.assign(existing, { ...entry, title: entry.title || existing.title || entry.url, url: entry.url });
+        added = true;
+      }
+      continue;
     }
+    params.seenUrls.add(entry.url);
+    params.sources.push({ ...entry, title: entry.title || entry.url, url: entry.url, snippet: entry.snippet || '' });
+    added = true;
   }
   if (added) params.onSources?.([...params.sources]);
 }

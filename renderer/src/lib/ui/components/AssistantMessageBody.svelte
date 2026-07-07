@@ -17,7 +17,6 @@
   import ArtifactBlock from './ArtifactBlock.svelte';
   import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
   import InlineAgentSteps from '$lib/components/agent/InlineAgentSteps.svelte';
-  import { isPublicFallbackContent } from '$lib/services/agent-parsing';
   import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
 
 
@@ -92,7 +91,7 @@
     }];
   });
   const visibleContent = $derived(
-    contextMode === 'code' && isPublicFallbackContent(displayContent)
+    contextMode === 'code'
       ? ''
       : displayContent
   );
@@ -140,11 +139,6 @@
         totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
       />
     {/if}
-    <InlineAgentSteps
-      steps={message.agentSteps || []}
-      status={message.status}
-      totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
-    />
   {:else}
     <AgentBlock
       steps={message.agentSteps || []}

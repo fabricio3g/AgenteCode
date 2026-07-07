@@ -229,7 +229,7 @@ export async function runChateaAgentSession(
         closeChateaAgentSession(config.chatId).catch(() => {});
 
         resolve({
-          content: content || 'Agent completed without producing output.',
+          content,
           reasoning,
           steps,
           artifact,

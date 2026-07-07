@@ -24,7 +24,6 @@ export async function webSearch(args: {
     mode: args.mode,
     options: {
       max_results: stored.search?.max_results,
-      context_budget_chars: stored.search?.context_budget_chars,
       provider: stored.search?.provider || 'aggregator',
       aggregator_engines: stored.search?.aggregator_engines,
       safe_search: stored.search?.safe_search,
@@ -93,6 +92,7 @@ export interface FetchUrlResult {
   links?: Array<{ text: string; url: string; domain: string; sameSite: boolean }>;
   site_name?: string;
   og_image?: string;
+  file_type?: string;
   length?: number;
   status: number;
   error?: string;

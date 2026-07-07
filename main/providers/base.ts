@@ -12,7 +12,9 @@ export type ReasoningLevel =
   | 'high'
   | 'xhigh'
   | 'enabled'
-  | 'disabled';
+  | 'disabled'
+  | 'on'
+  | 'none';
 
 export type ReasoningParamShape =
   | 'openai_reasoning_effort'   // { reasoning_effort: 'low' }

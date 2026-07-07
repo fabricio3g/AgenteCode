@@ -61,13 +61,13 @@
   .row {
     display: flex; align-items: center; gap: 0.35rem;
     padding: 0.2rem 0.4rem; font-size: 0.74rem; line-height: 1.4;
-    border-radius: 0.35rem; transition: background 0.1s;
+    border-radius: 0.35rem; background: color-mix(in srgb, var(--surface) 68%, transparent); transition: background 0.1s;
   }
   .row.runnable { cursor: pointer; }
   .row:hover { background: color-mix(in srgb, var(--surface-hover) 40%, transparent); }
-  .row.running .icon { color: var(--primary); animation: spin 1s linear infinite; }
+  .row.running .icon { animation: spin 1s linear infinite; }
   .row.error .label { color: var(--error); }
-  .icon { width: 1rem; height: 1rem; flex-shrink: 0; color: var(--text-muted); }
+  .icon { width: 0.72rem; height: 0.72rem; flex-shrink: 0; color: color-mix(in srgb, var(--text-muted) 82%, transparent); }
   .label { font-weight: 600; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
   .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 0.7rem; }
   .trail { margin-left: auto; display: flex; gap: 0.25rem; flex-shrink: 0; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 720; }

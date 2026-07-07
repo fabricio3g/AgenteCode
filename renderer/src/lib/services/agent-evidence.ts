@@ -13,8 +13,26 @@ export function sourceRows(sources: SearchResult[]): Array<Record<string, string
     '#': String(index + 1),
     title: source.title || source.url,
     url: source.url,
-    snippet: source.snippet || ''
+    snippet: source.snippet || source.full_content || ''
   }));
+}
+
+function normalizedSourceKey(source: SearchResult): string {
+  return String(source.url || source.title || '').trim().toLowerCase().replace(/#.*$/, '');
+}
+
+function mergeSourceFields(existing: SearchResult, incoming: SearchResult): SearchResult {
+  return {
+    ...existing,
+    ...incoming,
+    title: incoming.title || existing.title || incoming.url || existing.url,
+    url: incoming.url || existing.url,
+    snippet: (incoming.snippet || '').length > (existing.snippet || '').length ? incoming.snippet : existing.snippet,
+    full_content: (incoming.full_content || '').length > (existing.full_content || '').length ? incoming.full_content : existing.full_content,
+    provider: incoming.provider || existing.provider,
+    providers: incoming.providers || existing.providers,
+    metadata: { ...(existing.metadata || {}), ...(incoming.metadata || {}) }
+  };
 }
 
 export function summarizeToolObservation(name: string, args: Record<string, unknown>, result: ToolResult): ToolObservation {
@@ -35,22 +53,24 @@ export function summarizeToolObservation(name: string, args: Record<string, unkn
   const output = result.output as Record<string, unknown> | undefined;
   if (name === 'web_search' && output && typeof output === 'object') {
     const rawSources = Array.isArray(output.results)
-      ? output.results as Array<{ title?: string; url?: string; snippet?: string }>
+      ? output.results as SearchResult[]
       : [];
     const foundSources: SearchResult[] = rawSources
       .filter((source) => source.url)
       .map((source) => ({
+        ...source,
         title: source.title || source.url || 'Source',
         url: source.url || '',
-        snippet: source.snippet || ''
+        snippet: source.snippet || '',
+        full_content: source.full_content || ''
       }));
     const lines = [
       `Search query: ${compactText(output.query || args.query, 180)}`,
-      ...foundSources.slice(0, 8).map((source, index) =>
-        `${index + 1}. ${source.title} - ${source.url}${source.snippet ? ` - ${compactText(source.snippet, 220)}` : ''}`
+      ...foundSources.slice(0, 12).map((source, index) =>
+        `${index + 1}. ${source.title} - ${source.url}${source.snippet ? ` - ${compactText(source.snippet, 420)}` : ''}`
       )
     ];
-    const context = compactText(output.context, 900);
+    const context = compactText(output.context, 1800);
     return {
       name,
       args,
@@ -62,6 +82,21 @@ export function summarizeToolObservation(name: string, args: Record<string, unkn
   }
 
   if (name === 'fetch_url' && output && typeof output === 'object') {
+    const fetchedSource: SearchResult | null = output.url
+      ? {
+        title: String(output.title || output.url || 'Fetched source'),
+        url: String(output.url || ''),
+        snippet: String(output.excerpt || ''),
+        full_content: String(output.content || ''),
+        provider: 'fetch_url',
+        metadata: {
+          quality: output.quality,
+          warning: output.warning,
+          site_name: output.site_name,
+          file_type: output.file_type
+        }
+      }
+      : null;
     return {
       name,
       args,
@@ -71,8 +106,9 @@ export function summarizeToolObservation(name: string, args: Record<string, unkn
         output.title ? `Title: ${compactText(output.title, 180)}` : '',
         output.quality ? `Scrape quality: ${compactText(output.quality, 80)}${output.warning ? ` (${compactText(output.warning, 220)})` : ''}` : '',
         output.excerpt ? `Excerpt: ${compactText(output.excerpt, 350)}` : '',
-        output.content ? `Content excerpt: ${compactText(output.content, 900)}` : ''
+        output.content ? `Content excerpt: ${compactText(output.content, 1800)}` : ''
       ].filter(Boolean).join('\n'),
+      sources: fetchedSource ? [fetchedSource] : undefined,
       createdFiles
     };
   }
@@ -99,11 +135,15 @@ export function summarizeToolObservation(name: string, args: Record<string, unkn
 export function evidenceSources(observations: ToolObservation[], liveSources: SearchResult[]): SearchResult[] {
   const byUrl = new Map<string, SearchResult>();
   for (const source of liveSources) {
-    if (source.url) byUrl.set(source.url, source);
+    const key = normalizedSourceKey(source);
+    if (!key) continue;
+    byUrl.set(key, byUrl.has(key) ? mergeSourceFields(byUrl.get(key) as SearchResult, source) : source);
   }
   for (const observation of observations) {
     for (const source of observation.sources || []) {
-      if (source.url && !byUrl.has(source.url)) byUrl.set(source.url, source);
+      const key = normalizedSourceKey(source);
+      if (!key) continue;
+      byUrl.set(key, byUrl.has(key) ? mergeSourceFields(byUrl.get(key) as SearchResult, source) : source);
     }
   }
   return Array.from(byUrl.values());
@@ -120,7 +160,8 @@ export function buildEvidenceText(observations: ToolObservation[], liveSources: 
     parts.push(...sources.slice(0, 12).map((source, index) => {
       const title = source.title || source.url;
       const url = source.url;
-      const snippet = source.snippet ? `\n   ${compactText(source.snippet, 350)}` : '';
+      const excerpt = source.snippet || source.full_content || '';
+      const snippet = excerpt ? `\n   ${compactText(excerpt, 700)}` : '';
       return `${index + 1}. [${title}](${url})${snippet}`;
     }));
   }

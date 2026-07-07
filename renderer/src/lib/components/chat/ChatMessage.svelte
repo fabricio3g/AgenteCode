@@ -81,6 +81,7 @@
     if (message.slides?.length) return false;
     if (message.filesCreated?.length) return false;
     if (message.artifact) return false;
+    if (message.agentSteps?.some((step) => step.diffStats?.length)) return false;
     if (displayMetadata?.error || displayMetadata?.warning) return false;
     return true;
   });

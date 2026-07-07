@@ -682,7 +682,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     try {
       if (directMode) {
         messages[0] = { role: 'system', content: directSys };
-        completion = await completeAssistantReply({ messages, signal: args.signal });
+        completion = await completeAssistantReply({ messages, signal: args.signal, reasoningLevel: args.reasoningLevel });
         checkAbort();
       } else if (nativeActive) {
         const streamResult = await agentStreamComplete({
@@ -690,6 +690,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           tools: toolDefs,
           signal: args.signal,
           config,
+          reasoningLevel: args.reasoningLevel,
           onReasoning: (text) => {
             streamingReasoningParts.push(text);
             finalReasoning = finalReasoning ? `${finalReasoning}${text}` : text;
@@ -1251,7 +1252,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   finalContent = sanitizeAgentVisibleText(finalContent);
   finalReasoning = sanitizeAgentVisibleText(finalReasoning);
   const artifact = publishArtifacts ? buildArtifact(ctx) : null;
-  const usefulResult = hasGatheredEvidence(ctx, toolObservations, sources, finalContent);
+  const finalSources = evidenceSources(toolObservations, sources);
+  const usefulResult = hasGatheredEvidence(ctx, toolObservations, finalSources, finalContent);
   const effectiveStopReason = stopReason !== 'none' ? stopReason : classifyStopReason(errorReason || warningReason);
   const outcome: AgentOutcome = errorReason
     ? (usefulResult ? 'stopped' : 'failed')
@@ -1272,7 +1274,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     reasoning: finalReasoning,
     steps,
     artifact,
-    sources,
+    sources: finalSources,
     outcome,
     stopReason: effectiveStopReason,
     publicFallback,

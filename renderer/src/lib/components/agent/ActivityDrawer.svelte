@@ -5,15 +5,46 @@
   import { cubicOut } from 'svelte/easing';
   import { ExternalLink, Loader2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import type { AgentStep } from '$lib/types/chat';
+  import type { AgentStep, ChatMessage } from '$lib/types/chat';
   import { domainLabel, faviconUrl } from '$lib/ui/message-utils';
 
   const message = $derived(appStore.activityMessage);
   const steps = $derived(message?.agentSteps || []);
   const reasoning = $derived(message?.reasoning || '');
   const sources = $derived(message?.sources || []);
-  const sourceCount = $derived(message?.sources?.length || 0);
+  const displaySources = $derived.by(() => dedupeSources(sources));
+  const sourceCount = $derived(displaySources.length);
   const activeTab = $derived(appStore.activityDrawerTab);
+
+  type Source = NonNullable<ChatMessage['sources']>[number];
+
+  function sourceKey(source: Source) {
+    return String(source.url || source.title || '').trim().toLowerCase().replace(/#.*$/, '');
+  }
+
+  function richerSource(left: Source, right: Source): Source {
+    return {
+      ...left,
+      ...right,
+      title: right.title || left.title || right.url || left.url,
+      url: right.url || left.url,
+      snippet: (right.snippet || '').length > (left.snippet || '').length ? right.snippet : left.snippet,
+      full_content: (right.full_content || '').length > (left.full_content || '').length ? right.full_content : left.full_content,
+      provider: right.provider || left.provider,
+      providers: right.providers || left.providers,
+      metadata: { ...(left.metadata || {}), ...(right.metadata || {}) }
+    };
+  }
+
+  function dedupeSources(list: Source[]) {
+    const byKey = new Map<string, Source>();
+    for (const source of list || []) {
+      const key = sourceKey(source);
+      if (!key) continue;
+      byKey.set(key, byKey.has(key) ? richerSource(byKey.get(key) as Source, source) : source);
+    }
+    return Array.from(byKey.values());
+  }
 
   function close(event?: Event) {
     event?.preventDefault();
@@ -41,6 +72,17 @@
   function hideOnError(event: Event) {
     (event.currentTarget as HTMLElement).style.display = 'none';
   }
+
+  function sourceExcerpt(source: Source) {
+    return String(source.snippet || source.full_content || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function sourceBadges(source: Source) {
+    const inferred = String(source.url || '').match(/\.(pdf|docx?|pptx?|xlsx?|rtf|epub|odt|ods|odp)(?:$|[?#])/i)?.[1] || '';
+    const fileType = String(source.metadata?.file_type || inferred || '').trim().toUpperCase();
+    const provider = String(source.provider || '').trim();
+    return [fileType, provider].filter(Boolean).slice(0, 2);
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -66,19 +108,26 @@
 
   <div class="activity-body">
     {#if activeTab === 'sources'}
-      {#if sources.length}
+      {#if displaySources.length}
         <div class="source-list">
-          {#each sources as source, index}
+          {#each displaySources as source, index (source.url || source.title || index)}
             <a href={source.url} target="_blank" rel="noopener noreferrer" class="source-item">
               <span class="source-index">{index + 1}</span>
               <img class="source-favicon" src={faviconUrl(source.url)} alt="" loading="lazy" onerror={hideOnError} />
               <span class="source-text">
-                  <span class="source-title">{source.title || source.url}</span>
-                  <span class="source-domain">{domainLabel(source.url)}</span>
-                  {#if source.snippet}
-                    <span class="source-snippet">{source.snippet}</span>
-                  {/if}
-                </span>
+                <span class="source-title">{source.title || source.url}</span>
+                <span class="source-domain">{domainLabel(source.url)}</span>
+                {#if sourceBadges(source).length}
+                  <span class="source-meta">
+                    {#each sourceBadges(source) as badge}
+                      <span class="source-chip">{badge}</span>
+                    {/each}
+                  </span>
+                {/if}
+                {#if sourceExcerpt(source)}
+                  <span class="source-snippet">{sourceExcerpt(source)}</span>
+                {/if}
+              </span>
               <ExternalLink class="h-3.5 w-3.5 shrink-0" />
             </a>
           {/each}
@@ -368,6 +417,31 @@
     color: var(--text-muted);
     font-size: 0.68rem;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .source-meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.08rem;
+  }
+
+  .source-chip {
+    display: inline-flex;
+    max-width: 8rem;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    font-weight: 700;
+    line-height: 1;
+    overflow: hidden;
+    padding: 0.13rem 0.36rem;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
     white-space: nowrap;
   }
 

@@ -65,6 +65,6 @@
   .toggle:hover { color: var(--text-secondary); background: color-mix(in srgb, var(--surface-hover) 50%, transparent); }
   .toggle .icon { width: 0.75rem; height: 0.75rem; transition: transform 0.15s; }
   .toggle .icon.flip { transform: rotate(180deg); }
-  .list { display: flex; flex-direction: column; }
+  .list { display: flex; flex-direction: column; gap: 0.14rem; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 0.55rem; background: color-mix(in srgb, var(--surface-hover) 24%, transparent); padding: 0.18rem; }
   .summary { padding: 0.15rem 0.4rem; color: var(--text-muted); font-size: 0.66rem; font-weight: 580; opacity: 0.75; }
 </style>

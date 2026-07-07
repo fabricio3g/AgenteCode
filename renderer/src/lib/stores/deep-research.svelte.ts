@@ -709,7 +709,7 @@ class DeepResearchStore {
         updatedAt: Date.now(),
         providerUsed: Array.from(providers).join(', ') || 'auto',
         results: dedupedResults,
-        context: combinedContext.slice(0, 30000),
+        context: combinedContext,
         progressLog: [...entry.progressLog, { step: 'search_found', detail: `Collected ${dedupedResults.length} base sources`, at: Date.now() }].slice(-40)
       }));
 
@@ -727,12 +727,11 @@ class DeepResearchStore {
         query: enhancedQuery,
         context: task.conversationContext,
         mode: task.mode,
-        seed_urls: crawlSeeds,
-        context_budget_chars: task.mode === 'max' ? 30000 : 16000
+        seed_urls: crawlSeeds
       });
 
       const merged = dedupeResults([...(dedupedResults || []), ...((crawl?.results || []) as SearchResult[])]).slice(0, task.mode === 'max' ? 70 : 36);
-      const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n').slice(0, task.mode === 'max' ? 90000 : 52000);
+      const mergedContext = [combinedContext, crawl?.context || ''].filter(Boolean).join('\n\n---\n\n');
 
       this.updateTask(taskId, (entry) => ({
         ...entry,
@@ -892,8 +891,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     mode,
     options: {
       provider: 'aggregator',
-      max_results: mode === 'max' ? 18 : 12,
-      context_budget_chars: mode === 'max' ? 26000 : 14000
+      max_results: mode === 'max' ? 18 : 12
     }
   });
 
@@ -907,8 +905,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     mode,
     options: {
       provider: 'duckduckgo',
-      max_results: mode === 'max' ? 18 : 12,
-      context_budget_chars: mode === 'max' ? 26000 : 14000
+      max_results: mode === 'max' ? 18 : 12
     }
   });
 

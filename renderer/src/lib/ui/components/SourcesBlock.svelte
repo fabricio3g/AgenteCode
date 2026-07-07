@@ -17,6 +17,14 @@
 
   const provider = $derived(providerLabel(meta?.providerUsed || meta?.requestedProvider || ''));
   const modeLabel = $derived(searchMode === 'max' ? 'Max search' : searchMode === 'deep' ? 'Deep search' : 'Web search');
+  const sourceCount = $derived.by(() => {
+    const seen = new Set<string>();
+    for (const source of sources || []) {
+      const key = String(source.url || source.title || '').trim().toLowerCase().replace(/#.*$/, '');
+      if (key) seen.add(key);
+    }
+    return seen.size || sources?.length || 0;
+  });
   const isOpen = $derived(appStore.activityDrawerOpen && appStore.activityMessageId === messageId && appStore.activityDrawerTab === 'sources');
 
   function stopBubble(event: Event) {
@@ -30,7 +38,7 @@
   }
 </script>
 
-{#if sources?.length}
+{#if sourceCount}
   <div class="sources-block">
     <button
       type="button"
@@ -42,7 +50,7 @@
     >
       <Globe class="h-3.5 w-3.5 shrink-0" />
       <span class="source-titleline">{modeLabel}</span>
-      <span class="source-count">{sources.length} sources</span>
+      <span class="source-count">{sourceCount} sources</span>
       {#if provider && provider.toLowerCase() !== 'auto'}
         <span class="source-provider">{provider}</span>
       {/if}

@@ -8,6 +8,7 @@ type EvidenceSource = {
   url: string;
   snippet: string;
   provider?: string;
+  fileType?: string;
 };
 
 type EvidenceItem = {
@@ -32,7 +33,20 @@ function titleFromPrompt(prompt: string): string {
 }
 
 function sourceKey(source: { title?: string; url?: string }): string {
-  return cleanText(source.url || source.title || '').toLowerCase();
+  return cleanText(source.url || source.title || '').toLowerCase().replace(/#.*$/, '');
+}
+
+function domainLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function fileTypeLabel(source: SearchResult): string {
+  const inferred = String(source.url || '').match(/\.(pdf|docx?|pptx?|xlsx?|rtf|epub|odt|ods|odp)(?:$|[?#])/i)?.[1] || '';
+  return cleanText(String(source.metadata?.file_type || inferred || ''), 40);
 }
 
 function mapSources(sources: SearchResult[]): EvidenceSource[] {
@@ -47,7 +61,8 @@ function mapSources(sources: SearchResult[]): EvidenceSource[] {
       title: cleanText(source.title || source.url || `Source ${mapped.length + 1}`, 220),
       url: cleanText(source.url || '', 500),
       provider: cleanText(source.provider || '', 120),
-      snippet: cleanText(source.full_content || source.snippet || '', 1100)
+      fileType: fileTypeLabel(source),
+      snippet: cleanText(source.full_content || source.snippet || '', 1800)
     });
   }
   return mapped;
@@ -62,7 +77,7 @@ function evidenceKey(text: string): string {
 }
 
 function addEvidenceItem(items: EvidenceItem[], seen: Set<string>, text: string, sourceId?: string) {
-  const cleaned = cleanText(text, 700);
+  const cleaned = cleanText(text, 900);
   if (cleaned.length < 25) return;
   if (/^(search query|searched_at|mode|urls_to_consider|next_step):/i.test(cleaned)) return;
   const key = evidenceKey(cleaned);
@@ -108,7 +123,11 @@ function collectEvidenceItems(observations: ToolObservation[], sources: Evidence
 
 function renderSource(source: EvidenceSource): string {
   const title = source.title || source.url || `Source ${source.id}`;
-  return source.url ? `${source.id}. ${title} - ${source.url}` : `${source.id}. ${title}`;
+  const badges = [source.fileType?.toUpperCase(), source.provider, domainLabel(source.url)]
+    .map((value) => cleanText(value, 80))
+    .filter(Boolean);
+  const suffix = badges.length ? ` — ${badges.join(' · ')}` : '';
+  return source.url ? `- [${source.id}] [${title}](${source.url})${suffix}` : `- [${source.id}] ${title}${suffix}`;
 }
 
 function renderEvidenceOnlyMarkdown(params: {
