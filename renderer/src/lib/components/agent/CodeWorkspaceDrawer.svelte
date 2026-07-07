@@ -23,7 +23,7 @@
   let expandedDiffFile = $state<string | null>(null);
 
   const currentChat = $derived(appStore.currentChat);
-  const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.instanceId || 'chatea');
+  const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.instanceId || 'chatea-agent');
   const activeProvider = $derived(providers.find((provider) => provider.id === activeProviderId) || providers[0]);
   const latestAgentMessage = $derived.by(() => {
     const messages = currentChat?.messages || [];

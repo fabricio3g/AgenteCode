@@ -162,6 +162,10 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   try {
+    const { disposeAllChateaAgentSessions } = await import('./ipc-handlers.js');
+    disposeAllChateaAgentSessions();
+  } catch { /* ignore cleanup errors */ }
+  try {
     const { cleanupLlm } = await import('./llm-runner.js');
     cleanupLlm();
   } catch { /* ignore cleanup errors */ }

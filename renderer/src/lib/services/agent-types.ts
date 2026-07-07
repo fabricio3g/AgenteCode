@@ -41,6 +41,7 @@ export type ToolContext = {
   workspaceRoot?: string;
   workspaceFiles?: WorkspaceFile[];
   executionMode: 'sandbox' | 'workspace';
+  runtimeMode?: 'full' | 'supervised';
   debugLogs?: boolean;
   signal?: AbortSignal;
   onArtifact: (artifact: AgentArtifact | null) => void;
@@ -71,6 +72,7 @@ export type RunAgentTaskArgs = {
   workspaceRoot?: string;
   workspaceName?: string;
   workspaceFiles?: WorkspaceFile[];
+  runtimeMode?: 'full' | 'supervised';
   onStep: (steps: AgentStep[]) => void;
   onProgress?: (text: string) => void;
   onReasoning?: (value: string) => void;

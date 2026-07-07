@@ -54,7 +54,7 @@ import {
   trimContext as trimContextMessages
 } from '$lib/services/agent-message-context';
 import {
-  handleReadFile, handleWriteFile, handleDeleteFile, handleListFiles,
+  handleReadFile, handleWriteFile, handleEditFile, handleDeleteFile, handleListFiles,
   handleSearchFiles, handlePreviewProject
 } from '$lib/services/agent-tool-fileops';
 import { handleCreateReport, handleCreateWorkProduct } from '$lib/services/agent-tool-artifacts';
@@ -211,6 +211,21 @@ async function executeTool(
       }) as Promise<ToolResult>;
     }
 
+    case 'edit_file': {
+      return handleEditFile({
+        args,
+        ctx,
+        normPath,
+        isWorkspace,
+        readWsText: (path, workspaceCtx) => readWsText(path, workspaceCtx, readWorkspaceFile),
+        writeWorkspaceFile,
+        getWsFiles,
+        upsertWsFile,
+        ok,
+        fail
+      }) as Promise<ToolResult>;
+    }
+
     case 'list_files': {
       return handleListFiles({
         args,
@@ -232,6 +247,49 @@ async function executeTool(
         ok,
         fail
       }) as Promise<ToolResult>;
+    }
+
+    case 'bash': {
+      if (!isWorkspace(ctx)) return fail('bash is only available in workspace mode');
+      const command = String(args.command || '');
+      if (!command) return fail('Missing command');
+      const timeoutMs = Number(args.timeout_ms) || 30000;
+
+      // In supervised mode, request user approval before executing
+      if (ctx.runtimeMode === 'supervised') {
+        try {
+          const { addPendingApproval } = await import('$lib/stores/approvals.svelte');
+          const approved = await addPendingApproval(
+            `bash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            command,
+            ctx.workspaceRoot || ''
+          );
+          if (!approved) {
+            return fail('Command blocked by user');
+          }
+        } catch {
+          return fail('Approval mechanism unavailable');
+        }
+      }
+
+      try {
+        const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>('workspace_exec', {
+          workspace_root: ctx.workspaceRoot,
+          command,
+          args: [],
+          shell: true,
+          timeout_ms: timeoutMs
+        });
+        const output = (result.stdout || '') + (result.stderr ? `\n[stderr]\n${result.stderr}` : '');
+        const truncated = output.length > 8000 ? output.slice(0, 8000) + '\n... (truncated)' : output;
+        if (result.exit_code === 0) {
+          return ok({ exitCode: result.exit_code, output: truncated });
+        }
+        return fail(`Command failed (exit ${result.exit_code}): ${truncated.slice(0, 500)}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return fail(message);
+      }
     }
 
     case 'preview_project': {
@@ -440,6 +498,15 @@ function pushMissingRequestedFilesStep(steps: AgentStep[], ctx: ToolContext, raw
   });
 }
 
+function buildWorkspaceStoppedContent(reason: string, observations: ToolObservation[]): string {
+  const latest = [...observations].reverse().find((observation) => observation.name);
+  const target = latest?.args?.path || latest?.args?.command || latest?.args?.query || latest?.args?.url;
+  const lastAction = latest
+    ? ` Last completed action: ${latest.name.replace(/_/g, ' ')}${target ? ` (${compactText(target, 120)})` : ''}.`
+    : '';
+  return `I stopped before producing a final answer because ${reason}.${lastAction} Review the visible agent steps above for the full tool history.`;
+}
+
 export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
 
   const config = await loadAppConfig();
@@ -457,12 +524,14 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     workspaceRoot: args.workspaceRoot,
     workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
     executionMode,
+    runtimeMode: args.runtimeMode,
     debugLogs,
     signal: args.signal,
     onArtifact: args.onArtifact,
   };
 
   const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  const publishArtifacts = executionMode !== 'workspace';
   const localMode = backendMode === 'local';
   const defaultMaxIterations = localMode ? LOCAL_DEFAULT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS;
   const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? defaultMaxIterations));
@@ -483,10 +552,27 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
 
   const toolMode = args.toolMode || 'agent';
   const toolDefs = toolMode === 'search_chat'
-    ? getToolDefinitions().filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
-    : getToolDefinitions();
+    ? getToolDefinitions(executionMode).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
+    : getToolDefinitions(executionMode);
   const modeNote = executionMode === 'workspace'
-    ? 'You are attached to a real workspace folder. Only use persistent file operations when the app explicitly enables workspace mode.'
+    ? [
+      `You are attached to a real workspace folder at ${args.workspaceRoot || 'the project root'}.`,
+      'Files and bash commands run on the host filesystem, confined to the workspace root.',
+      '',
+      'Available tools:',
+      '- read_file (path, offset?, limit?): Read a file. Use offset/limit for large files.',
+      '- write_file (path, content, mode?): Create or overwrite a file.',
+      '- edit_file (path, edits[]): Make precise text replacements. Each edit has {oldText, newText}. Prefer this over write_file for modifying existing files.',
+      '- delete_file (path): Delete a file.',
+      '- list_files (pattern?): List files in the workspace.',
+      '- search_files (query, caseSensitive?, path?, maxResults?): Search file contents.',
+      '- bash (command, timeout?): Run any shell command with full shell access. Output is streamed back.',
+      '',
+      'Use bash for running tests, installing dependencies, git operations, building, and other CLI tasks.',
+      'Use edit_file for precise changes to existing files instead of rewriting the whole file with write_file.',
+      'For reading large files, use read_file with offset to paginate.',
+      'Diffs and file changes auto-render in the chat as a changed-files overview.',
+    ].join('\n')
     : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
   const requestReminder = buildCurrentRequestReminder(args.rawPrompt, compactText);
   const searchModeNote = toolMode === 'search_chat'
@@ -500,8 +586,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     ].join(' ')
     : '';
   const agentExtra = [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
-  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode);
-  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode);
+  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode, executionMode);
+  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode, executionMode);
   const directSys = buildDirectSystemPrompt(agentExtra, { toolMode, searchMode: args.searchMode });
 
   const messages: RequestMessage[] = [
@@ -538,13 +624,15 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     sourceChars: args.searchMode === 'max' ? 1000 : 700,
     instruction: 'The following evidence was gathered during Deep/Max search. Use these source-specific facts, URLs, and excerpts as the primary source of truth for the final answer. Do not answer generically when evidence is present.'
   } : undefined;
-  const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => buildStrictFallbackContent({
-    prompt: args.rawPrompt || '',
-    reason,
-    ctx,
-    observations: toolObservations,
-    sources
-  });
+  const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => executionMode === 'workspace'
+    ? buildWorkspaceStoppedContent(reason, toolObservations)
+    : buildStrictFallbackContent({
+      prompt: args.rawPrompt || '',
+      reason,
+      ctx,
+      observations: toolObservations,
+      sources
+    });
 
   for (let iter = 0; iter < maxIterations; iter++) {
     debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
@@ -1060,7 +1148,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       if (group.length === 1) {
         // Single tool — execute directly
         const tc = group[0];
-        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed);
+        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed, publishArtifacts);
       } else {
         // Multiple independent tools — execute in parallel
         args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
@@ -1081,7 +1169,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
           finalizeToolStep(toolStep, result);
           steps.push(toolStep);
-          publishArtifact(args.onArtifact, () => buildArtifact(ctx));
+          if (publishArtifacts) publishArtifact(args.onArtifact, () => buildArtifact(ctx));
           appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars: MAX_TOOL_RESULT_CHARS });
         }
         args.onStep([...steps]);
@@ -1147,20 +1235,22 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     const reason = stopReason !== 'none' && errorReason
       ? errorReason
       : 'it reached the iteration limit before producing a final answer';
-    finalContent = await buildStrictFallbackContent({
-      prompt: args.rawPrompt || '',
-      reason,
-      ctx,
-      observations: toolObservations,
-      sources
-    });
+    finalContent = executionMode === 'workspace'
+      ? buildWorkspaceStoppedContent(reason, toolObservations)
+      : await buildStrictFallbackContent({
+        prompt: args.rawPrompt || '',
+        reason,
+        ctx,
+        observations: toolObservations,
+        sources
+      });
     if (stopReason === 'none') stopReason = 'iteration_limit';
     errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
   }
 
   finalContent = sanitizeAgentVisibleText(finalContent);
   finalReasoning = sanitizeAgentVisibleText(finalReasoning);
-  const artifact = buildArtifact(ctx);
+  const artifact = publishArtifacts ? buildArtifact(ctx) : null;
   const usefulResult = hasGatheredEvidence(ctx, toolObservations, sources, finalContent);
   const effectiveStopReason = stopReason !== 'none' ? stopReason : classifyStopReason(errorReason || warningReason);
   const outcome: AgentOutcome = errorReason
@@ -1202,7 +1292,8 @@ async function executeSingleTool(
   seenUrls: Set<string>,
   observations: ToolObservation[],
   nativeActive: boolean,
-  nativeFailed: boolean
+  nativeFailed: boolean,
+  publishArtifacts: boolean
 ): Promise<boolean> {
   return executeSingleToolCore({
     tc,
@@ -1219,7 +1310,7 @@ async function executeSingleTool(
     uid,
     executeToolWithTimeout: (name, toolArgs) => executeToolWithTimeout(name, toolArgs, ctx),
     summarizeToolObservation,
-    buildArtifact: () => buildArtifact(ctx),
+    buildArtifact: () => publishArtifacts ? buildArtifact(ctx) : null,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS
   });
 }

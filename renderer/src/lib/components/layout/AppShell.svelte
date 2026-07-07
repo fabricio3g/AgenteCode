@@ -16,6 +16,9 @@
   import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
+  import CodeBashApprovalModal from '$lib/components/agent/CodeBashApprovalModal.svelte';
+  import { getNextPendingApproval, subscribe } from '$lib/stores/approvals.svelte';
+  import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
@@ -30,6 +33,14 @@
 
   let showShortcutsHelp = $state(false);
   let composerHeight = $state(320);
+  let pendingApproval = $state<PendingApproval | null>(null);
+
+  $effect(() => {
+    const unsub = subscribe(() => {
+      pendingApproval = getNextPendingApproval() || null;
+    });
+    return unsub;
+  });
 
   const hasMessages = $derived((appStore.currentChat?.messages?.length || 0) > 0);
 
@@ -217,6 +228,10 @@
 <Toaster />
 <ConfirmDialog />
 <LLMDrawer />
+
+{#if pendingApproval}
+  <CodeBashApprovalModal approval={pendingApproval} />
+{/if}
 
 {#if appStore.sandboxOpen && appStore.currentArtifact}
   <SandboxModal />

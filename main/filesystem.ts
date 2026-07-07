@@ -13,14 +13,15 @@ const ALLOWED_WORKSPACE_COMMANDS = new Set([
   'cat', 'head', 'tail', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'wc',
   'jq', 'pandoc', 'docker', 'docker-compose', 'podman',
   'chmod', 'chown', 'cp', 'mv', 'rm', 'mkdir', 'rmdir', 'ls', 'pwd', 'cd', 'echo',
-  'pandoc', 'latex', 'pdflatex', 'xelatex', 'lualatex'
+  'pandoc', 'latex', 'pdflatex', 'xelatex', 'lualatex',
+  'dir', 'type', 'copy', 'move', 'ren', 'findstr', 'where', 'more', 'fc'
 ]);
 
 function isWorkspaceCommandAllowed(cmd) {
-  const base = path.basename(cmd).toLowerCase().replace(/-/g, '');
+  const base = path.basename(cmd).toLowerCase().replace(/\.exe$/i, '');
   if (ALLOWED_WORKSPACE_COMMANDS.has(base)) return true;
   if (cmd.includes('/') || cmd.includes('\\')) return false;
-  return ALLOWED_WORKSPACE_COMMANDS.has(cmd.toLowerCase());
+  return ALLOWED_WORKSPACE_COMMANDS.has(cmd.toLowerCase().replace(/\.exe$/i, ''));
 }
 
 function workspaceEnv() {
@@ -247,7 +248,7 @@ export async function createWorkspaceFolder(workspaceRoot, relativePath) {
 export async function workspaceExec({ workspace_root, command, args: execArgs, cwd, shell: useShell, timeout_ms }) {
   const workDir = cwd || workspace_root;
 
-  if (!isWorkspaceCommandAllowed(command)) {
+  if (useShell !== true && !isWorkspaceCommandAllowed(command)) {
     return {
       cwd: workDir,
       stdout: '',

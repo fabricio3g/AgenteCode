@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
+  import type { ChatContextMode, ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
   import type { ActionEvent } from '$lib/ui';
   import { AlertCircle } from 'lucide-svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
@@ -16,6 +16,8 @@
   import FilesCreatedBlock from './FilesCreatedBlock.svelte';
   import ArtifactBlock from './ArtifactBlock.svelte';
   import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import InlineAgentSteps from '$lib/components/agent/InlineAgentSteps.svelte';
+  import { isPublicFallbackContent } from '$lib/services/agent-parsing';
   import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
 
 
@@ -25,6 +27,7 @@
     displayReasoning: string;
     displayMetadata: MessageVersion['metadata'] | null;
     displaySearchMeta: SearchMeta | null;
+    contextMode?: ChatContextMode;
     enableThinking: boolean;
     onDownloadSlides: () => void;
     onOpenArtifact: () => void;
@@ -37,6 +40,7 @@
     displayReasoning,
     displayMetadata,
     displaySearchMeta,
+    contextMode = 'chat',
     enableThinking,
     onDownloadSlides,
     onOpenArtifact,
@@ -58,7 +62,8 @@
     )
   );
 
-  const hasContextBadges = $derived(!!message.workContext || (message.ragDocuments?.length || 0) > 0);
+  const displayWorkContext = $derived(contextMode === 'code' ? null : message.workContext);
+  const hasContextBadges = $derived(!!displayWorkContext || (message.ragDocuments?.length || 0) > 0);
 
   function cleanReportTitle(value: string) {
     return String(value || '')
@@ -86,7 +91,11 @@
       status: displayMetadata?.workProduct?.status || 'ready'
     }];
   });
-  const visibleContent = $derived(displayContent);
+  const visibleContent = $derived(
+    contextMode === 'code' && isPublicFallbackContent(displayContent)
+      ? ''
+      : displayContent
+  );
   const showSourcesBlock = $derived.by(() => {
     if (!hasSources) return false;
     return true;
@@ -122,18 +131,37 @@
 {/if}
 
 {#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
-  <AgentBlock
-    steps={message.agentSteps || []}
-    reasoning={enableThinking ? displayReasoning : undefined}
-    status={message.status}
-    totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
-    outcome={displayMetadata?.outcome}
-    stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
-    currentActivity={displayMetadata?.currentActivity}
-    activityLabel={displayMetadata?.activityLabel}
-    sourceCount={message.sources?.length || 0}
-    messageId={message.id}
-  />
+  {#if contextMode === 'code'}
+    {#if enableThinking && displayReasoning}
+      <ReasoningBlock
+        reasoning={displayReasoning}
+        status={message.status}
+        timing={resolveReasoningTiming(displayMetadata) || 0}
+        totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
+      />
+    {/if}
+    <InlineAgentSteps
+      steps={message.agentSteps || []}
+      status={message.status}
+      totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+    />
+  {:else}
+    <AgentBlock
+      steps={message.agentSteps || []}
+      reasoning={enableThinking ? displayReasoning : undefined}
+      status={message.status}
+      totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+      outcome={displayMetadata?.outcome}
+      stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
+      currentActivity={displayMetadata?.currentActivity}
+      activityLabel={displayMetadata?.activityLabel}
+      sourceCount={message.sources?.length || 0}
+      messageId={message.id}
+    />
+    {#if message.agentSteps?.length}
+      <InlineAgentSteps steps={message.agentSteps} status={message.status} />
+    {/if}
+  {/if}
 {/if}
 
 {#if showSourcesBlock}
@@ -145,7 +173,7 @@
 {/if}
 
 {#if hasContextBadges}
-  <ContextBadges workContext={message.workContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
+  <ContextBadges workContext={displayWorkContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
 {/if}
 
 {#if enableThinking && displayReasoning && !message.agentSteps?.length}

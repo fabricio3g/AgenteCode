@@ -126,7 +126,7 @@ export function sanitizeAgentVisibleText(content: string): string {
 }
 
 export function isPublicFallbackContent(content: string): boolean {
-  return /^(Agent stopped because\b|## Gathered Evidence\b|No reliable gathered evidence was available\.)/i.test((content || '').trim());
+  return /^(Agent stopped because\b|#{0,6}\s*Gathered Evidence\b|No reliable gathered evidence was available\.)/i.test((content || '').trim());
 }
 
 export function stripToolCallArtifacts(content: string): string {

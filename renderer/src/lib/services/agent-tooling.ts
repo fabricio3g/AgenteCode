@@ -1,7 +1,9 @@
 import type { AgentStep } from '$lib/types/chat';
 import type { ToolDefinition } from '$lib/services/chat-api';
 
-export function getToolDefinitions(): ToolDefinition[] {
+export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox'): ToolDefinition[] {
+  const isWorkspace = executionMode === 'workspace';
+  const fileScope = isWorkspace ? 'workspace' : 'chat sandbox';
   return [
     {
       type: 'function', function: {
@@ -31,10 +33,14 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'read_file',
-        description: 'Read a file from the chat sandbox.',
+        description: isWorkspace ? `Read a file from the ${fileScope}. The path is relative to the workspace root. Use offset and limit for large files.` : `Read a file from the ${fileScope}.`,
         parameters: {
           type: 'object',
-          properties: { path: { type: 'string', description: 'File path' } },
+          properties: {
+            path: { type: 'string', description: 'File path' },
+            offset: { type: 'number', description: 'Line number to start reading from (1-indexed, optional)' },
+            limit: { type: 'number', description: 'Maximum number of lines to read (optional)' }
+          },
           required: ['path']
         }
       }
@@ -42,7 +48,7 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'write_file',
-        description: 'Create or overwrite a chat sandbox file.',
+        description: isWorkspace ? `Create or overwrite a file in the ${fileScope}. Parent directories are created automatically. The file persists to disk.` : `Create or overwrite a ${fileScope} file.`,
         parameters: {
           type: 'object',
           properties: {
@@ -57,7 +63,7 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'delete_file',
-        description: 'Delete a chat sandbox file.',
+        description: `Delete a file from the ${fileScope}.`,
         parameters: {
           type: 'object',
           properties: { path: { type: 'string', description: 'File path' } },
@@ -67,8 +73,27 @@ export function getToolDefinitions(): ToolDefinition[] {
     },
     {
       type: 'function', function: {
+        name: 'edit_file',
+        description: isWorkspace
+          ? `Make precise text replacements in a file on disk. Use for targeted changes instead of rewriting the whole file. Each edit replaces exact oldText with newText. Edits are applied against the original file content, not incrementally.`
+          : 'Edit a file with text replacements. Available only in workspace mode.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'File path relative to workspace root' },
+            edits: {
+              type: 'array',
+              description: 'Array of {oldText, newText} replacements. oldText must match exactly in the file.'
+            }
+          },
+          required: ['path', 'edits']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
         name: 'list_files',
-        description: 'List all files in the chat sandbox.',
+        description: isWorkspace ? `List files in the ${fileScope}. Use pattern to filter by glob.` : `List all files in the ${fileScope}.`,
         parameters: {
           type: 'object',
           properties: { pattern: { type: 'string', description: 'Glob filter (optional)' } }
@@ -78,12 +103,14 @@ export function getToolDefinitions(): ToolDefinition[] {
     {
       type: 'function', function: {
         name: 'search_files',
-        description: 'Search for text across chat sandbox files.',
+        description: isWorkspace ? `Search for text across ${fileScope} files. Reads files from disk.` : `Search for text across ${fileScope} files.`,
         parameters: {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search text or regex' },
-            caseSensitive: { type: 'boolean' }
+            caseSensitive: { type: 'boolean' },
+            path: { type: 'string', description: 'Subdirectory to search (optional, relative to workspace root)' },
+            maxResults: { type: 'number', description: 'Max results (default 50)' }
           },
           required: ['query']
         }
@@ -91,8 +118,24 @@ export function getToolDefinitions(): ToolDefinition[] {
     },
     {
       type: 'function', function: {
+        name: 'bash',
+        description: isWorkspace
+          ? `Run any shell command through the native system shell. Works for all commands (dir, git, npm, python, etc.). Output is streamed back. Use for running tests, installing dependencies, git operations, building, and other CLI tasks. Commands have a 30-second timeout.`
+          : 'Run a shell command. Available only in workspace mode.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Shell command to execute' },
+            timeout_ms: { type: 'number', description: 'Timeout in milliseconds (default 30000)' }
+          },
+          required: ['command']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
         name: 'preview_project',
-        description: 'Build an HTML preview from chat sandbox files. Call after writing HTML/CSS/JS files.',
+        description: 'Build an HTML preview from sandbox files. Call after writing HTML/CSS/JS files.',
         parameters: {
           type: 'object',
           properties: { entryPoint: { type: 'string', description: 'Entry HTML file (default: index.html)' } }
@@ -239,7 +282,8 @@ export const STEP_TYPE: Record<string, AgentStep['type']> = {
   web_search: 'searching', fetch_url: 'reading',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
-  write_file: 'writing', delete_file: 'writing',
+  write_file: 'writing', delete_file: 'writing', edit_file: 'writing',
+  bash: 'executing',
   preview_project: 'preview', create_report: 'writing',
   create_work_product: 'writing', create_document: 'writing', create_spreadsheet: 'writing', create_presentation: 'writing', create_pdf: 'writing',
   calculator: 'tool',

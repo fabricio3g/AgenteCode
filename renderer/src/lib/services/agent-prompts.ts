@@ -9,7 +9,8 @@ function summarizeTools(toolDefs: ToolDefinition[]): string {
     .join('\n');
 }
 
-export function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: number, maxIterations: number, toolMode: 'agent' | 'search_chat' = 'agent'): string {
+export function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: number, maxIterations: number, toolMode: 'agent' | 'search_chat' = 'agent', executionMode: 'workspace' | 'sandbox' = 'sandbox'): string {
+  const isWorkspace = executionMode === 'workspace';
   const base = toolMode === 'search_chat' ? [
     'You are a research-capable chat assistant. Use web_search and fetch_url tools to answer with current, accurate evidence.',
     `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Use as many distinct searches and source reads as needed, then write the final answer in plain text.`,
@@ -20,6 +21,17 @@ export function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: n
     'Do not invent current facts. If search is thin or blocked, say what was verified and what remains uncertain.',
     'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.',
     'For reports, follow APA 7: clear headings, evidence-based synthesis, in-text citations where metadata allows, and a References section formatted as APA 7 web references. Do not invent missing authors or dates; use (n.d.) when no date is available.'
+  ].join('\n') : isWorkspace ? [
+    'You are an AI coding agent working on a real workspace folder. Use tools to read, write, and modify files, run shell commands, and complete the task.',
+    `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Let the task decide how many tools are needed, then write your final answer in plain text.`,
+    'Files are on the host filesystem. Use read_file to inspect, write_file to create or overwrite, delete_file to remove, list_files to browse, search_files to grep, and bash to run shell commands.',
+    'All file operations are confined to the workspace root. Paths are relative to the workspace root.',
+    'Prefer reading a file before modifying it. Use write_file to create new files or overwrite existing ones.',
+    'Use bash for running tests, installing dependencies, git operations, building, and other CLI tasks.',
+    'Stop after you have completed the task. Do not over-search or over-verify.',
+    'If a tool fails twice, stop using that tool and work only from evidence already gathered.',
+    'Do not repeat the same tool with similar arguments.',
+    'For final answer, write plain text with no tool calls summarizing what you did.',
   ].join('\n') : [
     'You are an AI agent working inside a chat-scoped sandbox. Use tools to complete tasks; never output code or file contents in chat text.',
     `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Let the task decide how many tools are needed, then write your final answer in plain text.`,
@@ -49,8 +61,10 @@ export function getXmlSystemPrompt(
   maxToolCalls: number,
   maxIterations: number,
   toolDefs: ToolDefinition[],
-  toolMode: 'agent' | 'search_chat' = 'agent'
+  toolMode: 'agent' | 'search_chat' = 'agent',
+  executionMode: 'workspace' | 'sandbox' = 'sandbox'
 ): string {
+  const isWorkspace = executionMode === 'workspace';
   const base = toolMode === 'search_chat' ? [
     'You are a research-capable chat assistant. Call tools using this XML format (one per response):',
     '',
@@ -92,7 +106,9 @@ export function getXmlSystemPrompt(
     '9. For reports, follow APA 7: clear headings, evidence-based synthesis, in-text citations where metadata allows, and a References section formatted as APA 7 web references. Do not invent missing authors or dates; use (n.d.) when no date is available.',
     '10. If a file creation tool rejects thin content, call the tool again once with real body sections, data rows, or slide bullets from gathered evidence before finalizing.',
     '11. For final answer, write plain text with NO tool_call tag.',
-    '12. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
+    isWorkspace
+      ? '12. Files persist to disk in the workspace folder. Use read_file, write_file, delete_file, list_files, search_files, and bash tools to work with the real filesystem.'
+      : '12. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
     '13. If you cannot finish, final answer must say what was actually found and what could not be verified.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;

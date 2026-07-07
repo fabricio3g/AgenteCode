@@ -1,8 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { ChatMessage, SearchMeta } from '$lib/types/chat';
-  import { BriefcaseBusiness, ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, MoreHorizontal, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import type { ChatContextMode, ChatMessage, SearchMeta } from '$lib/types/chat';
+  import { ChevronLeft, ChevronRight, Check, Copy, CornerDownLeft, MoreHorizontal, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { stripChartBlocks } from '$lib/utils/charts';
   import { sanitizeAssistantVisibleText } from '$lib/utils/assistant-visible';
@@ -21,10 +21,11 @@
 
   interface Props {
     message: ChatMessage;
+    contextMode?: ChatContextMode;
     forceActionsVisible?: boolean;
   }
 
-  let { message, forceActionsVisible = false }: Props = $props();
+  let { message, contextMode = 'chat', forceActionsVisible = false }: Props = $props();
 
   let hovering = $state(false);
   let copyFeedback = $state<string | null>(null);
@@ -42,6 +43,7 @@
   );
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
   const displayMetadata = $derived(activeVersion?.metadata || message.metadata || null);
+  const displayWorkContext = $derived(contextMode === 'code' ? null : message.workContext);
   const footerMetadata = $derived.by(() => {
     const versionMeta = activeVersion?.metadata || null;
     const messageMeta = message.metadata || null;
@@ -255,14 +257,13 @@
           <AttachmentDocumentsBlock attachments={message.attachments} />
         </div>
       {/if}
-      {#if message.workContext}
+      {#if displayWorkContext}
         <div class="flex flex-wrap justify-end gap-2">
           <div class="chateaui-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-[color:var(--work-accent-strong)]" style="--chateaui-pill-border: var(--work-accent-border); --chateaui-pill-bg: var(--work-accent-soft);">
-            <BriefcaseBusiness class="h-3 w-3" />
-            Work · {message.workContext.rootName}
+            Work · {displayWorkContext.rootName}
           </div>
           <div class="chateaui-pill inline-flex items-center px-2.5 py-1 text-[12px] font-medium text-[var(--text-secondary)]">
-            {message.workContext.indexedCount} file{message.workContext.indexedCount === 1 ? '' : 's'}
+            {displayWorkContext.indexedCount} file{displayWorkContext.indexedCount === 1 ? '' : 's'}
           </div>
         </div>
       {/if}
@@ -301,6 +302,7 @@
           {displayReasoning}
           {displayMetadata}
           {displaySearchMeta}
+          {contextMode}
           enableThinking={!!appStore.config.ui?.enable_thinking}
           onDownloadSlides={downloadSlides}
           onOpenArtifact={() => appStore.openArtifact(message.artifact || null, message.id)}

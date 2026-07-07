@@ -972,7 +972,7 @@ class AppStore {
       folderId: null,
       draft: '',
       contextMode,
-      codeAgent: contextMode === 'code' ? { instanceId: 'chatea', driverKind: 'chatea', updatedAt: now } : null,
+      codeAgent: contextMode === 'code' ? { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: now } : null,
       projectId: contextMode === 'code' ? (options.projectId || this.currentProjectId || null) : null,
       workspace: options.workspace || null,
       messages: []
@@ -1327,7 +1327,7 @@ class AppStore {
     const nextMode = normalizeContextMode(mode);
     this.currentChat.contextMode = nextMode;
     this.currentChat.codeAgent = nextMode === 'code'
-      ? (this.currentChat.codeAgent || { instanceId: 'chatea', driverKind: 'chatea', updatedAt: Date.now() })
+      ? (this.currentChat.codeAgent || { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: Date.now() })
       : null;
     this.activeSpace = nextMode;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [nextMode]: this.currentChat.id };
@@ -1355,7 +1355,7 @@ class AppStore {
     const chat = this.currentChat;
     if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
     chat.codeAgent = {
-      ...(chat.codeAgent || { instanceId: 'chatea', driverKind: 'chatea', updatedAt: Date.now() }),
+      ...(chat.codeAgent || { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: Date.now() }),
       runtimeMode: mode,
       updatedAt: Date.now()
     };
@@ -1860,7 +1860,7 @@ class AppStore {
 
     this.error = null;
     const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
-    const workContext = activeWorkspace
+    const workContext = activeContextMode === 'work' && activeWorkspace
       ? {
           rootName: activeWorkspace.rootName,
           fileCount: activeWorkspace.fileCount,
@@ -2041,15 +2041,18 @@ class AppStore {
       if (useToolLoop) {
         const codeInstanceId = activeContextMode === 'code' ? targetChat.codeAgent?.instanceId : undefined;
         const beforeSnapshot = activeContextMode === 'code' ? await snapshotWorkspace(activeWorkspace?.rootPath) : null;
+        const isCodeWorkspace = activeContextMode === 'code' && !!activeWorkspace?.rootPath;
         const agentResult = await runCodeAgent({
           chatId: targetChatId,
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
           conversationContext: searchConversationContext,
-          executionMode: 'sandbox',
+          executionMode: isCodeWorkspace ? 'workspace' : 'sandbox',
+          workspaceRoot: isCodeWorkspace ? activeWorkspace?.rootPath : undefined,
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
+          runtimeMode: activeContextMode === 'code' ? (targetChat.codeAgent?.runtimeMode || 'full') : undefined,
           toolMode: activeComposerMode === 'agent' ? 'agent' : 'search_chat',
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
           ...(activeSearchMode === 'chat' ? {} : searchToolBudget),
@@ -2094,7 +2097,7 @@ class AppStore {
               this.persist();
             }
           }
-        }, codeInstanceId);
+        });
         if (activeContextMode === 'code') {
           const afterSnapshot = await snapshotWorkspace(activeWorkspace?.rootPath);
           const diffStats = computeSnapshotDiff(beforeSnapshot, afterSnapshot);
@@ -2603,14 +2606,18 @@ class AppStore {
       const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
+        const isCodeWorkspace = normalizeContextMode(chat.contextMode) === 'code' && !!activeWorkspace?.rootPath;
+        const codeInstanceId = normalizeContextMode(chat.contextMode) === 'code' ? chat.codeAgent?.instanceId : undefined;
         const agentResult = await runCodeAgent({
           chatId: targetChatId,
           systemPrompt: styledSystemPrompt,
           messages: previousMessages,
           rawPrompt,
-          executionMode: 'sandbox',
+          executionMode: isCodeWorkspace ? 'workspace' : 'sandbox',
+          workspaceRoot: isCodeWorkspace ? activeWorkspace?.rootPath : undefined,
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
+          runtimeMode: isCodeWorkspace ? (chat.codeAgent?.runtimeMode || 'full') : undefined,
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;

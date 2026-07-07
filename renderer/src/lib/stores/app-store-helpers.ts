@@ -419,14 +419,15 @@ function normalizeCodeAgentInstanceId(instanceId: unknown, legacyProviderId?: un
     : typeof legacyProviderId === 'string'
       ? legacyProviderId.trim()
       : '';
-  if (raw === 'builtin' || raw === 'chatea' || !raw) return 'chatea';
+  if (raw === 'builtin' || raw === 'chatea' || raw === 'chatea-agent' || !raw) return 'chatea-agent';
   return raw;
 }
 
 function normalizeCodeAgentDriverKind(driverKind: unknown, instanceId: CodeAgentInstanceId): CodeAgentDriverKind | undefined {
-  if (driverKind === 'chatea' || driverKind === 'codex' || driverKind === 'claude' || driverKind === 'cursor' || driverKind === 'opencode' || driverKind === 'pi') return driverKind;
+  if (instanceId === 'chatea-agent') return 'chatea-agent';
   if (instanceId === 'chatea') return 'chatea';
   if (instanceId === 'codex' || instanceId === 'claude' || instanceId === 'cursor' || instanceId === 'opencode' || instanceId === 'pi') return instanceId;
+  if (driverKind === 'chatea-agent' || driverKind === 'chatea' || driverKind === 'codex' || driverKind === 'claude' || driverKind === 'cursor' || driverKind === 'opencode' || driverKind === 'pi') return driverKind;
   return undefined;
 }
 
@@ -580,8 +581,9 @@ export function buildContextualPrompt(args: {
   if (args.workspaceContext) {
     guidance.push(args.mode === 'agent'
       ? [
-        'You are in agent mode with workspace context attached as read-only reference.',
-        'Do not claim direct host file access. Agent-created files must be chat sandbox artifacts saved with this conversation.',
+        'You are in Code agent mode with a real workspace folder attached.',
+        'You have direct host file access through tools: read_file, write_file, delete_file, list_files, search_files, and bash.',
+        'Files you write through tools persist to disk in the workspace folder.',
         'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts when relevant.',
         'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.'
       ].join(' ')

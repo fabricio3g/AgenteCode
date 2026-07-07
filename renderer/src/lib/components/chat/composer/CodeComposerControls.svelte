@@ -13,9 +13,9 @@
   let runtimeMenuEl = $state<HTMLDivElement | undefined>();
   let providerOpen = $state(false);
   let runtimeOpen = $state(false);
-  let providers = $state<CodeAgentProvider[]>(listCodeAgentProviders());
+  let providers = $state<CodeAgentProvider[]>(listCodeAgentProviders().filter((p) => p.driver !== 'chatea'));
 
-  const activeInstanceId = $derived(appStore.currentChat?.codeAgent?.instanceId || 'chatea');
+  const activeInstanceId = $derived(appStore.currentChat?.codeAgent?.instanceId || 'chatea-agent');
   const activeProvider = $derived(providers.find((provider) => provider.id === activeInstanceId) || providers[0]);
   const runtimeMode = $derived<CodeAgentRuntimeMode>(appStore.currentChat?.codeAgent?.runtimeMode || 'full');
 

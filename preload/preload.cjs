@@ -37,13 +37,20 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
   'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
-  'fetch_url_content', 'crawl_web'
+  'fetch_url_content', 'crawl_web',
+  'chatea_agent_detect', 'chatea_agent_start_session', 'chatea_agent_prompt',
+  'chatea_agent_steer', 'chatea_agent_follow_up', 'chatea_agent_abort',
+  'chatea_agent_compact', 'chatea_agent_set_model', 'chatea_agent_set_runtime_mode',
+  'chatea_agent_set_thinking_level', 'chatea_agent_respond_approval',
+  'chatea_agent_list_checkpoints', 'chatea_agent_rollback', 'chatea_agent_fork',
+  'chatea_agent_close', 'chatea_agent_new_session', 'chatea_agent_cycle_model'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
-  'tts-chunk', 'tts-done', 'tts-start'
+  'tts-chunk', 'tts-done', 'tts-start',
+  'code_agent_event'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {

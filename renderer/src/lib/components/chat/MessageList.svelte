@@ -27,6 +27,7 @@
   let previousEditingMessageId = $state<string | null>(null);
   let editAnchorTop = $state<number | null>(null);
   const messages = $derived(appStore.currentChat?.messages || []);
+  const contextMode = $derived(appStore.currentChat?.contextMode || 'chat');
   const hasMessages = $derived(messages.length > 0);
   const contentBottomInset = $derived(Math.max(composerInset + 24, 200));
   const jumpButtonBottom = $derived(Math.max(composerInset + 48, 176));
@@ -179,7 +180,7 @@
                   />
                 </div>
               {:else}
-                <ChatMessage {message} forceActionsVisible={restoredActionsMessageId === message.id} />
+                <ChatMessage {message} {contextMode} forceActionsVisible={restoredActionsMessageId === message.id} />
               {/if}
             </div>
           {/each}

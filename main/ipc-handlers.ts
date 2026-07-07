@@ -70,6 +70,7 @@ import { registerModelManagementHandlers } from './ipc/model-handlers.ts';
 import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
+import { registerChateaAgentHandlers, disposeAllChateaAgentSessions } from './ipc/chatea-agent-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -297,4 +298,12 @@ export function registerIpcHandlers() {
     generateXlsx,
     generatePdf,
   });
+
+  // ── Chatea Agent (custom coding harness) ──
+  registerChateaAgentHandlers({
+    ipcMain,
+    getMainWindow,
+  });
 }
+
+export { disposeAllChateaAgentSessions };

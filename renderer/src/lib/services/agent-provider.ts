@@ -28,8 +28,9 @@ export type CodeAgentInstanceRegistry = Record<CodeAgentInstanceId, CodeAgentAda
 export type ProviderRegistry = Record<CodeAgentProviderId, CodeAgentAdapter>;
 
 const LEGACY_PROVIDER_TO_INSTANCE: Record<string, CodeAgentInstanceId> = {
-  builtin: 'chatea',
-  chatea: 'chatea',
+  builtin: 'chatea-agent',
+  chatea: 'chatea-agent',
+  'chatea-agent': 'chatea-agent',
   codex: 'codex',
   claude: 'claude',
   cursor: 'cursor',
@@ -99,16 +100,37 @@ function createChateaDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
     id: 'chatea',
     driverKind: 'chatea',
-    displayName: 'Chatea Agent',
-    detail: 'Local-model coding agent',
+    displayName: 'Chatea Agent (Local)',
+    detail: 'Local-model agent (Chat mode only)',
     status: 'ready',
     accentColor: '#717CE2'
   });
   return {
     driver: {
       driverKind: 'chatea',
+      displayName: 'Chatea Agent (Local)',
+      detail: 'Built-in local-model agent for Chat mode',
+      supportsMultipleInstances: false
+    },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', async (args) => runAgentTask(args))
+  };
+}
+
+function createChateaAgentDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({
+    id: 'chatea-agent',
+    driverKind: 'chatea-agent',
+    displayName: 'Chatea Agent',
+    detail: 'Custom coding harness',
+    status: 'ready',
+    accentColor: '#717CE2'
+  });
+  return {
+    driver: {
+      driverKind: 'chatea-agent',
       displayName: 'Chatea Agent',
-      detail: 'Built-in local-model coding agent',
+      detail: 'Chatea custom coding harness',
       supportsMultipleInstances: false
     },
     defaultInstance: instance,
@@ -163,7 +185,7 @@ function createPiDriver(): CodeAgentDriverDefinition {
 
 export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceId {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return 'chatea';
+  if (!raw) return 'chatea-agent';
   return LEGACY_PROVIDER_TO_INSTANCE[raw] || raw;
 }
 
@@ -171,6 +193,7 @@ export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
   if (!driverRegistry) {
     driverRegistry = {
       chatea: createChateaDriver(),
+      'chatea-agent': createChateaAgentDriver(),
       codex: createCodexDriver(),
       claude: createClaudeDriver(),
       cursor: createCursorDriver(),
@@ -201,7 +224,7 @@ export function listCodeAgentInstances(): CodeAgentInstance[] {
 export function resolveCodeAgentInstance(id?: CodeAgentInstanceId | null): CodeAgentAdapter {
   const registry = getCodeAgentInstanceRegistry();
   const instanceId = normalizeCodeAgentInstanceId(id);
-  return registry[instanceId] || registry.chatea;
+  return registry[instanceId] || registry['chatea-agent'];
 }
 
 export async function detectCodeAgentInstanceStatus(id: CodeAgentInstanceId): Promise<CodeAgentProviderStatus> {
