@@ -6,8 +6,10 @@ import {
   promptChateaAgent,
   abortChateaAgent,
   closeChateaAgentSession,
+  respondToApproval,
 } from '$lib/services/chatea-agent-ipc';
 import { subscribeToCodeAgentEvents } from '$lib/stores/chatea-agent-events.svelte';
+import { addPendingApproval } from '$lib/stores/approvals.svelte';
 import { codeAgentEventToStep } from '$lib/services/chatea-agent-bridge';
 
 export interface ChateaAgentSessionConfig {
@@ -18,6 +20,29 @@ export interface ChateaAgentSessionConfig {
   runtimeMode: 'full' | 'supervised';
   thinkingLevel?: string;
   systemPromptOverride?: string;
+}
+
+function approvalCommand(toolName: string, value: unknown): string {
+  if (value && typeof value === 'object') {
+    const args = value as Record<string, unknown>;
+    if (typeof args.command === 'string') return args.command;
+    if (typeof args.cmd === 'string') return args.cmd;
+  }
+  try {
+    const json = JSON.stringify(value ?? {}, null, 2);
+    return `${toolName} ${json}`.trim();
+  } catch {
+    return toolName;
+  }
+}
+
+function approvalCwd(value: unknown, fallback: string): string {
+  if (value && typeof value === 'object') {
+    const args = value as Record<string, unknown>;
+    if (typeof args.cwd === 'string') return args.cwd;
+    if (typeof args.projectRoot === 'string') return args.projectRoot;
+  }
+  return fallback || 'workspace';
 }
 
 export async function runChateaAgentSession(
@@ -32,6 +57,7 @@ export async function runChateaAgentSession(
   let reasoning = '';
   let artifact: AgentArtifact | null = null;
   const sources: SearchResult[] = [];
+  const pendingApprovalIds = new Set<string>();
   let error: string | undefined;
   let resolved = false;
 
@@ -123,6 +149,28 @@ export async function runChateaAgentSession(
           detail: event.diff,
         };
         pushStep(step);
+        if (!pendingApprovalIds.has(event.requestId)) {
+          pendingApprovalIds.add(event.requestId);
+          void (async () => {
+            const allow = await addPendingApproval(event.requestId, approvalCommand(event.toolName, event.args), approvalCwd(event.args, config.projectRoot));
+            await respondToApproval(config.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
+            const approvalStep = steps.find((s) => s.id === event.requestId);
+            if (approvalStep) {
+              approvalStep.status = allow ? 'done' : 'error';
+              approvalStep.detail = allow ? 'Approved' : 'Denied';
+              args.onStep([...steps]);
+            }
+          })();
+        }
+        break;
+      }
+      case 'approval_resolved': {
+        const approvalStep = steps.find((s) => s.id === event.requestId);
+        if (approvalStep) {
+          approvalStep.status = event.decision === 'allow' ? 'done' : 'error';
+          approvalStep.detail = event.decision === 'allow' ? 'Approved' : 'Denied';
+          args.onStep([...steps]);
+        }
         break;
       }
       case 'compaction_start':

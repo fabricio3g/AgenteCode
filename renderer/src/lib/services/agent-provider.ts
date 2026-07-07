@@ -29,8 +29,8 @@ export type CodeAgentInstanceRegistry = Record<CodeAgentInstanceId, CodeAgentAda
 export type ProviderRegistry = Record<CodeAgentProviderId, CodeAgentAdapter>;
 
 const LEGACY_PROVIDER_TO_INSTANCE: Record<string, CodeAgentInstanceId> = {
-  builtin: 'chatea-agent',
-  chatea: 'chatea-agent',
+  builtin: 'chatea',
+  chatea: 'chatea',
   'chatea-agent': 'chatea-agent',
   codex: 'codex',
   claude: 'claude',
@@ -200,7 +200,7 @@ function createPiDriver(): CodeAgentDriverDefinition {
 
 export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceId {
   const raw = typeof value === 'string' ? value.trim() : '';
-  if (!raw) return 'chatea-agent';
+  if (!raw) return 'chatea';
   return LEGACY_PROVIDER_TO_INSTANCE[raw] || raw;
 }
 
@@ -239,7 +239,7 @@ export function listCodeAgentInstances(): CodeAgentInstance[] {
 export function resolveCodeAgentInstance(id?: CodeAgentInstanceId | null): CodeAgentAdapter {
   const registry = getCodeAgentInstanceRegistry();
   const instanceId = normalizeCodeAgentInstanceId(id);
-  return registry[instanceId] || registry['chatea-agent'];
+  return registry[instanceId] || registry['chatea'] || registry['chatea-agent'];
 }
 
 export async function detectCodeAgentInstanceStatus(id: CodeAgentInstanceId): Promise<CodeAgentProviderStatus> {

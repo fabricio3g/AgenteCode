@@ -200,7 +200,7 @@
             </div>
           {/if}
           <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
-            <CodeTopbar onToggleDrawer={() => (codeDrawerOpen = !codeDrawerOpen)} />
+            <CodeTopbar drawerOpen={codeDrawerOpen} onToggleDrawer={() => (codeDrawerOpen = !codeDrawerOpen)} />
             <MessageList composerInset={composerHeight} />
             <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
           </div>
@@ -212,7 +212,7 @@
           <ActivityDrawer />
         </div>
       {:else if appStore.activeSpace === 'code' && codeDrawerOpen}
-        <div class="activity-drawer-slot" transition:drawerSlotTransition>
+        <div class="activity-drawer-slot code-drawer-slot" transition:drawerSlotTransition>
           <CodeWorkspaceDrawer />
         </div>
       {/if}
@@ -379,6 +379,11 @@
     overflow: hidden;
     transform-origin: right center;
     will-change: width, min-width, opacity, transform;
+  }
+
+  .code-drawer-slot {
+    width: min(52rem, 48vw);
+    min-width: min(34rem, 48vw);
   }
 
   .welcome-dots-layer {

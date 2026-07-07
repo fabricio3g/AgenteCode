@@ -23,6 +23,7 @@
   let expandedDiffFile = $state<string | null>(null);
 
   const currentChat = $derived(appStore.currentChat);
+  const workspaceRoot = $derived(appStore.currentProject?.rootPath || currentChat?.workspace?.rootPath || '');
   const activeProviderId = $derived<CodeAgentProviderId>(currentChat?.codeAgent?.instanceId || 'chatea-agent');
   const activeProvider = $derived(providers.find((provider) => provider.id === activeProviderId) || providers[0]);
   const latestAgentMessage = $derived.by(() => {
@@ -103,7 +104,7 @@
     try {
       if (isTauri()) {
         const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>('workspace_exec', {
-          workspace_root: '',
+          workspace_root: workspaceRoot,
           command: cmd,
           shell: true,
           timeout_ms: 30000
@@ -341,15 +342,15 @@
 <style>
   .code-drawer {
     display: flex;
-    width: min(25rem, 31vw);
-    min-width: 20rem;
-    max-width: 28rem;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
     height: 100%;
     flex: 0 0 auto;
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 22px;
+    border-radius: 14px;
     background: var(--surface);
     box-shadow: var(--shadow-sm);
   }
@@ -358,25 +359,25 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.4rem;
     border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    padding: 0.65rem 0.7rem 0.55rem;
+    padding: 0.42rem 0.55rem;
   }
 
   .header-title {
     color: var(--text);
-    font-size: 0.78rem;
-    font-weight: 720;
+    font-size: 0.72rem;
+    font-weight: 700;
     line-height: 1.2;
   }
 
   .header-subtitle {
-    margin-top: 0.12rem;
+    margin-top: 0.06rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
-    font-size: 0.66rem;
+    font-size: 0.61rem;
   }
 
   .provider-picker {
@@ -387,15 +388,15 @@
   .provider-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    height: 1.85rem;
+    gap: 0.25rem;
+    height: 1.55rem;
     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface-hover) 76%, transparent);
     color: var(--text);
-    padding: 0 0.65rem;
-    font-size: 0.72rem;
-    font-weight: 680;
+    padding: 0 0.42rem;
+    font-size: 0.64rem;
+    font-weight: 660;
   }
 
   .provider-trigger:hover,
@@ -408,25 +409,25 @@
     right: 0;
     top: calc(100% + 0.35rem);
     z-index: 80;
-    width: 22rem;
+    width: min(24rem, 46vw);
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+    border-radius: 12px;
     background: var(--surface-overlay);
     box-shadow: var(--shadow-xl);
-    padding: 0.35rem;
+    padding: 0.25rem;
   }
 
   .provider-row {
     display: grid;
     width: 100%;
-    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.35rem minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.45rem;
+    gap: 0.35rem;
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: transparent;
-    padding: 0.45rem;
+    padding: 0.34rem;
     text-align: left;
   }
 
@@ -442,8 +443,8 @@
 
   .provider-icon {
     display: inline-flex;
-    height: 1.35rem;
-    width: 1.35rem;
+    height: 1.2rem;
+    width: 1.2rem;
     align-items: center;
     justify-content: center;
     border-radius: 999px;
@@ -460,8 +461,8 @@
 
   .provider-name {
     color: var(--text);
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.7rem;
+    font-weight: 680;
   }
 
   .provider-detail {
@@ -469,7 +470,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
-    font-size: 0.66rem;
+    font-size: 0.6rem;
   }
 
   .status-pill {
@@ -479,8 +480,8 @@
     border-radius: 999px;
     background: var(--surface-hover);
     color: var(--text-muted);
-    padding: 0.22rem 0.42rem;
-    font-size: 0.62rem;
+    padding: 0.16rem 0.34rem;
+    font-size: 0.58rem;
     font-weight: 720;
     white-space: nowrap;
   }
@@ -496,8 +497,8 @@
   .code-tabs {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.3rem;
-    padding: 0.55rem 0.65rem 0.35rem;
+    gap: 0.22rem;
+    padding: 0.35rem 0.45rem 0.25rem;
   }
 
   .code-tab {
@@ -505,14 +506,14 @@
     min-width: 0;
     align-items: center;
     justify-content: center;
-    gap: 0.24rem;
-    height: 1.8rem;
+    gap: 0.2rem;
+    height: 1.55rem;
     border: 0;
     border-radius: 999px;
     background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
     color: var(--text-muted);
-    font-size: 0.68rem;
-    font-weight: 720;
+    font-size: 0.62rem;
+    font-weight: 680;
   }
 
   .code-tab:hover,
@@ -525,7 +526,7 @@
     min-height: 0;
     flex: 1;
     overflow: auto;
-    padding: 0.55rem 0.7rem 0.85rem;
+    padding: 0.42rem 0.5rem 0.65rem;
   }
 
   .timeline,
@@ -534,7 +535,7 @@
   .file-change-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.38rem;
   }
 
   .diff-block {
@@ -740,13 +741,13 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    height: 1.85rem;
+    height: 1.55rem;
     border: 1px solid color-mix(in srgb, var(--success, #16a34a) 42%, var(--border) 58%);
     border-radius: 999px;
     background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
     color: var(--success, #16a34a);
-    padding: 0 0.55rem;
-    font-size: 0.62rem;
+    padding: 0 0.42rem;
+    font-size: 0.58rem;
     font-weight: 760;
     cursor: pointer;
     white-space: nowrap;
