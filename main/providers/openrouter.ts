@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 
 export class OpenRouterProvider extends BaseProvider {
@@ -44,7 +44,7 @@ export class OpenRouterProvider extends BaseProvider {
     });
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const requestDetails = {
       model,
@@ -62,6 +62,7 @@ export class OpenRouterProvider extends BaseProvider {
         model,
         messages,
         ...(tools?.length ? { tools } : {}),
+        ...this._reasoningBody(reasoning),
         ...params,
         stream: true
       }, { signal });
@@ -98,7 +99,7 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const cleanParams = Object.fromEntries(
@@ -120,6 +121,7 @@ export class OpenRouterProvider extends BaseProvider {
         model,
         messages,
         ...(tools?.length ? { tools } : {}),
+        ...this._reasoningBody(reasoning),
         ...cleanParams,
         stream: false
       }, { signal });
@@ -142,6 +144,31 @@ export class OpenRouterProvider extends BaseProvider {
         arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
       })) : null
     };
+  }
+
+  /**
+   * OpenRouter routes to many underlying providers, each with its own
+   * reasoning support. OpenRouter's `/models` endpoint does not reliably
+   * expose reasoning capability fields per model, so we return 'unknown'
+   * (selector hidden) by default. If OpenRouter exposes a clear field in
+   * the future, override this to read it.
+   */
+  async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
+    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+  }
+
+  /**
+   * OpenRouter follows the OpenAI `reasoning_effort` convention for models
+   * that support it. We forward the param when a level is chosen; the
+   * upstream provider (via OpenRouter) will reject it if unsupported.
+   */
+  _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    return { reasoning_effort: reasoning.level };
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
   }
 
   async fetchModels(apiKey, _baseUrl) {

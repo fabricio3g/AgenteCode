@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
+
+const ANTHROPIC_LEVELS = ['off', 'enabled', 'disabled'];
 
 export class AnthropicProvider extends BaseProvider {
   name = 'anthropic';
@@ -105,7 +107,7 @@ export class AnthropicProvider extends BaseProvider {
     };
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, max_tokens, tools, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, max_tokens, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const { system, messages: chatMessages } = this._buildMessages(messages);
     const anthropicTools = this._convertTools(tools);
@@ -119,6 +121,7 @@ export class AnthropicProvider extends BaseProvider {
       messages: chatMessages,
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+      ...this._thinkingBody(reasoning, maxTokens),
       ...params
     }, { signal });
 
@@ -161,7 +164,7 @@ export class AnthropicProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, max_tokens, tools, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, max_tokens, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const { system, messages: chatMessages } = this._buildMessages(messages);
     const anthropicTools = this._convertTools(tools);
@@ -173,17 +176,18 @@ export class AnthropicProvider extends BaseProvider {
       messages: chatMessages,
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
+      ...this._thinkingBody(reasoning, maxTokens),
       ...params
     }, { signal });
 
     const contentBlocks = response?.content || [];
     let content = '';
-    let reasoning = '';
+    let thinkingContent = '';
     const toolCalls = [];
 
     for (const block of contentBlocks) {
       if (block.type === 'text') content += block.text;
-      if (block.type === 'thinking') reasoning += block.thinking;
+      if (block.type === 'thinking') thinkingContent += block.thinking;
       if (block.type === 'tool_use') {
         toolCalls.push({
           id: block.id,
@@ -195,13 +199,56 @@ export class AnthropicProvider extends BaseProvider {
 
     return {
       content,
-      reasoning,
+      reasoning: thinkingContent,
       usage: response?.usage ? {
         input_tokens: response.usage.input_tokens,
         output_tokens: response.usage.output_tokens
       } : null,
       toolCalls: toolCalls.length ? toolCalls : null
     };
+  }
+
+  /**
+   * Anthropic exposes extended thinking via the `thinking` config object.
+   * Per the official docs, all current Claude 4.x models support it — either
+   * manual (`enabled` + budget_tokens, deprecated on some) or adaptive
+   * (`adaptive` + effort). We return the levels the UI can choose between;
+   * the model-specific path (manual vs adaptive) is decided in _thinkingBody
+   * based on the chosen level. We don't pattern-match model names here.
+   *
+   * The Anthropic SDK exposes ThinkingConfigEnabled / ThinkingConfigDisabled /
+   * ThinkingConfigAdaptiveParam types — those are the source of truth for the
+   * valid shapes.
+   */
+  async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
+    return {
+      supported: true,
+      levels: ANTHROPIC_LEVELS as ReasoningCapabilities['levels'],
+      paramShape: 'anthropic_thinking',
+      source: 'sdk'
+    };
+  }
+
+  /**
+   * Translate reasoning level into Anthropic's native `thinking` body shape.
+   * - 'enabled'  → manual extended thinking with a 10k token budget
+   * - 'disabled' → thinking off
+   * - 'off'/'undefined' → omit the param (provider default)
+   *
+   * budget_tokens must be < max_tokens per Anthropic's API constraint.
+   */
+  _thinkingBody(reasoning?: ReasoningRequest, maxTokens = 4096): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    if (reasoning.level === 'disabled') return { thinking: { type: 'disabled' } };
+    if (reasoning.level === 'enabled') {
+      const budget = Math.min(reasoning.budgetTokens ?? 10000, Math.max(1024, Math.floor(maxTokens * 0.75)));
+      return { thinking: { type: 'enabled', budget_tokens: budget } };
+    }
+    return {};
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._thinkingBody(reasoning, (body.max_tokens as number) || 4096) };
   }
 
   async fetchModels(apiKey, _baseUrl) {

@@ -1,5 +1,5 @@
 import Groq from 'groq-sdk';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
 export class GroqProvider extends BaseProvider {
@@ -24,12 +24,13 @@ export class GroqProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const stream = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: true
     }, { signal });
@@ -57,12 +58,13 @@ export class GroqProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, tool_choice, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, tool_choice, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const response = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools, tool_choice: tool_choice || 'auto' } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: false
     }, { signal });
@@ -85,6 +87,20 @@ export class GroqProvider extends BaseProvider {
         arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
       })) : null
     };
+  }
+
+  /**
+   * Groq's current API does not expose a reasoning-effort parameter. Return
+   * supported: false so the UI hides the reasoning selector for Groq models.
+   * If Groq adds reasoning support in the future, override this method after
+   * confirming via their SDK/docs.
+   */
+  async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
+    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'sdk' };
+  }
+
+  _reasoningBody(_reasoning?: ReasoningRequest): Record<string, unknown> {
+    return {};
   }
 
   async fetchModels(apiKey, _baseUrl) {

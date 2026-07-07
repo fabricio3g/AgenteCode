@@ -1,6 +1,9 @@
 import OpenAI from 'openai';
 import { BaseProvider } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
+import type { ReasoningCapabilities, ReasoningRequest } from './base.ts';
+
+const OPENAI_REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 export class OpenAIProvider extends BaseProvider {
   name = 'openai';
@@ -24,12 +27,13 @@ export class OpenAIProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const stream = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: true
     }, { signal });
@@ -57,12 +61,13 @@ export class OpenAIProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const response = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: false
     }, { signal });
@@ -85,6 +90,56 @@ export class OpenAIProvider extends BaseProvider {
         arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
       })) : null
     };
+  }
+
+  /**
+   * Inspect `models.retrieve()` for reasoning capability fields. OpenAI's API
+   * exposes support via fields like `supported_parameters` containing
+   * 'reasoning_effort', or a `reasoning` capability object. We do not guess
+   * from model name prefixes — only return supported: true when the API
+   * confirms it. Falls back to 'unknown' (selector hidden) on any error.
+   */
+  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
+    const client = this.createClient(apiKey, baseUrl);
+    try {
+      const detail = await client.models.retrieve(modelId);
+      const record = (detail || {}) as Record<string, unknown>;
+      const supportedParameters = Array.isArray(record.supported_parameters)
+        ? record.supported_parameters as string[]
+        : [];
+      const reasoningCapability = record.reasoning as Record<string, unknown> | undefined;
+      const acceptsReasoningEffort =
+        supportedParameters.includes('reasoning_effort') ||
+        supportedParameters.includes('reasoning') ||
+        !!reasoningCapability;
+      if (!acceptsReasoningEffort) {
+        return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'api' };
+      }
+      // The API doesn't always expose the exact subset of levels per model;
+      // return the full OpenAI enum and let the server reject an unsupported
+      // value if a model only accepts a subset.
+      return {
+        supported: true,
+        levels: OPENAI_REASONING_LEVELS as ReasoningCapabilities['levels'],
+        paramShape: 'openai_reasoning_effort',
+        source: 'api'
+      };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    }
+  }
+
+  /**
+   * Translate a reasoning level into the OpenAI Chat Completions body shape.
+   * 'off' means "do not send the param" (provider default).
+   */
+  _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    return { reasoning_effort: reasoning.level };
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
   }
 
   async fetchModels(apiKey, baseUrl) {

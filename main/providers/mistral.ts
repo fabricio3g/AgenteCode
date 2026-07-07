@@ -1,6 +1,8 @@
 import { Mistral } from '@mistralai/mistralai';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
+
+const MISTRAL_LEVELS = ['off', 'none', 'high'];
 
 export class MistralProvider extends BaseProvider {
   name = 'mistral';
@@ -42,7 +44,7 @@ export class MistralProvider extends BaseProvider {
     };
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, max_tokens, temperature, top_p, signal }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, max_tokens, temperature, top_p, signal }) {
     const client = this.createClient(apiKey, baseUrl);
     const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
 
@@ -54,6 +56,7 @@ export class MistralProvider extends BaseProvider {
       ...(temperature != null ? { temperature } : {}),
       ...(top_p != null ? { topP: top_p } : {}),
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       stream: true
     };
 
@@ -80,7 +83,7 @@ export class MistralProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, max_tokens, temperature, top_p, signal }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, max_tokens, temperature, top_p, signal }) {
     const client = this.createClient(apiKey, baseUrl);
     const { systemMessage, messages: chatMessages } = this._buildMessages(messages);
 
@@ -92,6 +95,7 @@ export class MistralProvider extends BaseProvider {
       ...(temperature != null ? { temperature } : {}),
       ...(top_p != null ? { topP: top_p } : {}),
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       stream: false
     };
 
@@ -113,6 +117,54 @@ export class MistralProvider extends BaseProvider {
         arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
       })) : null
     };
+  }
+
+  /**
+   * Mistral's docs state `reasoning_effort` is supported on
+   * `mistral-small-latest` and `mistral-medium-3-5`. We probe `models.list()`
+   * for capability metadata the SDK exposes rather than guessing from model
+   * names. On any error or missing field, return 'unknown' (selector hidden).
+   */
+  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
+    const client = this.createClient(apiKey, baseUrl);
+    try {
+      const response = await client.models.list();
+      const list = response?.data ?? [];
+      const found = list.find((m: { id?: string }) => String(m?.id || '') === String(modelId));
+      if (!found) return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'unknown' };
+      // The Mistral SDK exposes capability fields on the model object; we
+      // check for any reasoning-related field the SDK provides.
+      const record = found as Record<string, unknown>;
+      const supportsReasoning = !!(record.reasoning || record.supports_reasoning ||
+        (Array.isArray(record.capabilities) && (record.capabilities as string[]).includes('reasoning')));
+      if (!supportsReasoning) {
+        return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'api' };
+      }
+      return {
+        supported: true,
+        levels: MISTRAL_LEVELS as ReasoningCapabilities['levels'],
+        paramShape: 'mistral_reasoning_effort',
+        source: 'api'
+      };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'unknown' };
+    }
+  }
+
+  /**
+   * Mistral accepts `reasoning_effort: 'high' | 'none'` per their docs.
+   * 'off' in our UI maps to omitting the param (provider default).
+   */
+  _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    if (reasoning.level === 'none' || reasoning.level === 'high') {
+      return { reasoning_effort: reasoning.level };
+    }
+    return {};
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
   }
 
   async fetchModels(apiKey, _baseUrl) {

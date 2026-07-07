@@ -1,3 +1,45 @@
+// ── Reasoning capabilities ──────────────────────────────────────────────
+// Each provider declares what reasoning levels it supports and how to wire
+// them into its native API body. The renderer asks the provider (via IPC)
+// and only shows the selector when the provider returns `supported: true`
+// with a known `source`. We never guess from model names in shared code.
+
+export type ReasoningLevel =
+  | 'off'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'enabled'
+  | 'disabled';
+
+export type ReasoningParamShape =
+  | 'openai_reasoning_effort'   // { reasoning_effort: 'low' }
+  | 'anthropic_thinking'        // { thinking: { type, budget_tokens?, effort? } }
+  | 'gemini_thinking_budget'    // { generationConfig: { thinkingConfig: { thinkingBudget } } }
+  | 'mistral_reasoning_effort'  // { reasoning_effort: 'high' | 'none' }
+  | 'local_disable_thinking';   // { disable_thinking: bool }
+
+export type ReasoningCapabilities = {
+  supported: boolean;
+  levels: ReasoningLevel[];
+  paramShape: ReasoningParamShape;
+  source: 'sdk' | 'api' | 'metadata' | 'unknown';
+};
+
+export type ReasoningRequest = {
+  level: ReasoningLevel;
+  budgetTokens?: number;
+};
+
+const UNKNOWN_CAPS: ReasoningCapabilities = {
+  supported: false,
+  levels: [],
+  paramShape: 'openai_reasoning_effort',
+  source: 'unknown'
+};
+
 export class BaseProvider {
   name = 'unknown';
   label = 'Unknown';
@@ -38,6 +80,23 @@ export class BaseProvider {
   /** Fetch a single model's metadata (returns { context_window } or null) */
   async fetchModelMetadata(apiKey, baseUrl, modelId) { // eslint-disable-line no-unused-vars
     return null;
+  }
+
+  /**
+   * Declare what reasoning levels this provider/model supports and how to
+   * wire them into the native API body. Default: unknown (selector hidden).
+   * Override in subclasses using SDK types / API metadata — never guess.
+   */
+  async getReasoningCapabilities(_apiKey, _baseUrl, _modelId): Promise<ReasoningCapabilities> {
+    return { ...UNKNOWN_CAPS };
+  }
+
+  /**
+   * Apply a reasoning level to a provider-specific request body.
+   * Default: no-op. Override in subclasses to translate to native shape.
+   */
+  applyReasoningToBody(body, _reasoning) {
+    return body;
   }
 
   /**

@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { AppConfig, ChatMessage, ModelOption } from '$lib/types/chat';
+import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/tauri';
 import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
@@ -175,6 +175,45 @@ export function setToolSupportCache(config: AppConfigLike, supports: boolean): v
   const key = toolSupportCacheKey(providerName, modelId);
   toolSupportCache.set(key, supports);
   debugToolSupport(config, `[agent] setToolSupportCache | ${providerName}/${modelId} -> ${supports}`);
+}
+
+/**
+ * Ask the active provider what reasoning levels it supports for the current
+ * model. The provider is the single source of truth — no model-name guessing
+ * in the renderer. Returns `source: 'unknown'` (selector hidden) when the
+ * provider can't confirm support.
+ */
+export async function fetchReasoningCapabilities(args: {
+  baseUrl?: string;
+  apiKey?: string;
+  providerName?: string;
+  model: string;
+  modelPath?: string;
+}): Promise<ReasoningCapabilities> {
+  if (!isTauri()) {
+    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+  }
+  try {
+    const result = await invoke<ReasoningCapabilities>('get_reasoning_capabilities', {
+      baseUrl: args.baseUrl || '',
+      apiKey: args.apiKey || '',
+      providerName: args.providerName || '',
+      model: args.model,
+      modelPath: args.modelPath || ''
+    });
+    return result || { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+  } catch {
+    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+  }
+}
+
+/**
+ * Build a `reasoning` request object for the API body from a chat-level
+ * `reasoningLevel`. 'off'/null/undefined → omit (provider default).
+ */
+export function buildReasoningRequest(level?: ReasoningLevel | null): ReasoningRequest | undefined {
+  if (!level || level === 'off') return undefined;
+  return { level };
 }
 
 function resolveLocalModels(localModels: LocalModel[]): ModelOption[] {
@@ -408,6 +447,7 @@ async function streamLocalReply(args: {
   onChunk: (value: string) => void;
   onReasoning?: (value: string) => void;
   onUsage?: (usage: CompletionResult['usage']) => void;
+  reasoning?: ReasoningRequest;
 }): Promise<void> {
   const config = await loadChatConfig();
   const baseUrl = await ensureLocalRuntime(config);
@@ -424,7 +464,8 @@ async function streamLocalReply(args: {
       stream_options: { include_usage: true },
       messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
       ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-      ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+      ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
+      ...(args.reasoning ? { disable_thinking: args.reasoning.level === 'off' } : {})
     })
   });
 
@@ -496,10 +537,12 @@ export async function streamAssistantReply(args: {
   onReasoning?: (value: string) => void;
   onUsage?: (usage: CompletionResult['usage']) => void;
   apiKey?: string;
+  reasoningLevel?: ReasoningLevel | null;
 }): Promise<void> {
   const config = await loadChatConfig();
+  const reasoning = buildReasoningRequest(args.reasoningLevel);
   if (config.llm?.backend_mode === 'local' && isTauri()) {
-    return streamLocalReply(args);
+    return streamLocalReply({ ...args, reasoning });
   }
   const { provider, providerName } = resolveProvider(config);
   const apiKey = (args.apiKey ?? provider.api_key) || '';
@@ -544,6 +587,7 @@ export async function streamAssistantReply(args: {
           model: provider.model,
           stream: true,
           messages: toRequestMessages(args.messages, provider.model),
+          ...(reasoning ? { reasoning } : {}),
           ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
           ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
           ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
@@ -616,8 +660,11 @@ export async function completeAssistantReply(args: {
   messages: RequestMessage[];
   signal?: AbortSignal;
   apiKey?: string;
+  reasoningLevel?: ReasoningLevel | null;
 }): Promise<CompletionResult> {
   const config = await loadChatConfig();
+
+  const reasoning = buildReasoningRequest(args.reasoningLevel);
 
   if (config.llm?.backend_mode === 'local' && isTauri()) {
     const baseUrl = await ensureLocalRuntime(config);
@@ -633,7 +680,8 @@ export async function completeAssistantReply(args: {
         stream: false,
         messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
         ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
+        ...(reasoning ? { disable_thinking: reasoning.level === 'off' } : {})
       })
     });
 
@@ -666,6 +714,7 @@ export async function completeAssistantReply(args: {
         model: provider.model,
         stream: false,
         messages: toRequestMessages(args.messages),
+        ...(reasoning ? { reasoning } : {}),
         ...genParams
       }
     });

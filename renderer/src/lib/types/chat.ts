@@ -249,6 +249,42 @@ export interface ChatMessage {
   ttsAudio?: TtsAudioMeta | null;
 }
 
+// ── Reasoning levels ───────────────────────────────────────────────────
+// Surfaced by each provider's getReasoningCapabilities() — never guessed
+// from model names in shared code. The UI only shows the selector when a
+// provider returns `supported: true` with a known `source`.
+
+export type ReasoningLevel =
+  | 'off'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'enabled'
+  | 'disabled'
+  | 'on'
+  | 'none';
+
+export type ReasoningParamShape =
+  | 'openai_reasoning_effort'
+  | 'anthropic_thinking'
+  | 'gemini_thinking_budget'
+  | 'mistral_reasoning_effort'
+  | 'local_disable_thinking';
+
+export interface ReasoningCapabilities {
+  supported: boolean;
+  levels: ReasoningLevel[];
+  paramShape: ReasoningParamShape;
+  source: 'sdk' | 'api' | 'metadata' | 'unknown';
+}
+
+export interface ReasoningRequest {
+  level: ReasoningLevel;
+  budgetTokens?: number;
+}
+
 export interface ChatFolder {
   id: string;
   name: string;
@@ -278,6 +314,7 @@ export interface ChatSession {
   codeAgent?: CodeAgentSessionMeta | null;
   projectId?: string | null;
   workspace?: WorkspaceContext | null;
+  reasoningLevel?: ReasoningLevel | null;
   messages: ChatMessage[];
 }
 

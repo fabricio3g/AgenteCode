@@ -2,8 +2,8 @@ import { invoke, listen, isTauri } from '$lib/services/tauri';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { loadAppConfig } from '$lib/utils/storage';
-import { hasConfiguredVisionModel, toRequestMessages } from '$lib/services/chat-api';
-import type { AppConfig } from '$lib/types/chat';
+import { buildReasoningRequest, hasConfiguredVisionModel, toRequestMessages } from '$lib/services/chat-api';
+import type { AppConfig, ReasoningLevel } from '$lib/types/chat';
 import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 import { toErrorMessage } from '$lib/utils/errors';
 
@@ -76,7 +76,7 @@ async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport 
 
 function buildBody(
   transport: AgentTransport,
-  options: { messages: RequestMessage[]; tools?: ToolDefinition[]; stream: boolean }
+  options: { messages: RequestMessage[]; tools?: ToolDefinition[]; stream: boolean; reasoningLevel?: ReasoningLevel | null }
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: transport.model,
@@ -90,6 +90,11 @@ function buildBody(
     body.tool_choice = 'auto';
   }
 
+  const reasoning = buildReasoningRequest(options.reasoningLevel);
+  if (reasoning) {
+    body.reasoning = reasoning;
+  }
+
   return body;
 }
 
@@ -98,6 +103,7 @@ export async function agentComplete(options: {
   tools?: ToolDefinition[];
   signal?: AbortSignal;
   config?: unknown;
+  reasoningLevel?: ReasoningLevel | null;
 }): Promise<CompletionResult | null> {
   if (!isTauri()) return null;
 
@@ -112,7 +118,7 @@ export async function agentComplete(options: {
       baseUrl: transport.baseUrl,
       apiKey: transport.apiKey,
       providerName: transport.providerName,
-      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: false })
+      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: false, reasoningLevel: options.reasoningLevel })
     });
 
     return readCompletionWithTools(payload);
@@ -127,6 +133,7 @@ export async function agentStreamComplete(options: {
   tools?: ToolDefinition[];
   signal?: AbortSignal;
   config?: unknown;
+  reasoningLevel?: ReasoningLevel | null;
   onReasoning?: (text: string) => void;
   onContent?: (text: string) => void;
 }): Promise<CompletionResult | null> {
@@ -216,7 +223,7 @@ export async function agentStreamComplete(options: {
       baseUrl: transport.baseUrl,
       apiKey: transport.apiKey,
       providerName: transport.providerName,
-      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: true })
+      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: true, reasoningLevel: options.reasoningLevel })
     });
 
     streamId = started?.streamId || '';

@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentInstanceId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentInstanceId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
 import { resolveCodeAgentInstance, runCodeAgent } from '$lib/services/agent-provider';
 import { computeSnapshotDiff, snapshotWorkspace } from '$lib/services/workspace-diff';
@@ -14,7 +14,7 @@ import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
-import { completeAssistantReply, detectToolSupport, fetchModels, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
+import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb, loadCodeProjectsFromDb, saveCodeProjectToDb, deleteCodeProjectFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
@@ -151,6 +151,8 @@ class AppStore {
   editingMessageId = $state<string | null>(null);
   editingMessageContent = $state('');
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
+  reasoningLevel = $state<ReasoningLevel | null>(null);
+  reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' });
   composerMode = $state<'chat' | 'agent'>('chat');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
@@ -736,6 +738,7 @@ class AppStore {
       toastStore.success(`Model loaded: ${this.localModelLoadTarget?.name || 'local model'}`);
       if (isTauri()) {
         detectToolSupport().catch(() => {});
+        this.refreshReasoningCapabilities().catch(() => {});
       }
       this.localModelLoadTarget = null;
     } finally {
@@ -814,6 +817,7 @@ class AppStore {
     void withTimeout(this.refreshModels(), 2500, undefined);
     if (isTauri()) {
       void detectToolSupport().catch(() => {});
+      void this.refreshReasoningCapabilities().catch(() => {});
     }
     if (isTauri()) {
       void Promise.allSettled([
@@ -1365,6 +1369,55 @@ class AppStore {
 
   setSearchMode(mode: 'chat' | 'search' | 'deep' | 'max') {
     this.searchMode = this.searchMode === mode ? 'chat' : mode;
+  }
+
+  setReasoningLevel(level: ReasoningLevel | null) {
+    this.reasoningLevel = level;
+    const chat = this.currentChat;
+    if (chat) {
+      chat.reasoningLevel = level;
+      this.touchChats();
+      this.persist();
+    }
+  }
+
+  async refreshReasoningCapabilities() {
+    if (!isTauri()) {
+      this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+      return;
+    }
+    try {
+      const config = await loadChatConfig();
+      const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+      if (backendMode === 'local') {
+        const local = config.llm?.local || {};
+        this.reasoningCapabilities = await fetchReasoningCapabilities({
+          providerName: 'local',
+          model: local.model || 'local-model',
+          modelPath: local.selected_model_path || ''
+        });
+      } else {
+        const providerName = config.llm?.provider || 'openai';
+        const provider = (config.llm?.providers?.[providerName] || {}) as { base_url?: string; api_key?: string; model?: string };
+        this.reasoningCapabilities = await fetchReasoningCapabilities({
+          baseUrl: provider.base_url,
+          apiKey: provider.api_key,
+          providerName,
+          model: provider.model || ''
+        });
+      }
+      // If the current reasoning level isn't in the new capabilities' levels, reset it
+      if (this.reasoningCapabilities.supported && this.reasoningLevel &&
+          !this.reasoningCapabilities.levels.includes(this.reasoningLevel)) {
+        this.reasoningLevel = null;
+      }
+      if (!this.reasoningCapabilities.supported) {
+        this.reasoningLevel = null;
+      }
+    } catch {
+      this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+      this.reasoningLevel = null;
+    }
   }
 
   async performWebSearch(query: string, chatId = this.currentChatId || '') {
@@ -2055,6 +2108,7 @@ class AppStore {
           runtimeMode: activeContextMode === 'code' ? (targetChat.codeAgent?.runtimeMode || 'full') : undefined,
           toolMode: activeComposerMode === 'agent' ? 'agent' : 'search_chat',
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
+          reasoningLevel: this.reasoningLevel,
           ...(activeSearchMode === 'chat' ? {} : searchToolBudget),
           signal: controller.signal,
           onStep: (steps) => {
@@ -2097,7 +2151,7 @@ class AppStore {
               this.persist();
             }
           }
-        });
+        }, codeInstanceId);
         if (activeContextMode === 'code') {
           const afterSnapshot = await snapshotWorkspace(activeWorkspace?.rootPath);
           const diffStats = computeSnapshotDiff(beforeSnapshot, afterSnapshot);
@@ -2259,6 +2313,7 @@ class AppStore {
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
+          reasoningLevel: this.reasoningLevel,
           onChunk: (value) => {
             reasoningTimer.markStopped();
             appendStreamingContent(
@@ -2620,6 +2675,7 @@ class AppStore {
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
           runtimeMode: isCodeWorkspace ? (chat.codeAgent?.runtimeMode || 'full') : undefined,
+          reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
@@ -2801,6 +2857,7 @@ class AppStore {
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
+          reasoningLevel: this.reasoningLevel,
           onChunk: (value) => {
             reasoningTimer.markStopped();
             nextVersion.content += value;
@@ -2933,6 +2990,7 @@ class AppStore {
     }
     if (isTauri() && options.detectTools) {
       detectToolSupport().catch(() => {});
+      this.refreshReasoningCapabilities().catch(() => {});
     }
     if (isTauri() && options.refreshLocalStatus) {
       await modelsStore.refreshStatus();

@@ -4,6 +4,7 @@ import { GeminiProvider } from './gemini.ts';
 import { GroqProvider } from './groq.ts';
 import { MistralProvider } from './mistral.ts';
 import { OpenRouterProvider } from './openrouter.ts';
+import { DeepSeekProvider } from './deepseek.ts';
 import { OpenAICompatibleProvider } from './openai-compatible.ts';
 import { LocalProvider } from './local.ts';
 
@@ -13,6 +14,7 @@ const providers = [
   new GroqProvider(),               // Hostname detection
   new OpenRouterProvider(),         // OpenRouter SDK
   new MistralProvider(),            // Hostname detection
+  new DeepSeekProvider(),           // DeepSeek (OpenAI-compatible, api.deepseek.com)
   new OpenAIProvider(),             // Official OpenAI
   new LocalProvider(),              // localhost/127.0.0.1
   new OpenAICompatibleProvider(),   // Fallback — always matches

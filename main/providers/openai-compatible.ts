@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
 export class OpenAICompatibleProvider extends BaseProvider {
@@ -22,13 +22,14 @@ export class OpenAICompatibleProvider extends BaseProvider {
     return this._clients.get(clientKey);
   }
 
-  async *streamChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const stream = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: true
     }, { signal });
@@ -62,13 +63,14 @@ export class OpenAICompatibleProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, baseUrl, model, messages, tools, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
 
     const response = await client.chat.completions.create({
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
       ...params,
       stream: false
     }, { signal });
@@ -91,6 +93,47 @@ export class OpenAICompatibleProvider extends BaseProvider {
         arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
       })) : null
     };
+  }
+
+  /**
+   * Probe the upstream API for reasoning support via `models.retrieve()`.
+   * Many OpenAI-compatible servers don't expose capability fields, so on any
+   * error or missing field we return `source: 'unknown'` (selector hidden)
+   * rather than guessing.
+   */
+  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
+    const client = this.createClient(apiKey, baseUrl);
+    try {
+      const detail = await client.models.retrieve(modelId);
+      const record = (detail || {}) as Record<string, unknown>;
+      const supportedParameters = Array.isArray(record.supported_parameters)
+        ? record.supported_parameters as string[]
+        : [];
+      const reasoningCapability = record.reasoning as Record<string, unknown> | undefined;
+      const accepts = supportedParameters.includes('reasoning_effort') ||
+        supportedParameters.includes('reasoning') ||
+        !!reasoningCapability;
+      if (!accepts) {
+        return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'api' };
+      }
+      return {
+        supported: true,
+        levels: ['off', 'low', 'medium', 'high'],
+        paramShape: 'openai_reasoning_effort',
+        source: 'api'
+      };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    }
+  }
+
+  _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    return { reasoning_effort: reasoning.level };
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
   }
 
   async fetchModels(apiKey, baseUrl) {

@@ -11,6 +11,7 @@ type Provider = {
     modelPath?: string;
     providerName?: string;
   }) => Promise<unknown>;
+  getReasoningCapabilities?: (apiKey: string, baseUrl: string, modelId: string, modelPath?: string) => Promise<unknown>;
 };
 
 type ProviderHandlerDeps = {
@@ -48,5 +49,18 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
       modelPath,
       providerName,
     });
+  });
+
+  ipcMain.handle('get_reasoning_capabilities', async (_e, { baseUrl, apiKey, providerName, model, modelPath }) => {
+    const provider = resolveProvider(providerName, baseUrl);
+    const realKey = resolveApiKey(apiKey, baseUrl, providerName);
+    if (!provider.getReasoningCapabilities) {
+      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    }
+    try {
+      return await provider.getReasoningCapabilities(realKey, baseUrl, model, modelPath);
+    } catch {
+      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    }
   });
 }

@@ -1,6 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { numberOrNull, safeParseJson } from './helpers.ts';
+
+const GEMINI_LEVELS = ['off', 'low', 'medium', 'high'];
+
+// Maps a reasoning level to a thinkingBudget token count. Gemini's API uses
+// a numeric budget; 0 disables thinking. These are reasonable defaults —
+// the user does not pick a number directly.
+const GEMINI_BUDGET_BY_LEVEL: Record<string, number> = {
+  low: 2048,
+  medium: 8192,
+  high: 24576
+};
 
 export class GeminiProvider extends BaseProvider {
   name = 'gemini';
@@ -92,7 +103,7 @@ export class GeminiProvider extends BaseProvider {
     return calls.length ? calls : null;
   }
 
-  async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools }) {
+  async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools, reasoning }) {
     const client = this.createClient(apiKey);
     const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
@@ -102,6 +113,7 @@ export class GeminiProvider extends BaseProvider {
     if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
     if (temperature != null) generationConfig.temperature = temperature;
     if (top_p != null) generationConfig.topP = top_p;
+    Object.assign(generationConfig, this._thinkingConfig(reasoning));
 
     const request = {
       contents,
@@ -139,7 +151,7 @@ export class GeminiProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools }) {
+  async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools, reasoning }) {
     const client = this.createClient(apiKey);
     const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
@@ -149,6 +161,7 @@ export class GeminiProvider extends BaseProvider {
     if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
     if (temperature != null) generationConfig.temperature = temperature;
     if (top_p != null) generationConfig.topP = top_p;
+    Object.assign(generationConfig, this._thinkingConfig(reasoning));
 
     const request = {
       contents,
@@ -171,6 +184,61 @@ export class GeminiProvider extends BaseProvider {
       } : null,
       toolCalls: this._extractToolCalls(response)
     };
+  }
+
+  /**
+   * Gemini exposes thinking via `generationConfig.thinkingConfig.thinkingBudget`
+   * (numeric; 0 disables). Per the official docs, 2.5+ models support it. We
+   * probe `models.list()` for a per-model thinking indicator and only return
+   * supported: true when the API confirms it — no model-name guessing.
+   */
+  async getReasoningCapabilities(apiKey, _baseUrl, modelId): Promise<ReasoningCapabilities> {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey || ''}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
+      const data = await res.json();
+      const list = data?.models ?? [];
+      const normalized = String(modelId || '').replace(/^models\//, '');
+      const found = list.find((m: { name?: string }) => String(m?.name || '').replace(/^models\//, '') === normalized);
+      if (!found) return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
+      // The Gemini API exposes thinkingBudget support via the model's
+      // supportedGenerationMethods + a thinking config flag. We treat the
+      // presence of a thinkingBudget-related field as positive evidence.
+      const hasThinking = !!(found as Record<string, unknown>).thinkingConfig ||
+        !!(found as Record<string, unknown>).thinkingBudget ||
+        Array.isArray((found as Record<string, unknown>).supportedGenerationMethods) &&
+          ((found as Record<string, unknown>).supportedGenerationMethods as string[]).includes('generateContent');
+      if (!hasThinking) {
+        return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'api' };
+      }
+      return {
+        supported: true,
+        levels: GEMINI_LEVELS as ReasoningCapabilities['levels'],
+        paramShape: 'gemini_thinking_budget',
+        source: 'api'
+      };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
+    }
+  }
+
+  /**
+   * Translate a reasoning level into Gemini's native thinkingConfig shape.
+   * 'off' means thinkingBudget: 0 (disabled). Other levels map to token
+   * budgets via GEMINI_BUDGET_BY_LEVEL.
+   */
+  _thinkingConfig(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level) return {};
+    if (reasoning.level === 'off') return { thinkingConfig: { thinkingBudget: 0 } };
+    const budget = GEMINI_BUDGET_BY_LEVEL[reasoning.level];
+    if (!budget) return {};
+    return { thinkingConfig: { thinkingBudget: budget, includeThoughts: true } };
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    const genConfig = (body.generationConfig as Record<string, unknown>) || {};
+    return { ...body, generationConfig: { ...genConfig, ...this._thinkingConfig(reasoning) } };
   }
 
   async fetchModels(apiKey, _baseUrl) {

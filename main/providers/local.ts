@@ -1,6 +1,8 @@
-import { BaseProvider } from './base.ts';
+import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 import { getGgufMetadata } from '../model-manager.ts';
+
+const LOCAL_LEVELS = ['off', 'on'];
 
 export class LocalProvider extends BaseProvider {
   name = 'local';
@@ -24,7 +26,7 @@ export class LocalProvider extends BaseProvider {
     return { 'Content-Type': 'application/json' };
   }
 
-  async *streamChat({ baseUrl, model, messages, tools, signal, ...params }) {
+  async *streamChat({ baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
@@ -36,6 +38,7 @@ export class LocalProvider extends BaseProvider {
         messages,
         stream: true,
         ...(tools?.length ? { tools } : {}),
+        ...this._reasoningBody(reasoning),
         ...params
       })
     });
@@ -127,7 +130,7 @@ export class LocalProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ baseUrl, model, messages, tools, signal, ...params }) {
+  async completeChat({ baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
@@ -139,6 +142,7 @@ export class LocalProvider extends BaseProvider {
         messages,
         stream: false,
         ...(tools?.length ? { tools } : {}),
+        ...this._reasoningBody(reasoning),
         ...params
       })
     });
@@ -178,9 +182,50 @@ export class LocalProvider extends BaseProvider {
   }
 
   /**
-   * Detect tool support from GGUF metadata.
-   * Falls back to the base probe-based approach if GGUF metadata is unavailable.
+   * Detect reasoning support from GGUF metadata — the model file itself
+   * declares `chat_template_supports_thinking`. This is real data from the
+   * model, not a name guess. If metadata is unavailable, return 'unknown'.
    */
+  async getReasoningCapabilities(_apiKey, _baseUrl, _modelId, modelPath?): Promise<ReasoningCapabilities> {
+    if (!modelPath) {
+      return { supported: false, levels: [], paramShape: 'local_disable_thinking', source: 'unknown' };
+    }
+    try {
+      const meta = await getGgufMetadata(modelPath);
+      if (typeof meta?.chat_template_supports_thinking === 'boolean') {
+        return {
+          supported: meta.chat_template_supports_thinking,
+          levels: meta.chat_template_supports_thinking ? (LOCAL_LEVELS as ReasoningCapabilities['levels']) : [],
+          paramShape: 'local_disable_thinking',
+          source: 'metadata'
+        };
+      }
+      return { supported: false, levels: [], paramShape: 'local_disable_thinking', source: 'unknown' };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'local_disable_thinking', source: 'unknown' };
+    }
+  }
+
+  /**
+   * Local llama.cpp uses `disable_thinking: true/false` (Qwen3-style).
+   * 'on' → thinking enabled (disable_thinking: false)
+   * 'off' → thinking disabled (disable_thinking: true)
+   */
+  _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    if (!reasoning || !reasoning.level) return {};
+    if (reasoning.level === 'off') return { disable_thinking: true };
+    if (reasoning.level === 'on') return { disable_thinking: false };
+    return {};
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
+  }
+
+  /**
+    * Detect tool support from GGUF metadata.
+    * Falls back to the base probe-based approach if GGUF metadata is unavailable.
+    */
   async checkToolSupport({ baseUrl, apiKey, model, modelPath, ...rest }) {
     // Try GGUF metadata first (chat_template_uses_tools is the definitive flag)
     if (modelPath) {

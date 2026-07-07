@@ -104,6 +104,7 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     model: body.model,
     messages: body.messages,
     tools: body.tools,
+    reasoning: body.reasoning,
     ...params
   });
 }
@@ -156,6 +157,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         model: body.model,
         messages: body.messages,
         tools: body.tools,
+        reasoning: body.reasoning,
         ...Object.fromEntries(
           Object.entries({
             max_tokens: body.max_tokens,

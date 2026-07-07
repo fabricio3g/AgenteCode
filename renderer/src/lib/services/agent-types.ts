@@ -1,4 +1,4 @@
-import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 
@@ -84,4 +84,5 @@ export type RunAgentTaskArgs = {
   maxTimeMs?: number;
   toolMode?: 'agent' | 'search_chat';
   searchMode?: 'search' | 'deep' | 'max';
+  reasoningLevel?: ReasoningLevel | null;
 };

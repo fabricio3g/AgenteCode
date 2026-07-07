@@ -11,8 +11,9 @@
   import { onMount, onDestroy, untrack } from 'svelte';
   import { t } from 'svelte-i18n';
 
-  import ModeSelector from './composer/ModeSelector.svelte';
+import ModeSelector from './composer/ModeSelector.svelte';
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
+  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
   import CodeComposerControls from './composer/CodeComposerControls.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
@@ -994,10 +995,12 @@
       <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
         {#if isCodeMode}
           <CodeComposerControls />
-        {:else}
+{:else}
           <ModeSelector />
 
           <SearchModeSelector />
+
+          <ReasoningLevelSelector />
         {/if}
       </div>
 
