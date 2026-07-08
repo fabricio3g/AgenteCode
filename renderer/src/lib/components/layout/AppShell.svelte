@@ -14,6 +14,7 @@
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
+  import ArtifactSettingsModal from '$lib/components/settings/ArtifactSettingsModal.svelte';
   import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
@@ -227,6 +228,10 @@
 
     {#if appStore.modelManagerOpen}
       <ModelHubModal />
+    {/if}
+
+    {#if appStore.artifactSettingsOpen}
+      <ArtifactSettingsModal />
     {/if}
   {/if}
 </div>

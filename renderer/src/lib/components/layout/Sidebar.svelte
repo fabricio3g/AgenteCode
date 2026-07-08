@@ -9,7 +9,7 @@
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, ChevronRight, FileDown, Folder, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { Boxes, ChevronRight, Code, FileDown, Folder, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -24,10 +24,10 @@
   let collapsedGroups = $state<Set<number>>(new Set([3]));
   let collapsedProjects = $state<Set<string>>(new Set());
 
-  const spaceTabs: Array<{ id: ChatContextMode; label: string }> = [
-    { id: 'chat', label: 'Chat' },
-    { id: 'work', label: 'Work' },
-    { id: 'code', label: 'Code' }
+  const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof MessageSquare }> = [
+    { id: 'chat', label: 'Chat', icon: MessageSquare },
+    { id: 'work', label: 'Work', icon: Boxes },
+    { id: 'code', label: 'Code', icon: Code }
   ];
 
   function startOfDay(ts: number) {
@@ -213,6 +213,7 @@
     <div class="flex flex-col gap-1.5 pb-3 pt-2">
       <div class="space-tabs" role="tablist" aria-label="Session type">
         {#each spaceTabs as tab (tab.id)}
+          {@const Icon = tab.icon}
           <button
             type="button"
             class="space-tab"
@@ -221,7 +222,8 @@
             aria-selected={appStore.activeSpace === tab.id}
             onclick={() => appStore.setActiveSpace(tab.id)}
           >
-            {tab.label}
+            <Icon class="space-tab-icon h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            <span class="space-tab-label">{tab.label}</span>
           </button>
         {/each}
       </div>
@@ -233,6 +235,15 @@
           <Plus class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
         </span>
         <span class="btn-label">{newButtonLabel}</span>
+      </button>
+
+      <button
+        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
+        onclick={() => { appStore.artifactSettingsOpen = true; }}
+        title="Artifacts"
+      >
+        <Puzzle class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <span class="btn-label">Artifacts</span>
       </button>
     </div>
 
@@ -606,7 +617,7 @@
   .space-tabs {
     display: flex;
     gap: 0.25rem;
-    border-radius: 999px;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
     padding: 0.2rem;
   }
@@ -614,15 +625,39 @@
   .space-tab {
     min-width: 0;
     flex: 1 1 0;
-    height: 1.85rem;
-    border: 0;
-    border-radius: 999px;
+    height: 2.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 720;
     line-height: 1;
-    transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  }
+
+  .space-tab-icon {
+    flex-shrink: 0;
+  }
+
+  .space-tab-label {
+    display: inline-block;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-0.25rem);
+    transition: max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .space-tab.active .space-tab-label {
+    max-width: 5rem;
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .space-tab:hover {
@@ -633,7 +668,11 @@
   .space-tab.active {
     background: color-mix(in srgb, var(--primary) 10%, var(--surface));
     color: var(--text);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--shadow-xs);
+    border-color: color-mix(in srgb, var(--border) 70%, var(--text) 16%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+      var(--shadow-xs);
   }
 
   .new-chat-btn:hover {

@@ -462,6 +462,7 @@ export interface AppConfig {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;
+    artifact_toggles?: Record<string, boolean>;
   };
   onboarding?: {
     completed?: boolean;

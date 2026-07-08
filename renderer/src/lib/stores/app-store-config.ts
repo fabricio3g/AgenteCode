@@ -129,6 +129,7 @@ export function mergeUiSettingsConfig(
   partial: {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
+    artifact_toggles?: Record<string, boolean>;
   }
 ): AppConfig {
   return {

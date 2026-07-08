@@ -136,6 +136,7 @@ class AppStore {
   runtimeManagerOpen = $state(false);
   agentWorkspaceOpen = $state(false);
   sandboxOpen = $state(false);
+  artifactSettingsOpen = $state(false);
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
   mainView = $state<MainView>('chat');
@@ -3118,8 +3119,19 @@ class AppStore {
   async updateUiSettings(partial: {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
+    artifact_toggles?: Record<string, boolean>;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
+  }
+
+  getArtifactToggles(): Record<string, boolean> {
+    return this.config.ui?.artifact_toggles || {};
+  }
+
+  async updateArtifactToggles(partial: Record<string, boolean>) {
+    const current = this.getArtifactToggles();
+    const merged = { ...current, ...partial };
+    await this.commitConfig(mergeUiSettingsConfig(this.config, { artifact_toggles: merged }));
   }
 
   async updatePromptSettings(partial: {

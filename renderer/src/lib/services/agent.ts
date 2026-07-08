@@ -57,7 +57,7 @@ import {
   handleReadFile, handleWriteFile, handleEditFile, handleDeleteFile, handleListFiles,
   handleSearchFiles, handlePreviewProject
 } from '$lib/services/agent-tool-fileops';
-import { handleCreateReport, handleCreateWorkProduct } from '$lib/services/agent-tool-artifacts';
+import { handleCreateReport, handleCreateWorkProduct, handleCreateChart, handleCreateDiagram, handleCreateMap, handleCreateDashboard } from '$lib/services/agent-tool-artifacts';
 import { handleWebSearch, handleFetchUrl, handleQueryKnowledge, handleCalculator } from '$lib/services/agent-tool-core';
 import {
   handleCreateDocument,
@@ -385,6 +385,46 @@ async function executeTool(
       }) as Promise<ToolResult>;
     }
 
+    case 'create_chart': {
+      return handleCreateChart({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      }) as Promise<ToolResult>;
+    }
+
+    case 'create_diagram': {
+      return handleCreateDiagram({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      }) as Promise<ToolResult>;
+    }
+
+    case 'create_map': {
+      return handleCreateMap({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      }) as Promise<ToolResult>;
+    }
+
+    case 'create_dashboard': {
+      return handleCreateDashboard({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      }) as Promise<ToolResult>;
+    }
+
     case 'query_knowledge': {
       return handleQueryKnowledge({
         args,
@@ -551,9 +591,10 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   );
 
   const toolMode = args.toolMode || 'agent';
+  const artifactToggles = config.ui?.artifact_toggles || {};
   const toolDefs = toolMode === 'search_chat'
-    ? getToolDefinitions(executionMode).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
-    : getToolDefinitions(executionMode);
+    ? getToolDefinitions(executionMode, artifactToggles).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
+    : getToolDefinitions(executionMode, artifactToggles);
   const modeNote = executionMode === 'workspace'
     ? [
       `You are attached to a real workspace folder at ${args.workspaceRoot || 'the project root'}.`,
