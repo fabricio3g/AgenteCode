@@ -4,108 +4,99 @@
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import { Brain, ChevronDown } from 'lucide-svelte';
+  import { formatReasoningDuration } from '$lib/utils/tool-ui';
 
   interface Props {
     reasoning: string;
-    status?: 'idle' | 'streaming' | 'error';
+    status?: 'idle' | 'streaming' | 'error' | string;
     timing?: number | null;
     totalElapsedSeconds?: number | null;
     autoOpenOnStreaming?: boolean;
+    variant?: 'outline' | 'ghost' | 'muted';
   }
 
-  let { reasoning, status = 'idle', timing = 0, totalElapsedSeconds = 0, autoOpenOnStreaming = true }: Props = $props();
-  let open = $state(false);
-  let userToggled = $state(false);
+  let {
+    reasoning,
+    status = 'idle',
+    timing = 0,
+    totalElapsedSeconds = 0,
+    autoOpenOnStreaming = true,
+    variant = 'outline'
+  }: Props = $props();
+
+  let userOpen = $state<boolean | null>(null);
   let reasoningLiveEl = $state<HTMLDivElement | undefined>(undefined);
 
-  $effect(() => {
-    if (reasoningLiveEl && reasoning) {
-      reasoningLiveEl.scrollTop = reasoningLiveEl.scrollHeight;
-    }
-  });
-
-  $effect(() => {
-    if (!userToggled) open = autoOpenOnStreaming && status === 'streaming';
-  });
+  const streaming = $derived(status === 'streaming');
+  const isOpen = $derived(
+    userOpen !== null ? userOpen : (autoOpenOnStreaming ? streaming : false)
+  );
+  const isPreview = $derived(streaming && isOpen && userOpen === null);
 
   const elapsed = $derived(Math.max(0, Number(timing || 0)));
   const total = $derived(Math.max(0, Number(totalElapsedSeconds || 0)));
+  const durationText = $derived(
+    !streaming && elapsed > 0 ? ` (${formatReasoningDuration(elapsed)}s)` : ''
+  );
+  const triggerLabel = $derived(
+    streaming ? 'Reasoning' : `Reasoning${durationText}`
+  );
 
   function toggle() {
-    userToggled = true;
-    open = !open;
+    userOpen = !isOpen;
   }
+
+  $effect(() => {
+    if (!isPreview || !reasoningLiveEl) return;
+    reasoningLiveEl.scrollTop = reasoningLiveEl.scrollHeight;
+  });
+
+  $effect(() => {
+    // re-pin when reasoning grows during streaming preview
+    if (isPreview && reasoning && reasoningLiveEl) {
+      reasoningLiveEl.scrollTop = reasoningLiveEl.scrollHeight;
+    }
+  });
 </script>
 
 {#if reasoning}
-  <div class="reasoning-block mb-4 w-full">
-    <button type="button" class="cot-trigger" onclick={toggle}>
-      <Brain class="h-4 w-4 shrink-0" />
-      <span class="flex flex-1 items-center gap-2">
-        <span class:text-shimmer={status === 'streaming'}>
-          {status === 'streaming' ? 'Thinking…' : `Reasoning · ${elapsed.toFixed(1)}s`}
-        </span>
-        {#if status !== 'streaming' && total > 0}
-          <span class="cot-total">Total · {total.toFixed(1)}s</span>
+  <div
+    class="aui-reasoning-root"
+    data-slot="reasoning-root"
+    data-variant={variant}
+    data-state={isOpen ? 'open' : 'closed'}
+  >
+    <button type="button" class="aui-reasoning-trigger" onclick={toggle} data-slot="reasoning-trigger">
+      <Brain class="size-4 shrink-0" />
+      <span class="aui-shimmer-host tabular-nums">
+        <span>{triggerLabel}</span>
+        {#if streaming}
+          <span class="aui-shimmer" aria-hidden="true">{triggerLabel}</span>
         {/if}
       </span>
-      <ChevronDown class={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      {#if !streaming && total > 0 && Math.abs(total - elapsed) >= 0.25}
+        <span class="text-xs opacity-70">Total · {total.toFixed(1)}s</span>
+      {/if}
+      <ChevronDown class={`aui-tool-fallback-chevron mt-0.5 ${isOpen ? '' : 'is-closed'}`} />
     </button>
 
-    {#if open}
-      <div class="cot-body" transition:slide={{ duration: 180, easing: quintOut }}>
-        <div class="cot-timeline-line"></div>
-        <div bind:this={reasoningLiveEl} class="cot-content">
-          <p>{reasoning}</p>
+    {#if isOpen}
+      <div
+        class="aui-reasoning-content"
+        transition:slide={{ duration: 200, easing: quintOut }}
+        data-slot="reasoning-content"
+        aria-busy={streaming}
+      >
+        <div class="aui-reasoning-fade top" aria-hidden="true"></div>
+        <div bind:this={reasoningLiveEl} class="aui-reasoning-text" data-slot="reasoning-text">
+          <div class="space-y-2">
+            <p class="m-0 whitespace-pre-wrap">{reasoning}</p>
+          </div>
         </div>
+        {#if isPreview}
+          <div class="aui-reasoning-fade bottom" aria-hidden="true"></div>
+        {/if}
       </div>
     {/if}
   </div>
 {/if}
-
-<style>
-  .reasoning-block { margin-top: 0.75rem; }
-
-  .cot-trigger {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0;
-    border: none;
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    transition: color 0.15s ease;
-  }
-
-  .cot-trigger:hover { color: var(--text); }
-
-  .cot-body {
-    display: grid;
-    grid-template-columns: 2px 1fr;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-  }
-
-  .cot-total {
-    margin-top: 0.08rem;
-    color: var(--text-tertiary);
-    font-size: 0.68rem;
-    font-weight: 450;
-  }
-
-  .cot-timeline-line {
-    width: 2px;
-    background: var(--border);
-    border-radius: 1px;
-  }
-
-  .cot-content p {
-    color: var(--text-tertiary);
-    font-size: 0.8125rem;
-    line-height: 1.65;
-    margin: 0;
-  }
-</style>

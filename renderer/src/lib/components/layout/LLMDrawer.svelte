@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade, fly } from 'svelte/transition';
+  import { motionFade, motionFly } from '$lib/utils/transitions';
   import { Settings, X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -97,7 +97,7 @@
     class="modal-backdrop fixed inset-0 z-[55] bg-overlay-light"
     role="presentation"
     onclick={() => (appStore.llmDrawerOpen = false)}
-    transition:fade={{ duration: 150 }}
+    transition:motionFade={{ duration: 150 }}
   ></div>
 {/if}
 
@@ -107,7 +107,7 @@
   class="modal-surface fixed right-0 top-0 z-[56] flex h-full w-80 flex-col overflow-hidden border-l border-[var(--border)] shadow-2xl"
   style="background: var(--surface)"
   aria-label="Generation settings"
-  transition:fly={{ x: 320, duration: 220, opacity: 1 }}
+  transition:motionFly={{ x: 320, duration: 220, opacity: 1 }}
 >
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <div class="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border)]">

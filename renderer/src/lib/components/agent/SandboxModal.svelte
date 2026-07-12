@@ -22,7 +22,7 @@
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
-    class="fixed inset-0 z-[200] flex items-center justify-center bg-overlay px-3"
+    class="aui-modal-backdrop z-[200] px-3"
     onclick={onOverlayClick}
     onkeydown={onKeyDown}
     role="dialog"
@@ -31,7 +31,7 @@
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="flex w-[96vw] max-w-6xl flex-col overflow-hidden rounded-md border border-[var(--border)] bg-[var(--surface)] shadow-lg"
+      class="aui-modal-surface w-[96vw] max-w-6xl"
       style="height: 88vh;"
       onclick={(e) => e.stopPropagation()}
     >

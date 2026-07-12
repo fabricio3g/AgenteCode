@@ -104,7 +104,7 @@ function createChateaDriver(): CodeAgentDriverDefinition {
     displayName: 'Chatea Agent (Local)',
     detail: 'Local-model agent (Chat mode only)',
     status: 'ready',
-    accentColor: '#717CE2'
+    accentColor: 'var(--primary)'
   });
   return {
     driver: {
@@ -125,7 +125,7 @@ function createChateaAgentDriver(): CodeAgentDriverDefinition {
     displayName: 'Chatea Agent',
     detail: 'Custom coding harness',
     status: 'ready',
-    accentColor: '#717CE2'
+    accentColor: 'var(--primary)'
   });
   return {
     driver: {

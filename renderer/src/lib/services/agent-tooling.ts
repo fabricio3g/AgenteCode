@@ -137,7 +137,7 @@ export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox', arti
     {
       type: 'function', function: {
         name: 'preview_project',
-        description: 'Build an HTML preview from sandbox files. Call after writing HTML/CSS/JS files.',
+        description: 'Build a self-contained HTML preview from sandbox files. External scripts, styles, and assets are blocked for deterministic rendering.',
         parameters: {
           type: 'object',
           properties: { entryPoint: { type: 'string', description: 'Entry HTML file (default: index.html)' } }

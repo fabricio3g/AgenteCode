@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fly } from 'svelte/transition';
+  import { motionFly } from '$lib/utils/transitions';
   import { cubicOut } from 'svelte/easing';
   import { ExternalLink, Loader2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -91,7 +91,7 @@
   class="activity-drawer"
   aria-label="Activity"
   tabindex="-1"
-  transition:fly={{ x: 22, duration: 260, opacity: 0.55, easing: cubicOut }}
+  transition:motionFly={{ x: 22, duration: 260, opacity: 0.55, easing: cubicOut }}
   onpointerdown={stopBubble}
 >
   <header class="activity-header">

@@ -1,8 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade } from 'svelte/transition';
-  import { flyAndScale } from '$lib/utils/transitions';
+  import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/tauri';
   import { AlertTriangle, BrainCircuit, ChevronDown, ChevronRight, Cpu, Gauge, HardDrive, Layers3, LoaderCircle, MemoryStick, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-svelte';
   import { untrack } from 'svelte';
@@ -254,20 +253,20 @@
 </script>
 
 {#if target}
-  <div class="modal-backdrop fixed inset-0 z-[64] flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true" transition:fade={{ duration: 150}}>
-  <div class="modal-surface load-modal-surface max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-[var(--background)] p-6 shadow-2xl" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
+  <div class="aui-modal-backdrop z-[64]" role="dialog" aria-modal="true" transition:motionFade={{ duration: 150}}>
+  <div class="aui-modal-surface load-modal-surface max-h-[92vh] max-w-4xl overflow-y-auto p-6" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <div class="mb-5 flex items-start justify-between gap-4">
  <div class="min-w-0 space-y-2">
  <div>
- <div class="text-[15px] font-semibold leading-5 text-[var(--text)]">Load local model</div>
- <div class="mt-1 truncate text-[13px] leading-5 text-[var(--text-secondary)]">{target.name}</div>
+ <div class="text-[15px] font-semibold leading-5 text-foreground">Load local model</div>
+ <div class="mt-1 truncate text-[13px] leading-5 text-muted-foreground">{target.name}</div>
  </div>
  {#if headerMetaLine}
- <div class="text-[12px] leading-5 text-[var(--text-tertiary)]">{headerMetaLine}</div>
+ <div class="text-[12px] leading-5 text-muted-foreground">{headerMetaLine}</div>
  {/if}
  </div>
- <button class="rounded-lg p-2 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => appStore.closeLocalModelLoadDialog()} aria-label="Close load dialog">
- <X class="h-4 w-4" />
+ <button type="button" class="aui-icon-button size-8" onclick={() => appStore.closeLocalModelLoadDialog()} aria-label="Close load dialog">
+ <X class="size-4" />
  </button>
  </div>
 

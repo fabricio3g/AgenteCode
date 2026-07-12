@@ -86,7 +86,7 @@
       aria-expanded={providerOpen}
     >
       <Bot class="h-3.5 w-3.5" />
-      <span>{activeProvider?.label || 'Chatea Agent'}</span>
+      <span>{activeProvider?.label || 'Flaxeo Agent'}</span>
       <ChevronDown class={`h-3 w-3 transition-transform ${providerOpen ? 'rotate-180' : ''}`} />
     </button>
 

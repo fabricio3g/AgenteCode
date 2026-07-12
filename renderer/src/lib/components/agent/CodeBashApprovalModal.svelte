@@ -62,20 +62,20 @@
     width: min(90vw, 32rem);
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 1rem;
-    background: var(--surface);
-    box-shadow: var(--shadow-xl, 0 12px 32px rgba(0,0,0,0.2));
+    border-radius: var(--radius-xl);
+    background: var(--background);
+    box-shadow: var(--shadow-lg);
   }
 
   .approval-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    padding: 0.7rem 0.9rem;
+    border-bottom: none;
+    padding: 0.875rem 1.1rem 0.35rem;
     color: var(--warning, #d97706);
-    font-size: 0.82rem;
-    font-weight: 720;
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .approval-body {
@@ -96,10 +96,10 @@
 
   .approval-command {
     margin: 0;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    background: var(--surface-hover);
-    color: var(--text);
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    color: var(--foreground);
     padding: 0.65rem 0.75rem;
     font-family: var(--font-mono);
     font-size: 0.78rem;
@@ -121,8 +121,8 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    padding: 0.65rem 0.9rem;
+    border-top: none;
+    padding: 0.65rem 1.1rem 1rem;
   }
 
   .approval-btn {

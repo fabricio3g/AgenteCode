@@ -129,34 +129,43 @@
   <DeepResearchWidget messageId={message.id} />
 {/if}
 
-{#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
-  {#if contextMode === 'code'}
-    {#if enableThinking && displayReasoning}
-      <ReasoningBlock
-        reasoning={displayReasoning}
+<!-- Chain-of-thought stack (assistant-ui): reasoning → tools → then answer below -->
+<div class="aui-cot-stack mb-1 w-full">
+  {#if enableThinking && displayReasoning}
+    <ReasoningBlock
+      reasoning={displayReasoning}
+      status={message.status}
+      timing={resolveReasoningTiming(displayMetadata) || 0}
+      totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
+      variant="outline"
+    />
+  {/if}
+
+  {#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
+    {#if contextMode !== 'code'}
+      <AgentBlock
+        steps={message.agentSteps || []}
+        reasoning={enableThinking ? displayReasoning : undefined}
         status={message.status}
-        timing={resolveReasoningTiming(displayMetadata) || 0}
-        totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
+        totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+        outcome={displayMetadata?.outcome}
+        stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
+        currentActivity={displayMetadata?.currentActivity}
+        activityLabel={displayMetadata?.activityLabel}
+        sourceCount={message.sources?.length || 0}
+        messageId={message.id}
       />
     {/if}
-  {:else}
-    <AgentBlock
-      steps={message.agentSteps || []}
-      reasoning={enableThinking ? displayReasoning : undefined}
-      status={message.status}
-      totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
-      outcome={displayMetadata?.outcome}
-      stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
-      currentActivity={displayMetadata?.currentActivity}
-      activityLabel={displayMetadata?.activityLabel}
-      sourceCount={message.sources?.length || 0}
-      messageId={message.id}
-    />
     {#if message.agentSteps?.length}
-      <InlineAgentSteps steps={message.agentSteps} status={message.status} />
+      <InlineAgentSteps
+        steps={message.agentSteps}
+        status={message.status}
+        totalElapsedSeconds={resolveTotalElapsed(displayMetadata) || 0}
+        variant="outline"
+      />
     {/if}
   {/if}
-{/if}
+</div>
 
 {#if showSourcesBlock}
   <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} messageId={message.id} />
@@ -168,15 +177,6 @@
 
 {#if hasContextBadges}
   <ContextBadges workContext={displayWorkContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
-{/if}
-
-{#if enableThinking && displayReasoning && !message.agentSteps?.length}
-  <ReasoningBlock
-    reasoning={displayReasoning}
-    status={message.status}
-    timing={resolveReasoningTiming(displayMetadata) || 0}
-    totalElapsedSeconds={resolveDisplayTotalElapsed(displayMetadata)}
-  />
 {/if}
 
 {#if message.status === 'error' && displayMetadata?.error}

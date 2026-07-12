@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fly, fade } from 'svelte/transition';
+  import { motionFly, motionFade } from '$lib/utils/transitions';
   import { X } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
 
@@ -23,8 +23,8 @@
       class="toast pointer-events-auto flex items-center justify-center gap-2.5 border px-4 py-2"
       style="color: {COLOR_MAP[toast.type]}"
       role="alert"
-      in:fly={{ y: 12, duration: 200 }}
-      out:fade={{ duration: 150 }}
+      in:motionFly={{ y: 12, duration: 200 }}
+      out:motionFade={{ duration: 150 }}
     >
       <span class="text-[13px] font-medium leading-none">{toast.message}</span>
       <button

@@ -84,7 +84,7 @@ function rewriteCssAssetUrls(css: string, cssPath: string, allFiles: Record<stri
     if (isBlockedLocalResource(ref)) return 'url("")';
     if (isExternalResource(ref)) {
       recordExternalRef(externalRefs, ref);
-      return match;
+      return 'url("")';
     }
     const resolved = resolveArtifactPath(cssPath, ref);
     const content = resolved ? allFiles[resolved] : null;
@@ -157,6 +157,7 @@ export function buildPreviewHtml(
     }
     if (isExternalResource(href)) {
       recordExternalRef(externalRefs, href);
+      link.remove();
       return;
     }
     const resolved = resolveArtifactPath(basePath, href);
@@ -184,6 +185,7 @@ export function buildPreviewHtml(
     }
     if (isExternalResource(src)) {
       recordExternalRef(externalRefs, src);
+      script.remove();
       return;
     }
     const resolved = resolveArtifactPath(basePath, src);
@@ -232,6 +234,7 @@ export function buildPreviewHtml(
       }
       if (isExternalResource(ref)) {
         recordExternalRef(externalRefs, ref);
+        element.removeAttribute(attribute);
         return;
       }
       const resolved = resolveArtifactPath(basePath, ref);

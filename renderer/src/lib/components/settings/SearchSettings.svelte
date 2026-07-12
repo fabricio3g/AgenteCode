@@ -2,7 +2,7 @@
 
 <script lang="ts">
   const SEARCH_PROVIDERS = [
-    { id: 'aggregator', label: 'Chatea Aggregator', needsKey: false },
+    { id: 'aggregator', label: 'Flaxeo Aggregator', needsKey: false },
     { id: 'auto', label: 'Auto', needsKey: false },
     { id: 'duckduckgo', label: 'DuckDuckGo', needsKey: false },
     { id: 'searxng', label: 'SearXNG', needsKey: false, needsUrl: true },
@@ -85,7 +85,7 @@
 
     {#if searchProvider === 'aggregator'}
       <div class="mt-4 rounded-md border border-[var(--border)] bg-[var(--background)] p-3 text-xs leading-relaxed text-[var(--text-secondary)]">
-        Uses Chatea's local web search aggregator by default. It combines free engines such as DuckDuckGo and Wikipedia, then deep search reads pages locally with Mozilla Readability.
+        Uses Flaxeo Chat's local web search aggregator by default. It combines free engines such as DuckDuckGo and Wikipedia, then deep search reads pages locally with Mozilla Readability.
       </div>
     {/if}
 

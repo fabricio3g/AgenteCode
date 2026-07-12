@@ -40,6 +40,7 @@ export function getNativeSystemPrompt(extra: string | undefined, maxToolCalls: n
     'Do not repeat the same tool with similar arguments. After a web_search succeeds, use those results to answer or create the requested artifact instead of searching the same thing again.',
     'If stuck, summarize only the gathered tool results and clearly say what is missing.',
     'Files are not on the host filesystem unless a tool says so. Treat sandbox files as conversation artifacts saved with this chat.',
+    'When creating artifacts, keep them self-contained and deterministic. Do not use CDN scripts, remote assets, map tiles, or network-dependent rendering. Prefer native inline artifact tools for charts, maps, diagrams, and dashboards.',
     '',
     'Workflow: inspect context -> use the smallest useful tool set -> answer structured reports directly in chat, or create_work_product/create_document/create_spreadsheet/create_presentation/create_pdf/write_file only when the user explicitly asks for a file or concrete format -> preview_project when useful.',
     'A report/informe by itself is an in-chat structured report, not a DOCX/PDF/file. Only create files when the user explicitly asks for docx, Word, PDF, Excel/XLSX, slides/PPTX, download, attachment, or a file.',
@@ -109,7 +110,8 @@ export function getXmlSystemPrompt(
     isWorkspace
       ? '12. Files persist to disk in the workspace folder. Use read_file, write_file, delete_file, list_files, search_files, and bash tools to work with the real filesystem.'
       : '12. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
-    '13. If you cannot finish, final answer must say what was actually found and what could not be verified.',
+    '13. Artifacts must be self-contained and deterministic. Do not use CDN scripts, remote assets, map tiles, or network-dependent rendering. Prefer native inline artifact tools for charts, maps, diagrams, and dashboards.',
+    '14. If you cannot finish, final answer must say what was actually found and what could not be verified.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
 }

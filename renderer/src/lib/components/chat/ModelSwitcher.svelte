@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { Check, ChevronDown, Cloud, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Sparkles, Square, X } from 'lucide-svelte';
-  import { fade } from 'svelte/transition';
+  import { motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -193,7 +193,7 @@
     bind:this={dropdownEl}
     class="model-dropdown fixed overflow-hidden"
     style="top:{dropdownPos.top}px; left:{dropdownPos.left}px; width:{dropdownPos.width}px; z-index:200;"
-    transition:fade={{ duration: 100 }}
+    transition:motionFade={{ duration: 100 }}
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-3 pt-2.5 pb-2">
@@ -213,13 +213,15 @@
 
     <!-- Cloud / On Device mode toggle -->
     {#if isTauri()}
-      <div class="mode-toggle mx-3 mb-2.5">
+      <div class="aui-segmented mx-3 mb-2.5 w-[calc(100%-1.5rem)]">
         <button
-          class={`mode-btn flex-1 transition ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
+          type="button"
+          class={`aui-segmented-item flex-1 py-1.5 ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('api')}
         >Cloud</button>
         <button
-          class={`mode-btn flex-1 transition ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
+          type="button"
+          class={`aui-segmented-item flex-1 py-1.5 ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
           onclick={() => appStore.setBackendMode('local')}
         >On Device</button>
       </div>
@@ -418,29 +420,23 @@
 
 <style>
   .model-trigger {
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 999px;
+    color: var(--muted-foreground);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-md);
     box-shadow: none;
   }
 
   .model-trigger:hover,
   .model-trigger.is-open {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    border-color: transparent;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
-      var(--shadow-xs);
+    background: var(--muted);
+    color: var(--foreground);
   }
 
   .trigger-label {
-    color: var(--text);
-    font-size: 12.5px;
-    font-weight: 600;
+    color: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
     letter-spacing: -0.01em;
   }
 
@@ -453,160 +449,86 @@
     50% { transform: scale(1.25); opacity: 1; }
   }
 
-  :global(.dark) .model-trigger:hover,
-  :global(.dark) .model-trigger.is-open {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
-      var(--shadow-xs);
-  }
-
   .model-dropdown {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    border: 1px solid transparent;
-    border-radius: 14px;
-    box-shadow: var(--shadow-xl);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-
-  :global(.dark) .model-dropdown {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    background: var(--popover);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
   }
 
   .refresh-btn {
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .refresh-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
-
-  .mode-toggle {
-    display: flex;
-    gap: 4px;
-    padding: 3px;
-    border-radius: 10px;
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
-  }
-
-  .mode-btn {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 7px;
-    min-height: 30px;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    box-shadow: none;
-  }
-
-  .mode-btn:hover,
-  .mode-btn.is-active {
-    color: #fff;
-    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
-    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.45),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-      0 0 0 1px rgba(226, 231, 255, 0.18);
-  }
-
-  :global(.dark) .mode-btn:hover,
-  :global(.dark) .mode-btn.is-active {
-    color: #fff;
-    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
-    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.45),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-      0 0 0 1px rgba(226, 231, 255, 0.18);
+    color: var(--foreground);
+    background: var(--muted);
   }
 
   .loading-indicator {
     background: transparent;
     border: none;
-    border-radius: 4px;
   }
 
   .confirm-card {
-    background: transparent;
+    background: var(--muted);
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
   }
 
   .confirm-btn.primary {
     background: var(--primary);
-    color: var(--primary-fg);
+    color: var(--primary-foreground);
     border: none;
-    border-radius: 6px;
-    transition: opacity 0.12s;
+    border-radius: var(--radius-md);
   }
 
   .confirm-btn.primary:hover {
-    opacity: 0.88;
+    opacity: 0.9;
   }
 
   .confirm-btn.secondary {
     background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    color: var(--muted-foreground);
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .confirm-btn.secondary:hover {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
   .search-wrapper .search-input {
-    background: var(--surface-hover);
+    background: var(--muted);
     border: 1px solid transparent;
-    border-radius: 10px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -1px 0 rgba(0,0,0,0.02);
+    border-radius: var(--radius-md);
   }
 
   .search-wrapper .search-input:focus {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-  }
-
-  :global(.dark) .search-wrapper .search-input:focus {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    background: var(--background);
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
   }
 
   .clear-btn {
-    color: var(--text-muted);
+    color: var(--muted-foreground);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .clear-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--foreground);
+    background: var(--muted);
   }
 
   .empty-icon {
-    background: transparent;
-    border: 1px solid transparent;
+    background: var(--muted);
+    border: none;
     border-radius: 8px;
   }
 
@@ -624,23 +546,13 @@
 
   .model-item {
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 10px;
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .model-item:hover,
   .model-item.is-loaded {
-    background:
-      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), var(--shadow-xs);
-  }
-
-  :global(.dark) .model-item:hover,
-  :global(.dark) .model-item.is-loaded {
-    background:
-      linear-gradient(var(--surface-hover), var(--surface-hover)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
+    background: var(--muted);
   }
 
   :global(.dark) .live-badge {
@@ -650,14 +562,14 @@
 
   .action-btn {
     background: transparent;
-    color: var(--text-secondary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    color: var(--muted-foreground);
+    border: none;
+    border-radius: var(--radius-md);
   }
 
   .action-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--foreground);
+    background: var(--muted);
   }
 
   .action-btn.unload:hover {
@@ -668,48 +580,16 @@
   .action-btn.load,
   .refresh-footer-btn,
   .hub-btn {
-    color: var(--text);
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.025),
-      var(--shadow-xs);
+    color: var(--foreground);
+    border: none;
+    border-radius: var(--radius-md);
+    background: var(--muted);
   }
 
   .action-btn.load:hover:not(:disabled),
   .refresh-footer-btn:hover:not(:disabled),
   .hub-btn:hover:not(:disabled) {
-    color: var(--text);
-    filter: brightness(1.02);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.22),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.035),
-      var(--shadow-sm);
-  }
-
-  :global(.dark) .action-btn.load,
-  :global(.dark) .refresh-footer-btn,
-  :global(.dark) .hub-btn {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.09),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.18),
-      var(--shadow-xs);
-  }
-
-  :global(.dark) .action-btn.load:hover:not(:disabled),
-  :global(.dark) .refresh-footer-btn:hover:not(:disabled),
-  :global(.dark) .hub-btn:hover:not(:disabled) {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.30),
-      var(--shadow-sm);
+    background: var(--surface-active);
   }
 
   .refresh-footer-btn:disabled {

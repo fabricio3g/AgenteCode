@@ -161,13 +161,13 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
   {
     id: 'chart',
     name: 'Charts',
-    description: 'D3.js data visualizations (bar, line, pie, donut)',
+    description: 'Native inline data visualizations (bar, line, pie, donut)',
     icon: 'bar-chart',
     defaultEnabled: true,
     toolDefinition: {
       type: 'function', function: {
         name: 'create_chart',
-        description: 'Create a D3.js chart visualization as an HTML artifact. Supports bar, line, pie, and donut chart types. The chart is rendered as a standalone HTML page that can be previewed in the sandbox.',
+        description: 'Create a deterministic inline chart artifact. Supports bar, line, pie, and donut chart types. The chart is rendered natively in the chat conversation without external CDN scripts.',
         parameters: {
           type: 'object',
           properties: {
@@ -179,7 +179,7 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
               description: 'Array of {label, data} objects. Data is an array of numbers matching labels length.',
               items: { type: 'object' }
             },
-            path: { type: 'string', description: 'Output path (defaults to chart.html)' },
+            path: { type: 'string', description: 'Output data path (defaults to chart.json)' },
           },
           required: ['title', 'labels', 'datasets']
         }
@@ -189,20 +189,20 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
   {
     id: 'diagram',
     name: 'Diagrams',
-    description: 'Mermaid.js diagrams (flowcharts, sequence, ER, Gantt, mindmaps, and more)',
+    description: 'Native inline Mermaid diagrams (flowcharts, sequence, ER, Gantt, mindmaps, and more)',
     icon: 'workflow',
     defaultEnabled: true,
     toolDefinition: {
       type: 'function', function: {
         name: 'create_diagram',
-        description: 'Create a diagram using Mermaid.js syntax. Supports flowcharts, sequence diagrams, class diagrams, ER diagrams, Gantt charts, mindmaps, timelines, and more. The diagram is rendered as an interactive HTML artifact viewable in the sandbox.',
+        description: 'Create a deterministic inline diagram artifact using Mermaid syntax. The diagram is rendered by the app bundled Mermaid renderer, not by external CDN scripts.',
         parameters: {
           type: 'object',
           properties: {
             title: { type: 'string', description: 'Diagram title' },
             diagram_type: { type: 'string', description: 'Mermaid diagram type: "flowchart", "sequence", "class", "er", "gantt", "mindmap", "timeline", "state", "pie", "quadrant", "sankey", "kanban", or "gitgraph"' },
             mermaid_source: { type: 'string', description: 'Mermaid syntax source code defining the diagram' },
-            path: { type: 'string', description: 'Output path (defaults to diagram.html)' },
+            path: { type: 'string', description: 'Output data path (defaults to diagram.json)' },
           },
           required: ['title', 'mermaid_source']
         }
@@ -212,13 +212,13 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
   {
     id: 'map',
     name: 'Maps',
-    description: 'Leaflet.js interactive maps with markers, polylines, and GeoJSON overlays',
+    description: 'Deterministic inline coordinate maps with markers and polylines',
     icon: 'map',
     defaultEnabled: true,
     toolDefinition: {
       type: 'function', function: {
         name: 'create_map',
-        description: 'Create an interactive map visualization using Leaflet.js with OpenStreetMap tiles. Supports markers, popups, polylines, circles, and GeoJSON overlays. Rendered as an HTML artifact viewable in the sandbox.',
+        description: 'Create a deterministic inline coordinate map artifact. Supports markers, labels, and polylines. The map renders locally in chat without CDN scripts or network map tiles.',
         parameters: {
           type: 'object',
           properties: {
@@ -236,7 +236,7 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
               description: 'Polylines as arrays of {lat, lng} coordinate objects',
               items: { type: 'object' }
             },
-            path: { type: 'string', description: 'Output path (defaults to map.html)' },
+            path: { type: 'string', description: 'Output data path (defaults to map.json)' },
           },
           required: ['title']
         }
@@ -252,7 +252,7 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
     toolDefinition: {
       type: 'function', function: {
         name: 'create_dashboard',
-        description: 'Create a dashboard HTML artifact with metric cards, KPI summaries, and stat panels. Displays key numbers with labels, trends, and optional charts. Rendered as an interactive HTML artifact viewable in the sandbox.',
+        description: 'Create a deterministic inline dashboard artifact with metric cards, KPI summaries, and stat panels. Displays key numbers with labels and trends directly in the chat conversation.',
         parameters: {
           type: 'object',
           properties: {
@@ -268,7 +268,7 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
               description: 'Text/markdown sections with optional sub-headings',
               items: { type: 'object' }
             },
-            path: { type: 'string', description: 'Output path (defaults to dashboard.html)' },
+            path: { type: 'string', description: 'Output data path (defaults to dashboard.json)' },
           },
           required: ['title', 'metrics']
         }

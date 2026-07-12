@@ -45,7 +45,7 @@
   const circumference = $derived.by(() => 2 * Math.PI * radius);
   const dashOffset = $derived.by(() => circumference * (1 - usagePercent / 100));
 
-  const accentColor = $derived('#717CE2');
+  const accentColor = $derived('var(--primary)');
 
   const usageLabel = $derived.by(() => `${formatTokenCount(safeUsed)} / ${formatTokenCount(safeMax)} tokens (${usagePercent}%)`);
   const reserveLabel = $derived.by(() => reservedTokens > 0 ? `Reserved: ${formatTokenCount(reservedTokens)} tokens` : '');

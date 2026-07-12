@@ -2,7 +2,7 @@
   "name": "chatealm",
   "version": "0.1.0",
   "private": true,
-  "description": "Chatea – AI Chat Assistant (Electron)",
+  "description": "Flaxeo Chat – AI Chat Assistant (Electron)",
   "type": "module",
   "main": "dist-electron/main/index.cjs",
   "scripts": {
@@ -72,7 +72,7 @@
   },
   "build": {
     "appId": "com.chatea.lm",
-    "productName": "Chatea",
+    "productName": "Flaxeo Chat",
     "directories": {
       "output": "dist-electron",
       "buildResources": "build"

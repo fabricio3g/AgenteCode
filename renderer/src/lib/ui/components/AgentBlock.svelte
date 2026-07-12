@@ -154,19 +154,26 @@
 </script>
 
 {#if hasRelevance}
-  <div class="agent-block mb-4 w-full">
+  <div class="agent-block mb-2 w-full">
     <button type="button" class="agent-trigger" onclick={openActivity} aria-label="Open agent activity">
-      {#if isThinking}
-        <Loader class="h-4 w-4 shrink-0 animate-spin" />
+      {#if isThinking || status === 'streaming'}
+        <Loader class="size-4 shrink-0 animate-spin" style="animation-duration: 0.6s" />
       {:else if headerIconStep}
         {@const RunningIcon = stepIcon(headerIconStep.type)}
-        <RunningIcon class="h-4 w-4 shrink-0" />
+        <RunningIcon class="size-4 shrink-0" />
       {:else}
-        <Bot class="h-4 w-4 shrink-0" />
+        <Bot class="size-4 shrink-0" />
       {/if}
-      <span class="agent-trigger-text" class:text-shimmer={status === 'streaming'}>{activityText()}</span>
-      <span class="agent-trigger-count">{steps.length || 1}</span>
-      <ChevronRight class="h-4 w-4 shrink-0" />
+      <span class="agent-trigger-text aui-shimmer-host">
+        <span>{activityText()}</span>
+        {#if status === 'streaming'}
+          <span class="aui-shimmer" aria-hidden="true">{activityText()}</span>
+        {/if}
+      </span>
+      {#if steps.length}
+        <span class="agent-trigger-count">{steps.length}</span>
+      {/if}
+      <ChevronRight class="size-4 shrink-0 opacity-70" />
     </button>
 
     {#if totalElapsedLabel()}
@@ -178,24 +185,26 @@
 <style>
   .agent-trigger {
     display: flex;
+    max-width: 100%;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.45rem 0.55rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 0.72rem;
-    background: color-mix(in srgb, var(--surface) 86%, transparent);
-    color: var(--text-muted);
+    padding: 0.375rem 0;
+    border: none;
+    background: transparent;
+    color: var(--muted-foreground);
     cursor: pointer;
-    font-size: 0.78rem;
+    font-size: 0.875rem;
     font-weight: 500;
-    width: 100%;
+    width: fit-content;
+    max-width: 100%;
     text-align: left;
-    transition: color 0.15s ease;
+    transition: color 150ms ease, transform 150ms var(--motion-ease);
   }
   .agent-trigger:hover {
-    border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
-    background: color-mix(in srgb, var(--surface-hover) 80%, transparent);
-    color: var(--text-secondary);
+    color: var(--foreground);
+  }
+  .agent-trigger:active {
+    transform: scale(0.98);
   }
   .agent-trigger-text {
     min-width: 0;
@@ -205,34 +214,23 @@
     white-space: nowrap;
   }
   .agent-total {
-    margin: 0.25rem 0 0 0.55rem;
-    color: var(--text-tertiary);
-    font-size: 0.68rem;
+    margin: 0.15rem 0 0 1.5rem;
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
     font-weight: 450;
+    opacity: 0.8;
   }
   .agent-trigger-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.35rem;
-    height: 1.15rem;
+    min-width: 1.25rem;
+    height: 1.1rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--primary) 9%, transparent);
-    color: var(--text-muted);
-    font-size: 0.66rem;
-    font-weight: 700;
-  }
-
-  .text-shimmer {
-    background: linear-gradient(90deg, var(--text-muted) 40%, var(--text-secondary) 60%, var(--text-muted) 80%);
-    background-size: 200% auto;
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: shimmer 3s linear infinite;
-  }
-  @keyframes shimmer {
-    0% { background-position: 200% 50%; }
-    100% { background-position: -200% 50%; }
+    background: var(--muted);
+    color: var(--muted-foreground);
+    font-size: 0.65rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 </style>

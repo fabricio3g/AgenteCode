@@ -2,8 +2,7 @@
 
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { fade, fly } from 'svelte/transition';
-  import { flyAndScale } from '$lib/utils/transitions';
+  import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import {
     Box, Check, Compass, Download, FolderOpen,
     HardDrive, RefreshCw, RotateCcw, Search, Trash2, X, Zap,
@@ -976,8 +975,8 @@
 
 <div
   role="presentation"
-  class="modal-backdrop fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-overlay"
-  transition:fade={{ duration: 200 }}
+  class="aui-modal-backdrop z-[63] overflow-hidden"
+  transition:motionFade={{ duration: 200 }}
   onclick={(e) => { if (e.target === e.currentTarget) close(); }}
 >
   <div
@@ -985,40 +984,40 @@
     aria-modal="true"
     aria-labelledby="settings-manager-title"
     tabindex="-1"
-    class="modal-surface relative mx-2 my-2 flex h-[min(820px,calc(100vh-4rem))] w-[min(1180px,calc(100%-2rem))] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)]"
+    class="aui-modal-surface mx-2 my-2 h-[min(820px,calc(100vh-4rem))] w-[min(1180px,calc(100%-2rem))] max-w-none"
     transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
   >
     <!-- Top bar -->
-    <div class="flex shrink-0 items-center justify-between bg-[var(--background)] px-3 py-2">
+    <div class="aui-modal-header !py-2">
       <div class="flex items-center gap-0.5">
         <button
           type="button"
-          class="chateaui-icon-button h-7 w-7 p-0"
+          class="aui-icon-button size-8"
           onclick={() => { close(); appStore.downloadsOpen = true; }}
           title="Downloads"
         >
-          <Download class="h-3.5 w-3.5" />
+          <Download class="size-3.5" />
         </button>
         {#if isModelSection}
           <button
             type="button"
-            class="chateaui-icon-button h-7 w-7 p-0"
+            class="aui-icon-button size-8"
             onclick={() => openModelsFolder()}
             title="Open folder"
           >
-            <FolderOpen class="h-3.5 w-3.5" />
+            <FolderOpen class="size-3.5" />
           </button>
           <button
             type="button"
             disabled={importingModel}
-            class="chateaui-icon-button h-7 w-7 p-0 disabled:opacity-50"
+            class="aui-icon-button size-8 disabled:opacity-50"
             onclick={() => { void handleImportLocalModel(); }}
             title="Import model"
           >
             {#if importingModel}
-              <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
+              <LoaderCircle class="size-3.5 animate-spin" />
             {:else}
-              <FolderInput class="h-3.5 w-3.5" />
+              <FolderInput class="size-3.5" />
             {/if}
           </button>
         {/if}
@@ -1027,11 +1026,11 @@
       <div class="flex items-center gap-0.5">
         <button
           type="button"
-          class="chateaui-icon-button h-7 w-7 p-0 hover:text-[var(--error)]"
+          class="aui-icon-button size-8 hover:text-[var(--error)]"
           onclick={close}
           aria-label="Close"
         >
-          <X class="h-3.5 w-3.5" />
+          <X class="size-3.5" />
         </button>
       </div>
     </div>
@@ -1039,14 +1038,14 @@
     <!-- Content -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
       {#if !isModelSection}
-      <aside class="flex shrink-0 flex-col gap-3 border-b border-[var(--border)] p-3 sm:border-b-0 {isModelSection ? 'sm:w-60 bg-[var(--surface)]' : 'sm:w-52 bg-[var(--background)]'}">
+      <aside class="flex shrink-0 flex-col gap-3 border-b border-border/60 p-3 sm:border-b-0 sm:border-r sm:border-border/60 {isModelSection ? 'sm:w-60 bg-muted/30' : 'sm:w-52 bg-background'}">
         <nav class="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-visible" aria-label={navAriaLabel}>
           {#each currentNavItems as item}
             <button
               type="button"
-              class={`flex items-center gap-2 rounded-md px-2.5 transition sm:min-w-0 !border-0 !shadow-none
+              class={`flex items-center gap-2 rounded-md px-2.5 transition sm:min-w-0 border-0 shadow-none
                 ${isModelSection ? 'min-w-40 py-2 text-sm font-medium' : 'py-1.5 text-[13px] font-medium'}
-                ${activeSection === item.id ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
+                ${activeSection === item.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
               onclick={() => (activeSection = item.id)}
             >
               {#if isModelSection}
@@ -1077,7 +1076,7 @@
           {@const memoryWarning = fit === 'partial'}
           {@const params = model.size_label || ''}
           {@const context = model.context_length ? `${Math.round(model.context_length / 1024)}K` : ''}
-          <article class="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--border-hover)]">
+          <article class="group aui-card-quiet px-4 py-3">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <h3 class="truncate text-[15px] font-semibold leading-5 text-[var(--text)]" title={title}>{title}</h3>
@@ -1129,7 +1128,7 @@
           {@const files = kind === 'hf' ? (repoFilesMap[repoId] || item.gguf_files || item.files || []) : []}
           {@const downloads = formatCompactCount(item.downloads)}
           {@const likes = formatCompactCount(item.likes)}
-          <article class="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition hover:border-[var(--border-hover)]">
+          <article class="group aui-card-quiet px-4 py-3">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <h3 class="truncate text-[15px] font-semibold leading-5 text-[var(--text)]" title={title}>{title}</h3>

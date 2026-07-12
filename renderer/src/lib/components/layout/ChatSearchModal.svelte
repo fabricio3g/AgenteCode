@@ -102,47 +102,44 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="fixed inset-0 z-[250] flex items-start justify-center bg-overlay px-4 pt-[15vh]"
+  class="aui-modal-backdrop z-[250] items-start pt-[15vh]"
   onclick={close}
   onkeydown={handleKeydown}
 >
   <div
-    class="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)] overflow-hidden"
+    class="aui-menu w-full max-w-md overflow-hidden !p-0"
     role="dialog"
     aria-modal="true"
     onclick={(e) => e.stopPropagation()}
   >
-    <!-- Search input -->
-    <div class="flex items-center gap-2.5 border-b border-[var(--border)] px-3.5 py-2.5">
-      <Search class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+    <div class="flex items-center gap-2.5 px-3.5 py-2.5">
+      <Search class="size-4 shrink-0 text-muted-foreground" />
       <input
         bind:this={searchInput}
         bind:value={query}
-        class="flex-1 bg-transparent text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
+        class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         placeholder="Search conversations..."
         type="text"
       />
       {#if query}
         <button
           type="button"
-          class="rounded-md p-0.5 text-[var(--text-muted)] hover:text-[var(--text)]"
+          class="aui-icon-button size-7"
           onclick={() => (query = '')}
           aria-label="Clear"
         >
-          <X class="h-3.5 w-3.5" />
+          <X class="size-3.5" />
         </button>
       {/if}
     </div>
 
-    <!-- Results -->
-    <div bind:this={resultsContainer} class="max-h-[50vh] overflow-y-auto p-2">
-      <div class="result-list space-y-1">
+    <div bind:this={resultsContainer} class="max-h-[50vh] overflow-y-auto p-1.5">
       {#if results.length === 0}
         <div class="flex flex-col items-center justify-center py-8 text-center">
-          <div class="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-hover)] border border-[var(--border)]">
-            <MessageSquare class="h-5 w-5 text-[var(--text-muted)]" />
+          <div class="mb-2 flex size-10 items-center justify-center rounded-md bg-muted">
+            <MessageSquare class="size-5 text-muted-foreground" />
           </div>
-          <p class="text-sm text-[var(--text-muted)]">
+          <p class="text-sm text-muted-foreground">
             {query ? 'No matching conversations' : 'No conversations yet'}
           </p>
         </div>
@@ -150,41 +147,21 @@
         {#each results as chat, i (chat.id)}
           <button
             type="button"
-            class="chat-result flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition border border-transparent"
-            class:is-selected={i === selectedIndex}
-            class:is-active={appStore.currentChatId === chat.id}
+            class="aui-menu-item {i === selectedIndex || appStore.currentChatId === chat.id ? 'is-active' : ''}"
             data-selected={i === selectedIndex}
             onclick={() => selectChat(chat.id)}
             onmouseenter={() => (selectedIndex = i)}
           >
-            <MessageSquare class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+            <MessageSquare class="size-4 shrink-0 opacity-70" />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium text-[var(--text)]">{chat.title || 'New chat'}</p>
-              <p class="truncate text-xs text-[var(--text-muted)]">
+              <p class="truncate text-sm font-medium">{chat.title || 'New chat'}</p>
+              <p class="truncate text-xs opacity-70">
                 {chat.messages.length} message{chat.messages.length === 1 ? '' : 's'} · {relativeDate(chat.updatedAt || chat.createdAt)}
               </p>
             </div>
           </button>
         {/each}
       {/if}
-      </div>
     </div>
   </div>
 </div>
-
-<style>
-  .chat-result {
-    color: var(--text-secondary);
-  }
-
-  .chat-result:hover,
-  .chat-result.is-selected {
-    background: var(--surface-hover);
-    border-color: var(--border);
-  }
-
-  .chat-result.is-active {
-    background: var(--surface);
-    border-color: var(--border);
-  }
-</style>

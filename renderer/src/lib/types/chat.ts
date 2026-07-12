@@ -116,10 +116,46 @@ export interface AgentStep {
   diffStats?: CodeAgentDiffStat[];
 }
 
+export type ChartArtifactPayload = {
+  kind: 'chart';
+  title: string;
+  chartType: 'bar' | 'line' | 'pie' | 'donut';
+  labels: string[];
+  datasets: Array<{ label: string; data: number[] }>;
+};
+
+export type MapArtifactPayload = {
+  kind: 'map';
+  title: string;
+  latitude: number;
+  longitude: number;
+  zoom: number;
+  markers: Array<{ lat?: number; lng?: number; label?: string; popup?: string }>;
+  polylines: Array<{ coords?: Array<{ lat?: number; lng?: number }>; color?: string; weight?: number; label?: string } | Array<{ lat?: number; lng?: number }>>;
+};
+
+export type DiagramArtifactPayload = {
+  kind: 'diagram';
+  title: string;
+  diagramType?: string;
+  source: string;
+};
+
+export type DashboardArtifactPayload = {
+  kind: 'dashboard';
+  title: string;
+  subtitle?: string;
+  metrics: Array<{ label?: string; value?: string | number; trend?: string; unit?: string; color?: string }>;
+  sections: Array<{ heading?: string; content?: string }>;
+};
+
+export type InlineArtifactPayload = ChartArtifactPayload | MapArtifactPayload | DiagramArtifactPayload | DashboardArtifactPayload;
+
 export interface AgentArtifact {
   title: string;
   files: Record<string, string>;
   previewHtml?: string | null;
+  inline?: InlineArtifactPayload | null;
   workProduct?: GeneratedWorkProduct | null;
 }
 

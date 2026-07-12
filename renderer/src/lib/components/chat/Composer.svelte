@@ -18,6 +18,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ContextUsageRing from './composer/ContextUsageRing.svelte';
+  import BrandMark from '$lib/components/BrandMark.svelte';
 
   interface Props {
     onHeightChange?: (height: number) => void;
@@ -232,24 +233,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
       ? activeModel.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') ?? activeModel
       : ''
   );
-
-  const welcomeHeadline = $derived.by(() => {
-    const now = new Date();
-    const hour = now.getHours();
-    const day = now.getDay();
-
-    const daytime = hour < 5 ? 'night' : hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
-
-    const variants: Record<string, string[]> = {
-      morning: ['Good morning', 'Fresh start', 'Let’s build something great'],
-      afternoon: ['Good afternoon', 'Keep the momentum', 'What are we solving today?'],
-      evening: ['Good evening', 'Quiet focus mode', 'Let’s finish strong'],
-      night: ['Late-night session', 'Night owl mode', 'Still curious? Let’s go']
-    };
-
-    const choices = variants[daytime];
-    return choices[day % choices.length];
-  });
 
   // True when the backend is ready to accept messages (mirrors guards in sendCurrentMessage)
   const backendReady = $derived(
@@ -874,10 +857,12 @@ import ModeSelector from './composer/ModeSelector.svelte';
     </div>
   {/if}
 
-  <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="welcome-shell mx-auto w-full max-w-[55rem]">
+  <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="welcome-shell mx-auto w-full max-w-[42rem]">
     {#if centered}
-      <div class="pointer-events-auto mb-4 text-center">
-        <h1 class="welcome-headline">{welcomeHeadline}</h1>
+      <div class="pointer-events-auto mb-2 flex flex-col items-center text-center">
+        <div class="welcome-brand mb-1">
+          <BrandMark size="xl" />
+        </div>
         {#if isModelLoading}
           <p class="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
             <LoaderCircle class="h-4 w-4 animate-spin" />
@@ -926,7 +911,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
     <VoiceModeOverlay isListening={activelyListening} interimTranscript={interimTranscript} exitVoiceMode={exitVoiceMode} {audioLevels} />
 
     <div class="composer-blur-wrapper">
-      <div class={`composer-shell pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
+      <div class={`composer-shell aui-composer pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
     {#if ocrProgressLabel}
       <div class="px-3 pt-1">
         <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
@@ -1015,27 +1000,27 @@ import ModeSelector from './composer/ModeSelector.svelte';
             estimatedInputCostUsd={contextBudget?.estimatedInputCostUsd}
           />
         {/if}
-        <button class="chateaui-icon-button metal-hover-btn h-8 w-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
-          <Paperclip class="h-4 w-4" />
+        <button class="aui-icon-button size-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
+          <Paperclip class="size-4" />
         </button>
         {#if appStore.composer.trim() || currentChatGenerating}
           <button
-            class="send-btn flex h-8 w-8 items-center justify-center rounded-full text-white transition disabled:opacity-50"
+            class="send-btn flex size-8 items-center justify-center rounded-full transition disabled:opacity-50"
             onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
             disabled={sendDisabled}
             aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
           >
             {#if currentChatGenerating}
-              <Square class="h-3.5 w-3.5 fill-current stroke-[2.75]" />
+              <Square class="size-3.5 fill-current stroke-[2.75]" />
             {:else}
               <span class="send-icon-wrap inline-flex">
-                <ArrowUp class="h-3.5 w-3.5 stroke-[2.75]" />
+                <ArrowUp class="size-3.5 stroke-[2.75]" />
               </span>
             {/if}
           </button>
         {:else}
           <button
-            class={`chateaui-icon-button mic-btn metal-hover-btn h-8 w-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${micUiActive ? 'is-listening' : ''}`}
+            class={`aui-icon-button mic-btn size-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${micUiActive ? 'is-listening' : ''}`}
             onclick={hasMicSupport ? toggleSpeech : undefined}
             disabled={!hasMicSupport}
             aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
@@ -1075,44 +1060,24 @@ import ModeSelector from './composer/ModeSelector.svelte';
 
   .composer-blur-wrapper {
     position: relative;
-    border-radius: var(--radius-2xl);
+    border-radius: 1.25rem;
     overflow: visible;
   }
 
-
-  .composer-blur-wrapper::before {
-    content: none;
-  }
-
   .composer-shell {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(245, 245, 245, 0.95) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%) border-box;
+    border: 0;
+    border-radius: 1.25rem;
+    background: var(--card);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.25),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-      var(--shadow-xs);
-    border-radius: var(--radius-2xl);
-    transition: box-shadow 0.15s ease, filter 0.15s ease;
-  }
-
-  :global(.dark) .composer-shell {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%) border-box;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.14),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-      var(--shadow-xs);
+      inset 0 0 0 1px var(--border),
+      var(--surface-shadow);
+    transition: box-shadow 150ms ease;
   }
 
   .composer-shell:focus-within {
-    filter: brightness(1.01);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.4),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-      var(--shadow-sm);
+      inset 0 0 0 1px var(--ring),
+      var(--surface-shadow-focus);
   }
 
   .composer-textarea {
@@ -1220,69 +1185,25 @@ import ModeSelector from './composer/ModeSelector.svelte';
     justify-content: flex-end;
   }
 
-  .metal-hover-btn {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid transparent;
-  }
-
-  .metal-hover-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    pointer-events: none;
-    opacity: 0;
-    background: linear-gradient(180deg, rgba(245, 245, 245, 0.96) 0%, rgba(223, 223, 223, 0.94) 44%, rgba(196, 196, 196, 0.92) 52%, rgba(232, 232, 232, 0.95) 100%);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    transition: opacity 0.15s ease;
-  }
-
-  .metal-hover-btn:hover:not(:disabled)::before {
-    opacity: 1;
-  }
-
-  .metal-hover-btn:hover:not(:disabled) {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.28),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.05),
-      var(--shadow-xs);
-  }
-
-  :global(.dark) .metal-hover-btn::before {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.18) 38%, rgba(0, 0, 0, 0.45) 52%, rgba(255, 255, 255, 0.24) 100%);
-  }
-
   .send-btn {
-    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
-    border: 1px solid color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.45),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-      0 0 0 1px rgba(226, 231, 255, 0.18);
-    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 150ms ease, box-shadow 150ms ease;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: none;
+    box-shadow: none;
+    transition: opacity 150ms ease, transform 150ms var(--motion-ease);
   }
 
   .send-btn:hover:not(:disabled) {
-    filter: brightness(1.03);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.22),
-      0 0 0 1px rgba(226, 231, 255, 0.24),
-      var(--shadow-xs);
+    opacity: 0.9;
   }
 
   .send-icon-wrap {
     transform-origin: center;
-    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 200ms var(--motion-ease);
   }
 
   .send-btn:hover:not(:disabled) .send-icon-wrap {
-    transform: rotate(35deg) translate(1px, -1px);
+    transform: translateY(-1px);
   }
 
   .send-btn:active:not(:disabled) {
@@ -1302,17 +1223,12 @@ import ModeSelector from './composer/ModeSelector.svelte';
   }
 
   .mic-btn.is-listening {
-    background: linear-gradient(180deg, #818af0 0%, #717CE2 52%, #626edc 100%);
-    border-color: color-mix(in srgb, #dbe0ff 58%, #5f69c9 42%);
-    color: #ffffff;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.45),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2),
-      0 0 0 1px rgba(226, 231, 255, 0.18);
+    background: var(--primary);
+    color: var(--primary-foreground);
   }
 
   .mic-btn.is-listening:hover {
-    opacity: 0.95;
+    opacity: 0.9;
   }
 
   .mic-lines-wrap {
@@ -1336,43 +1252,36 @@ import ModeSelector from './composer/ModeSelector.svelte';
     50% { height: 14px; opacity: 1; }
   }
 
-  .welcome-headline {
-    margin: 0 0 0.55rem;
-    transform: translateY(-1.9rem);
-    font-size: clamp(2rem, 4.6vw, 3rem);
-    line-height: 1.02;
-    letter-spacing: -0.04em;
-    font-weight: 720;
-    color: var(--text);
-    user-select: text;
-    -webkit-user-select: text;
+  .welcome-brand {
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .welcome-action-btn {
-    border-radius: var(--radius-full);
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    color: var(--text);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
-    transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    box-shadow: var(--surface-shadow);
+    transition: background-color 150ms ease, opacity 150ms ease, transform 150ms var(--motion-ease);
   }
 
   .welcome-action-btn:hover {
-    filter: brightness(1.02);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.035), var(--shadow-sm);
+    background: var(--muted);
   }
 
   .welcome-action-btn:active {
     transform: scale(0.97);
   }
 
-  :global(.dark) .welcome-action-btn {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 rgba(0,0,0,0.18), var(--shadow-xs);
+  .welcome-action-btn.primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: transparent;
+  }
+
+  .welcome-action-btn.primary:hover {
+    opacity: 0.9;
   }
 
   @keyframes shimmer {
@@ -1384,6 +1293,11 @@ import ModeSelector from './composer/ModeSelector.svelte';
     min-height: 26px;
     font-size: 1rem;
     line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce), (max-width: 768px), (pointer: coarse) {
+    .placeholder-shimmer-text { animation: none; }
+    .mic-line { animation: none !important; }
   }
 
   .placeholder-shimmer-text {

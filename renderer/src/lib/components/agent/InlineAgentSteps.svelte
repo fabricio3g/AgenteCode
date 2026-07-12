@@ -1,32 +1,69 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronDown } from 'lucide-svelte';
+  import { ChevronDown, Loader2 } from 'lucide-svelte';
+  import { slide } from 'svelte/transition';
+  import { quintOut } from 'svelte/easing';
   import type { AgentStep } from '$lib/types/chat';
   import ToolCallRow from './ToolCallRow.svelte';
 
-  interface Props { steps: AgentStep[]; status?: string; totalElapsedSeconds?: number }
+  interface Props {
+    steps: AgentStep[];
+    status?: string;
+    totalElapsedSeconds?: number;
+    variant?: 'outline' | 'ghost' | 'muted';
+  }
 
-  let { steps, status = 'idle', totalElapsedSeconds = 0 }: Props = $props();
+  let {
+    steps,
+    status = 'idle',
+    totalElapsedSeconds = 0,
+    variant = 'outline'
+  }: Props = $props();
 
-  const work = $derived(steps.filter((s) =>
-    s.type === 'thinking' || s.type === 'planning' || s.type === 'tool' ||
-    s.type === 'executing' || s.type === 'writing' || s.type === 'reading' ||
-    s.type === 'searching' || s.type === 'preview' || s.type === 'approval'
-  ));
+  const work = $derived(
+    steps.filter(
+      (s) =>
+        s.type === 'thinking' ||
+        s.type === 'planning' ||
+        s.type === 'tool' ||
+        s.type === 'executing' ||
+        s.type === 'writing' ||
+        s.type === 'reading' ||
+        s.type === 'searching' ||
+        s.type === 'preview' ||
+        s.type === 'approval' ||
+        s.type === 'coding'
+    )
+  );
+
   const done = $derived(work.filter((s) => s.status === 'done').length);
-  const running = $derived(work.filter((s) => s.status === 'running').length);
+  const running = $derived(work.filter((s) => s.status === 'running' || s.status === 'pending').length);
   const errors = $derived(work.filter((s) => s.status === 'error').length);
   const isStreaming = $derived(status === 'streaming');
-  let collapsed = $state(false);
-  const MAX = 5;
-  const shown = $derived(collapsed ? work.slice(-MAX) : work);
-  const hidden = $derived(work.length - MAX);
+  const active = $derived(running > 0 || isStreaming);
+
+  let userOpen = $state<boolean | null>(null);
+
+  // assistant-ui ToolGroup: expanded while active / small lists; otherwise collapsible
+  const defaultOpen = $derived(active || work.length <= 5);
+  const open = $derived(userOpen !== null ? userOpen : defaultOpen);
+
+  const count = $derived(work.length);
+  const groupLabel = $derived(`${count} tool ${count === 1 ? 'call' : 'calls'}`);
+
+  function toggle() {
+    userOpen = !open;
+  }
 </script>
 
 {#if isStreaming && !work.length}
   <div class="working">
-    <span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
+    <Loader2 class="size-3 animate-spin" />
+    <span class="aui-shimmer-host">
+      <span>Working…</span>
+      <span class="aui-shimmer" aria-hidden="true">Working…</span>
+    </span>
     {#if totalElapsedSeconds > 0}
       <span class="elapsed">{totalElapsedSeconds.toFixed(1)}s</span>
     {/if}
@@ -34,37 +71,66 @@
 {/if}
 
 {#if work.length}
-  <section class="group">
-    {#if work.length > MAX}
-      <button class="toggle" onclick={() => (collapsed = !collapsed)}>
-        <ChevronDown class="icon {collapsed ? 'flip' : ''}" />
-        {collapsed ? `Show all ${work.length} steps (+${hidden} hidden)` : `Show last ${MAX} of ${work.length} steps`}
-      </button>
+  <section
+    class="aui-tool-group-root"
+    data-variant={variant}
+    data-slot="tool-group-root"
+    data-state={open ? 'open' : 'closed'}
+  >
+    <button
+      type="button"
+      class="aui-tool-group-trigger"
+      data-slot="tool-group-trigger"
+      onclick={toggle}
+    >
+      {#if active}
+        <Loader2 class="size-3 shrink-0 animate-spin" style="animation-duration: 0.6s" />
+      {/if}
+      <span class="aui-tool-group-trigger-label aui-shimmer-host">
+        <span>{groupLabel}</span>
+        {#if active}
+          <span class="aui-shimmer" aria-hidden="true">{groupLabel}</span>
+        {/if}
+      </span>
+      <ChevronDown class={`aui-tool-fallback-chevron size-3 ${open ? '' : 'is-closed'}`} />
+    </button>
+
+    {#if open}
+      <div
+        class="aui-tool-group-content"
+        transition:slide={{ duration: 180, easing: quintOut }}
+        data-slot="tool-group-content"
+      >
+        {#each work as step (step.id)}
+          <ToolCallRow {step} />
+        {/each}
+      </div>
     {/if}
-    <div class="list">
-      {#each shown as step (step.id)}
-        <ToolCallRow {step} />
-      {/each}
-    </div>
-    <div class="summary">
-      {errors ? `${done} steps · ${errors} error` : done ? `${done} step${done === 1 ? '' : 's'}` : `${work.length} step${work.length === 1 ? '' : 's'}`}
+
+    <div class="aui-tool-group-summary">
+      {#if errors}
+        {done} done · {errors} error{errors === 1 ? '' : 's'}
+      {:else if done}
+        {done} step{done === 1 ? '' : 's'}
+      {:else}
+        {count} step{count === 1 ? '' : 's'}
+      {/if}
     </div>
   </section>
 {/if}
 
 <style>
-  .working { display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.4rem; color: var(--text-muted); font-size: 0.72rem; }
-  .dots { display: flex; gap: 3px; }
-  .dot { width: 4px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 40%, transparent); animation: pulse 1.4s ease-in-out infinite; }
-  .dot:nth-child(2) { animation-delay: 200ms; }
-  .dot:nth-child(3) { animation-delay: 400ms; }
-  @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
-  .elapsed { opacity: 0.7; font-variant-numeric: tabular-nums; }
-  .group { display: flex; flex-direction: column; gap: 0.05rem; margin: 0.25rem 0; width: min(46rem, 100%); }
-  .toggle { display: flex; align-items: center; gap: 0.3rem; border: 0; background: transparent; color: var(--text-muted); padding: 0.22rem 0.4rem; font-size: 0.7rem; font-weight: 580; cursor: pointer; border-radius: 0.35rem; }
-  .toggle:hover { color: var(--text-secondary); background: color-mix(in srgb, var(--surface-hover) 50%, transparent); }
-  .toggle .icon { width: 0.75rem; height: 0.75rem; transition: transform 0.15s; }
-  .toggle .icon.flip { transform: rotate(180deg); }
-  .list { display: flex; flex-direction: column; gap: 0.14rem; border: 1px solid color-mix(in srgb, var(--border) 45%, transparent); border-radius: 0.55rem; background: color-mix(in srgb, var(--surface-hover) 24%, transparent); padding: 0.18rem; }
-  .summary { padding: 0.15rem 0.4rem; color: var(--text-muted); font-size: 0.66rem; font-weight: 580; opacity: 0.75; }
+  .working {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.25rem;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+  }
+
+  .elapsed {
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+  }
 </style>

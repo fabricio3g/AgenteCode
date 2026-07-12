@@ -3,20 +3,64 @@
 <script lang="ts">
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
-  import { Wrench, ChevronDown, Loader2, CheckCircle2, AlertCircle, Terminal, Code2 } from 'lucide-svelte';
+  import {
+    AlertCircle,
+    Check,
+    ChevronDown,
+    Loader2,
+    Terminal,
+    XCircle
+  } from 'lucide-svelte';
+  import {
+    formatToolDuration,
+    isCodeToolName,
+    titleCaseToolName,
+    toolStatusLabel,
+    type ToolUiStatus
+  } from '$lib/utils/tool-ui';
 
   interface Props {
     name: string;
-    status?: 'done' | 'running' | 'error' | 'pending' | 'awaiting_approval';
+    status?: ToolUiStatus;
     detail?: string;
     output?: string;
+    error?: string;
+    cancelled?: boolean;
+    onApprove?: () => void;
+    onDeny?: () => void;
   }
 
-  let { name, status = 'running', detail, output }: Props = $props();
+  let {
+    name,
+    status = 'running',
+    detail,
+    output,
+    error,
+    cancelled = false,
+    onApprove,
+    onDeny
+  }: Props = $props();
+
   let open = $state(false);
   let userToggled = $state(false);
+  let runStartedAt = $state<number | null>(null);
+  let elapsedMs = $state<number | undefined>(undefined);
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
-  const isCodeTool = $derived(name === 'run code' || name === 'run_code' || name === 'execute command' || name === 'execute_command');
+  const isCodeTool = $derived(isCodeToolName(name));
+  const displayName = $derived(titleCaseToolName(name));
+  const isRunning = $derived(status === 'running' || status === 'pending');
+  const isApproval = $derived(status === 'awaiting_approval');
+  const isError = $derived(status === 'error');
+  const isCancelled = $derived(cancelled || (isError && /cancel/i.test(error || output || '')));
+
+  const label = $derived(
+    isCancelled
+      ? 'Cancelled tool'
+      : isApproval
+        ? 'Needs approval'
+        : toolStatusLabel(status)
+  );
 
   function toggle() {
     userToggled = true;
@@ -25,176 +69,125 @@
 
   $effect(() => {
     if (!userToggled) {
-      open = status === 'error' || (status === 'running' && isCodeTool);
+      open = isError || isApproval || (isRunning && isCodeTool);
     }
   });
 
-  function titleCase(snake: string): string {
-    return snake
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-  }
+  $effect(() => {
+    if (isRunning) {
+      if (runStartedAt == null) runStartedAt = Date.now();
+      if (elapsedTimer) clearInterval(elapsedTimer);
+      elapsedTimer = setInterval(() => {
+        if (runStartedAt != null) elapsedMs = Date.now() - runStartedAt;
+      }, 200);
+      elapsedMs = runStartedAt != null ? Date.now() - runStartedAt : 0;
+    } else {
+      if (elapsedTimer) {
+        clearInterval(elapsedTimer);
+        elapsedTimer = null;
+      }
+      if (runStartedAt != null && elapsedMs === undefined) {
+        elapsedMs = Date.now() - runStartedAt;
+      }
+    }
+    return () => {
+      if (elapsedTimer) {
+        clearInterval(elapsedTimer);
+        elapsedTimer = null;
+      }
+    };
+  });
 
-  const displayName = $derived(titleCase(name));
+  const durationText = $derived(
+    elapsedMs !== undefined && (isRunning || status === 'done' || isError)
+      ? formatToolDuration(elapsedMs)
+      : ''
+  );
 </script>
 
-<div class="tool-call-block" class:tool-call-code={isCodeTool}>
-  <button class="tool-call-header" onclick={toggle}>
-    {#if isCodeTool}
-      <Code2 class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+<div class="aui-tool-fallback-root" data-slot="tool-fallback-root">
+  <button type="button" class="aui-tool-fallback-trigger" onclick={toggle} data-slot="tool-fallback-trigger">
+    {#if isRunning}
+      <Loader2 class="aui-tool-fallback-trigger-icon is-running" />
+    {:else if isApproval}
+      <AlertCircle class="aui-tool-fallback-trigger-icon" />
+    {:else if isError || isCancelled}
+      <XCircle class="aui-tool-fallback-trigger-icon" />
     {:else}
-      <Wrench class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+      <Check class="aui-tool-fallback-trigger-icon" />
     {/if}
-    <span class="tool-name">{displayName}</span>
-    <span class="tool-badge" class:done={status === 'done'} class:running={status === 'running'} class:error={status === 'error'}>
-      {#if status === 'running'}
-        <Loader2 class="h-3 w-3 animate-spin" />
-      {:else if status === 'done'}
-        <CheckCircle2 class="h-3 w-3" />
-      {:else}
-        <AlertCircle class="h-3 w-3" />
+
+    <span
+      class="aui-shimmer-host"
+      class:aui-tool-fallback-label-cancelled={isCancelled}
+    >
+      <span>
+        {label}: <b>{displayName}</b>
+      </span>
+      {#if isRunning}
+        <span class="aui-shimmer" aria-hidden="true">
+          {label}: <b>{displayName}</b>
+        </span>
       {/if}
     </span>
-    <ChevronDown class={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+
+    {#if durationText}
+      <span class="aui-tool-fallback-duration">{durationText}</span>
+    {/if}
+
+    <ChevronDown class={`aui-tool-fallback-chevron ${open ? '' : 'is-closed'}`} />
   </button>
 
-  {#if open && (detail || output)}
-    <div class="tool-call-body" transition:slide={{ duration: 150, easing: quintOut }}>
-      {#if detail && !isCodeTool}
-        <div class="tool-section">
-          <div class="tool-section-label">Arguments</div>
-          <pre>{detail}</pre>
+  {#if open}
+    <div
+      class="aui-tool-fallback-content"
+      transition:slide={{ duration: 200, easing: quintOut }}
+      data-slot="tool-fallback-content"
+    >
+      {#if isError && (error || output)}
+        <div data-slot="tool-fallback-error">
+          <p class="aui-tool-fallback-error-header">
+            {isCancelled ? 'Cancelled reason:' : 'Error:'}
+          </p>
+          <p class="aui-tool-fallback-error-reason">{error || output}</p>
         </div>
       {/if}
-      {#if output}
-        <div class="tool-section" class:has-gap={!!detail && !isCodeTool}>
-          <div class="tool-section-label">
+
+      {#if detail && !isCodeTool}
+        <div data-slot="tool-fallback-args">
+          <pre class="aui-tool-fallback-args-value">{detail}</pre>
+        </div>
+      {/if}
+
+      {#if isApproval && (onApprove || onDeny)}
+        <div class="aui-tool-fallback-approval" data-slot="tool-fallback-approval">
+          {#if onDeny}
+            <button type="button" class="aui-tool-fallback-approval-btn" onclick={onDeny}>Deny</button>
+          {/if}
+          {#if onApprove}
+            <button type="button" class="aui-tool-fallback-approval-btn primary" onclick={onApprove}>Allow</button>
+          {/if}
+        </div>
+      {/if}
+
+      {#if output && !isError}
+        <div data-slot="tool-fallback-result">
+          <p class="aui-tool-fallback-result-header">
             {#if isCodeTool}
-              <div class="terminal-header">
-                <Terminal class="h-3 w-3" />
-                <span>Output</span>
-              </div>
+              <span class="inline-flex items-center gap-1"><Terminal class="size-3" /> Output</span>
             {:else}
-              Result
+              Result:
             {/if}
-          </div>
-          <pre class:tool-output={!isCodeTool} class:terminal-output={isCodeTool}>{output}</pre>
+          </p>
+          <pre class={isCodeTool ? 'aui-tool-fallback-terminal' : 'aui-tool-fallback-result-content'}>{output}</pre>
+        </div>
+      {/if}
+
+      {#if detail && isCodeTool && !output}
+        <div data-slot="tool-fallback-args">
+          <pre class="aui-tool-fallback-args-value">{detail}</pre>
         </div>
       {/if}
     </div>
   {/if}
 </div>
-
-<style>
-  .tool-call-block {
-    width: 100%;
-    border-radius: var(--radius-md);
-    border: 1px solid transparent;
-    background: transparent;
-    overflow: hidden;
-    margin-top: 0.1rem;
-  }
-  .tool-call-block.tool-call-code {
-    border-color: transparent;
-    background: transparent;
-  }
-  .tool-call-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.35rem 0.45rem;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-size: 0.76rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    transition: color 0.15s ease, background-color 0.15s ease;
-  }
-  .tool-call-header:hover {
-    color: var(--text);
-    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
-  }
-  .tool-name {
-    flex: 1;
-    text-align: left;
-    font-family: var(--font-sans);
-  }
-  .tool-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    border-radius: var(--radius-sm);
-    font-size: 0.6875rem;
-    font-weight: 500;
-  }
-  .tool-badge.done {
-    color: var(--text-muted);
-    background: transparent;
-  }
-  .tool-badge.running {
-    color: var(--text-secondary);
-    background: transparent;
-  }
-  .tool-badge.error {
-    color: var(--error);
-    background: transparent;
-  }
-  .tool-call-body {
-    padding: 0.2rem 0.45rem 0.55rem 1.75rem;
-    border-top: none;
-  }
-  .tool-call-body pre {
-    margin: 0;
-    font-size: 0.72rem;
-    font-family: var(--font-mono);
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0;
-    line-height: 1.5;
-  }
-  .tool-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  .tool-section.has-gap {
-    margin-top: 0.75rem;
-  }
-  .tool-section-label {
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .tool-output {
-    background: transparent;
-    border-radius: var(--radius-sm);
-    max-height: 18rem;
-    overflow: auto;
-  }
-  .terminal-header {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding-bottom: 0.25rem;
-  }
-  .terminal-output {
-    background: var(--code-terminal-bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--code-terminal-text);
-    max-height: 20rem;
-    overflow: auto;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    padding: 0.625rem 0.75rem;
-    font-family: var(--font-mono);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-</style>

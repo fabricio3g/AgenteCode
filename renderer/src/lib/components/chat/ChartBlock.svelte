@@ -17,9 +17,10 @@
     xlabel?: string;
     ylabel?: string;
     raw: string; // raw JSON string from model
+    variant?: 'block' | 'artifact';
   }
 
-  let { type, title, xlabel, ylabel, raw }: Props = $props();
+  let { type, title, xlabel, ylabel, raw, variant = 'block' }: Props = $props();
 
   let svgEl = $state<SVGSVGElement | undefined>(undefined);
   let tooltipEl = $state<HTMLDivElement | undefined>(undefined);
@@ -332,8 +333,10 @@
   }
 </script>
 
-<div class="my-4 rounded-xl bg-[var(--surface-alt)] overflow-hidden">
-  {#if title}
+<div class={variant === 'artifact' ? 'artifact-chart' : 'my-4 rounded-xl bg-[var(--surface-alt)] overflow-hidden'}>
+  {#if variant === 'artifact' && title}
+    <div class="artifact-chart-title">{title}</div>
+  {:else if title}
     <div class="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
       <span class="text-sm font-medium text-[var(--text)]">{title}</span>
       <div class="flex items-center gap-1">
@@ -345,7 +348,7 @@
         </button>
       </div>
     </div>
-  {:else}
+  {:else if variant !== 'artifact'}
     <div class="flex justify-end gap-1 px-3 pt-2">
       <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">
         <Download class="h-3.5 w-3.5" /> SVG
@@ -376,3 +379,19 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .artifact-chart {
+    margin: 0.65rem 0 0;
+    width: min(100%, 42rem);
+    overflow: visible;
+    background: transparent;
+  }
+
+  .artifact-chart-title {
+    margin-bottom: 0.4rem;
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 650;
+  }
+</style>

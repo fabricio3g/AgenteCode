@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { AlertCircle, Download, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
-  import { fade } from 'svelte/transition';
+  import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { parseContentSegments } from '$lib/utils/charts';
@@ -272,7 +272,7 @@
 
     {#if open}
       <Portal className="document-reader-portal">
-        <div class="document-reader-layer" transition:fade={{ duration: 120 }}>
+        <div class="document-reader-layer" transition:motionFade={{ duration: 120 }}>
           <button class="document-reader-scrim" aria-label="Close reader" onclick={closeReader}></button>
         </div>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -282,7 +282,7 @@
           aria-modal="true"
           aria-label={surfaceTitle}
           tabindex="-1"
-          transition:fade={{ duration: 120 }}
+          transition:motionFade={{ duration: 120 }}
           onpointerdown={stop}
         >
           {#if viewerKind(activeDoc) !== 'image'}

@@ -9,24 +9,68 @@ module.exports = {
         mono: ['var(--font-mono)']
       },
       colors: {
+        // Canonical Flaxeo names
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        card: {
+          DEFAULT: 'var(--card)',
+          foreground: 'var(--card-foreground)'
+        },
+        popover: {
+          DEFAULT: 'var(--popover)',
+          foreground: 'var(--popover-foreground)'
+        },
+        primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
+          hover: 'var(--primary-hover)',
+          fg: 'var(--primary-fg)'
+        },
+        secondary: {
+          DEFAULT: 'var(--secondary)',
+          foreground: 'var(--secondary-foreground)'
+        },
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)'
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          foreground: 'var(--accent-foreground)',
+          hover: 'var(--accent-hover)',
+          fg: 'var(--accent-fg)',
+          soft: 'var(--accent-soft)'
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)'
+        },
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        sidebar: {
+          DEFAULT: 'var(--sidebar)',
+          foreground: 'var(--sidebar-foreground)',
+          primary: 'var(--sidebar-primary)',
+          'primary-foreground': 'var(--sidebar-primary-foreground)',
+          accent: 'var(--sidebar-accent)',
+          'accent-foreground': 'var(--sidebar-accent-foreground)',
+          border: 'var(--sidebar-border)',
+          ring: 'var(--sidebar-ring)'
+        },
+
+        // Legacy Chatea aliases
         bg: 'var(--background)',
         fg: 'var(--text)',
-        card: 'var(--surface)',
         surface: 'var(--surface)',
         'surface-hover': 'var(--surface-hover)',
         'surface-active': 'var(--surface-active)',
         'surface-overlay': 'var(--surface-overlay)',
-        muted: 'var(--text-muted)',
         'fg-secondary': 'var(--text-secondary)',
         'fg-tertiary': 'var(--text-tertiary)',
         'fg-muted': 'var(--text-muted)',
-        primary: 'var(--primary)',
-        'primary-hover': 'var(--primary-hover)',
-        'primary-fg': 'var(--primary-fg)',
-        accent: 'var(--accent)',
-        'accent-hover': 'var(--accent-hover)',
-        'accent-fg': 'var(--accent-fg)',
-        'accent-soft': 'var(--accent-soft)',
+        'border-hover': 'var(--border-hover)',
+        'border-active': 'var(--border-active)',
         success: 'var(--success)',
         'success-bg': 'var(--success-bg)',
         'success-border': 'var(--success-border)',
@@ -39,9 +83,6 @@ module.exports = {
         info: 'var(--info)',
         'info-bg': 'var(--info-bg)',
         'info-border': 'var(--info-border)',
-        border: 'var(--border)',
-        'border-hover': 'var(--border-hover)',
-        'border-active': 'var(--border-active)',
         overlay: 'var(--overlay)',
         'code-terminal-bg': 'var(--code-terminal-bg)',
         'code-terminal-text': 'var(--code-terminal-text)',
@@ -64,18 +105,6 @@ module.exports = {
         'accent-yellow': {
           bg: 'var(--accent-yellow-bg)',
           text: 'var(--accent-yellow-text)'
-        },
-        hornero: {
-          50: '#fdf6f0',
-          100: '#fae8d8',
-          200: '#f2d0b3',
-          300: '#e8b88c',
-          400: '#d4a574',
-          500: '#c4956a',
-          600: '#b5845a',
-          700: '#8b6a4e',
-          800: '#5c4033',
-          900: '#3d2b1f'
         }
       },
       borderColor: {
@@ -86,7 +115,9 @@ module.exports = {
         sm: 'var(--shadow-sm)',
         md: 'var(--shadow-md)',
         lg: 'var(--shadow-lg)',
-        xl: 'var(--shadow-xl)'
+        xl: 'var(--shadow-xl)',
+        surface: 'var(--surface-shadow)',
+        'surface-focus': 'var(--surface-shadow-focus)'
       },
       borderRadius: {
         DEFAULT: 'var(--radius-sm)',
@@ -95,6 +126,9 @@ module.exports = {
         lg: 'var(--radius-lg)',
         xl: 'var(--radius-xl)',
         '2xl': 'var(--radius-2xl)'
+      },
+      transitionTimingFunction: {
+        motion: 'var(--motion-ease)'
       },
       letterSpacing: {
         tighter: '-0.02em',

@@ -1,8 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade } from 'svelte/transition';
-  import { flyAndScale } from '$lib/utils/transitions';
+  import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { confirmStore } from '$lib/stores/confirm.svelte';
 
   let confirmBtnEl = $state<HTMLButtonElement | null>(null);
@@ -31,14 +30,13 @@
 
 {#if confirmStore.open && confirmStore.options}
   <div
-    class="modal-backdrop fixed inset-0 z-[200] flex items-center justify-center bg-overlay-light px-4"
+    class="aui-modal-backdrop z-[200]"
     role="presentation"
     onclick={() => confirmStore.cancel()}
-    transition:fade={{ duration: 150 }}
+    transition:motionFade={{ duration: 150 }}
   >
     <div
-      class="modal-surface w-full max-w-sm rounded-xl border border-[var(--border)] p-6"
-      style="background:var(--surface); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);"
+      class="aui-modal-surface max-w-sm"
       transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
       role="dialog"
       aria-modal="true"
@@ -47,24 +45,24 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <h2 id="confirm-title" class="text-lg font-semibold text-[var(--text)]">
-        {confirmStore.options.title}
-      </h2>
-      <p class="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-        {confirmStore.options.message}
-      </p>
-      <div class="mt-5 flex justify-end gap-2">
-        <button
-          type="button"
-          class="cancel-btn rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium transition"
-          onclick={() => confirmStore.cancel()}
-        >
+      <div class="aui-modal-header">
+        <h2 id="confirm-title" class="aui-modal-title">
+          {confirmStore.options.title}
+        </h2>
+      </div>
+      <div class="aui-modal-body !pt-0">
+        <p class="m-0 text-sm leading-6 text-muted-foreground">
+          {confirmStore.options.message}
+        </p>
+      </div>
+      <div class="aui-modal-footer">
+        <button type="button" class="aui-btn aui-btn-ghost" onclick={() => confirmStore.cancel()}>
           {confirmStore.options.cancelLabel || 'Cancel'}
         </button>
         <button
           type="button"
           bind:this={confirmBtnEl}
-          class={`confirm-btn rounded-lg px-4 py-2 text-sm font-medium transition ${confirmStore.options.danger ? 'danger' : ''}`}
+          class="aui-btn {confirmStore.options.danger ? 'aui-btn-danger' : 'aui-btn-primary'}"
           onclick={() => confirmStore.confirm()}
         >
           {confirmStore.options.confirmLabel || 'Confirm'}
@@ -73,41 +71,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  .cancel-btn {
-    background: var(--surface);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-sm);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .cancel-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-    border-color: var(--fg-tertiary);
-  }
-  .confirm-btn {
-    background: var(--primary);
-    color: var(--primary-fg);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-sm);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  }
-  .confirm-btn:hover {
-    opacity: 0.88;
-  }
-  .confirm-btn:active {
-    transform: scale(0.98);
-  }
-  .confirm-btn.danger {
-    background: var(--error);
-    color: white;
-  }
-  .confirm-btn.danger:hover {
-    opacity: 0.88;
-  }
-  .confirm-btn.danger:active {
-    transform: scale(0.98);
-  }
-</style>

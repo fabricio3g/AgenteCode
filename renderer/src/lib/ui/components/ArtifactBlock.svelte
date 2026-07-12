@@ -4,6 +4,7 @@
   import { isSimpleArtifact } from '$lib/utils/preview-builder';
   import { isDataUrlFile, viewerPathFor } from '$lib/utils/artifact-files';
   import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import InlineArtifactPreview from './InlineArtifactPreview.svelte';
   import {
     baseName,
     documentExtension,
@@ -46,6 +47,11 @@
   });
 
   const nonDocumentFileCount = $derived(visibleEntries.filter(([path]) => !isDocumentSurfaceFile(path)).length);
+  const hasWebPreview = $derived.by(() => {
+    if (!artifact || nonDocumentFileCount === 0) return false;
+    if (artifact.inline) return true;
+    return !!artifact.previewHtml || visibleEntries.some(([path]) => !isDocumentSurfaceFile(path) && /\.html?$/i.test(path));
+  });
 </script>
 
 {#if artifact}
@@ -56,7 +62,9 @@
     />
   {/if}
 
-  {#if nonDocumentFileCount > 0 || (!documentDocs.length && isSimple)}
+  {#if hasWebPreview}
+    <InlineArtifactPreview {artifact} />
+  {:else if nonDocumentFileCount > 0 || (!documentDocs.length && isSimple)}
     <div class="artifact-card flex items-center justify-between gap-3 after-preview">
       <div class="flex min-w-0 flex-1 items-center gap-2.5">
         <div class="artifact-icon">

@@ -5,7 +5,6 @@
   import { modelsStore } from '$lib/stores/models.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { themeStore } from '$lib/stores/theme.svelte';
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
@@ -99,7 +98,7 @@
 
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
-  const sidebarIconColor = $derived(themeStore.current === 'dark' ? '#ffffff' : '#0A0A0A');
+  const sidebarIconColor = $derived('currentColor');
   const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : appStore.activeSpace === 'code' ? 'New Project' : $t('sidebar.newChat'));
 
   const projectGroups = $derived.by(() => {
@@ -163,6 +162,24 @@
     appStore.createChat(appStore.activeSpace);
   }
 
+  function onSpaceTabsKeydown(event: KeyboardEvent) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') {
+      return;
+    }
+    event.preventDefault();
+    const ids = spaceTabs.map((t) => t.id);
+    const current = ids.indexOf(appStore.activeSpace);
+    let next = current;
+    if (event.key === 'ArrowRight') next = (current + 1) % ids.length;
+    else if (event.key === 'ArrowLeft') next = (current - 1 + ids.length) % ids.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = ids.length - 1;
+    appStore.setActiveSpace(ids[next]!);
+    queueMicrotask(() => {
+      document.getElementById(`space-tab-${ids[next]}`)?.focus();
+    });
+  }
+
   function exportChat(chat: (typeof appStore.chats)[0]) {
     const date = new Date().toISOString().slice(0, 10);
     const lines: string[] = [`# ${chat.title || 'Chat'}\n\n_Exported ${date}_\n`];
@@ -207,11 +224,16 @@
   });
 </script>
 
-<aside class="sidebar flex h-full w-full flex-col">
-  <div class="flex min-h-0 flex-1 flex-col px-3 pt-0 pb-1">
+<aside class="sidebar flex h-full w-full flex-col bg-sidebar text-sidebar-foreground">
+  <div class="flex min-h-0 flex-1 flex-col px-3 pb-1 pt-3">
 
-    <div class="flex flex-col gap-1.5 pb-3 pt-2">
-      <div class="space-tabs" role="tablist" aria-label="Session type">
+    <div class="flex flex-col gap-1.5 pb-3">
+      <div
+        class="space-tabs"
+        role="tablist"
+        aria-label="Session type"
+        onkeydown={onSpaceTabsKeydown}
+      >
         {#each spaceTabs as tab (tab.id)}
           {@const Icon = tab.icon}
           <button
@@ -219,30 +241,30 @@
             class="space-tab"
             class:active={appStore.activeSpace === tab.id}
             role="tab"
+            id={`space-tab-${tab.id}`}
+            tabindex={appStore.activeSpace === tab.id ? 0 : -1}
             aria-selected={appStore.activeSpace === tab.id}
             onclick={() => appStore.setActiveSpace(tab.id)}
           >
-            <Icon class="space-tab-icon h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            <Icon class="space-tab-icon size-3.5" />
             <span class="space-tab-label">{tab.label}</span>
           </button>
         {/each}
       </div>
       <button
-        class="new-chat-btn flex flex-1 items-center gap-2 px-3 py-[5px] text-[14px] font-medium transition"
+        class="new-chat-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors"
         onclick={createForActiveSpace}
       >
-        <span class="plus-badge flex items-center justify-center">
-          <Plus class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
-        </span>
+        <Plus class="size-4 shrink-0" />
         <span class="btn-label">{newButtonLabel}</span>
       </button>
 
       <button
-        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.artifactSettingsOpen = true; }}
         title="Artifacts"
       >
-        <Puzzle class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <Puzzle class="size-4 shrink-0" />
         <span class="btn-label">Artifacts</span>
       </button>
     </div>
@@ -331,7 +353,7 @@
                           e.stopPropagation();
                           confirmStore.show({
                             title: `Delete ${group.project.rootName}?`,
-                            message: `This deletes the project from Chatea and removes ${group.chats.length} conversation${group.chats.length === 1 ? '' : 's'} inside it. The folder on disk is not deleted.`,
+                            message: `This deletes the project from Flaxeo Chat and removes ${group.chats.length} conversation${group.chats.length === 1 ? '' : 's'} inside it. The folder on disk is not deleted.`,
                             danger: true,
                             onConfirm: () => void appStore.deleteCodeProject(group.project.id)
                           });
@@ -584,21 +606,21 @@
       {/if}
     </div>
 
-    <div class="sidebar-footer px-0.5 py-2">
+    <div class="sidebar-footer border-t border-sidebar-border px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         title="Models"
       >
-        <Boxes class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <Boxes class="size-4 shrink-0" />
         <span class="btn-label">Models</span>
       </button>
       <button
-        class="sidebar-btn flex w-full items-center gap-2 px-3 py-[5px] text-[14px] transition"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
         title="Settings"
       >
-        <Settings class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+        <Settings class="size-4 shrink-0" />
         <span class="btn-label">Settings</span>
       </button>
     </div>
@@ -608,36 +630,37 @@
 
 <style>
   .new-chat-btn {
-    color: var(--text);
+    color: var(--sidebar-foreground);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    border: none;
   }
 
   .space-tabs {
     display: flex;
-    gap: 0.25rem;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
-    padding: 0.2rem;
+    gap: 2px;
+    border-radius: var(--radius-md);
+    background: var(--sidebar-accent);
+    border: 1px solid var(--sidebar-border);
+    padding: 2px;
   }
 
   .space-tab {
     min-width: 0;
     flex: 1 1 0;
-    height: 2.1rem;
+    height: 1.75rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    gap: 0.3rem;
+    border: none;
+    border-radius: calc(var(--radius-md) - 2px);
     background: transparent;
-    color: var(--text-muted);
+    color: var(--muted-foreground);
     font-size: 0.75rem;
-    font-weight: 720;
+    font-weight: 500;
     line-height: 1;
-    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease;
   }
 
   .space-tab-icon {
@@ -645,82 +668,61 @@
   }
 
   .space-tab-label {
-    display: inline-block;
-    max-width: 0;
+    display: inline;
     overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
-    opacity: 0;
-    transform: translateX(-0.25rem);
-    transition: max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .space-tab.active .space-tab-label {
-    max-width: 5rem;
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  .space-tab:hover {
-    background: color-mix(in srgb, var(--surface-hover) 88%, var(--primary) 12%);
-    color: var(--text);
+  .space-tab:hover:not(.active) {
+    color: var(--sidebar-foreground);
+    background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
   }
 
   .space-tab.active {
-    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--border) 70%, var(--text) 16%);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.28),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.16),
-      var(--shadow-xs);
+    background: var(--sidebar-primary);
+    color: var(--sidebar-primary-foreground);
+  }
+
+  .space-tab:focus-visible {
+    outline: 2px solid var(--sidebar-ring);
+    outline-offset: 1px;
   }
 
   .new-chat-btn:hover {
-    background: var(--surface-hover);
-  }
-
-  .new-chat-btn:hover .plus-badge {
-    transform: rotate(-12deg) scale(1.05);
-  }
-
-  .plus-badge {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--surface-hover);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    flex-shrink: 0;
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 
   .btn-label {
-    color: var(--text);
+    color: inherit;
   }
 
   .search-input {
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
-    color: var(--text);
+    background: var(--sidebar-accent);
+    border: 1px solid var(--sidebar-border);
+    color: var(--sidebar-foreground);
   }
 
   .search-input.focused {
-    border-color: var(--border-active);
-    background: var(--surface);
-    box-shadow: 0 0 0 2px var(--accent-soft);
+    border-color: var(--sidebar-ring);
+    background: var(--background);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sidebar-ring) 25%, transparent);
   }
 
   .search-input::placeholder {
-    color: var(--text-muted);
+    color: var(--muted-foreground);
   }
 
   .clear-btn {
-    color: var(--text-muted);
+    color: var(--muted-foreground);
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
   }
 
   .clear-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
+    color: var(--sidebar-foreground);
+    background: var(--sidebar-accent);
   }
 
   .group-label {
@@ -732,33 +734,31 @@
     font-family: inherit;
   }
 
-  .group-label:focus,
-  .group-label:focus-visible,
-  .group-label:active {
-    border: 0;
-    outline: none;
-    box-shadow: none;
-    background: transparent;
-  }
-
   .group-label:hover {
-    color: var(--text-secondary);
+    color: var(--sidebar-foreground);
   }
 
   .chat-item {
-    color: var(--text);
+    color: var(--muted-foreground);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    transition: all 0.15s ease;
+    border: none;
+    border-radius: var(--radius-md);
+    transition: background-color 150ms ease, color 150ms ease;
   }
 
   .chat-item:hover {
-    background: var(--surface-hover);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 
   .chat-item.is-active {
-    background: var(--surface-hover);
+    background: var(--sidebar-primary);
+    color: var(--sidebar-primary-foreground);
+  }
+
+  .chat-item.is-active .chat-title,
+  .chat-item.is-active .menu-btn {
+    color: inherit;
   }
 
   .project-group {
@@ -771,11 +771,11 @@
     align-items: center;
     gap: 0.25rem;
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
   }
 
   .project-header.active {
-    color: var(--text);
+    color: var(--sidebar-foreground);
   }
 
   .project-toggle {
@@ -794,8 +794,8 @@
 
   .project-toggle:hover,
   .project-new:hover {
-    background: var(--surface-hover);
-    color: var(--text);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 
   .project-name {
@@ -804,12 +804,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.88rem;
-    font-weight: 680;
+    font-size: 0.875rem;
+    font-weight: 500;
   }
 
   .project-count {
-    color: var(--text-muted);
+    color: var(--muted-foreground);
     font-size: 0.68rem;
   }
 
@@ -820,19 +820,19 @@
     width: 1.55rem;
     height: 1.55rem;
     border: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     background: transparent;
-    color: var(--text-muted);
+    color: var(--muted-foreground);
   }
 
   .project-chats {
     margin-left: 1.45rem;
     padding-left: 0.45rem;
-    border-left: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    border-left: 1px solid var(--sidebar-border);
   }
 
   .project-chat {
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
   }
 
   .project-menu {
@@ -842,57 +842,50 @@
   .chat-rename-input {
     height: 30px;
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--surface-hover) 70%, var(--surface));
-    color: var(--text);
+    border: 1px solid var(--sidebar-border);
+    background: var(--background);
+    color: var(--sidebar-foreground);
     font-size: 14px;
     font-weight: 500;
     line-height: 1.2;
     padding: 0 10px;
     outline: none;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
-  }
-
-  .chat-rename-input::selection {
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
   }
 
   .chat-rename-input:focus {
-    border-color: var(--border-active);
-    background: var(--surface);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: var(--sidebar-ring);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sidebar-ring) 25%, transparent);
   }
 
   .menu-btn {
-    color: var(--text-muted);
+    color: inherit;
+    opacity: 0.7;
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
   }
 
   .menu-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-    border-color: var(--border);
+    opacity: 1;
+    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
   }
 
   .chat-menu {
-    background: var(--surface-overlay);
+    background: var(--popover);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--shadow-lg);
     padding: 4px;
     border-radius: var(--radius-lg);
   }
 
   .menu-item {
-    color: var(--text);
+    color: var(--foreground);
     border-radius: var(--radius-sm);
-    border: 1px solid transparent;
+    border: none;
   }
 
   .menu-item:hover {
-    background: var(--surface-hover);
-    border-color: var(--border);
+    background: var(--muted);
   }
 
   .menu-item.danger {
@@ -901,42 +894,30 @@
 
   .menu-item.danger:hover {
     background: var(--error-bg);
-    border-color: var(--error-border);
   }
 
   .empty-icon {
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
+    background: var(--sidebar-accent);
+    border: 1px solid var(--sidebar-border);
     border-radius: var(--radius-md);
+    color: var(--muted-foreground);
   }
 
   .sidebar-footer {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.125rem;
     padding-top: 0.5rem;
   }
 
   .sidebar-btn {
-    color: var(--text);
+    color: var(--muted-foreground);
     background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    border: none;
   }
 
   .sidebar-btn:hover {
-    background: var(--surface-hover);
-  }
-
-  .sidebar-btn.is-active {
-    background: var(--surface-hover);
-  }
-
-  :global(.sidebar-btn svg) {
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  :global(.sidebar-btn:hover svg) {
-    transform: rotate(-8deg);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 </style>

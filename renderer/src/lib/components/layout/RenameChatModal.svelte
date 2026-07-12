@@ -1,8 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { fade } from 'svelte/transition';
-  import { flyAndScale } from '$lib/utils/transitions';
+  import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { t } from 'svelte-i18n';
   import { Pencil, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -19,7 +18,10 @@
   let inputEl = $state<HTMLInputElement | undefined>(undefined);
 
   $effect(() => {
-    setTimeout(() => { inputEl?.select(); inputEl?.focus(); }, 50);
+    setTimeout(() => {
+      inputEl?.select();
+      inputEl?.focus();
+    }, 50);
   });
 
   function commit() {
@@ -31,7 +33,10 @@
   }
 
   function handleKey(e: KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    }
     if (e.key === 'Escape') onClose();
   }
 </script>
@@ -41,38 +46,33 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="modal-backdrop fixed inset-0 z-[300] flex items-center justify-center px-4"
+  class="aui-modal-backdrop z-[300]"
   role="dialog"
   aria-modal="true"
-  transition:fade={{ duration: 150 }}
-  onclick={e => { if (e.target === e.currentTarget) onClose(); }}
+  transition:motionFade={{ duration: 150 }}
+  onclick={(e) => {
+    if (e.target === e.currentTarget) onClose();
+  }}
 >
   <div
-    class="modal-surface w-full max-w-sm overflow-hidden rounded-2xl"
+    class="aui-modal-surface max-w-sm"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
-    onclick={e => e.stopPropagation()}
+    onclick={(e) => e.stopPropagation()}
   >
-    <!-- Header -->
-    <div class="modal-header">
+    <div class="aui-modal-header">
       <div class="flex items-center gap-2.5">
-        <div class="modal-icon">
-          <Pencil class="h-4 w-4" />
+        <div class="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <Pencil class="size-4" />
         </div>
-        <h2 class="modal-title">{$t('sidebar.rename')}</h2>
+        <h2 class="aui-modal-title">{$t('sidebar.rename')}</h2>
       </div>
-      <button
-        type="button"
-        class="close-btn"
-        onclick={onClose}
-        aria-label={$t('common.close')}
-      >
-        <X class="h-4 w-4" />
+      <button type="button" class="aui-icon-button size-8" onclick={onClose} aria-label={$t('common.close')}>
+        <X class="size-4" />
       </button>
     </div>
 
-    <!-- Body -->
-    <div class="modal-body">
-      <label class="input-label" for="rename-chat-input">
+    <div class="aui-modal-body !pt-0">
+      <label class="mb-1.5 block text-xs font-medium text-muted-foreground" for="rename-chat-input">
         {$t('chat.chatName')}
       </label>
       <input
@@ -82,176 +82,16 @@
         type="text"
         maxlength="120"
         placeholder={$t('chat.enterNamePlaceholder')}
-        class="input-field"
+        class="aui-input"
       />
-      <p class="char-count">{value.length}/120</p>
+      <p class="mt-1.5 text-right text-xs text-muted-foreground">{value.length}/120</p>
     </div>
 
-    <!-- Footer -->
-    <div class="modal-footer">
-      <button
-        type="button"
-        class="btn btn-secondary"
-        onclick={onClose}
-      >{$t('chat.cancel')}</button>
-      <button
-        type="button"
-        class="btn btn-primary"
-        onclick={commit}
-        disabled={!value.trim()}
-      >{$t('sidebar.rename')}</button>
+    <div class="aui-modal-footer">
+      <button type="button" class="aui-btn aui-btn-ghost" onclick={onClose}>{$t('chat.cancel')}</button>
+      <button type="button" class="aui-btn aui-btn-primary" onclick={commit} disabled={!value.trim()}>
+        {$t('sidebar.rename')}
+      </button>
     </div>
   </div>
 </div>
-
-<style>
-  .modal-backdrop {
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .modal-surface {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-xl);
-    border-radius: var(--radius-xl);
-  }
-
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .modal-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
-  }
-
-  .modal-title {
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--text);
-    font-family: var(--font-serif);
-    letter-spacing: -0.01em;
-  }
-
-  .close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.375rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid transparent;
-    transition: all 0.12s;
-  }
-
-  .close-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-    border-color: var(--border);
-  }
-
-  .modal-body {
-    padding: 1.25rem;
-  }
-
-  .input-label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    color: var(--text-muted);
-  }
-
-  .input-field {
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--surface-hover);
-    color: var(--text);
-    font-size: 0.9375rem;
-    outline: none;
-    transition: border-color 0.12s;
-  }
-
-  .input-field::placeholder {
-    color: var(--text-muted);
-  }
-
-  .input-field:focus {
-    border-color: var(--border-hover);
-  }
-
-  .char-count {
-    margin-top: 0.5rem;
-    font-size: 0.75rem;
-    text-align: right;
-    color: var(--text-muted);
-  }
-
-  .modal-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    padding: 1rem 1.25rem;
-    border-top: 1px solid var(--border);
-  }
-
-  .btn {
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: all 0.12s;
-  }
-
-  .btn-secondary {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid var(--border);
-  }
-
-  .btn-secondary:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-    border-color: var(--border-hover);
-  }
-
-  .btn-primary {
-    color: var(--primary-fg);
-    background: var(--primary);
-    border: 1px solid var(--border-hover);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  }
-
-  .btn-primary:hover {
-    opacity: 0.88;
-  }
-
-  .btn-primary:active {
-    transform: scale(0.98);
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .btn-primary:disabled:active {
-    transform: none;
-  }
-</style>

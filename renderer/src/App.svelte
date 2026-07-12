@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import AppShell from '$lib/components/layout/AppShell.svelte';
+  import { initMotion } from '$lib/utils/motion.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
@@ -22,6 +23,7 @@
   ];
 
   onMount(async () => {
+    initMotion();
     await i18nReady;
 
     const bypassTimer = window.setTimeout(() => {
@@ -107,21 +109,21 @@
   .startup-loading-text {
     position: relative;
     z-index: 1;
-    font-size: clamp(1.8rem, 4.4vw, 3.5rem);
-    font-weight: 700;
-    line-height: 1.1;
-    color: var(--text-secondary);
+    font-size: clamp(1.4rem, 3.2vw, 2.25rem);
+    font-weight: 600;
+    line-height: 1.15;
+    color: var(--muted-foreground);
     letter-spacing: -0.02em;
     text-align: center;
   }
 
   .text-shimmer {
-    background: linear-gradient(90deg, var(--text-muted) 10%, var(--text) 50%, var(--text-muted) 90%);
-    background-size: 220% 100%;
+    background: linear-gradient(90deg, var(--muted-foreground) 25%, var(--foreground) 45%, var(--muted-foreground) 65%);
+    background-size: 300% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: startupShimmer 1.9s linear infinite;
+    animation: startupShimmer 2.8s ease-in-out infinite;
   }
 
   @keyframes startupDotsDrift {
@@ -132,5 +134,10 @@
   @keyframes startupShimmer {
     from { background-position: 200% 0; }
     to { background-position: -20% 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce), (max-width: 768px), (pointer: coarse) {
+    .startup-dots-layer { animation: none; }
+    .text-shimmer { animation: none; background: none; -webkit-text-fill-color: var(--text-muted); }
   }
 </style>

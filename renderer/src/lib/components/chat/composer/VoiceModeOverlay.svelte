@@ -135,7 +135,7 @@
   }
 
   .pulse-ring.active {
-    border-color: color-mix(in srgb, #717CE2 45%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 45%, transparent);
     animation: pulseOut 2s ease-out infinite;
   }
 

@@ -35,7 +35,6 @@
     }
   }
 
-  const composerCenterShift = $derived(appStore.sidebarOpen ? 134 : 26);
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
 
@@ -56,93 +55,82 @@
 </script>
 
 <div
-  class="titlebar-row flex h-8 shrink-0 select-none"
-  style="-webkit-app-region: drag;"
+  class="titlebar-row titlebar-drag flex h-9 shrink-0 select-none border-b border-border bg-background"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
-  <div class="titlebar-left flex min-w-0 flex-1 items-center gap-2" style="{isMac ? 'padding-left: 78px;' : ''}">
-    <div class="titlebar-icon flex h-7 w-7 items-center justify-center">
-      <img src="/app-icon.svg" alt="Chatea" class="h-5 w-5" draggable="false" />
-    </div>
-    <Tooltip label="Search conversations">
-      <button
-        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
-        onclick={() => (appStore.chatSearchOpen = true)}
-        aria-label="Search chats"
-        style="-webkit-app-region: no-drag"
-      >
-        <Search class="h-4 w-4" />
-      </button>
-    </Tooltip>
-    <Tooltip label="LLM settings">
-      <button
-        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
-        onclick={() => (appStore.llmDrawerOpen = true)}
-        aria-label="LLM settings"
-        style="-webkit-app-region: no-drag"
-      >
-        <SlidersHorizontal class="h-4 w-4" />
-      </button>
-    </Tooltip>
+  <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
     {#if appStore.sidebarOpen}
       <Tooltip label="Hide sidebar">
         <button
-          class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+          class="aui-icon-button size-8 titlebar-no-drag"
           onclick={() => (appStore.sidebarOpen = false)}
           aria-label="Hide sidebar"
-          style="-webkit-app-region: no-drag"
         >
-          <PanelLeftClose class="h-4 w-4" />
+          <PanelLeftClose class="size-4" />
         </button>
       </Tooltip>
     {:else}
       <Tooltip label="Show sidebar">
         <button
-          class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+          class="aui-icon-button size-8 titlebar-no-drag"
           onclick={() => (appStore.sidebarOpen = true)}
           aria-label="Show sidebar"
-          style="-webkit-app-region: no-drag"
         >
-          <PanelLeftOpen class="h-4 w-4" />
+          <PanelLeftOpen class="size-4" />
         </button>
       </Tooltip>
     {/if}
+    <Tooltip label="Search conversations">
+      <button
+        class="aui-icon-button size-8 titlebar-no-drag"
+        onclick={() => (appStore.chatSearchOpen = true)}
+        aria-label="Search chats"
+      >
+        <Search class="size-4" />
+      </button>
+    </Tooltip>
+    <Tooltip label="LLM settings">
+      <button
+        class="aui-icon-button size-8 titlebar-no-drag"
+        onclick={() => (appStore.llmDrawerOpen = true)}
+        aria-label="LLM settings"
+      >
+        <SlidersHorizontal class="size-4" />
+      </button>
+    </Tooltip>
   </div>
 
-  <div
-    class="titlebar-center flex min-w-0 flex-1 items-center justify-center gap-2 px-3"
-    style={`-webkit-app-region: no-drag; margin-left: ${composerCenterShift}px;`}
-  >
+  <div class="titlebar-center titlebar-no-drag flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3">
     <ModelSwitcher />
     <Tooltip label="Open Models">
       <button
-        class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+        class="aui-icon-button size-8"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         aria-label="Open Models"
       >
-        <ExternalLink class="h-4 w-4" />
+        <ExternalLink class="size-4" />
       </button>
     </Tooltip>
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
     {#if isMac}
-      <div class="traffic-lights flex items-center gap-2 pl-3" style="-webkit-app-region: no-drag">
+      <div class="traffic-lights titlebar-no-drag flex items-center gap-1.5 pl-3">
         <div class="relative flex items-center">
           <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
             <button
               bind:this={downloadBtnEl}
-              class="titlebar-btn download-btn relative flex h-7 w-7 items-center justify-center transition"
+              class="aui-icon-button download-btn relative size-8"
               class:is-active={downloadsStore.hasActive}
               onclick={toggleDownloads}
               aria-label="Downloads"
             >
               {#if downloadsStore.hasActive}
-                <Loader2 class="h-4 w-4 animate-spin" />
+                <Loader2 class="size-4 animate-spin" />
                 <span class="download-badge">{downloadsStore.activeCount}</span>
               {:else}
-                <Download class="h-4 w-4" />
+                <Download class="size-4" />
               {/if}
             </button>
           </Tooltip>
@@ -154,14 +142,14 @@
         </div>
         <Tooltip label="Toggle theme" position="left">
           <button
-            class="titlebar-btn flex h-7 w-7 items-center justify-center transition"
+            class="aui-icon-button size-8"
             onclick={() => themeStore.toggle()}
             aria-label="Toggle theme"
           >
             {#if themeStore.current === 'dark'}
-              <SunMedium class="h-4 w-4" />
+              <SunMedium class="size-4" />
             {:else}
-              <MoonStar class="h-4 w-4" />
+              <MoonStar class="size-4" />
             {/if}
           </button>
         </Tooltip>
@@ -170,21 +158,21 @@
         <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
       </div>
     {:else}
-      <div class="win-controls flex h-full items-center" style="-webkit-app-region: no-drag">
+      <div class="win-controls titlebar-no-drag flex h-full items-center">
         <div class="relative flex items-center">
           <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
             <button
               bind:this={downloadBtnEl}
-              class="titlebar-btn download-btn relative mr-1 flex h-7 w-7 items-center justify-center transition"
+              class="aui-icon-button download-btn relative mr-0.5 size-8"
               class:is-active={downloadsStore.hasActive}
               onclick={toggleDownloads}
               aria-label="Downloads"
             >
               {#if downloadsStore.hasActive}
-                <Loader2 class="h-4 w-4 animate-spin" />
+                <Loader2 class="size-4 animate-spin" />
                 <span class="download-badge">{downloadsStore.activeCount}</span>
               {:else}
-                <Download class="h-4 w-4" />
+                <Download class="size-4" />
               {/if}
             </button>
           </Tooltip>
@@ -196,14 +184,14 @@
         </div>
         <Tooltip label="Toggle theme" position="left">
           <button
-            class="titlebar-btn flex h-7 w-7 items-center justify-center transition mr-1"
+            class="aui-icon-button mr-0.5 size-8"
             onclick={() => themeStore.toggle()}
             aria-label="Toggle theme"
           >
             {#if themeStore.current === 'dark'}
-              <SunMedium class="h-4 w-4" />
+              <SunMedium class="size-4" />
             {:else}
-              <MoonStar class="h-4 w-4" />
+              <MoonStar class="size-4" />
             {/if}
           </button>
         </Tooltip>
@@ -236,70 +224,35 @@
   .titlebar-row {
     display: flex;
     width: 100%;
-    background: var(--titlebar-bg, var(--surface));
-    box-shadow: none;
   }
 
   .titlebar-left {
-    background: var(--titlebar-bg, var(--surface));
     flex-shrink: 0;
-    padding-left: 14px;
-    gap: 0;
-  }
-
-  .titlebar-icon {
-    flex-shrink: 0;
-    color: var(--text);
-  }
-
-  .titlebar-btn {
-    color: var(--text);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    flex-shrink: 0;
-    box-shadow: none;
-  }
-
-  .titlebar-btn:hover,
-  .titlebar-btn.is-active {
-    color: var(--text);
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    border-color: transparent;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
   }
 
   .download-badge {
     position: absolute;
-    right: -3px;
-    top: -3px;
+    right: -2px;
+    top: -2px;
     min-width: 14px;
     height: 14px;
     padding: 0 3px;
     border-radius: 999px;
-    background: var(--primary, #717CE2);
-    color: var(--primary-fg, #fff);
+    background: var(--sidebar-primary);
+    color: var(--sidebar-primary-foreground);
     font-size: 9px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 14px;
     text-align: center;
   }
 
-  .titlebar-center {
-    background: var(--titlebar-bg, var(--surface));
-    transition: margin-left 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
   .titlebar-right {
-    background: var(--titlebar-bg, var(--surface));
     min-width: 0;
-    border-bottom-right-radius: 8px;
   }
 
   .dot {
-    width: 12px; height: 12px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     border: none;
     cursor: default;
@@ -324,62 +277,30 @@
   .dot-minimize { background: #ffbd2e; box-shadow: 0 0 0 0.5px rgba(0,0,0,.12); }
   .dot-maximize { background: #28c840; box-shadow: 0 0 0 0.5px rgba(0,0,0,.12); }
 
-  :global(.dark) .dot-close   { background: #ff5f57; box-shadow: 0 0 0 0.5px rgba(255,255,255,.15); }
-  :global(.dark) .dot-minimize { background: #ffbd2e; box-shadow: 0 0 0 0.5px rgba(255,255,255,.15); }
-  :global(.dark) .dot-maximize { background: #28c840; box-shadow: 0 0 0 0.5px rgba(255,255,255,.15); }
-
   .dot-close::after    { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 1.5l5 5M6.5 1.5l-5 5' stroke='%234d0000' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
   .dot-minimize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4h5' stroke='%23593000' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
   .dot-maximize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4.5l2.5-3 2.5 3M1.5 3.5l2.5 3 2.5-3' stroke='%230d3d00' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
-  :global(.dark) .dot-close::after    { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 1.5l5 5M6.5 1.5l-5 5' stroke='%23ffcccc' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
-  :global(.dark) .dot-minimize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4h5' stroke='%23ffdd99' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
-  :global(.dark) .dot-maximize::after { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4.5l2.5-3 2.5 3M1.5 3.5l2.5 3 2.5-3' stroke='%2399ff99' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-
-  .win-controls { margin-right: 0; }
-
   .win-btn {
-    display: flex; align-items: center; justify-content: center;
-    width: 46px; height: 100%;
-    border: none; background: transparent; cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 100%;
+    border: none;
+    background: transparent;
+    cursor: default;
     transition: background 0.1s;
-    color: var(--text);
+    color: var(--sidebar-foreground);
     box-shadow: none;
   }
 
-  :global(.dark) .titlebar-icon,
-  :global(.dark) .titlebar-btn,
-  :global(.dark) .win-btn {
-    color: #ffffff;
-  }
-
-  :global(.dark) .titlebar-icon svg,
-  :global(.dark) .titlebar-btn svg,
-  :global(.dark) .win-btn svg {
-    color: #ffffff;
-  }
-
   .win-btn:hover {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(242, 242, 242, 0.72), rgba(218, 218, 218, 0.58), rgba(238, 238, 238, 0.68)) border-box;
-    color: var(--text);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.025), var(--shadow-xs);
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
   }
 
   .win-btn-close:hover {
-    background: #e81123 !important;
-    color: white !important;
-  }
-
-  :global(.dark) .titlebar-btn:hover,
-  :global(.dark) .win-btn:hover {
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.32), rgba(255, 255, 255, 0.12)) border-box;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 rgba(0,0,0,0.18), var(--shadow-xs);
-  }
-  :global(.dark) .win-btn-close:hover {
     background: #e81123 !important;
     color: white !important;
   }

@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
-  import { fade, fly } from 'svelte/transition';
+  import { motionFade, motionFly } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { openWebviewer } from '$lib/services/search';
 
@@ -32,13 +32,13 @@
   <button
     class="absolute inset-0 h-full w-full bg-overlay"
     aria-label="Close source search"
-    transition:fade={{ duration: 160 }}
+    transition:motionFade={{ duration: 160 }}
     onclick={closeSidebar}
   ></button>
 
   <aside
     class="absolute right-0 top-0 h-full w-full max-w-[420px] border-l border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-xl)]"
-    transition:fly={{ x: 24, duration: 220 }}
+    transition:motionFly={{ x: 24, duration: 220 }}
   >
     <div class="flex h-full flex-col">
       <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">

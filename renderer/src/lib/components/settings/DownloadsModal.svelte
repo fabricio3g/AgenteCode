@@ -80,31 +80,32 @@
   const hasFinished = $derived(downloadsStore.jobs.some((j) => !['starting', 'running'].includes(j.status)));
 </script>
 
-<div class="downloads-panel flex max-h-[60vh] w-[380px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--background)] shadow-xl" transition:flyAndScale={{ y: -4, start: 0.97, duration: 150}}>
+<div class="aui-menu downloads-panel flex max-h-[60vh] w-[380px] flex-col overflow-hidden !p-0" transition:flyAndScale={{ y: -4, start: 0.97, duration: 150}}>
   <!-- Header -->
-  <div class="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-5 py-4">
-    <h3 class="flex items-center gap-2 text-base font-semibold text-[var(--text)]">
-      <Download class="h-4 w-4" />
+  <div class="flex items-center justify-between px-4 py-3">
+    <h3 class="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <Download class="size-4" />
       {#if activeCount > 0}
         Downloads ({activeCount} active)
       {:else}
         Downloads
       {/if}
       {#if activeCount > 0}
-        <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--primary)] px-1.5 text-[11px] font-semibold text-primary-fg">{activeCount}</span>
+        <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">{activeCount}</span>
       {/if}
     </h3>
     <button
-      class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+      type="button"
+      class="aui-icon-button size-8"
       onclick={() => (appStore.downloadsOpen = false)}
       aria-label="Close downloads"
     >
-      <X class="h-3.5 w-3.5" />
+      <X class="size-3.5" />
     </button>
   </div>
 
   <!-- Toolbar -->
-  <div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3 text-xs text-[var(--text-tertiary)]">
+  <div class="flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
     <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
     <div class="flex items-center gap-2">
       <button
