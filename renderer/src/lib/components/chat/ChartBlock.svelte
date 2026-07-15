@@ -337,7 +337,7 @@
   {#if variant === 'artifact' && title}
     <div class="artifact-chart-title">{title}</div>
   {:else if title}
-    <div class="flex items-center justify-between px-4 py-2 border-b border-[var(--border)]">
+    <div class="flex items-center justify-between border-b border-border/60 px-4 py-2">
       <span class="text-sm font-medium text-[var(--text)]">{title}</span>
       <div class="flex items-center gap-1">
         <button onclick={downloadSvg} class="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors">

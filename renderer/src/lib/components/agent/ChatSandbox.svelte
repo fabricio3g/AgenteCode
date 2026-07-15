@@ -499,70 +499,74 @@
   });
 </script>
 
-<div class="sandbox-shell flex h-full w-full flex-col overflow-hidden bg-[var(--surface)]">
-  <div class="sandbox-topbar flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-3">
+<div class="sandbox-shell flex h-full w-full flex-col overflow-hidden bg-background">
+  <div class="sandbox-topbar flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3">
     <div class="min-w-0 flex-1">
-      <div class="truncate text-xs font-semibold text-[var(--text)]">{artifact?.title || 'Sandbox'}</div>
-      <div class="text-[10px] text-[var(--text-muted)]">{visibleFileCount} file{visibleFileCount !== 1 ? 's' : ''}{#if hasPreview} · preview ready{/if}</div>
+      <div class="truncate text-xs font-semibold text-foreground">{artifact?.title || 'Sandbox'}</div>
+      <div class="text-[10px] text-muted-foreground">{visibleFileCount} file{visibleFileCount !== 1 ? 's' : ''}{#if hasPreview} · preview ready{/if}</div>
     </div>
 
     <div class="flex items-center gap-0.5">
       {#if hasPreview}
         <button
-          class={`rounded p-1 transition ${activePane === 'code' ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          type="button"
+          class="aui-icon-button size-7 {activePane === 'code' ? 'bg-muted text-foreground' : ''}"
           onclick={() => (activePane = 'code')}
           title="Code"
-        ><Code class="h-3.5 w-3.5" /></button>
+        ><Code class="size-3.5" /></button>
         <button
-          class={`rounded p-1 transition ${activePane === 'preview' ? 'bg-[var(--surface-hover)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}`}
+          type="button"
+          class="aui-icon-button size-7 {activePane === 'preview' ? 'bg-muted text-foreground' : ''}"
           onclick={() => (activePane = 'preview')}
           title="Preview"
-        ><Eye class="h-3.5 w-3.5" /></button>
+        ><Eye class="size-3.5" /></button>
       {/if}
     </div>
 
     <div class="flex items-center gap-0.5">
-      <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
-        <Download class="h-3.5 w-3.5" />
+      <button type="button" class="aui-icon-button size-7 disabled:opacity-40" onclick={downloadAsZip} title="Download ZIP" disabled={downloading || (!fileList.length && !artifact?.previewHtml)}>
+        <Download class="size-3.5" />
       </button>
       {#if selectedPath}
-        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={downloadSelectedFile} title="Download selected file">
-          <ExternalLink class="h-3.5 w-3.5" />
+        <button type="button" class="aui-icon-button size-7" onclick={downloadSelectedFile} title="Download selected file">
+          <ExternalLink class="size-3.5" />
         </button>
       {/if}
       {#if activePane === 'code' && !editing && !selectedIsBinary}
-        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={startEdit} title="Edit file">
-          <Pencil class="h-3.5 w-3.5" />
+        <button type="button" class="aui-icon-button size-7" onclick={startEdit} title="Edit file">
+          <Pencil class="size-3.5" />
         </button>
       {/if}
       {#if activePane === 'code' && !selectedIsBinary}
-        <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={copyContent} title="Copy">
-          {#if copied}<Check class="h-3.5 w-3.5 text-[var(--text)]" />{:else}<Copy class="h-3.5 w-3.5" />{/if}
+        <button type="button" class="aui-icon-button size-7" onclick={copyContent} title="Copy">
+          {#if copied}<Check class="size-3.5 text-foreground" />{:else}<Copy class="size-3.5" />{/if}
         </button>
       {/if}
-      <button class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (appStore.sandboxOpen = false)} title="Close">
-        <X class="h-3.5 w-3.5" />
+      <button type="button" class="aui-icon-button size-7" onclick={() => (appStore.sandboxOpen = false)} title="Close">
+        <X class="size-3.5" />
       </button>
     </div>
   </div>
 
   <div class="flex min-h-0 flex-1 overflow-hidden">
     {#if fileList.length > 0}
-      <div class="sandbox-sidebar flex w-48 shrink-0 flex-col overflow-y-auto border-r border-[var(--border)]">
-        <div class="sandbox-sidebar-actions flex items-center gap-0.5 px-2 py-1.5 border-b border-[var(--border)]">
+      <div class="sandbox-sidebar flex w-48 shrink-0 flex-col overflow-y-auto border-r border-border/60 bg-muted/20">
+        <div class="sandbox-sidebar-actions flex items-center gap-0.5 px-2 py-1.5">
           <button
-            class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+            type="button"
+            class="aui-icon-button size-7"
             onclick={() => openNewFileModal()}
             title="New file"
           >
-            <Plus class="h-3.5 w-3.5" />
+            <Plus class="size-3.5" />
           </button>
           <button
-            class="rounded p-1 text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+            type="button"
+            class="aui-icon-button size-7"
             onclick={() => openNewFolderModal()}
             title="New folder"
           >
-            <Folder class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+            <Folder class="size-3.5" />
           </button>
         </div>
         <div class="flex-1 overflow-y-auto py-1.5">
@@ -581,30 +585,30 @@
 
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       {#if openTabs.length > 0 && activePane === 'code'}
-        <div class="sandbox-tabbar flex items-end overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-hover)]" style="min-height:33px">
+        <div class="sandbox-tabbar flex items-end overflow-x-auto border-b border-border/60 bg-muted/40" style="min-height:33px">
           {#each openTabs as tab}
-            <div class="sandbox-tab group relative flex shrink-0 items-center border-r border-[var(--border)] {selectedPath === tab ? 'is-active bg-[var(--surface)]' : 'hover:bg-[var(--surface)]'}" style="height:33px">
+            <div class="sandbox-tab group relative flex shrink-0 items-center {selectedPath === tab ? 'is-active bg-background' : 'hover:bg-background/60'}" style="height:33px">
               {#if selectedPath === tab}
-                <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-[var(--text)]"></div>
+                <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground"></div>
               {/if}
               <button
                 type="button"
-                class="sandbox-tab-button flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text)]'}"
+                class="sandbox-tab-button flex h-full items-center gap-1.5 pl-3 pr-1 text-[11px] {selectedPath === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}"
                 onclick={() => {
                   activePane = 'code';
                   openTab(tab);
                 }}
               >
-                <span class="file-icon-tab"><svelte:component this={getFileIconComponent(tab)} class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" /></span>
+                <span class="file-icon-tab"><svelte:component this={getFileIconComponent(tab)} class="size-3.5 shrink-0 text-muted-foreground" /></span>
                 <span class="max-w-[100px] truncate">{tab.split('/').pop()}</span>
               </button>
               <button
                 type="button"
-                class="mr-1.5 ml-0.5 flex shrink-0 items-center rounded p-0.5 text-[var(--text-tertiary)] opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                class="aui-icon-button mr-1 size-6 opacity-0 group-hover:opacity-70 hover:!opacity-100"
                 onclick={(e) => { e.stopPropagation(); closeTab(tab); }}
                 aria-label="Close {tab}"
               >
-                <X class="h-3 w-3" />
+                <X class="size-3" />
               </button>
             </div>
           {/each}
@@ -618,17 +622,11 @@
       {:else if activePane === 'code'}
         {#if editing}
           <div class="flex h-full flex-col">
-            <div class="sandbox-code-header flex h-8 shrink-0 items-center justify-between border-b border-[var(--border)] px-4">
-              <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath} (editing)</span>
+            <div class="sandbox-code-header flex h-8 shrink-0 items-center justify-between border-b border-border/60 px-4">
+              <span class="font-mono text-[11px] text-muted-foreground">{selectedPath} (editing)</span>
               <div class="flex items-center gap-1.5">
-                <button
-                  class="rounded-lg bg-[var(--primary)] px-3 py-1 text-[11px] font-medium text-primary-fg transition hover:opacity-90"
-                  onclick={saveEdit}
-                >Save</button>
-                <button
-                  class="rounded-lg border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]"
-                  onclick={cancelEdit}
-                >Cancel</button>
+                <button type="button" class="aui-btn aui-btn-primary h-7 px-3 text-[11px]" onclick={saveEdit}>Save</button>
+                <button type="button" class="aui-btn aui-btn-ghost h-7 px-3 text-[11px]" onclick={cancelEdit}>Cancel</button>
               </div>
             </div>
             <div class="min-h-0 flex-1">
@@ -648,15 +646,15 @@
             </div>
             <div class="flex items-center gap-2">
               {#if hasPreview}
-                <button class="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => (activePane = 'preview')}>Preview</button>
+                <button type="button" class="aui-btn aui-btn-ghost h-8 px-3 text-xs" onclick={() => (activePane = 'preview')}>Preview</button>
               {/if}
-              <button class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={downloadSelectedFile}>Download</button>
+              <button type="button" class="aui-btn aui-btn-primary h-8 px-3 text-xs" onclick={downloadSelectedFile}>Download</button>
             </div>
           </div>
         {:else}
           <div class="flex h-full flex-col">
-            <div class="sandbox-code-header flex h-8 shrink-0 items-center border-b border-[var(--border)] px-4">
-              <span class="text-[11px] font-mono text-[var(--text-tertiary)]">{selectedPath}</span>
+            <div class="sandbox-code-header flex h-8 shrink-0 items-center border-b border-border/60 px-4">
+              <span class="font-mono text-[11px] text-muted-foreground">{selectedPath}</span>
             </div>
             <div class="min-h-0 flex-1">
               <CodeEditor
@@ -724,78 +722,78 @@
 </div>
 
 {#if showNewFileModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
+  <div class="aui-modal-backdrop z-[100]" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="aui-modal-surface max-w-xs p-4" onclick={(e) => e.stopPropagation()}>
       {#if newItemParent}
-        <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
+        <p class="mb-2 text-[11px] text-muted-foreground">in: {newItemParent}</p>
       {/if}
       <input
         bind:this={newItemInput}
         bind:value={newItemName}
         type="text"
         placeholder="filename.ext"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="aui-input mb-4"
         onkeydown={(e) => { if (e.key === 'Enter') createFile(); if (e.key === 'Escape') closeNewItemModal(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFile}>Create</button>
+        <button type="button" class="aui-btn aui-btn-ghost h-8 px-3 text-xs" onclick={closeNewItemModal}>Cancel</button>
+        <button type="button" class="aui-btn aui-btn-primary h-8 px-3 text-xs" onclick={createFile}>Create</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showNewFolderModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
+  <div class="aui-modal-backdrop z-[100]" onclick={closeNewItemModal} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="aui-modal-surface max-w-xs p-4" onclick={(e) => e.stopPropagation()}>
       {#if newItemParent}
-        <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">in: {newItemParent}</p>
+        <p class="mb-2 text-[11px] text-muted-foreground">in: {newItemParent}</p>
       {/if}
       <input
         bind:this={newItemInput}
         bind:value={newItemName}
         type="text"
         placeholder="folder-name"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="aui-input mb-4"
         onkeydown={(e) => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') closeNewItemModal(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={closeNewItemModal}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={createFolder}>Create</button>
+        <button type="button" class="aui-btn aui-btn-ghost h-8 px-3 text-xs" onclick={closeNewItemModal}>Cancel</button>
+        <button type="button" class="aui-btn aui-btn-primary h-8 px-3 text-xs" onclick={createFolder}>Create</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showDeleteConfirm}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelDelete} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
-      <p class="mb-4 text-sm text-[var(--text-secondary)]">
-        Delete {pendingDeleteType} "<span class="font-mono text-[var(--text)]">{pendingDeletePath}</span>"?
-        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-[var(--text-secondary)]">This will delete all files inside.</span>{/if}
+  <div class="aui-modal-backdrop z-[100]" onclick={cancelDelete} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="aui-modal-surface max-w-xs p-4" onclick={(e) => e.stopPropagation()}>
+      <p class="mb-4 text-sm text-muted-foreground">
+        Delete {pendingDeleteType} "<span class="font-mono text-foreground">{pendingDeletePath}</span>"?
+        {#if pendingDeleteType === 'folder'}<br><span class="text-xs text-muted-foreground">This will delete all files inside.</span>{/if}
       </p>
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelDelete}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmDelete}>Delete</button>
+        <button type="button" class="aui-btn aui-btn-ghost h-8 px-3 text-xs" onclick={cancelDelete}>Cancel</button>
+        <button type="button" class="aui-btn aui-btn-danger h-8 px-3 text-xs" onclick={confirmDelete}>Delete</button>
       </div>
     </div>
   </div>
 {/if}
 
 {#if showRenameModal}
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-overlay" onclick={cancelRename} role="dialog" aria-modal="true" tabindex="-1">
-    <div class="w-full max-w-xs rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-lg" onclick={(e) => e.stopPropagation()}>
-      <p class="mb-2 text-[11px] text-[var(--text-tertiary)]">Current: {pendingRenamePath}</p>
+  <div class="aui-modal-backdrop z-[100]" onclick={cancelRename} role="dialog" aria-modal="true" tabindex="-1">
+    <div class="aui-modal-surface max-w-xs p-4" onclick={(e) => e.stopPropagation()}>
+      <p class="mb-2 text-[11px] text-muted-foreground">Current: {pendingRenamePath}</p>
       <input
         bind:this={renameInput}
         bind:value={renameValue}
         type="text"
-        class="mb-4 w-full rounded-lg border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--primary)]"
+        class="aui-input mb-4"
         onkeydown={(e) => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') cancelRename(); }}
       />
       <div class="flex justify-end gap-2">
-        <button class="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)]" onclick={cancelRename}>Cancel</button>
-        <button class="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-primary-fg transition hover:opacity-90" onclick={confirmRename}>Rename</button>
+        <button type="button" class="aui-btn aui-btn-ghost h-8 px-3 text-xs" onclick={cancelRename}>Cancel</button>
+        <button type="button" class="aui-btn aui-btn-primary h-8 px-3 text-xs" onclick={confirmRename}>Rename</button>
       </div>
     </div>
   </div>

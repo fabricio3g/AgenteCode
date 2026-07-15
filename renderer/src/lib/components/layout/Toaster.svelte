@@ -9,7 +9,7 @@
     success: 'var(--success)',
     error: 'var(--error)',
     warning: 'var(--warning)',
-    info: 'var(--info)',
+    info: 'var(--foreground)'
   } as const;
 </script>
 
@@ -20,19 +20,20 @@
 >
   {#each toastStore.toasts as toast (toast.id)}
     <div
-      class="toast pointer-events-auto flex items-center justify-center gap-2.5 border px-4 py-2"
+      class="toast pointer-events-auto flex items-center justify-center gap-2.5 px-4 py-2.5"
       style="color: {COLOR_MAP[toast.type]}"
       role="alert"
       in:motionFly={{ y: 12, duration: 200 }}
       out:motionFade={{ duration: 150 }}
     >
-      <span class="text-[13px] font-medium leading-none">{toast.message}</span>
+      <span class="text-[13px] font-medium leading-none text-foreground">{toast.message}</span>
       <button
-        class="flex shrink-0 items-center justify-center rounded p-0.5 opacity-60 transition-opacity hover:opacity-100"
+        type="button"
+        class="aui-icon-button size-6 shrink-0"
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss"
       >
-        <X class="h-3 w-3" />
+        <X class="size-3" />
       </button>
     </div>
   {/each}
@@ -40,10 +41,10 @@
 
 <style>
   .toast {
-    background: var(--surface);
-    border-color: var(--border);
-    box-shadow: var(--shadow-sm);
-    border-radius: var(--radius-sm);
+    background: var(--popover);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-lg);
     max-width: 18rem;
   }
 </style>

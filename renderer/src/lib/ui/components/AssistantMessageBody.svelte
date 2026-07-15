@@ -180,14 +180,14 @@
 {/if}
 
 {#if message.status === 'error' && displayMetadata?.error}
-  <div class="chateaui-card mb-3 flex items-start gap-2.5 px-4 py-3 text-sm" style="--chateaui-card-bg: color-mix(in srgb, var(--error) 8%, var(--surface)); --chateaui-card-border: color-mix(in srgb, var(--error) 24%, var(--border));">
-    <AlertCircle class="mt-0.5 h-4 w-4 shrink-0 text-error" />
+  <div class="mb-3 flex items-start gap-2.5 rounded-lg bg-error-bg px-4 py-3 text-sm text-error">
+    <AlertCircle class="mt-0.5 size-4 shrink-0" />
     <div>
-      <div class="font-semibold">Generation failed</div>
+      <div class="font-semibold text-foreground">Generation failed</div>
       {#if displayMetadata?.errorMessage}
-        <div class="mt-0.5 text-xs text-error opacity-70">{displayMetadata.errorMessage}</div>
+        <div class="mt-0.5 text-xs opacity-80">{displayMetadata.errorMessage}</div>
       {:else if displayContent}
-        <div class="mt-0.5 text-xs text-error opacity-70">{displayContent}</div>
+        <div class="mt-0.5 text-xs opacity-80">{displayContent}</div>
       {/if}
     </div>
   </div>

@@ -167,44 +167,45 @@
 
 <div class="flex flex-1 flex-col gap-5 px-6">
   <div class="flex items-center gap-2">
-    <Cpu class="h-4 w-4 text-[var(--text-secondary)]" />
-    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.runtime')}</span>
+    <Cpu class="size-4 text-muted-foreground" />
+    <span class="text-sm font-medium text-foreground">{$t('onboarding.runtime')}</span>
   </div>
 
   {#if loading}
-    <div class="flex items-center justify-center py-8 text-[var(--text-muted)]">
-      <LoaderCircle class="h-5 w-5 animate-spin" />
+    <div class="flex items-center justify-center py-8 text-muted-foreground">
+      <LoaderCircle class="size-5 animate-spin" />
     </div>
   {:else if hasInstalledRuntime}
-    <div class="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-        <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
+    <div class="aui-card-quiet space-y-3 p-4">
+      <div class="flex items-center gap-2 text-sm text-muted-foreground">
+        <CheckCircle2 class="size-4 text-success" />
         <span>{$t('onboarding.runtimeInstalledReady')}</span>
       </div>
-      <div class="space-y-1.5">
+      <div class="space-y-1">
         {#each installedRuntimes.slice(0, 3) as runtime}
-          <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface-hover)] px-3 py-2 text-xs">
-            <span class="min-w-0 truncate text-[var(--text)]">{runtime.name || runtime.id || 'runtime'}</span>
-            <span class="shrink-0 rounded-full border border-[var(--border)] px-2 py-0.5 text-[var(--text-muted)]">{runtime.variant || 'auto'}</span>
+          <div class="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2 text-xs">
+            <span class="min-w-0 truncate text-foreground">{runtime.name || runtime.id || 'runtime'}</span>
+            <span class="shrink-0 rounded-md bg-muted px-2 py-0.5 text-muted-foreground">{runtime.variant || 'auto'}</span>
           </div>
         {/each}
       </div>
     </div>
   {:else if releaseAssets.length > 0}
-    <div class="space-y-1.5">
+    <div class="space-y-1">
       {#each releaseAssets as asset}
         <button
-          class="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-left transition hover:border-[var(--text)]"
+          type="button"
+          class="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted disabled:opacity-50"
           onclick={() => installAsset(asset)}
           disabled={installing}
         >
-          <span class="flex-1 text-sm text-[var(--text)]">{asset.description}</span>
+          <span class="flex-1 text-sm text-foreground">{asset.description}</span>
           {#if installing && selectedAsset?.name === asset.name}
-            <LoaderCircle class="h-4 w-4 shrink-0 animate-spin" />
+            <LoaderCircle class="size-4 shrink-0 animate-spin" />
           {:else if asset.variant === 'recommended'}
-            <span class="rounded-full border border-[var(--text)] px-2 py-0.5 text-[10px] font-medium">{$t('onboarding.recommended')}</span>
+            <span class="rounded-md bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">{$t('onboarding.recommended')}</span>
           {:else}
-            <Download class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
+            <Download class="size-4 shrink-0 text-muted-foreground" />
           {/if}
         </button>
       {/each}
@@ -212,37 +213,35 @@
 
     {#if installing}
       <div class="space-y-1.5">
-        <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-          <div class="h-full bg-[var(--text)] transition-all" style="width: {installProgress}%"></div>
+        <div class="h-1 overflow-hidden rounded-full bg-muted">
+          <div class="h-full bg-foreground transition-all" style="width: {installProgress}%"></div>
         </div>
-        <p class="text-xs text-[var(--text-muted)]">{$t('onboarding.downloadingRuntime')} {Math.round(installProgress)}%</p>
+        <p class="text-xs text-muted-foreground">{$t('onboarding.downloadingRuntime')} {Math.round(installProgress)}%</p>
       </div>
     {/if}
 
     {#if installError}
-      <p class="text-xs text-[var(--error)]">{installError}</p>
+      <p class="text-xs text-error">{installError}</p>
     {/if}
   {:else}
-    <p class="text-sm text-[var(--text-muted)]">{$t('onboarding.noRuntimeAvailable')}</p>
+    <p class="text-sm text-muted-foreground">{$t('onboarding.noRuntimeAvailable')}</p>
   {/if}
 
   <div class="mt-auto flex items-center justify-between pt-4">
-    <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-hover)]"
-      onclick={onBack}
-    >
-      <ArrowLeft class="h-4 w-4" />
+    <button type="button" class="aui-btn aui-btn-ghost gap-1.5 px-4" onclick={onBack}>
+      <ArrowLeft class="size-4" />
       {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
+      type="button"
+      class="aui-btn aui-btn-primary gap-1.5 px-5"
       onclick={() => {
         onNext(selectedRuntimePath);
       }}
       disabled={!hasInstalledRuntime}
     >
       {$t('onboarding.next')}
-      <ArrowRight class="h-4 w-4" />
+      <ArrowRight class="size-4" />
     </button>
   </div>
 </div>

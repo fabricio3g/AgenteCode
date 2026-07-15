@@ -71,19 +71,20 @@
 
 <div class="flex flex-1 flex-col gap-5 px-6">
   <div class="flex items-center gap-2">
-    <MessageSquare class="h-4 w-4 text-[var(--text-secondary)]" />
-    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.readyToChat')}</span>
+    <MessageSquare class="size-4 text-muted-foreground" />
+    <span class="text-sm font-medium text-foreground">{$t('onboarding.readyToChat')}</span>
   </div>
 
   {#if success}
-    <div class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-      <CheckCircle2 class="h-4 w-4 text-[var(--success)]" />
+    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+      <CheckCircle2 class="size-4 text-success" />
       <span>{$t('onboarding.modelLoadedReady')}</span>
     </div>
   {:else if loadError}
     <div class="space-y-2">
-      <p class="text-sm text-[var(--error)]">{loadError}</p>
+      <p class="text-sm text-error">{loadError}</p>
       <button
+        type="button"
         class="text-xs underline hover:no-underline"
         onclick={loadAndFinish}
         disabled={loading}
@@ -92,29 +93,31 @@
       </button>
     </div>
   {:else}
-    <p class="text-sm text-[var(--text-secondary)]">
+    <p class="text-sm text-muted-foreground">
       {$t('onboarding.readyDesc')}
     </p>
   {/if}
 
   {#if loading}
-    <div class="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-      <LoaderCircle class="h-4 w-4 animate-spin" />
+    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+      <LoaderCircle class="size-4 animate-spin" />
       <span>{$t('onboarding.loadingModel')}</span>
     </div>
   {/if}
 
   <div class="mt-auto flex items-center justify-between pt-4">
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-hover)]"
+      type="button"
+      class="aui-btn aui-btn-ghost gap-1.5 px-4"
       onclick={onBack}
       disabled={loading}
     >
-      <ArrowLeft class="h-4 w-4" />
+      <ArrowLeft class="size-4" />
       {$t('onboarding.back')}
     </button>
     <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
+      type="button"
+      class="aui-btn aui-btn-primary px-5 disabled:opacity-50"
       onclick={handleFinish}
       disabled={loading}
     >

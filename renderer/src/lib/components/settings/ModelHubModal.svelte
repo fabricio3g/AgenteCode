@@ -1295,7 +1295,7 @@
                 <section>
                   <h3 class="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Downloaded</h3>
                   {#if visibleModels.length === 0}
-                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                    <div class="aui-card-quiet px-6 py-10 text-center">
                       <p class="text-sm font-semibold text-[var(--text)]">No downloaded models</p>
                       <p class="mt-1 text-xs text-[var(--text-muted)]">Turn off Downloaded to browse Hugging Face models.</p>
                     </div>
@@ -1353,7 +1353,7 @@
                       {/each}
                     </div>
                   {:else}
-                    <div class="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                    <div class="aui-card-quiet px-6 py-10 text-center">
                       <p class="text-sm font-semibold text-[var(--text)]">No models found</p>
                       <p class="mt-1 text-xs text-[var(--text-muted)]">Try another Hugging Face search.</p>
                     </div>
@@ -1518,7 +1518,7 @@
                   <label for="mic-select" class="text-xs text-[var(--text-muted)]">Select the microphone for voice input</label>
                   <select
                     id="mic-select"
-                    class="mic-select w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--text)] transition focus:border-[var(--border-hover)] focus:outline-none"
+                    class="aui-input mic-select w-full"
                     value={selectedMicId}
                     onchange={(e) => void saveMicDevice((e.currentTarget as HTMLSelectElement).value)}
                   >
@@ -1772,7 +1772,7 @@
             </header>
 
             {#if appStore.backendMode !== 'api'}
-              <div class="mb-4 rounded-md border border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div class="mb-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                 You are currently in <strong>Local</strong> mode. Saving a provider here will switch to <strong>Cloud</strong> mode.
               </div>
             {/if}
@@ -1781,7 +1781,7 @@
               <!-- Provider selector -->
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">Provider</span>
-                <select class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerName}>
+                <select class="aui-input w-full" bind:value={providerName}>
                   <optgroup label="Cloud">
                     <option value="openai">OpenAI</option>
                     <option value="openrouter">OpenRouter (multi-provider)</option>
@@ -1805,7 +1805,7 @@
               <!-- Base URL -->
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
-                <input class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerBaseUrl} placeholder="https://api.openai.com/v1" />
+                <input class="aui-input w-full" bind:value={providerBaseUrl} placeholder="https://api.openai.com/v1" />
               </label>
 
               <!-- API Key -->
@@ -1819,7 +1819,7 @@
                   {/if}
                 </div>
                 <input
-                  class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
+                  class="aui-input w-full"
                   bind:value={providerApiKey}
                   placeholder={appStore.config.llm?.providers?.[providerName]?.has_api_key ? '••••••••• (leave blank to keep)' : 'Enter API key…'}
                   type="password"
@@ -1835,7 +1835,7 @@
                     <!-- Searchable model selector -->
                     <div class="relative flex-1">
                       <input
-                        class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
+                        class="aui-input w-full"
                         value={modelDropdownOpen ? modelSearchQuery : (providerModel || '')}
                         placeholder="Search models…"
                         onfocus={() => { modelDropdownOpen = true; modelSearchQuery = ''; }}
@@ -1853,7 +1853,7 @@
                       />
                       {#if modelDropdownOpen}
                         <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <div class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg"
+                        <div class="aui-menu absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto"
                           onmousedown={(e) => e.preventDefault()}>
                           {#if filteredProviderModels.length === 0}
                             <div class="px-4 py-3 text-xs text-[var(--text-muted)]">No models match "{modelSearchQuery}"</div>
@@ -1876,7 +1876,7 @@
                       {/if}
                     </div>
                   {:else}
-                    <input class="flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]" bind:value={providerModel} placeholder="No model" />
+                    <input class="aui-input flex-1" bind:value={providerModel} placeholder="No model" />
                   {/if}
                   <button
                     class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
@@ -1898,7 +1898,7 @@
               <label class="block space-y-1.5 text-sm">
                 <span class="font-medium text-[var(--text-secondary)]">System prompt</span>
                 <textarea
-                  class="h-20 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
+                  class="aui-input h-20 w-full resize-none"
                   bind:value={providerSystemPrompt}
                   placeholder="You are a helpful assistant…"
                 ></textarea>
@@ -1928,7 +1928,7 @@
                 <label class="block space-y-1.5">
                   <span class="font-medium text-[var(--text-secondary)]">Max tokens</span>
                   <input
-                    class="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-[var(--text)] outline-none transition-colors focus:border-[var(--border-hover)]"
+                    class="aui-input w-full"
                     bind:value={providerMaxTokens}
                     inputmode="numeric"
                     placeholder="2048 (leave blank for provider default)"

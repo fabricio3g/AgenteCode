@@ -333,7 +333,7 @@
     flex: 0 0 auto;
     overflow: hidden;
     border-left: 1px solid var(--border);
-    background: var(--sidebar);
+    background: var(--background);
     transform-origin: right center;
     will-change: width, min-width, opacity, transform;
   }

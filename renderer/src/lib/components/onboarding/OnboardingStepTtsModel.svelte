@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle, Check, ChevronDown } from 'lucide-svelte';
-  import { startDownloadHf, getDownloadJobs, cancelDownloadJob } from '$lib/services/downloads';
+  import { startDownloadHf, cancelDownloadJob } from '$lib/services/downloads';
   import { listen } from '$lib/services/tauri';
   import { KOKORO_LANGUAGES, getVoiceInfo } from '$lib/services/kokoro-tts';
   import { appStore } from '$lib/stores/app.svelte';
@@ -37,7 +37,6 @@
   let fileProgress = $state<Record<string, number>>({});
   let fileErrors = $state<Record<string, string>>({});
   let currentJobId = $state<string | null>(null);
-  let overallProgress = $state(0);
 
   // Voice selection state
   let selectedVoice = $state(appStore.config.tts?.voice || 'af_heart');
@@ -64,6 +63,7 @@
   const anyDownloading = $derived(
     Object.values(fileStatuses).some(s => s === 'downloading')
   );
+  const voiceCount = KOKORO_LANGUAGES.reduce((n, l) => n + l.voices.length, 0);
 
   onMount(() => {
     for (const f of TTS_FILES) {
@@ -167,56 +167,59 @@
 
 <div class="flex flex-1 flex-col gap-5 px-6">
   <div class="flex items-center gap-2">
-    <Volume2 class="h-4 w-4 text-[var(--text-secondary)]" />
-    <span class="text-sm font-medium text-[var(--text)]">{$t('onboarding.downloadTtsModel')}</span>
+    <Volume2 class="size-4 text-muted-foreground" />
+    <span class="text-sm font-medium text-foreground">{$t('onboarding.downloadTtsModel')}</span>
   </div>
 
-  <p class="text-xs text-[var(--text-muted)]">
+  <p class="text-xs text-muted-foreground">
     {$t('onboarding.ttsModelDescription')}
   </p>
 
-  <div class="space-y-1.5">
+  <div class="space-y-1">
     {#each TTS_FILES as df}
       {@const status = fileStatuses[df.file] ?? 'pending'}
       {@const progress = fileProgress[df.file] ?? 0}
       {@const error = fileErrors[df.file] ?? ''}
       <div
-        class="flex w-full items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition
-          {status === 'done' ? 'border-[var(--success)] bg-[var(--surface)]' : 'border-[var(--border)] bg-[var(--surface)]'}"
+        class="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors
+          {status === 'done' ? 'bg-muted/60' : 'hover:bg-muted/40'}"
       >
-        <div class="flex-1 min-w-0">
+        <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium text-[var(--text)] truncate">{df.label}</span>
+            <span class="truncate text-sm font-medium text-foreground">{df.label}</span>
             {#if status === 'done'}
-              <CheckCircle2 class="h-3.5 w-3.5 shrink-0 text-[var(--success)]" />
+              <CheckCircle2 class="size-3.5 shrink-0 text-success" />
             {:else if status === 'downloading'}
-              <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin" />
+              <LoaderCircle class="size-3.5 shrink-0 animate-spin text-muted-foreground" />
             {:else if status === 'error'}
-              <AlertTriangle class="h-3.5 w-3.5 shrink-0 text-[var(--error)]" />
+              <AlertTriangle class="size-3.5 shrink-0 text-error" />
             {/if}
           </div>
-          <div class="mt-0.5 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <div class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
             <span>{df.size_mb} MB</span>
             {#if !df.required}
-              <span class="rounded bg-[var(--surface-hover)] px-1.5 py-0.5">{$t('onboarding.optional')}</span>
+              <span class="rounded-md bg-muted px-1.5 py-0.5">{$t('onboarding.optional')}</span>
             {/if}
           </div>
           {#if status === 'downloading'}
-            <div class="mt-1 h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-              <div class="h-full bg-[var(--text)] transition-all" style="width: {progress}%"></div>
+            <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+              <div class="h-full bg-foreground transition-all" style="width: {progress}%"></div>
             </div>
           {/if}
           {#if error}
-            <p class="mt-0.5 text-xs text-[var(--error)]">{error}</p>
+            <p class="mt-0.5 text-xs text-error">{error}</p>
           {/if}
         </div>
         {#if status === 'pending'}
           <button
-            class="rounded-full border border-[var(--border)] p-1.5 text-[var(--text-muted)] transition hover:border-[var(--text)] hover:text-[var(--text)]"
+            type="button"
+            class="aui-icon-button size-8 shrink-0"
             onclick={() => downloadFile(df)}
             disabled={anyDownloading}
+            aria-label="Download {df.label}"
+            title="Download"
           >
-            <Download class="h-3.5 w-3.5" />
+            <Download class="size-3.5" />
           </button>
         {/if}
       </div>
@@ -225,47 +228,51 @@
 
   {#if anyDownloading}
     <div class="space-y-1">
-      <div class="h-1 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-        <div class="h-full bg-[var(--text)] transition-all" style="width: {(downloadedSize / totalSize) * 100}%"></div>
+      <div class="h-1 overflow-hidden rounded-full bg-muted">
+        <div class="h-full bg-foreground transition-all" style="width: {(downloadedSize / totalSize) * 100}%"></div>
       </div>
-      <p class="text-xs text-[var(--text-muted)]">{Math.round((downloadedSize / totalSize) * 100)}% — {downloadedSize.toFixed(0)} / {totalSize.toFixed(0)} MB</p>
+      <p class="text-xs text-muted-foreground">{Math.round((downloadedSize / totalSize) * 100)}% — {downloadedSize.toFixed(0)} / {totalSize.toFixed(0)} MB</p>
     </div>
   {/if}
 
   <!-- Voice selection -->
   <div class="space-y-2">
-    <div class="flex items-center gap-2">
-      <Volume2 class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
-      <span class="text-xs font-medium text-[var(--text)]">Choose your voice</span>
-      <span class="text-[10px] text-[var(--text-muted)]">{KOKORO_LANGUAGES.length} languages · {KOKORO_LANGUAGES.reduce((n, l) => n + l.voices.length, 0)} voices</span>
+    <div class="flex flex-wrap items-center gap-2">
+      <Volume2 class="size-3.5 text-muted-foreground" />
+      <span class="text-xs font-medium text-foreground">Choose your voice</span>
+      <span class="text-[10px] text-muted-foreground">{KOKORO_LANGUAGES.length} languages · {voiceCount} voices</span>
     </div>
 
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <!-- Language picker -->
       <div class="relative">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:border-[var(--border-hover)] transition"
+          class="aui-select-trigger h-8 gap-1.5 px-3 text-xs"
           onclick={() => { langOpen = !langOpen; voiceOpen = false; }}
+          aria-haspopup="listbox"
+          aria-expanded={langOpen}
         >
           <span>{KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.label ?? 'Language'}</span>
-          <ChevronDown class="h-3 w-3 text-[var(--text-muted)]" />
+          <ChevronDown class="size-3 text-muted-foreground" />
         </button>
         {#if langOpen}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="fixed inset-0 z-40" onclick={() => langOpen = false} onkeydown={() => {}}></div>
-          <div class="absolute left-0 top-full z-50 mt-1 min-w-[160px] max-h-[240px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg py-1">
+          <div class="aui-menu absolute left-0 top-full z-50 mt-1 min-w-[10rem] max-h-[240px] overflow-y-auto py-1" role="listbox">
             {#each KOKORO_LANGUAGES as lang}
               <button
                 type="button"
-                class="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[var(--text)] hover:bg-[var(--surface-hover)] transition"
+                class="aui-menu-item text-xs {lang.code === selectedLang ? 'is-active' : ''}"
                 onclick={() => selectLang(lang.code)}
+                role="option"
+                aria-selected={lang.code === selectedLang}
               >
-                <span>{lang.label}</span>
-                <span class="ml-auto text-[10px] text-[var(--text-muted)]">{lang.voices.length}</span>
+                <span class="min-w-0 flex-1 truncate">{lang.label}</span>
+                <span class="text-[10px] opacity-70">{lang.voices.length}</span>
                 {#if lang.code === selectedLang}
-                  <Check class="h-3 w-3 text-[var(--primary)]" />
+                  <Check class="size-3 shrink-0" />
                 {/if}
               </button>
             {/each}
@@ -277,47 +284,53 @@
       <div class="relative">
         <button
           type="button"
-          class="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:border-[var(--border-hover)] transition"
+          class="aui-select-trigger h-8 gap-1.5 px-3 text-xs"
           onclick={() => { voiceOpen = !voiceOpen; langOpen = false; }}
+          aria-haspopup="listbox"
+          aria-expanded={voiceOpen}
         >
-          <Volume2 class="h-3 w-3 text-[var(--text-muted)]" />
+          <Volume2 class="size-3 text-muted-foreground" />
           <span>{getVoiceLabel(selectedVoice)}</span>
-          <span class="text-[10px] text-[var(--text-muted)]">{selectedVoice.charAt(1) === 'f' ? 'F' : 'M'}</span>
-          <ChevronDown class="h-3 w-3 text-[var(--text-muted)]" />
+          <span class="text-[10px] text-muted-foreground">{selectedVoice.charAt(1) === 'f' ? 'F' : 'M'}</span>
+          <ChevronDown class="size-3 text-muted-foreground" />
         </button>
         {#if voiceOpen}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="fixed inset-0 z-40" onclick={() => voiceOpen = false} onkeydown={() => {}}></div>
-          <div class="absolute left-0 top-full z-50 mt-1 min-w-[180px] max-h-[300px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-lg py-1">
+          <div class="aui-menu absolute left-0 top-full z-50 mt-1 min-w-[11rem] max-h-[300px] overflow-y-auto py-1" role="listbox">
             {#if femaleVoices.length > 0}
-              <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Female</div>
+              <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Female</div>
               {#each femaleVoices as voice (voice.id)}
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)] transition {voice.id === selectedVoice ? 'text-[var(--primary)] bg-[var(--primary)]/5' : 'text-[var(--text)]'}"
+                  class="aui-menu-item text-xs {voice.id === selectedVoice ? 'is-active' : ''}"
                   onclick={() => selectVoice(voice.id)}
+                  role="option"
+                  aria-selected={voice.id === selectedVoice}
                 >
-                  <Volume2 class="h-3 w-3 shrink-0 {voice.id === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
-                  <span class="truncate">{voice.name}</span>
+                  <Volume2 class="size-3 shrink-0 opacity-70" />
+                  <span class="min-w-0 flex-1 truncate">{voice.name}</span>
                   {#if voice.id === selectedVoice}
-                    <Check class="ml-auto h-3 w-3 shrink-0" />
+                    <Check class="size-3 shrink-0" />
                   {/if}
                 </button>
               {/each}
             {/if}
             {#if maleVoices.length > 0}
-              <div class="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Male</div>
+              <div class="mt-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Male</div>
               {#each maleVoices as voice (voice.id)}
                 <button
                   type="button"
-                  class="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-[var(--surface-hover)] transition {voice.id === selectedVoice ? 'text-[var(--primary)] bg-[var(--primary)]/5' : 'text-[var(--text)]'}"
+                  class="aui-menu-item text-xs {voice.id === selectedVoice ? 'is-active' : ''}"
                   onclick={() => selectVoice(voice.id)}
+                  role="option"
+                  aria-selected={voice.id === selectedVoice}
                 >
-                  <Volume2 class="h-3 w-3 shrink-0 {voice.id === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
-                  <span class="truncate">{voice.name}</span>
+                  <Volume2 class="size-3 shrink-0 opacity-70" />
+                  <span class="min-w-0 flex-1 truncate">{voice.name}</span>
                   {#if voice.id === selectedVoice}
-                    <Check class="ml-auto h-3 w-3 shrink-0" />
+                    <Check class="size-3 shrink-0" />
                   {/if}
                 </button>
               {/each}
@@ -329,39 +342,31 @@
   </div>
 
   <div class="mt-auto flex items-center justify-between pt-4">
-    <button
-      class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-hover)]"
-      onclick={onBack}
-    >
-      <ArrowLeft class="h-4 w-4" />
+    <button type="button" class="aui-btn aui-btn-ghost gap-1.5 px-4" onclick={onBack}>
+      <ArrowLeft class="size-4" />
       {$t('onboarding.back')}
     </button>
 
     <div class="flex items-center gap-2">
       {#if anyDownloading}
-        <button
-          class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-sm font-medium transition hover:bg-[var(--surface-hover)]"
-          onclick={cancelCurrent}
-        >
+        <button type="button" class="aui-btn aui-btn-ghost gap-1.5 px-4" onclick={cancelCurrent}>
           {$t('onboarding.cancel')}
         </button>
       {:else if !allRequiredDone}
-        <button
-          class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90"
-          onclick={downloadAll}
-        >
-          <Download class="h-4 w-4" />
+        <button type="button" class="aui-btn aui-btn-primary gap-1.5 px-5" onclick={downloadAll}>
+          <Download class="size-4" />
           {$t('onboarding.downloadAll')}
         </button>
       {/if}
 
       <button
-        class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-hover)] bg-[var(--primary)] px-5 py-2 text-sm font-medium text-[var(--primary-fg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition hover:opacity-90 disabled:opacity-50"
+        type="button"
+        class="aui-btn aui-btn-primary gap-1.5 px-5 disabled:opacity-50"
         onclick={onNext}
         disabled={anyDownloading}
       >
         {allRequiredDone ? $t('onboarding.next') : $t('onboarding.skip')}
-        <ArrowRight class="h-4 w-4" />
+        <ArrowRight class="size-4" />
       </button>
     </div>
   </div>

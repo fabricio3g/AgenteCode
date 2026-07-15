@@ -74,7 +74,7 @@
   <div class="relative">
     <button
       type="button"
-      class="flex items-center gap-1.5 rounded-md bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--surface-hover)]"
+      class="aui-select-trigger"
       onclick={() => { langOpen = !langOpen; voiceOpen = false; }}
     >
       <span>{KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.label ?? 'Language'}</span>
@@ -106,7 +106,7 @@
   <div class="relative">
     <button
       type="button"
-      class="flex items-center gap-1.5 rounded-md bg-[var(--background)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--surface-hover)]"
+      class="aui-select-trigger"
       onclick={() => { voiceOpen = !voiceOpen; langOpen = false; }}
     >
       <Volume2 class="h-3 w-3 text-[var(--text-muted)]" />

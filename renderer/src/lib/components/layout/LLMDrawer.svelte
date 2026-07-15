@@ -94,7 +94,7 @@
 <!-- Backdrop -->
 {#if appStore.llmDrawerOpen}
   <div
-    class="modal-backdrop fixed inset-0 z-[55] bg-overlay-light"
+    class="fixed inset-0 z-[55] bg-overlay"
     role="presentation"
     onclick={() => (appStore.llmDrawerOpen = false)}
     transition:motionFade={{ duration: 150 }}
@@ -104,25 +104,25 @@
 <!-- Drawer -->
 {#if appStore.llmDrawerOpen}
 <aside
-  class="modal-surface fixed right-0 top-0 z-[56] flex h-full w-80 flex-col overflow-hidden border-l border-[var(--border)] shadow-2xl"
-  style="background: var(--surface)"
+  class="fixed right-0 top-0 z-[56] flex h-full w-80 flex-col overflow-hidden border-l border-border bg-background shadow-lg"
   aria-label="Generation settings"
   transition:motionFly={{ x: 320, duration: 220, opacity: 1 }}
 >
   <!-- ── Header ─────────────────────────────────────────────────── -->
-  <div class="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border)]">
+  <div class="flex items-center justify-between px-4 py-3">
     <div class="flex items-center gap-2">
-      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--primary)]/10">
-        <Sliders class="h-4 w-4 text-[var(--primary)]" />
+      <div class="flex size-7 items-center justify-center rounded-md bg-muted">
+        <Sliders class="size-4 text-foreground" />
       </div>
-      <span class="text-[14px] font-semibold text-[var(--text)]">Generation</span>
+      <span class="text-sm font-semibold text-foreground">Generation</span>
     </div>
     <button
-      class="rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+      type="button"
+      class="aui-icon-button size-8"
       onclick={() => (appStore.llmDrawerOpen = false)}
       aria-label="Close"
     >
-      <X class="h-4 w-4" />
+      <X class="size-4" />
     </button>
   </div>
 
@@ -130,15 +130,17 @@
   <div class="flex-1 overflow-y-auto">
 
     <!-- Backend pill tabs -->
-    <div class="px-4 pt-4">
-      <div class="flex gap-1 border-b border-[var(--border)] pb-2">
+    <div class="px-4 pt-2">
+      <div class="aui-segmented w-full">
         <button
-          class="rounded-md px-3 py-1.5 text-[13px] font-medium transition {mode === 'api' ? 'text-[var(--text)] bg-[var(--surface-hover)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+          type="button"
+          class="aui-segmented-item flex-1 py-1.5 {mode === 'api' ? 'is-active' : ''}"
           onclick={() => { mode = 'api'; }}
         >API</button>
         {#if isTauri()}
           <button
-            class="rounded-md px-3 py-1.5 text-[13px] font-medium transition {mode === 'local' ? 'text-[var(--text)] bg-[var(--surface-hover)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+            type="button"
+            class="aui-segmented-item flex-1 py-1.5 {mode === 'local' ? 'is-active' : ''}"
             onclick={() => { mode = 'local'; }}
           >Local</button>
         {/if}
@@ -146,21 +148,22 @@
     </div>
 
     <!-- Status -->
-    <div class="mx-4 mt-3 border-b border-[var(--border)] pb-3">
+    <div class="mx-4 mt-3 pb-3">
       {#if mode === 'api'}
-        <div class="flex items-center gap-3 px-3.5 py-3">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
-            <Zap class="h-4 w-4" />
+        <div class="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-3">
+          <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+            <Zap class="size-4" />
           </div>
           <div class="min-w-0 flex-1">
-            <div class="truncate text-[13px] font-semibold text-[var(--text)]">{providerLabel}</div>
-            <div class="truncate text-[11px] text-[var(--text-muted)]">{activeModelShort}</div>
+            <div class="truncate text-[13px] font-semibold text-foreground">{providerLabel}</div>
+            <div class="truncate text-[11px] text-muted-foreground">{activeModelShort}</div>
           </div>
           <button
-            class="shrink-0 rounded-lg p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--border)] hover:text-[var(--text)]"
+            type="button"
+            class="aui-icon-button size-8 shrink-0"
             onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
             title="Configure"
-          ><ExternalLink class="h-3.5 w-3.5" /></button>
+          ><ExternalLink class="size-3.5" /></button>
         </div>
       {:else}
         <div class="px-3.5 py-3">
@@ -264,7 +267,7 @@
           id="llm-system-prompt"
           bind:value={systemPrompt}
           rows="5"
-          class="w-full rounded-lg bg-[var(--surface)] px-3 py-2.5 text-[12px] leading-relaxed text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] resize-none"
+          class="aui-input resize-none text-[12px] leading-relaxed"
           placeholder="You are a helpful AI assistant."
         ></textarea>
       </div>
@@ -275,10 +278,10 @@
   </div>
 
   <!-- ── Footer ─────────────────────────────────────────────────── -->
-  <div class="shrink-0 border-t border-[var(--border)] px-4 py-3">
+  <div class="shrink-0 px-4 py-3">
     <button
-      class="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-primary-fg transition hover:opacity-90 disabled:opacity-50"
-      style="background:var(--primary)"
+      type="button"
+      class="aui-btn aui-btn-primary w-full py-2.5"
       onclick={save}
       disabled={saving}
     >

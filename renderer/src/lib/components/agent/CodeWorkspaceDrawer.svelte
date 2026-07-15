@@ -7,6 +7,7 @@
   import { detectProviderStatus, listCodeAgentProviders } from '$lib/services/agent-provider';
   import { isTauri, invoke } from '$lib/services/tauri';
   import type { AgentStep, CodeAgentFileChangeKind, CodeAgentProvider, CodeAgentProviderId, CodeAgentProviderStatus, CodeAgentRuntimeMode } from '$lib/types/chat';
+  import ToolCallRow from './ToolCallRow.svelte';
 
   type DrawerTab = 'activity' | 'diff' | 'files' | 'terminal';
 
@@ -68,11 +69,6 @@
       case 'disabled':
       default: return AlertCircle;
     }
-  }
-
-  function stepText(step: AgentStep) {
-    const detail = String(step.detail || '').replace(/\s+/g, ' ').trim();
-    return detail ? `${step.label}: ${detail}` : step.label;
   }
 
   function changeLabel(kind: CodeAgentFileChangeKind) {
@@ -152,54 +148,58 @@
   });
 </script>
 
-<aside class="code-drawer" aria-label="Code workspace">
-  <header class="code-header">
+<aside class="code-drawer flex h-full w-full min-w-0 flex-col overflow-hidden bg-background" aria-label="Code workspace">
+  <header class="flex shrink-0 items-center gap-2 px-3 py-3">
     <div class="min-w-0 flex-1">
-      <div class="header-title">Code workspace</div>
-      <div class="header-subtitle">
+      <div class="text-sm font-semibold text-foreground">Code workspace</div>
+      <div class="mt-0.5 truncate text-xs text-muted-foreground">
         {currentChat?.title || 'New code'}{#if runningStep} · {runningStep.label}{/if}
       </div>
     </div>
 
-    <button type="button" class="runtime-toggle" class:supervised={runtimeMode === 'supervised'} onclick={toggleRuntimeMode} title={runtimeMode === 'supervised' ? 'Supervised mode' : 'Full access'}>
-      <Shield class="h-3 w-3" />
+    <button
+      type="button"
+      class="aui-select-trigger h-7 gap-1 px-2 {runtimeMode === 'supervised' ? 'bg-muted text-foreground' : ''}"
+      onclick={toggleRuntimeMode}
+      title={runtimeMode === 'supervised' ? 'Supervised mode' : 'Full access'}
+    >
+      <Shield class="size-3" />
       <span>{runtimeMode === 'supervised' ? 'Sup' : 'Full'}</span>
     </button>
 
-    <div class="provider-picker">
+    <div class="provider-picker relative shrink-0">
       <button
         type="button"
-        class="provider-trigger"
+        class="aui-select-trigger h-7 max-w-[10rem] gap-1 px-2"
         class:open={providerMenuOpen}
         onclick={() => (providerMenuOpen = !providerMenuOpen)}
         aria-haspopup="listbox"
         aria-expanded={providerMenuOpen}
       >
-        <Bot class="h-3.5 w-3.5" />
-        <span>{activeProvider.label}</span>
-        <ChevronDown class={`h-3 w-3 transition-transform ${providerMenuOpen ? 'rotate-180' : ''}`} />
+        <Bot class="size-3.5 shrink-0" />
+        <span class="truncate">{activeProvider.label}</span>
+        <ChevronDown class={`size-3 shrink-0 transition-transform ${providerMenuOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {#if providerMenuOpen}
-        <div class="provider-menu" role="listbox">
+        <div class="aui-menu absolute right-0 top-full z-80 mt-1 w-min min-w-[16rem] max-w-[min(24rem,46vw)]" role="listbox">
           {#each providers as provider (provider.id)}
             {@const StatusIcon = statusIcon(provider.status)}
             <button
               type="button"
-              class="provider-row"
-              class:selected={activeProviderId === provider.id}
-              class:disabled={provider.status !== 'ready'}
+              class="aui-menu-item !items-start {activeProviderId === provider.id ? 'is-active' : ''} {provider.status !== 'ready' ? 'opacity-60' : ''}"
               onclick={() => selectProvider(provider.id)}
               role="option"
               aria-selected={activeProviderId === provider.id}
+              disabled={provider.status !== 'ready'}
             >
-              <span class="provider-icon"><Bot class="h-3.5 w-3.5" /></span>
-              <span class="provider-copy">
-                <span class="provider-name">{provider.label}</span>
-                <span class="provider-detail">{provider.driver} · {provider.detail}</span>
+              <Bot class="mt-0.5 size-3.5 shrink-0" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-xs font-medium">{provider.label}</span>
+                <span class="block truncate text-[0.65rem] opacity-70">{provider.driver} · {provider.detail}</span>
               </span>
-              <span class={`status-pill ${provider.status}`}>
-                <StatusIcon class="h-3 w-3" />
+              <span class="inline-flex shrink-0 items-center gap-1 text-[0.65rem] {provider.status === 'ready' ? 'text-success' : ''}">
+                <StatusIcon class="size-3" />
                 {statusLabel(provider.status)}
               </span>
             </button>
@@ -209,128 +209,130 @@
     </div>
   </header>
 
-  <div class="code-tabs" role="tablist" aria-label="Code workspace panels">
-    <button type="button" class="code-tab" class:active={activeTab === 'activity'} onclick={() => (activeTab = 'activity')}><Activity class="h-3.5 w-3.5" />Activity</button>
-    <button type="button" class="code-tab" class:active={activeTab === 'diff'} onclick={() => (activeTab = 'diff')}><GitCompare class="h-3.5 w-3.5" />Diff</button>
-    <button type="button" class="code-tab" class:active={activeTab === 'files'} onclick={() => (activeTab = 'files')}><Files class="h-3.5 w-3.5" />Files</button>
-    <button type="button" class="code-tab" class:active={activeTab === 'terminal'} onclick={() => (activeTab = 'terminal')}><Terminal class="h-3.5 w-3.5" />Terminal</button>
+  <div class="px-3 pb-2">
+    <div class="aui-segmented grid w-full grid-cols-4 gap-0.5" role="tablist" aria-label="Code workspace panels">
+      <button type="button" class="aui-segmented-item flex items-center justify-center gap-1 py-1.5 text-[0.65rem] {activeTab === 'activity' ? 'is-active' : ''}" onclick={() => (activeTab = 'activity')}><Activity class="size-3.5" /><span class="hidden sm:inline">Activity</span></button>
+      <button type="button" class="aui-segmented-item flex items-center justify-center gap-1 py-1.5 text-[0.65rem] {activeTab === 'diff' ? 'is-active' : ''}" onclick={() => (activeTab = 'diff')}><GitCompare class="size-3.5" /><span class="hidden sm:inline">Diff</span></button>
+      <button type="button" class="aui-segmented-item flex items-center justify-center gap-1 py-1.5 text-[0.65rem] {activeTab === 'files' ? 'is-active' : ''}" onclick={() => (activeTab = 'files')}><Files class="size-3.5" /><span class="hidden sm:inline">Files</span></button>
+      <button type="button" class="aui-segmented-item flex items-center justify-center gap-1 py-1.5 text-[0.65rem] {activeTab === 'terminal' ? 'is-active' : ''}" onclick={() => (activeTab = 'terminal')}><Terminal class="size-3.5" /><span class="hidden sm:inline">Terminal</span></button>
+    </div>
   </div>
 
-  <div class="code-body">
+  <div class="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
     {#if activeTab === 'activity'}
       {#if steps.length}
-        <div class="timeline">
+        <div class="flex flex-col gap-0.5">
           {#each steps as step (step.id)}
-            <article class="timeline-step" class:running={step.status === 'running'} class:error={step.status === 'error'}>
-              <span class="step-dot"></span>
-              <div class="step-content">
-                <p>{stepText(step)}</p>
-                {#if step.output}
-                  <pre>{step.output}</pre>
-                {/if}
-              </div>
-            </article>
+            <ToolCallRow {step} />
           {/each}
         </div>
       {:else}
-        <div class="empty-state">
-          <Bot class="h-6 w-6" />
-          <p>Code agent activity will appear here.</p>
+        <div class="flex flex-col items-center justify-center gap-2 px-2 py-10 text-center text-muted-foreground">
+          <Bot class="size-6 opacity-50" />
+          <p class="m-0 text-sm">Code agent activity will appear here.</p>
         </div>
       {/if}
     {:else if activeTab === 'diff'}
       {#if fileChanges.length}
-        <div class="file-change-list">
+        <div class="flex flex-col gap-0.5">
           {#each fileChanges as change (`${change.kind}:${change.path}`)}
             {@const expanded = expandedDiffFile === change.path}
             {@const fileContent = getFileContent(change.path)}
-            <section class="diff-block" class:expanded>
-              <button type="button" class="diff-row" onclick={() => toggleDiffFile(change.path)} disabled={!fileContent}>
-                <span class={`change-kind ${change.kind}`}>{changeLabel(change.kind)}</span>
-                <span class="change-path">{change.path}</span>
+            <section class="overflow-hidden rounded-md {expanded ? 'bg-muted/50' : ''}">
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted disabled:opacity-70"
+                onclick={() => toggleDiffFile(change.path)}
+                disabled={!fileContent}
+              >
+                <span class="change-kind {change.kind}">{changeLabel(change.kind)}</span>
+                <span class="min-w-0 flex-1 truncate text-xs text-foreground">{change.path}</span>
                 {#if fileContent}
-                  <ChevronDown class={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                  <ChevronDown class={`size-3 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
                 {/if}
               </button>
               {#if expanded && fileContent}
-                <pre class="diff-content">{fileContent.slice(0, 6000)}{fileContent.length > 6000 ? '\n\n\u2026 (truncated)' : ''}</pre>
+                <pre class="diff-content m-0 max-h-72 overflow-auto border-t border-border/40 px-2.5 py-2 font-mono text-[0.7rem] leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">{fileContent.slice(0, 6000)}{fileContent.length > 6000 ? '\n\n… (truncated)' : ''}</pre>
               {/if}
             </section>
           {/each}
         </div>
       {:else}
-        <section class="mini-card">
-          <div class="mini-card-title"><GitCompare class="h-3.5 w-3.5" />Diff tracking</div>
-          <p>Changed files and turn diffs will use this panel. The built-in Chatea agent now reports created, modified, and deleted paths; external providers will feed the same view.</p>
+        <section class="rounded-md bg-muted/40 px-3 py-3 text-sm text-muted-foreground">
+          <div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-foreground"><GitCompare class="size-3.5" />Diff tracking</div>
+          <p class="m-0 text-xs leading-relaxed">Changed files and turn diffs appear here when the agent reports create/modify/delete paths.</p>
         </section>
       {/if}
     {:else if activeTab === 'files'}
       {#if changedFilePaths.length}
-        <div class="file-list">
+        <div class="flex flex-col gap-0.5">
           {#each changedFilePaths as file}
             {@const change = fileChanges.find((entry) => entry.path === file)}
-            <button type="button" class="file-row" class:readonly={!artifactHasFile(file)} disabled={!artifactHasFile(file)} onclick={() => (appStore.sandboxOpen = true)}>
-              <FileCode2 class="h-3.5 w-3.5" />
-              <span>{file}</span>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors hover:bg-muted disabled:opacity-60"
+              disabled={!artifactHasFile(file)}
+              onclick={() => (appStore.sandboxOpen = true)}
+            >
+              <FileCode2 class="size-3.5 shrink-0 text-muted-foreground" />
+              <span class="min-w-0 flex-1 truncate text-foreground">{file}</span>
               {#if change}
-                <span class={`file-kind ${change.kind}`}>{changeLabel(change.kind)}</span>
+                <span class="change-kind {change.kind}">{changeLabel(change.kind)}</span>
               {/if}
             </button>
           {/each}
         </div>
       {:else}
-        <div class="empty-state">
-          <Files class="h-6 w-6" />
-          <p>Files created or opened by the code agent will appear here.</p>
+        <div class="flex flex-col items-center justify-center gap-2 px-2 py-10 text-center text-muted-foreground">
+          <Files class="size-6 opacity-50" />
+          <p class="m-0 text-sm">Files created or opened by the code agent will appear here.</p>
         </div>
       {/if}
     {:else if activeTab === 'terminal'}
-      <div class="terminal-pane">
+      <div class="flex h-full min-h-[12rem] flex-col gap-2">
         {#if executingSteps.length}
-          <div class="panel-stack">
+          <div class="flex flex-col gap-1">
             {#each executingSteps as step (step.id)}
-              <section class="mini-card mono-card">
-                <div class="mini-card-title"><Terminal class="h-3.5 w-3.5" />{step.label}</div>
-                <p>{step.detail || 'Command'}</p>
-                {#if step.output}<pre>{step.output}</pre>{/if}
+              <section class="rounded-md bg-muted/40 px-2.5 py-2 font-mono text-[0.7rem]">
+                <div class="mb-1 flex items-center gap-1.5 text-xs font-medium text-foreground"><Terminal class="size-3.5" />{step.label}</div>
+                <p class="m-0 text-muted-foreground">{step.detail || 'Command'}</p>
+                {#if step.output}<pre class="mt-1.5 m-0 whitespace-pre-wrap break-all text-muted-foreground">{step.output}</pre>{/if}
               </section>
             {/each}
           </div>
         {/if}
 
-        <div class="terminal-history">
-          {#each terminalHistory as entry (`${entry.command}-${terminalHistory.length}`)}
-            <div class="term-entry">
-              <div class="term-prompt">$ {entry.command}</div>
+        <div class="min-h-0 flex-1 overflow-y-auto font-mono text-[0.72rem]">
+          {#each terminalHistory as entry, i (`${entry.command}-${i}`)}
+            <div class="px-1 py-1.5">
+              <div class="text-foreground">$ {entry.command}</div>
               {#if entry.output}
-                <pre class="term-output" class:term-error={entry.error}>{entry.output}</pre>
+                <pre class="m-0 mt-0.5 whitespace-pre-wrap break-all {entry.error ? 'text-error' : 'text-muted-foreground'}">{entry.output}</pre>
               {/if}
             </div>
           {/each}
           {#if commandRunning}
-            <div class="term-entry">
-              <div class="term-prompt running">Running…</div>
-            </div>
+            <div class="px-1 py-1.5 text-muted-foreground">Running…</div>
           {/if}
           {#if !executingSteps.length && !terminalHistory.length && !commandRunning}
-            <div class="empty-state">
-              <Terminal class="h-6 w-6" />
-              <p>Run commands in the workspace. Agent commands will also appear here.</p>
+            <div class="flex flex-col items-center justify-center gap-2 px-2 py-10 text-center text-muted-foreground">
+              <Terminal class="size-6 opacity-50" />
+              <p class="m-0 text-sm font-sans">Run commands in the workspace. Agent commands will also appear here.</p>
             </div>
           {/if}
         </div>
 
-        <div class="terminal-input-row">
-          <span class="term-prompt-symbol">$</span>
+        <div class="flex items-center gap-2">
+          <span class="font-mono text-xs text-muted-foreground">$</span>
           <input
             type="text"
-            class="terminal-input"
+            class="aui-input flex-1 font-mono text-xs"
             bind:value={commandInput}
             onkeydown={handleTerminalKeydown}
             placeholder="command…"
             disabled={commandRunning}
           />
-          <button type="button" class="term-run-btn" onclick={runTerminalCommand} disabled={commandRunning || !commandInput.trim()}>
+          <button type="button" class="aui-btn aui-btn-primary h-9 px-3 text-xs" onclick={runTerminalCommand} disabled={commandRunning || !commandInput.trim()}>
             Run
           </button>
         </div>
@@ -340,524 +342,16 @@
 </aside>
 
 <style>
-  .code-drawer {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    height: 100%;
-    flex: 0 0 auto;
-    flex-direction: column;
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    background: var(--surface);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .code-header {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    padding: 0.42rem 0.55rem;
-  }
-
-  .header-title {
-    color: var(--text);
-    font-size: 0.72rem;
-    font-weight: 700;
-    line-height: 1.2;
-  }
-
-  .header-subtitle {
-    margin-top: 0.06rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-muted);
-    font-size: 0.61rem;
-  }
-
-  .provider-picker {
-    position: relative;
-    flex: 0 0 auto;
-  }
-
-  .provider-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    height: 1.55rem;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  .change-kind {
     border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-hover) 76%, transparent);
-    color: var(--text);
-    padding: 0 0.42rem;
-    font-size: 0.64rem;
-    font-weight: 660;
-  }
-
-  .provider-trigger:hover,
-  .provider-trigger.open {
-    background: color-mix(in srgb, var(--surface-hover) 92%, var(--primary) 8%);
-  }
-
-  .provider-menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 0.35rem);
-    z-index: 80;
-    width: min(24rem, 46vw);
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--surface-overlay);
-    box-shadow: var(--shadow-xl);
-    padding: 0.25rem;
-  }
-
-  .provider-row {
-    display: grid;
-    width: 100%;
-    grid-template-columns: 1.35rem minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.35rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    background: transparent;
-    padding: 0.34rem;
-    text-align: left;
-  }
-
-  .provider-row:not(.disabled):hover,
-  .provider-row.selected {
-    background: var(--surface-hover);
-    border-color: var(--border);
-  }
-
-  .provider-row.disabled {
-    cursor: default;
-  }
-
-  .provider-icon {
-    display: inline-flex;
-    height: 1.2rem;
-    width: 1.2rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--primary) 9%, var(--surface-hover));
-    color: var(--text);
-  }
-
-  .provider-copy {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.08rem;
-  }
-
-  .provider-name {
-    color: var(--text);
-    font-size: 0.7rem;
-    font-weight: 680;
-  }
-
-  .provider-detail {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-muted);
+    background: var(--muted);
+    color: var(--muted-foreground);
+    padding: 0.1rem 0.4rem;
     font-size: 0.6rem;
-  }
-
-  .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    border-radius: 999px;
-    background: var(--surface-hover);
-    color: var(--text-muted);
-    padding: 0.16rem 0.34rem;
-    font-size: 0.58rem;
-    font-weight: 720;
+    font-weight: 600;
     white-space: nowrap;
   }
-
-  .status-pill.ready {
-    color: var(--success, #16a34a);
-  }
-
-  .status-pill.soon {
-    color: var(--primary);
-  }
-
-  .code-tabs {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.22rem;
-    padding: 0.35rem 0.45rem 0.25rem;
-  }
-
-  .code-tab {
-    display: inline-flex;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    gap: 0.2rem;
-    height: 1.55rem;
-    border: 0;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
-    color: var(--text-muted);
-    font-size: 0.62rem;
-    font-weight: 680;
-  }
-
-  .code-tab:hover,
-  .code-tab.active {
-    background: color-mix(in srgb, var(--primary) 9%, var(--surface-hover));
-    color: var(--text);
-  }
-
-  .code-body {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-    padding: 0.42rem 0.5rem 0.65rem;
-  }
-
-  .timeline,
-  .panel-stack,
-  .file-list,
-  .file-change-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.38rem;
-  }
-
-  .diff-block {
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface-hover) 42%, transparent);
-    overflow: hidden;
-  }
-
-  .diff-block.expanded {
-    border-color: var(--border);
-  }
-
-  .diff-row {
-    display: grid;
-    width: 100%;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.45rem;
-    border: 0;
-    background: transparent;
-    padding: 0.5rem;
-    text-align: left;
-    cursor: default;
-  }
-
-  .diff-row:not(:disabled):hover {
-    background: color-mix(in srgb, var(--surface-hover) 58%, transparent);
-  }
-
-  .diff-row:disabled {
-    opacity: 0.7;
-  }
-
-  .diff-content {
-    margin: 0;
-    padding: 0.4rem 0.55rem 0.55rem;
-    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-    overflow: auto;
-    max-height: 18rem;
-    line-height: 1.45;
-  }
-
-  .change-kind,
-  .file-kind {
-    border-radius: 999px;
-    background: var(--surface-hover);
-    color: var(--text-muted);
-    font-size: 0.58rem;
-    font-weight: 760;
-    letter-spacing: 0.01em;
-    line-height: 1;
-    padding: 0.25rem 0.38rem;
-    text-transform: uppercase;
-  }
-
-  .change-kind.created,
-  .file-kind.created {
-    color: var(--success, #16a34a);
-  }
-
-  .change-kind.modified,
-  .file-kind.modified {
-    color: var(--primary);
-  }
-
-  .change-kind.deleted,
-  .file-kind.deleted {
-    color: var(--error);
-  }
-
-  .change-path {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-  }
-
-  .timeline-step {
-    display: grid;
-    grid-template-columns: 0.7rem 1fr;
-    gap: 0.5rem;
-    align-items: start;
-  }
-
-  .step-dot {
-    width: 0.48rem;
-    height: 0.48rem;
-    margin-top: 0.42rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--text-muted) 45%, transparent);
-  }
-
-  .timeline-step.running .step-dot {
-    background: var(--primary);
-    box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--primary) 12%, transparent);
-  }
-
-  .timeline-step.error .step-dot {
-    background: var(--error);
-  }
-
-  .step-content p,
-  .mini-card p,
-  .empty-state p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 0.76rem;
-    line-height: 1.48;
-    overflow-wrap: anywhere;
-  }
-
-  .step-content pre,
-  .mini-card pre {
-    margin: 0.45rem 0 0;
-    max-height: 12rem;
-    overflow: auto;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    line-height: 1.5;
-    white-space: pre-wrap;
-  }
-
-  .mini-card {
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--surface-hover) 46%, transparent);
-    padding: 0.7rem;
-  }
-
-  .mini-card-title {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0.35rem;
-    color: var(--text);
-    font-size: 0.76rem;
-    font-weight: 720;
-  }
-
-  .mono-card p {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-  }
-
-  .file-row {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--text-secondary);
-    padding: 0.45rem 0.5rem;
-    text-align: left;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-  }
-
-  .file-row span:nth-child(2) {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .file-row:hover:not(:disabled) {
-    background: var(--surface-hover);
-    border-color: var(--border);
-    color: var(--text);
-  }
-
-  .file-row.readonly {
-    cursor: default;
-    opacity: 0.78;
-  }
-
-  .empty-state {
-    display: flex;
-    min-height: 6rem;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.6rem;
-    border: 1px dashed color-mix(in srgb, var(--border) 80%, transparent);
-    border-radius: var(--radius-xl);
-    color: var(--text-muted);
-    padding: 1rem;
-    text-align: center;
-  }
-
-  .runtime-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    height: 1.55rem;
-    border: 1px solid color-mix(in srgb, var(--success, #16a34a) 42%, var(--border) 58%);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--success, #16a34a) 8%, transparent);
-    color: var(--success, #16a34a);
-    padding: 0 0.42rem;
-    font-size: 0.58rem;
-    font-weight: 760;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .runtime-toggle.supervised {
-    border-color: color-mix(in srgb, var(--primary) 42%, var(--border) 58%);
-    background: color-mix(in srgb, var(--primary) 8%, transparent);
-    color: var(--primary);
-  }
-
-  .terminal-pane {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
-    gap: 0.5rem;
-  }
-
-  .terminal-history {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .terminal-input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface-hover) 64%, transparent);
-    padding: 0.3rem 0.45rem;
-  }
-
-  .term-prompt-symbol {
-    color: var(--success, #16a34a);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    font-weight: 700;
-    padding-left: 0.15rem;
-  }
-
-  .terminal-input {
-    min-width: 0;
-    flex: 1;
-    border: 0;
-    background: transparent;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    outline: none;
-  }
-
-  .terminal-input::placeholder {
-    color: var(--text-muted);
-  }
-
-  .term-run-btn {
-    height: 1.5rem;
-    border: 0;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--primary) 14%, transparent);
-    color: var(--primary);
-    padding: 0 0.5rem;
-    font-size: 0.62rem;
-    font-weight: 720;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .term-run-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .term-entry {
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface-hover) 32%, transparent);
-    padding: 0.4rem 0.5rem;
-  }
-
-  .term-prompt {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .term-prompt.running {
-    color: var(--text-muted);
-    font-style: italic;
-  }
-
-  .term-output {
-    margin: 0.3rem 0 0;
-    max-height: 10rem;
-    overflow: auto;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .term-output.term-error {
-    color: var(--error);
-  }
+  .change-kind.created { color: var(--success); background: var(--success-bg); }
+  .change-kind.modified { color: var(--foreground); }
+  .change-kind.deleted { color: var(--error); background: var(--error-bg); }
 </style>
