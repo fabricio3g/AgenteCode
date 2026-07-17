@@ -174,6 +174,11 @@ function migrate(database) {
   addColumn(database, 'messages', 'files_created', 'TEXT');
   addColumn(database, 'chats', 'code_agent', 'TEXT');
   addColumn(database, 'chats', 'project_id', 'TEXT');
+  // Session fields required for isolation + Code/Work durability
+  addColumn(database, 'chats', 'workspace', 'TEXT');
+  addColumn(database, 'chats', 'composer_mode', 'TEXT');
+  addColumn(database, 'chats', 'search_mode', 'TEXT');
+  addColumn(database, 'chats', 'reasoning_level', 'TEXT');
   addColumn(database, 'message_versions', 'metadata', 'TEXT');
   addColumn(database, 'attachments', 'data', 'TEXT');
 }
@@ -181,8 +186,8 @@ function migrate(database) {
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, workspace, composer_mode, search_mode, reasoning_level, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
@@ -190,6 +195,10 @@ export function saveChatSession(session) {
       context_mode = excluded.context_mode,
       code_agent = excluded.code_agent,
       project_id = excluded.project_id,
+      workspace = excluded.workspace,
+      composer_mode = excluded.composer_mode,
+      search_mode = excluded.search_mode,
+      reasoning_level = excluded.reasoning_level,
       updated_at = excluded.updated_at
   `);
 
@@ -230,6 +239,17 @@ export function saveChatSession(session) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const deleteOrphanMessages = database.prepare('DELETE FROM messages WHERE chat_id = ?');
+  const deleteOrphanMessagesExcept = (chatId, keepIds) => {
+    if (!keepIds.length) {
+      deleteOrphanMessages.run(chatId);
+      return;
+    }
+    // Prune messages no longer present in the session (prevents resurrection after delete/regenerate)
+    const placeholders = keepIds.map(() => '?').join(', ');
+    database.prepare(`DELETE FROM messages WHERE chat_id = ? AND id NOT IN (${placeholders})`).run(chatId, ...keepIds);
+  };
+
   const transaction = database.transaction(() => {
     upsertChat.run(
       session.id,
@@ -239,11 +259,20 @@ export function saveChatSession(session) {
       session.contextMode || 'chat',
       stringifyJson(session.codeAgent),
       session.projectId || null,
+      stringifyJson(session.workspace),
+      session.composerMode || null,
+      session.searchMode || null,
+      session.reasoningLevel || null,
       session.createdAt || Date.now(),
       session.updatedAt || Date.now()
     );
 
-    for (const msg of session.messages || []) {
+    const messages = Array.isArray(session.messages) ? session.messages : [];
+    const keepIds = messages.map((msg) => msg.id).filter(Boolean);
+    deleteOrphanMessagesExcept(session.id, keepIds);
+
+    for (const msg of messages) {
+      if (!msg?.id) continue;
       upsertMessage.run(
         msg.id,
         session.id,
@@ -395,6 +424,10 @@ export function loadAllChats() {
       contextMode: chat.context_mode || 'chat',
       codeAgent: parseJson(chat.code_agent, null),
       projectId: chat.project_id || null,
+      workspace: parseJson(chat.workspace, null),
+      composerMode: chat.composer_mode || null,
+      searchMode: chat.search_mode || null,
+      reasoningLevel: chat.reasoning_level || null,
       messages
     };
     return session;

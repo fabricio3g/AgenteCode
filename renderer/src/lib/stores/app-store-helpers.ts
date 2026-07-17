@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentDriverKind, CodeAgentInstanceId, CodeAgentProviderStatus, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
+import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
@@ -186,16 +186,22 @@ export function startReasoningTimer() {
 
 export function activityFromProgress(text: string): { currentActivity: AgentActivity; activityLabel: string } {
   const value = String(text || '').toLowerCase();
-  if (value.includes('search')) return { currentActivity: 'searching', activityLabel: 'Searching the web' };
-  if (value.includes('fetch') || value.includes('read') || value.includes('source')) return { currentActivity: 'reading', activityLabel: 'Reading sources' };
+  // Short verbs for the single-line working UI (avoid long thrashing sentences)
+  if (value.includes('search')) return { currentActivity: 'searching', activityLabel: 'Searching' };
+  if (value.includes('fetch') || value.includes('read') || value.includes('source')) return { currentActivity: 'reading', activityLabel: 'Reading' };
   if (value.includes('document') || value.includes('spreadsheet') || value.includes('presentation') || value.includes('pdf') || value.includes('file') || value.includes('artifact') || value.includes('write')) {
-    return { currentActivity: 'creating_files', activityLabel: 'Creating files' };
+    return { currentActivity: 'creating_files', activityLabel: 'Writing' };
   }
-  if (value.includes('final') || value.includes('answer') || value.includes('response') || value.includes('producing')) return { currentActivity: 'writing', activityLabel: 'Writing answer' };
-  return { currentActivity: 'planning', activityLabel: 'Agent is planning' };
+  if (value.includes('final') || value.includes('answer') || value.includes('response') || value.includes('producing')) return { currentActivity: 'writing', activityLabel: 'Writing' };
+  return { currentActivity: 'planning', activityLabel: 'Working' };
 }
 
+/** Skip metadata writes when activity type is unchanged (cuts UI thrash). */
 export function setAgentActivity(message: ChatMessage, activity: AgentActivity, activityLabel: string) {
+  const prev = message.metadata?.currentActivity;
+  const prevLabel = message.metadata?.activityLabel;
+  if (prev === activity && prevLabel === activityLabel) return;
+
   message.metadata = {
     ...(message.metadata || {}),
     currentActivity: activity,
@@ -217,18 +223,19 @@ export function setAgentActivity(message: ChatMessage, activity: AgentActivity, 
 }
 
 export function markAgentWriting(message: ChatMessage) {
-  setAgentActivity(message, 'writing', 'Writing answer');
+  setAgentActivity(message, 'writing', 'Writing');
   const steps = message.agentSteps || [];
   const last = steps[steps.length - 1];
-  if (last?.label === 'Writing answer') {
+  if (last?.label === 'Writing' || last?.label === 'Writing answer') {
     last.status = 'running';
+    last.label = 'Writing';
     last.detail = 'Preparing final response';
     message.agentSteps = [...steps];
     return;
   }
   message.agentSteps = [
     ...steps.map((step) => step.status === 'running' ? { ...step, status: 'done' as const } : step),
-    { id: createId('step'), type: 'thinking', label: 'Writing answer', status: 'running', detail: 'Preparing final response' }
+    { id: createId('step'), type: 'thinking', label: 'Writing', status: 'running', detail: 'Preparing final response' }
   ];
 }
 
@@ -410,43 +417,36 @@ export function normalizeMessage(message: Partial<ChatMessage>, index: number): 
 }
 
 export function normalizeContextMode(mode: unknown): ChatContextMode {
-  return mode === 'work' || mode === 'code' ? mode : 'chat';
+  // Legacy 'code' sessions migrate to Work.
+  if (mode === 'work' || mode === 'code') return 'work';
+  return 'chat';
 }
 
-function normalizeCodeAgentInstanceId(instanceId: unknown, legacyProviderId?: unknown): CodeAgentInstanceId {
-  const raw = typeof instanceId === 'string' && instanceId.trim()
-    ? instanceId.trim()
-    : typeof legacyProviderId === 'string'
-      ? legacyProviderId.trim()
-      : '';
-  if (raw === 'builtin' || raw === 'chatea' || raw === 'chatea-agent' || !raw) return 'chatea-agent';
-  return raw;
+export function normalizeSessionComposerMode(
+  mode: unknown,
+  contextMode: ChatContextMode
+): 'chat' | 'agent' {
+  if (mode === 'chat' || mode === 'agent') return mode;
+  return contextMode === 'work' ? 'agent' : 'chat';
 }
 
-function normalizeCodeAgentDriverKind(driverKind: unknown, instanceId: CodeAgentInstanceId): CodeAgentDriverKind | undefined {
-  if (instanceId === 'chatea-agent') return 'chatea-agent';
-  if (instanceId === 'chatea') return 'chatea';
-  if (instanceId === 'codex' || instanceId === 'claude' || instanceId === 'cursor' || instanceId === 'opencode' || instanceId === 'pi') return instanceId;
-  if (driverKind === 'chatea-agent' || driverKind === 'chatea' || driverKind === 'codex' || driverKind === 'claude' || driverKind === 'cursor' || driverKind === 'opencode' || driverKind === 'pi') return driverKind;
-  return undefined;
+export function normalizeSessionSearchMode(mode: unknown): 'chat' | 'search' | 'deep' | 'max' {
+  return mode === 'search' || mode === 'deep' || mode === 'max' || mode === 'chat' ? mode : 'chat';
 }
 
-function normalizeCodeAgentStatus(status: unknown): CodeAgentProviderStatus | undefined {
-  return status === 'ready' || status === 'missing' || status === 'login' || status === 'soon' || status === 'disabled'
-    ? status
-    : undefined;
-}
-
-function normalizeRuntimeMode(mode: unknown): 'full' | 'supervised' | undefined {
-  return mode === 'full' || mode === 'supervised' ? mode : undefined;
+/** One-time identity fix: workspace-backed sessions belong in Work. Legacy code → work. */
+export function resolveImmutableContextMode(chat: Partial<ChatSession>): ChatContextMode {
+  const mode = normalizeContextMode(chat.contextMode);
+  if (mode === 'work') return 'work';
+  if (chat.workspace) return 'work';
+  return 'chat';
 }
 
 export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSession {
   const messages = Array.isArray(chat.messages)
     ? chat.messages.map((message, messageIndex) => normalizeMessage(message, messageIndex))
     : [];
-  const codeAgent = chat.codeAgent && typeof chat.codeAgent === 'object' ? chat.codeAgent : null;
-  const codeAgentInstanceId = codeAgent ? normalizeCodeAgentInstanceId(codeAgent.instanceId, codeAgent.providerId) : 'chatea';
+  const contextMode = resolveImmutableContextMode(chat);
 
   return {
     id: String(chat.id || createId(`chat-${index}`)),
@@ -455,18 +455,14 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     updatedAt: Number.isFinite(chat.updatedAt) ? Number(chat.updatedAt) : Date.now(),
     folderId: chat.folderId ?? null,
     draft: String(chat.draft || ''),
-    contextMode: normalizeContextMode(chat.contextMode),
-    codeAgent: codeAgent
-      ? {
-          instanceId: codeAgentInstanceId,
-          driverKind: normalizeCodeAgentDriverKind(codeAgent.driverKind, codeAgentInstanceId),
-          status: normalizeCodeAgentStatus(codeAgent.status),
-          runtimeMode: normalizeRuntimeMode(codeAgent.runtimeMode),
-          updatedAt: Number.isFinite(codeAgent.updatedAt) ? Number(codeAgent.updatedAt) : Date.now()
-        }
-      : null,
-    projectId: typeof chat.projectId === 'string' ? chat.projectId : null,
+    contextMode,
+    // Code space removed: drop codeAgent / projectId identity; keep workspace if present.
+    codeAgent: null,
+    projectId: null,
     workspace: chat.workspace || null,
+    reasoningLevel: chat.reasoningLevel ?? null,
+    composerMode: normalizeSessionComposerMode(chat.composerMode, contextMode),
+    searchMode: normalizeSessionSearchMode(chat.searchMode),
     messages
   };
 }
@@ -579,27 +575,19 @@ export function buildContextualPrompt(args: {
     ].join(' '));
   }
   if (args.workspaceContext) {
-    guidance.push(args.mode === 'agent'
-      ? [
-        'You are in Code agent mode with a real workspace folder attached.',
-        'You have direct host file access through tools: read_file, write_file, delete_file, list_files, search_files, and bash.',
-        'Files you write through tools persist to disk in the workspace folder.',
-        'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts when relevant.',
-        'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.'
-      ].join(' ')
-      : [
-        'You are in work mode with a project workspace attached.',
-        'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts from the workspace when relevant.',
-        'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.',
-        'You CAN create or write files for the user. To create or update a file use this EXACT format on its own line:',
-        '<write_file path="relative/path/to/filename.ext">',
-        'full file content here',
-        '</write_file>',
-        'Use .md for documents, .txt for plain text, .csv for data, .py/.js/.ts for code, .html/.css/.js for previews, and .docx/.xlsx when the user wants Office documents.',
-        'For graphs and diagrams use Mermaid inside a ```mermaid code block inside a .md file.',
-        'You may output multiple <write_file> blocks in one response.',
-        'After the block(s), briefly explain what you created.'
-      ].join(' '));
+    guidance.push([
+      'You are in work mode with a project workspace attached.',
+      'Use <workspace> for project structure and filenames, and use <documents> for retrieved excerpts from the workspace when relevant.',
+      'When you mention implementation details, ground them in the provided file paths and avoid inventing files that are not present.',
+      'You CAN create or write files for the user. To create or update a file use this EXACT format on its own line:',
+      '<write_file path="relative/path/to/filename.ext">',
+      'full file content here',
+      '</write_file>',
+      'Use .md for documents, .txt for plain text, .csv for data, .py/.js/.ts for code, .html/.css/.js for previews, and .docx/.xlsx when the user wants Office documents.',
+      'For graphs and diagrams use Mermaid inside a ```mermaid code block inside a .md file.',
+      'You may output multiple <write_file> blocks in one response.',
+      'After the block(s), briefly explain what you created.'
+    ].join(' '));
   }
   if (args.mode === 'agent') {
     const searchModeLabel = args.searchMode && args.searchMode !== 'chat' ? args.searchMode : 'chat';
@@ -608,7 +596,7 @@ export function buildContextualPrompt(args: {
       `Current search mode preference: ${searchModeLabel}.`,
       searchModeLabel !== 'chat'
         ? `Use the web_search tool with mode "${searchModeLabel}" before answering when the task needs online or current information.`
-        : 'For current, recent, latest, news, price, weather, version, release, or today/now questions that need facts beyond the clock/calendar, call web_search before answering.',
+        : 'For weather call get_weather; for currency conversion call convert_currency; for stock/crypto prices call get_quote. For other current news/version questions call web_search. Never invent live numbers.',
       'Turn useful work into artifacts instead of only replying in chat.',
       'For research or competitor analysis, create a report file the user can open or download.',
       'When the user asks for slides, a deck, a document, an Excel workbook, or a PDF, use the matching artifact tool so the chat gets a real file and viewer.',

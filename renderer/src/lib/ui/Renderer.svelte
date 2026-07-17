@@ -27,14 +27,17 @@
     onParseResult
   }: Props = $props();
 
+  // Capture library once for context/parser schema; components stay dynamic via library registry.
   const parser = $derived(createParser(library.toJSONSchema() as any));
   const result = $derived(response ? parser.parse(response) : null);
+
+  // createUIContext must run at init; use getters so callbacks always see current props.
   const context = createUIContext({
     library,
-    isStreaming,
-    onAction,
-    onStateUpdate,
-    initialState,
+    isStreaming: false,
+    onAction: (event) => onAction?.(event),
+    onStateUpdate: (state) => onStateUpdate?.(state),
+    initialState: initialState || {},
     renderNode: (value: unknown) => value
   });
 

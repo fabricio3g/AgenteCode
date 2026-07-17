@@ -268,12 +268,13 @@ function finalReportRequest(mode: 'deep' | 'max', medical: boolean): string {
 
   const domain = medical
     ? [
-        'For this medical topic, use this report structure: Medical disclaimer; Executive summary; Definition and clinical importance; Epidemiology; Etiology and pathophysiology; Clinical presentation; Diagnosis and differential diagnosis; Treatment and management; Complications; Prognosis and follow-up; Patient education; Emerging research; Evidence gaps; References.',
-        'Include tables for diagnostic tests, differential diagnosis, treatment options, and complications when evidence supports them.',
-        'Do not present treatment advice as personal medical advice; write for a medically literate audience and recommend specialist care where appropriate.'
+        'For this medical topic, use this report structure (no Summary section): Medical disclaimer; Definition and clinical importance; Epidemiology; Etiology and pathophysiology; Clinical presentation; Diagnosis and differential diagnosis; Treatment and management; Complications; Prognosis and follow-up; Patient education; Emerging research; Evidence gaps; References.',
+        'Title the report with the medical topic from the user search. Include tables for diagnostic tests, differential diagnosis, treatment options, and complications when evidence supports them.',
+        'Do not present treatment advice as personal medical advice; write for a medically literate professional audience and recommend specialist care where appropriate.'
       ]
     : [
-        'Use a domain-appropriate structure: Executive summary; Background; Key findings; Detailed analysis; Comparison/decision tables where useful; Risks and caveats; Practical recommendations; Evidence gaps; References.'
+        'Use a domain-appropriate structure (no Summary / Executive Summary heading): Background; Key findings; Detailed analysis; Comparison/decision tables where useful; Risks and caveats; Practical recommendations; Evidence gaps; References.',
+        'Start with # Title naming the user\'s search topic. Write a full professional report, not a short summary.'
       ];
 
   return [...shared, ...depth, ...domain].join('\n');

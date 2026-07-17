@@ -258,4 +258,133 @@ describe('chat-db process persistence', () => {
     assert.strictEqual(message.workContext, null);
     assert.deepStrictEqual(message.filesCreated, []);
   });
+
+  it('round-trips session workspace, composerMode, searchMode, reasoningLevel', async (t) => {
+    if (!getDatabase()) {
+      t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);
+      return;
+    }
+    const { saveChatSession, loadAllChats } = await loadChatDb();
+    const session = {
+      id: 'chat-session-fields',
+      title: 'Work folder',
+      createdAt: 1000,
+      updatedAt: 2000,
+      folderId: null,
+      draft: 'hello draft',
+      contextMode: 'work',
+      composerMode: 'agent',
+      searchMode: 'deep',
+      reasoningLevel: 'high',
+      projectId: null,
+      codeAgent: null,
+      workspace: {
+        rootName: 'demo',
+        rootPath: 'D:/demo',
+        attachedAt: 1500,
+        fileCount: 2,
+        indexedCount: 1,
+        skippedCount: 1,
+        files: [{ path: 'a.ts', name: 'a.ts', size: 1, type: 'ts', status: 'ready' }]
+      },
+      messages: [{
+        id: 'msg-1',
+        role: 'user',
+        content: 'hi',
+        createdAt: 1100,
+        done: true,
+        status: 'idle'
+      }]
+    };
+
+    saveChatSession(session);
+    const [loaded] = loadAllChats();
+    assert.strictEqual(loaded.contextMode, 'work');
+    assert.strictEqual(loaded.composerMode, 'agent');
+    assert.strictEqual(loaded.searchMode, 'deep');
+    assert.strictEqual(loaded.reasoningLevel, 'high');
+    assert.strictEqual(loaded.workspace.rootPath, 'D:/demo');
+    assert.strictEqual(loaded.workspace.rootName, 'demo');
+    assert.strictEqual(loaded.workspace.files[0].path, 'a.ts');
+    assert.strictEqual(loaded.draft, 'hello draft');
+  });
+
+  it('prunes deleted messages so they do not resurrect on load', async (t) => {
+    if (!getDatabase()) {
+      t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);
+      return;
+    }
+    const { saveChatSession, loadAllChats } = await loadChatDb();
+    const session = {
+      id: 'chat-prune',
+      title: 'Prune',
+      createdAt: 1,
+      updatedAt: 2,
+      folderId: null,
+      draft: '',
+      contextMode: 'chat',
+      messages: [
+        { id: 'keep', role: 'user', content: 'keep me', createdAt: 1, done: true, status: 'idle' },
+        { id: 'drop', role: 'assistant', content: 'delete me', createdAt: 2, done: true, status: 'idle' }
+      ]
+    };
+    saveChatSession(session);
+
+    session.messages = [session.messages[0]];
+    session.updatedAt = 3;
+    saveChatSession(session);
+
+    const loaded = loadAllChats().find((c) => c.id === 'chat-prune');
+    assert.ok(loaded);
+    assert.strictEqual(loaded.messages.length, 1);
+    assert.strictEqual(loaded.messages[0].id, 'keep');
+  });
+
+  it('round-trips code projectId and codeAgent', async (t) => {
+    if (!getDatabase()) {
+      t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);
+      return;
+    }
+    const { saveChatSession, loadAllChats, saveCodeProject, loadAllCodeProjects } = await loadChatDb();
+    saveCodeProject({
+      id: 'proj-1',
+      rootPath: 'D:/code/app',
+      rootName: 'app',
+      icon: null,
+      createdAt: 1,
+      updatedAt: 2
+    });
+    saveChatSession({
+      id: 'chat-code',
+      title: 'Codebase overview',
+      createdAt: 1,
+      updatedAt: 2,
+      folderId: null,
+      draft: '',
+      contextMode: 'code',
+      composerMode: 'agent',
+      searchMode: 'chat',
+      projectId: 'proj-1',
+      codeAgent: { instanceId: 'chatea-agent', driverKind: 'chatea-agent', runtimeMode: 'supervised', updatedAt: 2 },
+      workspace: {
+        rootName: 'app',
+        rootPath: 'D:/code/app',
+        attachedAt: 1,
+        fileCount: 0,
+        indexedCount: 0,
+        skippedCount: 0,
+        files: []
+      },
+      messages: []
+    });
+
+    const projects = loadAllCodeProjects();
+    assert.ok(projects.some((p) => p.id === 'proj-1' && p.rootPath === 'D:/code/app'));
+    const loaded = loadAllChats().find((c) => c.id === 'chat-code');
+    assert.strictEqual(loaded.contextMode, 'code');
+    assert.strictEqual(loaded.projectId, 'proj-1');
+    assert.strictEqual(loaded.codeAgent.instanceId, 'chatea-agent');
+    assert.strictEqual(loaded.codeAgent.runtimeMode, 'supervised');
+    assert.strictEqual(loaded.workspace.rootPath, 'D:/code/app');
+  });
 });

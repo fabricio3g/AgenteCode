@@ -61,13 +61,7 @@
   });
 
   const statusLabel = $derived(
-    isApproval
-      ? 'Needs approval'
-      : isRunning
-        ? 'Using tool'
-        : isError
-          ? 'Tool failed'
-          : 'Used tool'
+    isApproval ? 'Needs approval' : isError ? 'Failed' : ''
   );
 
   function toggle() {
@@ -135,18 +129,13 @@
     disabled={!hasBody && !showApproval}
   >
     <Icon class="aui-tool-fallback-trigger-icon {isRunning ? 'is-running' : ''}" />
-    <span class="aui-shimmer-host min-w-0 flex-1 text-left">
+    <span class="min-w-0 flex-1 text-left">
       <span class="block truncate">
-        {statusLabel}: <b>{heading}</b>
+        {#if statusLabel}<span class="opacity-70">{statusLabel} · </span>{/if}<b>{heading}</b>
         {#if preview && !expanded}
-          <span class="ml-1 font-normal opacity-70">{preview}</span>
+          <span class="ml-1 font-normal opacity-60">{preview}</span>
         {/if}
       </span>
-      {#if isRunning}
-        <span class="aui-shimmer truncate" aria-hidden="true">
-          {statusLabel}: <b>{heading}</b>
-        </span>
-      {/if}
     </span>
     {#if adds || dels}
       <span class="diff-trail">

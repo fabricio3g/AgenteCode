@@ -46,6 +46,11 @@
   .artifact-dashboard {
     width: min(100%, 42rem);
     margin-top: 0.65rem;
+    padding: 0.85rem 0.95rem;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
     color: var(--text);
   }
 
@@ -57,11 +62,12 @@
     margin: 0;
     font-size: 1rem;
     font-weight: 700;
+    color: var(--text);
   }
 
   .dashboard-header p {
     margin: 0.18rem 0 0;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 0.82rem;
   }
 
@@ -73,7 +79,9 @@
 
   .metric {
     position: relative;
-    padding: 0.7rem 0;
+    padding: 0.7rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--chat-bg) 45%, transparent);
   }
 
   .metric::before {
@@ -86,7 +94,7 @@
   }
 
   .metric-label {
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 0.68rem;
     font-weight: 650;
     letter-spacing: 0.06em;

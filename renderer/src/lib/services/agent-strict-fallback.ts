@@ -29,7 +29,7 @@ function titleFromPrompt(prompt: string): string {
     .replace(/^((extense|extensive|detailed|full|comprehensive)\s+)?(report|informe)\s+(about|on|of|for|sobre|de)\s+/i, '')
     .replace(/^(search|research|look up)\s+(about|on|for)?\s*/i, '')
     .trim();
-  return cleaned || 'Gathered Evidence';
+  return cleaned || 'Research findings';
 }
 
 function sourceKey(source: { title?: string; url?: string }): string {
@@ -130,65 +130,147 @@ function renderSource(source: EvidenceSource): string {
   return source.url ? `- [${source.id}] [${title}](${source.url})${suffix}` : `- [${source.id}] ${title}${suffix}`;
 }
 
+function isMedicalTopic(prompt: string): boolean {
+  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|autoimmune|dermatology|medicine|medical|trial|etiology|symptom|pharmacolog)\b/i.test(
+    prompt || ''
+  );
+}
+
+/** Product-facing partial report — never title the body "Gathered Evidence". */
+export function renderResearchFallbackReport(params: {
+  prompt: string;
+  observations: ToolObservation[];
+  sources: EvidenceSource[];
+  createdFiles?: string[];
+  visibleFiles?: string[];
+  missingExtensions?: string[];
+  notice?: string;
+}): string {
+  const title = titleFromPrompt(params.prompt);
+  const medical = isMedicalTopic(params.prompt);
+  const items = collectEvidenceItems(params.observations, params.sources);
+  const sources = params.sources.slice(0, 24);
+
+  const execBits = items.slice(0, 5).map((i) => i.text.replace(/\s+/g, ' ').trim());
+  const executive = execBits.length
+    ? execBits.join(' ')
+    : 'Limited source material was retrieved; findings below reflect only what could be verified from available pages.';
+
+  const lines: string[] = [
+    `# ${title}`,
+    '',
+    params.notice
+      || '_Partial research report compiled from retrieved sources. Say **continue** for more depth if needed._',
+    '',
+    executive,
+    ''
+  ];
+
+  if (medical) {
+    const sections = [
+      ['Definition and clinical importance', items.slice(0, 3)],
+      ['Diagnosis and clinical presentation', items.slice(1, 5)],
+      ['Treatment and management', items.filter((i) => /steroid|immunosup|treat|therap|corticosteroid|medication|dosing|management|adjuvant/i.test(i.text)).slice(0, 6)],
+      ['Prognosis and follow-up', items.filter((i) => /prognos|outcome|mortal|remission|follow/i.test(i.text)).slice(0, 4)]
+    ] as Array<[string, EvidenceItem[]]>;
+
+    for (const [heading, sectionItems] of sections) {
+      lines.push(`## ${heading}`, '');
+      if (sectionItems.length) {
+        for (const item of sectionItems) {
+          const citation = item.sourceId ? ` [${item.sourceId}]` : '';
+          lines.push(`- ${item.text}${citation}`);
+        }
+      } else {
+        lines.push('_Not enough specific evidence was retrieved for this section._');
+      }
+      lines.push('');
+    }
+  } else {
+    lines.push('## Key findings', '');
+    if (items.length) {
+      for (const item of items.slice(0, 12)) {
+        const citation = item.sourceId ? ` [${item.sourceId}]` : '';
+        lines.push(`- ${item.text}${citation}`);
+      }
+    } else {
+      lines.push('_No synthesizable findings were extracted from tool results._');
+    }
+    lines.push('');
+  }
+
+  lines.push(
+    '## Limitations',
+    '',
+    '- This summary is based only on sources retrieved in this session; it is not a substitute for specialist clinical judgment or primary literature review.',
+    '- Some pages may have been blocked, thin, or incomplete; claims without citations should be treated as unverified.',
+    ''
+  );
+
+  if (sources.length) {
+    lines.push('## References', '');
+    for (const source of sources) {
+      const domain = domainLabel(source.url);
+      const label = source.title || source.url || `Source ${source.id}`;
+      if (source.url) {
+        lines.push(`${source.id}. ${label}${domain ? `. ${domain}` : ''}. ${source.url}`);
+      } else {
+        lines.push(`${source.id}. ${label}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const files = Array.from(new Set([...(params.createdFiles || []), ...(params.visibleFiles || [])]));
+  if (files.length) {
+    lines.push('## Files', '');
+    for (const file of files) lines.push(`- ${file}`);
+    lines.push('');
+  }
+
+  if (params.missingExtensions?.length) {
+    lines.push('## Missing requested files', '');
+    for (const ext of params.missingExtensions) lines.push(`- .${ext.replace(/^\./, '')}`);
+  }
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** @deprecated Prefer renderResearchFallbackReport for user-facing content */
 function renderEvidenceOnlyMarkdown(params: {
   observations: ToolObservation[];
   sources: EvidenceSource[];
   createdFiles?: string[];
   visibleFiles?: string[];
   missingExtensions?: string[];
+  prompt?: string;
 }): string {
-  const items = collectEvidenceItems(params.observations, params.sources);
-  const lines: string[] = [];
-
-  if (items.length) {
-    lines.push('## Gathered Evidence', '');
-    for (const item of items) {
-      const citation = item.sourceId ? ` [${item.sourceId}]` : '';
-      lines.push(`- ${item.text}${citation}`);
-    }
-  }
-
-  if (params.sources.length) {
-    if (lines.length) lines.push('');
-    lines.push('## Sources', '');
-    for (const source of params.sources.slice(0, 24)) {
-      lines.push(renderSource(source));
-    }
-  }
-
-  const files = Array.from(new Set([...(params.createdFiles || []), ...(params.visibleFiles || [])]));
-  if (files.length) {
-    if (lines.length) lines.push('');
-    lines.push('## Files', '');
-    for (const file of files) lines.push(`- ${file}`);
-  }
-
-  if (params.missingExtensions?.length) {
-    if (lines.length) lines.push('');
-    lines.push('## Missing Files', '');
-    for (const ext of params.missingExtensions) lines.push(`- .${ext.replace(/^\./, '')}`);
-  }
-
-  if (!lines.length) return 'No reliable gathered evidence was available.';
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return renderResearchFallbackReport({
+    prompt: params.prompt || 'Research findings',
+    observations: params.observations,
+    sources: params.sources,
+    createdFiles: params.createdFiles,
+    visibleFiles: params.visibleFiles,
+    missingExtensions: params.missingExtensions
+  });
 }
 
 function evidenceSections(items: EvidenceItem[], sources: EvidenceSource[]) {
   const sections: Array<{ title: string; content: string }> = [];
   if (items.length) {
     sections.push({
-      title: 'Gathered Evidence',
+      title: 'Key findings',
       content: items.map((item) => `- ${item.text}${item.sourceId ? ` [${item.sourceId}]` : ''}`).join('\n')
     });
   }
   if (sources.length) {
     sections.push({
-      title: 'Sources',
+      title: 'References',
       content: sources.map(renderSource).join('\n')
     });
   }
   if (!sections.length) {
-    sections.push({ title: 'Gathered Evidence', content: 'No reliable gathered evidence was available.' });
+    sections.push({ title: 'Key findings', content: 'No reliable synthesizable evidence was available.' });
   }
   return sections;
 }
@@ -244,11 +326,11 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     const result = await params.executeTool('create_work_product', {
       title,
       path: title,
-      subtitle: 'Gathered evidence only',
-      executiveSummary: items.slice(0, 4).map((item) => item.text).join('\n') || 'No reliable gathered evidence was available.',
+      subtitle: 'Partial research product from retrieved sources',
+      executiveSummary: items.slice(0, 4).map((item) => item.text).join('\n') || 'Limited synthesizable evidence was available from retrieved sources.',
       sections,
       sources: mappedSources,
-      limitations: ['Contains only gathered tool evidence and source excerpts. No unsupported conclusions were added.'],
+      limitations: ['Based only on sources retrieved in this session. Not a substitute for specialist review or primary literature.'],
       tables: [{
         name: 'Sources',
         columns: ['id', 'title', 'url', 'excerpt'],
@@ -295,8 +377,8 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
       title,
       path: `${title}.pptx`,
       slides: [
-        { title: 'Gathered Evidence', content: items.slice(0, 6).map((item) => item.text) },
-        { title: 'Sources', content: mappedSources.slice(0, 8).map(renderSource) }
+        { title: 'Key findings', content: items.slice(0, 6).map((item) => item.text) },
+        { title: 'References', content: mappedSources.slice(0, 8).map(renderSource) }
       ]
     });
   }
@@ -338,11 +420,14 @@ export async function buildStrictFallbackContent(params: {
   const missing = params.missingRequestedArtifactExtensions(params.ctx.files, params.prompt);
   const sources = mapSources(params.evidenceSources(params.observations, params.sources));
 
-  return renderEvidenceOnlyMarkdown({
+  return renderResearchFallbackReport({
+    prompt: params.prompt,
     observations: params.observations,
     sources,
     createdFiles: created,
     visibleFiles,
-    missingExtensions: missing
+    missingExtensions: missing,
+    notice:
+      '_Partial research report from retrieved sources (automatic synthesis). Say **continue** to deepen or refine._'
   });
 }

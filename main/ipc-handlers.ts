@@ -66,6 +66,7 @@ import { registerTokenHandlers } from './ipc/token-handlers.ts';
 import { registerDownloadHandlers } from './ipc/download-handlers.ts';
 import { registerRagHandlers } from './ipc/rag-handlers.ts';
 import { registerSearchHandlers } from './ipc/search-handlers.ts';
+import { registerLiveDataHandlers } from './ipc/live-data-handlers.ts';
 import { registerModelManagementHandlers } from './ipc/model-handlers.ts';
 import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
@@ -254,6 +255,9 @@ export function registerIpcHandlers() {
     crawlWeb,
     toErrorMessage,
   });
+
+  // ── Live data (weather / FX / quotes — open free APIs) ──
+  registerLiveDataHandlers({ ipcMain, toErrorMessage });
 
   // ── Workspace / filesystem ──
   registerWorkspaceHandlers({

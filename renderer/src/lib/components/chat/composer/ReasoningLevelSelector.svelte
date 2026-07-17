@@ -35,6 +35,8 @@
         return 'Medium';
       case 'high':
         return 'High';
+      case 'max':
+        return 'Max';
       case 'xhigh':
         return 'X-High';
       case 'enabled':

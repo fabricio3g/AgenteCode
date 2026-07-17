@@ -8,6 +8,8 @@
   import ArtifactMap from './ArtifactMap.svelte';
   import ArtifactDiagram from './ArtifactDiagram.svelte';
   import ArtifactDashboard from './ArtifactDashboard.svelte';
+  import ArtifactInfoCard from './ArtifactInfoCard.svelte';
+  import ArtifactHtmlCard from './ArtifactHtmlCard.svelte';
 
   interface Props {
     artifact: AgentArtifact;
@@ -56,6 +58,10 @@
   <ArtifactDiagram payload={artifact.inline} />
 {:else if artifact.inline?.kind === 'dashboard'}
   <ArtifactDashboard payload={artifact.inline} />
+{:else if artifact.inline?.kind === 'info_card'}
+  <ArtifactInfoCard payload={artifact.inline} />
+{:else if artifact.inline?.kind === 'html_card'}
+  <ArtifactHtmlCard payload={artifact.inline} />
 {:else if previewSrc}
   <div class="inline-html-artifact">
     <iframe
@@ -74,7 +80,10 @@
     min-height: 320px;
     margin-top: 0.65rem;
     overflow: hidden;
-    background: transparent;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
   }
 
   .inline-html-frame {

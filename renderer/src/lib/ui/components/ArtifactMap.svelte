@@ -157,13 +157,19 @@
   .artifact-map {
     width: min(100%, 42rem);
     margin-top: 0.65rem;
+    padding: 0.75rem 0.85rem;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
     color: var(--text);
   }
 
   .artifact-map-title {
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.45rem;
     font-size: 0.95rem;
     font-weight: 650;
+    color: var(--text);
   }
 
   .artifact-map-svg {
@@ -171,9 +177,10 @@
     width: 100%;
     height: auto;
     overflow: visible;
+    border-radius: var(--radius-sm);
     background:
-      radial-gradient(circle at 28% 22%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 32%),
-      linear-gradient(180deg, color-mix(in srgb, var(--surface) 35%, transparent), transparent);
+      radial-gradient(circle at 28% 22%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 32%),
+      color-mix(in srgb, var(--chat-bg) 55%, transparent);
   }
 
   .grid-line {

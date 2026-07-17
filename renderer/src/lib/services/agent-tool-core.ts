@@ -68,10 +68,13 @@ export async function handleFetchUrl(params: {
     site_name?: string;
     og_image?: string;
     file_type?: string;
+    document_kind?: string;
     status?: number;
     truncated?: boolean;
     warning?: string;
     quality?: string;
+    pages?: number;
+    extraction?: string;
   }>;
   isTauri: () => boolean;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
@@ -82,7 +85,8 @@ export async function handleFetchUrl(params: {
   if (!url) return params.fail('Missing url');
   try {
     if (params.isTauri()) {
-      const result = await params.fetchUrlContent(url, 0);
+      // Cap extract length for model tokens; scraper still uses Readability / PDF / DOCX extractors.
+      const result = await params.fetchUrlContent(url, 24000);
       if (result.error) return params.fail(result.error);
       const content = String(result.content || '');
       return params.ok({
@@ -90,10 +94,13 @@ export async function handleFetchUrl(params: {
         title: result.title,
         excerpt: result.excerpt,
         content,
-        links: (result.links || []).slice(0, 80),
+        links: (result.links || []).slice(0, 40),
         site_name: result.site_name,
         og_image: result.og_image,
-        file_type: result.file_type,
+        file_type: result.file_type || result.document_kind,
+        document_kind: result.document_kind,
+        extraction: result.extraction,
+        pages: result.pages,
         status: result.status,
         truncated: result.truncated,
         warning: result.warning,
@@ -123,14 +130,21 @@ export async function handleQueryKnowledge(params: {
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
   try {
+    // No tight token budget on attached knowledge — return full chunks (hard safety only).
+    const topK = Math.min(Math.max(Number(params.args.topK) || 16, 1), 40);
     const result = await params.queryDocuments({
       query: String(params.args.query || ''),
       chat_id: params.ctx.chatId,
-      top_k: Math.min(Number(params.args.topK) || 5, 20)
+      top_k: topK
     });
+    const MAX_CHUNK = 4000;
+    const MAX_CONTEXT = 120_000;
     return params.ok({
-      results: result.results.map((entry) => ({ text: entry.chunk.text.slice(0, 500), score: entry.score })),
-      context: result.context?.slice(0, 3000)
+      results: result.results.map((entry) => ({
+        text: String(entry.chunk.text || '').slice(0, MAX_CHUNK),
+        score: entry.score
+      })),
+      context: result.context ? String(result.context).slice(0, MAX_CONTEXT) : undefined
     });
   } catch (err: unknown) {
     return params.failFromError(err);

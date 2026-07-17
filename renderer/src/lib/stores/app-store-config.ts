@@ -130,6 +130,7 @@ export function mergeUiSettingsConfig(
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    composer_mode_control?: 'tabs' | 'auto';
   }
 ): AppConfig {
   return {

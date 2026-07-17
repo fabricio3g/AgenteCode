@@ -55,10 +55,12 @@
 </script>
 
 <div
-  class="titlebar-row titlebar-drag flex h-9 shrink-0 select-none border-b border-border bg-background"
+  class="titlebar-row titlebar-drag relative z-20 flex h-9 shrink-0 select-none bg-background"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
   role="banner"
 >
+  <!-- Hangs below the bar; parent column must not clip overflow (see AppShell). -->
+  <div class="titlebar-fade" aria-hidden="true"></div>
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
     {#if appStore.sidebarOpen}
       <Tooltip label="Hide sidebar">
@@ -101,11 +103,17 @@
     </Tooltip>
   </div>
 
-  <div class="titlebar-center titlebar-no-drag flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3">
-    <ModelSwitcher />
+  <div
+    class="titlebar-center titlebar-no-drag flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3"
+    style="-webkit-app-region: no-drag;"
+  >
+    <div class="titlebar-no-drag" style="-webkit-app-region: no-drag; pointer-events: auto;">
+      <ModelSwitcher />
+    </div>
     <Tooltip label="Open Models">
       <button
-        class="aui-icon-button size-8"
+        class="aui-icon-button size-8 titlebar-no-drag"
+        style="-webkit-app-region: no-drag;"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         aria-label="Open Models"
       >
@@ -224,6 +232,27 @@
   .titlebar-row {
     display: flex;
     width: 100%;
+    position: relative;
+    border-bottom: none;
+  }
+
+  /* Soft dissolve into chat content (replaces hard border).
+     Must paint over the chat layer (z-10), so titlebar-row uses z-20. */
+  .titlebar-fade {
+    pointer-events: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 1.75rem;
+    z-index: 1;
+    background: linear-gradient(
+      to bottom,
+      var(--background) 0%,
+      color-mix(in srgb, var(--background) 78%, transparent) 35%,
+      color-mix(in srgb, var(--background) 35%, transparent) 70%,
+      transparent 100%
+    );
   }
 
   .titlebar-left {

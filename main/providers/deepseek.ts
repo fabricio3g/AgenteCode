@@ -2,12 +2,24 @@ import OpenAI from 'openai';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { OpenAIProvider } from './openai.ts';
 
-// DeepSeek is OpenAI-compatible. Per DeepSeek's API docs, the reasoning_effort
-// parameter (low/medium/high) and the thinking:{type:'enabled'} flag are
-// accepted on their reasoning-capable models. We declare that here, inside the
-// provider that owns this API — no model-name guessing in shared code.
+/**
+ * DeepSeek API (OpenAI-compatible) — see https://api-docs.deepseek.com/guides/thinking_mode
+ *
+ * Thinking:
+ *   thinking: { type: 'enabled' | 'disabled' }  (default enabled on server)
+ * Effort (OpenAI format):
+ *   reasoning_effort: 'high' | 'max'
+ *   (low/medium map to high; xhigh maps to max — per official docs)
+ *
+ * Models: deepseek-v4-flash, deepseek-v4-pro
+ *   deepseek-chat / deepseek-reasoner deprecate 2026-07-24 (aliases for flash modes)
+ *
+ * Tool + thinking: assistant turns with tool_calls MUST echo reasoning_content
+ * back on subsequent requests (handled in agent.ts).
+ */
 
-const DEEPSEEK_LEVELS = ['off', 'low', 'medium', 'high'];
+/** UI / API levels we expose for DeepSeek thinking. */
+const DEEPSEEK_LEVELS = ['off', 'high', 'max'] as const;
 
 export class DeepSeekProvider extends OpenAIProvider {
   name = 'deepseek';
@@ -31,31 +43,49 @@ export class DeepSeekProvider extends OpenAIProvider {
     return this._clients.get(clientKey);
   }
 
-  /**
-   * DeepSeek's docs state reasoning_effort + thinking are accepted on their
-   * reasoning-capable models. We don't hardcode a model allowlist — if the
-   * user picks a non-reasoning DeepSeek model, the server returns an error
-   * which surfaces normally.
-   */
   async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
     return {
       supported: true,
-      levels: DEEPSEEK_LEVELS as ReasoningCapabilities['levels'],
+      levels: [...DEEPSEEK_LEVELS] as ReasoningCapabilities['levels'],
       paramShape: 'openai_reasoning_effort',
       source: 'sdk'
     };
   }
 
   /**
-   * DeepSeek accepts the OpenAI `reasoning_effort` plus an optional
-   * `thinking: { type: 'enabled' }` flag. We send both when reasoning is on.
+   * Map UI level → DeepSeek body.
+   * - off → thinking disabled
+   * - high / max → thinking enabled + reasoning_effort
+   * - low / medium → high (compat)
+   * - xhigh → max (compat)
    */
   _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
-    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+    if (!reasoning || !reasoning.level || reasoning.level === 'off' || reasoning.level === 'disabled') {
+      return { thinking: { type: 'disabled' } };
+    }
+
+    let effort: 'high' | 'max' = 'high';
+    const level = reasoning.level;
+    if (level === 'max' || level === 'xhigh') {
+      effort = 'max';
+    } else if (level === 'high' || level === 'low' || level === 'medium' || level === 'enabled' || level === 'on') {
+      effort = 'high';
+    } else if (level === 'minimal' || level === 'none') {
+      return { thinking: { type: 'disabled' } };
+    }
+
     return {
-      reasoning_effort: reasoning.level,
-      thinking: { type: 'enabled' }
+      thinking: { type: 'enabled' },
+      reasoning_effort: effort
     };
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    return { ...body, ...this._reasoningBody(reasoning) };
   }
 }
 
+/** Exported for unit tests */
+export function mapDeepSeekReasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+  return new DeepSeekProvider()._reasoningBody(reasoning);
+}

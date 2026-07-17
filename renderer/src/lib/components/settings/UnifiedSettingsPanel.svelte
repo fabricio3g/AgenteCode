@@ -15,6 +15,9 @@
 
   let showAssistantText = $state(appStore.config.ui?.show_assistant_text ?? true);
   let enableThinking = $state(appStore.config.ui?.enable_thinking ?? true);
+  let composerModeControl = $state<'tabs' | 'auto'>(
+    appStore.config.ui?.composer_mode_control === 'tabs' ? 'tabs' : 'auto'
+  );
   let hfToken = $state('');
 
   let searchProvider = $state(appStore.config.search?.provider || 'aggregator');
@@ -83,7 +86,8 @@
     savingGeneral = true;
     await appStore.updateUiSettings({
       show_assistant_text: showAssistantText,
-      enable_thinking: enableThinking
+      enable_thinking: enableThinking,
+      composer_mode_control: composerModeControl
     });
     saveHfToken();
     savingGeneral = false;
@@ -142,6 +146,7 @@
         <GeneralSettings
           bind:showAssistantText
           bind:enableThinking
+          bind:composerModeControl
           bind:hfToken
           onsaveHfToken={saveHfToken}
         />

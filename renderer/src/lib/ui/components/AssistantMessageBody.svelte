@@ -9,6 +9,7 @@
   import AgentBlock from './AgentBlock.svelte';
   import ReasoningBlock from './ReasoningBlock.svelte';
   import SourcesBlock from './SourcesBlock.svelte';
+  import ResearchExportBar from './ResearchExportBar.svelte';
   import SearchStatusBlock from './SearchStatusBlock.svelte';
   import ContextBadges from './ContextBadges.svelte';
   import RichContent from './RichContent.svelte';
@@ -61,7 +62,7 @@
     )
   );
 
-  const displayWorkContext = $derived(contextMode === 'code' ? null : message.workContext);
+  const displayWorkContext = $derived(message.workContext);
   const hasContextBadges = $derived(!!displayWorkContext || (message.ragDocuments?.length || 0) > 0);
 
   function cleanReportTitle(value: string) {
@@ -90,11 +91,7 @@
       status: displayMetadata?.workProduct?.status || 'ready'
     }];
   });
-  const visibleContent = $derived(
-    contextMode === 'code'
-      ? ''
-      : displayContent
-  );
+  const visibleContent = $derived(displayContent);
   const showSourcesBlock = $derived.by(() => {
     if (!hasSources) return false;
     return true;
@@ -142,21 +139,21 @@
   {/if}
 
   {#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
-    {#if contextMode !== 'code'}
-      <AgentBlock
-        steps={message.agentSteps || []}
-        reasoning={enableThinking ? displayReasoning : undefined}
-        status={message.status}
-        totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
-        outcome={displayMetadata?.outcome}
-        stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
-        currentActivity={displayMetadata?.currentActivity}
-        activityLabel={displayMetadata?.activityLabel}
-        sourceCount={message.sources?.length || 0}
-        messageId={message.id}
-      />
-    {/if}
-    {#if message.agentSteps?.length}
+    <!-- One calm status line while working; tool list only after stream ends -->
+    <AgentBlock
+      steps={message.agentSteps || []}
+      reasoning={enableThinking ? displayReasoning : undefined}
+      status={message.status}
+      totalElapsedSeconds={resolveTotalElapsed(displayMetadata)}
+      outcome={displayMetadata?.outcome}
+      stopReason={displayMetadata?.stopReason || displaySearchMeta?.stopReason}
+      currentActivity={displayMetadata?.currentActivity}
+      activityLabel={displayMetadata?.activityLabel}
+      sourceCount={message.sources?.length || 0}
+      messageId={message.id}
+      searchMode={message.searchMode || null}
+    />
+    {#if message.agentSteps?.length && message.status !== 'streaming'}
       <InlineAgentSteps
         steps={message.agentSteps}
         status={message.status}
@@ -166,14 +163,6 @@
     {/if}
   {/if}
 </div>
-
-{#if showSourcesBlock}
-  <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} messageId={message.id} />
-{/if}
-
-{#if showSearchStatus}
-  <SearchStatusBlock meta={displaySearchMeta} />
-{/if}
 
 {#if hasContextBadges}
   <ContextBadges workContext={displayWorkContext} sourceCount={0} ragCount={message.ragDocuments?.length || 0} />
@@ -206,11 +195,33 @@
 {/if}
 
 {#if visibleContent}
-  <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} onAction={onUIAction} />
+  <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} searchMode={message.searchMode || null} onAction={onUIAction} />
 {/if}
 
 {#if reportDocs.length}
   <DocumentSurface docs={reportDocs} title={reportTitle} sourceCount={message.sources?.length || 0} allowDownload={false} />
+{/if}
+
+<!-- Research chrome after the answer: sources, optional collapsible brief -->
+{#if showSourcesBlock}
+  <SourcesBlock sources={message.sources} searchMode={message.searchMode} meta={displaySearchMeta} messageId={message.id} />
+  <!-- Quiet file downloads for Deep/Max only — primary visual widgets are chart-style inline artifacts -->
+  {#if message.searchMode === 'deep' || message.searchMode === 'max'}
+    <ResearchExportBar
+      sources={message.sources}
+      searchMode={message.searchMode}
+      meta={displaySearchMeta}
+      title={message.content?.split('\n').find((line) => line.startsWith('# '))?.replace(/^#\s+/, '') || 'Research'}
+    />
+  {/if}
+{/if}
+
+{#if showSearchStatus}
+  <SearchStatusBlock
+    meta={displaySearchMeta}
+    hasAnswer={!!visibleContent?.trim()}
+    hasSources={hasSources}
+  />
 {/if}
 
 <SlidesBlock slides={message.slides} mode={message.mode} onDownload={onDownloadSlides} />

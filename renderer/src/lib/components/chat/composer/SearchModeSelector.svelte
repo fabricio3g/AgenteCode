@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronDown, WifiOff } from 'lucide-svelte';
+  import { ChevronDown, Globe2, Layers, Radar, WifiOff } from 'lucide-svelte';
   import { flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { t } from 'svelte-i18n';
@@ -26,6 +26,16 @@
       max: $t('composer.maxSearch')
     };
     return labels[id] || id;
+  }
+
+  function getSearchDesc(id: SearchModeId): string {
+    const descs: Record<SearchModeId, string> = {
+      chat: $t('composer.searchOffDesc'),
+      search: $t('composer.webSearchDesc'),
+      deep: $t('composer.deepSearchDesc'),
+      max: $t('composer.maxSearchDesc')
+    };
+    return descs[id] || '';
   }
 
   function toggleDropdown() {
@@ -67,15 +77,27 @@
   <button
     bind:this={triggerEl}
     type="button"
-    class="aui-select-trigger"
+    class="aui-select-trigger mode-trigger"
+    class:is-active={currentModeId !== 'chat'}
+    class:is-deep={currentModeId === 'deep'}
+    class:is-max={currentModeId === 'max'}
     onclick={toggleDropdown}
     aria-haspopup="listbox"
     aria-expanded={dropdownOpen}
+    title={getSearchDesc(currentModeId)}
   >
     {#if currentModeId === 'chat'}
-      <WifiOff class="size-3.5" />
+      <WifiOff class="size-3.5 opacity-70" />
+      <span>{getSearchLabel('chat')}</span>
+    {:else if currentModeId === 'search'}
+      <Globe2 class="size-3.5 opacity-80" />
+      <span>{getSearchLabel('search')}</span>
+    {:else if currentModeId === 'deep'}
+      <Layers class="size-3.5 opacity-80" />
+      <span>{getSearchLabel('deep')}</span>
     {:else}
-      <span>{getSearchLabel(currentModeId)}</span>
+      <Radar class="size-3.5 opacity-80" />
+      <span>{getSearchLabel('max')}</span>
     {/if}
     <ChevronDown class={`size-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
   </button>
@@ -83,21 +105,74 @@
   {#if dropdownOpen}
     <div
       bind:this={dropdownEl}
-      class="aui-menu absolute bottom-full z-[200] mb-1 min-w-[10rem] origin-bottom"
+      class="aui-menu mode-menu absolute bottom-full z-[200] mb-1 min-w-[13.5rem] origin-bottom"
       transition:flyAndScale={{ y: -4, start: 0.95, duration: 150 }}
       role="listbox"
     >
       {#each searchModeIds as modeId (modeId)}
         <button
           type="button"
-          class="aui-menu-item {searchMode === modeId ? 'is-active' : ''}"
+          class="mode-item {searchMode === modeId ? 'is-active' : ''}"
           onclick={() => selectMode(modeId)}
           role="option"
           aria-selected={searchMode === modeId}
         >
-          {getSearchLabel(modeId)}
+          <span class="mode-item-title">{getSearchLabel(modeId)}</span>
+          <span class="mode-item-desc">{getSearchDesc(modeId)}</span>
         </button>
       {/each}
     </div>
   {/if}
 </div>
+
+<style>
+  .mode-trigger {
+    gap: 0.35rem;
+  }
+
+  .mode-trigger.is-deep,
+  .mode-trigger.is-max {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  .mode-menu {
+    padding: 0.3rem;
+  }
+
+  .mode-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    width: 100%;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    padding: 0.45rem 0.55rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+
+  .mode-item:hover {
+    background: var(--muted);
+  }
+
+  .mode-item.is-active {
+    background: color-mix(in srgb, var(--muted) 85%, var(--foreground) 6%);
+  }
+
+  .mode-item-title {
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .mode-item-desc {
+    color: var(--muted-foreground);
+    font-size: 0.68rem;
+    font-weight: 450;
+    line-height: 1.3;
+  }
+</style>

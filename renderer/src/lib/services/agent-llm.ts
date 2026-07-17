@@ -76,13 +76,25 @@ async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport 
 
 function buildBody(
   transport: AgentTransport,
-  options: { messages: RequestMessage[]; tools?: ToolDefinition[]; stream: boolean; reasoningLevel?: ReasoningLevel | null }
+  options: {
+    messages: RequestMessage[];
+    tools?: ToolDefinition[];
+    stream: boolean;
+    reasoningLevel?: ReasoningLevel | null;
+    /** Research reports: no max_tokens completion budget. */
+    omitMaxTokens?: boolean;
+  }
 ): Record<string, unknown> {
+  const params = { ...transport.params };
+  if (options.omitMaxTokens) {
+    delete params.max_tokens;
+  }
+
   const body: Record<string, unknown> = {
     model: transport.model,
     stream: options.stream,
     messages: toRequestMessages(options.messages, transport.modelForMessages, transport.visionCapable),
-    ...transport.params
+    ...params
   };
 
   if (options.tools?.length) {
@@ -104,6 +116,7 @@ export async function agentComplete(options: {
   signal?: AbortSignal;
   config?: unknown;
   reasoningLevel?: ReasoningLevel | null;
+  omitMaxTokens?: boolean;
 }): Promise<CompletionResult | null> {
   if (!isTauri()) return null;
 
@@ -118,7 +131,13 @@ export async function agentComplete(options: {
       baseUrl: transport.baseUrl,
       apiKey: transport.apiKey,
       providerName: transport.providerName,
-      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: false, reasoningLevel: options.reasoningLevel })
+      body: buildBody(transport, {
+        messages: options.messages,
+        tools: options.tools,
+        stream: false,
+        reasoningLevel: options.reasoningLevel,
+        omitMaxTokens: options.omitMaxTokens
+      })
     });
 
     return readCompletionWithTools(payload);
@@ -134,6 +153,7 @@ export async function agentStreamComplete(options: {
   signal?: AbortSignal;
   config?: unknown;
   reasoningLevel?: ReasoningLevel | null;
+  omitMaxTokens?: boolean;
   onReasoning?: (text: string) => void;
   onContent?: (text: string) => void;
 }): Promise<CompletionResult | null> {
@@ -223,7 +243,13 @@ export async function agentStreamComplete(options: {
       baseUrl: transport.baseUrl,
       apiKey: transport.apiKey,
       providerName: transport.providerName,
-      body: buildBody(transport, { messages: options.messages, tools: options.tools, stream: true, reasoningLevel: options.reasoningLevel })
+      body: buildBody(transport, {
+        messages: options.messages,
+        tools: options.tools,
+        stream: true,
+        reasoningLevel: options.reasoningLevel,
+        omitMaxTokens: options.omitMaxTokens
+      })
     });
 
     streamId = started?.streamId || '';

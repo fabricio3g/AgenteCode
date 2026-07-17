@@ -384,12 +384,16 @@
   .artifact-chart {
     margin: 0.65rem 0 0;
     width: min(100%, 42rem);
-    overflow: visible;
-    background: transparent;
+    overflow: hidden;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
+    padding: 0.65rem 0.75rem 0.45rem;
   }
 
   .artifact-chart-title {
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.35rem;
     color: var(--text);
     font-size: 0.95rem;
     font-weight: 650;

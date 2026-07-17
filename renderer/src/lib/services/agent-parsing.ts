@@ -126,7 +126,17 @@ export function sanitizeAgentVisibleText(content: string): string {
 }
 
 export function isPublicFallbackContent(content: string): boolean {
-  return /^(Agent stopped because\b|#{0,6}\s*Gathered Evidence\b|No reliable gathered evidence was available\.)/i.test((content || '').trim());
+  const text = (content || '').trim();
+  if (!text) return false;
+  // Legacy evidence-dump fallback
+  if (/^(Agent stopped because\b|#{0,6}\s*Gathered Evidence\b|No reliable gathered evidence was available\.)/i.test(text)) {
+    return true;
+  }
+  // Product partial research report (automatic synthesis when model did not finish)
+  if (/Partial research report (compiled|from retrieved)/i.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 export function stripToolCallArtifacts(content: string): string {

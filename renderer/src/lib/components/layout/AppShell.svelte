@@ -9,8 +9,6 @@
   import Composer from '$lib/components/chat/Composer.svelte';
   import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
-  import CodeWorkspaceDrawer from '$lib/components/agent/CodeWorkspaceDrawer.svelte';
-  import CodeTopbar from '$lib/components/agent/CodeTopbar.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
@@ -18,9 +16,6 @@
   import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
-  import CodeBashApprovalModal from '$lib/components/agent/CodeBashApprovalModal.svelte';
-  import { getNextPendingApproval, subscribe } from '$lib/stores/approvals.svelte';
-  import type { PendingApproval } from '$lib/stores/approvals.svelte';
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
@@ -35,17 +30,11 @@
 
   let showShortcutsHelp = $state(false);
   let composerHeight = $state(320);
-  let pendingApproval = $state<PendingApproval | null>(null);
-  let codeDrawerOpen = $state(false);
 
-  $effect(() => {
-    const unsub = subscribe(() => {
-      pendingApproval = getNextPendingApproval() || null;
-    });
-    return unsub;
-  });
+  const newSessionLabel = $derived(
+    appStore.activeSpace === 'work' ? 'New Work' : 'New chat'
+  );
 
-  const hasMessages = $derived((appStore.currentChat?.messages?.length || 0) > 0);
 
   function openModelHub(section: string = 'models') {
     appStore.modelManagerOpenSection = resolveModelHubSection(section);
@@ -59,7 +48,9 @@
     const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
     if (ctrl && event.key === 'k' && !event.shiftKey) {
-      event.preventDefault(); appStore.createChat(); return;
+      event.preventDefault();
+      appStore.createChat(appStore.activeSpace);
+      return;
     }
     if (ctrl && event.key === 'k' && event.shiftKey) {
       event.preventDefault(); appStore.chatSearchOpen = !appStore.chatSearchOpen; return;
@@ -140,9 +131,12 @@
 
 <div class="flex h-full overflow-hidden bg-background text-foreground">
   {#if appStore.workspaceMode === 'legacy'}
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <Titlebar />
-      <LegacyWorkspace />
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <LegacyWorkspace />
+      </div>
     </div>
   {:else}
     <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
@@ -155,11 +149,13 @@
       </div>
 
       <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-3">
-        <Tooltip label="New chat">
+        <Tooltip label={newSessionLabel}>
           <button
             class="aui-icon-button size-8"
-            onclick={() => appStore.createChat()}
-            aria-label="New chat"
+            onclick={() => {
+              appStore.createChat(appStore.activeSpace);
+            }}
+            aria-label={newSessionLabel}
           >
             <Plus class="size-4" />
           </button>
@@ -188,25 +184,21 @@
       </div>
     </div>
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <Titlebar />
 
       <div class="flex min-h-0 flex-1 overflow-hidden">
         <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div class="chat-content-layer relative z-10 flex min-h-0 flex-1 flex-col">
-            <CodeTopbar drawerOpen={codeDrawerOpen} onToggleDrawer={() => (codeDrawerOpen = !codeDrawerOpen)} />
+          <div class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <MessageList composerInset={composerHeight} />
-            <Composer onHeightChange={(height) => (composerHeight = height)} centered={!hasMessages} />
+            <Composer onHeightChange={(height) => (composerHeight = height)} />
           </div>
         </div>
 
-        {#if appStore.activeSpace !== 'code' && appStore.activityDrawerOpen}
+        {#if appStore.activityDrawerOpen}
           <div class="activity-drawer-slot" transition:drawerSlotTransition>
             <ActivityDrawer />
-          </div>
-        {:else if appStore.activeSpace === 'code' && codeDrawerOpen}
-          <div class="activity-drawer-slot code-drawer-slot" transition:drawerSlotTransition>
-            <CodeWorkspaceDrawer />
           </div>
         {/if}
       </div>
@@ -232,10 +224,6 @@
 <Toaster />
 <ConfirmDialog />
 <LLMDrawer />
-
-{#if pendingApproval}
-  <CodeBashApprovalModal approval={pendingApproval} />
-{/if}
 
 {#if appStore.sandboxOpen && appStore.currentArtifact}
   <SandboxModal />
@@ -336,11 +324,6 @@
     background: var(--background);
     transform-origin: right center;
     will-change: width, min-width, opacity, transform;
-  }
-
-  .code-drawer-slot {
-    width: min(52rem, 48vw);
-    min-width: min(34rem, 48vw);
   }
 
   @media (prefers-reduced-motion: reduce) {

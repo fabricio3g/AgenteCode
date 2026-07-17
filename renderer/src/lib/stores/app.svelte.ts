@@ -1,7 +1,9 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CodeAgentInstanceId, CodeAgentRuntimeMode, CodeProject, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
-import { resolveCodeAgentInstance, runCodeAgent } from '$lib/services/agent-provider';
-import { computeSnapshotDiff, snapshotWorkspace } from '$lib/services/workspace-diff';
+import { runAgentTask } from '$lib/services/agent';
+import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
+import { humanizeAgentError } from '$lib/utils/errors';
+import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
@@ -15,7 +17,7 @@ import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
-import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb, loadCodeProjectsFromDb, saveCodeProjectToDb, deleteCodeProjectFromDb } from '$lib/utils/storage';
+import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
@@ -96,6 +98,8 @@ import {
   normalizeContextMode,
   normalizeFolder,
   normalizeMessage,
+  normalizeSessionComposerMode,
+  normalizeSessionSearchMode,
   normalizeText,
   parseWriteFileBlocks,
   readBlobAsDataUrl,
@@ -118,11 +122,9 @@ class AppStore {
   config = $state<AppConfig>({});
   chats = $state<ChatSession[]>([]);
   folders = $state<ChatFolder[]>([]);
-  codeProjects = $state<CodeProject[]>([]);
-  currentProjectId = $state<string | null>(null);
   currentChatId = $state<string | null>(null);
   activeSpace = $state<ChatContextMode>('chat');
-  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ chat: null, work: null, code: null });
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ chat: null, work: null });
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
@@ -165,6 +167,8 @@ class AppStore {
   activityDrawerOpen = $state(false);
   activityMessageId = $state<string | null>(null);
   activityDrawerTab = $state<'activity' | 'sources'>('activity');
+  /** Per-code-chat drawer open state (isolated across sessions). */
+
   localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
   localModelLoadContextLength = $state('4096');
   localModelLoadGpuLayers = $state('0');
@@ -196,6 +200,8 @@ class AppStore {
   userName = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem(USER_NAME_KEY) || '') : '');
   private closeWorkFingerprint = '';
   private contextBudgetRequestId = 0;
+  /** Chat ids that must be flushed to SQLite on next persist (not only current/running). */
+  private dirtyChatIds = new Set<string>();
 
   get currentChat() {
     return this.chats.find((chat) => chat.id === this.currentChatId) || null;
@@ -342,14 +348,7 @@ class AppStore {
   }
 
   get visibleChats() {
-    if (this.activeSpace === 'code' && this.currentProjectId) {
-      return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === 'code' && chat.projectId === this.currentProjectId);
-    }
     return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === this.activeSpace);
-  }
-
-  get currentProject() {
-    return this.codeProjects.find((p) => p.id === this.currentProjectId) || null;
   }
 
   get currentWorkspace() {
@@ -539,6 +538,10 @@ class AppStore {
 
   openActivityDrawer(messageId: string, tab: 'activity' | 'sources' = 'activity') {
     if (!messageId) return;
+    // Only open for messages that belong to the current chat
+    if (this.currentChat && !this.currentChat.messages.some((m) => m.id === messageId)) {
+      return;
+    }
     if (this.activityDrawerOpen && this.activityMessageId === messageId && this.activityDrawerTab === tab) {
       this.closeActivityDrawer();
       return;
@@ -762,7 +765,6 @@ class AppStore {
       }
       // In Electron: load from SQLite (primary). Falls back to localStorage migration.
       const dbResult = await loadChatStateFromDb();
-      const dbProjects = await loadCodeProjectsFromDb();
       let chats: ChatSession[];
       let folders: ChatFolder[];
       let currentChatId: string | null;
@@ -775,27 +777,17 @@ class AppStore {
         currentChatId = persisted.currentChatId;
         this.activeSpace = normalizeContextMode(persisted.activeSpace);
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
-        this.currentProjectId = persisted.currentProjectId || null;
       } else {
         const persisted = loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null });
         chats = Array.isArray(persisted.chats) ? persisted.chats : [];
         folders = Array.isArray(persisted.folders) ? persisted.folders : [];
-        if (!dbProjects.length && Array.isArray(persisted.codeProjects)) {
-          dbProjects.push(...persisted.codeProjects);
-        }
         currentChatId = persisted.currentChatId;
         this.activeSpace = normalizeContextMode(persisted.activeSpace);
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
-        this.currentProjectId = persisted.currentProjectId || null;
       }
 
       this.chats = chats.map((chat, index) => normalizeChat(chat, index));
       this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
-      this.codeProjects = dbProjects;
-      this.ensureLooseCodeProject();
-      if (this.currentProjectId && !this.codeProjects.some((project) => project.id === this.currentProjectId)) {
-        this.currentProjectId = this.codeProjects[0]?.id || null;
-      }
       this.currentChatId = currentChatId;
 
       if (!this.chats.length) {
@@ -805,6 +797,7 @@ class AppStore {
       }
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
+      this.hydrateUiFromChat(this.currentChat);
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
@@ -851,81 +844,108 @@ class AppStore {
     }
   }
 
+  /** Mark a chat (or current) dirty so SQLite flush includes it. */
+  markChatDirty(chatId = this.currentChatId) {
+    if (chatId) this.dirtyChatIds.add(chatId);
+  }
+
   persist() {
     saveChatState<PersistedState>({
       chats: this.chats,
       folders: this.folders,
-      codeProjects: this.codeProjects,
       currentChatId: this.currentChatId,
       activeSpace: this.activeSpace,
-      currentChatIdBySpace: this.currentChatIdBySpace,
-      currentProjectId: this.currentProjectId
+      currentChatIdBySpace: this.currentChatIdBySpace
     });
-    // Also persist the visible chat and any background chats with active runs to SQLite.
-    const chatIds = new Set<string>();
+    // Flush current, generating, and any explicitly dirty chats to SQLite.
+    const chatIds = new Set<string>(this.dirtyChatIds);
     if (this.currentChatId) chatIds.add(this.currentChatId);
     for (const chatId of Object.keys(this.activeRunsByChat)) {
       chatIds.add(chatId);
     }
+    // Always mark current dirty so mode/workspace/draft changes survive restarts
+    if (this.currentChatId) this.dirtyChatIds.add(this.currentChatId);
+
     for (const chatId of chatIds) {
       const chat = this.findChat(chatId);
-      if (chat) saveChatStateToDb(chat);
+      if (chat) {
+        void saveChatStateToDb(chat);
+        this.dirtyChatIds.delete(chatId);
+      }
     }
   }
 
   private normalizeChatIdBySpace(value: unknown): Record<ChatContextMode, string | null> {
-    const raw = value && typeof value === 'object' ? value as Partial<Record<ChatContextMode, unknown>> : {};
+    const raw = value && typeof value === 'object' ? value as Partial<Record<string, unknown>> : {};
     return {
       chat: typeof raw.chat === 'string' ? raw.chat : null,
-      work: typeof raw.work === 'string' ? raw.work : null,
-      code: typeof raw.code === 'string' ? raw.code : null
+      // Legacy code space sessions map to work
+      work: typeof raw.work === 'string' ? raw.work : (typeof raw.code === 'string' ? raw.code : null)
     };
   }
 
   private defaultTitleForMode(mode: ChatContextMode) {
     if (mode === 'work') return 'New work';
-    if (mode === 'code') return 'Codebase overview';
     return 'New chat';
   }
 
-  private projectNameFromPath(rootPath: string) {
-    return String(rootPath || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'Project';
-  }
-
-  private ensureLooseCodeProject() {
-    const looseChats = this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === 'code' && !chat.projectId);
-    if (!looseChats.length) return;
-    let loose = this.codeProjects.find((project) => project.id === 'project-loose');
-    if (!loose) {
-      const now = Date.now();
-      loose = {
-        id: 'project-loose',
-        rootPath: '',
-        rootName: 'Loose sessions',
-        icon: null,
-        createdAt: now,
-        updatedAt: now
-      };
-      this.codeProjects = [loose, ...this.codeProjects];
-      void saveCodeProjectToDb(loose);
-    }
-    for (const chat of looseChats) {
-      chat.projectId = loose.id;
-    }
-  }
-
   private isDefaultTitle(chat: ChatSession, title = chat.title) {
-    return title === 'New chat' || title === 'New work' || title === 'New code' || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
+    return title === 'New chat' || title === 'New work' || title === 'New code' || title === 'Codebase overview' || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
   }
 
-  private applyContextModeDefaults(mode: ChatContextMode) {
-    if (mode === 'work' || mode === 'code') {
+  private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'agent' {
+    return mode === 'work' ? 'agent' : 'chat';
+  }
+
+  /** Load store UI mirrors from a session (per-chat isolation). */
+  private hydrateUiFromChat(chat: ChatSession | null) {
+    if (!chat) {
+      this.composer = '';
       this.searchMode = 'chat';
-      this.composerMode = 'agent';
+      this.composerMode = 'chat';
+      this.reasoningLevel = null;
+      this.currentArtifact = null;
+      this.currentArtifactMessageId = null;
+      this.sandboxOpen = false;
+      this.closeActivityDrawer();
+      this.searchSidebarOpen = false;
       return;
     }
-    if (this.composerMode === 'agent') {
-      this.composerMode = 'chat';
+    const mode = normalizeContextMode(chat.contextMode);
+    this.composer = chat.draft || '';
+    this.searchMode = normalizeSessionSearchMode(chat.searchMode);
+    this.composerMode = normalizeSessionComposerMode(chat.composerMode, mode);
+    this.reasoningLevel = chat.reasoningLevel ?? null;
+    // Keep session fields canonical after hydrate
+    chat.searchMode = this.searchMode;
+    chat.composerMode = this.composerMode;
+
+    const lastArtifactMsg = findLatestArtifactMessage(chat);
+    this.currentArtifact = lastArtifactMsg?.artifact || null;
+    this.currentArtifactMessageId = lastArtifactMsg?.id || null;
+    if (!this.currentArtifact) this.sandboxOpen = false;
+
+    // Activity drawer only if message belongs to this chat
+    if (this.activityDrawerOpen && this.activityMessageId) {
+      const belongs = chat.messages.some((m) => m.id === this.activityMessageId);
+      if (!belongs) this.closeActivityDrawer();
+    }
+    this.searchSidebarOpen = false;
+  }
+
+  private writeSearchModeToCurrentChat(mode: 'chat' | 'search' | 'deep' | 'max') {
+    this.searchMode = mode;
+    if (this.currentChat) {
+      this.currentChat.searchMode = mode;
+      this.touchChats();
+    }
+  }
+
+  private writeComposerModeToCurrentChat(mode: 'chat' | 'agent') {
+    this.composerMode = mode;
+    if (this.currentChat) {
+      this.currentChat.composerMode = mode;
+      this.touchChats();
     }
   }
 
@@ -939,7 +959,7 @@ class AppStore {
   }
 
   private rebuildChatIdBySpace() {
-    const next: Record<ChatContextMode, string | null> = { chat: null, work: null, code: null };
+    const next: Record<ChatContextMode, string | null> = { chat: null, work: null };
     for (const chat of this.chats) {
       const mode = normalizeContextMode(chat.contextMode);
       if (!next[mode]) next[mode] = chat.id;
@@ -965,10 +985,11 @@ class AppStore {
     this.createChat(nextMode);
   }
 
-  createChat(mode: ChatContextMode = this.activeSpace, options: { projectId?: string | null; workspace?: ChatSession['workspace'] } = {}) {
+  createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
     const contextMode = normalizeContextMode(mode);
     this.mainView = 'chat';
     const now = Date.now();
+    const composerMode = this.defaultComposerModeFor(contextMode);
     const chat: ChatSession = {
       id: createId('chat'),
       title: this.defaultTitleForMode(contextMode),
@@ -977,152 +998,26 @@ class AppStore {
       folderId: null,
       draft: '',
       contextMode,
-      codeAgent: contextMode === 'code' ? { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: now } : null,
-      projectId: contextMode === 'code' ? (options.projectId || this.currentProjectId || null) : null,
-      workspace: options.workspace || null,
+      codeAgent: null,
+      projectId: null,
+      workspace: contextMode === 'chat' ? null : (options.workspace || null),
+      reasoningLevel: null,
+      composerMode,
+      searchMode: 'chat',
       messages: []
     };
     this.chats = [chat, ...this.chats];
     this.activeSpace = contextMode;
-    if (contextMode === 'code') this.currentProjectId = chat.projectId || this.currentProjectId;
     this.currentChatId = chat.id;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [contextMode]: chat.id };
     this.refreshGenerationState();
-    this.composer = '';
-    this.currentArtifact = null;
-    this.currentArtifactMessageId = null;
-    this.sandboxOpen = false;
-    this.applyContextModeDefaults(contextMode);
+    for (const attachment of this.pendingAttachments) {
+      if (attachment.preview?.startsWith('blob:')) URL.revokeObjectURL(attachment.preview);
+    }
+    this.pendingAttachments = [];
+    this.hydrateUiFromChat(chat);
     this.persist();
     return chat;
-  }
-
-  async pickCodeProjectFolder() {
-    if (!isTauri()) {
-      toastStore.error('Code projects are only available in the desktop app.');
-      return null;
-    }
-    const selectedPath = await pickWorkspaceFolderDialog();
-    if (!selectedPath) return null;
-    return this.createCodeProjectFromPath(selectedPath);
-  }
-
-  async createCodeProjectFromPath(rootPath: string) {
-    const now = Date.now();
-    const existing = this.codeProjects.find((project) => project.rootPath === rootPath);
-    if (existing) {
-      this.selectCodeProject(existing.id);
-      return existing;
-    }
-
-    const project: CodeProject = {
-      id: createId('project'),
-      rootPath,
-      rootName: this.projectNameFromPath(rootPath),
-      icon: null,
-      createdAt: now,
-      updatedAt: now
-    };
-
-    this.codeProjects = [project, ...this.codeProjects];
-    this.currentProjectId = project.id;
-    this.activeSpace = 'code';
-    await saveCodeProjectToDb(project);
-
-    let workspace: ChatSession['workspace'] = {
-      rootName: project.rootName,
-      rootPath,
-      attachedAt: now,
-      fileCount: 0,
-      indexedCount: 0,
-      skippedCount: 0,
-      files: []
-    };
-    if (isTauri()) {
-      try {
-        const result = await indexWorkspaceFolder(rootPath, project.id);
-        workspace = buildWorkspaceFromIndexResult(result, now);
-      } catch (error) {
-        toastStore.info(`Project created, but indexing failed: ${toErrorMessage(error)}`, 4000);
-      }
-    }
-
-    this.createChat('code', { projectId: project.id, workspace });
-    toastStore.success(`Project ready: ${project.rootName}`, 2500);
-    return project;
-  }
-
-  selectCodeProject(projectId: string) {
-    const project = this.codeProjects.find((entry) => entry.id === projectId);
-    if (!project) return;
-    this.currentProjectId = projectId;
-    this.activeSpace = 'code';
-    const chatId = this.chats.find((chat) => normalizeContextMode(chat.contextMode) === 'code' && chat.projectId === projectId)?.id;
-    if (chatId) {
-      this.selectChat(chatId);
-      return;
-    }
-    this.createChat('code', {
-      projectId,
-      workspace: {
-        rootName: project.rootName,
-        rootPath: project.rootPath,
-        attachedAt: Date.now(),
-        fileCount: 0,
-        indexedCount: 0,
-        skippedCount: 0,
-        files: []
-      }
-    });
-  }
-
-  createCodeChat(projectId = this.currentProjectId || '') {
-    const project = this.codeProjects.find((entry) => entry.id === projectId);
-    if (!project) {
-      void this.pickCodeProjectFolder();
-      return null;
-    }
-    return this.createChat('code', {
-      projectId: project.id,
-      workspace: {
-        rootName: project.rootName,
-        rootPath: project.rootPath,
-        attachedAt: Date.now(),
-        fileCount: 0,
-        indexedCount: 0,
-        skippedCount: 0,
-        files: []
-      }
-    });
-  }
-
-  async deleteCodeProject(projectId: string) {
-    const project = this.codeProjects.find((entry) => entry.id === projectId);
-    if (!project) return;
-    const projectChats = this.chats.filter((chat) => chat.projectId === projectId);
-    const deletingCurrentChat = !!this.currentChatId && projectChats.some((chat) => chat.id === this.currentChatId);
-    for (const chat of projectChats) {
-      if (this.isChatGenerating(chat.id)) this.stopStreaming(chat.id);
-      delete this.ragDocumentsByChat[chat.id];
-      deleteChatFromDb(chat.id).catch(() => {});
-      if (isTauri()) clearRagDocuments(chat.id).catch(() => {});
-    }
-    this.codeProjects = this.codeProjects.filter((entry) => entry.id !== projectId);
-    this.chats = this.chats.filter((chat) => chat.projectId !== projectId);
-    if (deletingCurrentChat) {
-      this.currentChatId = null;
-    }
-    if (this.currentProjectId === projectId) this.currentProjectId = this.codeProjects[0]?.id || null;
-    await deleteCodeProjectFromDb(projectId);
-    if (!this.currentChatId) {
-      const nextCodeChat = this.currentProjectId
-        ? this.chats.find((chat) => chat.projectId === this.currentProjectId)?.id
-        : this.chats.find((chat) => normalizeContextMode(chat.contextMode) === 'code')?.id;
-      this.currentChatId = nextCodeChat || this.chats[0]?.id || null;
-    }
-    this.rebuildChatIdBySpace();
-    this.persist();
-    toastStore.info(`Project deleted: ${project.rootName}`, 2200);
   }
 
   selectChat(chatId: string) {
@@ -1131,7 +1026,6 @@ class AppStore {
     this.mainView = 'chat';
     const mode = normalizeContextMode(match.contextMode);
     this.activeSpace = mode;
-    if (mode === 'code') this.currentProjectId = match.projectId || this.currentProjectId;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [mode]: chatId };
 
     for (const attachment of this.pendingAttachments) {
@@ -1143,13 +1037,8 @@ class AppStore {
 
     this.currentChatId = chatId;
     this.refreshGenerationState();
-    this.composer = match.draft || '';
-    this.applyContextModeDefaults(mode);
-    // Restore artifact from the selected chat's last agent message, or clear
-    const lastArtifactMsg = findLatestArtifactMessage(match);
-    this.currentArtifact = lastArtifactMsg?.artifact || null;
-    this.currentArtifactMessageId = lastArtifactMsg?.id || null;
-    if (!this.currentArtifact) this.sandboxOpen = false;
+    // Restore per-chat UI slice (modes, draft, panels) — never rewrite contextMode
+    this.hydrateUiFromChat(match);
     this.persist();
     if (isTauri()) {
       void this.refreshRagDocuments(chatId);
@@ -1187,11 +1076,7 @@ class AppStore {
     if (this.currentChatId === chatId) {
       this.currentChatId = this.resolveChatIdForSpace(deletedMode) || this.chats[0]?.id || null;
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || deletedMode);
-      this.composer = this.currentChat?.draft || '';
-      // Clear sandbox when current chat is deleted
-      this.currentArtifact = null;
-      this.currentArtifactMessageId = null;
-      this.sandboxOpen = false;
+      this.hydrateUiFromChat(this.currentChat);
     }
     this.rebuildChatIdBySpace();
     if (!this.chats.length) this.createChat(this.activeSpace);
@@ -1310,7 +1195,8 @@ class AppStore {
     return message;
   }
 
-  touchChats() {
+  touchChats(chatId = this.currentChatId) {
+    if (chatId) this.dirtyChatIds.add(chatId);
     this.chats = [...this.chats];
   }
 
@@ -1327,49 +1213,23 @@ class AppStore {
     return buildContextualPromptHelper(args);
   }
 
+  /**
+   * @deprecated Space identity is immutable on a session.
+   * Use setActiveSpace() / createChat(mode) instead of converting a chat.
+   * Kept as a no-op switch to the target space for any residual callers.
+   */
   setContextMode(mode: ChatContextMode) {
-    if (!this.currentChat) return;
     const nextMode = normalizeContextMode(mode);
-    this.currentChat.contextMode = nextMode;
-    this.currentChat.codeAgent = nextMode === 'code'
-      ? (this.currentChat.codeAgent || { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: Date.now() })
-      : null;
-    this.activeSpace = nextMode;
-    this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [nextMode]: this.currentChat.id };
-    this.applyContextModeDefaults(nextMode);
-    this.touchChats();
-    this.persist();
-  }
-
-  setCodeAgentProvider(instanceId: CodeAgentInstanceId) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
-    const instance = resolveCodeAgentInstance(instanceId).instance;
-    chat.codeAgent = {
-      ...(chat.codeAgent || {}),
-      instanceId: instance.id,
-      driverKind: instance.driverKind,
-      status: instance.status,
-      updatedAt: Date.now()
-    };
-    this.touchChats();
-    this.persist();
-  }
-
-  setCodeAgentRuntimeMode(mode: CodeAgentRuntimeMode) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'code') return;
-    chat.codeAgent = {
-      ...(chat.codeAgent || { instanceId: 'chatea-agent', driverKind: 'chatea-agent', substrate: 'pi', updatedAt: Date.now() }),
-      runtimeMode: mode,
-      updatedAt: Date.now()
-    };
-    this.touchChats();
-    this.persist();
+    if (this.currentChat && normalizeContextMode(this.currentChat.contextMode) === nextMode) {
+      return;
+    }
+    this.setActiveSpace(nextMode);
   }
 
   setSearchMode(mode: 'chat' | 'search' | 'deep' | 'max') {
-    this.searchMode = this.searchMode === mode ? 'chat' : mode;
+    const next = this.searchMode === mode ? 'chat' : mode;
+    this.writeSearchModeToCurrentChat(next);
+    this.persist();
   }
 
   setReasoningLevel(level: ReasoningLevel | null) {
@@ -1410,14 +1270,14 @@ class AppStore {
       // If the current reasoning level isn't in the new capabilities' levels, reset it
       if (this.reasoningCapabilities.supported && this.reasoningLevel &&
           !this.reasoningCapabilities.levels.includes(this.reasoningLevel)) {
-        this.reasoningLevel = null;
+        this.setReasoningLevel(null);
       }
       if (!this.reasoningCapabilities.supported) {
-        this.reasoningLevel = null;
+        this.setReasoningLevel(null);
       }
     } catch {
       this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
-      this.reasoningLevel = null;
+      this.setReasoningLevel(null);
     }
   }
 
@@ -1461,13 +1321,11 @@ class AppStore {
 
   setComposerMode(mode: 'chat' | 'agent') {
     if (mode === 'agent') {
-      this.searchMode = 'chat';
+      this.writeSearchModeToCurrentChat('chat');
     }
-    if (this.currentContextMode === 'work' && mode !== 'agent') {
-      this.composerMode = mode;
-      return;
-    }
-    this.composerMode = mode;
+    // Work/Code default to agent but user can still switch; value is per-chat.
+    this.writeComposerModeToCurrentChat(mode);
+    this.persist();
   }
 
   async refreshRagDocuments(chatId = this.currentChatId || '') {
@@ -1492,11 +1350,9 @@ class AppStore {
     if (!isTauri() || !targetChatId || !targetChat) return;
     await clearRagDocuments(targetChatId);
     this.pendingAttachments = [];
-    if (targetChat.workspace) {
+    // Clear workspace files but never demote Work → Chat
+    if (targetChat.workspace && normalizeContextMode(targetChat.contextMode) === 'work') {
       targetChat.workspace = null;
-      if (targetChat.contextMode === 'work') {
-        this.setContextMode('chat');
-      }
       this.touchChats();
       this.persist();
     }
@@ -1530,9 +1386,7 @@ class AppStore {
               files: nextFiles
             })
           : null;
-        if (!this.currentChat.workspace && this.currentChat.contextMode === 'work') {
-          this.setContextMode('chat');
-        }
+        // Keep contextMode; empty workspace does not convert Work → Chat
         this.touchChats();
         this.persist();
       }
@@ -1654,6 +1508,10 @@ class AppStore {
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
     if (!isTauri() || !targetChatId || !targetChat) return;
+    if (normalizeContextMode(targetChat.contextMode) !== 'work') {
+      toastStore.info('Switch to the Work tab to attach a folder.', 2800);
+      return;
+    }
     const selectedPath = await pickWorkspaceFolderDialog();
     if (!selectedPath) return;
 
@@ -1666,7 +1524,9 @@ class AppStore {
       const chat = this.findChat(targetChatId);
       if (!chat) return;
       chat.workspace = buildWorkspaceFromIndexResult(result, Date.now());
-      this.setContextMode('work');
+      // contextMode stays 'work' — never convert sessions between spaces
+      this.touchChats();
+      this.persist();
       await this.refreshRagDocuments(targetChatId);
       toastStore.success(
         result.indexed_count > 0
@@ -1686,6 +1546,10 @@ class AppStore {
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
     if (!files.length || !targetChatId || !targetChat) return;
+    if (normalizeContextMode(targetChat.contextMode) !== 'work') {
+      toastStore.info('Switch to the Work tab to attach a folder.', 2800);
+      return;
+    }
 
     this.workspaceIndexing = true;
     this.error = null;
@@ -1775,7 +1639,9 @@ class AppStore {
         skippedCount,
         files: workspaceFiles
       };
-      this.setContextMode('work');
+      // contextMode stays 'work'
+      this.touchChats();
+      this.persist();
       await this.refreshRagDocuments(targetChatId);
 
       toastStore.success(
@@ -1797,9 +1663,11 @@ class AppStore {
       .filter((docId): docId is string => !!docId);
     await Promise.allSettled(docIds.map((docId) => removeRagDocument(docId, targetChatId)));
     targetChat.workspace = null;
-    this.setContextMode('chat');
+    // Stay in Work — never demote to Chat
+    this.touchChats();
+    this.persist();
     await this.refreshRagDocuments(targetChatId);
-    toastStore.info('Workspace removed from this chat.', 2200);
+    toastStore.info('Workspace removed from this work session.', 2200);
   }
 
   /** Re-scan the workspace folder after LLM creates new files */
@@ -1900,10 +1768,11 @@ class AppStore {
     const activeModelLabel = this.activeModelLabel;
     const activeProvider = this.activeProvider;
     const activeProviderApiKey = activeProvider?.api_key;
-    const activeSearchMode = this.searchMode;
-    const activeComposerMode = this.composerMode;
-    const activeContextMode = targetChat.contextMode || 'chat';
-    const activeWorkspace = activeContextMode === 'work' || activeContextMode === 'code' ? targetChat.workspace : null;
+    const activeContextMode = normalizeContextMode(targetChat.contextMode);
+    const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
+    const activeComposerMode = normalizeSessionComposerMode(targetChat.composerMode ?? this.composerMode, activeContextMode);
+    const activeReasoningLevel = targetChat.reasoningLevel ?? this.reasoningLevel;
+    const activeWorkspace = activeContextMode === 'work' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -1953,17 +1822,31 @@ class AppStore {
       searchMode: activeSearchMode,
       mode: activeComposerMode,
       reasoning: '',
-      metadata: (activeComposerMode === 'agent' || activeSearchMode !== 'chat')
+      metadata: (activeComposerMode === 'agent' || activeSearchMode !== 'chat' || activeContextMode === 'chat')
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
             currentActivity: 'planning',
-            activityLabel: activeComposerMode === 'agent' ? 'Agent is planning' : 'Preparing search'
+            activityLabel: activeComposerMode === 'agent'
+              ? 'Working'
+              : activeSearchMode !== 'chat'
+                ? 'Searching'
+                : 'Working'
           }
         : undefined,
       workContext,
-      agentSteps: (activeComposerMode === 'agent' || activeSearchMode !== 'chat')
-        ? [{ id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: activeComposerMode === 'agent' ? 'Preparing tools and context' : 'Preparing search tools and context' }]
+      agentSteps: (activeComposerMode === 'agent' || activeSearchMode !== 'chat' || activeContextMode === 'chat')
+        ? [{
+            id: createId('step'),
+            type: 'thinking',
+            label: 'Planning',
+            status: 'running',
+            detail: activeComposerMode === 'agent'
+              ? 'Preparing tools and context'
+              : activeSearchMode !== 'chat'
+                ? 'Preparing search tools and context'
+                : 'Checking if tools are needed'
+          }]
         : [],
       artifact: null
     };
@@ -2009,9 +1892,14 @@ class AppStore {
     const startTime = Date.now();
     const reasoningTimer = startReasoningTimer();
     let exactUsage: CompletionResult['usage'] = null;
-    this.searchMode = 'chat';
-    if (activeComposerMode !== 'agent') {
-      this.composerMode = 'chat';
+    // Reset modes on the target session (and store mirrors only if still viewing it)
+    const postSendSearch: 'chat' = 'chat';
+    const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : 'chat' as const;
+    targetChat.searchMode = postSendSearch;
+    if (activeComposerMode !== 'agent') targetChat.composerMode = postSendComposer;
+    if (this.currentChatId === targetChatId) {
+      this.searchMode = postSendSearch;
+      this.composerMode = targetChat.composerMode || postSendComposer;
     }
 
     try {
@@ -2023,10 +1911,11 @@ class AppStore {
       const workspaceContext = activeWorkspace ? buildWorkspacePrompt(activeWorkspace) : '';
 
       if (isTauri() && targetRagDocuments.length && activeSearchMode === 'chat') {
+        // No tight retrieval budget when the user attached documents — pull more chunks.
         const ragResponse = await queryDocuments({
-          query: content,
+          query: content || 'summarize key points from the attached documents',
           chat_id: targetChatId,
-          top_k: 5
+          top_k: 20
         });
         ragContext = ragResponse.context || '';
         const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
@@ -2075,6 +1964,8 @@ class AppStore {
               config: this.config,
               messages: outboundMessages,
               invoke: toInvoke(electronApi),
+              // Uploaded / RAG document context must not be token-budget trimmed away.
+              preserveDocuments: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
               onTruncated: (removed) => {
                 toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
               }
@@ -2085,32 +1976,71 @@ class AppStore {
         }
       }
 
-      const useToolLoop = (activeComposerMode === 'agent' || activeSearchMode !== 'chat') && targetChatId;
+      const modeControl = this.composerModeControl;
+      const composerRoute = resolveComposerRoute({
+        prompt: content,
+        hasAttachments: sentAttachments.length > 0 || targetRagDocuments.length > 0,
+        searchMode: activeSearchMode,
+        contextMode: activeContextMode
+      });
+      // Auto: route by intent. Tabs: Chat tab tools-light when needed; Agent always tools.
+      const useToolLoop = shouldUseToolLoop({
+        control: modeControl,
+        composerMode: activeComposerMode,
+        route: composerRoute,
+        searchMode: activeSearchMode,
+        contextMode: activeContextMode
+      }) && !!targetChatId;
       const searchToolBudget = activeSearchMode === 'max'
-        ? { maxIterations: 60, maxToolCalls: 180, maxTimeMs: 25 * 60 * 1000 }
+        ? { maxIterations: 48, maxToolCalls: 140, maxTimeMs: 22 * 60 * 1000 }
         : activeSearchMode === 'deep'
-          ? { maxIterations: 36, maxToolCalls: 108, maxTimeMs: 15 * 60 * 1000 }
-          : { maxIterations: 12, maxToolCalls: 30, maxTimeMs: 6 * 60 * 1000 };
+          ? { maxIterations: 28, maxToolCalls: 90, maxTimeMs: 14 * 60 * 1000 }
+          : activeSearchMode === 'search'
+            ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
+            : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
+      const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
+      const fullAgentBudget = { maxIterations: 18, maxToolCalls: 40, maxTimeMs: 8 * 60 * 1000 };
 
       if (useToolLoop) {
-        const codeInstanceId = activeContextMode === 'code' ? targetChat.codeAgent?.instanceId : undefined;
-        const beforeSnapshot = activeContextMode === 'code' ? await snapshotWorkspace(activeWorkspace?.rootPath) : null;
-        const isCodeWorkspace = activeContextMode === 'code' && !!activeWorkspace?.rootPath;
-        const agentResult = await runCodeAgent({
+        const isWorkMode = activeContextMode === 'work';
+        const wantsAgent =
+          (modeControl === 'tabs' && activeComposerMode === 'agent')
+          || composerRoute === 'agent'
+          || isWorkMode;
+        const agentProfile =
+          activeSearchMode !== 'chat' && !wantsAgent
+            ? 'search' as const
+            : wantsAgent
+              ? (isWorkMode ? 'work' as const : 'chat' as const)
+              : 'chat' as const;
+        // Research search modes use search_chat; chat tools & agent use full tool lists.
+        const toolMode =
+          activeSearchMode !== 'chat' && !wantsAgent
+            ? 'search_chat' as const
+            : 'agent' as const;
+        const profileBudget =
+          agentProfile === 'search' || activeSearchMode !== 'chat'
+            ? searchToolBudget
+            : wantsAgent && !isWorkMode
+              ? fullAgentBudget
+              : agentProfile === 'chat'
+                ? chatAgentBudget
+                : {};
+        const agentTaskArgs: RunAgentTaskArgs = {
           chatId: targetChatId,
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
-          conversationContext: searchConversationContext,
-          executionMode: isCodeWorkspace ? 'workspace' : 'sandbox',
-          workspaceRoot: isCodeWorkspace ? activeWorkspace?.rootPath : undefined,
+          conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
+          executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
-          runtimeMode: activeContextMode === 'code' ? (targetChat.codeAgent?.runtimeMode || 'full') : undefined,
-          toolMode: activeComposerMode === 'agent' ? 'agent' : 'search_chat',
+          toolMode,
+          agentProfile,
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
-          reasoningLevel: this.reasoningLevel,
-          ...(activeSearchMode === 'chat' ? {} : searchToolBudget),
+          reasoningLevel: activeReasoningLevel,
+          preserveDocumentContext: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
+          ...profileBudget,
           signal: controller.signal,
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
@@ -2152,25 +2082,8 @@ class AppStore {
               this.persist();
             }
           }
-        }, codeInstanceId);
-        if (activeContextMode === 'code') {
-          const afterSnapshot = await snapshotWorkspace(activeWorkspace?.rootPath);
-          const diffStats = computeSnapshotDiff(beforeSnapshot, afterSnapshot);
-          if (diffStats.length) {
-            assistantMessage.agentSteps = [
-              ...(assistantMessage.agentSteps || []),
-              {
-                id: createId('step'),
-                type: 'writing',
-                label: 'Changed files',
-                status: 'done',
-                detail: `${diffStats.length} file${diffStats.length === 1 ? '' : 's'} changed`,
-                diffStats,
-                fileChanges: diffStats.map((stat) => ({ path: stat.path, kind: stat.kind }))
-              }
-            ];
-          }
-        }
+        };
+        const agentResult = await runAgentTask(agentTaskArgs);
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
@@ -2180,7 +2093,10 @@ class AppStore {
         const usableAgentResult = hasUsableAgentResult(agentResult);
         if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
           // Fatal agent failure: no usable evidence/content was produced.
-          assistantMessage.content = agentResult.content || agentResult.error;
+          const friendly = humanizeAgentError(agentResult.error);
+          assistantMessage.content = agentResult.content?.trim()
+            ? agentResult.content
+            : friendly;
           assistantMessage.status = 'error';
           assistantMessage.done = true;
           assistantMessage.metadata = {
@@ -2190,7 +2106,7 @@ class AppStore {
               noUsageTimingScope: 'agent_wall',
               overrides: {
                 error: true,
-                errorMessage: agentResult.error,
+                errorMessage: friendly,
                 outcome,
                 stopReason,
                 currentActivity: 'stopped',
@@ -2218,11 +2134,13 @@ class AppStore {
               backendMode: activeBackendMode,
               noUsageTimingScope: 'agent_wall',
               overrides: {
-                warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
+                warning: agentResult.warning
+                  || (agentResult.error ? humanizeAgentError(agentResult.error) : undefined)
+                  || 'Stopped before finishing. You can continue the conversation.',
                 outcome,
                 stopReason,
                 currentActivity: 'stopped',
-                activityLabel: 'Agent stopped',
+                activityLabel: 'Stopped',
                 workProduct: agentResult.artifact?.workProduct ? {
                   id: agentResult.artifact.workProduct.id,
                   kind: agentResult.artifact.workProduct.kind,
@@ -2314,7 +2232,7 @@ class AppStore {
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
-          reasoningLevel: this.reasoningLevel,
+          reasoningLevel: activeReasoningLevel,
           onChunk: (value) => {
             reasoningTimer.markStopped();
             appendStreamingContent(
@@ -2640,13 +2558,13 @@ class AppStore {
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
         currentActivity: 'planning',
-        activityLabel: 'Agent is planning'
+        activityLabel: 'Working'
       };
       nextVersion.metadata = {
         ...(nextVersion.metadata || {}),
         ...executionMetadata(activeBackendMode),
         currentActivity: 'planning',
-        activityLabel: 'Agent is planning'
+        activityLabel: 'Working'
       };
       message.artifact = null;
       if (this.currentArtifactMessageId === message.id) {
@@ -2664,19 +2582,20 @@ class AppStore {
       const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-        const isCodeWorkspace = normalizeContextMode(chat.contextMode) === 'code' && !!activeWorkspace?.rootPath;
-        const codeInstanceId = normalizeContextMode(chat.contextMode) === 'code' ? chat.codeAgent?.instanceId : undefined;
-        const agentResult = await runCodeAgent({
+        const ctxMode = normalizeContextMode(chat.contextMode);
+        const regenProfile = ctxMode === 'work' ? 'work' as const : 'chat' as const;
+        const regenArgs: RunAgentTaskArgs = {
           chatId: targetChatId,
           systemPrompt: styledSystemPrompt,
           messages: previousMessages,
           rawPrompt,
-          executionMode: isCodeWorkspace ? 'workspace' : 'sandbox',
-          workspaceRoot: isCodeWorkspace ? activeWorkspace?.rootPath : undefined,
+          executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
-          runtimeMode: isCodeWorkspace ? (chat.codeAgent?.runtimeMode || 'full') : undefined,
+          toolMode: 'agent',
+          agentProfile: regenProfile,
           reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
+          ...(regenProfile === 'chat' ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
@@ -2729,12 +2648,13 @@ class AppStore {
               this.persist();
             }
           }
-        }, chat.codeAgent?.instanceId);
+        };
+        const agentResult = await runAgentTask(regenArgs);
         markAgentWriting(message);
         nextVersion.metadata = {
           ...(nextVersion.metadata || {}),
           currentActivity: 'writing',
-          activityLabel: 'Writing answer'
+          activityLabel: 'Writing'
         };
         this.touchChats();
         this.persist();
@@ -3120,8 +3040,13 @@ class AppStore {
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    composer_mode_control?: 'tabs' | 'auto';
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
+  }
+
+  get composerModeControl(): 'tabs' | 'auto' {
+    return this.config.ui?.composer_mode_control === 'tabs' ? 'tabs' : 'auto';
   }
 
   getArtifactToggles(): Record<string, boolean> {

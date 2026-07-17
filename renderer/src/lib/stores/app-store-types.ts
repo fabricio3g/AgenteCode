@@ -1,13 +1,11 @@
-import type { ChatContextMode, ChatFolder, ChatSession, CodeProject } from '$lib/types/chat';
+import type { ChatContextMode, ChatFolder, ChatSession } from '$lib/types/chat';
 
 export interface PersistedState {
   chats: ChatSession[];
   folders: ChatFolder[];
-  codeProjects?: CodeProject[];
   currentChatId: string | null;
   activeSpace?: ChatContextMode;
   currentChatIdBySpace?: Partial<Record<ChatContextMode, string | null>>;
-  currentProjectId?: string | null;
 }
 
 export type GenerationBackendMode = 'api' | 'local';

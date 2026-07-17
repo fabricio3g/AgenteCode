@@ -24,11 +24,17 @@ describe('agent-tool-result', () => {
     expect(messages[0]).toMatchObject({ role: 'tool', tool_call_id: 'call_1', name: 'web_search' });
   });
 
-  it('creates user-visible tool result messages when native mode is unavailable', () => {
+  it('still emits role=tool with generated id when native mode is unavailable', () => {
+    // Prefer tool-role messages whenever an id exists/can be generated so
+    // assistant tool_calls turns never become unpaired (OpenAI 400).
     const messages: RequestMessage[] = [];
+    const toolCall: { name: string; arguments: { expression: string }; id?: string } = {
+      name: 'calculator',
+      arguments: { expression: '1+1' }
+    };
 
     appendToolResultMessage({
-      toolCall: { name: 'calculator', arguments: { expression: '1+1' } },
+      toolCall,
       result: { success: true, output: { result: 2 } },
       messages,
       nativeActive: false,
@@ -36,8 +42,10 @@ describe('agent-tool-result', () => {
       maxToolResultChars: 1000
     });
 
-    expect(messages[0]?.role).toBe('user');
-    expect(String(messages[0]?.content)).toContain('Tool result for calculator');
+    expect(messages[0]?.role).toBe('tool');
+    expect(messages[0]?.name).toBe('calculator');
+    expect(messages[0]?.tool_call_id).toBeTruthy();
+    expect(toolCall.id).toBeTruthy();
   });
 
   it('merges only new web search source urls', () => {

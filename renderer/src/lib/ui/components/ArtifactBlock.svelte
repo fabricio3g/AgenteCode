@@ -105,37 +105,38 @@
   .artifact-card {
     margin-top: 0.75rem;
     border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0.35rem 0;
-    box-shadow: none;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    padding: 0.55rem 0.7rem;
+    box-shadow: var(--artifact-elev);
   }
 
   .artifact-card.after-preview {
-    margin-top: 0.45rem;
+    margin-top: 0.5rem;
   }
 
   .artifact-icon {
     display: inline-flex;
-    height: 1.35rem;
-    width: 1.35rem;
+    height: 1.6rem;
+    width: 1.6rem;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    color: var(--text-tertiary);
+    border-radius: var(--radius-sm);
+    background: var(--artifact-surface-hover);
+    color: var(--text-secondary);
   }
 
   .title {
-    font-size: 0.78rem;
-    font-weight: 500;
+    font-size: 0.82rem;
+    font-weight: 600;
     color: var(--text);
   }
 
   .subtitle {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    margin-top: 0.1rem;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 0.12rem;
   }
 
   .open-sandbox-btn {
@@ -146,11 +147,16 @@
     height: 1.85rem;
     color: var(--text-secondary);
     padding: 0;
-    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    transition: background 150ms ease, color 150ms ease;
   }
 
   .open-sandbox-btn:hover {
-    background: var(--surface-hover);
+    background: var(--artifact-surface-hover);
     color: var(--text);
+  }
+
+  .open-sandbox-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus);
   }
 </style>

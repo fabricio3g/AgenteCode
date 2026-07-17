@@ -43,7 +43,7 @@
   );
   const displayReasoning = $derived(activeVersion?.reasoning || message.reasoning || '');
   const displayMetadata = $derived(activeVersion?.metadata || message.metadata || null);
-  const displayWorkContext = $derived(contextMode === 'code' ? null : message.workContext);
+  const displayWorkContext = $derived(message.workContext);
   const footerMetadata = $derived.by(() => {
     const versionMeta = activeVersion?.metadata || null;
     const messageMeta = message.metadata || null;
@@ -241,7 +241,11 @@
   });
 </script>
 
-<article class={`group flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`} onmouseenter={() => (hovering = true)} onmouseleave={() => (hovering = false)}>
+<article
+  class={`group/msg flex flex-col scroll-animate ${message.role === 'user' ? 'items-end' : 'items-start'}`}
+  onmouseenter={() => (hovering = true)}
+  onmouseleave={() => { hovering = false; actionMenuOpen = false; }}
+>
   {#if message.role === 'user'}
     {#if userSelectedTextQuestion}
       <button type="button" class="selected-text-message-bubble" data-chat-message-content data-chat-message-id={message.id} onclick={scrollToSelectedSource} title="Jump to original selection">
@@ -268,25 +272,26 @@
           </div>
         </div>
       {/if}
-      <div class={`message-action-bar justify-end ${hovering || forceActionsVisible || copyFeedback === 'copied' ? 'visible' : ''}`}>
-          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy message" title="Copy">
-            {#if copyFeedback === 'copied'}
-              <Check class="h-3.5 w-3.5" />
-            {:else}
-              <Copy class="h-3.5 w-3.5" />
-            {/if}
-          </button>
-        <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit message" title="Edit">
-          <Pencil class="h-3.5 w-3.5 action-icon" />
+      <!-- T3-style: sparse hover row under bubble -->
+      <div class="message-action-bar justify-end {hovering || forceActionsVisible || copyFeedback === 'copied' || actionMenuOpen ? 'visible' : ''}">
+        <button type="button" class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy" title="Copy">
+          {#if copyFeedback === 'copied'}
+            <Check class="size-3" />
+          {:else}
+            <Copy class="size-3" />
+          {/if}
+        </button>
+        <button type="button" class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit" title="Edit">
+          <Pencil class="size-3" />
         </button>
         <div class="msg-action-menu-wrap">
-          <button class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More actions" title="More">
-            <MoreHorizontal class="h-3.5 w-3.5 action-icon" />
+          <button type="button" class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More" title="More" aria-expanded={actionMenuOpen}>
+            <MoreHorizontal class="size-3" />
           </button>
           {#if actionMenuOpen}
-            <div class="msg-action-menu">
-              <button class="msg-menu-item danger" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
-                <Trash2 class="h-3.5 w-3.5" /> Delete
+            <div class="aui-menu msg-action-menu absolute bottom-full right-0 z-40 mb-1 min-w-[7.5rem] py-1">
+              <button type="button" class="aui-menu-item text-xs text-error" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
+                <Trash2 class="size-3.5" /> Delete
               </button>
             </div>
           {/if}
@@ -331,48 +336,57 @@
         <div class="mt-1"><TtsAudioPlayer {message} /></div>
       {/if}
 
-      <!-- Action buttons + version nav (visible on hover) -->
-      {#if !hasActiveDeepResearch}
-      <div class="message-action-bar" class:visible={hovering || forceActionsVisible || copyFeedback === 'copied'}>
-          {#if (message.versions?.length || 0) > 1}
-            <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
-              <ChevronLeft class="h-3.5 w-3.5 action-icon" />
-            </button>
-            <span class="text-xs text-[var(--text-tertiary)]">{activeVersionIndex + 1}/{message.versions?.length || 1}</span>
-            <button class="msg-action-btn" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
-              <ChevronRight class="h-3.5 w-3.5 action-icon" />
-            </button>
-          {/if}
-          <button class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy response" title="Copy">
+      <!-- T3-style: Copy + Retry primary; rest in overflow -->
+      {#if !hasActiveDeepResearch && message.status !== 'streaming'}
+        <div class="message-action-bar {hovering || forceActionsVisible || copyFeedback === 'copied' || actionMenuOpen ? 'visible' : ''}">
+          <button type="button" class="msg-action-btn" class:copied={copyFeedback === 'copied'} onclick={copyContent} aria-label="Copy" title="Copy">
             {#if copyFeedback === 'copied'}
-              <Check class="h-3.5 w-3.5" />
+              <Check class="size-3" />
             {:else}
-              <Copy class="h-3.5 w-3.5" />
+              <Copy class="size-3" />
             {/if}
           </button>
-          {#if message.role === 'assistant' && message.status !== 'streaming' && appStore.config.tts?.enable_voice_output}
-            <button class="msg-action-btn" onclick={handleTtsAction} aria-label="Read aloud" title={isTtsGenerating ? 'Stop generation' : isTtsPlaying ? 'Stop playback' : 'Listen'}>
-              {#if isTtsGenerating || isTtsPlaying}
-                <X class="h-3.5 w-3.5 action-icon" />
-              {:else}
-                <Volume2 class="h-3.5 w-3.5 action-icon" />
-              {/if}
-            </button>
-          {/if}
-          <button class="msg-action-btn" onclick={() => appStore.openEditMessage(message.id)} aria-label="Edit response" title="Edit">
-            <Pencil class="h-3.5 w-3.5 action-icon" />
-          </button>
-          <button class="msg-action-btn" onclick={() => appStore.regenerateMessage(message.id)} disabled={appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun} aria-label="Retry" title="Retry">
-            <RefreshCcw class="h-3.5 w-3.5 action-icon" />
+          <button
+            type="button"
+            class="msg-action-btn"
+            onclick={() => appStore.regenerateMessage(message.id)}
+            disabled={appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun}
+            aria-label="Retry"
+            title="Retry"
+          >
+            <RefreshCcw class="size-3" />
           </button>
           <div class="msg-action-menu-wrap">
-            <button class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More actions" title="More">
-              <MoreHorizontal class="h-3.5 w-3.5 action-icon" />
+            <button type="button" class="msg-action-btn" onclick={() => (actionMenuOpen = !actionMenuOpen)} aria-label="More" title="More" aria-expanded={actionMenuOpen}>
+              <MoreHorizontal class="size-3" />
             </button>
             {#if actionMenuOpen}
-              <div class="msg-action-menu">
-                <button class="msg-menu-item danger" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
-                  <Trash2 class="h-3.5 w-3.5" /> Delete
+              <div class="aui-menu msg-action-menu absolute bottom-full left-0 z-40 mb-1 min-w-[9rem] py-1">
+                {#if (message.versions?.length || 0) > 1}
+                  <div class="flex items-center gap-1 px-2 py-1 text-[0.65rem] text-muted-foreground">
+                    <button type="button" class="aui-icon-button size-6" onclick={() => appStore.setMessageActiveVersion(message.id, -1)} aria-label="Previous version">
+                      <ChevronLeft class="size-3" />
+                    </button>
+                    <span class="tabular-nums">{activeVersionIndex + 1}/{message.versions?.length || 1}</span>
+                    <button type="button" class="aui-icon-button size-6" onclick={() => appStore.setMessageActiveVersion(message.id, 1)} aria-label="Next version">
+                      <ChevronRight class="size-3" />
+                    </button>
+                  </div>
+                {/if}
+                <button type="button" class="aui-menu-item text-xs" onclick={() => { actionMenuOpen = false; appStore.openEditMessage(message.id); }}>
+                  <Pencil class="size-3.5" /> Edit
+                </button>
+                {#if appStore.config.tts?.enable_voice_output}
+                  <button type="button" class="aui-menu-item text-xs" onclick={() => { actionMenuOpen = false; handleTtsAction(); }}>
+                    {#if isTtsGenerating || isTtsPlaying}
+                      <X class="size-3.5" /> Stop
+                    {:else}
+                      <Volume2 class="size-3.5" /> Listen
+                    {/if}
+                  </button>
+                {/if}
+                <button type="button" class="aui-menu-item text-xs text-error" onclick={() => { actionMenuOpen = false; confirmStore.show({ title: 'Delete Message?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteMessage(message.id) }); }}>
+                  <Trash2 class="size-3.5" /> Delete
                 </button>
               </div>
             {/if}
@@ -389,42 +403,4 @@
     position: relative;
     display: inline-flex;
   }
-
-  .msg-action-menu {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    z-index: 30;
-    min-width: 112px;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--surface);
-    box-shadow: var(--shadow-lg);
-  }
-
-  .msg-menu-item {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 8px;
-    border: 0;
-    border-radius: 7px;
-    padding: 7px 9px;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 12px;
-    text-align: left;
-  }
-
-  .msg-menu-item:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .msg-menu-item.danger:hover {
-    background: color-mix(in srgb, var(--error) 10%, transparent);
-    color: var(--error);
-  }
-
 </style>

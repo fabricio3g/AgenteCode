@@ -30,13 +30,14 @@ describe('agent-strict-fallback', () => {
 
     expect(ensureRequestedArtifactsFromEvidence).toHaveBeenCalledOnce();
     expect(content).toContain('brief.docx');
-    expect(content).toContain('## Missing Files');
+    expect(content).toContain('## Missing requested files');
     expect(content).toContain('.pdf');
     expect(content).not.toContain('Agent stopped because');
     expect(content).not.toContain('What was completed');
+    expect(content).not.toContain('## Gathered Evidence');
   });
 
-  it('renders only gathered evidence and sources without report boilerplate', async () => {
+  it('renders a synthesized research report instead of a Gathered Evidence dump', async () => {
     const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue([]);
     const ctx: ToolContext = {
       chatId: 'chat-1',
@@ -77,18 +78,59 @@ describe('agent-strict-fallback', () => {
 
     expect(ensureRequestedArtifactsFromEvidence).toHaveBeenCalledOnce();
     expect(ctx.files).toEqual({});
-    expect(content).toContain('## Gathered Evidence');
+    expect(content).not.toContain('## Gathered Evidence');
+    expect(content).not.toContain('## Executive summary');
+    expect(content).toContain('## Key findings');
+    expect(content).toContain('## References');
+    expect(content).toContain('## Limitations');
     expect(content).toContain('Distributed solar microgrids improve site resilience');
     expect(content).toContain('Battery storage can shift midday solar generation');
-    expect(content).toContain('[2]');
-    expect(content).toContain('## Sources');
+    expect(content).toMatch(/\[2\]|# distributed solar microgrids/i);
     expect(content).toContain('https://example.com/storage-economics');
-    expect(content).not.toContain('# Distributed solar microgrids');
-    expect(content).not.toContain('## Executive Summary');
-    expect(content).not.toContain('## Key Findings');
-    expect(content).not.toContain('## Recommended Next Verification');
-    expect(content).not.toContain('## References');
+    expect(content).toContain('Partial research report');
     expect(content).not.toContain('Agent stopped because');
     expect(content).not.toContain('What was completed:');
+  });
+
+  it('uses medical section structure for general clinical research topics', async () => {
+    const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      chatId: 'chat-1',
+      files: {},
+      executionMode: 'sandbox',
+      onArtifact: vi.fn()
+    };
+    const observations: ToolObservation[] = [
+      {
+        name: 'web_search',
+        args: {},
+        success: true,
+        summary: 'Clinical presentation varies by disease stage. Diagnosis typically combines history, examination, and confirmatory testing. Treatment often starts with first-line therapy and may add adjuvant management based on severity and comorbidities.'
+      }
+    ];
+
+    const content = await buildStrictFallbackContent({
+      prompt: 'Comprehensive overview of clinical presentation, diagnosis, management and treatment outcomes for this medical condition',
+      reason: 'iteration limit',
+      ctx,
+      observations,
+      sources: [
+        {
+          title: 'Clinical practice overview',
+          url: 'https://example.com/clinical-overview',
+          snippet: 'Guideline-aligned treatment pathways emphasize shared decision-making, monitoring for adverse effects, and staged escalation of therapy.'
+        }
+      ],
+      ensureRequestedArtifactsFromEvidence,
+      evidenceSources: (_observations, sources) => sources,
+      missingRequestedArtifactExtensions: () => []
+    });
+
+    expect(content).not.toContain('## Gathered Evidence');
+    expect(content).not.toContain('## Executive summary');
+    expect(content).toContain('## Definition and clinical importance');
+    expect(content).toContain('## Treatment and management');
+    expect(content).toContain('## References');
+    expect(content).toMatch(/treatment|diagnos|clinical|therapy/i);
   });
 });

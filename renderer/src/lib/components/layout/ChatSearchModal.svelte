@@ -26,14 +26,19 @@
     return new Date(ts).toLocaleDateString();
   }
 
+  // Scope search to the active space only (Chat | Work isolation)
+  const spaceChats = $derived.by(() => {
+    return appStore.chats.filter((chat) => (chat.contextMode || 'chat') === appStore.activeSpace);
+  });
+
   const results = $derived.by(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
-      return [...appStore.chats]
+      return [...spaceChats]
         .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
         .slice(0, 10);
     }
-    return appStore.chats
+    return spaceChats
       .filter(chat =>
         chat.title.toLowerCase().includes(q) ||
         chat.messages.some(m => m.content.toLowerCase().includes(q))
@@ -118,7 +123,9 @@
         bind:this={searchInput}
         bind:value={query}
         class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-        placeholder="Search conversations..."
+        placeholder={appStore.activeSpace === 'work'
+          ? 'Search work sessions...'
+          : 'Search chats...'}
         type="text"
       />
       {#if query}
@@ -140,7 +147,11 @@
             <MessageSquare class="size-5 text-muted-foreground" />
           </div>
           <p class="text-sm text-muted-foreground">
-            {query ? 'No matching conversations' : 'No conversations yet'}
+            {query
+              ? 'No matches in this space'
+              : appStore.activeSpace === 'work'
+                ? 'No work sessions yet'
+                : 'No chats yet'}
           </p>
         </div>
       {:else}

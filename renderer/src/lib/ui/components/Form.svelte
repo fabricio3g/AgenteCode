@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { setContext } from 'svelte';
+  import { setContext, untrack } from 'svelte';
   import RenderNode from '../RenderNode.svelte';
   import Buttons from './Buttons.svelte';
+
   let { props = {} } = $props<{ props?: Record<string, any> }>();
-  const name = $derived(String(props.name || 'form'));
-  setContext('ui-form-name', name);
+  const name = $derived(String(props?.name || 'form'));
+  // Form identity is fixed for the component lifetime; avoid state_referenced_locally on setContext.
+  setContext('ui-form-name', untrack(() => String(props?.name || 'form')));
 </script>
 
 <form class="ui-form" onsubmit={(event) => event.preventDefault()}>

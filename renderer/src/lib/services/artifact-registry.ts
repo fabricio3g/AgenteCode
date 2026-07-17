@@ -275,6 +275,86 @@ const builtinArtifacts: ArtifactTypeEntry[] = [
       }
     }
   },
+  {
+    id: 'info_card',
+    name: 'Info cards',
+    description: 'In-chat fact cards for weather, status, live facts, and short label/value packs',
+    icon: 'layout-list',
+    defaultEnabled: true,
+    toolDefinition: {
+      type: 'function', function: {
+        name: 'create_info_card',
+        description:
+          'Create a deterministic inline info card in the chat (like a chart). Use for weather, live conditions, status, prices, or other short structured fact packs. Rows must come from tool evidence — never invent temperatures, prices, or stats. Prefer this over long prose-only answers when a card would help.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Card title (e.g. "Madrid weather")' },
+            subtitle: { type: 'string', description: 'Optional subtitle (e.g. "As of search results")' },
+            rows: {
+              type: 'array',
+              description: 'Label/value rows [{label, value, hint?}]',
+              items: { type: 'object' }
+            },
+            footer: { type: 'string', description: 'Optional footer (source note)' },
+            accent: { type: 'string', description: 'Optional accent: sky, green, amber, red, violet' },
+            path: { type: 'string', description: 'Output data path (defaults to info-card.json)' }
+          },
+          required: ['title', 'rows']
+        }
+      }
+    }
+  },
+  {
+    id: 'html_card',
+    name: 'HTML cards',
+    description: 'Small self-contained HTML snippets rendered inline in chat (no CDN)',
+    icon: 'code',
+    defaultEnabled: true,
+    toolDefinition: {
+      type: 'function', function: {
+        name: 'create_html_card',
+        description:
+          'Create a small deterministic HTML card/snippet rendered natively in the chat. Use for compact visual layouts, simple tables, or styled fact blocks. HTML must be self-contained (inline CSS only). No external scripts, CDNs, remote images, or network-dependent assets.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Card title' },
+            html: { type: 'string', description: 'Self-contained HTML body (inline CSS allowed)' },
+            path: { type: 'string', description: 'Output data path (defaults to html-card.json)' }
+          },
+          required: ['title', 'html']
+        }
+      }
+    }
+  },
+  {
+    id: 'research_package',
+    name: 'Research exports',
+    description: 'Citation pack (BibTeX/RIS/APA), evidence matrix, source shortlist, annotated bibliography, search protocol (files)',
+    icon: 'library',
+    defaultEnabled: true,
+    toolDefinition: {
+      type: 'function', function: {
+        name: 'export_research_package',
+        description:
+          'Export research deliverables as files from gathered web sources only (no invented metadata). Use when the user explicitly asks for citations, BibTeX, RIS, APA references, evidence matrix files, or bibliography downloads. Prefer create_info_card / create_chart for visual in-chat answers.',
+        parameters: {
+          type: 'object',
+          properties: {
+            kinds: {
+              type: 'array',
+              description: 'Export kinds: citations, matrix, shortlist, bibliography, protocol',
+              items: { type: 'string' }
+            },
+            title: { type: 'string', description: 'Base title for export files' },
+            query: { type: 'string', description: 'Original search query (optional)' }
+          },
+          required: ['kinds']
+        }
+      }
+    }
+  },
 ];
 
 export function getAllArtifacts(): ArtifactTypeEntry[] {

@@ -149,7 +149,30 @@ export type DashboardArtifactPayload = {
   sections: Array<{ heading?: string; content?: string }>;
 };
 
-export type InlineArtifactPayload = ChartArtifactPayload | MapArtifactPayload | DiagramArtifactPayload | DashboardArtifactPayload;
+/** Weather / status / short fact packs — chart-style in-chat card. */
+export type InfoCardArtifactPayload = {
+  kind: 'info_card';
+  title: string;
+  subtitle?: string;
+  rows: Array<{ label: string; value: string; hint?: string }>;
+  footer?: string;
+  accent?: string;
+};
+
+/** Small self-contained HTML snippet rendered in chat (no CDN / network). */
+export type HtmlCardArtifactPayload = {
+  kind: 'html_card';
+  title: string;
+  html: string;
+};
+
+export type InlineArtifactPayload =
+  | ChartArtifactPayload
+  | MapArtifactPayload
+  | DiagramArtifactPayload
+  | DashboardArtifactPayload
+  | InfoCardArtifactPayload
+  | HtmlCardArtifactPayload;
 
 export interface AgentArtifact {
   title: string;
@@ -296,6 +319,7 @@ export type ReasoningLevel =
   | 'low'
   | 'medium'
   | 'high'
+  | 'max'
   | 'xhigh'
   | 'enabled'
   | 'disabled'
@@ -328,7 +352,7 @@ export interface ChatFolder {
   createdAt: number;
 }
 
-export type ChatContextMode = 'chat' | 'work' | 'code';
+export type ChatContextMode = 'chat' | 'work';
 
 export interface CodeProject {
   id: string;
@@ -339,6 +363,9 @@ export interface CodeProject {
   updatedAt: number;
 }
 
+export type SessionComposerMode = 'chat' | 'agent';
+export type SessionSearchMode = 'chat' | 'search' | 'deep' | 'max';
+
 export interface ChatSession {
   id: string;
   title: string;
@@ -346,11 +373,16 @@ export interface ChatSession {
   updatedAt: number;
   folderId: string | null;
   draft: string;
+  /** Immutable after create: chat | work | code space identity. */
   contextMode?: ChatContextMode;
   codeAgent?: CodeAgentSessionMeta | null;
   projectId?: string | null;
   workspace?: WorkspaceContext | null;
   reasoningLevel?: ReasoningLevel | null;
+  /** Per-chat composer mode; isolated across sessions. */
+  composerMode?: SessionComposerMode | null;
+  /** Per-chat search depth mode; isolated across sessions. */
+  searchMode?: SessionSearchMode | null;
   messages: ChatMessage[];
 }
 
@@ -499,6 +531,12 @@ export interface AppConfig {
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    /**
+     * How Chat vs Agent is chosen:
+     * - tabs: show Chat | Agent control in composer
+     * - auto: hide tabs; route each message by intent
+     */
+    composer_mode_control?: 'tabs' | 'auto';
   };
   onboarding?: {
     completed?: boolean;

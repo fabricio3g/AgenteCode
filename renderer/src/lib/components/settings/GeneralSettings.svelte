@@ -30,11 +30,13 @@
   let {
     showAssistantText = $bindable(),
     enableThinking = $bindable(),
+    composerModeControl = $bindable(),
     hfToken = $bindable(),
     onsaveHfToken,
   }: {
     showAssistantText: boolean;
     enableThinking: boolean;
+    composerModeControl: 'tabs' | 'auto';
     hfToken: string;
     onsaveHfToken: () => void;
   } = $props();
@@ -108,6 +110,22 @@
         <span class="absolute inset-0 rounded-full bg-muted transition peer-checked:bg-primary"></span>
         <span class="absolute left-0.5 size-4 rounded-full bg-foreground transition peer-checked:translate-x-4 peer-checked:bg-primary-foreground"></span>
       </label>
+    </div>
+
+    <div class="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="space-y-1">
+        <h5 class="text-sm font-medium text-foreground">Chat / Agent control</h5>
+        <p class="text-xs leading-normal text-muted-foreground">
+          Auto hides the Chat/Agent tabs and routes each message by what you ask. Tabs lets you pick manually.
+        </p>
+      </div>
+      <select
+        class="aui-input sm:w-72"
+        bind:value={composerModeControl}
+      >
+        <option value="auto">Auto (recommended)</option>
+        <option value="tabs">Show Chat / Agent tabs</option>
+      </select>
     </div>
   </section>
 

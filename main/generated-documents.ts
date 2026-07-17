@@ -136,6 +136,21 @@ export async function generateDocx(data: Record<string, unknown>) {
   };
 }
 
+/** Excel sheet names must be unique and ≤ 31 chars. */
+export function uniqueWorksheetName(raw: string, used: Set<string>): string {
+  let base = text(raw, 'Sheet').slice(0, 31) || 'Sheet';
+  // Excel forbids: \ / ? * [ ]
+  base = base.replace(/[\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Sheet';
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    const suffix = ` (${n++})`;
+    candidate = (base.slice(0, Math.max(1, 31 - suffix.length)) + suffix).slice(0, 31);
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
 export async function generateXlsx(data: Record<string, unknown>) {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
@@ -149,8 +164,9 @@ export async function generateXlsx(data: Record<string, unknown>) {
     rows: Array.isArray(data.rows) ? data.rows as SheetInput['rows'] : []
   }];
 
+  const usedSheetNames = new Set<string>();
   for (const rawSheet of normalizedSheets) {
-    const sheetName = text(rawSheet.name, 'Sheet').slice(0, 31) || 'Sheet';
+    const sheetName = uniqueWorksheetName(String(rawSheet.name || 'Sheet'), usedSheetNames);
     const worksheet = workbook.addWorksheet(sheetName);
     const rows = Array.isArray(rawSheet.rows) ? rawSheet.rows : [];
     let columns = Array.isArray(rawSheet.columns) ? rawSheet.columns : [];

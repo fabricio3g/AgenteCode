@@ -3,7 +3,6 @@
 <script lang="ts">
   import type { ChatMessage, SearchMeta } from '$lib/types/chat';
   import { Globe } from 'lucide-svelte';
-  import { providerLabel } from '$lib/ui/message-utils';
   import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
@@ -15,17 +14,25 @@
 
   let { sources = [], searchMode = 'chat', meta = null, messageId = '' }: Props = $props();
 
-  const provider = $derived(providerLabel(meta?.providerUsed || meta?.requestedProvider || ''));
-  const modeLabel = $derived(searchMode === 'max' ? 'Max search' : searchMode === 'deep' ? 'Deep search' : 'Web search');
+  const modeLabel = $derived(
+    searchMode === 'max' ? 'Max' : searchMode === 'deep' ? 'Deep' : searchMode === 'search' ? 'Search' : ''
+  );
   const sourceCount = $derived.by(() => {
     const seen = new Set<string>();
     for (const source of sources || []) {
-      const key = String(source.url || source.title || '').trim().toLowerCase().replace(/#.*$/, '');
+      const key = String(source.url || source.title || '')
+        .trim()
+        .toLowerCase()
+        .replace(/#.*$/, '');
       if (key) seen.add(key);
     }
     return seen.size || sources?.length || 0;
   });
-  const isOpen = $derived(appStore.activityDrawerOpen && appStore.activityMessageId === messageId && appStore.activityDrawerTab === 'sources');
+  const isOpen = $derived(
+    appStore.activityDrawerOpen &&
+      appStore.activityMessageId === messageId &&
+      appStore.activityDrawerTab === 'sources'
+  );
 
   function stopBubble(event: Event) {
     event.stopPropagation();
@@ -48,83 +55,61 @@
       onmousedown={stopBubble}
       onclick={openSources}
     >
-      <Globe class="h-3.5 w-3.5 shrink-0" />
-      <span class="source-titleline">{modeLabel}</span>
-      <span class="source-count">{sourceCount} sources</span>
-      {#if provider && provider.toLowerCase() !== 'auto'}
-        <span class="source-provider">{provider}</span>
+      <Globe class="h-3.5 w-3.5 shrink-0 opacity-70" />
+      {#if modeLabel}
+        <span class="source-mode">{modeLabel}</span>
+        <span class="source-sep" aria-hidden="true">·</span>
       {/if}
-      <span class="source-open">Sources</span>
+      <span class="source-count">{sourceCount} source{sourceCount === 1 ? '' : 's'}</span>
+      <span class="source-open">View</span>
     </button>
   </div>
 {/if}
 
 <style>
   .sources-block {
-    position: relative;
-    margin: 0.25rem 0 0.7rem;
+    margin: 0.35rem 0 0.55rem;
   }
 
   .source-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.42rem;
+    gap: 0.35rem;
     max-width: 100%;
-    padding: 0;
+    padding: 0.2rem 0;
     border: 0;
-    border-radius: 0;
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     cursor: pointer;
-    font-size: 0.76rem;
-    line-height: 1.4;
-    box-shadow: none;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
+    font-size: 0.78rem;
+    line-height: 1.35;
     transition: color 0.15s ease;
   }
 
-  .source-trigger:active,
-  .source-trigger:focus {
-    background: transparent;
-    color: var(--text-secondary);
+  .source-trigger:hover,
+  .source-trigger:focus-visible {
+    color: var(--foreground);
     outline: none;
   }
 
-  .source-trigger:focus-visible {
-    color: var(--text);
-    outline: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
-    outline-offset: 3px;
+  .source-mode {
+    font-weight: 650;
+    color: inherit;
   }
 
-  .source-trigger:hover {
-    color: var(--text);
-  }
-
-  .source-titleline {
-    font-weight: 600;
-    color: var(--text-secondary);
+  .source-sep {
+    opacity: 0.55;
   }
 
   .source-count {
     font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .source-provider {
-    min-width: 0;
-    max-width: 9rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-muted);
   }
 
   .source-open {
-    color: var(--text-muted);
+    margin-left: 0.1rem;
     text-decoration: underline;
-    text-decoration-color: var(--border);
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
     text-underline-offset: 3px;
+    font-weight: 500;
   }
-
 </style>

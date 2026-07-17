@@ -46,6 +46,8 @@ npm run rebuild:native
 
 This rebuilds `better-sqlite3` and `sherpa-onnx-node` for Electron's Node ABI.
 
+If chats or projects disappear after an upgrade, rebuild native modules first. Desktop history lives in the app cache as `chat-history.db` (SQLite via `better-sqlite3`). Without a matching native binary, the app falls back to empty/local state and looks “reset.”
+
 ## Requirements
 
 - Node.js 22+

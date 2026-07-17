@@ -62,6 +62,13 @@ export function getDefaultProviders(): Record<string, LLMProviderConfig> {
   return {
     openai: getDefaultProvider('https://api.openai.com/v1'),
     openrouter: getDefaultProvider('https://openrouter.ai/api/v1'),
+    deepseek: {
+      type: 'openai_compat',
+      base_url: 'https://api.deepseek.com',
+      api_key: '',
+      model: 'deepseek-v4-flash',
+      default_params: { temperature: 0.7 }
+    },
     lmstudio: getDefaultProvider('http://localhost:1234/v1'),
   };
 }

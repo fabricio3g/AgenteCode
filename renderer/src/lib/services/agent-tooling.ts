@@ -2,11 +2,61 @@ import type { AgentStep } from '$lib/types/chat';
 import type { ToolDefinition } from '$lib/services/chat-api';
 import { getAllArtifacts, getEnabledArtifactIds } from '$lib/services/artifact-registry';
 
-export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox', artifactToggles: Record<string, boolean> = {}): ToolDefinition[] {
+/** Pi-inspired coding tools (Flaxeo Agent code profile) + web + diagnostics. */
+export const CODE_AGENT_TOOL_NAMES = new Set([
+  'read_file',
+  'write_file',
+  'edit_file',
+  'delete_file',
+  'list_files',
+  'search_files',
+  'bash',
+  'web_search',
+  'fetch_url',
+  'query_knowledge',
+  'get_diagnostics'
+]);
+
+/** Simple Chat Agent: research + calc + sandbox files (no host bash). */
+export const CHAT_AGENT_TOOL_NAMES = new Set([
+  'web_search',
+  'fetch_url',
+  'query_knowledge',
+  'calculator',
+  'read_file',
+  'write_file',
+  'list_files',
+  'search_files',
+  'preview_project',
+  'create_report',
+  'create_work_product',
+  'create_document',
+  'create_spreadsheet',
+  'create_presentation',
+  'create_pdf',
+  'create_chart',
+  'create_diagram',
+  'create_map',
+  'create_dashboard',
+  'create_info_card',
+  'create_html_card',
+  'get_weather',
+  'convert_currency',
+  'get_quote',
+  'export_research_package'
+]);
+
+export type AgentProfile = 'chat' | 'code' | 'search' | 'work';
+
+export function getToolDefinitions(
+  executionMode?: 'workspace' | 'sandbox',
+  artifactToggles: Record<string, boolean> = {},
+  agentProfile: AgentProfile = 'work'
+): ToolDefinition[] {
   const isWorkspace = executionMode === 'workspace';
   const fileScope = isWorkspace ? 'workspace' : 'chat sandbox';
   const enabledArtifacts = getEnabledArtifactIds(artifactToggles);
-  return [
+  const tools: ToolDefinition[] = [
     {
       type: 'function', function: {
         name: 'web_search',
@@ -24,10 +74,16 @@ export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox', arti
     {
       type: 'function', function: {
         name: 'fetch_url',
-        description: 'Fetch and read content from a URL.',
+        description:
+          'Fetch and extract readable text from a public http(s) URL. Uses Mozilla Readability for HTML (token-efficient article text). Also extracts text from remote PDF and DOCX. Private/localhost URLs are blocked.',
         parameters: {
           type: 'object',
-          properties: { url: { type: 'string', description: 'URL to fetch' } },
+          properties: {
+            url: {
+              type: 'string',
+              description: 'Public http(s) URL of a page, PDF, or Word (.docx) document'
+            }
+          },
           required: ['url']
         }
       }
@@ -153,7 +209,7 @@ export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox', arti
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Search query' },
-            topK: { type: 'number', description: 'Max results (default 5)' }
+            topK: { type: 'number', description: 'Max results (default 16, max 40) — full chunks, no short token budget' }
           },
           required: ['query']
         }
@@ -172,7 +228,78 @@ export function getToolDefinitions(executionMode?: 'workspace' | 'sandbox', arti
         }
       }
     },
+    {
+      type: 'function', function: {
+        name: 'get_weather',
+        description:
+          'Get current weather for a place via Open-Meteo (open-source, no API key). Inserts an in-chat info card. Use for weather/conditions questions. Never invent temperatures.',
+        parameters: {
+          type: 'object',
+          properties: {
+            location: { type: 'string', description: 'City or place name (e.g. Madrid, Paris, New York)' }
+          },
+          required: ['location']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'convert_currency',
+        description:
+          'Convert money between currencies via Frankfurter/ECB rates (open-source, no API key). Inserts an in-chat info card. Use for FX conversion. Never invent rates.',
+        parameters: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number', description: 'Amount to convert' },
+            from: { type: 'string', description: 'Source ISO currency code (e.g. USD)' },
+            to: { type: 'string', description: 'Target ISO currency code (e.g. EUR)' }
+          },
+          required: ['amount', 'from', 'to']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'get_quote',
+        description:
+          'Get a stock or crypto quote (Stooq for equities, CoinGecko for major crypto). Inserts an in-chat info card. Never invent prices.',
+        parameters: {
+          type: 'object',
+          properties: {
+            symbol: { type: 'string', description: 'Ticker symbol (e.g. AAPL, MSFT, BTC, ETH)' }
+          },
+          required: ['symbol']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'get_diagnostics',
+        description:
+          'LSP-like project diagnostics without a full language server: runs TypeScript (tsc), optional ESLint on a path, and Ruff for Python when available. Use after edits to find type/lint errors.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Optional file or directory relative to workspace root to focus checks' },
+            language: {
+              type: 'string',
+              description: 'Optional: "typescript" | "javascript" | "python" to force a toolchain'
+            }
+          }
+        }
+      }
+    },
   ];
+
+  if (agentProfile === 'code') {
+    return tools.filter((tool) => CODE_AGENT_TOOL_NAMES.has(tool.function.name));
+  }
+  if (agentProfile === 'chat') {
+    // Chat agent: no host bash/edit_file/delete_file/diagnostics
+    return tools.filter((tool) => CHAT_AGENT_TOOL_NAMES.has(tool.function.name));
+  }
+  // work / default: full tool surface (bash still gated to workspace mode)
+  return tools;
 }
 
 export const STEP_TYPE: Record<string, AgentStep['type']> = {
@@ -181,7 +308,11 @@ export const STEP_TYPE: Record<string, AgentStep['type']> = {
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
   write_file: 'writing', delete_file: 'writing', edit_file: 'writing',
   bash: 'executing',
+  get_diagnostics: 'reading',
   preview_project: 'preview', create_report: 'writing',
   create_work_product: 'writing', create_document: 'writing', create_spreadsheet: 'writing', create_presentation: 'writing', create_pdf: 'writing', create_chart: 'writing', create_diagram: 'writing', create_map: 'writing', create_dashboard: 'writing',
+  create_info_card: 'writing', create_html_card: 'writing',
+  get_weather: 'searching', convert_currency: 'tool', get_quote: 'searching',
+  export_research_package: 'writing',
   calculator: 'tool',
 };

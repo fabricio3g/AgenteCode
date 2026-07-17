@@ -6,6 +6,7 @@
   import { ArrowDown } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import SpaceEmptyState from '$lib/components/chat/SpaceEmptyState.svelte';
   import EditMessageInline from './EditMessageInline.svelte';
   import SelectedTextAskAction from './SelectedTextAskAction.svelte';
 
@@ -156,7 +157,7 @@
 
 <div class="relative flex-1 min-h-0 overflow-hidden" style="background:var(--chat-bg)">
   {#if !hasMessages}
-    <div class="h-full"></div>
+    <SpaceEmptyState />
   {:else}
     <div class="message-list-wrapper relative h-full">
       <SelectedTextAskAction />

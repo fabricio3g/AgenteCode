@@ -234,6 +234,8 @@ export type ContentPart =
 export interface RequestMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ContentPart[] | null;
+  /** DeepSeek / OpenAI-compatible chain-of-thought; required when echoing tool-call turns. */
+  reasoning_content?: string | null;
   attachments?: Array<{ kind?: string; base64?: string; name?: string; ocrText?: string }>;
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
@@ -661,10 +663,16 @@ export async function completeAssistantReply(args: {
   signal?: AbortSignal;
   apiKey?: string;
   reasoningLevel?: ReasoningLevel | null;
+  /**
+   * When true (Search/Deep/Max research), do not apply the user/provider max_tokens
+   * completion budget so long professional reports are not cut short.
+   */
+  omitMaxTokens?: boolean;
 }): Promise<CompletionResult> {
   const config = await loadChatConfig();
 
   const reasoning = buildReasoningRequest(args.reasoningLevel);
+  const omitMaxTokens = !!args.omitMaxTokens;
 
   if (config.llm?.backend_mode === 'local' && isTauri()) {
     const baseUrl = await ensureLocalRuntime(config);
@@ -680,7 +688,7 @@ export async function completeAssistantReply(args: {
         stream: false,
         messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
         ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
+        ...(!omitMaxTokens && config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
         ...(reasoning ? { disable_thinking: reasoning.level === 'off' } : {})
       })
     });
@@ -701,7 +709,7 @@ export async function completeAssistantReply(args: {
 
   const genParams = {
     ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
+    ...(!omitMaxTokens && provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
   };
 

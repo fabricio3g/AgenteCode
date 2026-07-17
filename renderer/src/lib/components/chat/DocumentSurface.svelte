@@ -450,17 +450,22 @@
     min-width: 0;
     max-width: 100%;
     min-height: 3.15rem;
-    padding: 0.45rem 0.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: transparent;
+    padding: 0.5rem 0.6rem;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
     text-align: left;
-    transition: border-color 150ms ease, background 150ms ease;
+    transition: background 150ms ease, box-shadow 150ms ease;
   }
 
   .attachment-launcher:hover {
-    border-color: var(--border-hover);
-    background: color-mix(in srgb, var(--surface-hover) 62%, transparent);
+    background: var(--artifact-surface-hover);
+  }
+
+  .attachment-launcher:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus);
   }
 
   .attachment-launcher.attachment-image {
@@ -558,17 +563,22 @@
     gap: 0.6rem;
     width: min(21rem, 100%);
     min-height: 3.35rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: transparent;
-    padding: 0.55rem 0.6rem;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
+    padding: 0.6rem 0.7rem;
     text-align: left;
-    transition: border-color 150ms ease, background 150ms ease;
+    transition: background 150ms ease, box-shadow 150ms ease;
   }
 
   .work-product-tile:hover {
-    border-color: var(--border-hover);
-    background: color-mix(in srgb, var(--surface-hover) 62%, transparent);
+    background: var(--artifact-surface-hover);
+  }
+
+  .work-product-tile:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus);
   }
 
   .document-icon {
@@ -620,21 +630,23 @@
     justify-content: center;
     width: 1.95rem;
     height: 1.95rem;
-    border: 1px solid transparent;
-    border-radius: 0.65rem;
-    color: var(--text-tertiary);
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255,255,255,0.72), rgba(142,151,168,0.5), rgba(255,255,255,0.45)) border-box;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
-    transition: filter 150ms ease, color 150ms ease, transform 150ms ease;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background: transparent;
+    transition: background 150ms ease, color 150ms ease;
   }
 
   .document-action:hover,
   .reader-icon-btn:hover {
     color: var(--text);
-    filter: brightness(1.04);
-    transform: translateY(-1px);
+    background: var(--artifact-surface-hover);
+  }
+
+  .document-action:focus-visible,
+  .reader-icon-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus);
   }
 
   .document-reader-layer {
@@ -658,12 +670,10 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid transparent;
-    border-radius: 1rem;
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(160,168,184,0.42) 48%, rgba(255,255,255,0.48)) border-box;
-    box-shadow: var(--shadow-xl);
+    border: 0;
+    border-radius: var(--radius-xl);
+    background: var(--artifact-surface-strong);
+    box-shadow: var(--shadow-lg);
   }
 
   .workspace-header {
@@ -671,10 +681,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    padding: 0.6rem 0.75rem;
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    backdrop-filter: blur(12px);
+    border-bottom: 0;
+    padding: 0.7rem 0.85rem;
+    background: color-mix(in srgb, var(--artifact-surface) 70%, transparent);
   }
 
   .reader-title-wrap {
@@ -708,14 +717,15 @@
     gap: 0.35rem;
     width: min(14rem, 28vw);
     height: 2rem;
-    border: 1px solid transparent;
-    border-radius: 0.65rem;
+    border: 0;
+    border-radius: var(--radius-sm);
     padding: 0 0.6rem;
-    color: var(--text-tertiary);
-    background:
-      linear-gradient(var(--surface), var(--surface)) padding-box,
-      linear-gradient(180deg, rgba(255,255,255,0.72), rgba(142,151,168,0.5), rgba(255,255,255,0.45)) border-box;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+    color: var(--text-secondary);
+    background: var(--artifact-surface-hover);
+  }
+
+  .workspace-search:focus-within {
+    box-shadow: var(--artifact-focus);
   }
 
   .workspace-search input {
@@ -749,10 +759,11 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 0;
     padding: 0.45rem 1rem;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-size: 0.72rem;
+    background: color-mix(in srgb, var(--artifact-surface-hover) 55%, transparent);
   }
 
   .workspace-search-status.miss {
@@ -768,8 +779,9 @@
 
   .reader-rail {
     overflow: auto;
-    border-right: 1px solid var(--border);
-    padding: 0.4rem;
+    border-right: 0;
+    padding: 0.45rem;
+    background: color-mix(in srgb, var(--artifact-surface) 80%, transparent);
   }
 
   .reader-file {
@@ -778,19 +790,23 @@
     width: 100%;
     align-items: center;
     gap: 0.5rem;
-    border: 1px solid transparent;
-    border-radius: 0.7rem;
+    border: 0;
+    border-radius: var(--radius-sm);
     padding: 0.5rem;
     text-align: left;
     color: var(--text-secondary);
-    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+    transition: background 0.14s ease, color 0.14s ease;
   }
 
   .reader-file:hover,
   .reader-file.active {
-    border-color: color-mix(in srgb, var(--border) 75%, transparent);
-    background: color-mix(in srgb, var(--surface-hover) 76%, transparent);
+    background: var(--artifact-surface-hover);
     color: var(--text);
+  }
+
+  .reader-file:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus);
   }
 
   .reader-file-icon {
@@ -828,8 +844,8 @@
   .reader-preview {
     min-width: 0;
     overflow: auto;
-    background: var(--surface);
-    padding: 0.65rem;
+    background: var(--chat-bg);
+    padding: 0.85rem 1rem;
   }
 
   .image-workspace {
@@ -977,9 +993,10 @@
       display: flex;
       gap: 0.35rem;
       border-right: 0;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 0;
       overflow-x: auto;
       padding: 0.45rem;
+      background: color-mix(in srgb, var(--artifact-surface) 80%, transparent);
     }
 
     .reader-file {

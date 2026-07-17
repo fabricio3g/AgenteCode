@@ -18,16 +18,25 @@ export function classifyStopReason(reason?: string): AgentStopReason {
   return 'error';
 }
 
-export function stoppedWarning(stopReason: AgentStopReason, reason: string): string {
+export function stoppedWarning(stopReason: AgentStopReason, reason: string, opts?: { workspace?: boolean }): string {
+  const code = !!opts?.workspace;
   switch (stopReason) {
     case 'timeout':
-      return 'Agent timed out and returned only gathered evidence.';
+      return code
+        ? 'Agent timed out before finishing; returned a partial coding summary.'
+        : 'Agent timed out and returned only gathered evidence.';
     case 'loop':
-      return 'Agent encountered a loop and returned only gathered evidence.';
+      return code
+        ? 'Agent got stuck repeating explore steps; returned a partial summary.'
+        : 'Agent encountered a loop and returned only gathered evidence.';
     case 'tool_limit':
-      return 'Agent reached the tool limit and returned only gathered evidence.';
+      return code
+        ? 'Agent hit the tool budget; returned a partial coding summary.'
+        : 'Agent reached the tool limit and returned only gathered evidence.';
     case 'iteration_limit':
-      return 'Agent reached the iteration limit and returned only gathered evidence.';
+      return code
+        ? 'Agent reached the step limit; returned a partial coding summary. Ask to continue if needed.'
+        : 'Agent reached the iteration limit and returned only gathered evidence.';
     case 'missing_artifacts':
       return 'Requested files could not all be created; returned only gathered evidence.';
     default:

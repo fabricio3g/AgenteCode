@@ -33,8 +33,9 @@ export function toolStatusLabel(
   status: ToolUiStatus | string,
   opts?: { cancelled?: boolean }
 ): string {
-  if (opts?.cancelled || status === 'error' && opts?.cancelled) return 'Cancelled tool';
+  if (opts?.cancelled || (status === 'error' && opts?.cancelled)) return 'Cancelled';
   if (status === 'awaiting_approval') return 'Needs approval';
-  if (status === 'running' || status === 'pending') return 'Using tool';
-  return 'Used tool';
+  if (status === 'running' || status === 'pending') return '';
+  if (status === 'error') return 'Failed';
+  return '';
 }

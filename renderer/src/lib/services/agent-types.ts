@@ -38,6 +38,9 @@ export type ToolContext = {
   files: Record<string, string>;
   conversationContext?: string;
   searchMode?: 'search' | 'deep' | 'max';
+  /** Live sources gathered during the agent run (shared reference). */
+  sources?: SearchResult[];
+  rawPrompt?: string;
   workspaceRoot?: string;
   workspaceFiles?: WorkspaceFile[];
   executionMode: 'sandbox' | 'workspace';
@@ -83,6 +86,10 @@ export type RunAgentTaskArgs = {
   maxToolCalls?: number;
   maxTimeMs?: number;
   toolMode?: 'agent' | 'search_chat';
+  /** chat = simple research agent; code = Flaxeo Agent; work = full sandbox; search = search tools */
+  agentProfile?: 'chat' | 'code' | 'search' | 'work';
   searchMode?: 'search' | 'deep' | 'max';
   reasoningLevel?: ReasoningLevel | null;
+  /** When true, skip token-budget trimming so uploaded/RAG document context stays intact. */
+  preserveDocumentContext?: boolean;
 };

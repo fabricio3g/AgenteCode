@@ -1,135 +1,117 @@
 <script lang="ts">
   import type { SearchMeta } from '$lib/types/chat';
-  import { AlertCircle, Globe } from 'lucide-svelte';
+  import { AlertCircle, ChevronDown, Globe } from 'lucide-svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { getSearchStatus } from '../message-utils';
+  import { slide } from 'svelte/transition';
 
   interface Props {
     meta?: SearchMeta | null;
+    /** When true, hide status if it only repeats sources (answer already present). */
+    hasAnswer?: boolean;
+    hasSources?: boolean;
   }
 
-  let { meta = null }: Props = $props();
+  let { meta = null, hasAnswer = false, hasSources = false }: Props = $props();
   const status = $derived(getSearchStatus(meta));
   const researchSummary = $derived(meta?.researchSummary?.trim() || '');
   const summaryHtml = $derived(researchSummary ? renderMarkdown(researchSummary) : '');
   const sourceCount = $derived(Number(meta?.sourceCount || 0));
   const crawlPages = $derived(Number(meta?.researchStats?.pagesCrawled || 0));
   const crawlDepth = $derived(Number(meta?.researchStats?.maxDepthReached || 0));
+
+  let briefOpen = $state(false);
+
+  // Hide thin status when answer + sources already carry the story
+  const showErrorStatus = $derived(!!status && !researchSummary && !(hasAnswer && hasSources));
+  const showBrief = $derived(!!researchSummary && (!hasAnswer || researchSummary.length > 120));
 </script>
 
-{#if status}
-  {#if researchSummary}
-    <div class="research-summary">
-      <div class="summary-trigger">
-        <Globe class="h-3.5 w-3.5" />
-        <span class="summary-title">Research</span>
-        <span class="summary-meta">
-          {#if sourceCount > 0}{sourceCount} src{/if}
-          {#if crawlPages > 0} · {crawlPages} pages{/if}
-          {#if crawlDepth > 0} · d{crawlDepth}{/if}
-        </span>
+{#if showBrief}
+  <div class="research-brief">
+    <button type="button" class="brief-trigger" onclick={() => (briefOpen = !briefOpen)} aria-expanded={briefOpen}>
+      <Globe class="h-3.5 w-3.5 shrink-0 opacity-70" />
+      <span class="brief-title">Research brief</span>
+      <span class="brief-meta">
+        {#if sourceCount > 0}{sourceCount} src{/if}
+        {#if crawlPages > 0} · {crawlPages} pages{/if}
+        {#if crawlDepth > 0} · d{crawlDepth}{/if}
+      </span>
+      <ChevronDown class={`h-3 w-3 shrink-0 opacity-60 transition-transform ${briefOpen ? 'rotate-180' : ''}`} />
+    </button>
+    {#if briefOpen}
+      <div class="brief-body markdown-body" transition:slide={{ duration: 140 }}>
+        {@html summaryHtml}
       </div>
-      <div class="summary-inline markdown-body">{@html summaryHtml}</div>
-    </div>
-  {:else}
-    <div class="search-status">
-      <AlertCircle class="h-3.5 w-3.5" />
-      <span class="status-title">{status.title}</span>
-      {#if status.detail}
-        <span class="status-detail">{status.detail}</span>
-      {/if}
-    </div>
-  {/if}
+    {/if}
+  </div>
+{:else if showErrorStatus && status}
+  <div class="search-status">
+    <AlertCircle class="h-3.5 w-3.5 shrink-0" />
+    <span class="status-title">{status.title}</span>
+    {#if status.detail}
+      <span class="status-detail">{status.detail}</span>
+    {/if}
+  </div>
 {/if}
 
 <style>
-  .research-summary {
-    display: grid;
-    gap: 0.35rem;
-    margin: 0.25rem 0 0.7rem;
+  .research-brief {
+    margin: 0.35rem 0 0.55rem;
   }
 
-  .summary-trigger {
+  .brief-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
+    max-width: 100%;
+    padding: 0.2rem 0;
     border: 0;
     background: transparent;
-    border-radius: 0;
-    color: var(--text-secondary);
-    padding: 0;
-    max-width: fit-content;
-    font-size: 0.77rem;
-    box-shadow: none;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: color 0.15s ease;
   }
 
-  .summary-trigger:hover {
-    color: var(--text);
+  .brief-trigger:hover {
+    color: var(--foreground);
   }
 
-  .summary-title {
-    font-weight: 600;
-    letter-spacing: -0.01em;
+  .brief-title {
+    font-weight: 650;
   }
 
-  .summary-meta {
-    color: var(--text-muted);
+  .brief-meta {
     font-size: 0.72rem;
+    font-weight: 450;
+    opacity: 0.9;
   }
 
-  .summary-inline {
-    border-left: 1px solid var(--border);
-    padding-left: 0.75rem;
+  .brief-body {
+    margin-top: 0.4rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--artifact-radius, var(--radius-md));
+    background: var(--artifact-surface, color-mix(in srgb, var(--surface) 88%, var(--chat-bg)));
     color: var(--text-secondary);
-  }
-
-  .research-summary :global(.markdown-body) {
-    font-size: 0.9375rem;
-    line-height: 1.7;
-  }
-
-  .research-summary :global(.markdown-body > :first-child) {
-    margin-top: 0;
-  }
-
-  .research-summary :global(.markdown-body > :last-child) {
-    margin-bottom: 0;
-  }
-
-  .research-summary :global(.markdown-body h1),
-  .research-summary :global(.markdown-body h2),
-  .research-summary :global(.markdown-body h3) {
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
-
-  .research-summary :global(.markdown-body h1) {
-    font-size: 1.125rem;
-  }
-
-  .research-summary :global(.markdown-body h2) {
-    font-size: 1rem;
-  }
-
-  .research-summary :global(.markdown-body h3) {
-    font-size: 0.9375rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
   }
 
   .search-status {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    margin: 0.25rem 0 0.7rem;
-    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.35rem 0 0.55rem;
+    color: var(--muted-foreground);
+    font-size: 0.78rem;
   }
 
   .status-title {
-    color: var(--text-secondary);
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .status-detail {
-    color: var(--text-muted);
+    opacity: 0.85;
   }
 </style>

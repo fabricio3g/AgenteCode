@@ -198,22 +198,90 @@ function compactPageContent(content: string, query: string, maxChars: number): s
   return result.join('\n\n').slice(0, budget);
 }
 
-async function enrichWithDeepContent(results: SearchResult[], limit: number, emit: (step: string, detail: string) => void, options: Record<string, unknown> = {}): Promise<SearchResult[]> {
-  const items = results.slice(0, limit);
-  const fetched = await Promise.allSettled(
-    items.map(async (result, index) => {
-      if (!result.url) return null;
-      emit('fetching_page', `Reading page ${index + 1}: ${result.url}`);
-      const content = await fetchPageContent(result.url, { ...options, search_query: options?.search_query || result.title || result.snippet || '' });
-      return content ? { ...result, full_content: content } : result;
-    })
-  );
+/** Prefer pages with more query-relevant title/snippet before scraping. */
+function scoreResultForDeepFetch(result: SearchResult, query: string): number {
+  const terms = normalizeWhitespace(query).toLowerCase().match(/[a-z0-9]+/g)?.filter((t) => t.length > 2).slice(0, 12) || [];
+  const title = normalizeWhitespace(result.title || '').toLowerCase();
+  const snippet = normalizeWhitespace(result.snippet || '').toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    if (title.includes(term)) score += 3;
+    if (snippet.includes(term)) score += 1;
+  }
+  // Prefer https and known content domains slightly
+  try {
+    const host = new URL(result.url || '').hostname.replace(/^www\./, '');
+    if (host.endsWith('.edu') || host.endsWith('.gov') || host.endsWith('.org')) score += 1.5;
+    if (result.url?.startsWith('https://')) score += 0.5;
+  } catch { /* ignore */ }
+  if (result.full_content && String(result.full_content).length > 800) score += 2;
+  return score;
+}
 
-  return results.map((result, index) => {
-    if (index >= limit) return result;
-    const entry = fetched[index];
-    if (!entry || entry.status !== 'fulfilled' || !entry.value) return result;
-    return entry.value;
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  const limit = Math.max(1, Math.min(concurrency, items.length || 1));
+
+  async function runOne() {
+    while (next < items.length) {
+      const i = next++;
+      try {
+        results[i] = { status: 'fulfilled', value: await worker(items[i], i) };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => runOne()));
+  return results;
+}
+
+async function enrichWithDeepContent(results: SearchResult[], limit: number, emit: (step: string, detail: string) => void, options: Record<string, unknown> = {}): Promise<SearchResult[]> {
+  const query = String(options?.search_query || '');
+  // Rank candidates before scrape; deprioritize empty URLs
+  const ranked = [...results]
+    .map((r, index) => ({ r, index, score: scoreResultForDeepFetch(r, query) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+  const pick = ranked.slice(0, limit).filter((x) => x.r.url);
+  const concurrency = Math.max(1, Math.min(Number(options?.scrape_concurrency) || 3, 4));
+
+  emit('deep_fetching', `Reading up to ${pick.length} pages (concurrency ${concurrency})…`);
+
+  const fetched = await mapWithConcurrency(pick, concurrency, async (item, i) => {
+    emit('fetching_page', `Reading page ${i + 1}/${pick.length}: ${item.r.url}`);
+    try {
+      const content = await fetchPageContent(item.r.url, {
+        ...options,
+        search_query: options?.search_query || item.r.title || item.r.snippet || ''
+      });
+      if (!content || normalizeWhitespace(content).length < 200) {
+        // thin: keep original result without full_content weight
+        return { ...item.r, full_content: content || undefined, scrape_quality: 'thin' as const };
+      }
+      return { ...item.r, full_content: content, scrape_quality: 'ok' as const };
+    } catch {
+      return { ...item.r, scrape_quality: 'blocked' as const };
+    }
+  });
+
+  const byUrl = new Map<string, SearchResult>();
+  for (let i = 0; i < pick.length; i += 1) {
+    const entry = fetched[i];
+    if (entry?.status === 'fulfilled' && entry.value?.url) {
+      byUrl.set(entry.value.url, entry.value);
+    }
+  }
+
+  // Prefer results with good full_content when re-ranking
+  return results.map((result) => {
+    if (!result.url) return result;
+    return byUrl.get(result.url) || result;
   });
 }
 
@@ -342,11 +410,19 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   let mergedResults = mergeAndRankResults(providerResults, effectiveQuery, responseLimit);
 
   if (searchMode !== 'search') {
-    const deepLimit = Math.min(mergedResults.length, searchMode === 'max' ? 10 : 5);
-    emit('deep_fetching', `Fetching full content from top ${deepLimit} pages...`);
-    const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, searchOptions);
-    mergedResults = mergeAndRankResults(enriched, effectiveQuery, responseLimit);
-    emit('deep_done', 'Deep content ready');
+    const deepLimit = Math.min(mergedResults.length, searchMode === 'max' ? 12 : 8);
+    const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, {
+      ...searchOptions,
+      scrape_concurrency: searchMode === 'max' ? 4 : 3
+    });
+    // Prefer pages with full_content after enrich
+    const withContent = enriched.filter((r) => r.full_content && String(r.full_content).length > 400);
+    const without = enriched.filter((r) => !r.full_content || String(r.full_content).length <= 400);
+    mergedResults = mergeAndRankResults([...withContent, ...without], effectiveQuery, responseLimit);
+    const okCount = withContent.length;
+    emit('deep_done', okCount
+      ? `Deep content ready (${okCount} readable page${okCount === 1 ? '' : 's'})`
+      : 'Deep fetch finished but little readable content was extracted');
   }
 
   const searchedAt = new Date().toISOString();

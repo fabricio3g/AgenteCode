@@ -10,6 +10,7 @@ export type ReasoningLevel =
   | 'low'
   | 'medium'
   | 'high'
+  | 'max'
   | 'xhigh'
   | 'enabled'
   | 'disabled'

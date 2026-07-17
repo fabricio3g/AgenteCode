@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { Bot, Brain, ChevronRight, Loader, Globe, FileSearch, FilePen, Code2, Terminal, Eye, AlertCircle, Wrench, Zap } from 'lucide-svelte';
+  import { Check } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
@@ -16,6 +16,8 @@
     activityLabel?: string;
     sourceCount?: number;
     messageId?: string;
+    /** When deep/max search is active, show a quiet mode chip */
+    searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
   }
 
   let {
@@ -28,209 +30,233 @@
     currentActivity,
     activityLabel,
     sourceCount = 0,
-    messageId = ''
+    messageId = '',
+    searchMode = null
   }: Props = $props();
 
-  const hasRunning = $derived(steps.some((s) => s.status === 'running'));
-  const runningStep = $derived(steps.find((s) => s.status === 'running'));
+  const modeChip = $derived(
+    searchMode === 'deep' ? 'Deep' : searchMode === 'max' ? 'Max' : searchMode === 'search' ? 'Search' : ''
+  );
+
   const errCount = $derived(steps.filter((s) => s.status === 'error').length);
   const doneCount = $derived(steps.filter((s) => s.status === 'done').length);
+  const hasApproval = $derived(steps.some((s) => s.status === 'awaiting_approval'));
   const stoppedByUser = $derived(steps.some((s) => /stopped by user/i.test(s.detail || s.label || '')));
+  const isStreaming = $derived(status === 'streaming');
+  const hasRelevance = $derived(!!(steps.length || reasoning) || isStreaming);
 
-  const isThinking = $derived(status === 'streaming' && !steps.length && !reasoning);
-  const hasRelevance = $derived(!!(steps.length || reasoning) || isThinking);
+  /** Debounced short label so progress ticks don't thrash the line. */
+  let stableVerb = $state('Working');
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let streamStartedAt = $state<number | null>(null);
+  let liveElapsed = $state(0);
+  let liveTimer: ReturnType<typeof setInterval> | null = null;
+
+  function shortVerb(activity?: AgentActivity | null, label?: string | null): string {
+    const raw = String(label || '').toLowerCase();
+    if (activity === 'searching' || raw.includes('search')) return 'Searching';
+    if (activity === 'reading' || raw.includes('read') || raw.includes('fetch') || raw.includes('source')) return 'Reading';
+    if (activity === 'creating_files' || raw.includes('file') || raw.includes('document') || raw.includes('artifact')) return 'Writing';
+    if (activity === 'writing' || raw.includes('answer') || raw.includes('response')) return 'Writing';
+    if (activity === 'stopped') return 'Stopped';
+    if (activity === 'completed') return 'Done';
+    if (raw.includes('plan') || raw.includes('think')) return 'Working';
+    return 'Working';
+  }
+
+  $effect(() => {
+    if (!isStreaming) {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      return;
+    }
+    const next = shortVerb(currentActivity, activityLabel);
+    if (next === stableVerb) return;
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      stableVerb = next;
+      debounceTimer = null;
+    }, 400);
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+    };
+  });
+
+  // Seed immediately on first stream so we don't wait 400ms for first paint
+  $effect(() => {
+    if (isStreaming && stableVerb === 'Working') {
+      const next = shortVerb(currentActivity, activityLabel);
+      if (next !== 'Working') stableVerb = next;
+    }
+  });
+
+  $effect(() => {
+    if (isStreaming) {
+      if (streamStartedAt == null) streamStartedAt = Date.now();
+      if (liveTimer) clearInterval(liveTimer);
+      liveTimer = setInterval(() => {
+        if (streamStartedAt != null) liveElapsed = (Date.now() - streamStartedAt) / 1000;
+      }, 250);
+      liveElapsed = streamStartedAt != null ? (Date.now() - streamStartedAt) / 1000 : 0;
+    } else {
+      streamStartedAt = null;
+      liveElapsed = 0;
+      if (liveTimer) {
+        clearInterval(liveTimer);
+        liveTimer = null;
+      }
+    }
+    return () => {
+      if (liveTimer) {
+        clearInterval(liveTimer);
+        liveTimer = null;
+      }
+    };
+  });
 
   function openActivity() {
     if (messageId) appStore.openActivityDrawer(messageId);
   }
 
-  function formatThoughtDuration(seconds?: number | null): string | null {
-    const safeSeconds = Number(seconds || 0);
-    if (safeSeconds <= 0) return null;
-    return `Worked for ${safeSeconds.toFixed(1)}s`;
+  function elapsedLive(): string {
+    const s = isStreaming ? liveElapsed : Number(totalElapsedSeconds || 0);
+    if (!Number.isFinite(s) || s < 0.5) return '';
+    if (s < 10) return `${s.toFixed(1)}s`;
+    return `${Math.floor(s)}s`;
   }
 
-  function totalElapsedLabel(): string | null {
-    const safeSeconds = Number(totalElapsedSeconds || 0);
-    if (safeSeconds <= 0 || status === 'streaming') return null;
-    if (outcome === 'failed') return `Failed after ${safeSeconds.toFixed(1)}s`;
-    if (outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none' || stoppedByUser) {
-      return `Stopped after ${safeSeconds.toFixed(1)}s`;
+  const line = $derived.by(() => {
+    if (isStreaming) {
+      if (hasApproval) return 'Needs approval';
+      const t = elapsedLive();
+      const core = t ? `${stableVerb} · ${t}` : stableVerb;
+      return modeChip ? `${modeChip} · ${core}` : core;
     }
-    return `Completed in ${safeSeconds.toFixed(1)}s`;
-  }
 
-  function activityLabelFor(step?: NonNullable<ChatMessage['agentSteps']>[number] | null): string {
-    if (!step) {
-      if (activityLabel) return activityLabel;
-      switch (currentActivity) {
-        case 'searching': return 'Searching the web';
-        case 'reading': return 'Reading sources';
-        case 'creating_files': return 'Creating files';
-        case 'writing': return 'Writing answer';
-        case 'stopped': return 'Agent stopped';
-        case 'completed': return 'Agent finished';
-        default: return 'Agent is planning';
-      }
+    if (stoppedByUser) return 'Stopped';
+    if (outcome === 'failed') {
+      const s = Number(totalElapsedSeconds || 0);
+      return s > 0 ? `Failed · ${s.toFixed(1)}s` : 'Failed';
     }
-    const label = step.label.toLowerCase();
-    if (step.type === 'searching' || label.includes('search')) return 'Searching the web';
-    if (step.type === 'reading' || label.includes('fetch') || label.includes('read') || label.includes('source')) return 'Reading sources';
-    if (step.type === 'writing' || label.includes('document') || label.includes('spreadsheet') || label.includes('presentation') || label.includes('pdf') || label.includes('file')) return 'Creating files';
-    if (label.includes('answer') || label.includes('response')) return 'Writing answer';
-    if (step.type === 'thinking' || step.type === 'planning') return 'Agent is planning';
-    return activityLabel || step.label || 'Agent is working';
-  }
-
-  function liveLabel() {
-    const label = activityLabel || activityLabelFor(runningStep);
-    const count = doneCount + (hasRunning ? 1 : 0);
-    return count > 0 ? `${label} · ${count} step${count !== 1 ? 's' : ''}` : label;
-  }
-
-  function compactDetail(value?: string) {
-    const clean = String(value || '')
-      .replace(/^query:\s*/i, '')
-      .replace(/^url:\s*/i, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!clean) return '';
-    return clean.length > 92 ? `${clean.slice(0, 92)}…` : clean;
-  }
-
-  function activityText() {
-    if (status === 'streaming' && runningStep) {
-      const label = activityLabelFor(runningStep);
-      const detail = compactDetail(runningStep.detail);
-      return detail ? `${label}: ${detail}` : label;
+    if (outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none') {
+      const s = Number(totalElapsedSeconds || 0);
+      const time = s > 0 ? ` · ${s.toFixed(1)}s` : '';
+      return `Stopped${time}`;
     }
-    return headerLabel();
-  }
 
-  function headerLabel() {
-    if (status === 'streaming') return liveLabel();
-    if (stoppedByUser) return 'Agent stopped by user';
     if (steps.length) {
-      if (outcome === 'failed') return 'Agent failed';
-      if (outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none') {
-        const kept = sourceCount ? ` · ${sourceCount} source${sourceCount !== 1 ? 's' : ''} kept` : '';
-        switch (stopReason) {
-          case 'timeout': return `Agent stopped · timed out${kept}`;
-          case 'loop': return `Agent stopped · loop detected${kept}`;
-          case 'tool_limit': return `Agent stopped · tool limit reached${kept}`;
-          case 'iteration_limit': return `Agent stopped · iteration limit reached${kept}`;
-          case 'missing_artifacts': return 'Agent stopped · missing requested files';
-          case 'error': return `Agent stopped${kept}`;
-          default: return `Agent stopped${kept}`;
-        }
-      }
       const parts: string[] = [];
-      if (doneCount) parts.push(`${doneCount} step${doneCount !== 1 ? 's' : ''}`);
-      if (errCount) parts.push(`${errCount} error${errCount !== 1 ? 's' : ''}`);
-      return parts.length ? `Agent finished · ${parts.join(' · ')}` : 'Agent finished';
+      if (doneCount) parts.push(`${doneCount} step${doneCount === 1 ? '' : 's'}`);
+      if (errCount) parts.push(`${errCount} error${errCount === 1 ? '' : 's'}`);
+      const s = Number(totalElapsedSeconds || 0);
+      if (s > 0) parts.push(`${s.toFixed(1)}s`);
+      if (sourceCount > 0) parts.push(`${sourceCount} source${sourceCount === 1 ? '' : 's'}`);
+      return parts.length ? parts.join(' · ') : 'Done';
     }
-    const thoughtDuration = formatThoughtDuration(totalElapsedSeconds);
-    if (thoughtDuration) return thoughtDuration;
+
+    const s = Number(totalElapsedSeconds || 0);
+    if (s > 0) return `${s.toFixed(1)}s`;
     if (reasoning) return 'Reasoning';
-    return activityLabel || 'Agent is planning';
-  }
-
-  function stepIcon(type: string) {
-    switch (type) {
-      case 'thinking': return Brain;
-      case 'searching': return Globe;
-      case 'reading': return FileSearch;
-      case 'writing': return FilePen;
-      case 'coding': return Code2;
-      case 'executing': return Terminal;
-      case 'preview': return Eye;
-      case 'error': return AlertCircle;
-      case 'tool': return Wrench;
-      default: return Zap;
-    }
-  }
-
-  const headerIconStep = $derived(status === 'streaming' ? runningStep : null);
+    return 'Done';
+  });
 </script>
 
 {#if hasRelevance}
-  <div class="agent-block mb-2 w-full">
-    <button type="button" class="agent-trigger" onclick={openActivity} aria-label="Open agent activity">
-      {#if isThinking || status === 'streaming'}
-        <Loader class="size-4 shrink-0 animate-spin" style="animation-duration: 0.6s" />
-      {:else if headerIconStep}
-        {@const RunningIcon = stepIcon(headerIconStep.type)}
-        <RunningIcon class="size-4 shrink-0" />
+  <div class="agent-status">
+    <button type="button" class="agent-line" onclick={openActivity} aria-label="Open agent activity">
+      {#if isStreaming}
+        <span class="agent-line-text aui-shimmer-host">
+          <span>{line}</span>
+          <span class="aui-shimmer" aria-hidden="true">{line}</span>
+        </span>
       {:else}
-        <Bot class="size-4 shrink-0" />
-      {/if}
-      <span class="agent-trigger-text aui-shimmer-host">
-        <span>{activityText()}</span>
-        {#if status === 'streaming'}
-          <span class="aui-shimmer" aria-hidden="true">{activityText()}</span>
+        {#if errCount}
+          <span class="status-dot error" aria-hidden="true"></span>
+        {:else}
+          <span class="status-icon done" aria-hidden="true">
+            <Check class="size-3.5" />
+          </span>
         {/if}
-      </span>
-      {#if steps.length}
-        <span class="agent-trigger-count">{steps.length}</span>
+        <span class="agent-line-text">{line}</span>
       {/if}
-      <ChevronRight class="size-4 shrink-0 opacity-70" />
     </button>
-
-    {#if totalElapsedLabel()}
-      <div class="agent-total">{totalElapsedLabel()}</div>
-    {/if}
   </div>
 {/if}
 
 <style>
-  .agent-trigger {
-    display: flex;
+  .agent-status {
+    margin-bottom: 0.35rem;
+    width: 100%;
+  }
+
+  .agent-line {
+    display: inline-flex;
     max-width: 100%;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0;
+    gap: 0.4rem;
+    padding: 0.2rem 0;
     border: none;
     background: transparent;
     color: var(--muted-foreground);
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
-    width: fit-content;
-    max-width: 100%;
     text-align: left;
-    transition: color 150ms ease, transform 150ms var(--motion-ease);
+    transition: color 150ms ease;
   }
-  .agent-trigger:hover {
+
+  .agent-line:hover {
     color: var(--foreground);
   }
-  .agent-trigger:active {
-    transform: scale(0.98);
+
+  .agent-line:focus-visible {
+    outline: none;
+    box-shadow: var(--artifact-focus, 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent));
+    border-radius: var(--radius-sm);
   }
-  .agent-trigger-text {
+
+  .status-icon {
+    display: inline-flex;
+    width: 0.85rem;
+    height: 0.85rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .status-icon.done {
+    opacity: 0.75;
+  }
+
+  .status-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    background: var(--muted-foreground);
+  }
+
+  .status-dot.error {
+    background: var(--error, #ef4444);
+  }
+
+  .agent-line-text {
     min-width: 0;
-    flex: 1;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .agent-total {
-    margin: 0.15rem 0 0 1.5rem;
-    color: var(--muted-foreground);
-    font-size: 0.6875rem;
-    font-weight: 450;
-    opacity: 0.8;
-  }
-  .agent-trigger-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 1.25rem;
-    height: 1.1rem;
-    border-radius: 999px;
-    background: var(--muted);
-    color: var(--muted-foreground);
-    font-size: 0.65rem;
-    font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Shimmer host needs inline-block for gradient text; keep ellipsis on outer */
+  .agent-line-text.aui-shimmer-host {
+    display: inline-block;
+    vertical-align: bottom;
   }
 </style>

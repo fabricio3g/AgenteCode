@@ -14,18 +14,15 @@
 import ModeSelector from './composer/ModeSelector.svelte';
   import SearchModeSelector from './composer/SearchModeSelector.svelte';
   import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
-  import CodeComposerControls from './composer/CodeComposerControls.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ContextUsageRing from './composer/ContextUsageRing.svelte';
-  import BrandMark from '$lib/components/BrandMark.svelte';
 
   interface Props {
     onHeightChange?: (height: number) => void;
-    centered?: boolean;
   }
 
-  let { onHeightChange, centered = false }: Props = $props();
+  let { onHeightChange }: Props = $props();
 
   type RecognitionCtor = new () => {
     continuous: boolean;
@@ -73,7 +70,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   );
 
   const isHomescreen = $derived(!appStore.currentChat?.messages?.length);
-  const isCodeMode = $derived(appStore.currentContextMode === 'code');
   const staticPlaceholderText = $derived(
     showErrorPlaceholder
       ? errorPlaceholderText
@@ -211,7 +207,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   const contextBudget = $derived(appStore.contextBudget);
   const showContextUsage = $derived(contextBudget !== null);
 
-  // Welcome hint state (shown above composer when centered / no messages)
   const PROVIDER_LABELS: Record<string, string> = {
     openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic',
     groq: 'Groq', mistral: 'Mistral', together: 'Together AI',
@@ -844,7 +839,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
   });
 </script>
 
-<div class={`${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} z-20 ${centered ? 'flex items-center justify-center absolute inset-0 px-6 md:px-12' : 'absolute inset-x-0 bottom-2 -translate-x-2 px-3 pb-2 pt-4 md:bottom-3 md:px-6'}`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
+<div class={`${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} z-20 absolute inset-x-0 bottom-2 -translate-x-2 px-3 pb-2 pt-4 md:bottom-3 md:px-6`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
   <input bind:this={fileInput} class="hidden" type="file" multiple accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" oninput={onFilesSelected} />
 
   {#if dragOver}
@@ -858,53 +853,33 @@ import ModeSelector from './composer/ModeSelector.svelte';
   {/if}
 
   <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="welcome-shell mx-auto w-full max-w-[42rem]">
-    {#if centered}
-      <div class="pointer-events-auto mb-2 flex flex-col items-center text-center">
-        <div class="welcome-brand mb-1">
-          <BrandMark size="xl" />
-        </div>
-        {#if isModelLoading}
-          <p class="inline-flex items-center gap-2 text-sm text-[var(--text-muted)]">
-            <LoaderCircle class="h-4 w-4 animate-spin" />
-            {$t('welcome.loadingModel')}
-          </p>
-        {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
-          <div class="welcome-model-prompt mx-auto mt-3 flex max-w-md flex-col items-center gap-3">
-            <div class="text-center">
-              <p class="text-sm font-semibold text-[var(--text)]">{$t('welcome.noModelLoaded')}</p>
-              <p class="mt-0.5 text-xs font-medium text-[var(--text-secondary)]">{$t('welcome.runtimeAutoSelected')}</p>
-            </div>
-            <div class="flex flex-wrap items-center justify-center gap-2">
-              <button class="welcome-action-btn primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold" onclick={() => openModelHub('explore')}>
-                {$t('welcome.browseAll')}
-                <ArrowRight class="h-3 w-3" />
-              </button>
-              <button class="welcome-action-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium" onclick={() => openModelHub('runtime')}>
-                {$t('welcome.changeRuntime')}
-              </button>
-            </div>
-          </div>
-        {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
-          <p class="text-sm text-[var(--text-muted)]">
-            {$t('welcome.noModel')}
-            <button class="inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)] hover:decoration-[var(--text-secondary)]" onclick={() => openModelHub('providers')}>
-              {$t('welcome.configureProvider')}
-              <ArrowRight class="h-3 w-3" />
-            </button>
-          </p>
-        {:else}
-          <p class="text-sm text-[var(--text-secondary)]">
-            {#if appStore.backendMode === 'local'}
-              {#if appStore.localModelActive?.name}
-                {appStore.localModelActive.name.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') || appStore.localModelActive.name}
-              {:else if activeModel}
-                {modelDisplayName}
-              {/if}
-            {:else if appStore.backendMode === 'api' && apiProviderLabel}
-              {apiProviderLabel}{appStore.activeModelLabel ? ` · ${appStore.activeModelLabel}` : ''}
-            {/if}
-          </p>
-        {/if}
+    {#if isModelLoading}
+      <div class="pointer-events-auto mb-2 flex justify-center">
+        <p class="inline-flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
+          {$t('welcome.loadingModel')}
+        </p>
+      </div>
+    {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
+      <div class="pointer-events-auto mb-2 flex flex-wrap items-center justify-center gap-2">
+        <p class="text-xs text-[var(--text-muted)]">{$t('welcome.noModelLoaded')}</p>
+        <button class="welcome-action-btn primary inline-flex items-center gap-1 px-2.5 py-1 text-[0.7rem] font-semibold" onclick={() => openModelHub('explore')}>
+          {$t('welcome.browseAll')}
+          <ArrowRight class="h-3 w-3" />
+        </button>
+        <button class="welcome-action-btn inline-flex items-center gap-1 px-2.5 py-1 text-[0.7rem] font-medium" onclick={() => openModelHub('runtime')}>
+          {$t('welcome.changeRuntime')}
+        </button>
+      </div>
+    {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
+      <div class="pointer-events-auto mb-2 flex justify-center">
+        <p class="text-xs text-[var(--text-muted)]">
+          {$t('welcome.noModel')}
+          <button class="ml-1 inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)]" onclick={() => openModelHub('providers')}>
+            {$t('welcome.configureProvider')}
+            <ArrowRight class="h-3 w-3" />
+          </button>
+        </p>
       </div>
     {/if}
 
@@ -977,15 +952,26 @@ import ModeSelector from './composer/ModeSelector.svelte';
     </div>
 
     <div class={`composer-action-row px-4 pb-3 pt-2 ${compactComposer ? 'compact' : ''}`}>
-      <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
-        {#if isCodeMode}
-          <CodeComposerControls />
-{:else}
-          <ModeSelector />
+      <div class="composer-left-stack min-w-0 flex-1">
+        <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
+          {#if appStore.composerModeControl === 'tabs'}
+            <ModeSelector />
+          {/if}
 
           <SearchModeSelector />
 
           <ReasoningLevelSelector />
+        </div>
+        {#if appStore.searchMode !== 'chat'}
+          <p class="search-mode-hint">
+            {#if appStore.searchMode === 'max'}
+              Exhaustive research · slower, more sources
+            {:else if appStore.searchMode === 'deep'}
+              Thorough research · more sources
+            {:else}
+              Quick web check
+            {/if}
+          </p>
         {/if}
       </div>
 
@@ -1065,19 +1051,27 @@ import ModeSelector from './composer/ModeSelector.svelte';
   }
 
   .composer-shell {
-    border: 0;
+    border: 1px solid var(--border);
     border-radius: 1.25rem;
     background: var(--card);
-    box-shadow:
-      inset 0 0 0 1px var(--border),
-      var(--surface-shadow);
-    transition: box-shadow 150ms ease;
+    box-shadow: var(--surface-shadow);
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  /* Dark: card (#212121) and border (#2a2a2a) are nearly identical — use a soft hairline */
+  :global(.dark) .composer-shell {
+    border-color: color-mix(in srgb, var(--foreground) 14%, transparent);
   }
 
   .composer-shell:focus-within {
-    box-shadow:
-      inset 0 0 0 1px var(--ring),
-      var(--surface-shadow-focus);
+    border-color: var(--ring);
+    box-shadow: var(--surface-shadow-focus);
+  }
+
+  :global(.dark) .composer-shell:focus-within {
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
   }
 
   .composer-textarea {
@@ -1170,9 +1164,26 @@ import ModeSelector from './composer/ModeSelector.svelte';
 
   .composer-action-row {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+
+  .composer-left-stack {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .search-mode-hint {
+    margin: 0;
+    padding-left: 0.15rem;
+    color: var(--muted-foreground);
+    font-size: 0.68rem;
+    font-weight: 450;
+    line-height: 1.3;
   }
 
   .composer-left-actions {
@@ -1250,11 +1261,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   @keyframes micLineBounce {
     0%, 100% { height: 5px; opacity: 0.5; }
     50% { height: 14px; opacity: 1; }
-  }
-
-  .welcome-brand {
-    user-select: none;
-    -webkit-user-select: none;
   }
 
   .welcome-action-btn {

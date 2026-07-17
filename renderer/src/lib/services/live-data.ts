@@ -1,0 +1,54 @@
+import { invoke, isTauri } from '$lib/services/tauri';
+
+export type LiveInfoRows = Array<{ label: string; value: string; hint?: string }>;
+
+export type LiveWeatherData = {
+  place: string;
+  rows: LiveInfoRows;
+  source: string;
+  asOf?: string;
+  temperatureC?: number;
+  conditions?: string;
+};
+
+export type LiveFxData = {
+  amount: number;
+  from: string;
+  to: string;
+  rate: number;
+  result: number;
+  date?: string;
+  source: string;
+  rows: LiveInfoRows;
+};
+
+export type LiveQuoteData = {
+  symbol: string;
+  price?: number;
+  changePct?: number;
+  source: string;
+  rows: LiveInfoRows;
+};
+
+type LiveResponse<T> = { ok: true; data: T } | { ok: false; error: string };
+
+export async function liveGetWeather(location: string): Promise<LiveWeatherData> {
+  if (!isTauri()) throw new Error('Live weather requires the desktop app.');
+  const res = await invoke<LiveResponse<LiveWeatherData>>('live_get_weather', { location });
+  if (!res?.ok) throw new Error(res?.error || 'Weather request failed');
+  return res.data;
+}
+
+export async function liveConvertCurrency(amount: number, from: string, to: string): Promise<LiveFxData> {
+  if (!isTauri()) throw new Error('Currency conversion requires the desktop app.');
+  const res = await invoke<LiveResponse<LiveFxData>>('live_convert_currency', { amount, from, to });
+  if (!res?.ok) throw new Error(res?.error || 'Currency conversion failed');
+  return res.data;
+}
+
+export async function liveGetQuote(symbol: string): Promise<LiveQuoteData> {
+  if (!isTauri()) throw new Error('Quotes require the desktop app.');
+  const res = await invoke<LiveResponse<LiveQuoteData>>('live_get_quote', { symbol });
+  if (!res?.ok) throw new Error(res?.error || 'Quote request failed');
+  return res.data;
+}

@@ -87,6 +87,11 @@
   .artifact-diagram {
     width: min(100%, 42rem);
     margin-top: 0.65rem;
+    padding: 0.75rem 0.85rem;
+    border: 0;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    box-shadow: var(--artifact-elev);
     color: var(--text);
   }
 
@@ -94,6 +99,7 @@
     margin: 0 0 0.45rem;
     font-size: 0.95rem;
     font-weight: 650;
+    color: var(--text);
   }
 
   .diagram-output {

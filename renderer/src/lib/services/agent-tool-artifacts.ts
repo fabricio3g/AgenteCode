@@ -2,6 +2,13 @@ import type { AgentArtifact } from '$lib/types/chat';
 import type { GeneratedArtifactFile } from '$lib/services/generated-documents';
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 import { INLINE_ARTIFACT_FILE } from '$lib/services/agent-artifact';
+import {
+  buildEvidenceMatrixRows,
+  buildResearchCitations,
+  buildResearchExportFiles,
+  parseExportKinds,
+  type ResearchExportKind
+} from '$lib/services/research-artifacts';
 
 export async function handleCreateReport(params: {
   args: Record<string, unknown>;
@@ -242,4 +249,131 @@ export async function handleCreateDashboard(params: {
 
   writeInlineArtifact(params.ctx, path, payload);
   return params.ok({ title, path, metricCount: metrics.length }, { createdFiles: [path] });
+}
+
+function sanitizeHtmlCard(html: string): string {
+  let out = String(html || '');
+  // Remove scripts and remote resource hooks — self-contained snippets only.
+  out = out.replace(/<script[\s\S]*?<\/script>/gi, '');
+  out = out.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
+  out = out.replace(/\s(href|src)\s*=\s*(['"])\s*https?:\/\/[^'"]*\2/gi, '');
+  out = out.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
+  out = out.replace(/<object[\s\S]*?<\/object>/gi, '');
+  out = out.replace(/<embed[\s\S]*?>/gi, '');
+  return out.trim();
+}
+
+export function handleCreateInfoCard(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  normPath: (value: unknown) => string;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const title = String(params.args.title || 'Info').trim();
+  const subtitle = String(params.args.subtitle || '').trim();
+  const footer = String(params.args.footer || '').trim();
+  const accent = String(params.args.accent || '').trim();
+  const rawRows = Array.isArray(params.args.rows) ? params.args.rows : [];
+  const rows = rawRows
+    .map((row) => {
+      const r = row as { label?: string; value?: string; hint?: string };
+      const label = String(r?.label || '').trim();
+      const value = String(r?.value ?? '').trim();
+      const hint = String(r?.hint || '').trim();
+      if (!label && !value) return null;
+      return { label: label || '—', value: value || '—', ...(hint ? { hint } : {}) };
+    })
+    .filter(Boolean) as Array<{ label: string; value: string; hint?: string }>;
+
+  if (!title) return params.fail('Info card requires a title.');
+  if (rows.length < 1) return params.fail('Info card requires at least one row with label/value.');
+
+  const path = artifactDataPath(params.normPath(params.args.path), 'info-card.json');
+  const payload = {
+    kind: 'info_card',
+    title,
+    ...(subtitle ? { subtitle } : {}),
+    rows,
+    ...(footer ? { footer } : {}),
+    ...(accent ? { accent } : {})
+  };
+
+  writeInlineArtifact(params.ctx, path, payload);
+  return params.ok({ title, path, rowCount: rows.length }, { createdFiles: [path] });
+}
+
+export function handleCreateHtmlCard(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  normPath: (value: unknown) => string;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const title = String(params.args.title || 'Card').trim();
+  const html = sanitizeHtmlCard(String(params.args.html || ''));
+  if (!title) return params.fail('HTML card requires a title.');
+  if (html.length < 8) return params.fail('HTML card requires self-contained HTML content.');
+  if (html.length > 80_000) return params.fail('HTML card is too large. Keep snippets small.');
+
+  const path = artifactDataPath(params.normPath(params.args.path), 'html-card.json');
+  const payload = { kind: 'html_card', title, html };
+  writeInlineArtifact(params.ctx, path, payload);
+  return params.ok({ title, path, htmlLength: html.length }, { createdFiles: [path] });
+}
+
+/** Deterministic research exports from gathered sources (citations, matrix, shortlist, …). */
+export function handleExportResearchPackage(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const sources = Array.isArray(params.ctx.sources) ? params.ctx.sources : [];
+  if (!sources.length) {
+    return params.fail(
+      'No gathered sources to export.',
+      'Run web_search (and fetch_url when useful) first, then call export_research_package.'
+    );
+  }
+
+  const kinds = parseExportKinds(params.args.kinds) as ResearchExportKind[];
+  const title = String(params.args.title || params.ctx.rawPrompt || 'Research').slice(0, 120);
+  const query = String(params.args.query || params.ctx.rawPrompt || '').slice(0, 400);
+
+  const files = buildResearchExportFiles({
+    sources,
+    kinds,
+    title,
+    query,
+    searchMode: params.ctx.searchMode
+  });
+
+  if (!files.length) {
+    return params.fail('Could not build research exports from the available sources.');
+  }
+
+  const createdFiles: string[] = [];
+  for (const file of files) {
+    params.ctx.files[file.path] = file.content;
+    createdFiles.push(file.path);
+  }
+
+  // Optional spreadsheet-shaped matrix for create_spreadsheet compatibility in ctx (CSV already written).
+  if (kinds.includes('matrix')) {
+    const citations = buildResearchCitations(sources);
+    const { columns, rows } = buildEvidenceMatrixRows(citations);
+    params.ctx.files['__research_matrix_preview__.json'] = JSON.stringify({ title, columns, rows }, null, 2);
+  }
+
+  return params.ok(
+    {
+      title,
+      kinds,
+      fileCount: createdFiles.length,
+      files: createdFiles,
+      sourceCount: sources.length
+    },
+    { createdFiles }
+  );
 }

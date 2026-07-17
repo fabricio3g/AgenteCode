@@ -8,7 +8,7 @@
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, ChevronRight, Code, FileDown, Folder, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { Boxes, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -18,15 +18,12 @@
   let renamingChatTitle = $state('');
   let renameValue = $state('');
   let openMenuChatId = $state<string | null>(null);
-  let openProjectMenuId = $state<string | null>(null);
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([3]));
-  let collapsedProjects = $state<Set<string>>(new Set());
 
   const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof MessageSquare }> = [
     { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'work', label: 'Work', icon: Boxes },
-    { id: 'code', label: 'Code', icon: Code }
+    { id: 'work', label: 'Work', icon: Boxes }
   ];
 
   function startOfDay(ts: number) {
@@ -99,18 +96,7 @@
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
   const sidebarIconColor = $derived('currentColor');
-  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : appStore.activeSpace === 'code' ? 'New Project' : $t('sidebar.newChat'));
-
-  const projectGroups = $derived.by(() => {
-    const query = debouncedSearch.trim().toLowerCase();
-    return appStore.codeProjects.map((project) => {
-      const chats = appStore.chats
-        .filter((chat) => chat.contextMode === 'code' && chat.projectId === project.id)
-        .filter((chat) => !query || chat.title.toLowerCase().includes(query) || chat.messages.some((message) => message.content.toLowerCase().includes(query)))
-        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
-      return { project, chats };
-    }).filter((group) => group.chats.length || !query);
-  });
+  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : $t('sidebar.newChat'));
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -147,18 +133,7 @@
     collapsedGroups = next;
   }
 
-  function toggleProject(projectId: string) {
-    const next = new Set(collapsedProjects);
-    if (next.has(projectId)) next.delete(projectId);
-    else next.add(projectId);
-    collapsedProjects = next;
-  }
-
   function createForActiveSpace() {
-    if (appStore.activeSpace === 'code') {
-      void appStore.pickCodeProjectFolder();
-      return;
-    }
     appStore.createChat(appStore.activeSpace);
   }
 
@@ -209,10 +184,9 @@
   }
 
   $effect(() => {
-    if (!openMenuChatId && !openProjectMenuId) return;
+    if (!openMenuChatId) return;
     const close = () => {
       openMenuChatId = null;
-      openProjectMenuId = null;
     };
     const timer = setTimeout(() => {
       document.addEventListener('click', close, { once: true });
@@ -302,187 +276,7 @@
     {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
-      {#if appStore.activeSpace === 'code'}
-        <div class="px-2 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Projects</div>
-        {#if projectGroups.length}
-          <div class="space-y-1">
-            {#each projectGroups as group (group.project.id)}
-              {@const projectCollapsed = !isSearching && collapsedProjects.has(group.project.id)}
-              <section class="project-group">
-                <div class="project-header" class:active={appStore.currentProjectId === group.project.id}>
-                  <button type="button" class="project-toggle" onclick={() => toggleProject(group.project.id)} aria-expanded={!projectCollapsed}>
-                    <ChevronRight class={`h-3.5 w-3.5 transition-transform ${projectCollapsed ? '' : 'rotate-90'}`} />
-                    <Folder class="h-3.5 w-3.5" />
-                    <span class="project-name">{group.project.rootName}</span>
-                    <span class="project-count">{group.chats.length}</span>
-                  </button>
-                  <button type="button" class="project-new" onclick={() => appStore.createCodeChat(group.project.id)} aria-label="New code conversation">
-                    <Plus class="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    class="project-new"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      openProjectMenuId = openProjectMenuId === group.project.id ? null : group.project.id;
-                    }}
-                    aria-label="Project options"
-                  >
-                    <MoreHorizontal class="h-3 w-3" />
-                  </button>
-                  {#if openProjectMenuId === group.project.id}
-                    <div
-                      class="chat-menu project-menu absolute right-3 z-30 w-48 rounded-[var(--radius-md)]"
-                      role="menu"
-                      tabindex="-1"
-                      onclick={(e) => e.stopPropagation()}
-                      onkeydown={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                        onclick={(e) => { e.stopPropagation(); appStore.createCodeChat(group.project.id); openProjectMenuId = null; }}
-                      >
-                        <Plus class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                        New conversation
-                      </button>
-                      <button
-                        type="button"
-                        class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                        onclick={(e) => {
-                          e.stopPropagation();
-                          confirmStore.show({
-                            title: `Delete ${group.project.rootName}?`,
-                            message: `This deletes the project from Flaxeo Chat and removes ${group.chats.length} conversation${group.chats.length === 1 ? '' : 's'} inside it. The folder on disk is not deleted.`,
-                            danger: true,
-                            onConfirm: () => void appStore.deleteCodeProject(group.project.id)
-                          });
-                          openProjectMenuId = null;
-                        }}
-                      >
-                        <Trash2 class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                        Delete project
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-                {#if !projectCollapsed}
-                  <div class="project-chats" transition:slide={{ duration: 140 }}>
-                    {#each group.chats as chat (chat.id)}
-                      <div
-                        class={`chat-item project-chat group relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
-                        role="button"
-                        tabindex="0"
-                        onclick={() => appStore.selectChat(chat.id)}
-                        ondblclick={() => startRename(chat.id, chat.title)}
-                        onkeydown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            appStore.selectChat(chat.id);
-                          }
-                        }}
-                      >
-                        <div class="min-w-0 flex-1 pr-1">
-                          {#if renamingChatId === chat.id}
-                            <input
-                              bind:this={renameInputEl}
-                              class="chat-rename-input w-full"
-                              bind:value={renameValue}
-                              onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-                              onclick={(e) => e.stopPropagation()}
-                              onkeydown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  commitRename(chat.id);
-                                }
-                                if (event.key === 'Escape') {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  closeRename();
-                                }
-                              }}
-                              onblur={() => closeRename()}
-                              maxlength="120"
-                            />
-                          {:else}
-                            <div class="chat-title truncate text-[14px]">{chat.title}</div>
-                          {/if}
-                        </div>
-                        {#if renamingChatId !== chat.id}
-                          <button
-                            type="button"
-                            class="menu-btn ml-0.5 rounded-[var(--radius-sm)] p-1 opacity-0 transition group-hover:opacity-100"
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
-                            }}
-                            aria-label="Chat options"
-                          >
-                            <MoreHorizontal class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                          </button>
-                        {/if}
-
-                        {#if openMenuChatId === chat.id}
-                          <div
-                            class="chat-menu absolute right-0 top-9 z-30 w-40 rounded-[var(--radius-md)]"
-                            role="menu"
-                            tabindex="-1"
-                            onclick={(e) => e.stopPropagation()}
-                            onkeydown={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                              onclick={(e) => { e.stopPropagation(); startRename(chat.id, chat.title); openMenuChatId = null; }}
-                            >
-                              <Pencil class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                              Rename
-                            </button>
-                            <button
-                              type="button"
-                              class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                              onclick={(e) => { e.stopPropagation(); exportChat(chat); openMenuChatId = null; }}
-                            >
-                              <FileDown class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                              Export
-                            </button>
-                            <button
-                              type="button"
-                              class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                              onclick={(e) => {
-                                e.stopPropagation();
-                                confirmStore.show({
-                                  title: 'Delete Conversation?',
-                                  message: 'This removes this conversation from the project. Project files on disk are not deleted.',
-                                  danger: true,
-                                  onConfirm: () => appStore.deleteChat(chat.id)
-                                });
-                                openMenuChatId = null;
-                              }}
-                            >
-                              <Trash2 class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                              Delete
-                            </button>
-                          </div>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </section>
-            {/each}
-          </div>
-        {:else}
-          <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
-            <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
-              <Folder class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
-            </div>
-            <p class="text-[14px] text-[var(--text-muted)]">No projects yet</p>
-            <button type="button" class="mt-2 text-[12px] font-semibold text-[var(--primary)]" onclick={() => appStore.pickCodeProjectFolder()}>Create project</button>
-          </div>
-        {/if}
-      {:else if groupedChats.length}
+      {#if groupedChats.length}
         {#each groupedChats as group (group.key)}
           {@const isCollapsed = !isSearching && collapsedGroups.has(group.key)}
           <div class="mb-1.5">
@@ -761,83 +555,6 @@
     color: inherit;
   }
 
-  .project-group {
-    border-radius: var(--radius-md);
-  }
-
-  .project-header {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    border-radius: var(--radius-md);
-    color: var(--muted-foreground);
-  }
-
-  .project-header.active {
-    color: var(--sidebar-foreground);
-  }
-
-  .project-toggle {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    align-items: center;
-    gap: 0.4rem;
-    border: 0;
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: inherit;
-    padding: 0.45rem 0.5rem;
-    text-align: left;
-  }
-
-  .project-toggle:hover,
-  .project-new:hover {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-  }
-
-  .project-name {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-
-  .project-count {
-    color: var(--muted-foreground);
-    font-size: 0.68rem;
-  }
-
-  .project-new {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.55rem;
-    height: 1.55rem;
-    border: 0;
-    border-radius: var(--radius-md);
-    background: transparent;
-    color: var(--muted-foreground);
-  }
-
-  .project-chats {
-    margin-left: 1.45rem;
-    padding-left: 0.45rem;
-    border-left: 1px solid var(--sidebar-border);
-  }
-
-  .project-chat {
-    color: var(--muted-foreground);
-  }
-
-  .project-menu {
-    top: 2rem;
-  }
 
   .chat-rename-input {
     height: 30px;

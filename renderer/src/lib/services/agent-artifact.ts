@@ -14,7 +14,7 @@ function parseInlineArtifact(files: Record<string, string>): InlineArtifactPaylo
   try {
     const parsed = JSON.parse(raw) as InlineArtifactPayload;
     if (!parsed || typeof parsed !== 'object' || typeof parsed.kind !== 'string') return null;
-    if (!['chart', 'map', 'diagram', 'dashboard'].includes(parsed.kind)) return null;
+    if (!['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card'].includes(parsed.kind)) return null;
     return parsed;
   } catch {
     return null;

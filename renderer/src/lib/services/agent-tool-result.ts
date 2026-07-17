@@ -34,6 +34,14 @@ export function displayToolLabel(name: string): string {
     case 'create_spreadsheet': return 'Create spreadsheet';
     case 'create_presentation': return 'Create presentation';
     case 'create_pdf': return 'Create PDF';
+    case 'export_research_package': return 'Export research';
+    case 'create_info_card': return 'Info card';
+    case 'create_html_card': return 'HTML card';
+    case 'create_chart': return 'Chart';
+    case 'create_dashboard': return 'Dashboard';
+    case 'get_weather': return 'Weather';
+    case 'convert_currency': return 'Currency';
+    case 'get_quote': return 'Quote';
     case 'preview_project': return 'Preview';
     case 'calculator': return 'Calculate';
     default: return name.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
@@ -168,11 +176,21 @@ export function appendToolResultMessage(params: {
     };
   }
 
-  if (params.nativeActive && !params.nativeFailed && params.toolCall.id) {
+  // Always prefer proper tool role when we have an id — required after assistant tool_calls.
+  // Generate id if missing so we never leave unpaired native tool_calls.
+  const toolCallId = params.toolCall.id || `call_${Math.random().toString(36).slice(2, 10)}`;
+  if (!params.toolCall.id) params.toolCall.id = toolCallId;
+
+  const lastAssistant = [...params.messages].reverse().find((m) => m.role === 'assistant');
+  const expectsToolRole =
+    (params.nativeActive && !params.nativeFailed)
+    || !!(lastAssistant?.tool_calls?.some((tc) => tc.id === toolCallId));
+
+  if (expectsToolRole || params.toolCall.id) {
     params.messages.push({
       role: 'tool',
       content: JSON.stringify(resultPayload),
-      tool_call_id: params.toolCall.id,
+      tool_call_id: toolCallId,
       name: params.toolCall.name
     });
     return;

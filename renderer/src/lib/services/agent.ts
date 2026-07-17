@@ -21,7 +21,7 @@ import {
 import {
   isWorkspace, normPath, getWsFiles, upsertWsFile, readWsText, globToRegex
 } from '$lib/services/agent-workspace';
-import { toErrorMessage, isAbortError } from '$lib/utils/errors';
+import { toErrorMessage, isAbortError, humanizeAgentError } from '$lib/utils/errors';
 import {
   parseXmlToolCall, parseToolCallCodeblocks, sanitizeAgentVisibleText,
   isPublicFallbackContent, stripToolCallArtifacts, parseCodeblockWrites
@@ -29,7 +29,7 @@ import {
 import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
 import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
-  buildResearchReportInstruction, isMedicalResearchQuery
+  buildResearchReportInstruction, isMedicalResearchQuery, getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
 } from '$lib/services/agent-prompts';
 import {
   classifyStopReason, stoppedWarning, hasVisibleArtifact, visibleFileCount,
@@ -51,14 +51,28 @@ import {
 import { getToolDefinitions, STEP_TYPE } from '$lib/services/agent-tooling';
 import {
   injectEvidenceSummary as injectEvidenceSummaryMessage,
-  trimContext as trimContextMessages
+  trimContext as trimContextMessages,
+  ensureToolCallPairs
 } from '$lib/services/agent-message-context';
+import { injectResearchEvidencePack } from '$lib/services/agent-evidence-pack';
 import {
   handleReadFile, handleWriteFile, handleEditFile, handleDeleteFile, handleListFiles,
   handleSearchFiles, handlePreviewProject
 } from '$lib/services/agent-tool-fileops';
-import { handleCreateReport, handleCreateWorkProduct, handleCreateChart, handleCreateDiagram, handleCreateMap, handleCreateDashboard } from '$lib/services/agent-tool-artifacts';
+import {
+  handleCreateReport,
+  handleCreateWorkProduct,
+  handleCreateChart,
+  handleCreateDiagram,
+  handleCreateMap,
+  handleCreateDashboard,
+  handleCreateInfoCard,
+  handleCreateHtmlCard,
+  handleExportResearchPackage
+} from '$lib/services/agent-tool-artifacts';
+import { handleGetWeather, handleConvertCurrency, handleGetQuote } from '$lib/services/agent-tool-livedata';
 import { handleWebSearch, handleFetchUrl, handleQueryKnowledge, handleCalculator } from '$lib/services/agent-tool-core';
+import { handleGetDiagnostics } from '$lib/services/agent-tool-diagnostics';
 import {
   handleCreateDocument,
   handleCreateSpreadsheet,
@@ -83,17 +97,46 @@ import {
 
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
+/** Flaxeo Agent (code) needs more room than chat sandbox agents. */
+const CODE_MAX_ITERATIONS = 28;
+const CODE_LOCAL_MAX_ITERATIONS = 18;
+const CODE_MAX_TIME_MS = 8 * 60 * 1000;
+/** Simple Chat Agent budgets (long-horizon lite). */
+const CHAT_MAX_ITERATIONS = 12;
+const CHAT_LOCAL_MAX_ITERATIONS = 8;
+const CHAT_MAX_TIME_MS = 5 * 60 * 1000;
 const MAX_TIME_MS = 2 * 60 * 1000;
-const SEARCH_TOOL_NAMES = new Set(['web_search', 'fetch_url', 'calculator']);
-const KEEP_TOOL_PAIRS = 6;
+const SEARCH_TOOL_NAMES = new Set([
+  'web_search',
+  'fetch_url',
+  'calculator',
+  'get_weather',
+  'convert_currency',
+  'get_quote',
+  'create_chart',
+  'create_dashboard',
+  'create_info_card',
+  'create_html_card',
+  'create_diagram',
+  'create_map',
+  'export_research_package'
+]);
+/** Max tool-loop messages after chat history (structural cap only; budget still applies). */
+const MAX_LOOP_MESSAGES_LOCAL = 12;
+const MAX_LOOP_MESSAGES_API = 16;
 const TOOL_CALLS_PER_STEP = 3;
 const LOCAL_TOOL_CALLS_PER_STEP = 2;
+const CODE_TOOL_CALLS_PER_STEP = 4;
 const MAX_TOOL_RESULT_CHARS = 12000;
 const TOOL_TIMEOUT_MS = 30000;
 const MAX_TOOL_RETRIES = 1;
 const MAX_FORCED_FINAL_ANSWER_ATTEMPTS = 2;
+/** Deep/max research gets extra synthesis retries after tool budget ends. */
+const MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS = 3;
 const LOOP_STAGNATION_MIN_DRAFT_GROWTH = 120;
-const LOW_IMPACT_LOOP_TOOLS = new Set(['list_files', 'read_file', 'search_files']);
+const LOW_IMPACT_LOOP_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'query_knowledge']);
+/** Stop exploring if this many consecutive steps are only browse tools with no write/bash. */
+const CODE_MAX_CONSECUTIVE_EXPLORE = 8;
 
 function shouldDebugAgentLogs(config: unknown): boolean {
   return !!(config as { ui?: { agent_debug_logs?: boolean } })?.ui?.agent_debug_logs;
@@ -249,6 +292,10 @@ async function executeTool(
       }) as Promise<ToolResult>;
     }
 
+    case 'get_diagnostics': {
+      return handleGetDiagnostics({ args, ctx, ok, fail }) as Promise<ToolResult>;
+    }
+
     case 'bash': {
       if (!isWorkspace(ctx)) return fail('bash is only available in workspace mode');
       const command = String(args.command || '');
@@ -385,6 +432,35 @@ async function executeTool(
       }) as Promise<ToolResult>;
     }
 
+    case 'export_research_package': {
+      return handleExportResearchPackage({
+        args,
+        ctx,
+        ok,
+        fail
+      });
+    }
+
+    case 'create_info_card': {
+      return handleCreateInfoCard({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      });
+    }
+
+    case 'create_html_card': {
+      return handleCreateHtmlCard({
+        args,
+        ctx,
+        normPath,
+        ok,
+        fail
+      });
+    }
+
     case 'create_chart': {
       return handleCreateChart({
         args,
@@ -442,6 +518,18 @@ async function executeTool(
         fail,
         failFromError
       }) as ToolResult;
+    }
+
+    case 'get_weather': {
+      return handleGetWeather({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
+    }
+
+    case 'convert_currency': {
+      return handleConvertCurrency({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
+    }
+
+    case 'get_quote': {
+      return handleGetQuote({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
     }
 
     default:
@@ -538,13 +626,40 @@ function pushMissingRequestedFilesStep(steps: AgentStep[], ctx: ToolContext, raw
   });
 }
 
+function summarizeCodeObservations(observations: ToolObservation[]): string {
+  const writes = observations.filter((o) => o.success && (o.name === 'write_file' || o.name === 'edit_file' || o.name === 'delete_file'));
+  const bash = observations.filter((o) => o.success && o.name === 'bash');
+  const reads = observations.filter((o) => o.success && (o.name === 'read_file' || o.name === 'list_files' || o.name === 'search_files'));
+  const paths = new Set<string>();
+  for (const o of writes) {
+    const p = o.args?.path || o.createdFiles?.[0];
+    if (typeof p === 'string' && p) paths.add(p);
+  }
+  const lines: string[] = [];
+  if (paths.size) {
+    lines.push('Files touched:');
+    for (const p of [...paths].slice(0, 20)) lines.push(`- ${p}`);
+  }
+  if (bash.length) lines.push(`Shell commands run: ${bash.length}`);
+  if (reads.length && !paths.size) lines.push(`Explored the codebase (${reads.length} read/list/search actions) but did not finish applying changes.`);
+  if (!lines.length) lines.push('No successful file changes were recorded before the limit.');
+  return lines.join('\n');
+}
+
 function buildWorkspaceStoppedContent(reason: string, observations: ToolObservation[]): string {
   const latest = [...observations].reverse().find((observation) => observation.name);
   const target = latest?.args?.path || latest?.args?.command || latest?.args?.query || latest?.args?.url;
   const lastAction = latest
     ? ` Last completed action: ${latest.name.replace(/_/g, ' ')}${target ? ` (${compactText(target, 120)})` : ''}.`
     : '';
-  return `I stopped before producing a final answer because ${reason}.${lastAction} Review the visible agent steps above for the full tool history.`;
+  const summary = summarizeCodeObservations(observations);
+  return [
+    `I stopped before finishing because ${reason}.${lastAction}`,
+    '',
+    summary,
+    '',
+    'You can ask me to continue from here, or open the workspace panel for step details.'
+  ].join('\n');
 }
 
 export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
@@ -561,6 +676,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     files: {},
     conversationContext: args.conversationContext,
     searchMode: args.searchMode,
+    sources,
+    rawPrompt: args.rawPrompt,
     workspaceRoot: args.workspaceRoot,
     workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
     executionMode,
@@ -573,30 +690,48 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
   const publishArtifacts = executionMode !== 'workspace';
   const localMode = backendMode === 'local';
-  const defaultMaxIterations = localMode ? LOCAL_DEFAULT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS;
+  const toolMode = args.toolMode || 'agent';
+  const agentProfile = args.agentProfile
+    || (toolMode === 'search_chat' ? 'search' : (executionMode === 'workspace' ? 'code' : 'work'));
+  const isCodeProfile = agentProfile === 'code';
+  const isChatProfile = agentProfile === 'chat';
+  const defaultMaxIterations = isCodeProfile
+    ? (localMode ? CODE_LOCAL_MAX_ITERATIONS : CODE_MAX_ITERATIONS)
+    : isChatProfile
+      ? (localMode ? CHAT_LOCAL_MAX_ITERATIONS : CHAT_MAX_ITERATIONS)
+      : (localMode ? LOCAL_DEFAULT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS);
   const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? defaultMaxIterations));
-  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? getToolCallLimit(maxIterations, localMode)));
+  const defaultToolLimit = isCodeProfile
+    ? Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : CODE_TOOL_CALLS_PER_STEP))
+    : isChatProfile
+      ? Math.max(maxIterations, maxIterations * 2)
+      : getToolCallLimit(maxIterations, localMode);
+  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? defaultToolLimit));
+  const maxTimeMs = Math.max(
+    30_000,
+    Math.floor(args.maxTimeMs ?? (isCodeProfile ? CODE_MAX_TIME_MS : isChatProfile ? CHAT_MAX_TIME_MS : MAX_TIME_MS))
+  );
   const providerName = config.llm?.provider || 'openai';
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
   const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');
   let useNativeTools = isTauri() && agentSupportsNativeTools(config as any);
-  debugLog(debugLogs, `[agent] START | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isTauri=${isTauri()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls}`);
+  debugLog(debugLogs, `[agent] START | profile=${agentProfile} | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isTauri=${isTauri()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls} | maxTimeMs=${maxTimeMs}`);
   debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config as any)}`);
   let nativeFailed = false;
   let directMode = false;
   let consecutiveEmptyResponses = 0;
+  let consecutiveExploreOnly = 0;
   const wantsWebsiteArtifact = isWebsiteBuildRequest(
     args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
   );
-
-  const toolMode = args.toolMode || 'agent';
   const artifactToggles = config.ui?.artifact_toggles || {};
   const toolDefs = toolMode === 'search_chat'
-    ? getToolDefinitions(executionMode, artifactToggles).filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
-    : getToolDefinitions(executionMode, artifactToggles);
-  const modeNote = executionMode === 'workspace'
+    ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
+    : getToolDefinitions(executionMode, artifactToggles, agentProfile);
+  const modeNote = isCodeProfile || (executionMode === 'workspace' && !isChatProfile)
     ? [
+      isCodeProfile ? getFlaxeoCodeSystemPrompt() : '',
       `You are attached to a real workspace folder at ${args.workspaceRoot || 'the project root'}.`,
       'Files and bash commands run on the host filesystem, confined to the workspace root.',
       '',
@@ -613,8 +748,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       'Use edit_file for precise changes to existing files instead of rewriting the whole file with write_file.',
       'For reading large files, use read_file with offset to paginate.',
       'Diffs and file changes auto-render in the chat as a changed-files overview.',
-    ].join('\n')
-    : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
+    ].filter(Boolean).join('\n')
+    : isChatProfile
+      ? [
+        getFlaxeoChatSystemPrompt(),
+        'You are in chat sandbox mode. Files exist only inside this conversation unless the user exports them.',
+      ].join('\n')
+      : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
   const requestReminder = buildCurrentRequestReminder(args.rawPrompt, compactText);
   const searchModeNote = toolMode === 'search_chat'
     ? [
@@ -626,14 +766,40 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           : 'Search mode means use web search for current information and follow up if the first search is insufficient.'
     ].join(' ')
     : '';
-  const agentExtra = [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
-  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode, executionMode);
-  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode, executionMode);
-  const directSys = buildDirectSystemPrompt(agentExtra, { toolMode, searchMode: args.searchMode });
+  const agentExtra = (isCodeProfile || isChatProfile)
+    ? [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n')
+    : [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
+  const promptSearchMode = args.searchMode === 'max' || args.searchMode === 'deep' || args.searchMode === 'search'
+    ? args.searchMode
+    : 'search';
+  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode, executionMode, promptSearchMode);
+  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode, executionMode, promptSearchMode);
+  const directSys = buildDirectSystemPrompt(agentExtra, { toolMode, searchMode: promptSearchMode });
+
+  // Normalize history to pure role/content rows so trim can protect them.
+  // Preserve reasoning_content when present (DeepSeek tool+thinking echo).
+  const historyMessages: RequestMessage[] = (args.messages || [])
+    .map((message) => {
+      const row: RequestMessage = {
+        role: message.role,
+        content: typeof message.content === 'string' ? message.content : (message.content ? JSON.stringify(message.content) : ''),
+        ...(message.name ? { name: message.name } : {}),
+        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+        ...(message.tool_calls ? { tool_calls: message.tool_calls } : {})
+      };
+      const rc = (message as RequestMessage).reasoning_content;
+      if (typeof rc === 'string' && rc.trim()) {
+        row.reasoning_content = rc;
+      }
+      return row;
+    })
+    .filter((message) => message.role === 'system' || String(message.content || '').trim() || message.tool_calls?.length || message.reasoning_content);
+
+  const historyCount = historyMessages.filter((message) => message.role !== 'system').length;
 
   const messages: RequestMessage[] = [
     { role: 'system', content: useNativeTools ? nativeSys : xmlSys },
-    ...args.messages
+    ...historyMessages
   ];
 
   let finalContent = '';
@@ -657,14 +823,40 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     args.signal?.throwIfAborted?.();
   };
 
-  const isResearchChat = toolMode === 'search_chat' && (args.searchMode === 'deep' || args.searchMode === 'max');
+  // Deep/Max product path: Chat Agent, search mode, or work with deep/max — not Code profile.
+  const isResearchChat = !isCodeProfile && (args.searchMode === 'deep' || args.searchMode === 'max');
+  /** Search / Deep / Max: no completion max_tokens budget (long professional reports). */
+  const omitResearchMaxTokens =
+    toolMode === 'search_chat'
+    || args.searchMode === 'search'
+    || args.searchMode === 'deep'
+    || args.searchMode === 'max';
+  const researchMode = args.searchMode === 'max' ? 'max' as const : args.searchMode === 'search' ? 'search' as const : 'deep' as const;
   const researchEvidenceOptions = isResearchChat ? {
-    observationLimit: args.searchMode === 'max' ? 30 : 22,
-    observationChars: args.searchMode === 'max' ? 1400 : 1000,
-    sourceLimit: args.searchMode === 'max' ? 28 : 18,
-    sourceChars: args.searchMode === 'max' ? 1000 : 700,
-    instruction: 'The following evidence was gathered during Deep/Max search. Use these source-specific facts, URLs, and excerpts as the primary source of truth for the final answer. Do not answer generically when evidence is present.'
+    // No tight char budgets — research needs full usable evidence for professional reports.
+    observationLimit: args.searchMode === 'max' ? 80 : 50,
+    observationChars: args.searchMode === 'max' ? 4000 : 3000,
+    sourceLimit: args.searchMode === 'max' ? 48 : 36,
+    sourceChars: args.searchMode === 'max' ? 3500 : 2500,
+    instruction: 'The following evidence was gathered during Deep/Max search. Use these source-specific facts, URLs, and excerpts as the primary source of truth for the final answer. Do not answer generically when evidence is present. Write a polished synthesized report — never dump raw evidence or title a section "Gathered Evidence".'
   } : undefined;
+  const injectLiveEvidence = () => {
+    if (isResearchChat || (toolMode === 'search_chat' && (args.searchMode === 'search' || args.searchMode === 'deep' || args.searchMode === 'max'))) {
+      // Dense pack with query-relevant excerpts — primary synthesis fuel for search/deep/max.
+      // No token-budget truncation of the pack itself.
+      injectResearchEvidencePack(messages, toolObservations, sources, {
+        query: args.rawPrompt || '',
+        mode: researchMode,
+        // Explicitly unbounded relative to old char budgets — pack builder uses high research defaults.
+        maxSources: researchMode === 'max' ? 40 : researchMode === 'deep' ? 28 : 16,
+        maxExcerptChars: researchMode === 'max' ? 4000 : researchMode === 'deep' ? 3000 : 1800,
+        maxTotalChars: researchMode === 'max' ? 120_000 : researchMode === 'deep' ? 80_000 : 40_000,
+        maxFacts: researchMode === 'max' ? 60 : researchMode === 'deep' ? 40 : 24
+      });
+      return;
+    }
+    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
+  };
   const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => executionMode === 'workspace'
     ? buildWorkspaceStoppedContent(reason, toolObservations)
     : buildStrictFallbackContent({
@@ -679,7 +871,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
     checkAbort();
     throwIfAborted();
-    if (Date.now() - startTime > (args.maxTimeMs || MAX_TIME_MS)) {
+    if (Date.now() - startTime > maxTimeMs) {
       errorReason = errorReason || 'Agent timed out before completing the requested depth.';
       stopReason = 'timeout';
       break;
@@ -697,16 +889,36 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       args.onProgress?.(`Planning how to approach this\u2026`);
     }
 
-    trimContextMessages(messages, localMode ? 4 : KEEP_TOOL_PAIRS);
-    await enforceTokenBudgetMessages({
-      messages,
-      config,
-      isTauri,
-      invoke,
-      debugLog
-    });
+    // Never drop chat history — only cap tool-loop growth after the transcript.
+    // Research + attached docs: no token budgets that discard evidence / uploads.
+    const preserveDocs =
+      isResearchChat
+      || toolMode === 'search_chat'
+      || !!args.preserveDocumentContext
+      || (typeof args.conversationContext === 'string' && args.conversationContext.includes('<documents>'));
+    if (!preserveDocs) {
+      trimContextMessages(messages, {
+        historyCount,
+        maxLoopMessages: localMode ? MAX_LOOP_MESSAGES_LOCAL : MAX_LOOP_MESSAGES_API
+      });
+      await enforceTokenBudgetMessages({
+        messages,
+        config,
+        isTauri,
+        invoke,
+        debugLog
+      });
+    } else if (!isResearchChat) {
+      // Soft loop-only trim for search/doc chats (never token-budget truncate).
+      trimContextMessages(messages, {
+        historyCount,
+        maxLoopMessages: Math.max(MAX_LOOP_MESSAGES_API * 3, 48)
+      });
+    }
 
-    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
+    injectLiveEvidence();
+    // Never send unpaired tool_calls to the provider (fixes 400 tool_call_id errors).
+    ensureToolCallPairs(messages, 'fill');
 
     const sysCount = messages.filter(m => m.role === 'system').length;
     const userCount = messages.filter(m => m.role === 'user').length;
@@ -720,10 +932,20 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
 
     const streamingReasoningParts: string[] = [];
 
+    const runComplete = async (msgs: typeof messages) => {
+      ensureToolCallPairs(msgs, 'fill');
+      return completeAssistantReply({
+        messages: msgs,
+        signal: args.signal,
+        reasoningLevel: args.reasoningLevel,
+        omitMaxTokens: omitResearchMaxTokens
+      });
+    };
+
     try {
       if (directMode) {
         messages[0] = { role: 'system', content: directSys };
-        completion = await completeAssistantReply({ messages, signal: args.signal, reasoningLevel: args.reasoningLevel });
+        completion = await runComplete(messages);
         checkAbort();
       } else if (nativeActive) {
         const streamResult = await agentStreamComplete({
@@ -732,6 +954,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           signal: args.signal,
           config,
           reasoningLevel: args.reasoningLevel,
+          omitMaxTokens: omitResearchMaxTokens,
           onReasoning: (text) => {
             streamingReasoningParts.push(text);
             finalReasoning = finalReasoning ? `${finalReasoning}${text}` : text;
@@ -752,34 +975,60 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           // null here can also mean clone errors, network errors, no base_url, etc.
           // The error catch block below handles tool rejections with proper pattern matching.
           messages[0] = { role: 'system', content: xmlSys };
-          completion = await completeAssistantReply({ messages, signal: args.signal });
+          completion = await runComplete(messages);
           checkAbort();
         } else {
           completion = streamResult;
         }
       } else {
-        completion = await completeAssistantReply({ messages, signal: args.signal });
+        completion = await runComplete(messages);
         checkAbort();
       }
     } catch (e: unknown) {
       if (isAbortError(e)) throw e;
       const errMsg = toErrorMessage(e);
       debugLog(debugLogs, `[agent] LLM ERROR | msg="${errMsg.slice(0, 200)}" | nativeActive=${nativeActive} | iter=${iter}`);
-      if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
+      // Repair unpaired tool_calls and retry once
+      if (/tool_calls|tool_call_id|insufficient tool messages/i.test(errMsg)) {
+        ensureToolCallPairs(messages, 'fill');
+        try {
+          messages[0] = { role: 'system', content: nativeActive ? nativeSys : xmlSys };
+          completion = await runComplete(messages);
+          checkAbort();
+        } catch (eRepair: unknown) {
+          if (isAbortError(eRepair)) throw eRepair;
+          // Last resort: strip incomplete tool_calls and continue as plain chat
+          ensureToolCallPairs(messages, 'strip');
+          try {
+            completion = await runComplete(messages);
+            checkAbort();
+          } catch (e3: unknown) {
+            if (isAbortError(e3)) throw e3;
+            thinkStep.status = 'error';
+            thinkStep.label = 'Error';
+            thinkStep.detail = humanizeAgentError(e3);
+            args.onStep([...steps]);
+            errorReason = humanizeAgentError(e3);
+            break;
+          }
+        }
+      } else if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
         debugLog(debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
         nativeFailed = true;
         setToolSupportCache(config as any, false);
+        // Keep tool role results; fill any gaps so XML path still has valid history
+        ensureToolCallPairs(messages, 'fill');
         messages[0] = { role: 'system', content: xmlSys };
         try {
-          completion = await completeAssistantReply({ messages, signal: args.signal });
+          completion = await runComplete(messages);
           checkAbort();
         } catch (e2: unknown) {
           if (isAbortError(e2)) throw e2;
           thinkStep.status = 'error';
           thinkStep.label = 'Error';
-          thinkStep.detail = toErrorMessage(e2);
+          thinkStep.detail = humanizeAgentError(e2);
           args.onStep([...steps]);
-          errorReason = thinkStep.detail;
+          errorReason = humanizeAgentError(e2);
           break;
         }
       } else if (iter < 2 && errMsg.includes('content')) {
@@ -787,23 +1036,23 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         directMode = true;
         messages[0] = { role: 'system', content: directSys };
         try {
-          completion = await completeAssistantReply({ messages, signal: args.signal });
+          completion = await runComplete(messages);
           checkAbort();
         } catch (e3: unknown) {
           thinkStep.status = 'error';
           thinkStep.label = 'Error';
-          thinkStep.detail = toErrorMessage(e3);
+          thinkStep.detail = humanizeAgentError(e3);
           args.onStep([...steps]);
-          errorReason = thinkStep.detail;
+          errorReason = humanizeAgentError(e3);
           break;
         }
       } else {
         console.error('[agent] HARD FAIL (non-recoverable LLM error)', errMsg);
         thinkStep.status = 'error';
         thinkStep.label = 'Error';
-        thinkStep.detail = errMsg;
+        thinkStep.detail = humanizeAgentError(e);
         args.onStep([...steps]);
-        errorReason = errMsg;
+        errorReason = humanizeAgentError(e);
         break;
       }
     }
@@ -933,12 +1182,26 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         break;
       }
     } else if (nativeActive && !nativeFailed && completion.toolCalls?.length) {
-      toolCalls = completion.toolCalls.map((tc: NativeToolCall) => ({ id: tc.id, name: tc.name, arguments: tc.arguments }));
-      messages.push({
+      toolCalls = completion.toolCalls.map((tc: NativeToolCall, index: number) => ({
+        id: tc.id || `call_${iter}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        name: tc.name,
+        arguments: tc.arguments
+      }));
+      // DeepSeek (and similar) require reasoning_content on tool-using assistant turns
+      // to be echoed on all subsequent requests — omitting it yields HTTP 400.
+      const assistantToolMsg: RequestMessage = {
         role: 'assistant',
         content: rawContent || null,
-        tool_calls: toolCalls.map(tc => ({ id: tc.id!, type: 'function' as const, function: { name: tc.name, arguments: JSON.stringify(tc.arguments) } }))
-      });
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id!,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: JSON.stringify(tc.arguments) }
+        }))
+      };
+      if (reasoning) {
+        assistantToolMsg.reasoning_content = reasoning;
+      }
+      messages.push(assistantToolMsg);
     } else {
       const xmlResult = parseXmlToolCall(rawContent);
       if (xmlResult.toolCall) {
@@ -1083,17 +1346,64 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     if (totalToolCalls >= maxToolCalls) {
       steps.push({
         id: uid('step'), type: 'error', label: 'Tool limit reached',
-        status: 'error', detail: `Used ${totalToolCalls} tools across ${maxIterations} steps. Returning gathered evidence only.`
+        status: 'error',
+        detail: isResearchChat
+          ? `Used ${totalToolCalls} tools across ${maxIterations} steps. Synthesizing final research report…`
+          : `Used ${totalToolCalls} tools across ${maxIterations} steps. Returning gathered evidence only.`
       });
       args.onStep([...steps]);
+      // Research: leave finalContent empty so forced synthesis can write a real report.
       if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`the tool budget was reached (${totalToolCalls}/${maxToolCalls})`);
-      warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
+      warningReason = warningReason || (isResearchChat
+        ? `Agent reached the tool call limit (${maxToolCalls}) and will synthesize from gathered sources.`
+        : `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`);
       stopReason = 'tool_limit';
       break;
     }
 
     if (iter >= Math.max(0, maxIterations - 2)) {
-      messages.push({ role: 'user', content: 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.' });
+      messages.push({
+        role: 'user',
+        content: isCodeProfile
+          ? 'You are almost out of steps. STOP exploring. Apply any remaining critical edits now (edit_file/write_file), or if done, respond with a plain-text summary of files changed and how to verify. Do NOT call list_files/read_file unless required for one final fix.'
+          : isResearchChat
+            ? [
+              'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
+              'Prefer writing the final polished APA 7 research report now using the RESEARCH EVIDENCE PACK.',
+              'Required skeleton: # Title (the user search topic); spaced body sections (no Summary / Executive Summary); ## Limitations; ## References (APA 7).',
+              'Never title a section "Gathered Evidence" or "Summary". Use blank lines between paragraphs and headings. Cite with APA author–date and/or [n].',
+              buildResearchReportInstruction(researchMode, isMedicalResearchQuery(args.rawPrompt || ''))
+            ].join('\n\n')
+            : 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.'
+      });
+    }
+
+    // Code: stop endless explore-only loops (read/list/search without write/bash)
+    if (isCodeProfile && toolCalls.length) {
+      const onlyExplore = toolCalls.every((tc) => LOW_IMPACT_LOOP_TOOLS.has(tc.name) || tc.name === 'web_search' || tc.name === 'fetch_url' || tc.name === 'get_diagnostics');
+      const hasMutation = toolCalls.some((tc) => tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file' || tc.name === 'bash');
+      if (hasMutation) consecutiveExploreOnly = 0;
+      else if (onlyExplore) consecutiveExploreOnly += toolCalls.length;
+      if (consecutiveExploreOnly >= CODE_MAX_CONSECUTIVE_EXPLORE) {
+        messages.push({
+          role: 'user',
+          content: 'You have explored enough. Stop calling read/list/search tools. Either make the code change now with edit_file/write_file, or finish with a clear summary of findings. No more exploratory tool calls.'
+        });
+      }
+      if (consecutiveExploreOnly >= CODE_MAX_CONSECUTIVE_EXPLORE + 4) {
+        steps.push({
+          id: uid('step'),
+          type: 'error',
+          label: 'Explore limit — finishing',
+          status: 'error',
+          detail: `Stopped after ${consecutiveExploreOnly} explore-only tool calls without file changes`
+        });
+        args.onStep([...steps]);
+        finalContent = await buildEvidenceOnlyFallback('too many explore-only tool calls without applying changes');
+        warningReason = 'Agent explored the codebase extensively without finishing changes; returned a partial summary.';
+        stopReason = 'loop';
+        break;
+      }
     }
 
     const sig = toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
@@ -1178,8 +1488,11 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         status: 'error', detail: `Repeated calls to ${stuckTool}`
       });
       args.onStep([...steps]);
+      // Research: leave finalContent empty for forced report synthesis from the pack.
       if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`it detected repeated calls to ${stuckTool}`);
-      warningReason = 'Agent encountered a loop and returned only gathered evidence.';
+      warningReason = isResearchChat
+        ? 'Agent hit a tool loop; synthesizing the research report from gathered sources.'
+        : 'Agent encountered a loop and returned only gathered evidence.';
       stopReason = 'loop';
       break;
     }
@@ -1234,34 +1547,79 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   }
 
   if (!finalContent) {
-    for (let attempt = 1; attempt <= MAX_FORCED_FINAL_ANSWER_ATTEMPTS; attempt++) {
+    const forcedAttempts = isResearchChat
+      ? MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS
+      : MAX_FORCED_FINAL_ANSWER_ATTEMPTS;
+    const medicalResearch = isResearchChat && isMedicalResearchQuery(args.rawPrompt || '');
+    for (let attempt = 1; attempt <= forcedAttempts; attempt++) {
       try {
-        injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
+        injectLiveEvidence();
         messages[0] = { role: 'system', content: directSys };
         const researchNudge = isResearchChat
           ? [
-            'You have reached the research step limit. Do NOT call tools.',
-            'Using only the gathered evidence above, write the final research report now.',
-            buildResearchReportInstruction(
-              (args.searchMode === 'max' ? 'max' : 'deep'),
-              isMedicalResearchQuery(args.rawPrompt || '')
-            )
+            attempt === 1
+              ? 'You have finished gathering sources. Do NOT call tools.'
+              : `Synthesis attempt ${attempt}/${forcedAttempts}. Do NOT call tools. Write the full report now.`,
+            'Using ONLY the RESEARCH EVIDENCE PACK (and any prior tool results), produce a full professional research report following APA 7th edition — not a summary.',
+            'Forbidden: dumping the pack, listing raw search hits, or any section titled "Gathered Evidence", "Summary", or "Executive Summary".',
+            'Required skeleton: # Title (name the user\'s search topic); coherent topical ## sections with blank lines between paragraphs; ## Limitations; ## References in APA 7 web format.',
+            'Write for people who work with this topic. Use APA in-text citations (Author, Year) when metadata exists; also [n] when sources are numbered. Never invent authors or dates; use (n.d.) when missing.',
+            buildResearchReportInstruction(researchMode, medicalResearch)
+          ].join('\n\n')
+          : null;
+        const codeNudge = isCodeProfile
+          ? [
+            'You have reached the coding step limit. Do NOT call tools.',
+            'Write a concise plain-text summary of: (1) what you changed or found, (2) file paths touched, (3) how to verify, (4) what remains unfinished.',
+            summarizeCodeObservations(toolObservations)
+          ].join('\n\n')
+          : null;
+        const researchRetryNudge = isResearchChat
+          ? [
+            'Previous synthesis was empty or unusable. Write the complete APA 7 professional research report in markdown now.',
+            'Start with # Title naming the user search topic, then spaced topical body sections (no Summary heading), then ## Limitations and ## References (APA 7).',
+            'Put one blank line before/after headings and between paragraphs. Do not produce a dense wall of text or a short summary.',
+            medicalResearch
+              ? 'Medical structure: brief disclaimer; Definition; Diagnosis/presentation; Treatment/management; Prognosis; Limitations; References. Title the report with the medical topic from the search. Include a brief non-advice medical disclaimer.'
+              : 'Structure for professionals who work with this topic. Use APA author–date citations and [n] when sources are numbered.',
+            buildResearchReportInstruction(researchMode, medicalResearch)
           ].join('\n\n')
           : null;
         messages.push({
           role: 'user',
           content: attempt === 1
-            ? (researchNudge || 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.')
-            : 'Final attempt: no tools, no extra reasoning. Return the final answer now in plain text using only gathered evidence.'
+            ? (researchNudge || codeNudge || 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.')
+            : (isCodeProfile
+              ? 'Final attempt: no tools. Summarize file changes and next steps in plain text only.'
+              : (researchRetryNudge || 'Final attempt: no tools, no extra reasoning. Return the final answer now in plain text using only gathered evidence.'))
         });
-        const forced = await completeAssistantReply({ messages, signal: args.signal });
+        args.onProgress?.(isResearchChat
+          ? `Writing research report (attempt ${attempt}/${forcedAttempts})\u2026`
+          : 'Producing final answer\u2026');
+        const forced = await completeAssistantReply({
+          messages,
+          signal: args.signal,
+          omitMaxTokens: omitResearchMaxTokens
+        });
         const forcedContent = stripToolCallArtifacts(String(forced?.content || '')).trim();
         if (!forcedContent) continue;
+        // Reject pure evidence-dump outputs for research; retry synthesis.
+        // Reject pure evidence dumps that never open as a real topical report.
+        if (
+          isResearchChat
+          && /#{0,6}\s*Gathered Evidence\b/i.test(forcedContent)
+          && !/^#\s+(?!Gathered Evidence\b).+/im.test(forcedContent)
+        ) {
+          continue;
+        }
         finalContent = forcedContent;
         if (forced.reasoning) finalReasoning = finalReasoning || String(forced.reasoning);
         if (isResearchChat) {
           stopReason = 'none';
           warningReason = undefined;
+        } else if (isCodeProfile) {
+          if (stopReason === 'none') stopReason = 'iteration_limit';
+          warningReason = warningReason || 'Agent reached the step limit and returned a partial coding summary.';
         } else {
           if (stopReason === 'none') stopReason = 'iteration_limit';
           warningReason = warningReason || 'Agent reached the iteration limit and produced a final answer from gathered evidence.';
@@ -1287,7 +1645,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         sources
       });
     if (stopReason === 'none') stopReason = 'iteration_limit';
-    errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
+    if (isResearchChat && hasGatheredEvidence(ctx, toolObservations, sources, finalContent)) {
+      // Partial structured report is a product deliverable, not a hard failure.
+      warningReason = warningReason || 'Partial research report compiled from retrieved sources. Say continue to deepen.';
+      errorReason = undefined;
+    } else {
+      errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
+    }
   }
 
   finalContent = sanitizeAgentVisibleText(finalContent);
@@ -1302,7 +1666,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       ? 'partial'
       : 'completed';
   const fatalError = outcome === 'failed';
-  const effectiveWarning = !fatalError && (warningReason || (effectiveStopReason !== 'none' ? stoppedWarning(effectiveStopReason, errorReason || '') : undefined));
+  const effectiveWarning = !fatalError && (warningReason || (effectiveStopReason !== 'none' ? stoppedWarning(effectiveStopReason, errorReason || '', { workspace: executionMode === 'workspace' || isCodeProfile }) : undefined));
 
   finalizeAgentSteps(steps, fatalError);
 

@@ -1,7 +1,13 @@
 import type { AppConfig, ChatMessage } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
+import { getMessageRequestContent } from '$lib/stores/app-store-helpers';
 
-/** Clone chat messages for a request and patch only the active user message content. */
+/**
+ * Build clean LLM request messages from the chat transcript.
+ * - Uses active version content for assistants (not empty shell content)
+ * - Patches only the current user turn with contextual prompt extras
+ * - Returns pure { role, content } rows (no ChatMessage bags)
+ */
 export function buildRequestMessagesWithPatchedUser(params: {
   messages: ChatMessage[];
   assistantMessageId: string;
@@ -9,15 +15,25 @@ export function buildRequestMessagesWithPatchedUser(params: {
   userContent: string;
   buildContextualPrompt: (content: string) => string;
 }): RequestMessage[] {
-  return params.messages
-    .filter((message) => message.id !== params.assistantMessageId)
-    .map((message) => {
-      if (message.id !== params.userMessageId) return message;
-      return {
-        ...message,
-        content: params.buildContextualPrompt(params.userContent)
-      };
-    });
+  const outbound: RequestMessage[] = [];
+
+  for (const message of params.messages) {
+    if (message.id === params.assistantMessageId) continue;
+
+    if (message.id === params.userMessageId) {
+      const content = params.buildContextualPrompt(params.userContent).trim();
+      if (!content) continue;
+      outbound.push({ role: 'user', content });
+      continue;
+    }
+
+    const role = message.role === 'assistant' ? 'assistant' : 'user';
+    const content = getMessageRequestContent(message).trim();
+    if (!content) continue;
+    outbound.push({ role, content });
+  }
+
+  return outbound;
 }
 
 /** Prepend system prompt when present. */
@@ -41,8 +57,11 @@ export async function applyLocalContextBudgetTruncation(params: {
   messages: RequestMessage[];
   invoke: <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
   onTruncated?: (removedCount: number) => void;
+  /** When true (uploads / RAG docs), do not truncate — preserve document context. */
+  preserveDocuments?: boolean;
 }): Promise<void> {
   if (params.backendMode !== 'local' || !params.isTauri) return;
+  if (params.preserveDocuments) return;
 
   const budget = await params.invoke<{ isOverflow?: boolean }>('build_context_budget', {
     config: {

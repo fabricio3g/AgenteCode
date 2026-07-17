@@ -15,10 +15,16 @@
     status?: 'idle' | 'streaming' | 'error';
     metadataError?: boolean;
     sources?: ChatMessage['sources'];
+    /** When set (search | deep | max), apply research-friendly APA report spacing. */
+    searchMode?: ChatMessage['searchMode'] | null;
     onAction?: (event: ActionEvent) => void;
   }
 
-  let { content, status = 'idle', metadataError = false, sources = [], onAction }: Props = $props();
+  let { content, status = 'idle', metadataError = false, sources = [], searchMode = null, onAction }: Props = $props();
+
+  const isResearch = $derived(
+    searchMode === 'search' || searchMode === 'deep' || searchMode === 'max'
+  );
 
   const STREAM_RENDER_DELAY = 26;
   const STREAM_MAX_CHARS_PER_FLUSH = 72;
@@ -191,7 +197,7 @@
       {#each contentSegments as segment}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
-            <div class="markdown-body markdown-segment" style="content-visibility: auto;">{@html renderMarkdown(segment.content)}</div>
+            <div class="markdown-body markdown-segment" class:is-research={isResearch} style="content-visibility: auto;">{@html renderMarkdown(segment.content)}</div>
           {/if}
         {:else}
           <ChartBlock
@@ -205,7 +211,7 @@
       {/each}
     </div>
   {:else if content}
-    <div bind:this={contentEl} class="markdown-body" class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects} style="content-visibility: auto;">{@html markdownHtml}</div>
+    <div bind:this={contentEl} class="markdown-body" class:is-research={isResearch} class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects} style="content-visibility: auto;">{@html markdownHtml}</div>
   {/if}
 {/if}
 
