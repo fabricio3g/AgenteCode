@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { BaseProvider } from './base.ts';
-import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
+import { normalizeOpenAiBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 import type { ReasoningCapabilities, ReasoningRequest } from './base.ts';
 
 const OPENAI_REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
@@ -17,11 +17,11 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   createClient(apiKey, baseUrl) {
-    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl) || 'https://api.openai.com/v1'}`;
+    const clientKey = `${apiKey || ''}::${normalizeOpenAiBaseUrl(baseUrl) || 'https://api.openai.com/v1'}`;
     if (!this._clients.has(clientKey)) {
       this._clients.set(clientKey, new OpenAI({
         apiKey,
-        baseURL: normalizeBaseUrl(baseUrl) || 'https://api.openai.com/v1'
+        baseURL: normalizeOpenAiBaseUrl(baseUrl) || 'https://api.openai.com/v1'
       }));
     }
     return this._clients.get(clientKey);
@@ -35,7 +35,8 @@ export class OpenAIProvider extends BaseProvider {
       ...(tools?.length ? { tools } : {}),
       ...this._reasoningBody(reasoning),
       ...params,
-      stream: true
+      stream: true,
+      stream_options: { include_usage: true }
     }, { signal });
 
     for await (const chunk of stream) {

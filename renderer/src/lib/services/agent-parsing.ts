@@ -136,6 +136,16 @@ export function isPublicFallbackContent(content: string): boolean {
   if (/Partial research report (compiled|from retrieved)/i.test(text)) {
     return true;
   }
+  // Human-readable partial answers (post strict-template rewrite)
+  if (/Partial answer from sources already retrieved/i.test(text)) {
+    return true;
+  }
+  if (/I could not complete every step, so this is based only on what was already found/i.test(text)) {
+    return true;
+  }
+  if (/I stopped before finishing and did not gather enough information/i.test(text)) {
+    return true;
+  }
   return false;
 }
 

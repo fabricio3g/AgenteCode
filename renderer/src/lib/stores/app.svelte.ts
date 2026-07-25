@@ -94,6 +94,7 @@ import {
   hasUsableAgentResult,
   isAbortLikeError,
   markAgentWriting,
+  markAgentStopped,
   normalizeChat,
   normalizeContextMode,
   normalizeFolder,
@@ -1809,6 +1810,21 @@ class AppStore {
     const sentAttachments = [...this.pendingAttachments];
     this.pendingAttachments = [];
 
+    const modeControl = this.composerModeControl;
+    const composerRoute = resolveComposerRoute({
+      prompt: content,
+      hasAttachments: sentAttachments.length > 0 || targetRagDocuments.length > 0,
+      searchMode: activeSearchMode,
+      contextMode: activeContextMode
+    });
+    const useToolLoop = shouldUseToolLoop({
+      control: modeControl,
+      composerMode: activeComposerMode,
+      route: composerRoute,
+      searchMode: activeSearchMode,
+      contextMode: activeContextMode
+    }) && !!targetChatId;
+
     const assistantMessage: ChatMessage = {
       id: createId('msg'),
       role: 'assistant',
@@ -1822,7 +1838,7 @@ class AppStore {
       searchMode: activeSearchMode,
       mode: activeComposerMode,
       reasoning: '',
-      metadata: (activeComposerMode === 'agent' || activeSearchMode !== 'chat' || activeContextMode === 'chat')
+      metadata: useToolLoop
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
@@ -1835,7 +1851,7 @@ class AppStore {
           }
         : undefined,
       workContext,
-      agentSteps: (activeComposerMode === 'agent' || activeSearchMode !== 'chat' || activeContextMode === 'chat')
+      agentSteps: useToolLoop
         ? [{
             id: createId('step'),
             type: 'thinking',
@@ -1976,21 +1992,7 @@ class AppStore {
         }
       }
 
-      const modeControl = this.composerModeControl;
-      const composerRoute = resolveComposerRoute({
-        prompt: content,
-        hasAttachments: sentAttachments.length > 0 || targetRagDocuments.length > 0,
-        searchMode: activeSearchMode,
-        contextMode: activeContextMode
-      });
       // Auto: route by intent. Tabs: Chat tab tools-light when needed; Agent always tools.
-      const useToolLoop = shouldUseToolLoop({
-        control: modeControl,
-        composerMode: activeComposerMode,
-        route: composerRoute,
-        searchMode: activeSearchMode,
-        contextMode: activeContextMode
-      }) && !!targetChatId;
       const searchToolBudget = activeSearchMode === 'max'
         ? { maxIterations: 48, maxToolCalls: 140, maxTimeMs: 22 * 60 * 1000 }
         : activeSearchMode === 'deep'
@@ -2084,6 +2086,7 @@ class AppStore {
           }
         };
         const agentResult = await runAgentTask(agentTaskArgs);
+        exactUsage = agentResult.usage || exactUsage;
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
@@ -2241,7 +2244,7 @@ class AppStore {
               assistantMessage.reasoning || '',
               assistantMessage.metadata
             );
-            if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
+            if (assistantMessage.agentSteps?.length) {
               assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
                 if (index === all.length - 1) {
                   return { ...step, status: 'running', detail: 'Streaming response' };
@@ -2290,7 +2293,7 @@ class AppStore {
         reasoning: assistantMessage.reasoning,
         metadata: assistantMessage.metadata
       }];
-      if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
+      if (assistantMessage.agentSteps?.length) {
         const hasError = assistantMessage.metadata?.error;
         const hasWarning = assistantMessage.metadata?.warning;
         assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
@@ -2393,16 +2396,15 @@ class AppStore {
         reasoning: assistantMessage.reasoning,
         metadata: assistantMessage.metadata
       }];
-      if (assistantMessage.mode === 'agent' && assistantMessage.agentSteps?.length) {
-        assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
-          if (index === all.length - 1) {
-            if (aborted) {
-              return { ...step, status: 'done', detail: 'Stopped by user' };
-            }
-            return { ...step, status: 'error', detail: assistantMessage.content };
-          }
-          return step;
-        });
+      if (assistantMessage.agentSteps?.length) {
+        if (aborted) {
+          markAgentStopped(assistantMessage);
+        } else {
+          assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
+            if (index === all.length - 1) return { ...step, status: 'error', detail: assistantMessage.content };
+            return step;
+          });
+        }
       }
       this.error = aborted ? null : assistantMessage.content;
       userMessage.attachments = sentAttachments;
@@ -2430,13 +2432,8 @@ class AppStore {
         if (!(streamingAssistant.content || '').trim()) {
           streamingAssistant.content = 'Stopped by user.';
         }
-        if (streamingAssistant.mode === 'agent' && streamingAssistant.agentSteps?.length) {
-          streamingAssistant.agentSteps = streamingAssistant.agentSteps.map((step, index, all) => {
-            if (index === all.length - 1 && step.status === 'running') {
-              return { ...step, status: 'done', detail: 'Stopped by user' };
-            }
-            return step;
-          });
+        if (streamingAssistant.agentSteps?.length) {
+          markAgentStopped(streamingAssistant);
         }
         this.touchChats();
         this.persist();
@@ -2823,7 +2820,7 @@ class AppStore {
           message.slides = [];
         }
       }
-      if (message.mode === 'agent' && message.agentSteps?.length) {
+      if (message.agentSteps?.length) {
         const hasError = message.metadata?.error;
         const hasWarning = message.metadata?.warning;
         message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
@@ -2862,13 +2859,8 @@ class AppStore {
       message.done = true;
       message.status = aborted ? 'idle' : 'error';
       this.error = aborted ? null : failure;
-      if (aborted && message.mode === 'agent' && message.agentSteps?.length) {
-        message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
-          if (stepIndex === all.length - 1 && step.status === 'running') {
-            return { ...step, status: 'done', detail: 'Stopped by user' };
-          }
-          return step;
-        });
+      if (aborted && message.agentSteps?.length) {
+        markAgentStopped(message);
       }
       this.touchChats();
       this.persist();

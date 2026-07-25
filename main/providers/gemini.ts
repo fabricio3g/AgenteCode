@@ -13,6 +13,11 @@ const GEMINI_BUDGET_BY_LEVEL: Record<string, number> = {
   high: 24576
 };
 
+function geminiApiBaseUrl(baseUrl: string | undefined): string {
+  const value = String(baseUrl || 'https://generativelanguage.googleapis.com').trim().replace(/\/+$/, '');
+  return value.endsWith('/v1beta') ? value : `${value}/v1beta`;
+}
+
 export class GeminiProvider extends BaseProvider {
   name = 'gemini';
   label = 'Google Gemini';
@@ -192,9 +197,9 @@ export class GeminiProvider extends BaseProvider {
    * probe `models.list()` for a per-model thinking indicator and only return
    * supported: true when the API confirms it — no model-name guessing.
    */
-  async getReasoningCapabilities(apiKey, _baseUrl, modelId): Promise<ReasoningCapabilities> {
+  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey || ''}`;
+      const url = `${geminiApiBaseUrl(baseUrl)}/models?key=${encodeURIComponent(apiKey || '')}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
       const data = await res.json();
@@ -241,9 +246,9 @@ export class GeminiProvider extends BaseProvider {
     return { ...body, generationConfig: { ...genConfig, ...this._thinkingConfig(reasoning) } };
   }
 
-  async fetchModels(apiKey, _baseUrl) {
+  async fetchModels(apiKey, baseUrl) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey || ''}`;
+      const url = `${geminiApiBaseUrl(baseUrl)}/models?key=${encodeURIComponent(apiKey || '')}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -258,9 +263,9 @@ export class GeminiProvider extends BaseProvider {
     }
   }
 
-  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
     const normalizedModelId = String(modelId || '').startsWith('models/') ? String(modelId) : `models/${modelId}`;
-    const url = `https://generativelanguage.googleapis.com/v1beta/${normalizedModelId}?key=${apiKey || ''}`;
+    const url = `${geminiApiBaseUrl(baseUrl)}/${normalizedModelId}?key=${encodeURIComponent(apiKey || '')}`;
 
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });

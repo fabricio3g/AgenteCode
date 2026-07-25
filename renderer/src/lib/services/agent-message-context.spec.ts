@@ -136,8 +136,17 @@ describe('agent-message-context', () => {
       new Error("Error invoking remote method 'chat_complete': Error: 400 An assistant message with 'tool_calls' must be followed by tool messages")
     );
     expect(msg.toLowerCase()).not.toContain('invoking remote');
+    expect(msg.toLowerCase()).not.toContain('tool_call_id');
     expect(msg.toLowerCase()).toContain('try again');
   });
+
+  it('humanizeAgentError covers common provider failures', () => {
+    expect(humanizeAgentError(new Error('context_length_exceeded: maximum context length'))).toMatch(/too long|new chat/i);
+    expect(humanizeAgentError(new Error('model_not_found: unknown model xyz'))).toMatch(/model|settings|switcher/i);
+    expect(humanizeAgentError(new Error('502 Bad Gateway from provider'))).toMatch(/outage|try again/i);
+    expect(humanizeAgentError(new Error(''))).toMatch(/try again/i);
+  });
+
 
   it('injectEvidenceSummary replaces prior injected summaries', () => {
     const messages: RequestMessage[] = [

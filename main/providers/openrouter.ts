@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
-import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
+import { normalizeOpenAiBaseUrl, safeParseJson } from './helpers.ts';
 
 export class OpenRouterProvider extends BaseProvider {
   name = 'openrouter';
@@ -14,11 +14,11 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   createClient(apiKey, baseUrl) {
-    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl)}`;
+    const clientKey = `${apiKey || ''}::${normalizeOpenAiBaseUrl(baseUrl)}`;
     if (!this._clients.has(clientKey)) {
       this._clients.set(clientKey, new OpenAI({
         apiKey: apiKey || 'not-needed',
-        baseURL: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+        baseURL: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
         defaultHeaders: {
           'HTTP-Referer': 'https://chatea.app',
           'X-Title': 'Chatea'
@@ -48,7 +48,7 @@ export class OpenRouterProvider extends BaseProvider {
     const client = this.createClient(apiKey, baseUrl);
     const requestDetails = {
       model,
-      baseUrl: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+      baseUrl: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
       messageCount: messages?.length || 0,
       toolCount: tools?.length || 0,
       stream: true,
@@ -64,7 +64,8 @@ export class OpenRouterProvider extends BaseProvider {
         ...(tools?.length ? { tools } : {}),
         ...this._reasoningBody(reasoning),
         ...params,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       }, { signal });
     } catch (error) {
       this.logRequestError('stream.create', error, requestDetails);
@@ -107,7 +108,7 @@ export class OpenRouterProvider extends BaseProvider {
     );
     const requestDetails = {
       model,
-      baseUrl: normalizeBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
+      baseUrl: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
       messageCount: messages?.length || 0,
       toolCount: tools?.length || 0,
       stream: false,
@@ -171,8 +172,8 @@ export class OpenRouterProvider extends BaseProvider {
     return { ...body, ...this._reasoningBody(reasoning) };
   }
 
-  async fetchModels(apiKey, _baseUrl) {
-    const client = this.createClient(apiKey, 'https://openrouter.ai/api/v1');
+  async fetchModels(apiKey, baseUrl) {
+    const client = this.createClient(apiKey, baseUrl);
     try {
       const response = await client.models.list();
       const list = response?.data ?? [];
@@ -182,9 +183,9 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
-  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
     try {
-      const client = this.createClient(apiKey, 'https://openrouter.ai/api/v1');
+      const client = this.createClient(apiKey, baseUrl);
       const response = await client.models.list();
       const list = response?.data ?? [];
       const found = list.find(entry => String(entry?.id || '') === String(modelId));

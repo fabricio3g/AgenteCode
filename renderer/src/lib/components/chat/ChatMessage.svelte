@@ -60,12 +60,6 @@
       ? (footerMetadata?.outputTokens || footerMetadata?.tokens || footerMetadata?.totalTokens || 0)
       : (footerMetadata?.outputTokens || footerMetadata?.totalTokens || footerMetadata?.tokens || 0)
   );
-  const displayModelTiming = $derived.by(() => {
-    if (!footerMetadata || !hasReliableUsage) return undefined;
-    if (typeof footerMetadata.modelTimingSeconds === 'number') return footerMetadata.modelTimingSeconds;
-    if (typeof footerMetadata.timing === 'number') return footerMetadata.timing;
-    return undefined;
-  });
   const footerBackendHint = $derived('');
   const displaySearchMeta = $derived(message.searchMeta || inferSearchMeta(message));
   const hasActiveDeepResearch = $derived.by(() => {
@@ -320,15 +314,15 @@
         <FileChangesCard stats={diffStats} />
       {/if}
 
-      <!-- Model name + token usage (always visible) -->
-      <div class="mt-1 flex items-center gap-2 flex-wrap">
-        {#if hasReliableUsage && displayTokenCount}
-          <span class="text-xs text-[var(--text-muted)]">
-            {displayTokenCount} tok
-            {#if displayModelTiming}· {displayModelTiming.toFixed(1)}s{/if}
-            {#if footerMetadata?.tokensPerSecond}· {footerMetadata.tokensPerSecond.toFixed(0)}/s{/if}
-          </span>
-        {/if}
+       <!-- Runtime usage: output tokens and generation speed, not total prompt tokens. -->
+       <div class="mt-1 flex items-center gap-2 flex-wrap">
+         {#if hasReliableUsage && (displayTokenCount || footerMetadata?.totalElapsedSeconds)}
+           <span class="text-xs text-[var(--text-muted)]">
+             {#if displayTokenCount}{displayTokenCount} output tok{/if}
+             {#if footerMetadata?.tokensPerSecond} · {footerMetadata.tokensPerSecond.toFixed(0)} tok/s{/if}
+             {#if footerMetadata?.totalElapsedSeconds} · {footerMetadata.totalElapsedSeconds.toFixed(1)}s{/if}
+           </span>
+         {/if}
       </div>
 
       <!-- TTS player -->

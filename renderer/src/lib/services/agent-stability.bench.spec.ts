@@ -162,6 +162,16 @@ describe('functional: humanizeAgentError', () => {
       input: '401 Unauthorized invalid api key',
       mustNotInclude: [],
       mustMatch: /api key|settings/i
+    },
+    {
+      input: 'context_length_exceeded maximum context length',
+      mustNotInclude: ['context_length_exceeded'],
+      mustMatch: /too long|new chat/i
+    },
+    {
+      input: '503 Service Unavailable',
+      mustNotInclude: [],
+      mustMatch: /outage|try again/i
     }
   ];
 

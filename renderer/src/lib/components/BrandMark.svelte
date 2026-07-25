@@ -10,7 +10,7 @@
 
   const flaxeoClass = $derived(
     cn(
-      'relative z-10 font-black tracking-tighter text-foreground',
+      'relative z-10 font-black tracking-tighter text-current',
       size === 'sm' && 'text-sm',
       size === 'md' && 'text-base',
       size === 'lg' && 'text-4xl tracking-[-0.05em]',
@@ -20,7 +20,7 @@
 
   const chatClass = $derived(
     cn(
-      'relative z-10 font-extralight tracking-wide text-foreground/85',
+      'relative z-10 font-extralight tracking-wide text-current/85',
       size === 'sm' && 'text-sm tracking-wider',
       size === 'md' && 'text-base tracking-wider',
       size === 'lg' && 'text-4xl tracking-[0.06em]',
@@ -31,13 +31,13 @@
 
 <span
   class={cn(
-    'brand-mark relative inline-flex select-none items-baseline justify-center gap-2 tracking-tight',
+    'brand-mark relative inline-flex select-none items-baseline justify-center gap-2 tracking-tight text-foreground',
     className
   )}
   aria-label="Flaxeo Chat"
 >
   <!-- Flaxeo: hard / heavy -->
-  <span class={flaxeoClass}>Flaxeo</span>
+  <span class={`${flaxeoClass} brand-mark__flaxeo`}>Flaxeo</span>
   <!-- Chat: slim / light -->
-  <span class={chatClass}>Chat</span>
+  <span class={`${chatClass} brand-mark__chat`}>Chat</span>
 </span>

@@ -141,7 +141,7 @@
   {:else}
     <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
     <div
-      class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar"
+      class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden bg-sidebar"
       class:expanded={appStore.sidebarOpen}
     >
       <div class="sidebar-view-full absolute inset-0 flex flex-col">
@@ -185,7 +185,7 @@
     </div>
 
     <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
       <Titlebar />
 
       <div class="flex min-h-0 flex-1 overflow-hidden">
@@ -313,6 +313,10 @@
 
   .chat-panel {
     background: var(--background);
+    border-color: var(--border);
+    border-style: solid;
+    border-width: 1px 0 0 1px;
+    border-radius: var(--radius-2xl) 0 0 0;
   }
 
   .activity-drawer-slot {

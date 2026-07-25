@@ -23,24 +23,24 @@ export function stoppedWarning(stopReason: AgentStopReason, reason: string, opts
   switch (stopReason) {
     case 'timeout':
       return code
-        ? 'Agent timed out before finishing; returned a partial coding summary.'
-        : 'Agent timed out and returned only gathered evidence.';
+        ? 'Timed out before finishing. Here is a partial coding summary.'
+        : 'Timed out before finishing. Here is a partial answer from what was already found.';
     case 'loop':
       return code
-        ? 'Agent got stuck repeating explore steps; returned a partial summary.'
-        : 'Agent encountered a loop and returned only gathered evidence.';
+        ? 'Got stuck repeating explore steps. Here is a partial summary.'
+        : 'Got stuck repeating steps. Here is a partial answer from what was already found.';
     case 'tool_limit':
       return code
-        ? 'Agent hit the tool budget; returned a partial coding summary.'
-        : 'Agent reached the tool limit and returned only gathered evidence.';
+        ? 'Hit the tool budget. Here is a partial coding summary.'
+        : 'Reached the tool limit. Here is a partial answer from what was already found.';
     case 'iteration_limit':
       return code
-        ? 'Agent reached the step limit; returned a partial coding summary. Ask to continue if needed.'
-        : 'Agent reached the iteration limit and returned only gathered evidence.';
+        ? 'Reached the step limit. Here is a partial coding summary — ask to continue if needed.'
+        : 'Reached the step limit. Here is a partial answer from what was already found.';
     case 'missing_artifacts':
-      return 'Requested files could not all be created; returned only gathered evidence.';
+      return 'Could not create every requested file. Here is what was available from this session.';
     default:
-      return reason || 'Agent stopped before normal completion.';
+      return reason || 'Stopped before finishing. Here is a partial answer from what was already found.';
   }
 }
 

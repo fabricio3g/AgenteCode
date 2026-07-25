@@ -104,7 +104,8 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     model: body.model,
     messages: body.messages,
     tools: body.tools,
-    reasoning: body.reasoning,
+         reasoning: body.reasoning,
+         signal: abortController.signal,
     ...params
   });
 }

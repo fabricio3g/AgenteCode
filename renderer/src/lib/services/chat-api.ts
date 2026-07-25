@@ -268,12 +268,38 @@ export interface CompletionResult {
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
     total_tokens?: number;
     eval_count?: number;
     eval_duration?: number;
     prompt_eval_count?: number;
     prompt_eval_duration?: number;
+    timings?: {
+      prompt_n?: number;
+      prompt_ms?: number;
+      prompt_per_second?: number;
+      predicted_n?: number;
+      predicted_ms?: number;
+      predicted_per_second?: number;
+      total_ms?: number;
+    };
   } | null;
+}
+
+/** Preserve llama.cpp's top-level runtime timings alongside OpenAI usage. */
+export function normalizeRuntimeUsage(usage: unknown, timings?: unknown): CompletionResult['usage'] {
+  const usageRecord = usage && typeof usage === 'object' ? usage as Record<string, unknown> : {};
+  const timingRecord = timings && typeof timings === 'object'
+    ? timings as Record<string, unknown>
+    : usageRecord.timings && typeof usageRecord.timings === 'object'
+      ? usageRecord.timings as Record<string, unknown>
+      : null;
+  if (!Object.keys(usageRecord).length && !timingRecord) return null;
+  return {
+    ...usageRecord,
+    ...(timingRecord ? { timings: timingRecord } : {})
+  } as CompletionResult['usage'];
 }
 
 interface ChatStreamEvent {
@@ -494,7 +520,8 @@ async function streamLocalReply(args: {
       if (!payload || payload === '[DONE]') continue;
       try {
         const parsed = JSON.parse(payload);
-        if (parsed?.usage) args.onUsage?.(parsed.usage);
+        const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
+        if (usage) args.onUsage?.(usage);
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
@@ -515,7 +542,8 @@ async function streamLocalReply(args: {
     if (payload && payload !== '[DONE]') {
       try {
         const parsed = JSON.parse(payload);
-        if (parsed?.usage) args.onUsage?.(parsed.usage);
+        const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
+        if (usage) args.onUsage?.(usage);
         const delta = parsed?.choices?.[0]?.delta || {};
         const content = delta.content;
         const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
@@ -700,7 +728,7 @@ export async function completeAssistantReply(args: {
 
     const payload = await response.json();
     const result = readCompletionPayload(payload);
-    result.usage = payload?.usage || result.usage || null;
+    result.usage = normalizeRuntimeUsage(payload?.usage, payload?.timings) || result.usage || null;
     return result;
   }
 

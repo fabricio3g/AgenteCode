@@ -251,8 +251,8 @@ export class AnthropicProvider extends BaseProvider {
     return { ...body, ...this._thinkingBody(reasoning, (body.max_tokens as number) || 4096) };
   }
 
-  async fetchModels(apiKey, _baseUrl) {
-    const client = this.createClient(apiKey);
+  async fetchModels(apiKey, baseUrl) {
+    const client = this.createClient(apiKey, baseUrl);
     try {
       const response = await client.models.list();
       const list = response?.data ?? [];
@@ -262,7 +262,7 @@ export class AnthropicProvider extends BaseProvider {
     }
   }
 
-  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
+  async fetchModelMetadata(_apiKey, _baseUrl, modelId) {
     const KNOWN_CONTEXTS = {
       'claude-3-5-sonnet-20241022': 200_000,
       'claude-3-5-sonnet-20240620': 200_000,

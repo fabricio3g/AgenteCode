@@ -37,7 +37,7 @@
   --border: #e5e5e5;
   --input: #e5e5e5;
   --ring: #d0d0d0;
-  --sidebar: #f8f8f8;
+  --sidebar: var(--background);
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;

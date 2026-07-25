@@ -114,6 +114,11 @@
   }
 
   function resolveDisplayTotalElapsed(metadata: MessageVersion['metadata'] | null | undefined) {
+    const isAgentRun = message.mode === 'agent'
+      || !!message.agentSteps?.length
+      || metadata?.outcome === 'partial'
+      || metadata?.outcome === 'stopped';
+    if (!isAgentRun) return undefined;
     const total = resolveTotalElapsed(metadata);
     const reasoning = resolveReasoningTiming(metadata);
     if (typeof total !== 'number' || total <= 0) return undefined;

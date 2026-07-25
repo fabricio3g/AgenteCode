@@ -65,10 +65,9 @@ function inferRuntimeVariant(runtimePath) {
 }
 
 function runtimeCandidatesFromDirectory(dirPath) {
-  // Priority order: llama-server first (preferred for server mode),
-  // then llama-cli (works for probing --list-devices)
+  // Only llama-server implements the HTTP API consumed by this application.
+  // llama-cli may accept a few overlapping flags but cannot serve chat requests.
   const priorityCandidates = ['llama-server', 'llama-server.exe'];
-  const fallbackCandidates = ['llama-cli', 'llama-cli.exe', 'server'];
 
   // Check top level first for priority candidates
   for (const bin of priorityCandidates) {
@@ -76,14 +75,8 @@ function runtimeCandidatesFromDirectory(dirPath) {
     if (fs.existsSync(top)) return [top];
   }
 
-  // Check top level for fallback candidates
-  for (const bin of fallbackCandidates) {
-    const top = path.join(dirPath, bin);
-    if (fs.existsSync(top)) return [top];
-  }
-
   // Search recursively
-  const allCandidates = [...priorityCandidates, ...fallbackCandidates];
+  const allCandidates = priorityCandidates;
   const found = [];
   function walk(dir) {
     let entries;

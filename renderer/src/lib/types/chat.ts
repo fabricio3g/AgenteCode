@@ -35,6 +35,7 @@ export interface MessageVersion {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
+    promptEvalTimingSeconds?: number;
     executionBackend?: 'local' | 'api';
     executionTransport?: 'local_runtime' | 'provider_ipc' | 'sdk';
     error?: boolean;

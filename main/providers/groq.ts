@@ -103,8 +103,8 @@ export class GroqProvider extends BaseProvider {
     return {};
   }
 
-  async fetchModels(apiKey, _baseUrl) {
-    const client = this.createClient(apiKey);
+  async fetchModels(apiKey, baseUrl) {
+    const client = this.createClient(apiKey, baseUrl);
     try {
       const response = await client.models.list();
       const list = response?.data ?? [];
@@ -114,8 +114,8 @@ export class GroqProvider extends BaseProvider {
     }
   }
 
-  async fetchModelMetadata(apiKey, _baseUrl, modelId) {
-    const client = this.createClient(apiKey);
+  async fetchModelMetadata(apiKey, baseUrl, modelId) {
+    const client = this.createClient(apiKey, baseUrl);
 
     const parseMetadata = (record) => {
       if (!record || typeof record !== 'object') return null;

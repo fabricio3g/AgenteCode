@@ -79,7 +79,7 @@ export async function downloadRuntime({ download_url, asset_name, release_tag },
       const full = path.join(dir, e.name);
       if (e.isDirectory()) {
         findBinary(full);
-      } else if (e.name === 'llama-server' || e.name === 'llama-server.exe' || e.name === 'server') {
+      } else if (e.name === 'llama-server' || e.name === 'llama-server.exe') {
         serverPath = full;
         if (process.platform !== 'win32') fs.chmodSync(full, 0o755);
       }

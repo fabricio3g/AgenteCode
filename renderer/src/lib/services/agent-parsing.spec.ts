@@ -21,4 +21,22 @@ describe('agent-parsing', () => {
     expect(isPublicFallbackContent(partial)).toBe(true);
     expect(isPublicFallbackContent('# Full report\n\n## Key findings\n\nComplete synthesis.')).toBe(false);
   });
+
+  it('recognizes human-readable partial answers as public fallback content', () => {
+    expect(
+      isPublicFallbackContent(
+        '# Topic\n\nPartial answer from sources already retrieved. Say **continue** if you want more depth.\n\nSome prose.'
+      )
+    ).toBe(true);
+    expect(
+      isPublicFallbackContent(
+        'Battery storage helps. I could not complete every step, so this is based only on what was already found.'
+      )
+    ).toBe(true);
+    expect(
+      isPublicFallbackContent(
+        'I stopped before finishing and did not gather enough information to answer fully. Please try again or rephrase your request.'
+      )
+    ).toBe(true);
+  });
 });

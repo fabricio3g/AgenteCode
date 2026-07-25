@@ -1,6 +1,6 @@
 import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
-import type { RequestMessage, NativeToolCall } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage, NativeToolCall } from '$lib/services/chat-api';
 import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
 import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupportsNativeTools } from '$lib/services/agent-llm';
@@ -31,6 +31,7 @@ import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
   buildResearchReportInstruction, isMedicalResearchQuery, getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
 } from '$lib/services/agent-prompts';
+
 import {
   classifyStopReason, stoppedWarning, hasVisibleArtifact, visibleFileCount,
   hasProgressSince, isWebsiteBuildRequest, finalizeAgentSteps,
@@ -94,6 +95,55 @@ import {
   mergeWebSearchSources,
   publishArtifact
 } from '$lib/services/agent-tool-result';
+
+function mergeCompletionUsage(
+  current: CompletionResult['usage'],
+  next: CompletionResult['usage']
+): CompletionResult['usage'] {
+  if (!next) return current || null;
+  if (!current) return next;
+
+  const sum = (left?: number, right?: number) => {
+    const total = (Number(left) || 0) + (Number(right) || 0);
+    return total > 0 ? total : undefined;
+  };
+  const leftTimings = current.timings || {};
+  const rightTimings = next.timings || {};
+  const timings = {
+    prompt_n: sum(leftTimings.prompt_n, rightTimings.prompt_n),
+    prompt_ms: sum(leftTimings.prompt_ms, rightTimings.prompt_ms),
+    predicted_n: sum(leftTimings.predicted_n, rightTimings.predicted_n),
+    predicted_ms: sum(leftTimings.predicted_ms, rightTimings.predicted_ms),
+    total_ms: sum(leftTimings.total_ms, rightTimings.total_ms)
+  };
+  const predictedMs = Number(timings.predicted_ms || 0);
+  const outputTokens = sum(
+    current.output_tokens ?? current.completion_tokens ?? current.eval_count,
+    next.output_tokens ?? next.completion_tokens ?? next.eval_count
+  );
+
+  return {
+    ...current,
+    ...next,
+    input_tokens: sum(
+      current.input_tokens ?? current.prompt_tokens ?? current.prompt_eval_count,
+      next.input_tokens ?? next.prompt_tokens ?? next.prompt_eval_count
+    ),
+    output_tokens: outputTokens,
+    total_tokens: sum(
+      current.total_tokens ?? ((current.input_tokens || current.prompt_tokens || current.prompt_eval_count || 0) + (current.output_tokens || current.completion_tokens || current.eval_count || 0)),
+      next.total_tokens ?? ((next.input_tokens || next.prompt_tokens || next.prompt_eval_count || 0) + (next.output_tokens || next.completion_tokens || next.eval_count || 0))
+    ),
+    timings: {
+      ...leftTimings,
+      ...rightTimings,
+      ...timings,
+      ...(predictedMs > 0 && outputTokens
+        ? { predicted_per_second: outputTokens / (predictedMs / 1000) }
+        : {})
+    }
+  };
+}
 
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
@@ -607,9 +657,11 @@ async function buildStrictFallbackContent(params: {
   ctx: ToolContext;
   observations: ToolObservation[];
   sources: SearchResult[];
+  mode?: 'research' | 'chat';
 }): Promise<string> {
   return buildStrictFallbackContentCore({
     ...params,
+    mode: params.mode || 'research',
     ensureRequestedArtifactsFromEvidence: (args) => ensureRequestedArtifactsFromEvidence(args),
     evidenceSources,
     missingRequestedArtifactExtensions: missingRequestedArtifactExts
@@ -812,6 +864,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const recentProgress: ProgressSnapshot[] = [];
   let totalToolCalls = 0;
   let maxObservedDraftChars = 0;
+  let aggregateUsage: CompletionResult['usage'] = null;
 
   const checkAbort = () => {
     if (args.signal?.aborted) {
@@ -857,6 +910,14 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     }
     injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
   };
+  const fallbackMode: 'research' | 'chat' =
+    isResearchChat
+    || toolMode === 'search_chat'
+    || args.searchMode === 'search'
+    || args.searchMode === 'deep'
+    || args.searchMode === 'max'
+      ? 'research'
+      : 'chat';
   const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => executionMode === 'workspace'
     ? buildWorkspaceStoppedContent(reason, toolObservations)
     : buildStrictFallbackContent({
@@ -864,7 +925,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       reason,
       ctx,
       observations: toolObservations,
-      sources
+      sources,
+      mode: fallbackMode
     });
 
   for (let iter = 0; iter < maxIterations; iter++) {
@@ -1057,6 +1119,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       }
     }
 
+    aggregateUsage = mergeCompletionUsage(aggregateUsage, completion.usage);
     const rawContent = sanitizeAgentVisibleText(String(completion.content || ''));
     const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
     const resultMode = directMode ? 'direct' : (useNativeTools && !nativeFailed) ? 'native' : 'xml';
@@ -1159,7 +1222,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               reason: 'direct mode tried to finish without creating the requested files',
               ctx,
               observations: [...toolObservations, finalObservation],
-              sources
+              sources,
+              mode: fallbackMode
             });
             stopReason = 'missing_artifacts';
             errorReason = 'The agent answered without creating the requested files.';
@@ -1305,7 +1369,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               reason: 'the model tried to finish without creating the requested files',
               ctx,
               observations: [...toolObservations, finalObservation],
-              sources
+              sources,
+              mode: fallbackMode
             });
             stopReason = 'missing_artifacts';
             errorReason = 'The agent answered without creating the requested files.';
@@ -1601,6 +1666,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           signal: args.signal,
           omitMaxTokens: omitResearchMaxTokens
         });
+        aggregateUsage = mergeCompletionUsage(aggregateUsage, forced.usage);
         const forcedContent = stripToolCallArtifacts(String(forced?.content || '')).trim();
         if (!forcedContent) continue;
         // Reject pure evidence-dump outputs for research; retry synthesis.
@@ -1642,12 +1708,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         reason,
         ctx,
         observations: toolObservations,
-        sources
+        sources,
+        mode: fallbackMode
       });
     if (stopReason === 'none') stopReason = 'iteration_limit';
     if (isResearchChat && hasGatheredEvidence(ctx, toolObservations, sources, finalContent)) {
       // Partial structured report is a product deliverable, not a hard failure.
-      warningReason = warningReason || 'Partial research report compiled from retrieved sources. Say continue to deepen.';
+      warningReason = warningReason || 'Partial answer from sources already retrieved. Say continue for more depth.';
       errorReason = undefined;
     } else {
       errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
@@ -1684,6 +1751,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     stopReason: effectiveStopReason,
     publicFallback,
     diagnosticsRedacted: publicFallback,
+    ...(aggregateUsage ? { usage: aggregateUsage } : {}),
     ...(fatalError && errorReason ? { error: errorReason } : {}),
     ...(effectiveWarning ? { warning: effectiveWarning } : {})
   };

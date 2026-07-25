@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import { resolveRuntimeConfig, formatStartupLog } from './runtime-config-resolver.ts';
+import { supportsLlamaFlag } from './llama-runtime.ts';
 
 const READY_PATTERNS = ['server is listening', 'HTTP server listening', 'listening at'];
 const DEFAULT_STARTUP_TIMEOUT = 30000;
@@ -45,15 +46,32 @@ export class ManagedProcess {
         return;
       }
 
-      let resolved = false;
+      let settled = false;
       let recentLogs = [];
 
       const startupTimeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          this._beginHealthPolling(healthPort, resolved, resolve, statusFields, DEFAULT_HEALTH_TIMEOUT);
+        if (settled) return;
+        settled = true;
+        this.process?.kill('SIGTERM');
+        const tail = recentLogs.slice(-20).join('\n');
+        this.setStatus({ state: 'error', message: `Server health check timed out${tail ? `\n${tail}` : ''}` });
+        reject(new Error(`Server health check timed out${tail ? `\n${tail}` : ''}`));
+      }, DEFAULT_STARTUP_TIMEOUT + DEFAULT_HEALTH_TIMEOUT);
+
+      const healthInterval = setInterval(async () => {
+        if (settled) return;
+        try {
+          const resp = await fetch(`http://127.0.0.1:${healthPort}/health`, { signal: AbortSignal.timeout(2000) });
+          if (!resp.ok) return;
+          settled = true;
+          clearTimeout(startupTimeout);
+          clearInterval(healthInterval);
+          this.setStatus({ state: 'ready', ...statusFields });
+          resolve('started');
+        } catch {
+          // The server commonly needs several seconds to load a model.
         }
-      }, DEFAULT_STARTUP_TIMEOUT);
+      }, HEALTH_CHECK_INTERVAL);
 
       const onData = (data) => {
         const text = String(data || '');
@@ -64,12 +82,8 @@ export class ManagedProcess {
           if (recentLogs.length > 80) recentLogs.shift();
         }
 
-        if (!resolved && lineMatchesReady(text)) {
-          resolved = true;
-          clearTimeout(startupTimeout);
-          this.setStatus({ state: 'ready', ...statusFields });
-          resolve('started');
-        }
+        // Keep logs for actionable startup errors. Readiness is determined by
+        // the HTTP health endpoint, not a version-specific log line.
       };
 
       this._stdoutListener = onData;
@@ -77,17 +91,19 @@ export class ManagedProcess {
       this.process.stdout.on('data', onData);
       this.process.stderr.on('data', onData);
 
-      this.process.on('error', (err) => {
-        clearTimeout(startupTimeout);
-        this.setStatus({ state: 'error', message: err.message });
-        if (!resolved) { resolved = true; reject(err); }
-      });
+        this.process.on('error', (err) => {
+          clearTimeout(startupTimeout);
+          clearInterval(healthInterval);
+          this.setStatus({ state: 'error', message: err.message });
+          if (!settled) { settled = true; reject(err); }
+        });
 
       this.process.on('exit', (code, signal) => {
-        clearTimeout(startupTimeout);
-        this.process = null;
-        if (!resolved) {
-          resolved = true;
+          clearTimeout(startupTimeout);
+          clearInterval(healthInterval);
+          this.process = null;
+          if (!settled) {
+            settled = true;
           if (code !== 0) {
             const tail = recentLogs.slice(-20).join('\n');
             reject(new Error(`Process exited with code ${code}, signal ${signal}${tail ? `\n${tail}` : ''}`));
@@ -97,26 +113,6 @@ export class ManagedProcess {
         }
       });
     });
-  }
-
-  _beginHealthPolling(port, resolvedFlag, resolve, statusFields, timeoutMs) {
-    const interval = setInterval(async () => {
-      try {
-        const resp = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(2000) });
-        if (resp.ok) {
-          clearInterval(interval);
-          clearTimeout(fallbackTimer);
-          this.setStatus({ state: 'ready', ...statusFields });
-          resolve('started');
-        }
-      } catch { /* not ready */ }
-    }, HEALTH_CHECK_INTERVAL);
-
-    const fallbackTimer = setTimeout(() => {
-      clearInterval(interval);
-      this.setStatus({ state: 'ready', ...statusFields });
-      resolve('started');
-    }, timeoutMs);
   }
 
   async stop(idleFields = {}) {
@@ -158,7 +154,7 @@ export class ManagedProcess {
 
 // ── Argument builders ──
 
-export function buildLlamaArgs(config, runtimePath, systemInfo = null) {
+export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilities = null) {
   // Resolve runtime configuration with backend detection and context guardrails
   const resolved = resolveRuntimeConfig({
     modelPath: config.model_path,
@@ -190,10 +186,10 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null) {
     args.push('--device', resolved.selectedDevice);
   }
 
-  if (config.fit_vram !== false && isGpu) args.push('--fit', 'on');
+  if (config.fit_vram !== false && isGpu && supportsLlamaFlag(capabilities, '--fit')) args.push('--fit', 'on');
   if (config.sleep_idle_seconds != null && isGpu) args.push('--sleep-idle-seconds', String(config.sleep_idle_seconds));
-  args.push('--flash-attn', config.flash_attention === false ? 'off' : 'auto');
-  args.push('--no-webui');
+  if (supportsLlamaFlag(capabilities, '--flash-attn')) args.push('--flash-attn', config.flash_attention === false ? 'off' : 'auto');
+  if (supportsLlamaFlag(capabilities, '--no-webui')) args.push('--no-webui');
   args.push('--ubatch-size', String(resolved.ubatchSize));
 
   const defaultCacheK = isGpu ? 'q8_0' : 'f16';
@@ -214,21 +210,27 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null) {
     args.push('--main-gpu', String(resolved.mainGpu));
   }
 
-  if (config.speculative_decoding) {
+  if (config.speculative_decoding && supportsLlamaFlag(capabilities, '--spec-type')) {
     args.push('--spec-type', 'ngram-cache');
-    if (config.speculative_ngram != null) args.push('--ngram-cache-size', String(config.speculative_ngram));
   }
 
-  if (config.mmap === false) args.push('--no-mmap');
-  if (config.keep_in_memory) args.push('--mlock');
+  if (config.keep_in_memory && supportsLlamaFlag(capabilities, '--load-mode')) {
+    args.push('--load-mode', 'mlock');
+  } else if (config.mmap === false && supportsLlamaFlag(capabilities, '--load-mode')) {
+    args.push('--load-mode', 'none');
+  } else if (config.mmap === false && supportsLlamaFlag(capabilities, '--no-mmap')) {
+    args.push('--no-mmap');
+  } else if (config.keep_in_memory && supportsLlamaFlag(capabilities, '--mlock')) {
+    args.push('--mlock');
+  }
   if (config.seed != null) args.push('--seed', String(config.seed));
   if (config.parallel) args.push('--parallel', String(config.parallel));
   if (config.rope_freq_base) args.push('--rope-freq-base', String(config.rope_freq_base));
   if (config.rope_freq_scale) args.push('--rope-freq-scale', String(config.rope_freq_scale));
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
-  if (config.disable_thinking) args.push('--reasoning', 'off');
+  if (config.disable_thinking && supportsLlamaFlag(capabilities, '--reasoning')) args.push('--reasoning', 'off');
 
-  if (config.mtp) {
+  if (config.mtp && supportsLlamaFlag(capabilities, '--spec-type')) {
     const draftPath = String(config.mtp_draft_path || '').trim();
     const draftNMax = Number.isFinite(Number(config.mtp_draft_n_max))
       ? Math.max(1, Math.min(16, Math.floor(Number(config.mtp_draft_n_max))))

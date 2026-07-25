@@ -8,6 +8,7 @@ import {
 } from './runtime-resolver.ts';
 import { getAppPaths } from './paths.ts';
 import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-resolver.ts';
+import { inspectLlamaServer } from './llama-runtime.ts';
 import { setEmbeddingStatus, getEmbeddingStatus as getEmbeddingStatusState } from './embedding-state.ts';
 
 function toErrorMessage(err: unknown): string {
@@ -125,7 +126,8 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
   const systemInfo = await getHardwareLimits();
 
   const port = (launchConfig.port as number) || 11435;
-  const args = buildLlamaArgs(launchConfig, runtimePath, systemInfo);
+  const capabilities = inspectLlamaServer(runtimePath);
+  const args = buildLlamaArgs(launchConfig, runtimePath, systemInfo, capabilities);
 
   // Override the default onStatusChange to emit IPC events
   llama._onStatusChange = (status: Record<string, unknown>) => {

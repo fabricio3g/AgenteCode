@@ -75,26 +75,36 @@ export function agentStopReason(result: AgentStoreResult): AgentStopReason {
   return result.error ? 'error' : 'none';
 }
 
-function reliableUsageMetadata(
+export function reliableUsageMetadata(
   usage: CompletionResult['usage'],
-  elapsedSeconds: number,
+  _elapsedSeconds: number,
   source: 'provider' | 'runtime'
 ): NonNullable<MessageVersion['metadata']> | null {
   if (!usage) return null;
-  const inputTokens = Number(usage.input_tokens ?? usage.prompt_eval_count ?? 0) || undefined;
-  const outputTokens = Number(usage.output_tokens ?? usage.eval_count ?? 0) || undefined;
+  const inputTokens = Number(usage.input_tokens ?? usage.prompt_tokens ?? usage.prompt_eval_count ?? 0) || undefined;
+  const outputTokens = Number(usage.output_tokens ?? usage.completion_tokens ?? usage.eval_count ?? 0) || undefined;
   const totalTokens = Number(usage.total_tokens ?? ((inputTokens || 0) + (outputTokens || 0))) || undefined;
-  const evalDurationSeconds = Number(usage.eval_duration || 0) > 0 ? Number(usage.eval_duration) / 1_000_000_000 : 0;
-  const timing = evalDurationSeconds || elapsedSeconds;
-  const tokensPerSecond = outputTokens && timing > 0 ? outputTokens / timing : undefined;
-  if (!inputTokens && !outputTokens && !totalTokens) return null;
+  const runtimeTimings = usage.timings;
+  const predictedMs = Number(runtimeTimings?.predicted_ms || 0);
+  const legacyEvalDurationSeconds = Number(usage.eval_duration || 0) > 0
+    ? Number(usage.eval_duration) / 1_000_000_000
+    : 0;
+  const timing = predictedMs > 0 ? predictedMs / 1000 : legacyEvalDurationSeconds || undefined;
+  const nativeTokensPerSecond = Number(runtimeTimings?.predicted_per_second || 0);
+  const tokensPerSecond = nativeTokensPerSecond > 0
+    ? nativeTokensPerSecond
+    : outputTokens && timing && timing > 0 ? outputTokens / timing : undefined;
+  if (!inputTokens && !outputTokens && !totalTokens && !timing) return null;
   return {
     usageSource: source,
-    timingScope: 'model',
+    timingScope: timing ? 'model' : 'unknown',
     inputTokens,
     outputTokens,
     totalTokens,
-    tokens: outputTokens || totalTokens,
+    promptEvalTimingSeconds: Number(runtimeTimings?.prompt_ms || 0) > 0
+      ? Number(runtimeTimings?.prompt_ms) / 1000
+      : undefined,
+    tokens: outputTokens,
     timing,
     modelTimingSeconds: timing,
     tokensPerSecond
@@ -237,6 +247,37 @@ export function markAgentWriting(message: ChatMessage) {
     ...steps.map((step) => step.status === 'running' ? { ...step, status: 'done' as const } : step),
     { id: createId('step'), type: 'thinking', label: 'Writing', status: 'running', detail: 'Preparing final response' }
   ];
+}
+
+export function markAgentStopped(message: ChatMessage) {
+  const steps = message.agentSteps || [];
+  if (!steps.length) return;
+
+  // A run stopped before tools started should not leave a misleading Planning card.
+  const hasWorkStep = steps.some((step) =>
+    !['thinking', 'planning'].includes(step.type)
+    || !!step.output
+    || !!step.diffStats?.length
+  );
+  if (!hasWorkStep) {
+    message.agentSteps = [];
+    return;
+  }
+
+  let activeIndex = -1;
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    if (steps[index].status === 'running' || steps[index].status === 'pending') {
+      activeIndex = index;
+      break;
+    }
+  }
+  message.agentSteps = steps.map((step, index) => {
+    if (step.status !== 'running' && step.status !== 'pending') return step;
+    if (index === activeIndex && (step.type === 'thinking' || step.type === 'planning')) {
+      return { ...step, label: 'Stopped', status: 'done', detail: 'Stopped by user' };
+    }
+    return { ...step, status: 'done', detail: index === activeIndex ? 'Stopped by user' : step.detail };
+  });
 }
 
 export function updateStreamingVersion(message: ChatMessage, content: string, reasoning: string, metadata: MessageVersion['metadata']) {

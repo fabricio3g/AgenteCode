@@ -1,5 +1,5 @@
 import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
-import type { RequestMessage } from '$lib/services/chat-api';
+import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 
 export type ToolCall = {
@@ -63,6 +63,7 @@ export type AgentTaskResult = {
   diagnosticsRedacted?: boolean;
   error?: string;
   warning?: string;
+  usage?: CompletionResult['usage'];
 };
 
 export type RunAgentTaskArgs = {

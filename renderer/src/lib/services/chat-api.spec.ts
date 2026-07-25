@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isVisionModel, supportsNativeTools, toRequestMessages } from './chat-api';
+import { isVisionModel, normalizeRuntimeUsage, supportsNativeTools, toRequestMessages } from './chat-api';
 
 describe('chat-api vision message conversion', () => {
   const imageAttachment = {
@@ -54,5 +54,25 @@ describe('chat-api local backend routing helpers', () => {
     };
 
     expect(supportsNativeTools(config)).toBe(false);
+  });
+});
+
+describe('llama.cpp runtime telemetry', () => {
+  it('preserves OpenAI usage keys and native generation timings', () => {
+    const usage = normalizeRuntimeUsage(
+      { prompt_tokens: 137, completion_tokens: 276, total_tokens: 413 },
+      { prompt_ms: 1200, predicted_ms: 5000, predicted_per_second: 55.2 }
+    );
+
+    expect(usage).toMatchObject({
+      prompt_tokens: 137,
+      completion_tokens: 276,
+      total_tokens: 413,
+      timings: { predicted_ms: 5000, predicted_per_second: 55.2 }
+    });
+  });
+
+  it('returns null when a response contains neither usage nor timings', () => {
+    expect(normalizeRuntimeUsage(null, null)).toBeNull();
   });
 });

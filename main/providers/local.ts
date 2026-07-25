@@ -1,5 +1,5 @@
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
-import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
+import { normalizeOpenAiBaseUrl, normalizeRuntimeUsage, safeParseJson } from './helpers.ts';
 import { getGgufMetadata } from '../model-manager.ts';
 
 const LOCAL_LEVELS = ['off', 'on'];
@@ -17,26 +17,30 @@ export class LocalProvider extends BaseProvider {
   }
 
   _resolveUrl(baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl);
+    const normalized = normalizeOpenAiBaseUrl(baseUrl);
     if (!normalized) return 'http://127.0.0.1:11435/v1/chat/completions';
     return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
   }
 
-  _buildHeaders() {
-    return { 'Content-Type': 'application/json' };
+  _buildHeaders(apiKey = '') {
+    return {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+    };
   }
 
-  async *streamChat({ baseUrl, model, messages, tools, reasoning, signal, ...params }) {
+  async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: this._buildHeaders(),
+      headers: this._buildHeaders(apiKey),
       signal,
       body: JSON.stringify({
         model: model || 'local-model',
         messages,
         stream: true,
+        stream_options: { include_usage: true },
         ...(tools?.length ? { tools } : {}),
         ...this._reasoningBody(reasoning),
         ...params
@@ -69,7 +73,7 @@ export class LocalProvider extends BaseProvider {
 
         try {
           const parsed = JSON.parse(payload);
-          const usage = parsed?.usage || null;
+          const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
@@ -102,7 +106,7 @@ export class LocalProvider extends BaseProvider {
       if (payload && payload !== '[DONE]') {
         try {
           const parsed = JSON.parse(payload);
-          const usage = parsed?.usage || null;
+          const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
           const delta = parsed?.choices?.[0]?.delta || {};
           const content = delta.content;
           const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
@@ -130,12 +134,12 @@ export class LocalProvider extends BaseProvider {
     }
   }
 
-  async completeChat({ baseUrl, model, messages, tools, reasoning, signal, ...params }) {
+  async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const url = this._resolveUrl(baseUrl);
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: this._buildHeaders(),
+      headers: this._buildHeaders(apiKey),
       signal,
       body: JSON.stringify({
         model: model || 'local-model',
@@ -160,7 +164,7 @@ export class LocalProvider extends BaseProvider {
     return {
       content: message.content || '',
       reasoning: rawReasoning ? String(rawReasoning) : '',
-      usage: data?.usage || null,
+      usage: normalizeRuntimeUsage(data?.usage, data?.timings),
       toolCalls: message.tool_calls ? message.tool_calls.map(tc => ({
         id: tc.id,
         name: tc.function?.name || '',
@@ -169,11 +173,11 @@ export class LocalProvider extends BaseProvider {
     };
   }
 
-  async fetchModels(_apiKey, baseUrl) {
-    const normalized = normalizeBaseUrl(baseUrl);
+  async fetchModels(apiKey, baseUrl) {
+    const normalized = normalizeOpenAiBaseUrl(baseUrl);
     if (!normalized) return [];
     const url = `${normalized}/models`;
-    const headers = { 'Accept': 'application/json' };
+    const headers = { 'Accept': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(5000) }).catch(() => null);
     if (!res || !res.ok) return [];
     const data = await res.json().catch(() => ({}));
