@@ -267,11 +267,32 @@ function extractMeta(document) {
     metaContent(document, 'meta[property="og:image"]')
     || metaContent(document, 'meta[name="twitter:image"]');
 
+  // Bibliographic fields for APA-style references (never invent — only page metadata).
+  const author =
+    metaContent(document, 'meta[name="author"]')
+    || metaContent(document, 'meta[property="article:author"]')
+    || metaContent(document, 'meta[name="byl"]')
+    || metaContent(document, 'meta[name="sailthru.author"]')
+    || normalizeWhitespace(document.querySelector('[rel="author"]')?.textContent || '')
+    || normalizeWhitespace(document.querySelector('.author, .byline, [itemprop="author"]')?.textContent || '');
+
+  const published_at =
+    metaContent(document, 'meta[property="article:published_time"]')
+    || metaContent(document, 'meta[name="article:published_time"]')
+    || metaContent(document, 'meta[name="date"]')
+    || metaContent(document, 'meta[name="publish-date"]')
+    || metaContent(document, 'meta[name="pubdate"]')
+    || metaContent(document, 'meta[itemprop="datePublished"]')
+    || normalizeWhitespace(document.querySelector('time[datetime]')?.getAttribute('datetime') || '')
+    || normalizeWhitespace(document.querySelector('time')?.textContent || '');
+
   return {
     title,
     description,
     site_name: siteName,
-    og_image: ogImage
+    og_image: ogImage,
+    author: author.slice(0, 200),
+    published_at: published_at.slice(0, 80)
   };
 }
 
@@ -420,6 +441,8 @@ export function parseHtmlToReadable({ html, url, maxLength = DEFAULT_MAX_LENGTH,
     links: cappedLinks,
     site_name: metadata.site_name || normalizeWhitespace(article?.siteName || ''),
     og_image: metadata.og_image,
+    author: metadata.author || '',
+    published_at: metadata.published_at || '',
     length: content.length,
     document_kind: 'html',
     extraction: article ? 'readability' : 'fallback',

@@ -1,21 +1,44 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { numberOrNull, safeParseJson } from './helpers.ts';
 
-const GEMINI_LEVELS = ['off', 'low', 'medium', 'high'];
+const GEMINI_LEVELS = ['off', 'minimal', 'low', 'medium', 'high'] as const;
 
-// Maps a reasoning level to a thinkingBudget token count. Gemini's API uses
-// a numeric budget; 0 disables thinking. These are reasonable defaults —
-// the user does not pick a number directly.
+// Gemini 2.5 uses numeric thinkingBudget. 0 disables (where allowed); -1 is dynamic.
 const GEMINI_BUDGET_BY_LEVEL: Record<string, number> = {
+  off: 0,
+  minimal: 512,
   low: 2048,
   medium: 8192,
   high: 24576
 };
 
+const GEMINI_LEVEL_ENUM: Record<string, ThinkingLevel> = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH
+};
+
 function geminiApiBaseUrl(baseUrl: string | undefined): string {
   const value = String(baseUrl || 'https://generativelanguage.googleapis.com').trim().replace(/\/+$/, '');
   return value.endsWith('/v1beta') ? value : `${value}/v1beta`;
+}
+
+/** Gemini 3+ uses thinkingLevel; 2.5 uses thinkingBudget. */
+function usesThinkingLevel(modelId?: string): boolean {
+  const id = String(modelId || '').toLowerCase();
+  // Gemini 3.x family (and future 4.x) prefer thinkingLevel
+  return /gemini-([3-9]|[1-9]\d)/.test(id);
+}
+
+function isThinkingCapableModel(modelId?: string): boolean {
+  const id = String(modelId || '').toLowerCase();
+  // 2.5+ and 3+ thinking series; exclude pure embedding/image-only when obvious
+  if (!id.includes('gemini')) return false;
+  if (/embedding|imagen|tts|aqa/.test(id)) return false;
+  return /gemini-2\.5|gemini-3|gemini-2\.0-flash-thinking|thinking/.test(id) ||
+    /gemini-([3-9]|[1-9]\d)/.test(id);
 }
 
 export class GeminiProvider extends BaseProvider {
@@ -33,40 +56,32 @@ export class GeminiProvider extends BaseProvider {
   createClient(apiKey, _baseUrl) {
     const key = apiKey || '';
     if (!this._clients.has(key)) {
-      this._clients.set(key, { genAI: new GoogleGenerativeAI(key), models: new Map() });
+      this._clients.set(key, new GoogleGenAI({ apiKey: key }));
     }
-    return this._clients.get(key);
-  }
-
-  _getModel(client, modelId) {
-    const modelName = modelId || 'gemini-2.0-flash';
-    if (!client.models.has(modelName)) {
-      client.models.set(modelName, client.genAI.getGenerativeModel({ model: modelName }));
-    }
-    return client.models.get(modelName);
+    return this._clients.get(key) as GoogleGenAI;
   }
 
   _convertTools(tools) {
     if (!tools?.length) return undefined;
-    return tools.map(t => {
-      const fn = t.function || t;
-      return {
-        functionDeclarations: [{
+    return [{
+      functionDeclarations: tools.map(t => {
+        const fn = t.function || t;
+        return {
           name: fn.name,
           description: fn.description || '',
           parameters: fn.parameters || { type: 'object', properties: {} }
-        }]
-      };
-    });
+        };
+      })
+    }];
   }
 
   _buildContents(messages) {
-    let systemInstruction = null;
+    let systemInstruction: string | null = null;
     const contents = [];
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        systemInstruction = msg.content;
+        systemInstruction = typeof msg.content === 'string' ? msg.content : String(msg.content || '');
       } else {
         const role = msg.role === 'assistant' ? 'model' : 'user';
         if (typeof msg.content === 'string') {
@@ -93,8 +108,8 @@ export class GeminiProvider extends BaseProvider {
   }
 
   _extractToolCalls(response) {
-    if (!response?.candidates?.[0]?.content?.parts) return null;
-    const parts = response.candidates[0].content.parts;
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (!parts?.length) return null;
     const calls = [];
     for (const part of parts) {
       if (part.functionCall) {
@@ -108,48 +123,74 @@ export class GeminiProvider extends BaseProvider {
     return calls.length ? calls : null;
   }
 
+  _extractTextAndThoughts(parts: Array<Record<string, unknown>> | undefined): { text: string; reasoning: string } {
+    if (!parts?.length) return { text: '', reasoning: '' };
+    let text = '';
+    let reasoning = '';
+    for (const part of parts) {
+      const partText = typeof part.text === 'string' ? part.text : '';
+      if (!partText) continue;
+      if (part.thought === true) {
+        reasoning += partText;
+      } else {
+        text += partText;
+      }
+    }
+    return { text, reasoning };
+  }
+
+  _buildConfig({ max_tokens, temperature, top_p, systemInstruction, tools, reasoning, model }) {
+    const config: Record<string, unknown> = {};
+    if (max_tokens) config.maxOutputTokens = max_tokens;
+    if (temperature != null) config.temperature = temperature;
+    if (top_p != null) config.topP = top_p;
+    if (systemInstruction) config.systemInstruction = systemInstruction;
+    if (tools?.length) config.tools = tools;
+
+    const thinkingConfig = this._thinkingConfig(reasoning, model);
+    if (Object.keys(thinkingConfig).length) {
+      config.thinkingConfig = thinkingConfig;
+    }
+    return config;
+  }
+
   async *streamChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools, reasoning }) {
     const client = this.createClient(apiKey);
-    const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
     const geminiTools = this._convertTools(tools);
+    const config = this._buildConfig({
+      max_tokens, temperature, top_p, systemInstruction, tools: geminiTools, reasoning, model
+    });
 
-    const generationConfig = {};
-    if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
-    if (temperature != null) generationConfig.temperature = temperature;
-    if (top_p != null) generationConfig.topP = top_p;
-    Object.assign(generationConfig, this._thinkingConfig(reasoning));
-
-    const request = {
+    const stream = await client.models.generateContentStream({
+      model: model || 'gemini-2.0-flash',
       contents,
-      ...(systemInstruction ? { systemInstruction } : {}),
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
-      ...(geminiTools ? { tools: geminiTools } : {})
-    };
+      config
+    });
 
-    const result = await geminiModel.generateContentStream(request);
     let toolCallIndex = 0;
-    for await (const chunk of result.stream) {
-      const text = chunk.text?.();
-      const parts = chunk.candidates?.[0]?.content?.parts || [];
+    for await (const chunk of stream) {
+      const parts = (chunk.candidates?.[0]?.content?.parts || []) as Array<Record<string, unknown>>;
+      const { text, reasoning: thoughtText } = this._extractTextAndThoughts(parts);
       const functionCalls = parts.filter(p => p.functionCall);
 
-      if (text || functionCalls.length) {
+      if (text || thoughtText || functionCalls.length) {
         const toolCallDeltas = functionCalls.map((fc) => {
           const idx = toolCallIndex++;
+          const call = fc.functionCall as { name?: string; args?: unknown };
           return {
             index: idx,
             id: `call_${Math.random().toString(36).slice(2, 11)}`,
-            name: fc.functionCall.name,
-            arguments: typeof fc.functionCall.args === 'string'
-              ? fc.functionCall.args
-              : JSON.stringify(fc.functionCall.args || {})
+            name: call?.name,
+            arguments: typeof call?.args === 'string'
+              ? call.args
+              : JSON.stringify(call?.args || {})
           };
         });
 
         yield {
           content: text || '',
-          reasoning: '',
+          reasoning: thoughtText || '',
           ...(toolCallDeltas.length ? { toolCallDeltas } : {})
         };
       }
@@ -158,30 +199,27 @@ export class GeminiProvider extends BaseProvider {
 
   async completeChat({ apiKey, model, messages, max_tokens, temperature, top_p, tools, reasoning }) {
     const client = this.createClient(apiKey);
-    const geminiModel = this._getModel(client, model);
     const { systemInstruction, contents } = this._buildContents(messages);
     const geminiTools = this._convertTools(tools);
+    const config = this._buildConfig({
+      max_tokens, temperature, top_p, systemInstruction, tools: geminiTools, reasoning, model
+    });
 
-    const generationConfig = {};
-    if (max_tokens) generationConfig.maxOutputTokens = max_tokens;
-    if (temperature != null) generationConfig.temperature = temperature;
-    if (top_p != null) generationConfig.topP = top_p;
-    Object.assign(generationConfig, this._thinkingConfig(reasoning));
-
-    const request = {
+    const response = await client.models.generateContent({
+      model: model || 'gemini-2.0-flash',
       contents,
-      ...(systemInstruction ? { systemInstruction } : {}),
-      ...(Object.keys(generationConfig).length ? { generationConfig } : {}),
-      ...(geminiTools ? { tools: geminiTools } : {})
-    };
+      config
+    });
 
-    const result = await geminiModel.generateContent(request);
-    const response = result.response;
-    const text = response.text();
+    const parts = (response.candidates?.[0]?.content?.parts || []) as Array<Record<string, unknown>>;
+    const { text, reasoning: thoughtText } = this._extractTextAndThoughts(parts);
+
+    // Fallback: some SDK paths expose .text helper only for non-thought parts
+    const fallbackText = !text && typeof response.text === 'string' ? response.text : text;
 
     return {
-      content: text ?? '',
-      reasoning: '',
+      content: fallbackText ?? '',
+      reasoning: thoughtText || '',
       usage: response.usageMetadata ? {
         input_tokens: response.usageMetadata.promptTokenCount,
         output_tokens: response.usageMetadata.candidatesTokenCount,
@@ -192,58 +230,62 @@ export class GeminiProvider extends BaseProvider {
   }
 
   /**
-   * Gemini exposes thinking via `generationConfig.thinkingConfig.thinkingBudget`
-   * (numeric; 0 disables). Per the official docs, 2.5+ models support it. We
-   * probe `models.list()` for a per-model thinking indicator and only return
-   * supported: true when the API confirms it — no model-name guessing.
+   * Thinking is supported on Gemini 2.5 / 3 series. Prefer model-id evidence
+   * from the official thinking matrix rather than inventing per-model fields
+   * that the list API does not expose.
    */
-  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
-    try {
-      const url = `${geminiApiBaseUrl(baseUrl)}/models?key=${encodeURIComponent(apiKey || '')}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
-      const data = await res.json();
-      const list = data?.models ?? [];
-      const normalized = String(modelId || '').replace(/^models\//, '');
-      const found = list.find((m: { name?: string }) => String(m?.name || '').replace(/^models\//, '') === normalized);
-      if (!found) return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
-      // The Gemini API exposes thinkingBudget support via the model's
-      // supportedGenerationMethods + a thinking config flag. We treat the
-      // presence of a thinkingBudget-related field as positive evidence.
-      const hasThinking = !!(found as Record<string, unknown>).thinkingConfig ||
-        !!(found as Record<string, unknown>).thinkingBudget ||
-        Array.isArray((found as Record<string, unknown>).supportedGenerationMethods) &&
-          ((found as Record<string, unknown>).supportedGenerationMethods as string[]).includes('generateContent');
-      if (!hasThinking) {
-        return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'api' };
-      }
-      return {
-        supported: true,
-        levels: GEMINI_LEVELS as ReasoningCapabilities['levels'],
-        paramShape: 'gemini_thinking_budget',
-        source: 'api'
-      };
-    } catch {
-      return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'unknown' };
+  async getReasoningCapabilities(_apiKey, _baseUrl, modelId): Promise<ReasoningCapabilities> {
+    if (!isThinkingCapableModel(modelId)) {
+      return { supported: false, levels: [], paramShape: 'gemini_thinking_budget', source: 'sdk' };
     }
+    return {
+      supported: true,
+      levels: [...GEMINI_LEVELS] as ReasoningCapabilities['levels'],
+      paramShape: 'gemini_thinking_budget',
+      source: 'sdk'
+    };
   }
 
   /**
-   * Translate a reasoning level into Gemini's native thinkingConfig shape.
-   * 'off' means thinkingBudget: 0 (disabled). Other levels map to token
-   * budgets via GEMINI_BUDGET_BY_LEVEL.
+   * Gemini 3+: thinkingLevel (+ includeThoughts).
+   * Gemini 2.5: thinkingBudget (+ includeThoughts).
    */
-  _thinkingConfig(reasoning?: ReasoningRequest): Record<string, unknown> {
+  _thinkingConfig(reasoning?: ReasoningRequest, modelId?: string): Record<string, unknown> {
     if (!reasoning || !reasoning.level) return {};
-    if (reasoning.level === 'off') return { thinkingConfig: { thinkingBudget: 0 } };
-    const budget = GEMINI_BUDGET_BY_LEVEL[reasoning.level];
-    if (!budget) return {};
-    return { thinkingConfig: { thinkingBudget: budget, includeThoughts: true } };
+
+    const level = reasoning.level;
+    const preferLevel = usesThinkingLevel(modelId);
+
+    if (preferLevel) {
+      if (level === 'off' || level === 'disabled' || level === 'none') {
+        // Gemini 3 Flash: full off not always supported — use MINIMAL
+        return { thinkingLevel: ThinkingLevel.MINIMAL, includeThoughts: false };
+      }
+      const enumLevel = GEMINI_LEVEL_ENUM[level] || GEMINI_LEVEL_ENUM.medium;
+      return { thinkingLevel: enumLevel, includeThoughts: true };
+    }
+
+    // Gemini 2.5 budget path
+    if (level === 'off' || level === 'disabled' || level === 'none') {
+      return { thinkingBudget: 0, includeThoughts: false };
+    }
+    const budget = GEMINI_BUDGET_BY_LEVEL[level];
+    if (budget == null) return {};
+    return { thinkingBudget: budget, includeThoughts: true };
   }
 
   applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
-    const genConfig = (body.generationConfig as Record<string, unknown>) || {};
-    return { ...body, generationConfig: { ...genConfig, ...this._thinkingConfig(reasoning) } };
+    const modelId = typeof body.model === 'string' ? body.model : undefined;
+    const genConfig = (body.generationConfig as Record<string, unknown>) ||
+      (body.config as Record<string, unknown>) ||
+      {};
+    const thinkingConfig = this._thinkingConfig(reasoning, modelId);
+    if (!Object.keys(thinkingConfig).length) return body;
+    return {
+      ...body,
+      generationConfig: { ...genConfig, thinkingConfig },
+      config: { ...genConfig, thinkingConfig }
+    };
   }
 
   async fetchModels(apiKey, baseUrl) {
@@ -259,7 +301,19 @@ export class GeminiProvider extends BaseProvider {
         .filter(Boolean)
         .sort();
     } catch {
-      return [];
+      // Fallback via SDK if REST fails
+      try {
+        const client = this.createClient(apiKey);
+        const pager = await client.models.list();
+        const ids: string[] = [];
+        for await (const m of pager) {
+          const name = String(m.name || '').replace(/^models\//, '');
+          if (name) ids.push(name);
+        }
+        return ids.sort();
+      } catch {
+        return [];
+      }
     }
   }
 
@@ -282,4 +336,12 @@ export class GeminiProvider extends BaseProvider {
       return null;
     }
   }
+}
+
+/** Exported for unit tests */
+export function mapGeminiThinkingConfig(
+  reasoning?: ReasoningRequest,
+  modelId?: string
+): Record<string, unknown> {
+  return new GeminiProvider()._thinkingConfig(reasoning, modelId);
 }

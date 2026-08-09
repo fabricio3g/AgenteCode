@@ -91,7 +91,9 @@ describe('agent-strict-fallback', () => {
     expect(content).toContain('Battery storage can shift midday solar generation');
     expect(content).toMatch(/\[1\]|\[2\]|# distributed solar microgrids/i);
     expect(content).toContain('https://example.com/storage-economics');
-    expect(content).toMatch(/Partial answer from sources already retrieved/i);
+    // Finished-product framing — no step-limit / partial-agent chrome
+    expect(content).not.toMatch(/Partial answer from sources already retrieved/i);
+    expect(content).not.toMatch(/step limit/i);
     expect(content).not.toContain('Agent stopped because');
     expect(content).not.toContain('What was completed:');
     // Prefer prose over rigid bullet dump of raw snippets

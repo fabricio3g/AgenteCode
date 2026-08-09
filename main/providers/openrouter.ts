@@ -1,6 +1,13 @@
-import OpenAI from 'openai';
+import { OpenRouter } from '@openrouter/sdk';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeOpenAiBaseUrl, safeParseJson } from './helpers.ts';
+
+const OPENROUTER_DEFAULT_LEVELS = [
+  'off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'
+] as const;
+
+type OpenRouterEffort =
+  | 'max' | 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
 
 export class OpenRouterProvider extends BaseProvider {
   name = 'openrouter';
@@ -14,24 +21,22 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   createClient(apiKey, baseUrl) {
-    const clientKey = `${apiKey || ''}::${normalizeOpenAiBaseUrl(baseUrl)}`;
+    const normalized = normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1';
+    const clientKey = `${apiKey || ''}::${normalized}`;
     if (!this._clients.has(clientKey)) {
-      this._clients.set(clientKey, new OpenAI({
-        apiKey: apiKey || 'not-needed',
-        baseURL: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
-        defaultHeaders: {
-          'HTTP-Referer': 'https://chatea.app',
-          'X-Title': 'Chatea'
-        }
+      this._clients.set(clientKey, new OpenRouter({
+        apiKey: apiKey || '',
+        serverURL: normalized,
+        httpReferer: 'https://chatea.app',
+        appTitle: 'Chatea'
       }));
     }
-    return this._clients.get(clientKey);
+    return this._clients.get(clientKey) as OpenRouter;
   }
 
   logRequestError(stage, error, details = {}) {
-    const status = error?.status ?? error?.code ?? error?.response?.status;
-    const headers = error?.headers ?? error?.response?.headers;
-    const body = error?.error ?? error?.response?.data ?? error?.body;
+    const status = error?.status ?? error?.code ?? error?.response?.status ?? error?.statusCode;
+    const body = error?.error ?? error?.response?.data ?? error?.body ?? error?.data;
     console.error('[OpenRouter] request failed', {
       stage,
       status,
@@ -39,61 +44,75 @@ export class OpenRouterProvider extends BaseProvider {
       code: error?.code,
       type: error?.type,
       details,
-      headers,
       body
     });
+  }
+
+  _chatRequestBase({ model, messages, tools, reasoning, params, stream }) {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params || {}).filter(([, v]) => v !== undefined)
+    );
+    return {
+      model,
+      messages,
+      ...(tools?.length ? { tools } : {}),
+      ...this._reasoningBody(reasoning),
+      ...cleanParams,
+      stream
+    };
   }
 
   async *streamChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
     const requestDetails = {
       model,
-      baseUrl: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
       messageCount: messages?.length || 0,
       toolCount: tools?.length || 0,
-      stream: true,
-      params: Object.keys(params || {})
+      stream: true
     };
 
     let stream;
     try {
       console.log('[OpenRouter] stream request', requestDetails);
-      stream = await client.chat.completions.create({
-        model,
-        messages,
-        ...(tools?.length ? { tools } : {}),
-        ...this._reasoningBody(reasoning),
-        ...params,
-        stream: true,
-        stream_options: { include_usage: true }
-      }, { signal });
+      stream = await client.chat.send({
+        chatRequest: this._chatRequestBase({
+          model, messages, tools, reasoning, params, stream: true
+        }),
+        httpReferer: 'https://chatea.app',
+        appTitle: 'Chatea'
+      }, signal ? { signal } : undefined);
     } catch (error) {
       this.logRequestError('stream.create', error, requestDetails);
       throw error;
     }
 
     try {
-      for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta || {};
-      const content = delta.content;
-      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      const toolCallDeltas = delta.tool_calls;
+      // SDK returns EventStream when stream: true
+      for await (const chunk of stream as AsyncIterable<Record<string, unknown>>) {
+        const choices = (chunk as { choices?: Array<{ delta?: Record<string, unknown> }> }).choices;
+        const delta = choices?.[0]?.delta || {};
+        const content = delta.content as string | null | undefined;
+        const reasoningText = (delta.reasoning ?? delta.reasoning_content ?? delta.thinking) as string | undefined;
+        const toolCallDeltas = (delta.toolCalls ?? delta.tool_calls) as Array<Record<string, unknown>> | undefined;
 
-      if (content || reasoning || toolCallDeltas) {
-        yield {
-          content: content ?? '',
-          reasoning: reasoning ?? '',
-          ...(toolCallDeltas ? {
-            toolCallDeltas: toolCallDeltas.map(tc => ({
-              index: tc.index ?? 0,
-              id: tc.id ?? undefined,
-              name: tc.function?.name ?? undefined,
-              arguments: tc.function?.arguments ?? undefined
-            }))
-          } : {})
-        };
+        if (content || reasoningText || toolCallDeltas) {
+          yield {
+            content: content ?? '',
+            reasoning: reasoningText ?? '',
+            ...(toolCallDeltas ? {
+              toolCallDeltas: toolCallDeltas.map((tc, i) => {
+                const fn = (tc.function || {}) as { name?: string; arguments?: string };
+                return {
+                  index: (tc.index as number) ?? i,
+                  id: (tc.id as string) ?? undefined,
+                  name: fn.name ?? undefined,
+                  arguments: fn.arguments ?? undefined
+                };
+              })
+            } : {})
+          };
+        }
       }
-    }
     } catch (error) {
       this.logRequestError('stream.iterate', error, requestDetails);
       throw error;
@@ -102,70 +121,117 @@ export class OpenRouterProvider extends BaseProvider {
 
   async completeChat({ apiKey, baseUrl, model, messages, tools, reasoning, signal, ...params }) {
     const client = this.createClient(apiKey, baseUrl);
-
-    const cleanParams = Object.fromEntries(
-      Object.entries(params).filter(([, v]) => v !== undefined)
-    );
     const requestDetails = {
       model,
-      baseUrl: normalizeOpenAiBaseUrl(baseUrl) || 'https://openrouter.ai/api/v1',
       messageCount: messages?.length || 0,
       toolCount: tools?.length || 0,
-      stream: false,
-      params: Object.keys(cleanParams || {})
+      stream: false
     };
 
     let response;
     try {
       console.log('[OpenRouter] completion request', requestDetails);
-      response = await client.chat.completions.create({
-        model,
-        messages,
-        ...(tools?.length ? { tools } : {}),
-        ...this._reasoningBody(reasoning),
-        ...cleanParams,
-        stream: false
-      }, { signal });
+      response = await client.chat.send({
+        chatRequest: this._chatRequestBase({
+          model, messages, tools, reasoning, params, stream: false
+        }),
+        httpReferer: 'https://chatea.app',
+        appTitle: 'Chatea'
+      }, signal ? { signal } : undefined);
     } catch (error) {
       this.logRequestError('completion.create', error, requestDetails);
       throw error;
     }
 
-    const choice = response?.choices?.[0] || {};
-    const message = choice.message || {};
-    const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+    const result = response as {
+      choices?: Array<{ message?: Record<string, unknown> }>;
+      usage?: Record<string, unknown>;
+    };
+    const message = result?.choices?.[0]?.message || {};
+    const rawReasoning = message.reasoning ?? message.reasoning_content ?? message.thinking;
+    const toolCalls = message.toolCalls ?? message.tool_calls;
 
     return {
-      content: message.content || '',
+      content: (message.content as string) || '',
       reasoning: rawReasoning ? String(rawReasoning) : '',
-      usage: response?.usage || null,
-      toolCalls: message.tool_calls ? message.tool_calls.map(tc => ({
-        id: tc.id,
-        name: tc.function?.name || '',
-        arguments: safeParseJson(tc.function?.arguments) || tc.function?.arguments || ''
-      })) : null
+      usage: result?.usage || null,
+      toolCalls: Array.isArray(toolCalls) ? toolCalls.map((tc: Record<string, unknown>) => {
+        const fn = (tc.function || {}) as { name?: string; arguments?: string };
+        return {
+          id: tc.id as string,
+          name: fn.name || '',
+          arguments: safeParseJson(fn.arguments) || fn.arguments || ''
+        };
+      }) : null
     };
   }
 
   /**
-   * OpenRouter routes to many underlying providers, each with its own
-   * reasoning support. OpenRouter's `/models` endpoint does not reliably
-   * expose reasoning capability fields per model, so we return 'unknown'
-   * (selector hidden) by default. If OpenRouter exposes a clear field in
-   * the future, override this to read it.
+   * Use OpenRouter models.list reasoning metadata when available
+   * (`supportedEfforts`, `mandatory`, etc.).
    */
-  async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
-    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+  async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
+    try {
+      const client = this.createClient(apiKey, baseUrl);
+      const models = await collectOpenRouterModels(client);
+      const found = models.find(m =>
+        String(m.id || m.canonicalSlug || '') === String(modelId)
+      );
+      if (!found) {
+        return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+      }
+
+      const reasoningMeta = found.reasoning as {
+        supportedEfforts?: Array<string | null> | null;
+        mandatory?: boolean;
+        defaultEffort?: string | null;
+      } | undefined;
+
+      if (!reasoningMeta) {
+        const params = (found.supportedParameters ?? found.supported_parameters) as string[] | undefined;
+        if (Array.isArray(params) && (params.includes('reasoning') || params.includes('include_reasoning'))) {
+          return {
+            supported: true,
+            levels: [...OPENROUTER_DEFAULT_LEVELS] as ReasoningCapabilities['levels'],
+            paramShape: 'openai_reasoning_effort',
+            source: 'api'
+          };
+        }
+        return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'api' };
+      }
+
+      const efforts = Array.isArray(reasoningMeta.supportedEfforts)
+        ? reasoningMeta.supportedEfforts.filter((e): e is string => !!e)
+        : [...OPENROUTER_DEFAULT_LEVELS].filter(l => l !== 'off');
+
+      const levels = reasoningMeta.mandatory
+        ? efforts
+        : ['off', ...efforts.filter(e => e !== 'off')];
+
+      return {
+        supported: true,
+        levels: levels as ReasoningCapabilities['levels'],
+        paramShape: 'openai_reasoning_effort',
+        source: 'api'
+      };
+    } catch {
+      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    }
   }
 
   /**
-   * OpenRouter follows the OpenAI `reasoning_effort` convention for models
-   * that support it. We forward the param when a level is chosen; the
-   * upstream provider (via OpenRouter) will reject it if unsupported.
+   * Prefer unified `reasoning: { effort }` object (official OpenRouter shape).
    */
   _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
     if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
-    return { reasoning_effort: reasoning.level };
+    if (reasoning.level === 'enabled' || reasoning.level === 'on') {
+      return { reasoning: { effort: 'medium' as OpenRouterEffort } };
+    }
+    if (reasoning.level === 'disabled') {
+      return { reasoning: { effort: 'none' as OpenRouterEffort } };
+    }
+    const effort = reasoning.level as OpenRouterEffort;
+    return { reasoning: { effort } };
   }
 
   applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
@@ -173,11 +239,10 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   async fetchModels(apiKey, baseUrl) {
-    const client = this.createClient(apiKey, baseUrl);
     try {
-      const response = await client.models.list();
-      const list = response?.data ?? [];
-      return list.map(m => m.id).filter(Boolean).sort();
+      const client = this.createClient(apiKey, baseUrl);
+      const models = await collectOpenRouterModels(client);
+      return [...new Set(models.map(m => String(m.id || '')).filter(Boolean))].sort();
     } catch {
       return [];
     }
@@ -186,19 +251,136 @@ export class OpenRouterProvider extends BaseProvider {
   async fetchModelMetadata(apiKey, baseUrl, modelId) {
     try {
       const client = this.createClient(apiKey, baseUrl);
-      const response = await client.models.list();
-      const list = response?.data ?? [];
-      const found = list.find(entry => String(entry?.id || '') === String(modelId));
-      if (found?.context_length) {
-        const result = { context_window: found.context_length };
-        if (found.top_provider?.max_completion_tokens) {
-          result.max_completion_tokens = found.top_provider.max_completion_tokens;
+      const parts = parseOpenRouterModelId(modelId);
+      if (parts) {
+        try {
+          const detail = await client.models.get({
+            author: parts.author,
+            slug: parts.slug,
+            httpReferer: 'https://chatea.app',
+            appTitle: 'Chatea'
+          });
+          const meta = metadataFromOpenRouterModel(unwrapOpenRouterModelDetail(detail));
+          if (meta) return meta;
+        } catch {
+          // fall through to list
         }
-        return result;
       }
+
+      const models = await collectOpenRouterModels(client);
+      const found = models.find(m => String(m.id || '') === String(modelId));
+      return metadataFromOpenRouterModel(found || null);
     } catch {
       // fallback
     }
     return null;
   }
+}
+
+/**
+ * OpenRouter SDK pages are shaped as:
+ *   { result: { data: Model[], links, totalCount } }
+ * Older/compat shapes may use top-level `data`.
+ */
+export function extractModelsFromOpenRouterListPage(page: unknown): Array<Record<string, unknown>> {
+  if (!page || typeof page !== 'object') return [];
+  const rec = page as Record<string, unknown>;
+
+  const fromResult = rec.result;
+  if (fromResult && typeof fromResult === 'object') {
+    const result = fromResult as Record<string, unknown>;
+    if (Array.isArray(result.data)) return result.data as Array<Record<string, unknown>>;
+  }
+
+  if (Array.isArray(rec.data)) return rec.data as Array<Record<string, unknown>>;
+
+  // Single model object
+  if (typeof rec.id === 'string' || typeof rec.canonicalSlug === 'string') {
+    return [rec];
+  }
+
+  return [];
+}
+
+export function parseOpenRouterModelId(modelId: string): { author: string; slug: string } | null {
+  const raw = String(modelId || '').trim();
+  if (!raw || !raw.includes('/')) return null;
+  const [author, ...rest] = raw.split('/');
+  const slug = rest.join('/');
+  if (!author || !slug) return null;
+  return { author, slug };
+}
+
+export function metadataFromOpenRouterModel(model: Record<string, unknown> | null | undefined): {
+  context_window: number;
+  max_completion_tokens?: number;
+} | null {
+  if (!model || typeof model !== 'object') return null;
+  const contextLength = model.contextLength ?? model.context_length;
+  const n = Number(contextLength);
+  if (!Number.isFinite(n) || n <= 0) return null;
+
+  const result: { context_window: number; max_completion_tokens?: number } = {
+    context_window: Math.floor(n)
+  };
+
+  const top = (model.topProvider ?? model.top_provider) as
+    | { maxCompletionTokens?: number; max_completion_tokens?: number }
+    | undefined;
+  const maxOut = Number(top?.maxCompletionTokens ?? top?.max_completion_tokens);
+  if (Number.isFinite(maxOut) && maxOut > 0) {
+    result.max_completion_tokens = Math.floor(maxOut);
+  }
+
+  return result;
+}
+
+function unwrapOpenRouterModelDetail(detail: unknown): Record<string, unknown> | null {
+  if (!detail || typeof detail !== 'object') return null;
+  const rec = detail as Record<string, unknown>;
+  // Possible wrappers: { data }, { result }, { result: { data } }
+  if (rec.data && typeof rec.data === 'object' && !Array.isArray(rec.data)) {
+    return rec.data as Record<string, unknown>;
+  }
+  if (rec.result && typeof rec.result === 'object') {
+    const result = rec.result as Record<string, unknown>;
+    if (result.data && typeof result.data === 'object' && !Array.isArray(result.data)) {
+      return result.data as Record<string, unknown>;
+    }
+    if (typeof result.id === 'string' || typeof result.contextLength === 'number') {
+      return result;
+    }
+  }
+  if (typeof rec.id === 'string' || typeof rec.contextLength === 'number') {
+    return rec;
+  }
+  return null;
+}
+
+async function collectOpenRouterModels(client: OpenRouter): Promise<Array<Record<string, unknown>>> {
+  const page = await client.models.list({
+    httpReferer: 'https://chatea.app',
+    appTitle: 'Chatea'
+  });
+  const models: Array<Record<string, unknown>> = [];
+
+  // PageIterator yields GetModelsResponse pages
+  if (page && typeof (page as AsyncIterable<unknown>)[Symbol.asyncIterator] === 'function') {
+    for await (const item of page as AsyncIterable<unknown>) {
+      models.push(...extractModelsFromOpenRouterListPage(item));
+      if (models.length > 5000) break;
+    }
+  }
+
+  // Also accept a plain first page object
+  if (!models.length) {
+    models.push(...extractModelsFromOpenRouterListPage(page));
+  }
+
+  return models;
+}
+
+/** Exported for unit tests */
+export function mapOpenRouterReasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+  return new OpenRouterProvider()._reasoningBody(reasoning);
 }

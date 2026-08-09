@@ -101,7 +101,17 @@ async function runProviderSearch(provider: string, query: string, maxResults: nu
   }
 }
 
-async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<string | null> {
+type FetchedPage = {
+  content: string;
+  title?: string;
+  site_name?: string;
+  author?: string;
+  published_at?: string;
+  quality?: string;
+  warning?: string;
+};
+
+async function fetchPageContent(url: string, options: Record<string, unknown> = {}): Promise<FetchedPage | null> {
   try {
     if (options?.use_local_readability !== false) {
       const scraped = await scrapeUrlStructured({
@@ -109,11 +119,31 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
         maxLength: 30000,
         timeoutMs: 18000,
         maxLinks: 80,
-      }) as { content?: string; excerpt?: string; title?: string; error?: string };
+      }) as {
+        content?: string;
+        excerpt?: string;
+        title?: string;
+        site_name?: string;
+        author?: string;
+        published_at?: string;
+        quality?: string;
+        warning?: string;
+        error?: string;
+      };
       const readable = compactPageContent(scraped?.content || '', String(options?.search_query || ''), 9000);
       const header = [scraped?.title, scraped?.excerpt].map(normalizeWhitespace).filter(Boolean).join('\n\n');
       const content = [header, readable].filter(Boolean).join('\n\n');
-      if (content) return content.slice(0, 10000);
+      if (content) {
+        return {
+          content: content.slice(0, 10000),
+          title: scraped?.title,
+          site_name: scraped?.site_name,
+          author: scraped?.author,
+          published_at: scraped?.published_at,
+          quality: scraped?.quality,
+          warning: scraped?.warning
+        };
+      }
     }
 
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
@@ -125,7 +155,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
     const resp = await fetchWithRetry(readerUrl, { headers, timeout_ms: 22000 });
     if (!resp.ok) return null;
     const text = await resp.text();
-    return text.slice(0, 10000);
+    return { content: text.slice(0, 10000), quality: 'ok' };
   } catch {
     return null;
   }
@@ -256,17 +286,43 @@ async function enrichWithDeepContent(results: SearchResult[], limit: number, emi
   const fetched = await mapWithConcurrency(pick, concurrency, async (item, i) => {
     emit('fetching_page', `Reading page ${i + 1}/${pick.length}: ${item.r.url}`);
     try {
-      const content = await fetchPageContent(item.r.url, {
+      const page = await fetchPageContent(item.r.url, {
         ...options,
         search_query: options?.search_query || item.r.title || item.r.snippet || ''
       });
+      const content = page?.content || '';
+      const meta = {
+        ...(item.r.metadata || {}),
+        site_name: page?.site_name || (item.r.metadata as Record<string, unknown> | undefined)?.site_name,
+        author: page?.author || (item.r.metadata as Record<string, unknown> | undefined)?.author,
+        quality: page?.quality || (normalizeWhitespace(content).length < 200 ? 'thin' : 'ok'),
+        warning: page?.warning,
+        scrape_quality: normalizeWhitespace(content).length < 200 ? 'thin' : 'ok'
+      };
       if (!content || normalizeWhitespace(content).length < 200) {
-        // thin: keep original result without full_content weight
-        return { ...item.r, full_content: content || undefined, scrape_quality: 'thin' as const };
+        return {
+          ...item.r,
+          title: page?.title || item.r.title,
+          full_content: content || undefined,
+          published_at: page?.published_at || item.r.published_at,
+          metadata: meta,
+          scrape_quality: 'thin' as const
+        };
       }
-      return { ...item.r, full_content: content, scrape_quality: 'ok' as const };
+      return {
+        ...item.r,
+        title: page?.title || item.r.title,
+        full_content: content,
+        published_at: page?.published_at || item.r.published_at,
+        metadata: meta,
+        scrape_quality: 'ok' as const
+      };
     } catch {
-      return { ...item.r, scrape_quality: 'blocked' as const };
+      return {
+        ...item.r,
+        scrape_quality: 'blocked' as const,
+        metadata: { ...(item.r.metadata || {}), quality: 'blocked', scrape_quality: 'blocked' }
+      };
     }
   });
 
@@ -309,7 +365,10 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     return { query: normalizedQuery, results: [], context: '', provider_used: 'none', search_mode: searchMode };
   }
 
-  const cacheKey = getCacheKey(effectiveQuery, searchMode, explicitProvider);
+  const cacheDiscriminator = explicitProvider === 'aggregator' || explicitProvider === 'auto'
+    ? JSON.stringify([options?.aggregator_engines || [], options?.safe_search ?? 2])
+    : '';
+  const cacheKey = getCacheKey(effectiveQuery, searchMode, explicitProvider, cacheDiscriminator);
   const cached = getCachedResult(cacheKey);
   if (cached) {
     const cachedResult = cached as { provider_used: string };
@@ -397,7 +456,10 @@ export async function webSearch({ query, context, deep, mode, options }: { query
       error: (lastError instanceof Error ? lastError.message : 'No search results were returned.'),
       error_type: info.error_type,
       retryable: info.retryable,
-      provider_attempts: providerAttempts
+      provider_attempts: providerAttempts,
+      engine_attempts: (searchOptions.aggregator_diagnostics as { engine_attempts?: unknown[] } | undefined)?.engine_attempts || [],
+      aggregation_elapsed_ms: (searchOptions.aggregator_diagnostics as { elapsed_ms?: number } | undefined)?.elapsed_ms,
+      aggregation_deadline_reached: (searchOptions.aggregator_diagnostics as { deadline_reached?: boolean } | undefined)?.deadline_reached,
     };
   }
 
@@ -409,8 +471,13 @@ export async function webSearch({ query, context, deep, mode, options }: { query
 
   let mergedResults = mergeAndRankResults(providerResults, effectiveQuery, responseLimit);
 
-  if (searchMode !== 'search') {
-    const deepLimit = Math.min(mergedResults.length, searchMode === 'max' ? 12 : 8);
+  // All research product modes scrape pages so synthesis uses real text, not SERP titles alone.
+  // Search = light (top 4); deep = 8; max = 12.
+  {
+    const deepLimit = Math.min(
+      mergedResults.length,
+      searchMode === 'max' ? 12 : searchMode === 'deep' ? 8 : 4
+    );
     const enriched = await enrichWithDeepContent(mergedResults, deepLimit, emit, {
       ...searchOptions,
       scrape_concurrency: searchMode === 'max' ? 4 : 3
@@ -421,8 +488,8 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     mergedResults = mergeAndRankResults([...withContent, ...without], effectiveQuery, responseLimit);
     const okCount = withContent.length;
     emit('deep_done', okCount
-      ? `Deep content ready (${okCount} readable page${okCount === 1 ? '' : 's'})`
-      : 'Deep fetch finished but little readable content was extracted');
+      ? `Page content ready (${okCount} readable page${okCount === 1 ? '' : 's'})`
+      : 'Page fetch finished but little readable content was extracted');
   }
 
   const searchedAt = new Date().toISOString();
@@ -441,7 +508,10 @@ export async function webSearch({ query, context, deep, mode, options }: { query
     provider_used: providerUsed,
     search_mode: searchMode,
     searched_at: searchedAt,
-    provider_attempts: providerAttempts
+    provider_attempts: providerAttempts,
+    engine_attempts: (searchOptions.aggregator_diagnostics as { engine_attempts?: unknown[] } | undefined)?.engine_attempts || [],
+    aggregation_elapsed_ms: (searchOptions.aggregator_diagnostics as { elapsed_ms?: number } | undefined)?.elapsed_ms,
+    aggregation_deadline_reached: (searchOptions.aggregator_diagnostics as { deadline_reached?: boolean } | undefined)?.deadline_reached,
   };
 
   setCachedResult(cacheKey, result);
@@ -579,7 +649,14 @@ function normalizeHfModel(item: Record<string, unknown>): Record<string, unknown
   };
 }
 
-export async function searchHfModels(query: string, sort = 'trending', limit = 20, hfToken?: string) {
+export async function searchHfModels(
+  query: string,
+  sort = 'trending',
+  limit = 20,
+  hfToken?: string,
+  cursor?: string,
+  paged = false,
+) {
   try {
     const params = new URLSearchParams({
       search: query,
@@ -590,15 +667,43 @@ export async function searchHfModels(query: string, sort = 'trending', limit = 2
     });
     params.append('filter', 'gguf');
     params.append('filter', 'text-generation');
-    const url = `https://huggingface.co/api/models?${params.toString()}`;
+    const requestedCursor = String(cursor || '');
+    const url = requestedCursor.startsWith('https://huggingface.co/api/models?')
+      ? requestedCursor
+      : `https://huggingface.co/api/models?${params.toString()}`;
     const resp = await fetchWithRetry(url, { headers: hfHeaders(hfToken), timeout_ms: 15000 });
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      if (!paged) return [];
+      const errorCode = resp.status === 401 || resp.status === 403
+        ? 'authentication'
+        : resp.status === 429 ? 'rate_limit' : 'network';
+      const error = errorCode === 'authentication'
+        ? 'This repository or search requires a valid Hugging Face token.'
+        : errorCode === 'rate_limit'
+          ? 'Hugging Face rate limit reached. Wait a moment and try again.'
+          : `Hugging Face search failed (${resp.status}).`;
+      return { items: [], nextCursor: null, error, errorCode };
+    }
     const data = await resp.json();
-    return Array.isArray(data)
+    const items = Array.isArray(data)
       ? data.filter((item) => isLikelyLlmHfModel(item as Record<string, unknown>)).map((item) => normalizeHfModel(item as Record<string, unknown>))
       : [];
-  } catch {
-    return [];
+    if (!paged) return items;
+    const link = resp.headers.get('link') || '';
+    const nextCursor = link
+      .split(',')
+      .map((part) => part.trim())
+      .find((part) => /rel="?next"?/i.test(part))
+      ?.match(/<([^>]+)>/)?.[1] ?? null;
+    return { items, nextCursor };
+  } catch (error) {
+    if (!paged) return [];
+    return {
+      items: [],
+      nextCursor: null,
+      error: String((error as Error)?.message || error || 'Hugging Face search failed.'),
+      errorCode: 'network',
+    };
   }
 }
 
@@ -620,7 +725,19 @@ export async function hfRepoGguf(repoId: string, hfToken?: string) {
         return { ...file, size, size_human: formatBytes(size) };
       });
     }
-    return { repo_id: repoId, model_id: data.modelId as string | undefined, gguf_files: ggufFiles, files: ggufFiles };
+    const projectorFiles = siblings
+      .filter((file) => /(?:^|[/_-])mmproj[^/]*\.gguf$/i.test(String(file.rfilename || '')))
+      .map(normalizeGgufFile);
+    const tags = Array.isArray(data.tags) ? data.tags.map(String) : [];
+    return {
+      repo_id: repoId,
+      model_id: data.modelId as string | undefined,
+      gguf_files: ggufFiles,
+      files: ggufFiles,
+      projector_files: projectorFiles,
+      gated: data.gated,
+      license: tags.find((tag) => tag.startsWith('license:'))?.slice('license:'.length),
+    };
   } catch {
     return null;
   }

@@ -1,389 +1,240 @@
+import { z } from 'zod';
 import type { ToolDefinition } from '$lib/services/chat-api';
+import type { ArtifactKind, ArtifactPresentation } from '$lib/types/chat';
+
+export const ARTIFACT_ICON_NAMES = [
+  'file-text',
+  'briefcase',
+  'table',
+  'presentation',
+  'file',
+  'bar-chart',
+  'workflow',
+  'map',
+  'layout-dashboard',
+  'layout-list',
+  'code',
+  'library'
+] as const;
+
+export type ArtifactIconName = typeof ARTIFACT_ICON_NAMES[number];
+export type ArtifactCategory = 'documents' | 'visuals' | 'cards' | 'research';
+
+type ArtifactArgsSchema = z.ZodType<Record<string, unknown>>;
 
 export interface ArtifactTypeEntry {
-  id: string;
+  id: Exclude<ArtifactKind, 'web' | 'files'>;
   name: string;
   description: string;
-  icon: string;
-  toolDefinition: ToolDefinition;
+  icon: ArtifactIconName;
+  category: ArtifactCategory;
+  presentation: ArtifactPresentation;
   defaultEnabled: boolean;
+  toolName: string;
+  toolDescription: string;
+  argsSchema: ArtifactArgsSchema;
+  repairArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
+  toolDefinition: ToolDefinition;
 }
 
-const builtinArtifacts: ArtifactTypeEntry[] = [
-  {
-    id: 'report',
-    name: 'Reports',
-    description: 'HTML or Markdown formatted report documents',
-    icon: 'file-text',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_report',
-        description: 'Create a formatted report document (HTML or Markdown) as an artifact.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Report title' },
-            sections: {
-              type: 'array',
-              description: 'Array of {title, content} objects',
-              items: { type: 'object' }
-            },
-            format: { type: 'string', description: 'Output format: "html" or "markdown"' },
-            path: { type: 'string', description: 'Output file path' },
-            theme: { type: 'string', description: 'Color theme for HTML reports: "light" or "dark"' }
-          },
-          required: ['title', 'sections']
-        }
-      }
-    }
-  },
-  {
-    id: 'work_product',
-    name: 'Work Products',
-    description: 'Multi-format professional deliverables (report, DOCX, XLSX, PPTX, PDF)',
-    icon: 'briefcase',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_work_product',
-        description: 'Create a professional evidence-aware work product from one shared report schema. Use this for multi-format deliverables such as report + DOCX + XLSX + PPTX + PDF.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Work product title' },
-            subtitle: { type: 'string', description: 'Optional subtitle' },
-            executiveSummary: { type: 'string', description: 'Short evidence-based summary' },
-            sections: { type: 'array', description: 'Array of {title, content, bullets, citations}', items: { type: 'object' } },
-            tables: { type: 'array', description: 'Optional data tables {name, columns, rows}', items: { type: 'object' } },
-            sources: { type: 'array', description: 'Sources used {id,title,url,provider,snippet}', items: { type: 'object' } },
-            limitations: { type: 'array', description: 'Known limits, blocked pages, thin evidence, or missing data', items: { type: 'string' } },
-            formats: { type: 'array', description: 'Formats to create: md, html, docx, xlsx, pptx, pdf', items: { type: 'string' } },
-            path: { type: 'string', description: 'Base output path without extension' }
-          },
-          required: ['title', 'sections', 'formats']
-        }
-      }
-    }
-  },
-  {
-    id: 'document',
-    name: 'Documents',
-    description: 'DOCX word processing documents with preview',
-    icon: 'file-text',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_document',
-        description: 'Create a real DOCX document with a built-in preview. Use for reports, research writeups, briefs, essays, and formatted text documents.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Document title' },
-            sections: { type: 'array', description: 'Array of {title or heading, content, bullets}', items: { type: 'object' } },
-            content: { type: 'string', description: 'Fallback document body when sections are not provided' },
-            path: { type: 'string', description: 'Output path ending in .docx' }
-          },
-          required: ['title']
-        }
-      }
-    }
-  },
-  {
-    id: 'spreadsheet',
-    name: 'Spreadsheets',
-    description: 'XLSX workbook spreadsheets with table viewer',
-    icon: 'table',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_spreadsheet',
-        description: 'Create a real XLSX workbook with a built-in table viewer. Use for tables, datasets, comparisons, budgets, analysis, and spreadsheet deliverables.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Workbook title' },
-            sheets: { type: 'array', description: 'Array of {name, columns, rows}; rows can be objects or arrays', items: { type: 'object' } },
-            columns: { type: 'array', description: 'Fallback columns for a single-sheet workbook', items: { type: 'string' } },
-            rows: { type: 'array', description: 'Fallback rows for a single-sheet workbook', items: { type: 'object' } },
-            path: { type: 'string', description: 'Output path ending in .xlsx' }
-          },
-          required: ['title']
-        }
-      }
-    }
-  },
-  {
-    id: 'presentation',
-    name: 'Presentations',
-    description: 'PPTX slide decks with slide viewer',
-    icon: 'presentation',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_presentation',
-        description: 'Create a real PPTX slide deck with a built-in slide viewer. Use when the user asks for slides, a deck, or a presentation.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Deck title' },
-            slides: { type: 'array', description: 'Array of {title, content or bullets, notes}', items: { type: 'object' } },
-            path: { type: 'string', description: 'Output path ending in .pptx' }
-          },
-          required: ['title', 'slides']
-        }
-      }
-    }
-  },
-  {
-    id: 'pdf',
-    name: 'PDF Files',
-    description: 'PDF documents with built-in viewer',
-    icon: 'file',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_pdf',
-        description: 'Create a PDF document with a built-in PDF viewer. Use when the user explicitly wants a PDF export.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'PDF title' },
-            sections: { type: 'array', description: 'Array of {title or heading, content, bullets}', items: { type: 'object' } },
-            content: { type: 'string', description: 'Fallback PDF body when sections are not provided' },
-            path: { type: 'string', description: 'Output path ending in .pdf' }
-          },
-          required: ['title']
-        }
-      }
-    }
-  },
-  {
-    id: 'chart',
-    name: 'Charts',
-    description: 'Native inline data visualizations (bar, line, pie, donut)',
-    icon: 'bar-chart',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_chart',
-        description: 'Create a deterministic inline chart artifact. Supports bar, line, pie, and donut chart types. The chart is rendered natively in the chat conversation without external CDN scripts.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Chart title' },
-            chart_type: { type: 'string', description: 'Chart type: "bar", "line", "pie", or "donut"' },
-            labels: { type: 'array', description: 'Array of label strings for the x-axis or pie slices', items: { type: 'string' } },
-            datasets: {
-              type: 'array',
-              description: 'Array of {label, data} objects. Data is an array of numbers matching labels length.',
-              items: { type: 'object' }
-            },
-            path: { type: 'string', description: 'Output data path (defaults to chart.json)' },
-          },
-          required: ['title', 'labels', 'datasets']
-        }
-      }
-    }
-  },
-  {
-    id: 'diagram',
-    name: 'Diagrams',
-    description: 'Native inline Mermaid diagrams (flowcharts, sequence, ER, Gantt, mindmaps, and more)',
-    icon: 'workflow',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_diagram',
-        description: 'Create a deterministic inline diagram artifact using Mermaid syntax. The diagram is rendered by the app bundled Mermaid renderer, not by external CDN scripts.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Diagram title' },
-            diagram_type: { type: 'string', description: 'Mermaid diagram type: "flowchart", "sequence", "class", "er", "gantt", "mindmap", "timeline", "state", "pie", "quadrant", "sankey", "kanban", or "gitgraph"' },
-            mermaid_source: { type: 'string', description: 'Mermaid syntax source code defining the diagram' },
-            path: { type: 'string', description: 'Output data path (defaults to diagram.json)' },
-          },
-          required: ['title', 'mermaid_source']
-        }
-      }
-    }
-  },
-  {
-    id: 'map',
-    name: 'Maps',
-    description: 'Deterministic inline coordinate maps with markers and polylines',
-    icon: 'map',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_map',
-        description: 'Create a deterministic inline coordinate map artifact. Supports markers, labels, and polylines. The map renders locally in chat without CDN scripts or network map tiles.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Map title' },
-            latitude: { type: 'number', description: 'Center latitude (default 51.505)' },
-            longitude: { type: 'number', description: 'Center longitude (default -0.09)' },
-            zoom: { type: 'number', description: 'Initial zoom level (default 13)' },
-            markers: {
-              type: 'array',
-              description: 'Map markers with coordinates and optional popup text',
-              items: { type: 'object' }
-            },
-            polylines: {
-              type: 'array',
-              description: 'Polylines as arrays of {lat, lng} coordinate objects',
-              items: { type: 'object' }
-            },
-            path: { type: 'string', description: 'Output data path (defaults to map.json)' },
-          },
-          required: ['title']
-        }
-      }
-    }
-  },
-  {
-    id: 'dashboard',
-    name: 'Dashboards',
-    description: 'Live metric cards, KPIs, and summary stat panels',
-    icon: 'layout-dashboard',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_dashboard',
-        description: 'Create a deterministic inline dashboard artifact with metric cards, KPI summaries, and stat panels. Displays key numbers with labels and trends directly in the chat conversation.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Dashboard title' },
-            subtitle: { type: 'string', description: 'Optional subtitle or description' },
-            metrics: {
-              type: 'array',
-              description: 'Metric cards [{label, value, trend, unit, icon}]',
-              items: { type: 'object' }
-            },
-            sections: {
-              type: 'array',
-              description: 'Text/markdown sections with optional sub-headings',
-              items: { type: 'object' }
-            },
-            path: { type: 'string', description: 'Output data path (defaults to dashboard.json)' },
-          },
-          required: ['title', 'metrics']
-        }
-      }
-    }
-  },
-  {
-    id: 'info_card',
-    name: 'Info cards',
-    description: 'In-chat fact cards for weather, status, live facts, and short label/value packs',
-    icon: 'layout-list',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_info_card',
-        description:
-          'Create a deterministic inline info card in the chat (like a chart). Use for weather, live conditions, status, prices, or other short structured fact packs. Rows must come from tool evidence — never invent temperatures, prices, or stats. Prefer this over long prose-only answers when a card would help.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Card title (e.g. "Madrid weather")' },
-            subtitle: { type: 'string', description: 'Optional subtitle (e.g. "As of search results")' },
-            rows: {
-              type: 'array',
-              description: 'Label/value rows [{label, value, hint?}]',
-              items: { type: 'object' }
-            },
-            footer: { type: 'string', description: 'Optional footer (source note)' },
-            accent: { type: 'string', description: 'Optional accent: sky, green, amber, red, violet' },
-            path: { type: 'string', description: 'Output data path (defaults to info-card.json)' }
-          },
-          required: ['title', 'rows']
-        }
-      }
-    }
-  },
-  {
-    id: 'html_card',
-    name: 'HTML cards',
-    description: 'Small self-contained HTML snippets rendered inline in chat (no CDN)',
-    icon: 'code',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'create_html_card',
-        description:
-          'Create a small deterministic HTML card/snippet rendered natively in the chat. Use for compact visual layouts, simple tables, or styled fact blocks. HTML must be self-contained (inline CSS only). No external scripts, CDNs, remote images, or network-dependent assets.',
-        parameters: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Card title' },
-            html: { type: 'string', description: 'Self-contained HTML body (inline CSS allowed)' },
-            path: { type: 'string', description: 'Output data path (defaults to html-card.json)' }
-          },
-          required: ['title', 'html']
-        }
-      }
-    }
-  },
-  {
-    id: 'research_package',
-    name: 'Research exports',
-    description: 'Citation pack (BibTeX/RIS/APA), evidence matrix, source shortlist, annotated bibliography, search protocol (files)',
-    icon: 'library',
-    defaultEnabled: true,
-    toolDefinition: {
-      type: 'function', function: {
-        name: 'export_research_package',
-        description:
-          'Export research deliverables as files from gathered web sources only (no invented metadata). Use when the user explicitly asks for citations, BibTeX, RIS, APA references, evidence matrix files, or bibliography downloads. Prefer create_info_card / create_chart for visual in-chat answers.',
-        parameters: {
-          type: 'object',
-          properties: {
-            kinds: {
-              type: 'array',
-              description: 'Export kinds: citations, matrix, shortlist, bibliography, protocol',
-              items: { type: 'string' }
-            },
-            title: { type: 'string', description: 'Base title for export files' },
-            query: { type: 'string', description: 'Original search query (optional)' }
-          },
-          required: ['kinds']
-        }
-      }
-    }
-  },
-];
+type ArtifactDefinitionInput = Omit<ArtifactTypeEntry, 'toolDefinition'>;
 
-export function getAllArtifacts(): ArtifactTypeEntry[] {
+function toToolParameters(schema: ArtifactArgsSchema): ToolDefinition['function']['parameters'] {
+  const json = z.toJSONSchema(schema, { target: 'draft-07' }) as Record<string, unknown>;
+  delete json.$schema;
+  return json as ToolDefinition['function']['parameters'];
+}
+
+function defineArtifact<const T extends ArtifactDefinitionInput>(input: T): T & Pick<ArtifactTypeEntry, 'toolDefinition'> {
+  return {
+    ...input,
+    toolDefinition: {
+      type: 'function',
+      function: {
+        name: input.toolName,
+        description: input.toolDescription,
+        parameters: toToolParameters(input.argsSchema)
+      }
+    }
+  } as T & Pick<ArtifactTypeEntry, 'toolDefinition'>;
+}
+
+const pathSchema = z.string().min(1).optional().describe('Output file path');
+const sectionSchema = z.object({
+  title: z.string().optional(),
+  heading: z.string().optional(),
+  content: z.string().optional(),
+  bullets: z.array(z.string()).optional(),
+  citations: z.array(z.string()).optional()
+}).passthrough();
+
+function repairInfoCardArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const rowInput = args.rows ?? args.items ?? args.facts ?? args.data;
+  const rawRows = Array.isArray(rowInput)
+    ? rowInput
+    : rowInput && typeof rowInput === 'object'
+      ? Object.entries(rowInput as Record<string, unknown>).map(([label, value]) => ({ label, value }))
+      : [];
+  const rows = rawRows.map((row) => {
+    if (Array.isArray(row)) return { label: String(row[0] ?? 'Detail'), value: String(row[1] ?? '—'), ...(row[2] ? { hint: String(row[2]) } : {}) };
+    if (row && typeof row === 'object') {
+      const value = row as Record<string, unknown>;
+      return {
+        label: String(value.label ?? value.name ?? value.key ?? value.title ?? 'Detail'),
+        value: String(value.value ?? value.content ?? value.text ?? value.description ?? '—'),
+        ...(value.hint ?? value.note ? { hint: String(value.hint ?? value.note) } : {})
+      };
+    }
+    return { label: 'Detail', value: String(row ?? '') };
+  }).filter((row) => row.value.trim());
+  return {
+    title: String(args.title || '').trim(),
+    ...(args.subtitle ? { subtitle: String(args.subtitle) } : {}),
+    rows,
+    ...(args.footer ? { footer: String(args.footer) } : {}),
+    ...(args.accent ? { accent: String(args.accent) } : {}),
+    ...(args.path ? { path: String(args.path) } : {})
+  };
+}
+
+const builtinArtifacts = [
+  defineArtifact({
+    id: 'report', name: 'Reports', description: 'HTML or Markdown formatted report documents', icon: 'file-text', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_report', toolDescription: 'Create a formatted report document (HTML or Markdown) as an artifact.',
+    argsSchema: z.object({
+      title: z.string().min(1).describe('Report title'),
+      sections: z.array(sectionSchema).min(1).describe('Report sections'),
+      format: z.enum(['html', 'markdown']).optional().describe('Output format'),
+      path: pathSchema,
+      theme: z.enum(['light', 'dark']).optional().describe('Color theme for HTML reports')
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'work_product', name: 'Work Products', description: 'Multi-format professional deliverables', icon: 'briefcase', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_work_product', toolDescription: 'Create a professional evidence-aware work product from one shared report schema.',
+    argsSchema: z.object({
+      title: z.string().min(1), subtitle: z.string().optional(), executiveSummary: z.string().optional(),
+      sections: z.array(sectionSchema).min(1),
+      tables: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
+      sources: z.array(z.object({ id: z.string().optional(), title: z.string().optional(), url: z.string().optional(), provider: z.string().optional(), snippet: z.string().optional() }).passthrough()).optional(),
+      limitations: z.array(z.string()).optional(),
+      formats: z.array(z.enum(['md', 'html', 'docx', 'xlsx', 'pptx', 'pdf'])).min(1),
+      path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'document', name: 'Documents', description: 'DOCX documents with preview', icon: 'file-text', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_document', toolDescription: 'Create a real DOCX document with a built-in preview.',
+    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema }).strict()
+  }),
+  defineArtifact({
+    id: 'spreadsheet', name: 'Spreadsheets', description: 'XLSX workbooks with table viewer', icon: 'table', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_spreadsheet', toolDescription: 'Create a real XLSX workbook with a built-in table viewer.',
+    argsSchema: z.object({
+      title: z.string().min(1),
+      sheets: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
+      columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional(), path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'presentation', name: 'Presentations', description: 'PPTX slide decks with slide viewer', icon: 'presentation', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_presentation', toolDescription: 'Create a real PPTX slide deck with a built-in slide viewer.',
+    argsSchema: z.object({ title: z.string().min(1), slides: z.array(z.object({ title: z.string().optional(), content: z.string().optional(), bullets: z.array(z.string()).optional(), notes: z.string().optional() }).passthrough()).min(1), path: pathSchema }).strict()
+  }),
+  defineArtifact({
+    id: 'pdf', name: 'PDF Files', description: 'PDF documents with built-in viewer', icon: 'file', category: 'documents', presentation: 'document', defaultEnabled: true,
+    toolName: 'create_pdf', toolDescription: 'Create a PDF document with a built-in PDF viewer.',
+    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema }).strict()
+  }),
+  defineArtifact({
+    id: 'chart', name: 'Charts', description: 'Native inline bar, line, pie, and donut charts', icon: 'bar-chart', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_chart', toolDescription: 'Create a deterministic inline chart artifact rendered locally.',
+    argsSchema: z.object({
+      title: z.string().min(1), chart_type: z.enum(['bar', 'line', 'pie', 'donut']).default('bar'), labels: z.array(z.coerce.string()).min(1),
+      datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number()) }).strict()).min(1), path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'diagram', name: 'Diagrams', description: 'Native inline Mermaid diagrams', icon: 'workflow', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_diagram', toolDescription: 'Create a deterministic inline diagram artifact using Mermaid syntax.',
+    argsSchema: z.object({ title: z.string().min(1), diagram_type: z.string().optional(), mermaid_source: z.string().min(1), path: pathSchema }).strict()
+  }),
+  defineArtifact({
+    id: 'map', name: 'Maps', description: 'Inline coordinate maps with markers and polylines', icon: 'map', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_map', toolDescription: 'Create a deterministic inline coordinate map rendered locally.',
+    argsSchema: z.object({
+      title: z.string().min(1), latitude: z.coerce.number().optional(), longitude: z.coerce.number().optional(), zoom: z.coerce.number().optional(),
+      markers: z.array(z.object({ lat: z.coerce.number(), lng: z.coerce.number(), label: z.string().optional(), popup: z.string().optional() }).passthrough()).optional(),
+      polylines: z.array(z.unknown()).optional(), path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'dashboard', name: 'Dashboards', description: 'Metric cards, KPIs, and summary panels', icon: 'layout-dashboard', category: 'visuals', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_dashboard', toolDescription: 'Create a deterministic inline dashboard artifact.',
+    argsSchema: z.object({
+      title: z.string().min(1), subtitle: z.string().optional(),
+      metrics: z.array(z.object({ label: z.coerce.string(), value: z.union([z.string(), z.number()]), trend: z.string().optional(), unit: z.string().optional(), color: z.string().optional() }).passthrough()).min(1),
+      sections: z.array(z.object({ heading: z.string().optional(), content: z.string().optional() }).passthrough()).optional(), path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'info_card', name: 'Info cards', description: 'Fact cards for live data and short structured summaries', icon: 'layout-list', category: 'cards', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_info_card', toolDescription: 'Create an optional evidence-backed inline info card. Never send empty rows or invent facts.',
+    repairArgs: repairInfoCardArgs,
+    argsSchema: z.object({
+      title: z.string().min(1), subtitle: z.string().optional(),
+      rows: z.array(z.object({ label: z.string().min(1), value: z.string().min(1), hint: z.string().optional() }).strict()).min(1),
+      footer: z.string().optional(), accent: z.enum(['sky', 'green', 'amber', 'red', 'violet']).optional(), path: pathSchema
+    }).strict()
+  }),
+  defineArtifact({
+    id: 'html_card', name: 'HTML cards', description: 'Small self-contained HTML snippets', icon: 'code', category: 'cards', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_html_card', toolDescription: 'Create a small self-contained HTML card with no remote dependencies.',
+    argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), path: pathSchema }).strict()
+  }),
+  defineArtifact({
+    id: 'research_package', name: 'Research exports', description: 'Citations, evidence matrices, and bibliography files', icon: 'library', category: 'research', presentation: 'document', defaultEnabled: true,
+    toolName: 'export_research_package', toolDescription: 'Export evidence-backed research deliverables from gathered sources.',
+    argsSchema: z.object({ kinds: z.array(z.enum(['citations', 'matrix', 'shortlist', 'bibliography', 'protocol'])).min(1), title: z.string().optional(), query: z.string().optional() }).strict()
+  })
+] as const satisfies readonly ArtifactTypeEntry[];
+
+export type ArtifactToolName = typeof builtinArtifacts[number]['toolName'];
+
+const byToolName = new Map<string, ArtifactTypeEntry>(builtinArtifacts.map((artifact) => [artifact.toolName, artifact]));
+
+export function getAllArtifacts(): readonly ArtifactTypeEntry[] {
   return builtinArtifacts;
+}
+
+export function getArtifactDefinitionByToolName(toolName: string): ArtifactTypeEntry | undefined {
+  return byToolName.get(toolName);
+}
+
+export function parseArtifactToolArgs(toolName: string, rawArgs: Record<string, unknown>): { success: true; data: Record<string, unknown>; repaired: boolean } | { success: false; error: string } {
+  const definition = getArtifactDefinitionByToolName(toolName);
+  if (!definition) return { success: false, error: `Unknown artifact tool: ${toolName}` };
+  const repaired = definition.repairArgs ? definition.repairArgs(rawArgs) : rawArgs;
+  const parsed = definition.argsSchema.safeParse(repaired);
+  if (parsed.success) return { success: true, data: parsed.data, repaired: !!definition.repairArgs && JSON.stringify(parsed.data) !== JSON.stringify(rawArgs) };
+  const detail = parsed.error.issues.slice(0, 4).map((issue) => `${issue.path.join('.') || 'arguments'}: ${issue.message}`).join('; ');
+  return { success: false, error: `Invalid ${toolName} arguments: ${detail}` };
 }
 
 export function getEnabledArtifactIds(toggles: Record<string, boolean> = {}): Set<string> {
   const enabled = new Set<string>();
   for (const artifact of builtinArtifacts) {
     const toggle = toggles[artifact.id];
-    if (toggle === undefined ? artifact.defaultEnabled : toggle) {
-      enabled.add(artifact.id);
-    }
+    if (toggle === undefined ? artifact.defaultEnabled : toggle) enabled.add(artifact.id);
   }
   return enabled;
 }
 
-const toolNameToId: Record<string, string> = Object.fromEntries(
-  builtinArtifacts.map((a) => [a.toolDefinition.function.name, a.id])
-);
-
 export function getArtifactIdByToolName(toolName: string): string | undefined {
-  return toolNameToId[toolName];
+  return getArtifactDefinitionByToolName(toolName)?.id;
 }
 
 export function isArtifactToolEnabled(toolName: string, toggles: Record<string, boolean>): boolean {
-  const id = getArtifactIdByToolName(toolName);
-  if (!id) return true;
-  const artifact = builtinArtifacts.find((a) => a.id === id);
-  if (!artifact) return true;
-  return toggles[id] ?? artifact.defaultEnabled;
+  const artifact = getArtifactDefinitionByToolName(toolName);
+  return artifact ? (toggles[artifact.id] ?? artifact.defaultEnabled) : true;
 }

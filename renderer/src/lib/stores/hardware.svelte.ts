@@ -1,6 +1,7 @@
 import type { HardwareInfo } from '$lib/types/tauri';
 import { getHardwareLimits } from '$lib/services/hardware';
 import { isTauri } from '$lib/services/tauri';
+import { assessModelFit } from '$lib/models/model-fit';
 
 class HardwareStore {
   info = $state<HardwareInfo | null>(null);
@@ -29,11 +30,13 @@ class HardwareStore {
 
   /** Estimate if model of given size (GB) fits in VRAM: green/yellow/red */
   modelVramFit(modelSizeGb: number): 'vram' | 'partial' | 'ram' | 'unknown' {
-    if (!this.info) return 'unknown';
-    if (this.info.vram_gb <= 0) return 'ram';
-    const effective = this.info.vram_gb * 0.85;
-    if (modelSizeGb <= effective) return 'vram';
-    if (modelSizeGb <= this.info.vram_gb * 1.4) return 'partial';
+    const fit = assessModelFit({
+      artifact: { sizeBytes: Math.max(0, modelSizeGb) * 1024 ** 3 },
+      hardware: this.info,
+    });
+    if (fit.status === 'unknown') return 'unknown';
+    if (fit.offload === 'full_gpu') return 'vram';
+    if (fit.offload === 'partial_gpu') return 'partial';
     return 'ram';
   }
 

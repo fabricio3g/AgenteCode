@@ -15,7 +15,8 @@ export type ReasoningLevel =
   | 'enabled'
   | 'disabled'
   | 'on'
-  | 'none';
+  | 'none'
+  | 'default'; // Groq Qwen reasoning_effort
 
 export type ReasoningParamShape =
   | 'openai_reasoning_effort'   // { reasoning_effort: 'low' }

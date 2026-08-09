@@ -1,110 +1,107 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { motionFade, flyAndScale } from '$lib/utils/transitions';
-  import { Briefcase, BarChart3, File, FileText, LayoutDashboard, Map, Presentation, Puzzle, Table, Workflow, X } from 'lucide-svelte';
+  import {
+    BarChart3,
+    Briefcase,
+    Code,
+    File,
+    FileText,
+    LayoutDashboard,
+    LayoutList,
+    Library,
+    Map,
+    Presentation,
+    Table,
+    Workflow
+  } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { getAllArtifacts, type ArtifactTypeEntry } from '$lib/services/artifact-registry';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
+  import Switch from '$lib/components/ui/Switch.svelte';
+  import {
+    getAllArtifacts,
+    type ArtifactCategory,
+    type ArtifactIconName,
+    type ArtifactTypeEntry
+  } from '$lib/services/artifact-registry';
 
   const artifacts = getAllArtifacts();
   const toggles = $derived(appStore.getArtifactToggles());
+  let pendingIds = $state<Set<string>>(new Set());
+
+  const categories: Array<{ id: ArtifactCategory; label: string }> = [
+    { id: 'documents', label: 'Documents' },
+    { id: 'visuals', label: 'Data and visuals' },
+    { id: 'cards', label: 'Compact cards' },
+    { id: 'research', label: 'Research' }
+  ];
+
+  const iconComponents: Record<ArtifactIconName, typeof File> = {
+    'file-text': FileText,
+    briefcase: Briefcase,
+    table: Table,
+    presentation: Presentation,
+    file: File,
+    'bar-chart': BarChart3,
+    workflow: Workflow,
+    map: Map,
+    'layout-dashboard': LayoutDashboard,
+    'layout-list': LayoutList,
+    code: Code,
+    library: Library
+  };
 
   function close() {
     appStore.artifactSettingsOpen = false;
   }
 
-  async function toggleArtifact(id: string, enabled: boolean) {
-    await appStore.updateArtifactToggles({ [id]: enabled });
-  }
-
   function isEnabled(artifact: ArtifactTypeEntry): boolean {
-    const toggle = toggles[artifact.id];
-    return toggle === undefined ? artifact.defaultEnabled : toggle;
+    return toggles[artifact.id] ?? artifact.defaultEnabled;
   }
 
-  function getIconComponent(icon: string) {
-    const map: Record<string, typeof File> = {
-      'file-text': FileText,
-      briefcase: Briefcase,
-      table: Table,
-      presentation: Presentation,
-      file: File,
-      'bar-chart': BarChart3,
-      workflow: Workflow,
-      map: Map,
-      'layout-dashboard': LayoutDashboard
-    };
-    return map[icon] || File;
+  async function toggleArtifact(artifact: ArtifactTypeEntry, enabled: boolean) {
+    if (pendingIds.has(artifact.id)) return;
+    pendingIds = new Set([...pendingIds, artifact.id]);
+    try {
+      await appStore.updateArtifactToggles({ [artifact.id]: enabled });
+    } catch (error) {
+      toastStore.error(`Could not update ${artifact.name}: ${String((error as Error)?.message || error)}`);
+    } finally {
+      const next = new Set(pendingIds);
+      next.delete(artifact.id);
+      pendingIds = next;
+    }
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
-
-<div
-  role="presentation"
-  class="aui-modal-backdrop z-[63]"
-  transition:motionFade={{ duration: 200 }}
-  onclick={(e) => {
-    if (e.target === e.currentTarget) close();
-  }}
->
-  <div
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="artifact-settings-title"
-    tabindex="-1"
-    class="aui-modal-surface max-w-lg"
-    transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
-  >
-    <div class="aui-modal-header">
-      <div class="flex min-w-0 items-center gap-2.5">
-        <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-          <Puzzle class="size-4 text-foreground" />
-        </div>
-        <div class="min-w-0">
-          <h3 id="artifact-settings-title" class="aui-modal-title">Artifacts</h3>
-          <p class="text-xs text-muted-foreground">Enable or disable artifact types the agent can produce</p>
-        </div>
-      </div>
-      <button type="button" class="aui-icon-button size-8" onclick={close} aria-label="Close">
-        <X class="size-3.5" />
-      </button>
-    </div>
-
-    <div class="aui-modal-body !pt-0">
-      <div class="space-y-0.5">
-        {#each artifacts as artifact (artifact.id)}
-          {@const enabled = isEnabled(artifact)}
-          {@const Icon = getIconComponent(artifact.icon)}
-          <div class="flex items-center justify-between gap-4 rounded-md px-2 py-2.5 transition hover:bg-muted">
-            <div class="flex min-w-0 items-center gap-3">
-              <div
-                class="flex size-8 shrink-0 items-center justify-center rounded-md {enabled
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground'}"
-              >
-                <Icon class="size-4" />
+<Dialog title="Artifacts" description="Choose the deliverables and visual formats available to the agent." onclose={close} class="max-w-lg">
+  <div class="min-h-0 flex-1 overflow-auto px-4 py-3 sm:px-5">
+    {#each categories as category (category.id)}
+      <section class="mb-4 last:mb-1">
+        <h3 class="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{category.label}</h3>
+        <div class="space-y-0.5">
+          {#each artifacts.filter((artifact) => artifact.category === category.id) as artifact (artifact.id)}
+            {@const Icon = iconComponents[artifact.icon]}
+            {@const enabled = isEnabled(artifact)}
+            <div class="flex items-center justify-between gap-4 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60">
+              <div class="flex min-w-0 items-center gap-3">
+                <span class:enabled class="artifact-setting-icon"><Icon class="size-4" /></span>
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-foreground">{artifact.name}</span>
+                  <span class="block truncate text-xs text-muted-foreground">{artifact.description}</span>
+                </span>
               </div>
-              <div class="min-w-0">
-                <h4 class="text-sm font-medium text-foreground">{artifact.name}</h4>
-                <p class="truncate text-xs text-muted-foreground">{artifact.description}</p>
-              </div>
+              <Switch checked={enabled} disabled={pendingIds.has(artifact.id)} label={`${enabled ? 'Disable' : 'Enable'} ${artifact.name}`} onchange={(checked) => toggleArtifact(artifact, checked)} />
             </div>
-            <label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
-              <input
-                type="checkbox"
-                checked={enabled}
-                class="peer sr-only"
-                onchange={async () => await toggleArtifact(artifact.id, !enabled)}
-              />
-              <span class="absolute inset-0 rounded-full bg-muted transition peer-checked:bg-primary"></span>
-              <span
-                class="absolute left-0.5 size-4 rounded-full bg-foreground transition peer-checked:translate-x-4 peer-checked:bg-primary-foreground"
-              ></span>
-            </label>
-          </div>
-        {/each}
-      </div>
-    </div>
+          {/each}
+        </div>
+      </section>
+    {/each}
   </div>
-</div>
+</Dialog>
+
+<style>
+  .artifact-setting-icon { display: inline-flex; width: 2rem; height: 2rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-md); background: var(--muted); color: var(--muted-foreground); }
+  .artifact-setting-icon.enabled { background: var(--primary); color: var(--primary-fg); }
+</style>

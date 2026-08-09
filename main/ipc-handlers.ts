@@ -28,6 +28,7 @@ import {
 } from './search-engine.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
+import { getAggregatorCatalog, probeAggregatorEngines } from './search-providers/aggregator.ts';
 import {
   pathExists, openModelsFolder, pickWorkspaceFolder, pickModelFile, pickMmprojFile, pickWhisperRuntimeFile,
   indexWorkspaceFolder, snapshotWorkspaceFiles, writeWorkspaceFile, readWorkspaceFile,
@@ -253,6 +254,8 @@ export function registerIpcHandlers() {
     createWebviewerWindow,
     scrapeUrlStructured,
     crawlWeb,
+    getAggregatorCatalog,
+    probeAggregatorEngines,
     toErrorMessage,
   });
 

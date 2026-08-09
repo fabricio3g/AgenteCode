@@ -7,7 +7,7 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import MessageList from '$lib/components/chat/MessageList.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
-  import SandboxModal from '$lib/components/agent/SandboxModal.svelte';
+  import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
@@ -29,8 +29,6 @@
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
 
   let showShortcutsHelp = $state(false);
-  let composerHeight = $state(320);
-
   const newSessionLabel = $derived(
     appStore.activeSpace === 'work' ? 'New Work' : 'New chat'
   );
@@ -61,10 +59,10 @@
     if (ctrl && event.key === 'b') {
       event.preventDefault(); appStore.sidebarOpen = !appStore.sidebarOpen; return;
     }
-    // Ctrl+` toggles sandbox panel
+    // Ctrl+` toggles the artifact studio
     if (ctrl && event.key === '`') {
       event.preventDefault();
-      if (appStore.currentArtifact) appStore.sandboxOpen = !appStore.sandboxOpen;
+      if (appStore.currentArtifact) appStore.artifactStudioOpen = !appStore.artifactStudioOpen;
       return;
     }
     if (ctrl && event.key === 'e' && !inInput) {
@@ -191,8 +189,8 @@
       <div class="flex min-h-0 flex-1 overflow-hidden">
         <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <MessageList composerInset={composerHeight} />
-            <Composer onHeightChange={(height) => (composerHeight = height)} />
+            <MessageList />
+            <Composer />
           </div>
         </div>
 
@@ -225,8 +223,8 @@
 <ConfirmDialog />
 <LLMDrawer />
 
-{#if appStore.sandboxOpen && appStore.currentArtifact}
-  <SandboxModal />
+{#if appStore.artifactStudioOpen && appStore.currentArtifact}
+  <ArtifactStudioModal />
 {/if}
 
 {#if appStore.chatSearchOpen}
@@ -258,7 +256,7 @@
           ['Ctrl+Shift+K', 'Search chats'],
           ['Ctrl+,', 'Open Settings'],
           ['Ctrl+B', 'Show or hide sidebar'],
-          ['Ctrl+`', 'Toggle code sandbox'],
+          ['Ctrl+`', 'Toggle artifact studio'],
           ['Ctrl+E', 'Export chat'],
           ['Ctrl+?', 'This help'],
           ['Escape', 'Close dialog / Stop stream'],

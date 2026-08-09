@@ -175,12 +175,51 @@ export type InlineArtifactPayload =
   | InfoCardArtifactPayload
   | HtmlCardArtifactPayload;
 
+export type ArtifactKind =
+  | 'report'
+  | 'work_product'
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'pdf'
+  | 'chart'
+  | 'diagram'
+  | 'map'
+  | 'dashboard'
+  | 'info_card'
+  | 'html_card'
+  | 'research_package'
+  | 'web'
+  | 'files';
+
+export type ArtifactPresentation = 'inline' | 'document' | 'web' | 'files';
+export type ArtifactStatus = 'ready' | 'partial' | 'invalid';
+export type ArtifactIssueSeverity = 'warning' | 'error';
+
+export interface ArtifactIssue {
+  code: string;
+  severity: ArtifactIssueSeverity;
+  message: string;
+  path?: string;
+}
+
+export interface ArtifactManifest {
+  schemaVersion: 1;
+  kind: ArtifactKind;
+  presentation: ArtifactPresentation;
+  entryPath?: string;
+  status: ArtifactStatus;
+  issues?: ArtifactIssue[];
+}
+
 export interface AgentArtifact {
   title: string;
   files: Record<string, string>;
   previewHtml?: string | null;
   inline?: InlineArtifactPayload | null;
   workProduct?: GeneratedWorkProduct | null;
+  /** Additive metadata for deterministic rendering. Missing manifests are normalized lazily. */
+  manifest?: ArtifactManifest | null;
 }
 
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
@@ -325,7 +364,8 @@ export type ReasoningLevel =
   | 'enabled'
   | 'disabled'
   | 'on'
-  | 'none';
+  | 'none'
+  | 'default'; // Groq Qwen reasoning_effort
 
 export type ReasoningParamShape =
   | 'openai_reasoning_effort'
@@ -461,6 +501,7 @@ export interface AppConfig {
     aggregator_engines?: string[];
     safe_search?: number;
     providers?: {
+      [provider: string]: Record<string, unknown> | undefined;
       google_cse?: {
         api_key?: string;
         engine_id?: string;

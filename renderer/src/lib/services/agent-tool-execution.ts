@@ -9,7 +9,8 @@ import {
   displayToolLabel,
   finalizeToolStep,
   mergeWebSearchSources,
-  publishArtifact
+  publishArtifact,
+  recoverOptionalPresentationFailure
 } from '$lib/services/agent-tool-result';
 
 export async function executeSingleTool(params: {
@@ -47,7 +48,8 @@ export async function executeSingleTool(params: {
   steps.push(toolStep);
   args.onStep([...steps]);
 
-  const result = await executeToolWithTimeout(tc.name, tc.arguments);
+  let result = await executeToolWithTimeout(tc.name, tc.arguments);
+  result = recoverOptionalPresentationFailure(tc, result);
   ctx.signal?.throwIfAborted?.();
   observations.push(summarizeToolObservation(tc.name, tc.arguments, result));
 
@@ -55,7 +57,7 @@ export async function executeSingleTool(params: {
     nativeFailed = true;
   }
   mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
-  finalizeToolStep(toolStep, result);
+  finalizeToolStep(toolStep, result, tc.name);
   publishArtifact(args.onArtifact, buildArtifact);
   args.onStep([...steps]);
   appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars });

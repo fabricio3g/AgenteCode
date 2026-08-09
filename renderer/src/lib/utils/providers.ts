@@ -11,7 +11,7 @@ export const CLOUD_PROVIDERS: CloudProviderMeta[] = [
   { id: 'openai', label: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', group: 'cloud' },
   { id: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', group: 'cloud' },
   { id: 'anthropic', label: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com', group: 'cloud' },
-  { id: 'groq', label: 'Groq', defaultBaseUrl: 'https://api.groq.com/openai/v1', group: 'cloud' },
+  { id: 'groq', label: 'Groq', defaultBaseUrl: 'https://api.groq.com', group: 'cloud' },
   { id: 'gemini', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com', group: 'cloud' },
   { id: 'mistral', label: 'Mistral AI', defaultBaseUrl: 'https://api.mistral.ai/v1', group: 'cloud' },
   { id: 'together', label: 'Together AI', defaultBaseUrl: 'https://api.together.xyz/v1', group: 'cloud' },

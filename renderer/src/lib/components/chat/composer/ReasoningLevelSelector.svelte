@@ -27,6 +27,8 @@
         return 'Off';
       case 'none':
         return 'None';
+      case 'default':
+        return 'Default';
       case 'minimal':
         return 'Minimal';
       case 'low':

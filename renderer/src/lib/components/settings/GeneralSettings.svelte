@@ -2,8 +2,10 @@
 
 <script lang="ts">
   import { appStore } from '$lib/stores/app.svelte';
+  import { themeStore } from '$lib/stores/theme.svelte';
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
+  import { Button, Field, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
   const languages = [
     { code: 'en', label: 'English' },
     { code: 'es', label: 'Español' },
@@ -50,105 +52,129 @@
   }
 </script>
 
-<div class="space-y-4">
-  <section class="aui-card-quiet p-4 text-muted-foreground">
-    <h4 class="mb-4 text-base font-medium text-foreground">General</h4>
+<div class="space-y-5">
+  <div>
+    <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">General</h3>
+    <p class="mt-1 text-sm text-muted-foreground">Personalize the interface and everyday chat behavior.</p>
+  </div>
 
-    <div class="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
-      <div class="space-y-1">
-        <h5 class="text-sm font-medium text-foreground">{$t('generalSettings.yourName')}</h5>
-        <p class="text-xs leading-normal text-muted-foreground">{$t('generalSettings.shownOnWelcome')}</p>
-      </div>
-      <input
-        type="text"
-        bind:value={nameValue}
-        oninput={() => appStore.setUserName(nameValue)}
-        placeholder={$t('generalSettings.enterYourName')}
-        class="aui-input sm:w-72"
-      />
+  <section class="rounded-xl border border-border bg-card">
+    <div class="border-b border-border px-4 py-3">
+      <h4 class="text-sm font-semibold text-foreground">Profile</h4>
     </div>
-
-    <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-      <div class="space-y-1">
-        <h5 class="text-sm font-medium text-foreground">{$t('generalSettings.language')}</h5>
-        <p class="text-xs leading-normal text-muted-foreground">{$t('generalSettings.languageDesc')}</p>
-      </div>
-      <select
-        class="aui-input sm:w-72"
-        value={normalizeLocaleCode($locale)}
-        onchange={(e) => setLocale((e.target as HTMLSelectElement).value)}
+    <div class="divide-y divide-border px-4">
+      <Field
+        horizontal
+        class="py-4"
+        label={$t('generalSettings.yourName')}
+        description={$t('generalSettings.shownOnWelcome')}
+        htmlFor="profile-name"
       >
-        {#each languages as lang (lang.code)}
-          <option value={lang.code}>{lang.label}</option>
-        {/each}
-      </select>
+        <Input
+          id="profile-name"
+          type="text"
+          bind:value={nameValue}
+          oninput={() => appStore.setUserName(nameValue)}
+          placeholder={$t('generalSettings.enterYourName')}
+        />
+      </Field>
+
+      <Field
+        horizontal
+        class="py-4"
+        label={$t('generalSettings.language')}
+        description={$t('generalSettings.languageDesc')}
+        htmlFor="interface-language"
+      >
+        <Select
+          id="interface-language"
+          value={normalizeLocaleCode($locale)}
+          options={languages.map((lang) => ({ value: lang.code, label: lang.label }))}
+          onchange={setLocale}
+        />
+      </Field>
     </div>
   </section>
 
-  <section class="aui-card-quiet p-4 text-muted-foreground">
-    <h4 class="mb-4 text-base font-medium text-foreground">Chat behavior</h4>
-
-    <div class="flex items-center justify-between gap-6 pb-4">
-      <div class="space-y-1">
-        <h5 class="text-sm font-medium text-foreground">{$t('generalSettings.showAssistantText')}</h5>
-        <p class="text-xs leading-normal text-muted-foreground">{$t('generalSettings.showAssistantTextDesc')}</p>
-      </div>
-      <label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
-        <input type="checkbox" bind:checked={showAssistantText} class="peer sr-only" />
-        <span class="absolute inset-0 rounded-full bg-muted transition peer-checked:bg-primary"></span>
-        <span class="absolute left-0.5 size-4 rounded-full bg-foreground transition peer-checked:translate-x-4 peer-checked:bg-primary-foreground"></span>
-      </label>
+  <section class="rounded-xl border border-border bg-card">
+    <div class="border-b border-border px-4 py-3">
+      <h4 class="text-sm font-semibold text-foreground">Chat behavior</h4>
     </div>
-
-    <div class="flex items-center justify-between gap-6 pt-2">
-      <div class="space-y-1">
-        <h5 class="text-sm font-medium text-foreground">{$t('generalSettings.enableThinking')}</h5>
-        <p class="text-xs leading-normal text-muted-foreground">{$t('generalSettings.enableThinkingDesc')}</p>
-      </div>
-      <label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
-        <input type="checkbox" bind:checked={enableThinking} class="peer sr-only" />
-        <span class="absolute inset-0 rounded-full bg-muted transition peer-checked:bg-primary"></span>
-        <span class="absolute left-0.5 size-4 rounded-full bg-foreground transition peer-checked:translate-x-4 peer-checked:bg-primary-foreground"></span>
-      </label>
-    </div>
-
-    <div class="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
-      <div class="space-y-1">
-        <h5 class="text-sm font-medium text-foreground">Chat / Agent control</h5>
-        <p class="text-xs leading-normal text-muted-foreground">
-          Auto hides the Chat/Agent tabs and routes each message by what you ask. Tabs lets you pick manually.
-        </p>
-      </div>
-      <select
-        class="aui-input sm:w-72"
-        bind:value={composerModeControl}
+    <div class="divide-y divide-border px-4">
+      <Field
+        horizontal
+        class="py-4"
+        label={$t('generalSettings.showAssistantText')}
+        description={$t('generalSettings.showAssistantTextDesc')}
       >
-        <option value="auto">Auto (recommended)</option>
-        <option value="tabs">Show Chat / Agent tabs</option>
-      </select>
+        <div class="flex justify-end"><Switch bind:checked={showAssistantText} label={$t('generalSettings.showAssistantText')} /></div>
+      </Field>
+
+      <Field
+        horizontal
+        class="py-4"
+        label={$t('generalSettings.enableThinking')}
+        description={$t('generalSettings.enableThinkingDesc')}
+      >
+        <div class="flex justify-end"><Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} /></div>
+      </Field>
+
+      <Field
+        horizontal
+        class="py-4"
+        label="Chat and Agent control"
+        description="Auto routes each message by intent. Tabs keeps the manual mode selector visible."
+        htmlFor="composer-control"
+      >
+        <Select
+          id="composer-control"
+          bind:value={composerModeControl}
+          options={[
+            { value: 'auto', label: 'Auto (recommended)' },
+            { value: 'tabs', label: 'Show Chat / Agent tabs' },
+          ]}
+        />
+      </Field>
     </div>
   </section>
 
-  <section class="aui-card-quiet p-4 text-muted-foreground">
-    <h4 class="mb-1 text-base font-medium text-foreground">{$t('generalSettings.huggingFaceAccess')}</h4>
-    <p class="mb-4 text-xs leading-normal text-muted-foreground">{$t('generalSettings.huggingFaceDesc')}</p>
-
-    <label class="mb-2 block text-sm font-medium text-foreground" for="hf-access-token">{$t('generalSettings.accessToken')}</label>
-    <div class="flex flex-col gap-2 sm:flex-row">
-      <input
-        id="hf-access-token"
-        type="password"
-        bind:value={hfToken}
-        placeholder="hf_..."
-        class="aui-input min-w-0 flex-1"
-      />
-      <button
-        type="button"
-        class="aui-btn aui-btn-primary"
-        onclick={onsaveHfToken}
+  <section class="rounded-xl border border-border bg-card">
+    <div class="border-b border-border px-4 py-3">
+      <h4 class="text-sm font-semibold text-foreground">Appearance</h4>
+    </div>
+    <div class="px-4">
+      <Field
+        horizontal
+        class="py-4"
+        label="Color theme"
+        description="Choose a light or dark interface."
       >
-        {$t('generalSettings.save')}
-      </button>
+        <SegmentedControl
+          label="Color theme"
+          value={themeStore.current}
+          options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+          onchange={(value) => themeStore.set(value as 'light' | 'dark')}
+        />
+      </Field>
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-border bg-card p-4">
+    <h4 class="text-sm font-semibold text-foreground">{$t('generalSettings.huggingFaceAccess')}</h4>
+    <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{$t('generalSettings.huggingFaceDesc')}</p>
+    <div class="mt-4">
+      <Field label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <Input
+            id="hf-access-token"
+            type="password"
+            bind:value={hfToken}
+            placeholder="hf_..."
+            class="min-w-0 flex-1"
+          />
+          <Button onclick={onsaveHfToken}>{$t('generalSettings.save')}</Button>
+        </div>
+      </Field>
     </div>
   </section>
 </div>

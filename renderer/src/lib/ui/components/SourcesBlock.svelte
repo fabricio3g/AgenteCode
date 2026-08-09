@@ -14,6 +14,7 @@
 
   let { sources = [], searchMode = 'chat', meta = null, messageId = '' }: Props = $props();
 
+  // Mode chip only here after the answer (AgentBlock uses mode while streaming).
   const modeLabel = $derived(
     searchMode === 'max' ? 'Max' : searchMode === 'deep' ? 'Deep' : searchMode === 'search' ? 'Search' : ''
   );

@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import type { AgentArtifact } from '$lib/types/chat';
-  import { isHiddenArtifactFile } from '$lib/utils/artifact-files';
+  import { resolveArtifactPreview } from '$lib/services/artifact-model';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
   import ArtifactMap from './ArtifactMap.svelte';
@@ -18,25 +18,7 @@
   let { artifact }: Props = $props();
 
   const files = $derived(artifact.files || {});
-  const visibleEntries = $derived(Object.entries(files).filter(([path]) => !isHiddenArtifactFile(path)));
-  const htmlEntry = $derived(visibleEntries.find(([path]) => /\.html?$/i.test(path)) || null);
-  const previewSource = $derived.by(() => {
-    if (artifact.previewHtml) {
-      return {
-        html: artifact.previewHtml,
-        basePath: htmlEntry?.[0] || 'index.html'
-      };
-    }
-
-    if (htmlEntry) {
-      return {
-        html: htmlEntry[1],
-        basePath: htmlEntry[0]
-      };
-    }
-
-    return null;
-  });
+  const previewSource = $derived(resolveArtifactPreview(artifact));
 
   const previewBuild = $derived.by(() => {
     if (!previewSource?.html) return { html: '', externalRefs: [] as string[] };
@@ -50,7 +32,7 @@
   });
 </script>
 
-{#if artifact.inline?.kind === 'chart'}
+  {#if artifact.inline?.kind === 'chart'}
   <ChartBlock type={artifact.inline.chartType} title={artifact.inline.title} raw={chartRaw} variant="artifact" />
 {:else if artifact.inline?.kind === 'map'}
   <ArtifactMap payload={artifact.inline} />
@@ -73,9 +55,13 @@
   </div>
 {/if}
 
+{#if previewBuild.externalRefs.length}
+  <div class="blocked-assets">{previewBuild.externalRefs.length} remote asset{previewBuild.externalRefs.length === 1 ? '' : 's'} blocked for a deterministic preview.</div>
+{/if}
+
 <style>
   .inline-html-artifact {
-    width: min(100%, 42rem);
+    width: 100%;
     height: min(58vh, 430px);
     min-height: 320px;
     margin-top: 0.65rem;
@@ -85,6 +71,8 @@
     background: var(--artifact-surface);
     box-shadow: var(--artifact-elev);
   }
+
+  .blocked-assets { margin-top: 0.4rem; color: var(--text-secondary); font-size: 0.68rem; }
 
   .inline-html-frame {
     display: block;

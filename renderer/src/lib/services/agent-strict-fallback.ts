@@ -292,10 +292,13 @@ function renderReferences(sources: EvidenceSource[]): string {
   for (const source of sources) {
     const domain = domainLabel(source.url);
     const label = source.title || source.url || `Source ${source.id}`;
+    // APA-ish web reference: Title. Site. URL (author/date when unknown → title-first + n.d. not invented)
     if (source.url) {
-      lines.push(`${source.id}. ${label}${domain ? `. ${domain}` : ''}. ${source.url}`);
+      lines.push(
+        `${source.id}. ${label}. ${domain || 'Web'}. (n.d.). ${source.url}`
+      );
     } else {
-      lines.push(`${source.id}. ${label}`);
+      lines.push(`${source.id}. ${label}. (n.d.).`);
     }
   }
   lines.push('');
@@ -345,15 +348,15 @@ export function renderResearchFallbackReport(params: {
   const prose = synthesizeProse(items, { maxItems: medical ? 14 : 12, withCitations: true });
   const opening = prose || 'Limited source material was retrieved in this session, so the notes below only reflect what could be checked from available pages.';
 
+  // Finished-product framing (competitor-style): no "step limit" / agent-error chrome.
   const lines: string[] = [
     `# ${title}`,
-    '',
-    params.notice
-      || 'Partial answer from sources already retrieved. Say **continue** if you want more depth.',
-    '',
-    opening,
     ''
   ];
+  if (params.notice) {
+    lines.push(params.notice, '');
+  }
+  lines.push(opening, '');
 
   if (medical) {
     const sections = [
@@ -381,22 +384,29 @@ export function renderResearchFallbackReport(params: {
       lines.push(
         '## What was found',
         '',
-        'Not enough specific clinical detail was retrieved to structure a full overview. Try **continue** or narrow the question.',
+        'Not enough specific clinical detail was retrieved to structure a full overview. Narrow the question or run a deeper search mode.',
         ''
       );
     }
-  } else if (items.length > 4) {
-    // Extra detail section only when we have more than the opening used
-    const rest = synthesizeProse(items.slice(4), { maxItems: 8, withCitations: true });
-    if (rest) {
-      lines.push('## Further detail', '', rest, '');
+  } else {
+    if (items.length > 2) {
+      const findings = synthesizeProse(items.slice(0, 6), { maxItems: 6, withCitations: true });
+      if (findings && findings !== opening) {
+        lines.push('## Key findings', '', findings, '');
+      }
+    }
+    if (items.length > 4) {
+      const rest = synthesizeProse(items.slice(4), { maxItems: 8, withCitations: true });
+      if (rest) {
+        lines.push('## Further analysis', '', rest, '');
+      }
     }
   }
 
   lines.push(
     '## Limitations',
     '',
-    'This summary is based only on sources retrieved in this session. It is not a substitute for specialist judgment or primary literature review. Claims without citations should be treated as unverified.',
+    'This report is based only on sources retrieved in this session. It is not a substitute for specialist judgment or primary literature review. Claims without citations should be treated as unverified.',
     ''
   );
 
@@ -610,6 +620,8 @@ export async function buildStrictFallbackContent(params: {
   observations: ToolObservation[];
   sources: SearchResult[];
   mode?: FallbackMode;
+  /** Optional product notice (omit for finished-style research reports). */
+  notice?: string | null;
   ensureRequestedArtifactsFromEvidence: (params: {
     prompt: string;
     reason: string;
@@ -659,9 +671,9 @@ export async function buildStrictFallbackContent(params: {
     visibleFiles,
     missingExtensions: missing,
     mode,
-    notice:
-      mode === 'research'
-        ? 'Partial answer from sources already retrieved. Say **continue** if you want more depth.'
-        : undefined
+    // Prefer caller notice; default research path is a finished report (no step-limit chrome).
+    notice: params.notice === null
+      ? undefined
+      : (params.notice || undefined)
   });
 }

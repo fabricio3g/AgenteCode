@@ -3,7 +3,8 @@ import { BaseProvider } from './base.ts';
 import { normalizeOpenAiBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 import type { ReasoningCapabilities, ReasoningRequest } from './base.ts';
 
-const OPENAI_REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+/** Official Chat Completions reasoning_effort values (model-dependent subsets). */
+const OPENAI_REASONING_LEVELS = ['off', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 export class OpenAIProvider extends BaseProvider {
   name = 'openai';
@@ -133,6 +134,7 @@ export class OpenAIProvider extends BaseProvider {
   /**
    * Translate a reasoning level into the OpenAI Chat Completions body shape.
    * 'off' means "do not send the param" (provider default).
+   * 'none' is sent explicitly (disables reasoning on models that support it).
    */
   _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
     if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
@@ -141,6 +143,11 @@ export class OpenAIProvider extends BaseProvider {
 
   applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
     return { ...body, ...this._reasoningBody(reasoning) };
+  }
+
+  /** Exported for unit tests */
+  mapReasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+    return this._reasoningBody(reasoning);
   }
 
   async fetchModels(apiKey, baseUrl) {

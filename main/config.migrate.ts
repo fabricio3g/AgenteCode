@@ -20,6 +20,9 @@ const URL_FIXES: Record<string, string> = {
   'https://openrouter.ai/api/': 'https://openrouter.ai/api/v1',
   'https://api.openai.com': 'https://api.openai.com/v1',
   'http://localhost:1234': 'http://localhost:1234/v1',
+  // groq-sdk embeds /openai/v1 in paths; base must be host only
+  'https://api.groq.com/openai/v1': 'https://api.groq.com',
+  'https://api.groq.com/openai/v1/': 'https://api.groq.com',
 };
 
 /**
@@ -206,7 +209,7 @@ export function ensureSearchConfig(cfg: AppConfig): boolean {
   }
 
   if (!Array.isArray(search.aggregator_engines)) {
-    search.aggregator_engines = ['duckduckgo', 'wikipedia'];
+    search.aggregator_engines = ['duckduckgo', 'wikipedia', 'wiby', 'mojeek'];
     dirty = true;
   }
 

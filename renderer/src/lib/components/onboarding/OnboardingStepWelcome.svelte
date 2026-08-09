@@ -4,6 +4,7 @@
   import { Sparkles, ArrowRight } from 'lucide-svelte';
   import { t, locale } from 'svelte-i18n';
   import { APP_NAME } from '$lib/app-meta';
+  import { Select } from '$lib/components/ui';
 
   const languages = [
     { code: 'en', label: 'English' },
@@ -51,16 +52,13 @@
 
   <div class="w-full max-w-xs space-y-1.5 text-left">
     <label class="block text-xs font-medium text-muted-foreground" for="onboarding-language">{$t('onboarding.chooseLanguage')}</label>
-    <select
+    <Select
       id="onboarding-language"
-      class="aui-input w-full"
+      class="w-full"
       value={normalizeLocaleCode($locale)}
-      onchange={(e) => setLocale((e.target as HTMLSelectElement).value)}
-    >
-      {#each languages as lang (lang.code)}
-        <option value={lang.code}>{lang.label}</option>
-      {/each}
-    </select>
+      options={languages.map((lang) => ({ value: lang.code, label: lang.label }))}
+      onchange={setLocale}
+    />
   </div>
 
   <div class="flex gap-1.5 text-[11px] text-muted-foreground">

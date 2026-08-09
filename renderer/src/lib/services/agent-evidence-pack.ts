@@ -134,11 +134,22 @@ export function buildResearchEvidencePack(
     const id = i + 1;
     const title = clean(s.title || s.url, 160);
     const domain = domainLabel(s.url || '');
-    const quality = blocked ? 'thin/blocked' : (s.full_content ? 'full' : 'snippet');
+    const quality = blocked
+      ? 'thin/blocked'
+      : (s.full_content ? 'full' : 'snippet');
+    const author = clean(s.metadata?.author || '', 120);
+    const published = clean(s.published_at || s.metadata?.published_at || '', 40);
+    const site = clean(s.metadata?.site_name || domain || 'web', 80);
     const excerpt = extractRelevantExcerpt(body || s.snippet || '', query, maxExcerpt);
+    const bib = [
+      author ? `Author: ${author}` : '',
+      published ? `Date: ${published}` : 'Date: (n.d.)',
+      site ? `Site: ${site}` : ''
+    ].filter(Boolean).join(' | ');
     const block = [
       `[${id}] ${title} | ${domain || 'web'} | ${quality}`,
       s.url ? `    URL: ${s.url}` : '',
+      bib ? `    APA fields: ${bib}` : '',
       excerpt ? `    Excerpt: ${excerpt}` : '    Excerpt: (empty)'
     ].filter(Boolean).join('\n');
     if (total + block.length > maxTotal) break;
@@ -186,7 +197,7 @@ export function buildResearchEvidencePack(
 
   lines.push(
     '',
-    'Instructions: Write a polished synthesized answer/report. Do NOT paste this pack or title sections "Gathered Evidence". Cite sources as [1], [2].',
+    'Instructions: Write the final polished APA 7 research report the user will read. Do NOT paste this pack. Do NOT title sections "Gathered Evidence" or "Summary". Cite as [1], [2] and APA author–date when APA fields exist. Use (n.d.) when date is missing. Never invent authors/dates. Never mention tools, step limits, or agent status.',
     '=== END EVIDENCE PACK ==='
   );
 

@@ -24,4 +24,11 @@ describe('stoppedWarning', () => {
     expect(text.toLowerCase()).not.toContain('gathered evidence');
     expect(text).toMatch(/partial|coding|continue/i);
   });
+
+  it('research path does not surface step-limit failure copy', () => {
+    expect(stoppedWarning('iteration_limit', '', { research: true })).toBe('');
+    expect(stoppedWarning('tool_limit', '', { research: true })).toBe('');
+    expect(stoppedWarning('loop', '', { research: true })).toBe('');
+    expect(stoppedWarning('timeout', '', { research: true })).toMatch(/sources retrieved/i);
+  });
 });

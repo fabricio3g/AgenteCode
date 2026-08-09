@@ -242,9 +242,13 @@ export interface SearchResponse {
   error_type?: string;
   retryable?: boolean;
   provider_attempts?: Array<{ provider: string; success: boolean; resultCount: number; error?: string }>;
+  engine_attempts?: Array<{ engine: string; success: boolean; result_count: number; latency_ms: number; error?: string; missing?: string[]; cooldown_until?: string; skipped?: boolean }>;
+  aggregation_elapsed_ms?: number;
+  aggregation_deadline_reached?: boolean;
 }
 
 export interface SearchOptions {
+  [key: string]: unknown;
   provider?: string;
   max_results?: number;
   context_budget_chars?: number;

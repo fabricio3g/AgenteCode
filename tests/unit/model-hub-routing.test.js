@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import {
   legacyFlagToModelHubSection,
+  resolveModelHubRoute,
   resolveModelHubSection
 } from '../../renderer/src/lib/utils/model-hub-routing.ts';
 
@@ -14,22 +15,27 @@ describe('manager routing', () => {
     assert.equal(resolveModelHubSection('unknown'), 'models');
   });
 
-  it('routes legacy modal flags into manager sections', () => {
-    assert.equal(legacyFlagToModelHubSection('settingsOpen'), 'general');
-    assert.equal(legacyFlagToModelHubSection('runtimeManagerOpen'), 'runtime');
+  it('maps the legacy Explore route to Models → Search', () => {
+    assert.deepEqual(resolveModelHubRoute('explore'), { section: 'models', modelTab: 'search' });
   });
 
-  it('preserves supported deep links and maps old settings links to general', () => {
+  it('routes legacy modal flags into manager sections', () => {
+    assert.equal(legacyFlagToModelHubSection('settingsOpen'), 'general');
+    assert.equal(legacyFlagToModelHubSection('runtimeManagerOpen'), 'local');
+  });
+
+  it('preserves supported deep links and maps legacy settings aliases', () => {
     assert.equal(resolveModelHubSection('models'), 'models');
-    assert.equal(resolveModelHubSection('explore'), 'models');
+    assert.equal(resolveModelHubSection('explore'), 'explore');
     assert.equal(resolveModelHubSection('general'), 'general');
     assert.equal(resolveModelHubSection('search'), 'search');
-    assert.equal(resolveModelHubSection('hardware'), 'hardware');
+    assert.equal(resolveModelHubSection('hardware'), 'local');
     assert.equal(resolveModelHubSection('providers'), 'providers');
-    assert.equal(resolveModelHubSection('runtime'), 'runtime');
+    assert.equal(resolveModelHubSection('runtime'), 'local');
+    assert.equal(resolveModelHubSection('api'), 'providers');
     assert.equal(resolveModelHubSection('settings'), 'general');
-    assert.equal(resolveModelHubSection('voices'), 'voices');
-    assert.equal(resolveModelHubSection('whisper'), 'whisper');
+    assert.equal(resolveModelHubSection('voices'), 'voice');
+    assert.equal(resolveModelHubSection('whisper'), 'voice');
   });
 });
 

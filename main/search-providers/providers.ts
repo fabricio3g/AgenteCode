@@ -105,7 +105,7 @@ export async function searchSearxng(query: string, maxResults: number, options: 
   url.searchParams.set('language', 'en');
   url.searchParams.set('safesearch', '1');
   url.searchParams.set('categories', 'general');
-  const resp = await fetchWithRetry(url.toString(), { timeout_ms: 15000 });
+  const resp = await fetchWithRetry(url.toString(), { timeout_ms: Number(options?.timeout_ms) || 15000, signal: options?.signal });
   const data = await resp.json() as Record<string, unknown>;
   return mapSearchResults('searxng', pickFirstArray(data, ['results']), (item) => ({
     title: item?.title,
@@ -312,11 +312,12 @@ export async function searchPerplexity(query: string, maxResults: number, option
   return [];
 }
 
-export async function searchDuckDuckGo(query: string, maxResults: number): Promise<SearchResult[]> {
+export async function searchDuckDuckGo(query: string, maxResults: number, options: Record<string, unknown> = {}): Promise<SearchResult[]> {
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const resp = await fetchWithRetry(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Chatea/1.0)' },
-    timeout_ms: 12000
+    timeout_ms: Number(options?.timeout_ms) || 12000,
+    signal: options?.signal
   });
   const html = await resp.text();
 

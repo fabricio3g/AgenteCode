@@ -17,8 +17,8 @@
   import FilesCreatedBlock from './FilesCreatedBlock.svelte';
   import ArtifactBlock from './ArtifactBlock.svelte';
   import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
-  import InlineAgentSteps from '$lib/components/agent/InlineAgentSteps.svelte';
   import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
+  import { resolveArtifactPresentation } from '$lib/services/artifact-model';
 
 
   interface Props {
@@ -91,6 +91,7 @@
       status: displayMetadata?.workProduct?.status || 'ready'
     }];
   });
+  const hasDocumentArtifact = $derived(!!message.artifact && resolveArtifactPresentation(message.artifact).manifest.presentation === 'document');
   const visibleContent = $derived(displayContent);
   const showSourcesBlock = $derived.by(() => {
     if (!hasSources) return false;
@@ -144,7 +145,7 @@
   {/if}
 
   {#if message.agentSteps?.length || (message.mode === 'agent' && message.status === 'streaming' && !displayContent && !hasActiveDeepResearch)}
-    <!-- One calm status line while working; tool list only after stream ends -->
+    <!-- Single status line; full tool list lives in the activity drawer -->
     <AgentBlock
       steps={message.agentSteps || []}
       reasoning={enableThinking ? displayReasoning : undefined}
@@ -158,14 +159,6 @@
       messageId={message.id}
       searchMode={message.searchMode || null}
     />
-    {#if message.agentSteps?.length && message.status !== 'streaming'}
-      <InlineAgentSteps
-        steps={message.agentSteps}
-        status={message.status}
-        totalElapsedSeconds={resolveTotalElapsed(displayMetadata) || 0}
-        variant="outline"
-      />
-    {/if}
   {/if}
 </div>
 
@@ -203,8 +196,9 @@
   <RichContent content={visibleContent} status={message.status} metadataError={!!displayMetadata?.error} sources={message.sources} searchMode={message.searchMode || null} onAction={onUIAction} />
 {/if}
 
-{#if reportDocs.length}
-  <DocumentSurface docs={reportDocs} title={reportTitle} sourceCount={message.sources?.length || 0} allowDownload={false} />
+{#if reportDocs.length && !hasDocumentArtifact}
+  <!-- SourcesBlock below owns the source count — avoid repeating "N sources" here -->
+  <DocumentSurface docs={reportDocs} title={reportTitle} sourceCount={0} allowDownload={false} />
 {/if}
 
 <!-- Research chrome after the answer: sources, optional collapsible brief -->

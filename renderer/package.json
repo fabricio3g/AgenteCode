@@ -39,9 +39,11 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/postcss": "^4.1.13",
+    "@testing-library/svelte": "^5.4.2",
     "@types/d3": "^7.4.3",
     "@types/node": "^24.5.2",
     "autoprefixer": "^10.4.21",
+    "jsdom": "^27.0.1",
     "patch-package": "^8.0.1",
     "postcss": "^8.5.6",
     "svelte-check": "^4.3.1",

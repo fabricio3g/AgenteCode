@@ -1,11 +1,13 @@
 import type { AgentArtifact, InlineArtifactPayload } from '$lib/types/chat';
 import type { ToolResult } from '$lib/services/agent-types';
+import { normalizeArtifact } from '$lib/services/artifact-model';
 
 export const INLINE_ARTIFACT_FILE = '__artifact__.json';
 
 export type ArtifactContext = {
   files: Record<string, string>;
   workProduct?: AgentArtifact['workProduct'];
+  artifactManifest?: AgentArtifact['manifest'];
 };
 
 function parseInlineArtifact(files: Record<string, string>): InlineArtifactPayload | null {
@@ -24,13 +26,14 @@ function parseInlineArtifact(files: Record<string, string>): InlineArtifactPaylo
 export function buildArtifactFromContext(ctx: ArtifactContext): AgentArtifact | null {
   const visible = Object.keys(ctx.files).filter((path) => !path.startsWith('__'));
   if (!visible.length) return null;
-  return {
+  return normalizeArtifact({
     title: ctx.workProduct?.title || (visible.length === 1 ? visible[0] : 'Generated documents'),
     files: { ...ctx.files },
     previewHtml: ctx.files['__preview__.html'] ?? null,
     inline: parseInlineArtifact(ctx.files),
-    workProduct: ctx.workProduct || null
-  };
+    workProduct: ctx.workProduct || null,
+    manifest: ctx.artifactManifest || null
+  });
 }
 
 export function addGeneratedArtifactFile(params: {

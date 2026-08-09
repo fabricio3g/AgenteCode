@@ -48,6 +48,9 @@
   --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   --surface-shadow-focus: 0 1px 3px rgb(0 0 0 / 0.08);
   --motion-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-fast: 120ms;
+  --motion-normal: 180ms;
+  --motion-dialog: 240ms;
 
   /* Compatibility aliases (legacy Chatea vars) */
   --surface: var(--card);

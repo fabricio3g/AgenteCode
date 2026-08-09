@@ -30,13 +30,28 @@ export async function handleWebSearch(params: {
         'Web search is unavailable right now. Do not invent current facts; report that live search failed and use only already gathered evidence.'
       );
     }
-    const results = result.results.slice(0, resultBudget).map((entry, index) => ({
-      ...entry,
-      rank: index + 1,
-      title: entry.title,
-      url: entry.url,
-      snippet: entry.snippet
-    }));
+    // Cap per-result body for the tool message; evidence pack carries deeper excerpts later.
+    const excerptCap = mode === 'max' ? 2400 : mode === 'deep' ? 1800 : 900;
+    const results = result.results.slice(0, resultBudget).map((entry, index) => {
+      const full = String(entry.full_content || '');
+      const snippet = String(entry.snippet || '');
+      return {
+        rank: index + 1,
+        title: entry.title,
+        url: entry.url,
+        snippet: snippet.slice(0, 600),
+        // Prefer readable full content when deep/max already scraped the page.
+        ...(full.length > 200
+          ? { full_content: full.slice(0, excerptCap) }
+          : {}),
+        provider: entry.provider,
+        providers: entry.providers,
+        published_at: entry.published_at,
+        metadata: entry.metadata
+      };
+    });
+
+    const hasDeepBodies = results.some((entry) => entry.full_content && entry.full_content.length > 200);
 
     return params.ok({
       query,
@@ -44,8 +59,10 @@ export async function handleWebSearch(params: {
       mode,
       results,
       urls_to_consider: results.map((entry) => ({ rank: entry.rank, title: entry.title, url: entry.url })),
-      next_step: 'If the answer needs source text, choose the most authoritative/relevant URL from urls_to_consider and call fetch_url before finalizing. If results are thin, run another distinct web_search query.',
-      context: result.context
+      next_step: hasDeepBodies
+        ? 'Page text is already attached on results[].full_content when available. fetch_url only if a key URL still needs more text or was thin. Prefer writing the final APA report when sources are sufficient.'
+        : 'Prefer fetch_url on the most authoritative URLs before finalizing. If results are thin, run another distinct web_search query, then write the APA report.'
+      // Intentionally omit result.context — it duplicates results and bloats the tool turn.
     });
   } catch (err: unknown) {
     return params.failFromError(

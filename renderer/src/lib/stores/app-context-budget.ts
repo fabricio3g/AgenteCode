@@ -93,46 +93,66 @@ export function inferContextWindowFromModel(providerName?: string, modelId?: str
   const model = String(modelId || '').toLowerCase();
   if (!model) return null;
 
-  if (provider.includes('anthropic') || model.includes('claude')) {
-    if (model.includes('instant')) return 100_000;
+  // Strip OpenRouter variant suffixes for matching (e.g. :free)
+  const bare = model.replace(/:.*$/, '');
+
+  if (provider.includes('anthropic') || bare.includes('claude')) {
+    if (bare.includes('instant')) return 100_000;
     return 200_000;
   }
 
-  if (provider.includes('gemini') || model.includes('gemini')) {
-    if (/gemini-(?:1\.5|2\.|2-|flash|pro)/.test(model)) return 1_000_000;
+  if (provider.includes('gemini') || bare.includes('gemini')) {
+    // Gemini 1.5 / 2.x / 3.x long-context series
+    if (/gemini-(?:1\.5|2\.|2-|3|flash|pro)/.test(bare)) return 1_000_000;
     return 32_768;
   }
 
-  if (model.includes('gpt-4.1') || model.includes('gpt-4o') || model.includes('gpt-4-turbo') || /o[134]\b/.test(model)) return 128_000;
-  if (model.includes('gpt-4-32k')) return 32_768;
-  if (model.includes('gpt-4')) return 8_192;
-  if (model.includes('gpt-3.5-turbo')) return 16_384;
-  if (model.includes('gpt-3.5')) return 4_096;
+  if (bare.includes('gemma')) {
+    // Gemma 2/3/4 common hosted sizes
+    if (/gemma-?4|gemma-3|gemma2|gemma-2/.test(bare)) return 128_000;
+    return 32_768;
+  }
 
-  if (provider.includes('deepseek') || model.includes('deepseek')) {
-    if (model.includes('v3') || model.includes('r1')) return 128_000;
+  // OpenAI GPT-5 / o-series / GPT-4.x
+  if (/gpt-5|gpt5/.test(bare)) return 400_000;
+  if (bare.includes('gpt-4.1') || bare.includes('gpt-4o') || bare.includes('gpt-4-turbo') || /o[134]\b/.test(bare)) {
+    return 128_000;
+  }
+  if (bare.includes('gpt-4-32k')) return 32_768;
+  if (bare.includes('gpt-4')) return 8_192;
+  if (bare.includes('gpt-3.5-turbo')) return 16_384;
+  if (bare.includes('gpt-3.5')) return 4_096;
+
+  // DeepSeek — V4 is 1M context on official API
+  if (provider.includes('deepseek') || bare.includes('deepseek')) {
+    if (/v4|deepseek-v4/.test(bare)) return 1_000_000;
+    if (bare.includes('v3') || bare.includes('r1')) return 128_000;
     return 64_000;
   }
 
-  if (provider.includes('mistral') || model.includes('mistral')) {
-    if (model.includes('large')) return 128_000;
-    if (model.includes('small') || model.includes('medium')) return 32_768;
-    if (model.includes('nemo') || model.includes('codestral')) return 256_000;
+  if (provider.includes('mistral') || bare.includes('mistral') || bare.includes('magistral')) {
+    if (bare.includes('large') || bare.includes('medium-3') || bare.includes('medium_3')) return 128_000;
+    if (bare.includes('nemo') || bare.includes('codestral')) return 256_000;
+    if (bare.includes('small') || bare.includes('medium')) return 32_768;
     return 32_768;
   }
 
-  if (provider.includes('groq') || model.includes('groq') || model.includes('llama') || model.includes('mixtral')) {
-    if (model.includes('llama-3.1') || model.includes('llama3.1')) return 131_072;
-    if (model.includes('llama-3') || model.includes('llama3')) return 8_192;
-    if (model.includes('mixtral')) return 32_768;
-    return 8_192;
+  // Groq-hosted families
+  if (provider.includes('groq') || bare.includes('gpt-oss') || bare.includes('llama') || bare.includes('mixtral')) {
+    if (bare.includes('gpt-oss')) return 131_072;
+    if (bare.includes('llama-3.1') || bare.includes('llama3.1') || bare.includes('llama-3.3')) return 131_072;
+    if (bare.includes('llama-3') || bare.includes('llama3')) return 8_192;
+    if (bare.includes('mixtral')) return 32_768;
   }
 
-  if (model.includes('qwen')) {
-    if (model.includes('qwen2.5') || model.includes('qwen2-5')) return 131_072;
-    if (model.includes('qwen2')) return 32_768;
+  if (bare.includes('qwen')) {
+    // Qwen3 / Qwen2.5 long context
+    if (/qwen3|qwen-3|qwen2\.5|qwen2-5/.test(bare)) return 131_072;
+    if (bare.includes('qwen2')) return 32_768;
     return 32_768;
   }
+
+  if (provider.includes('groq')) return 8_192;
 
   return null;
 }

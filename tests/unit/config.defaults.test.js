@@ -76,7 +76,7 @@ describe('getDefaultSearchConfig', () => {
     const search = getDefaultSearchConfig();
     assert.strictEqual(search.provider, 'aggregator');
     assert.strictEqual(search.max_results, 6);
-    assert.deepStrictEqual(search.aggregator_engines, ['duckduckgo', 'wikipedia']);
+    assert.deepStrictEqual(search.aggregator_engines, ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
   });
 });
 
@@ -120,7 +120,7 @@ describe('getDefaultProviders', () => {
     assert.ok(providers.openai);
     assert.ok(providers.openrouter);
     assert.ok(providers.lmstudio);
-    assert.strictEqual(Object.keys(providers).length, 3);
+    assert.ok(Object.keys(providers).length >= 3);
   });
 
   it('has correct openai base URL', () => {

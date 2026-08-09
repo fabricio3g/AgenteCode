@@ -49,6 +49,7 @@ export type ToolContext = {
   signal?: AbortSignal;
   onArtifact: (artifact: AgentArtifact | null) => void;
   workProduct?: AgentArtifact['workProduct'];
+  artifactManifest?: AgentArtifact['manifest'];
 };
 
 export type AgentTaskResult = {

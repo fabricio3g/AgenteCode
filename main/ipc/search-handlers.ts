@@ -8,11 +8,13 @@ type SearchHandlerDeps = {
   webSearch: (args: unknown, win: BrowserWindow | null) => unknown;
   ingestSearchContext: (chatId: string, context: string, sources: unknown) => unknown;
   fetchModelCatalog: () => unknown;
-  searchHfModels: (query: string, sort: string, limit: number, hfToken?: string) => unknown;
+  searchHfModels: (query: string, sort: string, limit: number, hfToken?: string, cursor?: string, paged?: boolean) => unknown;
   hfRepoGguf: (repoId: string, hfToken?: string) => unknown;
   createWebviewerWindow: (url: string, title?: string) => unknown;
   scrapeUrlStructured: (args: { url: string; maxLength?: number; timeoutMs?: number; maxLinks?: number }) => Promise<unknown>;
   crawlWeb: (args: unknown) => unknown;
+  getAggregatorCatalog: () => unknown;
+  probeAggregatorEngines: (engineIds: unknown, options?: Record<string, unknown>, query?: string) => unknown;
   toErrorMessage: ErrorMessageFn;
 };
 
@@ -28,12 +30,18 @@ export function registerSearchHandlers({
   createWebviewerWindow,
   scrapeUrlStructured,
   crawlWeb,
+  getAggregatorCatalog,
+  probeAggregatorEngines,
   toErrorMessage,
 }: SearchHandlerDeps): void {
   ipcMain.handle('web_search', (_e, args) => webSearch(args, getMainWindow()));
+  ipcMain.handle('search:get-catalog', () => getAggregatorCatalog());
+  ipcMain.handle('search:probe-engines', (_e, args: { engine_ids?: unknown; options?: Record<string, unknown>; query?: string } = {}) =>
+    probeAggregatorEngines(args.engine_ids, args.options || {}, args.query));
   ipcMain.handle('ingest_search_context', (_e, { chatId, context, sources }) => ingestSearchContext(chatId, context, sources));
   ipcMain.handle('fetch_model_catalog', () => fetchModelCatalog());
-  ipcMain.handle('search_hf_models', (_e, { query, sort, limit, hfToken }) => searchHfModels(query, sort, limit, hfToken));
+  ipcMain.handle('search_hf_models', (_e, { query, sort, limit, hfToken, cursor, paged }) =>
+    searchHfModels(query, sort, limit, hfToken, cursor, paged));
   ipcMain.handle('hf_repo_gguf', (_e, { repoId, hfToken }) => hfRepoGguf(repoId, hfToken));
   ipcMain.handle('open_url_window', (_e, { url }) => shell.openExternal(String(url || '')));
 

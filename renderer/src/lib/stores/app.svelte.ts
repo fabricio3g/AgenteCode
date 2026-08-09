@@ -138,7 +138,7 @@ class AppStore {
   modelManagerOpenSection = $state<string | null>(null);
   runtimeManagerOpen = $state(false);
   agentWorkspaceOpen = $state(false);
-  sandboxOpen = $state(false);
+  artifactStudioOpen = $state(false);
   artifactSettingsOpen = $state(false);
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
@@ -513,7 +513,7 @@ class AppStore {
     });
   }
 
-  private syncArtifactState(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {
+  private syncArtifactState(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.artifactStudioOpen) {
     this.currentArtifact = artifact;
     this.currentArtifactMessageId = artifact ? messageId : null;
 
@@ -522,7 +522,7 @@ class AppStore {
       this.persist();
     }
 
-    this.sandboxOpen = artifact ? open : false;
+    this.artifactStudioOpen = artifact ? open : false;
   }
 
   openArtifact(artifact: AgentArtifact | null, messageId: string | null = null) {
@@ -533,8 +533,21 @@ class AppStore {
     this.syncArtifactState(artifact, messageId, true);
   }
 
-  setCurrentArtifact(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.sandboxOpen) {
+  setCurrentArtifact(artifact: AgentArtifact | null, messageId: string | null = this.currentArtifactMessageId, open = this.artifactStudioOpen) {
     this.syncArtifactState(artifact, messageId, open);
+  }
+
+  saveArtifactToMessage(chatId: string, messageId: string, artifact: AgentArtifact): boolean {
+    const chat = this.findChat(chatId);
+    if (!applyArtifactToMessage(chat, messageId, artifact)) return false;
+    this.markChatDirty(chatId);
+    this.touchChats(chatId);
+    if (this.currentChatId === chatId) {
+      this.currentArtifact = resolveArtifactForMessage(chat, messageId);
+      this.currentArtifactMessageId = messageId;
+    }
+    this.persist();
+    return true;
   }
 
   openActivityDrawer(messageId: string, tab: 'activity' | 'sources' = 'activity') {
@@ -907,7 +920,7 @@ class AppStore {
       this.reasoningLevel = null;
       this.currentArtifact = null;
       this.currentArtifactMessageId = null;
-      this.sandboxOpen = false;
+      this.artifactStudioOpen = false;
       this.closeActivityDrawer();
       this.searchSidebarOpen = false;
       return;
@@ -924,7 +937,7 @@ class AppStore {
     const lastArtifactMsg = findLatestArtifactMessage(chat);
     this.currentArtifact = lastArtifactMsg?.artifact || null;
     this.currentArtifactMessageId = lastArtifactMsg?.id || null;
-    if (!this.currentArtifact) this.sandboxOpen = false;
+    if (!this.currentArtifact) this.artifactStudioOpen = false;
 
     // Activity drawer only if message belongs to this chat
     if (this.activityDrawerOpen && this.activityMessageId) {

@@ -2,7 +2,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 
-const ANTHROPIC_LEVELS = ['off', 'enabled', 'disabled'];
+/** Adaptive effort levels (Claude 4.6+). Legacy `enabled` keeps budget_tokens for older models. */
+const ANTHROPIC_LEVELS = ['off', 'low', 'medium', 'high', 'max', 'enabled', 'disabled'] as const;
+
+const ANTHROPIC_EFFORT: Record<string, 'low' | 'medium' | 'high' | 'max'> = {
+  low: 'low',
+  minimal: 'low',
+  medium: 'medium',
+  high: 'high',
+  max: 'max',
+  xhigh: 'max',
+  on: 'high'
+};
 
 export class AnthropicProvider extends BaseProvider {
   name = 'anthropic';
@@ -209,46 +220,55 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   /**
-   * Anthropic exposes extended thinking via the `thinking` config object.
-   * Per the official docs, all current Claude 4.x models support it — either
-   * manual (`enabled` + budget_tokens, deprecated on some) or adaptive
-   * (`adaptive` + effort). We return the levels the UI can choose between;
-   * the model-specific path (manual vs adaptive) is decided in _thinkingBody
-   * based on the chosen level. We don't pattern-match model names here.
-   *
-   * The Anthropic SDK exposes ThinkingConfigEnabled / ThinkingConfigDisabled /
-   * ThinkingConfigAdaptiveParam types — those are the source of truth for the
-   * valid shapes.
+   * Anthropic thinking:
+   * - Adaptive (`type: 'adaptive'` + `output_config.effort`) is recommended on
+   *   Claude 4.6 and required on 4.7+ (manual budget_tokens is rejected).
+   * - Legacy manual (`type: 'enabled'` + budget_tokens) remains for older models
+   *   when the UI still sends level `enabled`.
    */
   async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
     return {
       supported: true,
-      levels: ANTHROPIC_LEVELS as ReasoningCapabilities['levels'],
+      levels: [...ANTHROPIC_LEVELS] as ReasoningCapabilities['levels'],
       paramShape: 'anthropic_thinking',
       source: 'sdk'
     };
   }
 
   /**
-   * Translate reasoning level into Anthropic's native `thinking` body shape.
-   * - 'enabled'  → manual extended thinking with a 10k token budget
-   * - 'disabled' → thinking off
-   * - 'off'/'undefined' → omit the param (provider default)
-   *
-   * budget_tokens must be < max_tokens per Anthropic's API constraint.
+   * Map UI level → Anthropic Messages body.
+   * - off / omit → no thinking param (provider default)
+   * - disabled → thinking off
+   * - enabled → legacy manual budget (Claude ≤4.5 / 4.6 compat)
+   * - low|medium|high|max → adaptive + output_config.effort
    */
   _thinkingBody(reasoning?: ReasoningRequest, maxTokens = 4096): Record<string, unknown> {
     if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
-    if (reasoning.level === 'disabled') return { thinking: { type: 'disabled' } };
+    if (reasoning.level === 'disabled' || reasoning.level === 'none') {
+      return { thinking: { type: 'disabled' } };
+    }
     if (reasoning.level === 'enabled') {
-      const budget = Math.min(reasoning.budgetTokens ?? 10000, Math.max(1024, Math.floor(maxTokens * 0.75)));
+      const budget = Math.min(
+        reasoning.budgetTokens ?? 10000,
+        Math.max(1024, Math.floor(maxTokens * 0.75))
+      );
       return { thinking: { type: 'enabled', budget_tokens: budget } };
     }
-    return {};
+    const effort = ANTHROPIC_EFFORT[reasoning.level];
+    if (!effort) return {};
+    return {
+      thinking: { type: 'adaptive' },
+      output_config: { effort }
+    };
   }
 
   applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
     return { ...body, ...this._thinkingBody(reasoning, (body.max_tokens as number) || 4096) };
+  }
+
+  /** Exported for unit tests via mapAnthropicThinkingBody */
+  mapThinkingBody(reasoning?: ReasoningRequest, maxTokens = 4096): Record<string, unknown> {
+    return this._thinkingBody(reasoning, maxTokens);
   }
 
   async fetchModels(apiKey, baseUrl) {
@@ -263,21 +283,15 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   async fetchModelMetadata(_apiKey, _baseUrl, modelId) {
-    const KNOWN_CONTEXTS = {
-      'claude-3-5-sonnet-20241022': 200_000,
-      'claude-3-5-sonnet-20240620': 200_000,
-      'claude-3-5-haiku-20241022': 200_000,
-      'claude-3-5-haiku-20240307': 200_000,
-      'claude-3-opus-20240229': 200_000,
-      'claude-3-sonnet-20240229': 200_000,
-      'claude-3-haiku-20240307': 200_000,
-      'claude-2.1': 200_000,
-      'claude-2.0': 200_000,
-      'claude-instant-20230501': 100_000,
-      'claude-instant-1.3': 100_000,
-    };
-    const contextWindow = KNOWN_CONTEXTS[modelId] ?? null;
-    return contextWindow ? { context_window: contextWindow } : null;
+    // Claude 3+ and Claude 4/5 families use 200k context by default.
+    const id = String(modelId || '').toLowerCase();
+    if (/claude-(opus|sonnet|haiku)-[345]|claude-[345]/.test(id) || /claude-3/.test(id)) {
+      return { context_window: 200_000 };
+    }
+    if (/claude-2|claude-instant/.test(id)) {
+      return { context_window: id.includes('instant') ? 100_000 : 200_000 };
+    }
+    return null;
   }
 }
 
@@ -289,4 +303,12 @@ function findLastAssistantBlock(messages) {
     }
   }
   return null;
+}
+
+/** Exported for unit tests */
+export function mapAnthropicThinkingBody(
+  reasoning?: ReasoningRequest,
+  maxTokens = 4096
+): Record<string, unknown> {
+  return new AnthropicProvider()._thinkingBody(reasoning, maxTokens);
 }

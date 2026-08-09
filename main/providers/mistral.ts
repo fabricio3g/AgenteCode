@@ -2,7 +2,11 @@ import { Mistral } from '@mistralai/mistralai';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
-const MISTRAL_LEVELS = ['off', 'none', 'high'];
+const MISTRAL_LEVELS = ['off', 'none', 'high'] as const;
+
+/** Documented adjustable-reasoning models (Mistral Reasoning docs). */
+const MISTRAL_REASONING_MODEL_RE =
+  /mistral-small|mistral-medium|magistral|mistral-medium-3/i;
 
 export class MistralProvider extends BaseProvider {
   name = 'mistral';
@@ -63,13 +67,13 @@ export class MistralProvider extends BaseProvider {
     const stream = await client.chat.stream(request, { signal });
     for await (const chunk of stream) {
       const delta = chunk.data?.choices?.[0]?.delta || {};
-      const content = delta.content;
+      const extracted = extractMistralContentParts(delta.content);
       const toolCallDeltas = delta.tool_calls;
 
-      if (content || toolCallDeltas) {
+      if (extracted.text || extracted.reasoning || toolCallDeltas) {
         yield {
-          content: content ?? '',
-          reasoning: '',
+          content: extracted.text,
+          reasoning: extracted.reasoning,
           ...(toolCallDeltas ? {
             toolCallDeltas: toolCallDeltas.map((tc, i) => ({
               index: tc.index ?? i,
@@ -102,10 +106,11 @@ export class MistralProvider extends BaseProvider {
     const response = await client.chat.complete(request, { signal });
     const choice = response?.choices?.[0] || {};
     const message = choice.message || {};
+    const extracted = extractMistralContentParts(message.content);
 
     return {
-      content: message.content || '',
-      reasoning: '',
+      content: extracted.text,
+      reasoning: extracted.reasoning,
       usage: response?.usage ? {
         input_tokens: response.usage.promptTokens,
         output_tokens: response.usage.completionTokens,
@@ -120,35 +125,44 @@ export class MistralProvider extends BaseProvider {
   }
 
   /**
-   * Mistral's docs state `reasoning_effort` is supported on
-   * `mistral-small-latest` and `mistral-medium-3-5`. We probe `models.list()`
-   * for capability metadata the SDK exposes rather than guessing from model
-   * names. On any error or missing field, return 'unknown' (selector hidden).
+   * Mistral documents `reasoning_effort` on adjustable-reasoning models
+   * (mistral-small-*, mistral-medium-*, magistral). Prefer SDK list metadata
+   * when present; otherwise use documented model families (source: sdk).
    */
   async getReasoningCapabilities(apiKey, baseUrl, modelId): Promise<ReasoningCapabilities> {
-    const client = this.createClient(apiKey, baseUrl);
+    const id = String(modelId || '');
     try {
+      const client = this.createClient(apiKey, baseUrl);
       const response = await client.models.list();
       const list = response?.data ?? [];
-      const found = list.find((m: { id?: string }) => String(m?.id || '') === String(modelId));
-      if (!found) return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'unknown' };
-      // The Mistral SDK exposes capability fields on the model object; we
-      // check for any reasoning-related field the SDK provides.
-      const record = found as Record<string, unknown>;
-      const supportsReasoning = !!(record.reasoning || record.supports_reasoning ||
-        (Array.isArray(record.capabilities) && (record.capabilities as string[]).includes('reasoning')));
-      if (!supportsReasoning) {
-        return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'api' };
+      const found = list.find((m: { id?: string }) => String(m?.id || '') === id);
+      if (found) {
+        const record = found as Record<string, unknown>;
+        const supportsReasoning = !!(record.reasoning || record.supports_reasoning ||
+          (Array.isArray(record.capabilities) && (record.capabilities as string[]).includes('reasoning')));
+        if (supportsReasoning) {
+          return {
+            supported: true,
+            levels: [...MISTRAL_LEVELS] as ReasoningCapabilities['levels'],
+            paramShape: 'mistral_reasoning_effort',
+            source: 'api'
+          };
+        }
       }
+    } catch {
+      // fall through to documented families
+    }
+
+    if (MISTRAL_REASONING_MODEL_RE.test(id)) {
       return {
         supported: true,
-        levels: MISTRAL_LEVELS as ReasoningCapabilities['levels'],
+        levels: [...MISTRAL_LEVELS] as ReasoningCapabilities['levels'],
         paramShape: 'mistral_reasoning_effort',
-        source: 'api'
+        source: 'sdk'
       };
-    } catch {
-      return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'unknown' };
     }
+
+    return { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'unknown' };
   }
 
   /**
@@ -158,7 +172,15 @@ export class MistralProvider extends BaseProvider {
   _reasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
     if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
     if (reasoning.level === 'none' || reasoning.level === 'high') {
-      return { reasoning_effort: reasoning.level };
+      return { reasoningEffort: reasoning.level };
+    }
+    // Compat for shared UI levels
+    if (reasoning.level === 'disabled' || reasoning.level === 'minimal') {
+      return { reasoningEffort: 'none' };
+    }
+    if (reasoning.level === 'low' || reasoning.level === 'medium' || reasoning.level === 'max' ||
+        reasoning.level === 'enabled' || reasoning.level === 'on') {
+      return { reasoningEffort: 'high' };
     }
     return {};
   }
@@ -211,4 +233,42 @@ export class MistralProvider extends BaseProvider {
       return null;
     }
   }
+}
+
+/**
+ * Mistral may return content as a string or as chunks that include thinking.
+ * Extract text vs reasoning for the UI stream.
+ */
+function extractMistralContentParts(content: unknown): { text: string; reasoning: string } {
+  if (content == null) return { text: '', reasoning: '' };
+  if (typeof content === 'string') return { text: content, reasoning: '' };
+  if (!Array.isArray(content)) return { text: String(content), reasoning: '' };
+
+  let text = '';
+  let reasoning = '';
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue;
+    const p = part as Record<string, unknown>;
+    const type = String(p.type || '').toLowerCase();
+    const value = typeof p.text === 'string'
+      ? p.text
+      : typeof p.content === 'string'
+        ? p.content
+        : typeof p.thinking === 'string'
+          ? p.thinking
+          : '';
+    if (type === 'thinking' || type === 'reasoning' || p.thinking === true) {
+      reasoning += value;
+    } else if (type === 'text' || type === 'output_text' || !type) {
+      text += value || (typeof p === 'string' ? p : '');
+    } else if (value) {
+      text += value;
+    }
+  }
+  return { text, reasoning };
+}
+
+/** Exported for unit tests */
+export function mapMistralReasoningBody(reasoning?: ReasoningRequest): Record<string, unknown> {
+  return new MistralProvider()._reasoningBody(reasoning);
 }

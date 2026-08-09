@@ -14,6 +14,7 @@
     stopReason?: AgentStopReason;
     currentActivity?: AgentActivity;
     activityLabel?: string;
+    /** @deprecated SourcesBlock owns source count; kept for call-site compatibility. */
     sourceCount?: number;
     messageId?: string;
     /** When deep/max search is active, show a quiet mode chip */
@@ -29,10 +30,11 @@
     stopReason = 'none',
     currentActivity,
     activityLabel,
-    sourceCount = 0,
+    sourceCount: _sourceCount = 0,
     messageId = '',
     searchMode = null
   }: Props = $props();
+  void _sourceCount;
 
   const modeChip = $derived(
     searchMode === 'deep' ? 'Deep' : searchMode === 'max' ? 'Max' : searchMode === 'search' ? 'Search' : ''
@@ -150,12 +152,12 @@
     }
 
     if (steps.length) {
+      // SourcesBlock owns source count under the answer — do not repeat it here.
       const parts: string[] = [];
-      if (doneCount) parts.push(`${doneCount} step${doneCount === 1 ? '' : 's'}`);
       if (errCount) parts.push(`${errCount} error${errCount === 1 ? '' : 's'}`);
+      else if (doneCount) parts.push(`${doneCount} step${doneCount === 1 ? '' : 's'}`);
       const s = Number(totalElapsedSeconds || 0);
-      if (s > 0) parts.push(`${s.toFixed(1)}s`);
-      if (sourceCount > 0) parts.push(`${sourceCount} source${sourceCount === 1 ? '' : 's'}`);
+      if (s > 0) parts.push(s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s)}s`);
       return parts.length ? parts.join(' · ') : 'Done';
     }
 

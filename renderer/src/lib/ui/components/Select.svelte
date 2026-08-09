@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getContext } from 'svelte';
+  import { Select as ProductSelect } from '$lib/components/ui';
   import { useUI } from '../context';
   let { props = {} } = $props<{ props?: Record<string, any> }>();
   const formName = getContext<string | undefined>('ui-form-name');
@@ -8,11 +9,22 @@
   const value = $derived(getFieldValue(formName, String(props.name || '')) ?? '');
   const optionValue = (option: any) => String(option?.props?.value || option?.value || '');
   const optionLabel = (option: any) => String(option?.props?.label || option?.label || optionValue(option));
+  const normalizedOptions = $derived([
+    { value: '', label: String(props.placeholder || 'Select...') },
+    ...options.map((option: any) => ({
+      value: optionValue(option),
+      label: optionLabel(option),
+      disabled: Boolean(option?.props?.disabled ?? option?.disabled),
+      description: String(option?.props?.description || option?.description || '') || undefined,
+    })),
+  ]);
 </script>
 
-<select class="ui-input" value={String(value)} onchange={(event) => setFieldValue(formName, 'Select', String(props.name || ''), (event.currentTarget as HTMLSelectElement).value)}>
-  <option value="">{String(props.placeholder || 'Select...')}</option>
-  {#each options as option}
-    <option value={optionValue(option)}>{optionLabel(option)}</option>
-  {/each}
-</select>
+<ProductSelect
+  class="ui-input"
+  value={String(value)}
+  options={normalizedOptions}
+  disabled={Boolean(props.disabled)}
+  aria-label={String(props.label || props.name || 'Select')}
+  onchange={(nextValue) => setFieldValue(formName, 'Select', String(props.name || ''), nextValue)}
+/>

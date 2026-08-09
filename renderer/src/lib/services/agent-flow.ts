@@ -18,8 +18,28 @@ export function classifyStopReason(reason?: string): AgentStopReason {
   return 'error';
 }
 
-export function stoppedWarning(stopReason: AgentStopReason, reason: string, opts?: { workspace?: boolean }): string {
+export function stoppedWarning(
+  stopReason: AgentStopReason,
+  reason: string,
+  opts?: { workspace?: boolean; research?: boolean }
+): string {
   const code = !!opts?.workspace;
+  const research = !!opts?.research;
+  // Research product path: never frame a sourced report as a step-limit / agent failure.
+  if (research && !code) {
+    switch (stopReason) {
+      case 'timeout':
+        return 'Research timed out; the report uses sources retrieved so far.';
+      case 'loop':
+      case 'tool_limit':
+      case 'iteration_limit':
+        return '';
+      case 'missing_artifacts':
+        return 'Could not create every requested file. Here is the research available from this session.';
+      default:
+        return reason || '';
+    }
+  }
   switch (stopReason) {
     case 'timeout':
       return code

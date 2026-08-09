@@ -59,7 +59,7 @@ describe('providers utils', () => {
         providers: {
           openai: { has_api_key: true, model: 'gpt-4o', base_url: 'https://api.openai.com/v1' },
           anthropic: { model: 'claude-3-5-sonnet', base_url: 'https://api.anthropic.com/v1' },
-          groq: { has_api_key: false, model: '', base_url: 'https://api.groq.com/openai/v1' }
+          groq: { has_api_key: false, model: '', base_url: 'https://api.groq.com' }
         }
       }
     } as unknown as AppConfig;

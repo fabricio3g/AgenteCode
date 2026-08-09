@@ -11,7 +11,7 @@
   import { listen } from '$lib/services/tauri';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
 
-  let { closeOnUse = false } = $props<{ closeOnUse?: boolean }>();
+  let { closeOnUse = false, embedded = false } = $props<{ closeOnUse?: boolean; embedded?: boolean }>();
 
   let platformInfo = $state<RuntimeRecommendations>({ platform: 'linux', arch: 'x64', gpu_backend: 'cpu', has_gpu: false, recommended_variant: 'cpu' });
 
@@ -26,21 +26,20 @@
   let releaseError = $state('');
   let releaseTag = $state('');
 
-  const FALLBACK_TAG = 'b4887';
+  const FALLBACK_TAG = 'b10159';
   const FALLBACK_BASE = `https://github.com/ggerganov/llama.cpp/releases/download/${FALLBACK_TAG}`;
 
   function buildFallbackAssets(): ReleaseAsset[] {
     const { os, arch } = platform;
     const tag = FALLBACK_TAG;
     const map: { os: string; arch: string; name: string; variant: ReleaseAsset['variant']; description: string }[] = [
-      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-x64.zip`, variant: 'cpu', description: 'CPU-only - works on all hardware' },
-      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-x64-cuda-12.6.3.zip`, variant: 'gpu', description: 'NVIDIA GPU acceleration (CUDA 12.6)' },
-      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-x64-vulkan.zip`, variant: 'gpu', description: 'GPU acceleration via Vulkan (AMD / Intel)' },
-      { os: 'linux', arch: 'arm64', name: `llama-${tag}-bin-ubuntu-arm64.zip`, variant: 'cpu', description: 'CPU-only - ARM64' },
-      { os: 'macos', arch: 'arm64', name: `llama-${tag}-bin-macos-arm64.zip`, variant: 'recommended', description: 'Apple Silicon / Metal GPU acceleration' },
-      { os: 'macos', arch: 'x64', name: `llama-${tag}-bin-macos-x64.zip`, variant: 'cpu', description: 'macOS Intel - CPU' },
-      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-avx2-x64.zip`, variant: 'cpu', description: 'CPU - AVX2 (most modern CPUs)' },
-      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-cuda-12.6.3-x64.zip`, variant: 'gpu', description: 'NVIDIA GPU acceleration (CUDA 12.6)' },
+      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-x64.tar.gz`, variant: 'cpu', description: 'CPU-only - works on all hardware' },
+      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-vulkan-x64.tar.gz`, variant: 'gpu', description: 'GPU acceleration via Vulkan (AMD / Intel)' },
+      { os: 'linux', arch: 'arm64', name: `llama-${tag}-bin-ubuntu-arm64.tar.gz`, variant: 'cpu', description: 'CPU-only - ARM64' },
+      { os: 'macos', arch: 'arm64', name: `llama-${tag}-bin-macos-arm64.tar.gz`, variant: 'recommended', description: 'Apple Silicon / Metal GPU acceleration' },
+      { os: 'macos', arch: 'x64', name: `llama-${tag}-bin-macos-x64.tar.gz`, variant: 'cpu', description: 'macOS Intel - CPU' },
+      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-cpu-x64.zip`, variant: 'cpu', description: 'CPU - x64' },
+      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-cuda-12.4-x64.zip`, variant: 'gpu', description: 'NVIDIA GPU acceleration (CUDA 12.4)' },
       { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-vulkan-x64.zip`, variant: 'gpu', description: 'GPU acceleration via Vulkan (AMD / Intel)' },
     ];
     const forPlatform = map.filter(a => a.os === os && (a.arch === arch || os === 'macos'));
@@ -49,7 +48,7 @@
       if (variant === 'cpu' && !hasGpu) variant = 'recommended';
       if (variant === 'gpu' && gpuBackend === 'cuda' && a.description.includes('CUDA')) variant = 'recommended';
       if (variant === 'gpu' && gpuBackend === 'vulkan' && a.description.includes('Vulkan')) variant = 'recommended';
-      return { name: a.name, url: `${FALLBACK_BASE}/${a.name}`, tag, label: a.name.replace(/^llama-[^-]+-bin-/, '').replace(/\.zip$/, ''), variant, description: a.description };
+      return { name: a.name, url: `${FALLBACK_BASE}/${a.name}`, tag, label: a.name.replace(/^llama-[^-]+-bin-/, '').replace(/\.(?:zip|tar\.gz)$/, ''), variant, description: a.description };
     });
     const order = { recommended: 0, gpu: 1, cpu: 2 };
     return assets.sort((a, b) => order[a.variant] - order[b.variant]);
@@ -200,7 +199,7 @@
   onDestroy(() => { unlisten?.(); });
 </script>
 
-<div class="flex-1 overflow-y-auto">
+<div class={embedded ? 'rounded-xl border border-border bg-card' : 'flex-1 overflow-y-auto'}>
   {#if runtimes.length === 0}
     <div class="mx-5 mt-4 flex items-start gap-3 rounded-lg bg-[var(--surface)] px-4 py-3">
       <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />

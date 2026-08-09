@@ -45,8 +45,8 @@ export const DEFAULT_CONTEXT_BUDGET = {
 const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const searchCache = new Map<string, { result: unknown; expires: number }>();
 
-export function getCacheKey(query: string, mode: string, provider: string): string {
-  return `${provider}:${mode}:${query}`.toLowerCase();
+export function getCacheKey(query: string, mode: string, provider: string, discriminator = ''): string {
+  return `${provider}:${mode}:${discriminator}:${query}`.toLowerCase();
 }
 
 export function getCachedResult(key: string): unknown | null {
@@ -93,6 +93,10 @@ export async function fetchWithRetry(url: string, opts: Record<string, unknown> 
 
   for (let i = 0; i <= retries; i += 1) {
     const ctrl = new AbortController();
+    const externalSignal = opts.signal as AbortSignal | undefined;
+    const abortFromExternal = () => ctrl.abort(externalSignal?.reason);
+    if (externalSignal?.aborted) abortFromExternal();
+    else externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const resp = await fetch(url, {
@@ -102,11 +106,13 @@ export async function fetchWithRetry(url: string, opts: Record<string, unknown> 
         body: opts.body as string | undefined
       });
       clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', abortFromExternal);
       return resp;
     } catch (err: unknown) {
       clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', abortFromExternal);
       lastErr = err;
-      if (i >= retries) throw lastErr;
+      if (externalSignal?.aborted || i >= retries) throw lastErr;
       await new Promise((resolve) => setTimeout(resolve, 250 * (i + 1)));
     }
   }
@@ -124,6 +130,46 @@ export function normalizeWhitespace(text: unknown): string {
 
 export function cleanText(text: unknown): string {
   return String(text ?? '').replace(/\u0000/g, '').trim();
+}
+
+/**
+ * OpenAlex (and similar) abstracts often ship as an inverted index:
+ * `{ "word": [0, 3], "other": [1] }` → "word other word".
+ * Never stringify the object (that yields "[object Object]").
+ */
+export function textFromInvertedIndex(value: unknown, maxChars = 2000): string {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const positions: Array<{ word: string; index: number }> = [];
+  for (const [word, indexes] of Object.entries(value as Record<string, unknown>)) {
+    if (!word || !Array.isArray(indexes)) continue;
+    for (const index of indexes) {
+      if (typeof index === 'number' && Number.isFinite(index) && index >= 0) {
+        positions.push({ word, index });
+      }
+    }
+  }
+  if (!positions.length) return '';
+  positions.sort((a, b) => a.index - b.index || a.word.localeCompare(b.word));
+  return normalizeWhitespace(positions.map((entry) => entry.word).join(' ')).slice(0, maxChars);
+}
+
+/** Coerce search snippets/content fields; drop non-text objects (except inverted indexes). */
+export function coerceSearchText(value: unknown, maxChars = 4000): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return normalizeWhitespace(value).slice(0, maxChars);
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return normalizeWhitespace(String(value)).slice(0, maxChars);
+  }
+  if (Array.isArray(value)) {
+    return normalizeWhitespace(
+      value.map((entry) => (typeof entry === 'string' ? entry : '')).filter(Boolean).join(' ')
+    ).slice(0, maxChars);
+  }
+  if (typeof value === 'object') {
+    const fromIndex = textFromInvertedIndex(value, maxChars);
+    if (fromIndex) return fromIndex;
+  }
+  return '';
 }
 
 export function tokenize(text: string): string[] {
@@ -336,10 +382,12 @@ export function mapSearchResults(
 export function normalizeSearchItem(provider: string, item: Record<string, unknown>, index: number): SearchResult {
   const title = normalizeWhitespace(item?.title || item?.name || item?.heading || item?.label || '') || `Result ${index + 1}`;
   const url = normalizeWhitespace(item?.url || item?.link || item?.href || item?.source || item?.canonical_url || '');
-  const snippet = normalizeWhitespace(
+  const snippet = coerceSearchText(
     item?.snippet || item?.content || item?.description || item?.text || item?.body || item?.summary || ''
   );
-  const fullContent = cleanText(item?.full_content || item?.fullContent || item?.text || item?.content || item?.body || '');
+  const fullContent = coerceSearchText(
+    item?.full_content || item?.fullContent || item?.text || item?.content || item?.body || ''
+  );
 
   return {
     title,
@@ -440,13 +488,35 @@ export function dedupeKey(result: SearchResult): string {
   return `text:${domain}:${title}:${snippet}`;
 }
 
+function normalizedTitleKey(title: string): string {
+  return tokenize(title).filter((token) => token.length > 2).sort().join(' ');
+}
+
+function parsedRecencyBoost(value: string | null): number {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return 0;
+  const ageDays = Math.max(0, (Date.now() - timestamp) / 86_400_000);
+  if (ageDays <= 1) return 0.8;
+  if (ageDays <= 7) return 0.55;
+  if (ageDays <= 30) return 0.3;
+  if (ageDays <= 365) return 0.1;
+  return 0;
+}
+
 export function mergeAndRankResults(results: SearchResult[], query: string, limit: number): SearchResult[] {
   const queryTerms = tokenize(query);
   const merged = new Map<string, SearchResult>();
+  const titleKeys = new Map<string, string>();
+  const fusionScores = new Map<string, number>();
 
   for (const result of results) {
-    const key = dedupeKey(result);
+    let key = dedupeKey(result);
+    const titleKey = normalizedTitleKey(result.title);
+    if (titleKey && titleKeys.has(titleKey)) key = titleKeys.get(titleKey)!;
     const existing = merged.get(key);
+    const reciprocalRank = 1 / (60 + Math.max(1, result.source_rank || 1));
+    fusionScores.set(key, (fusionScores.get(key) || 0) + reciprocalRank);
     if (!existing) {
       merged.set(key, {
         ...result,
@@ -455,6 +525,7 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
         score: typeof result.score === 'number' ? result.score : 0,
         source_rank: result.source_rank || 0
       });
+      if (titleKey) titleKeys.set(titleKey, key);
       continue;
     }
 
@@ -471,7 +542,7 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
     existing.source_rank = Math.min(existing.source_rank || Infinity, result.source_rank || Infinity);
   }
 
-  const ranked = Array.from(merged.values()).map((result, index) => {
+  const ranked = Array.from(merged.entries()).map(([key, result]) => {
     const providers = result.providers || [result.provider];
     let providerBoost = 0;
     for (const p of providers) {
@@ -483,13 +554,14 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
     const contentScore = scoreText((result.full_content || '').slice(0, 5000), queryTerms) * 0.6;
     const urlScore = scoreText(result.url, queryTerms) * 0.25;
     const existingScore = typeof result.score === 'number' ? result.score * 0.15 : 0;
-    const recencyBoost = result.published_at ? 0.25 : 0;
-    const rankBoost = Math.max(0, 1.5 - index * 0.03);
+    const recencyBoost = parsedRecencyBoost(result.published_at);
+    const fusionBoost = (fusionScores.get(key) || 0) * 100;
+    const consensusBoost = Math.max(0, new Set(providers.filter((p) => p !== 'aggregator')).size - 1) * 0.9;
 
     return {
       ...result,
-      score: providerBoost + titleScore + snippetScore + contentScore + urlScore + existingScore + recencyBoost + rankBoost,
-      source_rank: result.source_rank || index + 1,
+      score: providerBoost + titleScore + snippetScore + contentScore + urlScore + existingScore + recencyBoost + fusionBoost + consensusBoost,
+      source_rank: result.source_rank || 1,
       provider: result.provider || choosePrimaryProvider(providers)
     };
   });
@@ -500,7 +572,22 @@ export function mergeAndRankResults(results: SearchResult[], query: string, limi
     return normalizeWhitespace(left.title).localeCompare(normalizeWhitespace(right.title));
   });
 
-  return ranked.slice(0, limit);
+  const diverse: SearchResult[] = [];
+  const deferred: SearchResult[] = [];
+  const domainCounts = new Map<string, number>();
+  for (const result of ranked) {
+    const domain = getDomain(result.url);
+    const count = domain ? domainCounts.get(domain) || 0 : 0;
+    if (domain && count >= 2) {
+      deferred.push(result);
+      continue;
+    }
+    diverse.push(result);
+    if (domain) domainCounts.set(domain, count + 1);
+    if (diverse.length >= limit) break;
+  }
+  if (diverse.length < limit) diverse.push(...deferred.slice(0, limit - diverse.length));
+  return diverse.slice(0, limit);
 }
 
 export function buildContext(results: SearchResult[], budgetChars: number): string {

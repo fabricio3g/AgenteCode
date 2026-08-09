@@ -242,6 +242,22 @@ export interface RequestMessage {
   name?: string;
 }
 
+export interface ToolParameterSchema {
+  type: string;
+  description?: string;
+  properties?: Record<string, ToolParameterSchema>;
+  items?: ToolParameterSchema;
+  required?: string[];
+  enum?: Array<string | number | boolean>;
+  minLength?: number;
+  maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
+  minimum?: number;
+  maximum?: number;
+  additionalProperties?: boolean | ToolParameterSchema;
+}
+
 export interface ToolDefinition {
   type: 'function';
   function: {
@@ -249,8 +265,9 @@ export interface ToolDefinition {
     description: string;
     parameters: {
       type: 'object';
-      properties: Record<string, { type: string; description?: string; items?: { type: string } }>;
+      properties: Record<string, ToolParameterSchema>;
       required?: string[];
+      additionalProperties?: boolean;
     };
   };
 }

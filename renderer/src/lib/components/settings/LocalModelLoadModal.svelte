@@ -12,6 +12,7 @@
   import { getRecommendedSettings } from '$lib/services/runtime';
   import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
+  import { Select } from '$lib/components/ui';
 
   const contextPresets = [4096, 8192, 16384, 32768];
   const cacheTypes = ['f16', 'q8_0', 'q4_0'];
@@ -457,17 +458,16 @@
               bind:value={appStore.localModelLoadMtpDraftPath}
               placeholder="C:/models/qwen3.6-mtp-draft.gguf"
             />
-            <select
+            <Select
               value={appStore.localModelLoadMtpDraftNMax}
-              onchange={(e) => { appStore.localModelLoadMtpDraftNMax = (e.currentTarget as HTMLSelectElement).value; }}
-              class="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] outline-none"
+              onchange={(value) => { appStore.localModelLoadMtpDraftNMax = value; }}
+              options={[
+                { value: '', label: 'n-max' },
+                ...mtpDraftNMaxPresets.map((preset) => ({ value: String(preset), label: String(preset) })),
+              ]}
+              class="h-8 w-24 text-xs"
               aria-label="MTP draft max tokens"
-            >
-              <option value="">n-max</option>
-              {#each mtpDraftNMaxPresets as preset}
-                <option value={String(preset)}>{preset}</option>
-              {/each}
-            </select>
+            />
           </div>
         </div>
       {/if}
@@ -778,19 +778,19 @@
   <div class="grid gap-3 md:grid-cols-2">
   <label class="space-y-2 text-sm">
   <span class="text-[13px] font-medium text-[var(--text-secondary)]">Cache type K</span>
-  <select class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadCacheTypeK}>
-  {#each cacheTypes as type}
-  <option value={type}>{type}</option>
-  {/each}
-  </select>
+  <Select
+    class="h-10 w-full text-[13px]"
+    bind:value={appStore.localModelLoadCacheTypeK}
+    options={cacheTypes.map((type) => ({ value: type, label: type }))}
+  />
   </label>
   <label class="space-y-2 text-sm">
   <span class="text-[13px] font-medium text-[var(--text-secondary)]">Cache type V</span>
-  <select class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadCacheTypeV}>
-  {#each cacheTypes as type}
-  <option value={type}>{type}</option>
-  {/each}
-  </select>
+  <Select
+    class="h-10 w-full text-[13px]"
+    bind:value={appStore.localModelLoadCacheTypeV}
+    options={cacheTypes.map((type) => ({ value: type, label: type }))}
+  />
   </label>
   </div>
 

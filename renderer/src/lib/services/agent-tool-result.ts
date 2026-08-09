@@ -3,6 +3,34 @@ import type { RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 import type { ToolCall, ToolResult } from '$lib/services/agent-types';
 
+const OPTIONAL_PRESENTATION_TOOLS = new Set([
+  'create_info_card',
+  'create_html_card',
+  'create_chart',
+  'create_dashboard',
+  'create_diagram',
+  'create_map'
+]);
+
+const PRESENTATION_VALIDATION_ERROR =
+  /\b(?:requires?|must (?:include|contain|provide|have|be)|at least one|missing|empty|invalid (?:row|data|content|metric|series|node|location|html))\b/i;
+
+export function recoverOptionalPresentationFailure(toolCall: ToolCall, result: ToolResult): ToolResult {
+  if (result.success || !OPTIONAL_PRESENTATION_TOOLS.has(toolCall.name)) return result;
+  const reason = String(result.error || '').trim();
+  if (!PRESENTATION_VALIDATION_ERROR.test(reason)) return result;
+
+  return {
+    success: true,
+    output: {
+      created: false,
+      skipped: true,
+      reason: reason || 'The optional visual did not contain enough valid data.'
+    },
+    note: 'The optional visual was skipped. Continue with the requested answer or report using the evidence already gathered.'
+  };
+}
+
 export function createRunningToolStep(
   toolCall: ToolCall,
   stepTypeMap: Record<string, AgentStep['type']>,
@@ -87,6 +115,43 @@ export function applyNextTurnMods(messages: RequestMessage[], result: ToolResult
   return disableNativeTools;
 }
 
+function upsertSource(
+  sources: SearchResult[],
+  seenUrls: Set<string>,
+  entry: SearchResult
+): boolean {
+  if (!entry.url) return false;
+  if (seenUrls.has(entry.url)) {
+    const existing = sources.find((source) => source.url === entry.url);
+    if (!existing) return false;
+    const richerContent =
+      (entry.full_content || '').length > (existing.full_content || '').length
+      || (entry.snippet || '').length > (existing.snippet || '').length
+      || (!!entry.title && entry.title !== existing.title && entry.title !== entry.url);
+    if (!richerContent) return false;
+    Object.assign(existing, {
+      ...entry,
+      title: entry.title || existing.title || entry.url,
+      url: entry.url,
+      snippet: (entry.snippet || '').length > (existing.snippet || '').length ? entry.snippet : existing.snippet,
+      full_content: (entry.full_content || '').length > (existing.full_content || '').length
+        ? entry.full_content
+        : existing.full_content,
+      metadata: { ...(existing.metadata || {}), ...(entry.metadata || {}) }
+    });
+    return true;
+  }
+  seenUrls.add(entry.url);
+  sources.push({
+    ...entry,
+    title: entry.title || entry.url,
+    url: entry.url,
+    snippet: entry.snippet || ''
+  });
+  return true;
+}
+
+/** Merge sources from web_search / fetch_url tool results into the live list. */
 export function mergeWebSearchSources(params: {
   toolCall: ToolCall;
   result: ToolResult;
@@ -94,28 +159,113 @@ export function mergeWebSearchSources(params: {
   seenUrls: Set<string>;
   onSources?: (sources: SearchResult[]) => void;
 }): void {
-  if (params.toolCall.name !== 'web_search' || !params.result.success) return;
+  if (!params.result.success) return;
+  const name = params.toolCall.name;
+  if (name !== 'web_search' && name !== 'fetch_url') return;
 
-  const output = params.result.output as { results?: SearchResult[] } | undefined;
   let added = false;
-  for (const entry of output?.results ?? []) {
-    if (!entry.url) continue;
-    if (params.seenUrls.has(entry.url)) {
-      const existing = params.sources.find((source) => source.url === entry.url);
-      if (existing && ((entry.full_content || '').length > (existing.full_content || '').length || (entry.snippet || '').length > (existing.snippet || '').length)) {
-        Object.assign(existing, { ...entry, title: entry.title || existing.title || entry.url, url: entry.url });
+  const output = params.result.output as Record<string, unknown> | undefined;
+
+  if (name === 'web_search') {
+    const results = (output as { results?: SearchResult[] } | undefined)?.results ?? [];
+    for (const entry of results) {
+      if (upsertSource(params.sources, params.seenUrls, {
+        ...entry,
+        title: entry.title || entry.url,
+        url: entry.url || '',
+        snippet: entry.snippet || '',
+        full_content: entry.full_content || ''
+      })) {
         added = true;
       }
-      continue;
     }
-    params.seenUrls.add(entry.url);
-    params.sources.push({ ...entry, title: entry.title || entry.url, url: entry.url, snippet: entry.snippet || '' });
-    added = true;
+  } else if (name === 'fetch_url' && output?.url) {
+    const url = String(output.url || '');
+    const content = String(output.content || '');
+    const excerpt = String(output.excerpt || '');
+    if (upsertSource(params.sources, params.seenUrls, {
+      title: String(output.title || url || 'Fetched source'),
+      url,
+      snippet: excerpt || content.slice(0, 420),
+      full_content: content,
+      provider: 'fetch_url',
+      metadata: {
+        quality: output.quality,
+        warning: output.warning,
+        site_name: output.site_name,
+        file_type: output.file_type
+      }
+    })) {
+      added = true;
+    }
   }
+
   if (added) params.onSources?.([...params.sources]);
 }
 
-export function finalizeToolStep(step: AgentStep, result: ToolResult): void {
+function shortToolStepSummary(toolName: string | undefined, output: Record<string, unknown>): { detail?: string; output: string } {
+  if (output.skipped === true) {
+    const reason = String(output.reason || 'optional output was not needed').slice(0, 180);
+    return { detail: `Skipped — ${reason}`, output: reason };
+  }
+
+  if (toolName === 'web_search' || (!toolName && Array.isArray(output.results))) {
+    const results = Array.isArray(output.results) ? output.results : [];
+    const count = results.length;
+    const query = String(output.query || '').trim();
+    const first = results[0] as { title?: string } | undefined;
+    const firstTitle = first?.title ? String(first.title).slice(0, 80) : '';
+    const detail = query
+      ? (count ? `${count} result${count === 1 ? '' : 's'}` : 'No results')
+      : undefined;
+    const line = count
+      ? `${count} result${count === 1 ? '' : 's'}${firstTitle ? ` · ${firstTitle}` : ''}`
+      : 'No results';
+    return { detail, output: line };
+  }
+
+  if (toolName === 'fetch_url' || (output.url && (output.content != null || output.excerpt != null || output.title != null))) {
+    const title = String(output.title || '').trim();
+    const url = String(output.url || '').trim();
+    let host = '';
+    try {
+      host = url ? new URL(url).hostname.replace(/^www\./, '') : '';
+    } catch {
+      host = '';
+    }
+    const quality = output.quality ? String(output.quality) : '';
+    const label = title || host || url || 'Page';
+    const parts = [label];
+    if (host && title && !title.includes(host)) parts.push(host);
+    if (quality) parts.push(quality);
+    return { output: parts.join(' · ').slice(0, 220) };
+  }
+
+  // Generic: pick a few short human fields; never dump huge blobs.
+  const preferred = ['title', 'result', 'path', 'name', 'expression', 'summary', 'message'];
+  const lines: string[] = [];
+  for (const key of preferred) {
+    const value = output[key];
+    if (typeof value === 'string' && value.trim()) {
+      lines.push(`${key}: ${value.slice(0, 160)}`);
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      lines.push(`${key}: ${value}`);
+    }
+    if (lines.length >= 3) break;
+  }
+  if (!lines.length) {
+    for (const [key, value] of Object.entries(output)) {
+      if (key === 'context' || key === 'content' || key === 'next_step' || key === 'results') continue;
+      if (typeof value === 'string' && value.trim()) {
+        lines.push(`${key}: ${value.slice(0, 120)}`);
+      }
+      if (lines.length >= 2) break;
+    }
+  }
+  return { output: lines.join('\n') || 'Done' };
+}
+
+export function finalizeToolStep(step: AgentStep, result: ToolResult, toolName?: string): void {
   step.status = result.success ? 'done' : 'error';
   const fileChanges = fileChangesFromResult(result);
   if (fileChanges.length) step.fileChanges = fileChanges;
@@ -131,15 +281,19 @@ export function finalizeToolStep(step: AgentStep, result: ToolResult): void {
     return;
   }
 
-  step.detail = undefined;
   const output = result.output as Record<string, unknown> | undefined;
   if (output && typeof output === 'object') {
-    const lines: string[] = [];
-    for (const [key, value] of Object.entries(output)) {
-      if (typeof value === 'string') lines.push(`${key}: ${value.slice(0, 200)}`);
+    const summary = shortToolStepSummary(toolName || undefined, output);
+    // Keep running detail (e.g. search query) when summary has no better detail.
+    if (summary.detail !== undefined) step.detail = summary.detail;
+    else if (toolName === 'web_search' || toolName === 'fetch_url') {
+      // Prefer short result summary over long query/url once done.
+      step.detail = summary.output;
     }
-    step.output = lines.join('\n') || JSON.stringify(output, null, 2);
+    step.output = summary.output;
+    return;
   }
+  step.detail = undefined;
 }
 
 function fileChangesFromResult(result: ToolResult): CodeAgentFileChange[] {

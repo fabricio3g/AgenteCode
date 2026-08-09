@@ -2,6 +2,22 @@ import Groq from 'groq-sdk';
 import { BaseProvider, type ReasoningCapabilities, type ReasoningRequest } from './base.ts';
 import { normalizeBaseUrl, numberOrNull, safeParseJson } from './helpers.ts';
 
+/** GPT-OSS models on Groq: low | medium | high */
+const GROQ_GPT_OSS_LEVELS = ['off', 'low', 'medium', 'high'] as const;
+/** Qwen 3.x reasoning models: none | default */
+const GROQ_QWEN_LEVELS = ['off', 'none', 'default'] as const;
+
+/**
+ * groq-sdk request paths already include `/openai/v1/...`.
+ * Base URL must be the host root (https://api.groq.com), not .../openai/v1,
+ * or requests become /openai/v1/openai/v1/chat/completions (404).
+ */
+export function normalizeGroqBaseUrl(baseUrl?: string): string {
+  const raw = normalizeBaseUrl(baseUrl) || 'https://api.groq.com';
+  const stripped = raw.replace(/\/openai\/v1$/i, '');
+  return stripped || 'https://api.groq.com';
+}
+
 export class GroqProvider extends BaseProvider {
   name = 'groq';
   label = 'Groq';
@@ -14,11 +30,12 @@ export class GroqProvider extends BaseProvider {
   }
 
   createClient(apiKey, baseUrl) {
-    const clientKey = `${apiKey || ''}::${normalizeBaseUrl(baseUrl) || 'https://api.groq.com/openai/v1'}`;
+    const baseURL = normalizeGroqBaseUrl(baseUrl);
+    const clientKey = `${apiKey || ''}::${baseURL}`;
     if (!this._clients.has(clientKey)) {
       this._clients.set(clientKey, new Groq({
         apiKey,
-        baseURL: normalizeBaseUrl(baseUrl) || 'https://api.groq.com/openai/v1'
+        baseURL
       }));
     }
     return this._clients.get(clientKey);
@@ -30,7 +47,7 @@ export class GroqProvider extends BaseProvider {
       model,
       messages,
       ...(tools?.length ? { tools } : {}),
-      ...this._reasoningBody(reasoning),
+      ...this._reasoningBody(reasoning, model),
       ...params,
       stream: true
     }, { signal });
@@ -38,13 +55,13 @@ export class GroqProvider extends BaseProvider {
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta || {};
       const content = delta.content;
-      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+      const reasoningText = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
       const toolCallDeltas = delta.tool_calls;
 
-      if (content || reasoning || toolCallDeltas) {
+      if (content || reasoningText || toolCallDeltas) {
         yield {
           content: content ?? '',
-          reasoning: reasoning ?? '',
+          reasoning: reasoningText ?? '',
           ...(toolCallDeltas ? {
             toolCallDeltas: toolCallDeltas.map(tc => ({
               index: tc.index ?? 0,
@@ -64,7 +81,7 @@ export class GroqProvider extends BaseProvider {
       model,
       messages,
       ...(tools?.length ? { tools, tool_choice: tool_choice || 'auto' } : {}),
-      ...this._reasoningBody(reasoning),
+      ...this._reasoningBody(reasoning, model),
       ...params,
       stream: false
     }, { signal });
@@ -90,17 +107,68 @@ export class GroqProvider extends BaseProvider {
   }
 
   /**
-   * Groq's current API does not expose a reasoning-effort parameter. Return
-   * supported: false so the UI hides the reasoning selector for Groq models.
-   * If Groq adds reasoning support in the future, override this method after
-   * confirming via their SDK/docs.
+   * Groq reasoning is model-family specific (see console.groq.com/docs/reasoning).
+   * GPT-OSS: reasoning_effort low|medium|high
+   * Qwen 3.6: reasoning_effort none|default
    */
-  async getReasoningCapabilities(): Promise<ReasoningCapabilities> {
+  async getReasoningCapabilities(_apiKey, _baseUrl, modelId): Promise<ReasoningCapabilities> {
+    const family = groqReasoningFamily(modelId);
+    if (family === 'gpt-oss') {
+      return {
+        supported: true,
+        levels: [...GROQ_GPT_OSS_LEVELS] as ReasoningCapabilities['levels'],
+        paramShape: 'openai_reasoning_effort',
+        source: 'sdk'
+      };
+    }
+    if (family === 'qwen') {
+      return {
+        supported: true,
+        levels: [...GROQ_QWEN_LEVELS] as ReasoningCapabilities['levels'],
+        paramShape: 'openai_reasoning_effort',
+        source: 'sdk'
+      };
+    }
     return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'sdk' };
   }
 
-  _reasoningBody(_reasoning?: ReasoningRequest): Record<string, unknown> {
+  /**
+   * Build Groq reasoning request fields.
+   * Prefer include_reasoning so UI can surface chain-of-thought when present.
+   */
+  _reasoningBody(reasoning?: ReasoningRequest, modelId?: string): Record<string, unknown> {
+    if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
+
+    const family = groqReasoningFamily(modelId);
+    const level = reasoning.level;
+
+    if (family === 'gpt-oss') {
+      if (level === 'low' || level === 'medium' || level === 'high') {
+        return { reasoning_effort: level, include_reasoning: true };
+      }
+      return {};
+    }
+
+    if (family === 'qwen') {
+      if (level === 'none' || level === 'default') {
+        return { reasoning_effort: level, include_reasoning: true };
+      }
+      // Compat: map common UI levels
+      if (level === 'disabled' || level === 'minimal') {
+        return { reasoning_effort: 'none', include_reasoning: true };
+      }
+      if (level === 'low' || level === 'medium' || level === 'high' || level === 'on' || level === 'enabled') {
+        return { reasoning_effort: 'default', include_reasoning: true };
+      }
+      return {};
+    }
+
     return {};
+  }
+
+  applyReasoningToBody(body: Record<string, unknown>, reasoning?: ReasoningRequest): Record<string, unknown> {
+    const modelId = typeof body.model === 'string' ? body.model : undefined;
+    return { ...body, ...this._reasoningBody(reasoning, modelId) };
   }
 
   async fetchModels(apiKey, baseUrl) {
@@ -147,4 +215,20 @@ export class GroqProvider extends BaseProvider {
       return null;
     }
   }
+}
+
+function groqReasoningFamily(modelId?: string): 'gpt-oss' | 'qwen' | null {
+  const id = String(modelId || '').toLowerCase();
+  if (!id) return null;
+  if (id.includes('gpt-oss')) return 'gpt-oss';
+  if (id.includes('qwen')) return 'qwen';
+  return null;
+}
+
+/** Exported for unit tests */
+export function mapGroqReasoningBody(
+  reasoning?: ReasoningRequest,
+  modelId?: string
+): Record<string, unknown> {
+  return new GroqProvider()._reasoningBody(reasoning, modelId);
 }

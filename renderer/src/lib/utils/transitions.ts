@@ -1,8 +1,11 @@
-// OpenWebUI-inspired flyAndScale transition
-import { cubicOut } from 'svelte/easing'
-import { fade, fly } from 'svelte/transition'
-import type { FadeParams, FlyParams, TransitionConfig } from 'svelte/transition'
+import { fade, fly, slide } from 'svelte/transition'
+import type { FadeParams, FlyParams, SlideParams, TransitionConfig } from 'svelte/transition'
 import { reducedMotion } from '$lib/utils/motion.svelte'
+
+const productEase = (t: number): number => {
+  const inverse = 1 - t
+  return 1 - inverse * inverse * inverse
+}
 
 interface FlyAndScaleParams {
   y?: number
@@ -23,7 +26,7 @@ export function flyAndScale(
   return {
     duration: p.duration,
     delay: 0,
-    easing: cubicOut,
+    easing: productEase,
     css: (t) => {
       const y = (1 - t) * p.y
       const x = (1 - t) * p.x
@@ -47,4 +50,12 @@ export function motionFly(
 ): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
   return fly(node, params)
+}
+
+export function motionSlide(
+  node: Element,
+  params: SlideParams | undefined
+): TransitionConfig {
+  if (reducedMotion.value) return { duration: 0, css: () => '' }
+  return slide(node, { duration: 180, easing: productEase, ...params })
 }

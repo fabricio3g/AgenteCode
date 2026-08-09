@@ -1,4 +1,5 @@
 import type { AgentArtifact, ChatMessage, ChatSession } from '$lib/types/chat';
+import { normalizeArtifact } from '$lib/services/artifact-model';
 
 export function applyArtifactToMessage(
   chat: ChatSession | null,
@@ -10,7 +11,7 @@ export function applyArtifactToMessage(
   if (index < 0) return false;
   chat.messages[index] = {
     ...chat.messages[index],
-    artifact
+    artifact: artifact ? normalizeArtifact(artifact) : null
   };
   return true;
 }

@@ -1,5 +1,9 @@
 <svelte:options runes={true} />
 
+<script module lang="ts">
+  let rememberedModelTab: 'curated' | 'downloaded' | 'search' = 'curated';
+</script>
+
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
@@ -26,24 +30,28 @@
   import LocalRuntimePanel from './LocalRuntimePanel.svelte';
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
   import ProviderApiPanel from './ProviderApiPanel.svelte';
+  import HardwareSummary from './VoiceSettings.svelte';
+  import ModelWorkspace from './ModelWorkspace.svelte';
+  import { SegmentedControl, Select } from '$lib/components/ui';
+  import type { ModelHubSection } from '$lib/utils/model-hub-routing';
+  import type { ModelHubTab } from '$lib/types/model-hub';
 
-  type NavSection = 'models' | 'explore' | 'general' | 'search' | 'hardware' | 'voices' | 'whisper' | 'runtime' | 'providers';
+  type NavSection = ModelHubSection;
   let activeSection = $state<NavSection>('models');
+  let modelTab = $state<ModelHubTab>(rememberedModelTab);
+  let voiceMode = $state<'tts' | 'stt'>('tts');
   let hasRuntime = $state<boolean | null>(null);
 
   const modelNavItems = $derived([
-    { id: 'models' as NavSection, label: 'Models', description: 'Local library', icon: Box, active: false },
-    { id: 'explore' as NavSection, label: 'Explore', description: 'Find downloads', icon: Compass, active: false },
+    { id: 'models' as NavSection, label: 'Models', description: 'Curated, downloaded, and search', icon: Box, active: false },
   ]);
 
   const settingsNavItems = $derived([
     { id: 'general' as NavSection, label: 'General', description: 'Profile and chat behavior', icon: Settings, active: false },
+    { id: 'providers' as NavSection, label: 'Providers', description: 'Cloud and local connections', icon: Server, active: Boolean(appStore.activeProvider?.has_api_key) },
     { id: 'search' as NavSection, label: 'Search', description: 'Web search providers', icon: Search, active: false },
-    { id: 'hardware' as NavSection, label: 'Hardware', description: 'System resources', icon: HardDrive, active: false },
-    { id: 'providers' as NavSection, label: 'API', description: 'Provider setup', icon: Server, active: Boolean(appStore.activeProvider?.has_api_key) },
-    { id: 'runtime' as NavSection, label: 'Runtime', description: 'Local engine', icon: Cpu, active: hasRuntime },
-    { id: 'voices' as NavSection, label: 'Voices', description: 'Text to speech', icon: Volume2, active: false },
-    { id: 'whisper' as NavSection, label: 'Whisper', description: 'Speech to text', icon: Mic, active: false },
+    { id: 'local' as NavSection, label: 'Local Runtime', description: 'Hardware and local engine', icon: Cpu, active: hasRuntime },
+    { id: 'voice' as NavSection, label: 'Voice', description: 'Speech output and input', icon: Volume2, active: false },
   ]);
 
   const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore');
@@ -635,7 +643,7 @@
   }
 
   $effect(() => {
-    if (activeSection === 'whisper' && audioInputDevices.length === 0 && micPermission !== 'denied') {
+    if (activeSection === 'voice' && voiceMode === 'stt' && audioInputDevices.length === 0 && micPermission !== 'denied') {
       void loadAudioInputDevices();
     }
   });
@@ -816,6 +824,12 @@
   }
 
   function resolveSection(section: string): NavSection {
+    if (section === 'whisper') voiceMode = 'stt';
+    if (section === 'voices') voiceMode = 'tts';
+    if (section === 'explore') {
+      modelTab = 'search';
+      return 'models';
+    }
     return resolveModelHubSection(section) as NavSection;
   }
 
@@ -850,13 +864,17 @@
   });
 
   $effect(() => {
-    if ((activeSection === 'voices' || activeSection === 'whisper') && Object.keys(voiceModels).length === 0) {
+    if (activeSection === 'voice' && Object.keys(voiceModels).length === 0) {
       void loadVoiceModelCatalog();
     }
   });
 
   $effect(() => {
-    if (activeSection === 'whisper' && !whisperRuntimesLoading && whisperRuntimes.length === 0) {
+    rememberedModelTab = modelTab;
+  });
+
+  $effect(() => {
+    if (activeSection === 'voice' && voiceMode === 'stt' && !whisperRuntimesLoading && whisperRuntimes.length === 0) {
       void loadWhisperRuntimeList();
     }
   });
@@ -866,7 +884,7 @@
     openai: 'https://api.openai.com/v1',
     openrouter: 'https://openrouter.ai/api/v1',
     anthropic: 'https://api.anthropic.com/v1',
-    groq: 'https://api.groq.com/openai/v1',
+    groq: 'https://api.groq.com',
     gemini: 'https://generativelanguage.googleapis.com',
     mistral: 'https://api.mistral.ai/v1',
     together: 'https://api.together.xyz/v1',
@@ -976,8 +994,8 @@
 
 <div
   role="presentation"
-  class="aui-modal-backdrop z-[63] overflow-hidden"
-  transition:motionFade={{ duration: 200 }}
+  class="fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-2 sm:p-4"
+  transition:motionFade={{ duration: 220 }}
   onclick={(e) => { if (e.target === e.currentTarget) close(); }}
 >
   <div
@@ -985,11 +1003,11 @@
     aria-modal="true"
     aria-labelledby="settings-manager-title"
     tabindex="-1"
-    class="aui-modal-surface mx-2 my-2 h-[min(820px,calc(100vh-4rem))] w-[min(1180px,calc(100%-2rem))] max-w-none"
-    transition:flyAndScale={{ y: -20, start: 0.95, duration: 250 }}
+    class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-[var(--shadow-lg)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
+    transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
   >
     <!-- Top bar -->
-    <div class="aui-modal-header !py-2">
+    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
       <div class="flex items-center gap-0.5">
         <button
           type="button"
@@ -1024,6 +1042,11 @@
         {/if}
       </div>
 
+      <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
+        <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
+        <p class="truncate text-[11px] text-muted-foreground">{activeNavItem.description}</p>
+      </div>
+
       <div class="flex items-center gap-0.5">
         <button
           type="button"
@@ -1037,21 +1060,19 @@
     </div>
 
     <!-- Content -->
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       {#if !isModelSection}
-      <aside class="flex shrink-0 flex-col gap-3 border-b border-border/60 p-3 sm:border-b-0 sm:border-r sm:border-border/60 {isModelSection ? 'sm:w-60 bg-muted/30' : 'sm:w-52 bg-background'}">
-        <nav class="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-visible" aria-label={navAriaLabel}>
+      <aside class="shrink-0 border-b border-border bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
+        <nav class="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible" aria-label={navAriaLabel}>
           {#each currentNavItems as item}
             <button
               type="button"
-              class={`flex items-center gap-2 rounded-md px-2.5 transition sm:min-w-0 border-0 shadow-none
-                ${isModelSection ? 'min-w-40 py-2 text-sm font-medium' : 'py-1.5 text-[13px] font-medium'}
-                ${activeSection === item.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+              class={`flex min-w-max items-center gap-2 rounded-lg border-0 px-2.5 py-2 text-[13px] font-medium shadow-none outline-none transition-[background-color,color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/25 active:scale-[0.99] md:min-w-0
+                ${activeSection === item.id ? 'bg-[var(--surface-active)] text-foreground' : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}`}
+              aria-current={activeSection === item.id ? 'page' : undefined}
               onclick={() => (activeSection = item.id)}
             >
-              {#if isModelSection}
-                <item.icon class="h-4 w-4 shrink-0 text-current" />
-              {/if}
+              <item.icon class="size-4 shrink-0 text-current" />
               <span class="min-w-0 flex-1">
                 <span class="flex items-center gap-1.5 truncate">
                   <span class="truncate">{item.label}</span>
@@ -1251,7 +1272,9 @@
             {/if}
           </article>
         {/snippet}
-        {#if activeSection === 'models' || activeSection === 'explore'}
+        {#if isModelSection}
+          <ModelWorkspace bind:tab={modelTab} />
+        {:else if activeSection === 'models' || activeSection === 'explore'}
           <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--background)] px-5">
             <div class="flex min-w-0 flex-1 items-center gap-2">
               <Search class="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
@@ -1271,16 +1294,18 @@
               {/if}
             </div>
 
-            <select
+            <Select
               value={sortBy}
-              onchange={(e) => { sortBy = (e.currentTarget as HTMLSelectElement).value as typeof sortBy; hfSort = sortBy === 'date' ? 'lastModified' : sortBy; void performSearch(); }}
-              class="h-9 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 text-xs font-semibold text-[var(--text)] outline-none transition hover:bg-[var(--surface-hover)]"
+              onchange={(value) => { sortBy = value as typeof sortBy; hfSort = sortBy === 'date' ? 'lastModified' : sortBy; void performSearch(); }}
+              options={[
+                { value: 'likes', label: 'Most liked' },
+                { value: 'downloads', label: 'Downloads' },
+                { value: 'date', label: 'Newest' },
+              ]}
+              variant="surface"
+              class="h-9 w-36 rounded-full text-xs font-semibold"
               aria-label="Sort models"
-            >
-              <option value="likes">Most liked</option>
-              <option value="downloads">Downloads</option>
-              <option value="date">Newest</option>
-            </select>
+            />
 
             <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
               <input type="checkbox" bind:checked={showDownloadedOnly} class="peer sr-only" />
@@ -1364,11 +1389,27 @@
             </div>
           </div>
 
-        {:else if activeSection === 'voices'}
-          <div class="flex-1 overflow-y-auto p-5 space-y-4">
-            <header>
-              <h2 class="text-base font-semibold text-[var(--text)]">Voice</h2>
-              <p class="mt-0.5 text-sm text-[var(--text-muted)]">Local text-to-speech for reading responses aloud</p>
+        {:else if activeSection === 'voice' && voiceMode === 'tts'}
+          <div
+            id="voice-settings-panel-tts"
+            role="tabpanel"
+            aria-labelledby="voice-settings-tab-tts"
+            class="flex-1 overflow-y-auto bg-background"
+          >
+            <div class="mx-auto max-w-[760px] space-y-4 p-5 sm:p-6">
+            <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Voice</h2>
+                <p class="mt-1 text-sm text-muted-foreground">Configure local speech output and transcription.</p>
+              </div>
+              <SegmentedControl
+                id="voice-settings"
+                label="Voice settings"
+                variant="tabs"
+                value={voiceMode}
+                options={[{ value: 'tts', label: 'Text to speech' }, { value: 'stt', label: 'Speech to text' }]}
+                onchange={(value) => (voiceMode = value as 'tts' | 'stt')}
+              />
             </header>
 
             {#if voiceCatalogLoading}
@@ -1487,13 +1528,30 @@
                 {/if}
               </div>
             {/if}
+            </div>
           </div>
 
-        {:else if activeSection === 'whisper'}
-          <div class="flex-1 overflow-y-auto p-5 space-y-4">
-            <header>
-              <h2 class="text-base font-semibold text-[var(--text)]">Whisper Speech-to-Text</h2>
-              <p class="mt-0.5 text-sm text-[var(--text-muted)]">Models for transcribing audio input</p>
+        {:else if activeSection === 'voice' && voiceMode === 'stt'}
+          <div
+            id="voice-settings-panel-stt"
+            role="tabpanel"
+            aria-labelledby="voice-settings-tab-stt"
+            class="flex-1 overflow-y-auto bg-background"
+          >
+            <div class="mx-auto max-w-[760px] space-y-4 p-5 sm:p-6">
+            <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Voice</h2>
+                <p class="mt-1 text-sm text-muted-foreground">Configure local speech output and transcription.</p>
+              </div>
+              <SegmentedControl
+                id="voice-settings"
+                label="Voice settings"
+                variant="tabs"
+                value={voiceMode}
+                options={[{ value: 'tts', label: 'Text to speech' }, { value: 'stt', label: 'Speech to text' }]}
+                onchange={(value) => (voiceMode = value as 'tts' | 'stt')}
+              />
             </header>
 
             <!-- Microphone -->
@@ -1517,17 +1575,19 @@
               {:else}
                 <div class="flex flex-col gap-1.5">
                   <label for="mic-select" class="text-xs text-[var(--text-muted)]">Select the microphone for voice input</label>
-                  <select
+                  <Select
                     id="mic-select"
-                    class="aui-input mic-select w-full"
+                    class="w-full"
                     value={selectedMicId}
-                    onchange={(e) => void saveMicDevice((e.currentTarget as HTMLSelectElement).value)}
-                  >
-                    <option value="">System default</option>
-                    {#each audioInputDevices as device}
-                      <option value={device.deviceId}>{device.label || `Microphone ${device.deviceId.slice(0, 8)}`}</option>
-                    {/each}
-                  </select>
+                    options={[
+                      { value: '', label: 'System default' },
+                      ...audioInputDevices.map((device) => ({
+                        value: device.deviceId,
+                        label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+                      })),
+                    ]}
+                    onchange={(value) => void saveMicDevice(value)}
+                  />
                   {#if selectedMicId && selectedMicId !== ''}
                     <p class="text-[11px] text-[var(--text-muted)]">
                       Selected device will be used for speech recognition in this session.
@@ -1755,18 +1815,34 @@
                 </div>
               </div>
             {/if}
+            </div>
           </div>
 
         {:else if activeSection === 'general'}
           <UnifiedSettingsPanel activeTab="General" />
         {:else if activeSection === 'search'}
           <UnifiedSettingsPanel activeTab="Search" />
-        {:else if activeSection === 'hardware'}
-          <UnifiedSettingsPanel activeTab="Hardware" />
-        {:else if activeSection === 'runtime'}
-          <LocalRuntimePanel />
         {:else if activeSection === 'providers'}
-          <ProviderApiPanel />
+          <div class="flex-1 overflow-y-auto bg-background">
+            <div class="mx-auto max-w-[760px] p-5 sm:p-6">
+              <div class="mb-5">
+                <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Providers</h3>
+                <p class="mt-1 text-sm text-muted-foreground">Configure cloud and local model connections.</p>
+              </div>
+              <ProviderApiPanel />
+            </div>
+          </div>
+        {:else if activeSection === 'local'}
+          <div class="flex-1 overflow-y-auto bg-background">
+            <div class="mx-auto max-w-[760px] space-y-5 p-5 sm:p-6">
+              <div>
+                <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Local Runtime</h3>
+                <p class="mt-1 text-sm text-muted-foreground">Review available hardware and manage the local inference engine.</p>
+              </div>
+              <HardwareSummary />
+              <LocalRuntimePanel embedded />
+            </div>
+          </div>
         {/if}
       </main>
     </div>
@@ -1783,11 +1859,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
-  }
-
-  .mic-select option {
-    background: var(--surface);
-    color: var(--text);
   }
 
   .modal-surface :global(button) {

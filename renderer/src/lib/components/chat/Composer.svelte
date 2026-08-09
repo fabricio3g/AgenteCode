@@ -18,12 +18,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ContextUsageRing from './composer/ContextUsageRing.svelte';
 
-  interface Props {
-    onHeightChange?: (height: number) => void;
-  }
-
-  let { onHeightChange }: Props = $props();
-
   type RecognitionCtor = new () => {
     continuous: boolean;
     interimResults: boolean;
@@ -47,7 +41,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   let voicePulse = $state(0);
   let pulseInterval: ReturnType<typeof setInterval> | null = null;
   let composerWidth = $state(0);
-  let composerHeight = $state(0);
   let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
   let selectedTextInsert = $state('');
   let selectedTextCardText = $state('');
@@ -800,11 +793,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
   });
 
   $effect(() => {
-    composerHeight;
-    onHeightChange?.(composerHeight);
-  });
-
-  $effect(() => {
     void appStore.currentChatId;
     void appStore.composer;
     void appStore.pendingAttachments.length;
@@ -839,7 +827,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
   });
 </script>
 
-<div class={`${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} z-20 absolute inset-x-0 bottom-2 -translate-x-2 px-3 pb-2 pt-4 md:bottom-3 md:px-6`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
+<div class={`composer-dock ${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
   <input bind:this={fileInput} class="hidden" type="file" multiple accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" oninput={onFilesSelected} />
 
   {#if dragOver}
@@ -852,7 +840,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
     </div>
   {/if}
 
-  <div bind:clientWidth={composerWidth} bind:clientHeight={composerHeight} class="welcome-shell mx-auto w-full max-w-[42rem]">
+  <div bind:clientWidth={composerWidth} class="welcome-shell mx-auto w-full max-w-[42rem]">
     {#if isModelLoading}
       <div class="pointer-events-auto mb-2 flex justify-center">
         <p class="inline-flex items-center gap-2 text-xs text-[var(--text-muted)]">
@@ -1026,8 +1014,8 @@ import ModeSelector from './composer/ModeSelector.svelte';
       </div>
     </div>
 
-  </div>
-  </div>
+      </div>
+    </div>
 
     <div class="pointer-events-auto -mt-2 flex justify-center relative z-[-1]">
       <div class="hint-card rounded-b-xl border border-t-0 border-[var(--border)] bg-[var(--surface)] px-3 pb-2 pt-3 text-center shadow-[var(--shadow-xs)]">
@@ -1040,6 +1028,25 @@ import ModeSelector from './composer/ModeSelector.svelte';
 </div>
 
 <style>
+  .composer-dock {
+    background: var(--chat-bg);
+  }
+
+  .composer-dock::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: -3rem;
+    height: 3rem;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in srgb, var(--chat-bg) 72%, transparent) 58%,
+      var(--chat-bg)
+    );
+  }
+
   .welcome-shell {
     position: relative;
   }
@@ -1051,6 +1058,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
   }
 
   .composer-shell {
+    position: relative;
     border: 1px solid var(--border);
     border-radius: 1.25rem;
     background: var(--card);
@@ -1060,7 +1068,6 @@ import ModeSelector from './composer/ModeSelector.svelte';
       box-shadow 150ms ease;
   }
 
-  /* Dark: card (#212121) and border (#2a2a2a) are nearly identical — use a soft hairline */
   :global(.dark) .composer-shell {
     border-color: color-mix(in srgb, var(--foreground) 14%, transparent);
   }
@@ -1333,9 +1340,10 @@ import ModeSelector from './composer/ModeSelector.svelte';
     }
 
     .composer-action-row.compact .composer-left-actions {
-      flex: 1 1 12rem;
+      flex: 0 1 auto;
+      width: 100%;
       max-width: none;
-      min-width: min(100%, 10rem);
+      min-width: 0;
       padding-bottom: 1px;
       scrollbar-width: none;
     }

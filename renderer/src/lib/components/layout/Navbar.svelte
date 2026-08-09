@@ -14,8 +14,8 @@
       {#if hasArtifact}
         <Tooltip label="Toggle code sandbox" position="left">
           <button
-            class="nav-btn flex h-8 w-8 items-center justify-center {appStore.sandboxOpen ? 'is-active' : ''}"
-            onclick={() => (appStore.sandboxOpen = !appStore.sandboxOpen)}
+            class="nav-btn flex h-8 w-8 items-center justify-center {appStore.artifactStudioOpen ? 'is-active' : ''}"
+            onclick={() => (appStore.artifactStudioOpen = !appStore.artifactStudioOpen)}
             aria-label="Toggle code sandbox"
           >
             <Code2 class="h-4 w-4" />

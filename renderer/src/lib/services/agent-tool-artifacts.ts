@@ -274,20 +274,52 @@ export function handleCreateInfoCard(params: {
   const subtitle = String(params.args.subtitle || '').trim();
   const footer = String(params.args.footer || '').trim();
   const accent = String(params.args.accent || '').trim();
-  const rawRows = Array.isArray(params.args.rows) ? params.args.rows : [];
+  const rowInput =
+    params.args.rows
+    ?? params.args.items
+    ?? params.args.facts
+    ?? params.args.data;
+  const rawRows = Array.isArray(rowInput)
+    ? rowInput
+    : rowInput && typeof rowInput === 'object'
+      ? Object.entries(rowInput as Record<string, unknown>).map(([label, value]) => ({ label, value }))
+      : [];
   const rows = rawRows
     .map((row) => {
-      const r = row as { label?: string; value?: string; hint?: string };
-      const label = String(r?.label || '').trim();
-      const value = String(r?.value ?? '').trim();
-      const hint = String(r?.hint || '').trim();
+      if (Array.isArray(row)) {
+        const label = String(row[0] ?? '').trim();
+        const value = String(row[1] ?? '').trim();
+        const hint = String(row[2] ?? '').trim();
+        if (!label && !value) return null;
+        return { label: label || 'Detail', value: value || '—', ...(hint ? { hint } : {}) };
+      }
+      if (row === null || row === undefined) return null;
+      if (typeof row !== 'object') {
+        const value = String(row).trim();
+        return value ? { label: 'Detail', value } : null;
+      }
+      const r = row as Record<string, unknown>;
+      const label = String(r.label ?? r.name ?? r.key ?? r.title ?? '').trim();
+      const value = String(r.value ?? r.content ?? r.text ?? r.description ?? '').trim();
+      const hint = String(r.hint ?? r.note ?? '').trim();
       if (!label && !value) return null;
-      return { label: label || '—', value: value || '—', ...(hint ? { hint } : {}) };
+      return { label: label || 'Detail', value: value || '—', ...(hint ? { hint } : {}) };
     })
     .filter(Boolean) as Array<{ label: string; value: string; hint?: string }>;
 
   if (!title) return params.fail('Info card requires a title.');
-  if (rows.length < 1) return params.fail('Info card requires at least one row with label/value.');
+  if (rows.length < 1) {
+    return params.ok(
+      {
+        created: false,
+        skipped: true,
+        reason: 'No evidence-backed label/value rows were provided.'
+      },
+      {
+        note: 'The optional info card was skipped. Continue with the requested answer or report; retry the card only when concrete rows are available.'
+      }
+    );
+  }
 
   const path = artifactDataPath(params.normPath(params.args.path), 'info-card.json');
   const payload = {
@@ -300,7 +332,7 @@ export function handleCreateInfoCard(params: {
   };
 
   writeInlineArtifact(params.ctx, path, payload);
-  return params.ok({ title, path, rowCount: rows.length }, { createdFiles: [path] });
+  return params.ok({ created: true, title, path, rowCount: rows.length }, { createdFiles: [path] });
 }
 
 export function handleCreateHtmlCard(params: {

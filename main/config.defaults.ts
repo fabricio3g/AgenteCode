@@ -155,7 +155,7 @@ export function getDefaultSearchConfig(): SearchConfig {
   return {
     provider: 'aggregator',
     max_results: 6,
-    aggregator_engines: ['duckduckgo', 'wikipedia'],
+    aggregator_engines: ['duckduckgo', 'wikipedia', 'wiby', 'mojeek'],
     safe_search: 2,
     providers: {},
   };

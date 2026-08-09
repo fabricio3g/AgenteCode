@@ -5,6 +5,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { invoke } from '$lib/services/tauri';
+  import { motionSlide } from '$lib/utils/transitions';
   import {
     CLOUD_PROVIDERS,
     defaultBaseUrl,
@@ -164,14 +165,7 @@
   }
 </script>
 
-<div class="flex-1 overflow-y-auto p-5">
-  <header class="mb-5">
-    <h2 class="text-base font-semibold text-[var(--text)]">API Providers</h2>
-    <p class="mt-0.5 text-sm text-[var(--text-muted)]">
-      Choose a provider from the list to configure it. Each provider has its own key, model, and test.
-    </p>
-  </header>
-
+<div>
   {#if appStore.backendMode !== 'api'}
     <div class="mb-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
       You are currently in <strong>Local</strong> mode. Saving a provider will switch to
@@ -186,10 +180,10 @@
         {#each cloudList as p (p.id)}
           {@const meta = providerMeta(p.id)}
           {@const open = expandedId === p.id}
-          <div class="provider-row overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          <div class="provider-row overflow-hidden rounded-xl border border-border bg-card">
             <button
               type="button"
-              class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-[var(--surface-hover)]"
+              class="flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20"
               class:is-open={open}
               onclick={() => selectProvider(p.id)}
             >
@@ -214,7 +208,7 @@
             </button>
 
             {#if open}
-              <div class="space-y-4 border-t border-[var(--border)] px-3 py-3">
+              <div class="space-y-4 border-t border-border px-3 py-3" transition:motionSlide={{ duration: 180 }}>
                 <label class="block space-y-1.5 text-sm">
                   <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
                   <input class="aui-input w-full" bind:value={providerBaseUrl} placeholder={p.defaultBaseUrl} />
@@ -406,10 +400,10 @@
         {#each localList as p (p.id)}
           {@const meta = providerMeta(p.id)}
           {@const open = expandedId === p.id}
-          <div class="provider-row overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)]">
+          <div class="provider-row overflow-hidden rounded-xl border border-border bg-card">
             <button
               type="button"
-              class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-[var(--surface-hover)]"
+              class="flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20"
               onclick={() => selectProvider(p.id)}
             >
               <span class="min-w-0 flex-1">
@@ -433,7 +427,7 @@
             </button>
 
             {#if open}
-              <div class="space-y-4 border-t border-[var(--border)] px-3 py-3">
+              <div class="space-y-4 border-t border-border px-3 py-3" transition:motionSlide={{ duration: 180 }}>
                 <label class="block space-y-1.5 text-sm">
                   <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
                   <input class="aui-input w-full" bind:value={providerBaseUrl} placeholder={p.defaultBaseUrl} />

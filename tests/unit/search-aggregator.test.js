@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getSupportedAggregatorEngines, normalizeAggregatorEngines } from '../../main/search-providers/aggregator.ts';
+import { getAggregatorCatalog, getSupportedAggregatorEngines, normalizeAggregatorEngines } from '../../main/search-providers/aggregator.ts';
 import { providerCandidates, providerDisplayName, providerHasCredentials } from '../../main/search-providers/shared.ts';
 
 describe('search aggregator provider', () => {
@@ -16,21 +16,31 @@ describe('search aggregator provider', () => {
   });
 
   it('normalizes default aggregator engines', () => {
-    assert.deepEqual(normalizeAggregatorEngines(undefined), ['duckduckgo', 'wikipedia']);
+    assert.deepEqual(normalizeAggregatorEngines(undefined), ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
   });
 
-  it('includes searxng only when configured', () => {
-    assert.deepEqual(normalizeAggregatorEngines(['duckduckgo', 'searxng']), ['duckduckgo']);
-    assert.deepEqual(
-      normalizeAggregatorEngines(['duckduckgo', 'searxng'], { searxng_base_url: 'https://searx.example' }),
-      ['duckduckgo', 'searxng']
-    );
+  it('preserves explicitly selected configurable engines', () => {
+    assert.deepEqual(normalizeAggregatorEngines(['duckduckgo', 'searxng']), ['duckduckgo', 'searxng']);
   });
 
   it('ports the websearch aggregator engine set into the project', () => {
     const engines = getSupportedAggregatorEngines();
-    for (const engine of ['duckduckgo', 'wikipedia', 'qwant', 'sepiasearch', 'bing', 'brave', 'startpage', 'mojeek', 'yahoo', 'librex', 'searxng']) {
+    for (const engine of [
+      'duckduckgo', 'wikipedia', 'wiby', 'mojeek', 'qwant', 'sepiasearch',
+      'bing', 'brave', 'startpage', 'yahoo', 'librex', 'searxng',
+      'yep', 'mwmbl', 'marginalia', 'yandex', 'baidu', 'google', 'ghostery',
+      'yacy', 'fourget', 'openserp', 'kagi', 'firecrawl', 'searchapi',
+      'linkup', 'ollama_web', 'perplexity_search', 'arxiv', 'openalex',
+      'crossref', 'stackexchange', 'hackernews'
+    ]) {
       assert.ok(engines.includes(engine), `${engine} should be supported`);
     }
+  });
+
+  it('exposes registry metadata and recommended defaults', () => {
+    const catalog = getAggregatorCatalog();
+    assert.equal(catalog.length, getSupportedAggregatorEngines().length);
+    assert.deepEqual(catalog.filter((item) => item.recommended).map((item) => item.id), ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
+    assert.ok(catalog.every((item) => item.label && item.category && item.transport));
   });
 });

@@ -408,7 +408,7 @@ describe('ensureSearchConfig', () => {
     assert.strictEqual(dirty, true);
     assert.strictEqual(cfg.search.provider, 'aggregator');
     assert.strictEqual(cfg.search.max_results, 6);
-    assert.deepStrictEqual(cfg.search.aggregator_engines, ['duckduckgo', 'wikipedia']);
+    assert.deepStrictEqual(cfg.search.aggregator_engines, ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
   });
 
   it('does not overwrite an explicit provider', () => {
