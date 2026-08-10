@@ -22,6 +22,7 @@
   import { isTauri } from '$lib/services/tauri';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { motionFade } from '$lib/utils/transitions';
+  import { formatBytes as formatSizeBytes } from '$lib/utils/format';
   import type {
     CuratedModelDefinition, ModelArtifact, ModelFitAssessment, ModelHubTab,
     RuntimeCapabilities,
@@ -73,10 +74,9 @@
   });
   const filteredSearchItems = $derived(searchItems.filter(matchesParameterFilter));
 
+  /** Canonical byte formatting, with this panel's wording for an unknown size. */
   function formatBytes(bytes: number): string {
-    if (!Number.isFinite(bytes) || bytes <= 0) return 'Size unavailable';
-    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
-    return `${(bytes / 1024 ** 3).toFixed(bytes < 10 * 1024 ** 3 ? 2 : 1)} GB`;
+    return formatSizeBytes(bytes, 'Size unavailable');
   }
 
   function fitForCurated(model: CuratedModelDefinition, artifact = defaultArtifact(model)): ModelFitAssessment {
@@ -287,7 +287,7 @@
       {#if tab === 'curated'}
         <section class="grid gap-2 sm:grid-cols-3" aria-label="Hardware recommendations">
           {#each recommendationCards as recommendation}
-            <div class="rounded-lg bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--surface-hover)]">
+            <div class="rounded-xl bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--surface-hover)]">
               <p class="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{recommendation.label}</p>
               <p class="mt-1 text-sm font-semibold text-[var(--text)]">
                 {recommendation.model?.name || (recommendation.label === 'Best balance' ? recommendations.defaultModel.name : 'Hardware needed')}
@@ -296,7 +296,7 @@
           {/each}
         </section>
         {#if !hardwareStore.info}
-          <p class="rounded-lg bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+          <p class="rounded-xl bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text-secondary)]">
             Hardware is not available, so estimates are neutral. {recommendations.defaultModel.name} is the general default—not a guaranteed fit.
           </p>
         {/if}
@@ -387,12 +387,12 @@
         {#if modelsStore.loading}
           <div class="flex justify-center py-12"><LoaderCircle class="h-5 w-5 animate-spin" /></div>
         {:else if downloadedModels.length === 0}
-          <div class="rounded-lg bg-[var(--surface)] p-10 text-center text-sm text-[var(--text-muted)]">No downloaded models match this filter.</div>
+          <div class="rounded-xl bg-[var(--surface)] p-10 text-center text-sm text-[var(--text-muted)]">No downloaded models match this filter.</div>
         {:else}
           <section class="space-y-2">
             {#each downloadedModels as model (model.id)}
               {@const fit = fitForLocal(model)}
-              <article class="flex flex-col gap-3 rounded-lg bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--surface-hover)] sm:flex-row sm:items-center">
+              <article class="flex flex-col gap-3 rounded-xl bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--surface-hover)] sm:flex-row sm:items-center">
                 <div class="min-w-0 flex-1">
                   <h3 class="truncate text-sm font-semibold text-[var(--text)]">{model.name}</h3>
                   <p class="mt-1 truncate text-xs text-[var(--text-secondary)]">{model.architecture || 'Unknown architecture'} · {model.quantization_name || 'Unknown quant'} · {formatBytes(Number(model.size_gb || 0) * 1024 ** 3)}</p>
@@ -447,7 +447,7 @@
           <div><Badge class="border-0 bg-[var(--card)] px-2.5 py-1 text-[var(--text-secondary)]">GGUF only</Badge></div>
         </div>
         {#if searchError}
-          <div class="flex items-start gap-2 rounded-lg bg-[var(--surface)] px-3 py-2 text-xs text-[var(--danger)]">
+          <div class="flex items-start gap-2 rounded-xl bg-[var(--surface)] px-3 py-2 text-xs text-[var(--danger)]">
             <AlertCircle class="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span>{searchError}</span>
           </div>
@@ -455,7 +455,7 @@
         {#if searchLoading}
           <div class="flex justify-center py-12"><LoaderCircle class="h-5 w-5 animate-spin" /></div>
         {:else if filteredSearchItems.length === 0}
-          <div class="rounded-lg bg-[var(--surface)] p-10 text-center">
+          <div class="rounded-xl bg-[var(--surface)] p-10 text-center">
             <p class="text-sm font-semibold text-[var(--text)]">No GGUF models found</p>
             <p class="mt-1 text-xs text-[var(--text-muted)]">Try a broader model name or parameter range.</p>
           </div>

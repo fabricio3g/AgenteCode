@@ -1,0 +1,178 @@
+/**
+ * Single source of truth for user-facing copy.
+ *
+ * Rules this file exists to enforce:
+ *  - One phrasing per concept. There is one "No matches", not four.
+ *  - One ellipsis glyph: `…`. Never `...`.
+ *  - No sentence is typed in two components. If you need it twice, it belongs here.
+ *
+ * Keep entries short and literal. Anything that needs interpolation gets a
+ * function, so the shape of the sentence still lives here and not at the call site.
+ */
+
+import { countOf } from '$lib/utils/format';
+
+export const copy = {
+  actions: {
+    copy: 'Copy',
+    copied: 'Copied',
+    copyCode: 'Copy code',
+    edit: 'Edit',
+    retry: 'Retry',
+    regenerate: 'Regenerate',
+    delete: 'Delete',
+    cancel: 'Cancel',
+    close: 'Close',
+    save: 'Save',
+    stop: 'Stop',
+    more: 'More',
+    open: 'Open',
+    download: 'Download',
+    export: 'Export'
+  },
+
+  confirm: {
+    deleteMessage: {
+      title: 'Delete message?',
+      message: 'This cannot be undone.'
+    },
+    deleteChat: {
+      title: 'Delete chat?',
+      message: 'This cannot be undone.'
+    }
+  },
+
+  empty: {
+    noMatches: 'No matches',
+    noMatchesHint: 'Try a different term',
+    noConversations: 'No conversations yet',
+    noMessages: 'No messages yet',
+    noSources: 'No sources',
+    noActivity: 'No activity'
+  },
+
+  /** Live activity verbs. The only place these words are spelled. */
+  status: {
+    /** Neutral in-progress verb, used when nothing more specific is known. */
+    working: 'Working',
+    thinking: 'Thinking',
+    planning: 'Planning',
+    reasoning: 'Reasoning',
+    writing: 'Writing',
+    searching: 'Searching',
+    reading: 'Reading',
+    loading: 'Loading',
+    saving: 'Saving',
+    listening: 'Listening',
+    transcribing: 'Transcribing',
+    processing: 'Processing',
+    downloading: 'Downloading',
+    extracting: 'Extracting'
+  },
+
+  /**
+   * Tool / agent-step chrome. These words describe a step's outcome and are
+   * shared by the inline status line, the activity drawer, and each tool row —
+   * so a step never reads "Failed" in one place and "Error" in another.
+   */
+  tool: {
+    needsApproval: 'Needs approval',
+    approvalLede: 'The run is paused until you decide.',
+    allow: 'Allow',
+    deny: 'Deny',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    stopped: 'Stopped',
+    done: 'Done',
+    error: 'Error',
+    result: 'Result',
+    truncated: '… (truncated)'
+  },
+
+  /** The two workspaces the sidebar switches between. */
+  spaces: {
+    chat: 'Home',
+    work: 'Code'
+  },
+
+  thread: {
+    activity: 'Activity',
+    jumpToLatest: 'Jump to latest',
+    previousVersion: 'Previous version',
+    nextVersion: 'Next version',
+    jumpToSelection: 'Jump to original selection',
+    generationFailed: 'Generation failed',
+    listen: 'Listen',
+    stopListening: 'Stop',
+    sources: 'Sources',
+    outputTokens: 'output tok'
+  },
+
+  composer: {
+    placeholder: 'Ask anything',
+    errorPlaceholder: 'Something went wrong. Try again.',
+    send: 'Send message',
+    stop: 'Stop response',
+    attach: 'Attach',
+    dictate: 'Dictate',
+    dropFiles: 'Drop files here',
+    dropHint: 'Images, PDFs, documents',
+    hint: 'Enter to send · Shift+Enter for newline',
+    selectMode: 'Select mode',
+    selectSearchMode: 'Select search mode',
+    documents: 'Documents',
+    clearAll: 'Clear all'
+  },
+
+  model: {
+    loading: 'Loading model…',
+    none: 'No model loaded',
+    browseAll: 'Browse all models',
+    changeRuntime: 'Change runtime',
+    configureProvider: 'Configure a provider'
+  },
+
+  /** Document-viewer states. One ellipsis glyph, one failure heading. */
+  viewer: {
+    loadingPdf: 'Loading PDF…',
+    loadingFile: 'Loading file…',
+    convertingDocument: 'Converting document…',
+    convertingSpreadsheet: 'Converting spreadsheet…',
+    previewUnavailable: 'Preview unavailable'
+  },
+
+  search: {
+    chats: 'Search chats',
+    placeholder: 'Search chats…'
+  },
+
+  /** Composer search modes. Label and description together, so they can't drift. */
+  searchModes: {
+    chat: { label: 'Off', description: 'Answer from the model only' },
+    search: { label: 'Search', description: 'Quick web check' },
+    deep: { label: 'Deep', description: 'Thorough research · more sources' },
+    max: { label: 'Max', description: 'Exhaustive research · slower, more sources' }
+  }
+} as const;
+
+/**
+ * Interpolated copy. The sentence shape stays here; only values come from
+ * callers. Counted nouns go through `countOf` so pluralization has exactly one
+ * implementation.
+ */
+export const say = {
+  /** `3 sources` / `1 source` */
+  sources: (n: number) => countOf(n, 'source'),
+  /** `4 files` / `1 file` */
+  files: (n: number) => countOf(n, 'file'),
+  /** `2 results` / `1 result` */
+  results: (n: number) => countOf(n, 'result'),
+  /** `3 steps` / `1 step` */
+  steps: (n: number) => countOf(n, 'step'),
+  /** `Step 2 of 5` */
+  stepOf: (current: number, total: number) => `Step ${current} of ${total}`,
+  /** Progressive status with the canonical ellipsis, e.g. `Searching…` */
+  inProgress: (verb: string) => `${verb}…`
+} as const;
+
+export type Copy = typeof copy;

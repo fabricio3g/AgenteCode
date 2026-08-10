@@ -58,11 +58,11 @@
     <p class="mt-1 text-sm text-muted-foreground">Personalize the interface and everyday chat behavior.</p>
   </div>
 
-  <section class="rounded-xl border border-border bg-card">
-    <div class="border-b border-border px-4 py-3">
+  <section class="rounded-2xl bg-[var(--muted)]">
+    <div class="px-4 pb-1 pt-3.5">
       <h4 class="text-sm font-semibold text-foreground">Profile</h4>
     </div>
-    <div class="divide-y divide-border px-4">
+    <div class="px-4">
       <Field
         horizontal
         class="py-4"
@@ -96,11 +96,11 @@
     </div>
   </section>
 
-  <section class="rounded-xl border border-border bg-card">
-    <div class="border-b border-border px-4 py-3">
+  <section class="rounded-2xl bg-[var(--muted)]">
+    <div class="px-4 pb-1 pt-3.5">
       <h4 class="text-sm font-semibold text-foreground">Chat behavior</h4>
     </div>
-    <div class="divide-y divide-border px-4">
+    <div class="px-4">
       <Field
         horizontal
         class="py-4"
@@ -138,8 +138,8 @@
     </div>
   </section>
 
-  <section class="rounded-xl border border-border bg-card">
-    <div class="border-b border-border px-4 py-3">
+  <section class="rounded-2xl bg-[var(--muted)]">
+    <div class="px-4 pb-1 pt-3.5">
       <h4 class="text-sm font-semibold text-foreground">Appearance</h4>
     </div>
     <div class="px-4">
@@ -159,7 +159,7 @@
     </div>
   </section>
 
-  <section class="rounded-xl border border-border bg-card p-4">
+  <section class="rounded-2xl bg-[var(--muted)] p-4">
     <h4 class="text-sm font-semibold text-foreground">{$t('generalSettings.huggingFaceAccess')}</h4>
     <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{$t('generalSettings.huggingFaceDesc')}</p>
     <div class="mt-4">

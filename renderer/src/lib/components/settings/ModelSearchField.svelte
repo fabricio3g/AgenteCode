@@ -44,7 +44,7 @@
   {#if value}
     <button
       type="button"
-      class="absolute right-2 top-1/2 z-10 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-muted)] outline-none transition-colors hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:ring-[3px] focus-visible:ring-ring/25"
+      class="absolute right-2 top-1/2 z-10 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--text-muted)] outline-none transition-colors hover:bg-[var(--surface-active)] hover:text-[var(--text)] focus-visible:ring-[3px] focus-visible:ring-ring/25"
       aria-label={clearLabel}
       onclick={clear}
     >

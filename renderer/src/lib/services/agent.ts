@@ -1,5 +1,6 @@
 import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/tauri';
+import { say } from '$lib/copy';
 import type { CompletionResult, RequestMessage, NativeToolCall } from '$lib/services/chat-api';
 import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
@@ -27,9 +28,10 @@ import {
   isPublicFallbackContent, stripToolCallArtifacts, parseCodeblockWrites
 } from '$lib/services/agent-parsing';
 import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
+import { activityLabel } from '$lib/utils/tool-ui';
 import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
-  buildResearchReportInstruction, isMedicalResearchQuery, getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
+  FINAL_ANSWER_CONTRACT_REMINDER, isMedicalResearchQuery, getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
 } from '$lib/services/agent-prompts';
 
 import {
@@ -373,12 +375,13 @@ async function executeTool(
       // In supervised mode, request user approval before executing
       if (ctx.runtimeMode === 'supervised') {
         try {
-          const { addPendingApproval } = await import('$lib/stores/approvals.svelte');
-          const approved = await addPendingApproval(
-            `bash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          const { approvalsStore } = await import('$lib/stores/approvals.svelte');
+          const approved = await approvalsStore.request({
+            id: `bash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            chatId: ctx.chatId,
             command,
-            ctx.workspaceRoot || ''
-          );
+            cwd: ctx.workspaceRoot || ''
+          });
           if (!approved) {
             return fail('Command blocked by user');
           }
@@ -854,7 +857,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         });
         researchBootstrapDone = true;
         gatherStep.status = 'done';
-        gatherStep.detail = `${sources.length} source${sources.length === 1 ? '' : 's'}`;
+        gatherStep.detail = say.sources(sources.length);
         injectLiveEvidence();
         messages.push({
           role: 'user',
@@ -901,8 +904,12 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       id: uid('step'),
       type: isResearchChat ? (researchForceWrite ? 'writing' : 'thinking') : 'thinking',
       label: isResearchChat
-        ? (researchForceWrite ? 'Writing' : (iter === 0 && !researchBootstrapDone ? 'Searching' : 'Working'))
-        : (iter === 0 ? 'Planning' : 'Thinking'),
+        ? researchForceWrite
+          ? activityLabel('writing')
+          : iter === 0 && !researchBootstrapDone
+            ? activityLabel('searching')
+            : activityLabel(null)
+        : activityLabel(iter === 0 ? 'planning' : null),
       status: 'running',
       detail: isResearchChat
         ? (researchForceWrite ? 'Synthesizing research report' : (sources.length ? `${sources.length} sources` : 'Gathering sources'))
@@ -1412,10 +1419,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               researchForceWrite
                 ? 'Enough sources have been gathered. Do NOT call more tools.'
                 : 'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
-              'Write the final polished APA 7 research report now using the RESEARCH EVIDENCE PACK.',
-              'Required skeleton: # Title (the user search topic); spaced body sections (no Summary / Executive Summary); ## Limitations; ## References (APA 7).',
-              'Never title a section "Gathered Evidence" or "Summary". Never mention tools or step limits. Use blank lines between paragraphs and headings. Cite with APA author–date and/or [n].',
-              buildResearchReportInstruction(researchMode, isMedicalResearchQuery(args.rawPrompt || ''))
+              'Write the final answer now using the RESEARCH EVIDENCE PACK. Never title a section "Gathered Evidence". Never mention tools or step limits.',
+              FINAL_ANSWER_CONTRACT_REMINDER
             ].join('\n\n')
             : 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.'
       });
@@ -1627,7 +1632,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         const researchNudge = isResearchChat
           ? [
             researchSynthesisUserNudge(researchMode, medicalResearch, attempt, forcedAttempts),
-            buildResearchReportInstruction(researchMode, medicalResearch)
+            FINAL_ANSWER_CONTRACT_REMINDER
           ].join('\n\n')
           : null;
         const codeNudge = isCodeProfile
@@ -1637,15 +1642,15 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
             summarizeCodeObservations(toolObservations)
           ].join('\n\n')
           : null;
+        // The previous attempt produced nothing usable, so this genuinely does
+        // need to restate the target — but only the shape, and only at the depth
+        // the user asked for. Search mode gets an answer, not a report.
         const researchRetryNudge = isResearchChat
           ? [
-            'Previous synthesis was empty or unusable. Write the complete APA 7 professional research report in markdown now.',
-            'Start with # Title naming the user search topic, then spaced topical body sections (no Summary heading), then ## Limitations and ## References (APA 7).',
-            'Put one blank line before/after headings and between paragraphs. Do not produce a dense wall of text or a short summary.',
-            medicalResearch
-              ? 'Medical structure: brief disclaimer; Definition; Diagnosis/presentation; Treatment/management; Prognosis; Limitations; References. Title the report with the medical topic from the search. Include a brief non-advice medical disclaimer.'
-              : 'Structure for professionals who work with this topic. Use APA author–date citations and [n] when sources are numbered.',
-            buildResearchReportInstruction(researchMode, medicalResearch)
+            researchMode === 'search'
+              ? 'The previous answer was empty or unusable. Answer the question directly in markdown now, at whatever length it needs, citing the sources you used.'
+              : 'The previous synthesis was empty or unusable. Write the complete professional research report in markdown now — spaced topical sections, then Limitations and References.',
+            FINAL_ANSWER_CONTRACT_REMINDER
           ].join('\n\n')
           : null;
         messages.push({

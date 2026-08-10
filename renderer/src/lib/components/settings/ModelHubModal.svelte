@@ -785,13 +785,6 @@
     await downloadCuratedVision();
   }
 
-  function formatBytes(bytes: number) {
-    if (!bytes) return '';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
   function normalizeSizeMb(meta: any): number | undefined {
     const direct = Number(meta?.size_mb);
     if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
@@ -1003,11 +996,11 @@
     aria-modal="true"
     aria-labelledby="settings-manager-title"
     tabindex="-1"
-    class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-[var(--shadow-lg)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
+    class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-[var(--radius-2xl)] bg-popover text-foreground shadow-[shadow:var(--shadow-xl)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
     transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
   >
     <!-- Top bar -->
-    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
+    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
       <div class="flex items-center gap-0.5">
         <button
           type="button"
@@ -1062,12 +1055,12 @@
     <!-- Content -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       {#if !isModelSection}
-      <aside class="shrink-0 border-b border-border bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
+      <aside class="shrink-0 border-b border-[var(--border-subtle)] bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
         <nav class="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible" aria-label={navAriaLabel}>
           {#each currentNavItems as item}
             <button
               type="button"
-              class={`flex min-w-max items-center gap-2 rounded-lg border-0 px-2.5 py-2 text-[13px] font-medium shadow-none outline-none transition-[background-color,color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/25 active:scale-[0.99] md:min-w-0
+              class={`flex min-w-max items-center gap-2 rounded-full border-0 px-3 py-2 text-[13px] font-medium shadow-none outline-none transition-[background-color,color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/25 active:scale-[0.99] md:min-w-0
                 ${activeSection === item.id ? 'bg-[var(--surface-active)] text-foreground' : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}`}
               aria-current={activeSection === item.id ? 'page' : undefined}
               onclick={() => (activeSection = item.id)}
@@ -1110,18 +1103,18 @@
                   </p>
                 </div>
                 {#if memoryWarning}
-                  <span class="shrink-0 rounded-md border border-[var(--warning)]/30 bg-[var(--warning-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--warning)]">Not enough memory</span>
+                  <span class="shrink-0 rounded-full border border-[var(--warning)]/30 bg-[var(--warning-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--warning)]">Not enough memory</span>
                 {:else if loaded}
-                  <span class="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--success)] animate-pulse"></span> Running</span>
+                  <span class="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]"><span class="h-1.5 w-1.5 rounded-full bg-[var(--success)] animate-pulse"></span> Running</span>
                 {/if}
               </div>
             <div class="mt-3 flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
               <div class="flex min-w-0 flex-wrap items-center gap-2">
-                {#if model.architecture}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">{model.architecture}</span>{/if}
-                {#if model.quantization_name}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">{model.quantization_name}</span>{/if}
-                {#if model.hasMmproj}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Vision</span>{/if}
-                {#if tools}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
-                {#if fit === 'vram'}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">GPU</span>{:else if fit === 'ram'}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">CPU</span>{/if}
+                {#if model.architecture}<span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">{model.architecture}</span>{/if}
+                {#if model.quantization_name}<span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">{model.quantization_name}</span>{/if}
+                {#if model.hasMmproj}<span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">Vision</span>{/if}
+                {#if tools}<span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
+                {#if fit === 'vram'}<span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">GPU</span>{:else if fit === 'ram'}<span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">CPU</span>{/if}
               </div>
               <div class="flex shrink-0 items-center gap-2">
                 {#if size}<span class="text-xs text-[var(--text-muted)]">{size}</span>{/if}
@@ -1133,7 +1126,7 @@
                 {#if !selected && !loaded}
                   <button type="button" class="rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => appStore.updateLocalModel({ id: model.id, name: model.name, path: model.path, source: 'local', details: model.details })}>Select</button>
                 {/if}
-                <button type="button" class="rounded-md p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={() => model.path && removeModel(model.path)} title="Delete model" aria-label="Delete {model.name}"><Trash2 class="h-3.5 w-3.5" /></button>
+                <button type="button" class="rounded-full p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={() => model.path && removeModel(model.path)} title="Delete model" aria-label="Delete {model.name}"><Trash2 class="h-3.5 w-3.5" /></button>
               </div>
             </div>
           </article>
@@ -1165,15 +1158,15 @@
                 </div>
 
                 {#if kind === 'curated'}
-                  <span class="shrink-0 rounded-md border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]">Recommended</span>
+                  <span class="shrink-0 rounded-full border border-[var(--success)]/30 bg-[var(--success-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--success)]">Recommended</span>
                 {/if}
               </div>
 
             <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
               <div class="flex min-w-0 flex-wrap items-center gap-2">
-                <span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">GGUF</span>
-                {#if isVision}<span class="rounded-md border border-orange-500/50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-400">Vision</span>{/if}
-                {#if item.has_tools}<span class="rounded-md bg-[var(--surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
+                <span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">GGUF</span>
+                {#if isVision}<span class="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">Vision</span>{/if}
+                {#if item.has_tools}<span class="rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">Tools</span>{/if}
               </div>
 
               <div class="flex shrink-0 items-center gap-3">
@@ -1200,7 +1193,7 @@
                       <div class="min-w-0 flex items-center gap-2">
                         <span class="w-14 shrink-0 text-xs font-semibold text-[var(--text)]">{v.quant}</span>
                         <span class="truncate text-xs text-[var(--text-muted)]">{v.filename}</span>
-                        {#if v.recommended}<span class="rounded-md bg-[var(--success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">Recommended</span>{/if}
+                        {#if v.recommended}<span class="rounded-full bg-[var(--success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">Recommended</span>{/if}
                       </div>
                       <div class="flex shrink-0 items-center gap-2">
                         <span class="text-xs text-[var(--text-muted)]">{v.size_human}</span>
@@ -1256,7 +1249,7 @@
                           {:else if isDownloadActive(job)}
                             <div class="flex items-center gap-2">
                               <div class="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--surface-active)]"><div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width: {job?.progress ?? 0}%"></div></div>
-                              <button type="button" class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={async () => { if (job) { await cancelDownloadJob(job.id); await downloadsStore.refresh(); } }} aria-label="Cancel download"><Ban class="h-3.5 w-3.5" /></button>
+                              <button type="button" class="rounded-full p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={async () => { if (job) { await cancelDownloadJob(job.id); await downloadsStore.refresh(); } }} aria-label="Cancel download"><Ban class="h-3.5 w-3.5" /></button>
                             </div>
                           {:else if job && (job.status === 'error' || job.status === 'cancelled')}
                             <button type="button" class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[10px] font-semibold text-[var(--primary-fg)]" onclick={() => downloadsStore.retryJob(job.id)}>Retry</button>
@@ -1288,7 +1281,7 @@
                 spellcheck="false"
               />
               {#if searchQuery}
-                <button type="button" class="rounded-md p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => { searchQuery = ''; void performSearch(); }} aria-label="Clear search">
+                <button type="button" class="rounded-full p-1 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => { searchQuery = ''; void performSearch(); }} aria-label="Clear search">
                   <X class="h-3.5 w-3.5" />
                 </button>
               {/if}
@@ -1417,7 +1410,7 @@
                 <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
               </div>
             {:else if !primaryVoiceEntry}
-              <div class="rounded-lg bg-[var(--surface)] p-8 text-center text-sm text-[var(--text-muted)]">
+              <div class="rounded-xl bg-[var(--surface)] p-8 text-center text-sm text-[var(--text-muted)]">
                 No voice models available
               </div>
             {:else}
@@ -1430,7 +1423,7 @@
               {@const doneJobs = downloadsStore.jobs.filter((j) => j.repo_id === item.repo_id && j.status === 'done')}
               {@const totalFiles = Array.isArray(item.files) ? item.files.length : 0}
 
-              <div class="rounded-lg bg-[var(--surface)] p-4 space-y-3">
+              <div class="rounded-xl bg-[var(--surface)] p-4 space-y-3">
                 <div class="flex items-start justify-between gap-3">
                   <div>
                     <h3 class="text-sm font-semibold text-[var(--text)]">{item.label || 'Kokoro Voice'}</h3>
@@ -1438,25 +1431,25 @@
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
                     {#if isDownloading}
-                      <button type="button" class="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => cancelVoiceDownloads(item)}>
+                      <button type="button" class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => cancelVoiceDownloads(item)}>
                         <Ban class="inline h-3 w-3" />
                         Cancel
                       </button>
                     {:else if hasError}
-                      <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => downloadVoiceModel(key, item, true)}>
+                      <button type="button" class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => downloadVoiceModel(key, item, true)}>
                         <RotateCcw class="h-3 w-3" />
                         Retry
                       </button>
                     {:else if item.downloaded && !item.is_active}
-                      <button type="button" class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => activateVoiceModel(key, item)}>
+                      <button type="button" class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => activateVoiceModel(key, item)}>
                         Use
                       </button>
                     {:else if item.is_active}
-                      <button type="button" class="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => unloadTts()}>
+                      <button type="button" class="rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => unloadTts()}>
                         Unload
                       </button>
                     {:else}
-                      <button type="button" class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingVoice === key} onclick={() => downloadVoiceModel(key, item)}>
+                      <button type="button" class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" disabled={downloadingVoice === key} onclick={() => downloadVoiceModel(key, item)}>
                         <Download class="h-3 w-3" />
                         Download
                       </button>
@@ -1499,12 +1492,12 @@
                 </div>
 
                 {#if doneJobs.length > 0 && doneJobs.length >= totalFiles && !item.downloaded}
-                  <div class="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-xs text-[var(--text-secondary)]">
+                  <div class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs text-[var(--text-secondary)]">
                     <span class="inline-flex items-center gap-1.5">
                       <Check class="h-3.5 w-3.5" />
                       Download complete
                     </span>
-                    <button type="button" class="rounded-md px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => loadVoiceModelCatalog()}>
+                    <button type="button" class="rounded-full px-2 py-1 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => loadVoiceModelCatalog()}>
                       Refresh
                     </button>
                   </div>
@@ -1555,7 +1548,7 @@
             </header>
 
             <!-- Microphone -->
-            <div class="rounded-lg bg-[var(--surface)] p-4 space-y-3">
+            <div class="rounded-xl bg-[var(--surface)] p-4 space-y-3">
               <h3 class="text-sm font-semibold text-[var(--text)]">Microphone</h3>
               {#if micPermission === 'denied'}
                 <div class="space-y-2">
@@ -1598,7 +1591,7 @@
             </div>
 
             <!-- whisper.cpp runtime -->
-            <div class="rounded-lg bg-[var(--surface)] p-4 space-y-3">
+            <div class="rounded-xl bg-[var(--surface)] p-4 space-y-3">
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <h3 class="text-sm font-semibold text-[var(--text)]">whisper.cpp runtime</h3>
@@ -1607,7 +1600,7 @@
                 <div class="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                    class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                     onclick={loadWhisperRuntimeList}
                   >
                     <RefreshCw class="inline h-3 w-3" />
@@ -1615,7 +1608,7 @@
                   </button>
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                    class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                     onclick={selectCustomWhisperRuntime}
                   >
                     <FolderInput class="inline h-3 w-3" />
@@ -1650,13 +1643,13 @@
                         {#if !runtime.is_active}
                           <button
                             type="button"
-                            class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                            class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
                             onclick={() => useWhisperRuntime(runtime)}
                           >Use</button>
                         {/if}
                         <button
                           type="button"
-                          class="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                          class="rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                           onclick={() => removeWhisperRuntime(runtime)}
                         >
                           Delete
@@ -1674,7 +1667,7 @@
                 <div class="h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--text-muted)]"></div>
               </div>
             {:else}
-              <div class="rounded-lg bg-[var(--surface)] p-4 space-y-3">
+              <div class="rounded-xl bg-[var(--surface)] p-4 space-y-3">
                 <h3 class="text-sm font-semibold text-[var(--text)]">Models</h3>
                 <div class="space-y-3">
                   {#each Object.entries(whisperModels) as [key, item] (key)}
@@ -1716,7 +1709,7 @@
                         {#if isDownloading}
                           <button
                             type="button"
-                            class="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                            class="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                             onclick={async () => {
                               for (const j of activeJobs) { await cancelDownloadJob(j.id); }
                               downloadingWhisper = null;
@@ -1729,7 +1722,7 @@
                         {:else if hasError}
                           <button
                             type="button"
-                            class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                            class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
                             onclick={async () => {
                               try {
                                 for (const j of errorJobs) { await downloadsStore.removeJob(j.id); }
@@ -1752,7 +1745,7 @@
                         {:else if item.downloaded && !item.is_active}
                           <button
                             type="button"
-                            class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+                            class="rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
                             onclick={async () => {
                               try {
                                 await setWhisperQuality(key);
@@ -1768,7 +1761,7 @@
                         {:else if item.is_active}
                           <button
                             type="button"
-                            class="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+                            class="rounded-full px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
                             onclick={async () => {
                               try {
                                 await unloadWhisper();
@@ -1786,7 +1779,7 @@
                         {:else if !item.downloaded}
                           <button
                             type="button"
-                            class="inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+                            class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
                             disabled={downloadingWhisper === key}
                             onclick={async () => {
                               try {

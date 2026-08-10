@@ -31,7 +31,7 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 <div
-  class="fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-4"
+  class="fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-4 backdrop-blur-[4px]"
   role="presentation"
   onclick={onclose}
   transition:motionFade={{ duration: 220 }}
@@ -43,13 +43,13 @@
     aria-labelledby={labelledBy}
     tabindex="-1"
     class={cn(
-      'relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-[var(--shadow-lg)]',
+      'relative flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-[var(--radius-2xl)] bg-popover text-foreground shadow-[shadow:var(--shadow-xl)]',
       className
     )}
     onclick={(event) => event.stopPropagation()}
     transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
   >
-    <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
+    <header class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
       <div class="min-w-0">
         <h2 id={labelledBy} class="truncate text-[15px] font-semibold tracking-[-0.01em]">{title}</h2>
         {#if description}<p class="truncate text-xs text-muted-foreground">{description}</p>{/if}

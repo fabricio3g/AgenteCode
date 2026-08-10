@@ -48,7 +48,7 @@
 
 <style>
   .info-card {
-    width: min(100%, 42rem);
+    width: 100%;
     margin-top: 0.65rem;
     padding: 0.9rem 1rem;
     border: 0;

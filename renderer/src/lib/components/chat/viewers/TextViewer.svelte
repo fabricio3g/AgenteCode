@@ -1,7 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Loader2, AlertCircle, FileText } from 'lucide-svelte';
+  import { FileText } from 'lucide-svelte';
+  import { copy } from '$lib/copy';
+  import ViewerStatus from './ViewerStatus.svelte';
+  import { escapeHtml, highlightTerm } from './viewer-text';
 
   interface Props {
     src: string;
@@ -17,22 +20,12 @@
   let textContent = $state('');
   let highlightedHtml = $state('');
 
+  // With a search term the raw text is escaped and marked; without one the
+  // syntax-highlighted HTML from hljs is preferred when it is available.
   const renderedHtml = $derived.by(() => {
-    const term = query.trim();
-    const rawHtml = term ? escapeHtml(textContent) : (highlightedHtml || escapeHtml(textContent));
-    if (!term) return rawHtml;
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return rawHtml.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
+    if (!query.trim()) return highlightedHtml || escapeHtml(textContent);
+    return highlightTerm(textContent, query);
   });
-
-  function escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
 
   async function loadText() {
     loading = true;
@@ -89,16 +82,8 @@
 </script>
 
 <div class="text-viewer">
-  {#if loading}
-    <div class="text-status">
-      <Loader2 class="h-4 w-4 animate-spin" />
-      <span>Loading file...</span>
-    </div>
-  {:else if error}
-    <div class="text-status error">
-      <AlertCircle class="h-4 w-4" />
-      <span>{error}</span>
-    </div>
+  {#if loading || error}
+    <ViewerStatus {loading} {error} label={copy.viewer.loadingFile} />
   {:else}
     <div class="text-frame">
       <pre class="text-pre"><code>{@html renderedHtml}</code></pre>
@@ -118,19 +103,7 @@
     flex-direction: column;
   }
 
-  .text-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 2rem 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
 
-  .text-status.error {
-    color: var(--error);
-  }
 
   .text-frame {
     background: #0d1117;

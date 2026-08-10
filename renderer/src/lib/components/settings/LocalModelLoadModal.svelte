@@ -12,6 +12,7 @@
   import { getRecommendedSettings } from '$lib/services/runtime';
   import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
+  import { formatBytes } from '$lib/utils/format';
   import { Select } from '$lib/components/ui';
 
   const contextPresets = [4096, 8192, 16384, 32768];
@@ -63,13 +64,6 @@
   const gpuLayers = $derived(Math.max(0, Math.min(gpuLayersMax, localGpuLayers)));
   const cpuThreads = $derived(Math.max(1, Math.min(cpuThreadsMax, localCpuThreads)));
   const batchSize = $derived(Math.max(1, Number(appStore.localModelLoadBatchSize || 512)));
-
-  function formatBytes(bytes: number) {
-    if (!Number.isFinite(bytes) || bytes <= 0) return '';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    return `${(bytes / (1024 ** index)).toFixed(index >= 3 ? 2 : 0)} ${units[index]}`;
-  }
 
   function cacheQuantFactor(type: string) {
     if (type === 'q4_0') return 0.25;
@@ -287,7 +281,7 @@
   <p class="mt-0.5 text-[12px] text-[var(--text-secondary)]">The llama.cpp runtime is required to run local models. Install it first.</p>
   </div>
    <button
-   class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
+   class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
    onclick={() => { appStore.closeLocalModelLoadDialog(); appStore.modelManagerOpenSection = 'runtime'; appStore.modelManagerOpen = true;}}
    >
   Install Runtime
@@ -297,9 +291,9 @@
 
    <!-- View mode toggle -->
    <div class="mb-4 flex items-center gap-3">
-   <div class="flex items-center rounded-md bg-[var(--surface)] p-0.5">
-   <button class={`rounded-md px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'simple' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'simple')}>Simple</button>
-   <button class={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'advanced' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'advanced')}>
+   <div class="flex items-center rounded-full bg-[var(--muted)] p-[3px]">
+   <button class={`rounded-full px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'simple' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'simple')}>Simple</button>
+   <button class={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'advanced' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'advanced')}>
    <SlidersHorizontal class="h-3 w-3" />
    Advanced
    </button>
@@ -323,15 +317,15 @@
         <span class="text-[13px] text-[var(--text-secondary)]">{gpuLayers}</span>
       </div>
       <div class="flex items-center gap-3">
-      <div class="flex items-center gap-1.5 rounded-md bg-[var(--surface)] p-0.5">
+      <div class="flex items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]">
         <button
-          class={`rounded-md px-3 py-1.5 text-[12px] transition ${gpuLayers === gpuLayersMax ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
+          class={`rounded-full px-3 py-1.5 text-[12px] transition ${gpuLayers === gpuLayersMax ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
           onclick={() => { localGpuLayers = gpuLayersMax; commitGpuLayers(); }}
         >
           All ({gpuLayersMax})
         </button>
         <button
-          class={`rounded-md px-3 py-1.5 text-[12px] transition ${gpuLayers === 0 ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
+          class={`rounded-full px-3 py-1.5 text-[12px] transition ${gpuLayers === 0 ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
           onclick={() => { localGpuLayers = 0; commitGpuLayers(); }}
         >
           CPU
@@ -356,11 +350,11 @@
         <span class="text-[13px] text-[var(--text-secondary)]">{localContextLength >= 1024 ? `${Math.round(localContextLength/1024)}k` : localContextLength}</span>
       </div>
       <div class="flex items-center gap-3">
-      <div class="flex flex-wrap items-center gap-1.5 rounded-md bg-[var(--surface)] p-0.5">
+      <div class="flex flex-wrap items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]">
         {#each contextPresets as preset}
           {#if preset <= maxContext}
             <button
-              class={`rounded-md px-3 py-1.5 text-[12px] transition ${contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
+              class={`rounded-full px-3 py-1.5 text-[12px] transition ${contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
               onclick={() => { localContextLength = preset; commitContext();}}
             >
               {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
@@ -381,7 +375,7 @@
     </div>
 
     <!-- Thinking toggle -->
-    <div class="flex items-center justify-between gap-3 rounded-md bg-[var(--surface)] px-3 py-2">
+    <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface)] px-3 py-2">
       <div>
         <div class="text-[13px] font-medium text-[var(--text)]">Thinking</div>
           <div class="text-[11px] text-[var(--text-tertiary)]">Lets the model show a thinking block before answering.</div>
@@ -401,7 +395,7 @@
     </div>
 
     <!-- Vision projector selector -->
-    <div class="rounded-md bg-[var(--surface)] px-3 py-2.5">
+    <div class="rounded-lg bg-[var(--surface)] px-3 py-2.5">
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-[13px] font-medium text-[var(--text)]">Vision projector</div>
@@ -409,10 +403,10 @@
         </div>
         <div class="flex shrink-0 items-center gap-2">
           {#if visionSelectedName}
-            <button type="button" class="rounded-md px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={clearProjector}>Clear</button>
-            <button type="button" class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Change</button>
+            <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={clearProjector}>Clear</button>
+            <button type="button" class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Change</button>
           {:else}
-            <button type="button" class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Select projector</button>
+            <button type="button" class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Select projector</button>
           {/if}
         </div>
       </div>
@@ -420,7 +414,7 @@
         <div class="mt-2 flex flex-wrap gap-1.5">
           {#each projectorCandidates as candidate}
             {@const candidateName = candidate.split(/[/\\]/).pop() || ''}
-            <button type="button" class="rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => applyProjectorCandidate(candidate)} title={candidate}>
+            <button type="button" class="rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => applyProjectorCandidate(candidate)} title={candidate}>
               {candidateName}
             </button>
           {/each}
@@ -429,7 +423,7 @@
     </div>
 
     <!-- MTP toggle -->
-    <div class="rounded-md bg-[var(--surface)] px-3 py-2.5">
+    <div class="rounded-lg bg-[var(--surface)] px-3 py-2.5">
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-[13px] font-medium text-[var(--text)]">MTP (speculative decoding)</div>
@@ -453,7 +447,7 @@
           <div class="text-[11px] text-[var(--text-tertiary)]">Draft head (MTP). Required when the target model does not include MTP layers.</div>
           <div class="flex flex-wrap items-center gap-2">
             <input
-              class="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
+              class="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
               type="text"
               bind:value={appStore.localModelLoadMtpDraftPath}
               placeholder="C:/models/qwen3.6-mtp-draft.gguf"
@@ -481,7 +475,7 @@
     <!-- Quick actions -->
     <div class="flex items-center gap-2">
       <button
-        class="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+        class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
         onclick={applyRecommendedPreset}
         disabled={!recommended}
       >
@@ -526,11 +520,11 @@
   {/if}
 
   <div class="mb-4 flex flex-wrap items-center gap-2">
-  <button class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
+  <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
   <Sparkles class="h-3.5 w-3.5" />
   Apply recommended
   </button>
-  <button class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={resetToSavedDefaults}>
+  <button class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={resetToSavedDefaults}>
   <RotateCcw class="h-3.5 w-3.5" />
   Reset
   </button>
@@ -544,11 +538,11 @@
   Core settings
   </div>
 
-   <div class="mb-2.5 flex flex-wrap gap-1.5 rounded-md bg-[var(--background)] p-0.5">
+   <div class="mb-2.5 flex flex-wrap gap-1 rounded-full bg-[var(--background)] p-[3px]">
   {#each contextPresets as preset}
   {#if preset <= maxContext}
   <button
-   class={`rounded-md px-3 py-1.5 text-[12px] font-medium transition ${contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
+   class={`rounded-full px-3 py-1.5 text-[12px] font-medium transition ${contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
   onclick={() => { localContextLength = preset; commitContext();}}
   >
   {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
@@ -810,23 +804,23 @@
   </div>
 
   <div class="grid gap-2 md:grid-cols-2">
-   <label class="flex items-center justify-between gap-3 rounded-md bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span>Flash attention</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadFlashAttention} />
   </label>
-   <label class="flex items-center justify-between gap-3 rounded-md bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span>Offload KV cache</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadOffloadKvCache} />
   </label>
-   <label class="flex items-center justify-between gap-3 rounded-md bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span>Keep in memory</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadKeepInMemory} />
   </label>
-   <label class="flex items-center justify-between gap-3 rounded-md bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span>Memory map file</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadMmap} />
   </label>
-   <label class="flex items-center justify-between gap-3 rounded-md bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
+   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span>Disable thinking</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadDisableThinking} />
   </label>
@@ -885,7 +879,7 @@
     <div>
       {#if isAnyModelLoaded && !appStore.localModelLoading}
         <button
-          class="rounded-md px-3 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          class="rounded-full px-3.5 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
           onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
         >
           Unload
@@ -895,20 +889,20 @@
     <div class="flex items-center gap-2">
       {#if appStore.localModelLoading}
         <button
-          class="rounded-md bg-[var(--primary)] px-3 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90"
+          class="rounded-full bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90"
           onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
         >
           Stop
         </button>
       {:else}
         <button
-          class="rounded-md px-3 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          class="rounded-full px-3.5 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
           onclick={() => appStore.closeLocalModelLoadDialog()}
         >
           Cancel
         </button>
         <button
-          class="rounded-md bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+          class="rounded-full bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
           onclick={() => appStore.confirmLocalModelLoad()}
           disabled={!memoryEstimate.compatible}
         >

@@ -1,7 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { copy } from '$lib/copy';
+  import ViewerStatus from './ViewerStatus.svelte';
+  import { readArrayBuffer } from './viewer-source';
 
   interface Props {
     src: string;
@@ -32,26 +35,6 @@
     workerReady = true;
   }
 
-  async function readArrayBuffer(source: string): Promise<ArrayBuffer> {
-    if (source.startsWith('data:')) {
-      const commaIndex = source.indexOf(',');
-      if (commaIndex < 0) throw new Error('Invalid PDF data URL');
-      const meta = source.slice(0, commaIndex);
-      const payload = source.slice(commaIndex + 1);
-      if (meta.includes(';base64')) {
-        const binary = atob(payload);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes.buffer;
-      }
-      return new TextEncoder().encode(decodeURIComponent(payload)).buffer;
-    }
-
-    const response = await fetch(source);
-    if (!response.ok) throw new Error(`PDF request failed (${response.status})`);
-    return response.arrayBuffer();
-  }
-
   async function loadPdf() {
     loading = true;
     error = null;
@@ -63,7 +46,7 @@
       }
       await ensureWorker();
       const pdfjsLib = await import('pdfjs-dist');
-      const arrayBuffer = await readArrayBuffer(src);
+      const arrayBuffer = await readArrayBuffer(src, 'PDF');
       if (!arrayBuffer.byteLength) {
         throw new Error('PDF file is empty');
       }
@@ -198,16 +181,8 @@
 </script>
 
 <div class="pdf-viewer">
-  {#if loading}
-    <div class="pdf-status">
-      <Loader2 class="h-4 w-4 animate-spin" />
-      <span>Loading PDF...</span>
-    </div>
-  {:else if error}
-    <div class="pdf-status error">
-      <AlertCircle class="h-4 w-4" />
-      <span>{error}</span>
-    </div>
+  {#if loading || error}
+    <ViewerStatus {loading} {error} label={copy.viewer.loadingPdf} />
   {:else if pageCount > 0}
     <div class="pdf-nav">
       <button class="pdf-nav-btn" onclick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
@@ -240,19 +215,7 @@
     gap: 0.4rem;
   }
 
-  .pdf-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 2rem 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
 
-  .pdf-status.error {
-    color: var(--error);
-  }
 
   .pdf-nav {
     position: sticky;

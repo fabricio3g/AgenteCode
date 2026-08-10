@@ -19,19 +19,19 @@
   let { files, selectedPath, collapsed, onselect, ontoggle, oncreate, onrename, ondelete }: Props = $props();
 </script>
 
-<div class="mobile-files border-b border-border p-2">
+<div class="mobile-files border-b border-[var(--border-subtle)] p-2">
   <Select value={selectedPath} options={files.map(([path]) => ({ value: path, label: path }))} onchange={onselect} aria-label="Artifact file" variant="surface" class="w-full" />
 </div>
 
-<aside class:collapsed class="file-rail min-h-0 shrink-0 border-r border-border bg-muted/20">
-  <div class="flex h-10 items-center justify-between border-b border-border px-2">
+<aside class:collapsed class="file-rail min-h-0 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--muted)]">
+  <div class="flex h-10 items-center justify-between border-b border-[var(--border-subtle)] px-2">
     {#if !collapsed}<span class="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</span>{/if}
     <Button variant="ghost" size="icon-sm" onclick={ontoggle} aria-label={collapsed ? 'Expand files' : 'Collapse files'}>
       {#if collapsed}<ChevronRight />{:else}<ChevronLeft />{/if}
     </Button>
   </div>
   {#if !collapsed}
-    <div class="flex items-center gap-0.5 border-b border-border p-1.5">
+    <div class="flex items-center gap-0.5 border-b border-[var(--border-subtle)] p-1.5">
       <Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label="Create file"><Plus /></Button>
       <Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label="Rename selected file"><Pencil /></Button>
       <Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label="Delete selected file"><Trash2 /></Button>
@@ -49,8 +49,31 @@
 <style>
   .file-rail { display: flex; width: 13.5rem; flex-direction: column; transition: width 160ms var(--motion-ease); }
   .file-rail.collapsed { width: 2.8rem; }
-  .file-row { display: flex; width: 100%; align-items: center; gap: 0.45rem; border: 0; border-radius: var(--radius-sm); background: transparent; padding: 0.42rem 0.5rem; color: var(--muted-foreground); text-align: left; font-size: 0.7rem; }
-  .file-row:hover, .file-row.active { background: var(--artifact-surface-hover); color: var(--foreground); }
+  .file-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.45rem;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    padding: 0.42rem 0.65rem;
+    color: var(--muted-foreground);
+    text-align: left;
+    font-size: 0.7rem;
+    transition:
+      background-color var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease);
+  }
+  .file-row:hover {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
+
+  .file-row.active {
+    background: var(--surface-active);
+    color: var(--foreground);
+  }
   .mobile-files { display: none; }
   @media (max-width: 640px) { .file-rail { display: none; } .mobile-files { display: block; } }
 </style>

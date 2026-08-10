@@ -1,5 +1,6 @@
 import type { AgentArtifact, AgentStep, CodeAgentFileChange, CodeAgentFileChangeKind } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
+import { say } from '$lib/copy';
 import type { SearchResult } from '$lib/types/tauri';
 import type { ToolCall, ToolResult } from '$lib/services/agent-types';
 
@@ -216,10 +217,10 @@ function shortToolStepSummary(toolName: string | undefined, output: Record<strin
     const first = results[0] as { title?: string } | undefined;
     const firstTitle = first?.title ? String(first.title).slice(0, 80) : '';
     const detail = query
-      ? (count ? `${count} result${count === 1 ? '' : 's'}` : 'No results')
+      ? (count ? say.results(count) : 'No results')
       : undefined;
     const line = count
-      ? `${count} result${count === 1 ? '' : 's'}${firstTitle ? ` · ${firstTitle}` : ''}`
+      ? `${say.results(count)}${firstTitle ? ` · ${firstTitle}` : ''}`
       : 'No results';
     return { detail, output: line };
   }

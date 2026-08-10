@@ -17,12 +17,9 @@
   import { slide } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import type { AgentStep } from '$lib/types/chat';
-  import {
-    getNextPendingApproval,
-    resolveApproval,
-    subscribe
-  } from '$lib/stores/approvals.svelte';
-  import { formatToolDuration, titleCaseToolName } from '$lib/utils/tool-ui';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { formatToolDuration, titleCaseToolName, toolStatusLabel } from '$lib/utils/tool-ui';
+  import { copy } from '$lib/copy';
 
   interface Props {
     step: AgentStep;
@@ -30,12 +27,14 @@
 
   let { step }: Props = $props();
 
+  /** Tool output past this point is elided; the full text lives in the log. */
+  const OUTPUT_LIMIT = 6000;
+
   let expanded = $state(false);
   let userToggled = $state(false);
   let runStartedAt = $state<number | null>(null);
   let elapsedMs = $state<number | undefined>(undefined);
   let elapsedTimer: ReturnType<typeof setInterval> | null = null;
-  let pendingMatch = $state(false);
 
   const isRunning = $derived(step.status === 'running' || step.status === 'pending');
   const isApproval = $derived(step.status === 'awaiting_approval');
@@ -60,9 +59,7 @@
     return Terminal;
   });
 
-  const statusLabel = $derived(
-    isApproval ? 'Needs approval' : isError ? 'Failed' : ''
-  );
+  const statusLabel = $derived(toolStatusLabel(step.status));
 
   function toggle() {
     if (!hasBody && !isApproval) return;
@@ -96,15 +93,8 @@
     };
   });
 
-  $effect(() => {
-    const refresh = () => {
-      const next = getNextPendingApproval();
-      pendingMatch = !!next && next.id === step.id;
-    };
-    refresh();
-    return subscribe(refresh);
-  });
-
+  // The store is reactive now, so this is a read rather than a subscription.
+  const pendingMatch = $derived(approvalsStore.items.some((a) => a.id === step.id));
   const showApproval = $derived(isApproval || pendingMatch);
   const durationText = $derived(
     elapsedMs !== undefined && (isRunning || step.status === 'done' || isError)
@@ -113,11 +103,11 @@
   );
 
   function allow() {
-    resolveApproval(step.id, true);
+    approvalsStore.resolve(step.id, true);
   }
 
   function deny() {
-    resolveApproval(step.id, false);
+    approvalsStore.resolve(step.id, false);
   }
 </script>
 
@@ -158,7 +148,7 @@
     >
       {#if isError && (step.output || step.detail)}
         <div>
-          <p class="aui-tool-fallback-error-header">Error:</p>
+          <p class="aui-tool-fallback-error-header">{copy.tool.error}:</p>
           <p class="aui-tool-fallback-error-reason">{step.output || step.detail}</p>
         </div>
       {:else}
@@ -167,16 +157,16 @@
         {/if}
         {#if step.output}
           <div>
-            <p class="aui-tool-fallback-result-header">Result:</p>
-            <pre class="aui-tool-fallback-result-content">{step.output.slice(0, 6000)}{step.output.length > 6000 ? '\n… (truncated)' : ''}</pre>
+            <p class="aui-tool-fallback-result-header">{copy.tool.result}:</p>
+            <pre class="aui-tool-fallback-result-content">{step.output.slice(0, OUTPUT_LIMIT)}{step.output.length > OUTPUT_LIMIT ? `\n${copy.tool.truncated}` : ''}</pre>
           </div>
         {/if}
       {/if}
 
       {#if showApproval}
         <div class="aui-tool-fallback-approval">
-          <button type="button" class="aui-tool-fallback-approval-btn" onclick={deny}>Deny</button>
-          <button type="button" class="aui-tool-fallback-approval-btn primary" onclick={allow}>Allow</button>
+          <button type="button" class="aui-tool-fallback-approval-btn" onclick={deny}>{copy.tool.deny}</button>
+          <button type="button" class="aui-tool-fallback-approval-btn primary" onclick={allow}>{copy.tool.allow}</button>
         </div>
       {/if}
     </div>

@@ -9,7 +9,7 @@ import {
   respondToApproval,
 } from '$lib/services/chatea-agent-ipc';
 import { subscribeToCodeAgentEvents } from '$lib/stores/chatea-agent-events.svelte';
-import { addPendingApproval } from '$lib/stores/approvals.svelte';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
 import { codeAgentEventToStep } from '$lib/services/chatea-agent-bridge';
 
 export interface ChateaAgentSessionConfig {
@@ -152,7 +152,12 @@ export async function runChateaAgentSession(
         if (!pendingApprovalIds.has(event.requestId)) {
           pendingApprovalIds.add(event.requestId);
           void (async () => {
-            const allow = await addPendingApproval(event.requestId, approvalCommand(event.toolName, event.args), approvalCwd(event.args, config.projectRoot));
+            const allow = await approvalsStore.request({
+              id: event.requestId,
+              chatId: config.chatId,
+              command: approvalCommand(event.toolName, event.args),
+              cwd: approvalCwd(event.args, config.projectRoot)
+            });
             await respondToApproval(config.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
             const approvalStep = steps.find((s) => s.id === event.requestId);
             if (approvalStep) {

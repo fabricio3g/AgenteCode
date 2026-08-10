@@ -6,8 +6,8 @@
   import { hardwareStore } from '$lib/stores/hardware.svelte';
 </script>
 
-<section class="rounded-xl border border-border bg-card">
-  <div class="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+<section class="rounded-2xl bg-[var(--muted)]">
+  <div class="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
     <div>
       <h4 class="text-sm font-semibold text-foreground">Hardware summary</h4>
       <p class="mt-1 text-xs text-muted-foreground">Resources available to local models.</p>

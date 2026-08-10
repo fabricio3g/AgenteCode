@@ -3,6 +3,8 @@
 <script lang="ts">
   import { ChevronDown, ChevronRight, FileCode2, Folder } from 'lucide-svelte';
   import type { CodeAgentDiffStat } from '$lib/types/chat';
+  import Button from '$lib/components/ui/Button.svelte';
+  import { say } from '$lib/copy';
 
   interface Props { stats: CodeAgentDiffStat[] }
 
@@ -55,11 +57,15 @@
 
 <section class="card">
   <header class="hdr">
-    <span class="title">{stats.length} file{stats.length === 1 ? '' : 's'}</span>
+    <span class="title">{say.files(stats.length)}</span>
     <span class="cnt"><span class="a">+{adds}</span><span class="d">-{dels}</span></span>
-    <button class="exp" onclick={() => expanded = allExpanded ? new Set() : new Set(stats.map((s) => s.path))}>
+    <Button
+      variant="ghost"
+      size="xs"
+      onclick={() => (expanded = allExpanded ? new Set() : new Set(stats.map((s) => s.path)))}
+    >
       {allExpanded ? 'Collapse' : 'Expand'}
-    </button>
+    </Button>
   </header>
   {#snippet tree(n: Node, d: number)}
     {#each n.children as c (c.path)}
@@ -90,25 +96,33 @@
 </section>
 
 <style>
-  .card { margin-top: 0.5rem; width: min(46rem, 100%); border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--surface-hover) 30%, transparent); overflow: hidden; }
-  .hdr { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; font-weight: 680; color: var(--text-muted); }
+  /*
+   * Same token vocabulary as AgentBlock and ToolCallRow. This card used to run
+   * on the legacy text/surface names with hardcoded #16a34a and #dc2626 — which
+   * are the light values of --success and --error, so on the dark default the
+   * diff counts were rendering dark-on-dark.
+   */
+  .card { margin-top: 0.5rem; width: var(--inline-block-width); max-width: 100%; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--muted) 45%, transparent); overflow: hidden; }
+  .hdr { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; font-weight: 680; color: var(--muted-foreground); }
   .title { flex: 1; }
   .cnt { display: inline-flex; gap: 0.25rem; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 720; }
-  .a { color: #16a34a; }
-  .d { color: #dc2626; }
-  .exp { border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-secondary); padding: 0.2rem 0.45rem; font-size: 0.65rem; font-weight: 700; cursor: pointer; }
-  .exp:hover { border-color: var(--border-hover); color: var(--text); }
+  .a { color: var(--success); }
+  .d { color: var(--error); }
   .list { max-height: 28rem; overflow-y: auto; }
-  .nr { border-top: 1px solid color-mix(in srgb, var(--border) 30%, transparent); }
-  .tr { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--text-secondary); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; }
-  .tr:hover { background: var(--surface-hover); color: var(--text); }
+  .nr { border-top: 1px solid var(--border-subtle); }
+  /* Not pilled: these are full-bleed rows separated by rules, so a pill would
+     float free of the separators. */
+  .tr { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--muted-foreground); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease); }
+  .tr:hover { background: var(--surface-hover); color: var(--foreground); }
   .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 0.74rem; flex: 1; }
-  .kind { border-radius: 999px; background: var(--surface); padding: 0.1rem 0.3rem; font-size: 0.55rem; font-weight: 780; text-transform: uppercase; }
-  .kind.created { color: #16a34a; }
+  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.3rem; font-size: 0.55rem; font-weight: 780; text-transform: uppercase; }
+  .kind.created { color: var(--success); }
   .kind.modified { color: var(--primary); }
-  .kind.deleted { color: #dc2626; }
-  .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent); background: color-mix(in srgb, var(--surface) 60%, transparent); color: var(--text-secondary); padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.5; white-space: pre-wrap; }
+  .kind.deleted { color: var(--error); }
+  /* Matches .aui-tool-fallback-args-value so agent code blocks read the same
+     inline as they do in the activity drawer. */
+  .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--muted) 50%, transparent); color: color-mix(in srgb, var(--foreground) 90%, transparent); border-radius: 0; padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.5; white-space: pre-wrap; }
   .depth-1 { padding-left: 1rem; }
   .depth-2 { padding-left: 1.6rem; }
   .depth-3 { padding-left: 2.2rem; }

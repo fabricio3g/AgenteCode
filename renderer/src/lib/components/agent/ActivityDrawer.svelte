@@ -1,12 +1,13 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { motionFly } from '$lib/utils/transitions';
-  import { cubicOut } from 'svelte/easing';
   import { ExternalLink, Loader2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ChatMessage } from '$lib/types/chat';
-  import { domainLabel, faviconUrl } from '$lib/ui/message-utils';
+  import { domainLabel } from '$lib/ui/message-utils';
+  import { copy } from '$lib/copy';
+  import { countOf } from '$lib/utils/format';
+  import { searchModeChip } from '$lib/utils/tool-ui';
   import ToolCallRow from './ToolCallRow.svelte';
 
   const message = $derived(appStore.activityMessage);
@@ -17,13 +18,7 @@
   const sourceCount = $derived(displaySources.length);
   const activeTab = $derived(appStore.activityDrawerTab);
   const isStreaming = $derived(message?.status === 'streaming');
-  const modeLabel = $derived.by(() => {
-    const mode = message?.searchMode;
-    if (mode === 'max') return 'Max';
-    if (mode === 'deep') return 'Deep';
-    if (mode === 'search') return 'Search';
-    return '';
-  });
+  const modeLabel = $derived(searchModeChip(message?.searchMode));
 
   type Source = NonNullable<ChatMessage['sources']>[number];
 
@@ -74,35 +69,21 @@
     if (event.key === 'Escape') close();
   }
 
-  function hideOnError(event: Event) {
-    (event.currentTarget as HTMLElement).style.display = 'none';
-  }
-
   function sourceExcerpt(source: Source) {
     return String(source.snippet || source.full_content || '')
       .replace(/\s+/g, ' ')
       .trim();
   }
-
-  function sourceBadges(source: Source) {
-    const inferred =
-      String(source.url || '').match(/\.(pdf|docx?|pptx?|xlsx?|rtf|epub|odt|ods|odp)(?:$|[?#])/i)?.[1] ||
-      '';
-    const fileType = String(source.metadata?.file_type || inferred || '')
-      .trim()
-      .toUpperCase();
-    const provider = String(source.provider || '').trim();
-    return [fileType, provider].filter(Boolean).slice(0, 2);
-  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
+<!-- Frame, surface and enter/exit animation belong to the floating slot in
+     AppShell; this is just the panel's contents. -->
 <aside
-  class="activity-drawer flex h-full w-80 min-w-[18rem] max-w-[24rem] shrink-0 flex-col overflow-hidden bg-background outline-none"
-  aria-label="Activity"
+  class="activity-drawer flex h-full w-80 min-w-[18rem] max-w-[24rem] shrink-0 flex-col overflow-hidden bg-transparent outline-none"
+  aria-label={copy.thread.activity}
   tabindex="-1"
-  transition:motionFly={{ x: 22, duration: 260, opacity: 0.55, easing: cubicOut }}
   onpointerdown={stopBubble}
 >
   <header class="flex shrink-0 flex-col gap-2 px-3 py-3">
@@ -116,7 +97,7 @@
           class="aui-segmented-item flex-1 py-1.5 {activeTab === 'activity' ? 'is-active' : ''}"
           onclick={() => (appStore.activityDrawerTab = 'activity')}
         >
-          Activity
+          {copy.thread.activity}
         </button>
         <button
           type="button"
@@ -124,10 +105,10 @@
           onclick={() => (appStore.activityDrawerTab = 'sources')}
           disabled={!sourceCount}
         >
-          {sourceCount} Source{sourceCount === 1 ? '' : 's'}
+          {countOf(sourceCount, 'Source')}
         </button>
       </div>
-      <button type="button" class="aui-icon-button size-8 shrink-0" onclick={close} aria-label="Close activity" title="Close">
+      <button type="button" class="aui-icon-button size-8 shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
         <X class="size-3.5" />
       </button>
     </div>
@@ -164,14 +145,14 @@
         </div>
       {:else}
         <div class="px-1 py-8 text-center text-sm text-muted-foreground">
-          <p class="m-0">No sources were recorded for this message.</p>
+          <p class="m-0">{copy.empty.noSources}</p>
         </div>
       {/if}
     {:else}
       {#if isStreaming && !steps.length}
         <div class="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
           <Loader2 class="size-3 animate-spin" style="animation-duration: 0.75s" />
-          <span>Working</span>
+          <span>{copy.status.working}</span>
         </div>
       {/if}
 
@@ -183,14 +164,14 @@
         </div>
       {:else if !isStreaming}
         <div class="px-1 py-8 text-center text-sm text-muted-foreground">
-          <p class="m-0">No activity steps have been recorded yet.</p>
+          <p class="m-0">{copy.empty.noActivity}</p>
         </div>
       {/if}
 
       {#if reasoning}
         <section class="mt-3 rounded-md bg-muted/40 px-3 py-2.5">
           <p class="mb-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
-            Reasoning
+            {copy.status.reasoning}
           </p>
           <p class="m-0 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-muted-foreground">
             {reasoning}
@@ -203,8 +184,8 @@
 
 <style>
   .activity-drawer {
-    transform-origin: right center;
-    will-change: transform, opacity;
+    /* Sized here; positioned and animated by the floating slot. */
+    min-height: 0;
   }
 
   .drawer-mode {
@@ -247,9 +228,4 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .activity-drawer {
-      will-change: auto;
-    }
-  }
 </style>

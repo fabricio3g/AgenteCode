@@ -84,7 +84,7 @@
           {#each artifacts.filter((artifact) => artifact.category === category.id) as artifact (artifact.id)}
             {@const Icon = iconComponents[artifact.icon]}
             {@const enabled = isEnabled(artifact)}
-            <div class="flex items-center justify-between gap-4 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60">
+            <div class="flex items-center justify-between gap-4 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-[var(--surface-hover)]">
               <div class="flex min-w-0 items-center gap-3">
                 <span class:enabled class="artifact-setting-icon"><Icon class="size-4" /></span>
                 <span class="min-w-0">
@@ -102,6 +102,36 @@
 </Dialog>
 
 <style>
-  .artifact-setting-icon { display: inline-flex; width: 2rem; height: 2rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-md); background: var(--muted); color: var(--muted-foreground); }
-  .artifact-setting-icon.enabled { background: var(--primary); color: var(--primary-fg); }
+  .artifact-setting-icon {
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    color: var(--muted-foreground);
+    opacity: 0.7;
+    transition:
+      opacity var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease),
+      box-shadow var(--motion-fast) var(--motion-ease);
+  }
+
+  /*
+   * The switch already states on/off unambiguously, so the icon only needs to
+   * lift — filling it with --primary put a hard black (or white) disc against
+   * every enabled row and turned the list into a column of blobs.
+   *
+   * --surface-active rather than --card: in dark mode --card and --muted are
+   * the same #212121, which would have left enabled and disabled separated by
+   * nothing but a hairline.
+   */
+  .artifact-setting-icon.enabled {
+    background: var(--surface-active);
+    color: var(--foreground);
+    opacity: 1;
+  }
 </style>

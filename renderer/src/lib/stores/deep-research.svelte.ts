@@ -1,5 +1,9 @@
 import type { SearchResult } from '$lib/types/tauri';
 import { completeAssistantReply, extractJsonFromResponse, type RequestMessage } from '$lib/services/chat-api';
+import {
+  buildResearchReportInstruction,
+  isMedicalResearchQuery
+} from '$lib/services/agent-prompts';
 import { listen, invoke, isTauri } from '$lib/services/tauri';
 import { webSearch } from '$lib/services/search';
 import { createId } from '$lib/utils/id';
@@ -183,10 +187,6 @@ function loadTasks(): DeepResearchTask[] {
   }));
 }
 
-function isMedicalResearchQuery(query: string): boolean {
-  return /\b(disease|syndrome|cancer|drug|therapy|treatment|diagnos|clinical|patient|guideline|epidemiology|pathophysiology|prognosis|autoimmune|dermatology|medicine|medical)\b/i.test(query);
-}
-
 function buildSourceLines(task: DeepResearchTask, limit: number): string {
   return task.results
     .slice(0, limit)
@@ -244,40 +244,24 @@ async function compressResearchEvidence(task: DeepResearchTask, sourceLines: str
   return completion.content.trim();
 }
 
+/**
+ * Instructions for the standalone deep-research synthesis pass.
+ *
+ * The report shape comes from `buildResearchReportInstruction`, the one place it
+ * is defined. This adds only what is specific to this pipeline: a numbered
+ * source index to cite against, and (for Max) a compressed evidence dossier that
+ * outranks the raw crawl. It previously restated the whole APA contract from
+ * scratch, in wording that had already drifted from the canonical version.
+ */
 function finalReportRequest(mode: 'deep' | 'max', medical: boolean): string {
-  const shared = [
-    'Write the final answer as an extensive, polished research report, not notes.',
-    'Use inline source IDs like [1], [2] for important factual claims whenever the evidence provides source IDs.',
-    'Synthesize across sources instead of listing search results.',
-    'Include tables in markdown where they improve readability.',
-    'Separate established facts from emerging, uncertain, or weakly supported claims.',
-    'Follow APA 7 report norms: clear heading hierarchy, formal objective tone, evidence-based synthesis, and a References section.',
-    'Format references as APA 7 web references using available metadata only: author/organization when present, year/date when present, title, site/publisher when distinct, and URL. Use (n.d.) when no date is available and never invent missing metadata.',
-    'End with a numbered APA-style References list using the provided source index.'
+  const pipelineSpecific = [
+    'Use inline source IDs like [1], [2] for important factual claims whenever the evidence provides source IDs, and number the References list to match that index.',
+    mode === 'max'
+      ? 'Use the compressed evidence dossier as the primary source of truth, then use crawled evidence only to fill gaps. This should be comprehensive enough to serve as a second-stage deep research deliverable.'
+      : 'Include concise evidence-quality notes and practical takeaways.'
   ];
 
-  const depth = mode === 'max'
-    ? [
-        'This is MAX research: use the compressed evidence dossier as the primary source of truth, then use crawled evidence only to fill gaps.',
-        'Include a methodology/evidence-quality section and explicit unresolved gaps.',
-        'Be comprehensive enough to serve as a second-stage deep research deliverable.'
-      ]
-    : [
-        'This is DEEP research: provide a thorough report with concise evidence-quality notes and practical takeaways.'
-      ];
-
-  const domain = medical
-    ? [
-        'For this medical topic, use this report structure (no Summary section): Medical disclaimer; Definition and clinical importance; Epidemiology; Etiology and pathophysiology; Clinical presentation; Diagnosis and differential diagnosis; Treatment and management; Complications; Prognosis and follow-up; Patient education; Emerging research; Evidence gaps; References.',
-        'Title the report with the medical topic from the user search. Include tables for diagnostic tests, differential diagnosis, treatment options, and complications when evidence supports them.',
-        'Do not present treatment advice as personal medical advice; write for a medically literate professional audience and recommend specialist care where appropriate.'
-      ]
-    : [
-        'Use a domain-appropriate structure (no Summary / Executive Summary heading): Background; Key findings; Detailed analysis; Comparison/decision tables where useful; Risks and caveats; Practical recommendations; Evidence gaps; References.',
-        'Start with # Title naming the user\'s search topic. Write a full professional report, not a short summary.'
-      ];
-
-  return [...shared, ...depth, ...domain].join('\n');
+  return [buildResearchReportInstruction(mode, medical), '', ...pipelineSpecific].join('\n');
 }
 
 async function synthesizeResearch(task: DeepResearchTask): Promise<string> {

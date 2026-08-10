@@ -100,6 +100,38 @@ describe('agent-strict-fallback', () => {
     expect(content).not.toMatch(/^-\s+Distributed solar microgrids can keep/m);
   });
 
+  it('omits Limitations when the answer is well sourced', async () => {
+    const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue([]);
+    const ctx: ToolContext = {
+      chatId: 'chat-1',
+      files: {},
+      executionMode: 'sandbox',
+      onArtifact: vi.fn()
+    };
+
+    const content = await buildStrictFallbackContent({
+      prompt: 'Overview of distributed solar microgrids for site resilience',
+      reason: 'iteration limit',
+      ctx,
+      observations: [],
+      // Four readable sources, each contributing a cited evidence item, so there
+      // is no gap to report — the canned Limitations paragraph must not appear.
+      sources: [
+        { title: 'Microgrid resilience', url: 'https://example.com/resilience', snippet: 'Distributed solar microgrids keep critical loads online during wider grid outages when paired with storage and controls.' },
+        { title: 'Storage economics', url: 'https://example.com/storage', snippet: 'Battery storage shifts midday solar generation into evening demand periods and reduces peak-grid purchases.' },
+        { title: 'Controls and islanding', url: 'https://example.com/controls', snippet: 'Advanced controls allow a microgrid to island cleanly from the main grid and resynchronize once the fault clears.' },
+        { title: 'Policy incentives', url: 'https://example.com/policy', snippet: 'Federal and state incentives materially shorten the payback period for commercial microgrid deployments.' }
+      ],
+      mode: 'research',
+      ensureRequestedArtifactsFromEvidence,
+      evidenceSources: (_observations, sources) => sources,
+      missingRequestedArtifactExtensions: () => []
+    });
+
+    expect(content).toContain('## References');
+    expect(content).not.toContain('## Limitations');
+  });
+
   it('uses medical section structure only when section evidence exists', async () => {
     const ensureRequestedArtifactsFromEvidence = vi.fn().mockResolvedValue([]);
     const ctx: ToolContext = {

@@ -179,12 +179,15 @@ function validateReportForFormats(report: ReportDocument, formats: string[]): st
   const wantsNarrative = ['md', 'html', 'docx', 'pdf'].some((format) => formatSet.has(format));
   const wantsSlides = formatSet.has('pptx');
   const wantsSheet = formatSet.has('xlsx');
-  const hasEvidenceContext = hasSourceRows(report);
+  // The report attached a source list, so it claims to be evidence-based.
+  // (This was previously `hasSourceRows(report)`, which made the check below
+  // `x && !x` — always false, so the rule never actually fired.)
+  const claimsEvidence = (report.sources?.length || 0) > 0;
 
   if ((wantsNarrative || wantsSlides) && !hasMeaningfulNarrative(report)) {
     return 'Document content is too thin: sections need body content, not only titles.';
   }
-  if (hasEvidenceContext && !hasSourceRows(report) && !hasLimitations(report)) {
+  if (claimsEvidence && !hasSourceRows(report) && !hasLimitations(report)) {
     return 'Document content is too thin: include sources or limitations for evidence-based work.';
   }
   if (wantsSheet && !hasTableRows(report) && !hasSourceRows(report) && !hasMeaningfulNarrative(report)) {

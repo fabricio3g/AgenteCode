@@ -18,52 +18,60 @@
 
   /* Canonical (Flaxeo / shadcn-style) */
   --radius: 0.625rem;
-  --background: #fdfdfd;
+  /* One background — see the note in `.dark`. Fills are alpha overlays so they
+     work on top of it rather than being separate greys. */
+  --background: #ffffff;
   --foreground: #0d0d0d;
-  --card: #f8f8f8;
+  --card: #ffffff;
   --card-foreground: #0d0d0d;
   --popover: #ffffff;
   --popover-foreground: #0d0d0d;
   --primary: #0d0d0d;
   --primary-foreground: #ffffff;
-  --secondary: #f0f0f0;
+  --secondary: rgb(0 0 0 / 0.05);
   --secondary-foreground: #0d0d0d;
-  --muted: #f0f0f0;
+  --muted: rgb(0 0 0 / 0.04);
   --muted-foreground: #6b6b6b;
-  --accent: #f0f0f0;
+  --accent: rgb(0 0 0 / 0.06);
   --accent-foreground: #0d0d0d;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #d0d0d0;
+  --border: rgb(0 0 0 / 0.07);
+  --input: rgb(0 0 0 / 0.1);
+  --ring: rgb(0 0 0 / 0.2);
   --sidebar: var(--background);
   --sidebar-foreground: #0d0d0d;
   --sidebar-primary: #0d0d0d;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f0f0;
+  --sidebar-accent: rgb(0 0 0 / 0.05);
   --sidebar-accent-foreground: #0d0d0d;
-  --sidebar-border: #e5e5e5;
-  --sidebar-ring: #d0d0d0;
+  --sidebar-border: rgb(0 0 0 / 0.07);
+  --sidebar-ring: rgb(0 0 0 / 0.2);
   --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   --surface-shadow-focus: 0 1px 3px rgb(0 0 0 / 0.08);
-  --motion-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --motion-fast: 120ms;
-  --motion-normal: 180ms;
-  --motion-dialog: 240ms;
+  /* Motion matches the reference surface: a single standard curve for hover and
+     colour changes, and a decelerating curve for things that enter. */
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --motion-fast: 150ms;
+  --motion-normal: 200ms;
+  --motion-dialog: 300ms;
 
   /* Compatibility aliases (legacy Chatea vars) */
   --surface: var(--card);
-  --surface-hover: #f0f0f0;
-  --surface-active: #e8e8e8;
+  --surface-hover: rgb(0 0 0 / 0.05);
+  --surface-active: rgb(0 0 0 / 0.09);
   --surface-overlay: var(--popover);
   --text: var(--foreground);
   --text-secondary: #525252;
   --text-tertiary: #6b6b6b;
   --text-muted: var(--muted-foreground);
   --text-inverse: var(--primary-foreground);
-  --border-hover: #d4d4d4;
-  --border-active: #a3a3a3;
+  --border-hover: rgb(0 0 0 / 0.14);
+  --border-active: rgb(0 0 0 / 0.2);
+  /* Internal dividers inside an already-bordered surface. Full --border on every
+     seam turns a panel into a grid of lines. */
+  --border-subtle: rgb(0 0 0 / 0.04);
   --border-inverse: rgb(0 0 0 / 0.15);
   --primary-hover: #171717;
   --primary-fg: var(--primary-foreground);
@@ -93,13 +101,17 @@
   --work-glint: rgb(0 0 0 / 0.04);
 
   /* Layout */
-  --user-bubble: #f0f0f0;
+  --user-bubble: rgb(0 0 0 / 0.05);
   --user-bubble-text: var(--foreground);
+  --user-bubble-border: transparent;
+  --composer-surface: rgb(0 0 0 / 0.04);
+  --composer-ring: var(--border);
+  --composer-ring-focus: #d0d0d0;
   --chat-bg: var(--background);
   --titlebar-bg: var(--sidebar);
   --sidebar-bg: var(--sidebar);
   --panel-bg: var(--card);
-  --panel-border: var(--border);
+  --panel-border: var(--border-hover);
   --overlay: rgb(0 0 0 / 0.35);
 
   /* Artifacts — borderless surface contrast (not boxed chrome) */
@@ -118,6 +130,27 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-full: 9999px;
 
+  /* Thread geometry. The message column and the composer share one width so
+     they line up as a single column, and the composer is a full pill. */
+  --thread-width: 48rem;
+  /*
+   * Width of blocks rendered inside an assistant turn — charts, artifacts, the
+   * research widget, the file-changes card.
+   *
+   * `100%`, not `--thread-width`: these already sit inside the message content
+   * box, which is the column minus the scroller's padding, so an absolute width
+   * here would overflow on narrow windows. They previously each picked their
+   * own cap (42rem, 46rem) against 48rem prose, giving one turn up to three
+   * different right edges. One dial if blocks should ever inset from prose.
+   */
+  --inline-block-width: 100%;
+  --thread-top-pad: 4rem;
+  --composer-radius: 2rem;
+  /* A large corner everywhere except the bottom-right, which tucks in to point
+     the bubble at its author. */
+  --bubble-radius: 1.5rem;
+  --bubble-tail-radius: var(--radius-lg);
+
   /* Shadows — light only, quiet */
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
@@ -135,6 +168,17 @@
   --accent-yellow-bg: #fefce8;
   --accent-yellow-text: #854d0e;
 
+  /* Stacking order — one ladder instead of ad-hoc z-[40] … z-[500] literals */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-drawer: 40;
+  --z-float: 60;
+  --z-menu: 100;
+  --z-modal: 300;
+  --z-tooltip: 400;
+  --z-toast: 500;
+  --z-confirm: 600;
+
   /* Code */
   --code-terminal-bg: #0a0a0a;
   --code-terminal-text: #d4d4d4;
@@ -147,48 +191,61 @@
 .dark {
   color-scheme: dark;
 
+  /*
+   * One background. Every surface — page, sidebar, cards, dialogs, popovers —
+   * is the same colour; separation comes from spacing and shadow, not from a
+   * ladder of greys stacked on each other and outlined in hairlines.
+   *
+   * Interaction states are alpha overlays (see --surface-hover below) rather
+   * than named surface colours, so they read correctly on top of anything.
+   */
   --background: #141414;
   --foreground: #ffffff;
-  --card: #212121;
+  --card: #141414;
   --card-foreground: #ffffff;
-  --popover: #1a1a1a;
+  --popover: #141414;
   --popover-foreground: #ffffff;
   --primary: #ffffff;
   --primary-foreground: #0d0d0d;
-  --secondary: #212121;
+  --secondary: rgb(255 255 255 / 0.06);
   --secondary-foreground: #ffffff;
-  --muted: #212121;
+  --muted: rgb(255 255 255 / 0.05);
   --muted-foreground: #9a9a9a;
-  --accent: #2a2a2a;
+  --accent: rgb(255 255 255 / 0.08);
   --accent-foreground: #ffffff;
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: #2a2a2a;
-  --input: #2a2a2a;
-  --ring: #3a3a3a;
+  --destructive: #f87171;
+  --destructive-foreground: #ffffff;
+  /* Hairlines are a last resort now — barely there, and only where two regions
+     genuinely need separating. */
+  --border: rgb(255 255 255 / 0.07);
+  --input: rgb(255 255 255 / 0.1);
+  --ring: rgb(255 255 255 / 0.24);
   --sidebar: #141414;
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #ffffff;
   --sidebar-primary-foreground: #0d0d0d;
-  --sidebar-accent: #212121;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #3a3a3a;
+  --sidebar-border: rgb(255 255 255 / 0.07);
+  --sidebar-ring: rgb(255 255 255 / 0.24);
   --surface-shadow: none;
   --surface-shadow-focus: none;
 
   /* Aliases */
   --surface: var(--card);
-  --surface-hover: #2a2a2a;
-  --surface-active: #333333;
+  /* Translucent, so they layer on the single background instead of being a
+     third and fourth grey to keep in sync with it. */
+  --surface-hover: rgb(255 255 255 / 0.06);
+  --surface-active: rgb(255 255 255 / 0.1);
   --surface-overlay: var(--popover);
   --text: var(--foreground);
   --text-secondary: #a3a3a3;
   --text-tertiary: #9a9a9a;
   --text-muted: var(--muted-foreground);
   --text-inverse: var(--primary-foreground);
-  --border-hover: #3a3a3a;
-  --border-active: #4a4a4a;
+  --border-hover: rgb(255 255 255 / 0.14);
+  --border-active: rgb(255 255 255 / 0.2);
+  --border-subtle: rgb(255 255 255 / 0.04);
   --border-inverse: rgb(255 255 255 / 0.3);
   --primary-hover: #e5e5e5;
   --primary-fg: var(--primary-foreground);
@@ -215,13 +272,17 @@
   --work-accent-border: var(--border);
   --work-glint: rgb(255 255 255 / 0.06);
 
-  --user-bubble: #212121;
+  --user-bubble: rgb(255 255 255 / 0.06);
   --user-bubble-text: var(--foreground);
+  --user-bubble-border: transparent;
+  --composer-surface: rgb(255 255 255 / 0.05);
+  --composer-ring: var(--border);
+  --composer-ring-focus: var(--border-hover);
   --chat-bg: var(--background);
   --titlebar-bg: var(--sidebar);
   --sidebar-bg: var(--sidebar);
   --panel-bg: var(--card);
-  --panel-border: var(--border);
+  --panel-border: var(--border-hover);
   --overlay: rgb(0 0 0 / 0.55);
 
   /* Artifacts — slightly lifted surface vs chat bg in dark */
@@ -232,9 +293,13 @@
   --artifact-radius: var(--radius-md);
   --artifact-focus: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
 
-  --shadow-xs: none;
-  --shadow-sm: none;
-  --shadow-md: none;
+  /* A transparent shadow, not `none`. These tokens get composed into shadow
+     lists (`inset 0 0 0 1px var(--border), var(--shadow-xs)`), and `none` is
+     only legal on its own — it invalidates the whole declaration, silently
+     dropping the ring alongside it. */
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.35);
   --shadow-xl: 0 16px 40px rgb(0 0 0 / 0.4);
 
@@ -337,7 +402,7 @@ textarea {
 
 *::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 *:hover::-webkit-scrollbar-thumb {
@@ -377,10 +442,19 @@ textarea {
 
 /* ─── aui-* utilities (ported from Flaxeo) ──────────────────────────────── */
 .aui-composer {
-  box-shadow: var(--surface-shadow);
+  /* A pill on its own surface, held by a hairline ring rather than a border so
+     the radius stays perfectly round at any height. */
+  border: 0;
+  border-radius: var(--composer-radius);
+  background: var(--composer-surface);
+  box-shadow: none;
   transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
+    box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-composer:focus-within {
+  background: var(--surface-active);
 }
 
 .aui-composer:focus-within {
@@ -392,6 +466,31 @@ textarea {
 }
 
 /* ─── Selectors / menus / modals (assistant-ui quiet chrome) ─────────────── */
+/*
+ * Pill variant, for the controls that sit inside the composer. They read as
+ * chips on the composer surface rather than as buttons on the page.
+ */
+.aui-select-trigger.aui-pill,
+.aui-btn.aui-pill {
+  height: 2.25rem;
+  border-radius: var(--radius-full);
+  border: 0;
+  background: var(--muted);
+  padding: 0 0.75rem;
+}
+
+.aui-select-trigger.aui-pill:hover,
+.aui-btn.aui-pill:hover {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+
+.aui-select-trigger.aui-pill[aria-expanded='true'],
+.aui-select-trigger.aui-pill.is-active {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+
 .aui-select-trigger {
   display: inline-flex;
   height: 2rem;
@@ -405,7 +504,7 @@ textarea {
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-select-trigger:hover,
@@ -448,7 +547,7 @@ textarea {
   font-size: 0.75rem;
   text-align: left;
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-menu-item:hover {
@@ -467,9 +566,10 @@ textarea {
   align-items: center;
   gap: 2px;
   border: none;
-  border-radius: var(--radius-md);
+  /* Pill track, so the selected item can be a pill inside it. */
+  border-radius: var(--radius-full);
   background: var(--muted);
-  padding: 2px;
+  padding: 3px;
 }
 
 .aui-segmented.aui-segmented-fill {
@@ -489,13 +589,13 @@ textarea {
   justify-content: center;
   gap: 0.3rem;
   border: none;
-  border-radius: calc(var(--radius-md) - 2px);
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--muted-foreground);
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-segmented-item:hover:not(.is-active) {
@@ -503,9 +603,12 @@ textarea {
   background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
 
+/* The selected tab is a raised pill on the track, not an inverted slab. Filling
+   it with --primary made a black (or, in dark, white) block that outweighed the
+   content it was labelling. */
 .aui-segmented-item.is-active {
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--surface-active);
+  color: var(--foreground);
 }
 
 /* Slightly more visible selects for Code composer (not transparent “missing CSS”) */
@@ -527,6 +630,8 @@ textarea {
   align-items: center;
   justify-content: center;
   background: var(--overlay);
+  /* Pushes the page back so the dialog is unambiguously the focused layer. */
+  backdrop-filter: blur(4px);
   padding: 1rem;
 }
 
@@ -537,10 +642,12 @@ textarea {
   width: 100%;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--background);
-  box-shadow: var(--shadow-lg);
+  border: 0;
+  /* Lifted by shadow alone — on a single background an outline just draws a box
+     around something the elevation already separates. */
+  border-radius: var(--radius-2xl);
+  background: var(--popover);
+  box-shadow: var(--shadow-xl);
   color: var(--foreground);
 }
 
@@ -554,7 +661,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.875rem 1.25rem;
+  padding: 0.875rem 1.25rem 0.5rem;
 }
 
 .aui-modal-title {
@@ -569,7 +676,9 @@ textarea {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
-  padding: 0 1.25rem 1.25rem;
+  /* Even padding: the header now carries its own rule, so the body no longer
+     has to fake separation with an asymmetric top inset. */
+  padding: 1.25rem;
 }
 
 .aui-modal-footer {
@@ -578,7 +687,7 @@ textarea {
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
-  padding: 0.75rem 1.25rem 1rem;
+  padding: 0.5rem 1.25rem 1.125rem;
 }
 
 .aui-btn {
@@ -593,7 +702,7 @@ textarea {
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 150ms ease, opacity 150ms ease, color 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-btn:disabled {
@@ -647,7 +756,7 @@ textarea {
   color: var(--foreground);
   font-size: 0.875rem;
   outline: none;
-  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-input:focus,
@@ -665,7 +774,7 @@ textarea {
   border: none;
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--muted) 45%, transparent);
-  transition: background-color 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-card-quiet:hover {
@@ -711,13 +820,15 @@ textarea {
   background: transparent;
   box-shadow: none;
   color: var(--muted-foreground);
-  border-radius: var(--radius-md);
-  transition: background-color 150ms ease, color 150ms ease;
+  /* Circular, so a bare icon reads as its own target and the hover fill lands
+     as a disc instead of a rounded rectangle competing with nearby panels. */
+  border-radius: var(--radius-full);
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-icon-button:hover {
-  background: var(--sidebar-accent);
-  color: var(--sidebar-accent-foreground);
+  background: var(--surface-hover);
+  color: var(--foreground);
 }
 
 .aui-icon-button:focus,
@@ -733,9 +844,9 @@ textarea {
 
 .aui-field {
   transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    background-color 150ms ease;
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-field:focus-visible,
@@ -799,7 +910,7 @@ textarea {
   100% { background-position: -100% 0; }
 }
 
-/* Tool fallback (ToolCallBlock) */
+/* Tool call rows (ToolCallRow) */
 .aui-tool-fallback-root {
   width: 100%;
 }
@@ -818,7 +929,7 @@ textarea {
   font-size: 0.875rem;
   line-height: 1;
   cursor: pointer;
-  transition: color 150ms ease, transform 150ms var(--motion-ease);
+  transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .aui-tool-fallback-trigger:hover {
@@ -924,7 +1035,7 @@ textarea {
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 150ms ease, opacity 150ms ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
 }
 
 .aui-tool-fallback-approval-btn:hover {
@@ -957,7 +1068,7 @@ textarea {
   overflow: auto;
 }
 
-/* Tool group (InlineAgentSteps) */
+/* Tool group (ActivityDrawer) */
 .aui-tool-group-root {
   width: 100%;
   margin: 0.25rem 0;
@@ -987,7 +1098,7 @@ textarea {
   color: var(--muted-foreground);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition: color var(--motion-fast) var(--motion-ease);
 }
 
 .aui-tool-group-trigger:hover {
@@ -1045,7 +1156,7 @@ textarea {
   color: var(--muted-foreground);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: color 150ms ease, transform 150ms var(--motion-ease);
+  transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .aui-reasoning-trigger:hover {
@@ -1191,7 +1302,7 @@ textarea {
   font-weight: 500;
   padding: 5px 10px;
   color: var(--text-tertiary);
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
 .chateaui-segment:hover {
@@ -1211,7 +1322,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-xs);
-  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform 0.1s ease;
 }
 
 .chateaui-button-primary:hover {
@@ -1229,7 +1340,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-xs);
-  transition: background-color 0.12s ease, border-color 0.12s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 .chateaui-button-secondary:hover {
@@ -1245,7 +1356,7 @@ textarea {
   border: 1px solid transparent;
   border-radius: var(--radius-full);
   color: var(--text-tertiary);
-  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
 .chateaui-icon-button:hover {
@@ -1332,15 +1443,41 @@ textarea {
   align-items: flex-end;
 }
 
+/*
+ * Inline title rename. Shared by the sidebar and the search modal so the two
+ * renames are identical by construction rather than by coincidence.
+ */
+.chat-rename-input {
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 0 10px;
+  outline: none;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.chat-rename-input:focus {
+  border-color: var(--border-hover);
+}
+
 .chateaui-user-bubble {
   width: fit-content;
   min-width: 0;
-  max-width: 100%;
+  max-width: 90%;
   overflow-wrap: anywhere;
+  padding: 0.75rem 1rem;
   background: var(--user-bubble);
   color: var(--user-bubble-text);
-  border-radius: var(--radius-lg);
-  border: none;
+  border: 0;
+  border-radius: var(--bubble-radius) var(--bubble-radius) var(--bubble-tail-radius)
+    var(--bubble-radius);
 }
 
 .user-attachments-row {
@@ -1404,7 +1541,7 @@ kbd {
   margin-top: 0.375rem;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 160ms ease, visibility 160ms ease;
+  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
 }
 .message-action-bar.visible,
 .group\/msg:focus-within .message-action-bar {
@@ -1417,17 +1554,20 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.625rem;
-  height: 1.625rem;
-  border-radius: var(--radius-md);
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
   border: none;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
 }
 .msg-action-btn:hover {
-  background: var(--muted);
+  background: var(--surface-hover);
   color: var(--foreground);
 }
 .msg-action-btn:active {
@@ -1466,7 +1606,7 @@ kbd {
 .assistant-footer {
   opacity: 0;
   visibility: hidden;
-  transition: opacity 150ms ease, visibility 150ms ease;
+  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
   margin-top: 0.25rem;
   display: flex;
   flex-direction: column;

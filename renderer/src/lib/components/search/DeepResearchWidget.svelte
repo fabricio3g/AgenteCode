@@ -4,6 +4,7 @@
   import { ArrowRight, Loader2, SkipForward, Square } from 'lucide-svelte';
   import { cancelDeepResearchTask, deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { activityLabel } from '$lib/utils/tool-ui';
 
   interface Props {
     messageId?: string | null;
@@ -14,13 +15,15 @@
   const activeTask = $derived.by(() => deepResearchStore.getActiveTaskForMessage(messageId));
   const isWorking = $derived(activeTask && ['queued', 'searching', 'crawling', 'synthesizing'].includes(activeTask.status));
 
+  // Research stages map onto the shared activity vocabulary so the widget uses
+  // the same verbs as the inline tool-status line above it.
   const stageLabel = $derived.by(() => {
     if (!activeTask) return '';
     switch (activeTask.status) {
       case 'queued': return 'Queued';
-      case 'searching': return 'Searching';
-      case 'crawling': return 'Reading';
-      case 'synthesizing': return 'Writing';
+      case 'searching': return activityLabel('searching');
+      case 'crawling': return activityLabel('reading');
+      case 'synthesizing': return activityLabel('writing');
       case 'awaiting_input': return 'Direction needed';
       case 'completed': return 'Done';
       case 'failed': return 'Failed';

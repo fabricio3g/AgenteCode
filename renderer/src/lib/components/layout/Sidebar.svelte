@@ -6,10 +6,12 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import BrandMark from '$lib/components/BrandMark.svelte';
+  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, FileDown, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
+  import { copy } from '$lib/copy';
 
   let search = $state('');
   let searchFocused = $state(false);
@@ -22,11 +24,10 @@
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([3]));
 
-  const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof MessageSquare }> = [
-    { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'work', label: 'Work', icon: Boxes }
+  const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof House }> = [
+    { id: 'chat', label: copy.spaces.chat, icon: House },
+    { id: 'work', label: copy.spaces.work, icon: Code2 }
   ];
-  const brandRibs = Array.from({ length: 20 }, (_, index) => index + 1);
 
   function startOfDay(ts: number) {
     const d = new Date(ts);
@@ -201,23 +202,38 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
+  <!--
+    Brand bloom. Three soft radial washes drifting against each other read as a
+    single organic surface, with a grain layer over the top to break up the
+    banding that large, low-contrast gradients always show.
+  -->
   <div class="sidebar-brand-backdrop" aria-hidden="true">
-    <svg class="sidebar-brand-backdrop__texture" viewBox="0 0 208 56" preserveAspectRatio="none">
-      <g>
-        {#each brandRibs as rib}
-          <path d={`M ${rib * 12 - 16} -12 V 72`} class="sidebar-brand-backdrop__rib sidebar-brand-backdrop__rib--shadow" />
-          <path d={`M ${rib * 12 - 19} -12 V 72`} class="sidebar-brand-backdrop__rib sidebar-brand-backdrop__rib--light" />
-        {/each}
-      </g>
-    </svg>
+    <div class="sidebar-brand-backdrop__bloom"></div>
+    <div class="sidebar-brand-backdrop__grain"></div>
   </div>
-  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-3">
+  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1">
 
-    <div class="flex flex-col gap-1.5 pb-3">
+    <!-- Same 2.25rem height as the titlebar row, anchored to the top of the
+         window, so the wordmark, the collapse control and the titlebar actions
+         all sit on one baseline. -->
+    <div class="flex h-9 shrink-0 items-center justify-between gap-2">
       <BrandMark
         size="sm"
         class="sidebar-brand-mark"
       />
+      <Tooltip label="Hide sidebar" position="bottom">
+        <button
+          type="button"
+          class="aui-icon-button size-8 shrink-0"
+          onclick={() => (appStore.sidebarOpen = false)}
+          aria-label="Hide sidebar"
+        >
+          <PanelLeftClose class="size-4" />
+        </button>
+      </Tooltip>
+    </div>
+
+    <div class="flex flex-col gap-1.5 pb-3 pt-3">
       <div
         class="space-tabs"
         role="tablist"
@@ -243,7 +259,7 @@
         {/each}
       </div>
       <button
-        class="new-chat-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors"
+        class="new-chat-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition-colors"
         onclick={createForActiveSpace}
       >
         <Plus class="size-4 shrink-0" />
@@ -251,7 +267,7 @@
       </button>
 
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.artifactSettingsOpen = true; }}
         title="Artifacts"
       >
@@ -419,7 +435,7 @@
 
     <div class="sidebar-footer px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         title="Models"
       >
@@ -427,7 +443,7 @@
         <span class="btn-label">Models</span>
       </button>
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
         title="Settings"
       >
@@ -440,94 +456,126 @@
 
 
 <style>
+  /*
+   * Brand bloom.
+   *
+   * Three radial washes at different sizes and offsets, each drifting on its own
+   * timing, so the overlaps keep shifting and the surface never reads as a
+   * static gradient. Colour is deliberately confined here — it is the one place
+   * in a monochrome app where brand identity belongs — and the whole thing is
+   * masked to fade out well before it reaches the conversation.
+   */
   .sidebar-brand-backdrop {
-    --brand-texture-start: #b8d5ad;
-    --brand-texture-end: #dfead9;
-    --brand-rib-light: rgb(255 255 255 / 0.26);
-    --brand-rib-dark: rgb(18 69 42 / 0.3);
-    --brand-depth: rgb(23 78 48 / 0.22);
+    --bloom-1: rgb(139 92 246 / 0.55);
+    --bloom-2: rgb(99 102 241 / 0.45);
+    --bloom-3: rgb(217 70 239 / 0.32);
+    --bloom-base: rgb(88 28 135 / 0.28);
     pointer-events: none;
     position: absolute;
     inset: 0 0 auto;
-    height: 3.5rem;
+    height: 9rem;
     overflow: hidden;
-    border-radius: 0 0 0.875rem 0;
-    -webkit-mask-image: radial-gradient(ellipse 100% 100% at 0 0, #000 0%, #000 46%, rgb(0 0 0 / 0.86) 56%, rgb(0 0 0 / 0.54) 68%, rgb(0 0 0 / 0.18) 80%, transparent 92%);
-    mask-image: radial-gradient(ellipse 100% 100% at 0 0, #000 0%, #000 46%, rgb(0 0 0 / 0.86) 56%, rgb(0 0 0 / 0.54) 68%, rgb(0 0 0 / 0.18) 80%, transparent 92%);
-    background: radial-gradient(ellipse 92% 58% at 42% 118%, var(--brand-depth) 0%, transparent 72%), linear-gradient(110deg, var(--brand-texture-start), var(--brand-texture-end));
+    border-radius: 0 0 1.25rem 0;
+    -webkit-mask-image: radial-gradient(ellipse 118% 100% at 0 0, #000 0%, #000 34%, rgb(0 0 0 / 0.72) 52%, rgb(0 0 0 / 0.34) 70%, rgb(0 0 0 / 0.1) 84%, transparent 96%);
+    mask-image: radial-gradient(ellipse 118% 100% at 0 0, #000 0%, #000 34%, rgb(0 0 0 / 0.72) 52%, rgb(0 0 0 / 0.34) 70%, rgb(0 0 0 / 0.1) 84%, transparent 96%);
+    background: var(--bloom-base);
   }
 
-  :global(.sidebar-brand-mark .brand-mark__flaxeo) {
-    color: #fff !important;
+  .sidebar-brand-backdrop__bloom {
+    position: absolute;
+    inset: -35%;
+    background:
+      radial-gradient(circle at 22% 26%, var(--bloom-1) 0%, transparent 58%),
+      radial-gradient(circle at 74% 16%, var(--bloom-2) 0%, transparent 62%),
+      radial-gradient(circle at 48% 76%, var(--bloom-3) 0%, transparent 66%);
+    filter: blur(18px) saturate(125%);
+    animation: sidebar-brand-bloom-drift 18s ease-in-out infinite alternate;
+    will-change: transform;
   }
 
+  /*
+   * Film grain — the detail that separates this from a plain CSS gradient.
+   *
+   * The noise is desaturated to pure luminance (feColorMatrix) and drawn at full
+   * strength; the layer's own opacity is the only dial. An earlier version
+   * stacked three separate attenuations — a 0.55 alpha inside the SVG, a 0.24
+   * layer opacity, and an `overlay` blend that is nearly a no-op over pale
+   * colours — which multiplied out to nothing visible.
+   */
+  .sidebar-brand-backdrop__grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.42;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+
+  /* Wordmark reads as type on the sidebar surface: the name at full contrast,
+     the suffix muted. No slab, no inversion between themes. */
   :global(.sidebar-brand-mark) {
-    align-self: flex-start;
+    /* No align-self override — it would pin the wordmark to the top of the
+       header row and break the shared baseline with the titlebar. */
+    position: relative;
+    z-index: 1;
     min-width: 0;
     padding: 0.375rem 0.5rem;
-    border-radius: 0.5rem;
-    background: rgb(7 20 12 / 0.92) !important;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.14);
+    border-radius: var(--radius-md);
+    background: transparent !important;
+    box-shadow: none;
+  }
+
+  /*
+   * The bloom drifts underneath, so contrast cannot be guaranteed by colour
+   * alone — a soft dark halo sits between the type and whatever hue happens to
+   * be passing beneath it.
+   */
+  :global(.sidebar-brand-mark .brand-mark__flaxeo) {
+    color: #ffffff !important;
+    text-shadow:
+      0 1px 2px rgb(0 0 0 / 0.55),
+      0 2px 12px rgb(0 0 0 / 0.4);
   }
 
   :global(.sidebar-brand-mark .brand-mark__chat) {
-    color: rgb(255 255 255 / 0.85) !important;
+    color: rgb(255 255 255 / 0.82) !important;
+    text-shadow: 0 1px 6px rgb(0 0 0 / 0.45);
   }
 
-  :global(.dark .sidebar-brand-mark .brand-mark__flaxeo) {
-    color: #07140c !important;
+  /*
+   * The bloom is a dark-mode signature and does not appear in light.
+   *
+   * On white a translucent wash can only darken what is beneath it, so it reads
+   * as a stain rather than as light however the hue is chosen — violet, amber
+   * and sky were each tried and each failed for that same structural reason.
+   * Light mode gets a clean sidebar instead, and the wordmark carries the brand
+   * on its own.
+   */
+  :global(:root:not(.dark)) .sidebar-brand-backdrop {
+    display: none;
   }
 
-  :global(.dark .sidebar-brand-mark) {
-    background: rgb(232 241 235 / 0.9) !important;
+  /* Light mode is a pale wash, so the wordmark stays near-black and needs no
+     halo — the tint never gets dark enough to threaten it. */
+  :global(:root:not(.dark) .sidebar-brand-mark .brand-mark__flaxeo) {
+    color: var(--foreground) !important;
+    text-shadow: none;
   }
 
-  :global(.dark .sidebar-brand-mark .brand-mark__chat) {
-    color: rgb(7 20 12 / 0.78) !important;
+  :global(:root:not(.dark) .sidebar-brand-mark .brand-mark__chat) {
+    color: rgb(13 13 13 / 0.68) !important;
+    text-shadow: none;
   }
 
-  .sidebar-brand-backdrop__texture {
-    position: absolute;
-    inset: -8%;
-    width: 116%;
-    height: 116%;
-    transform-origin: center;
-    animation: sidebar-brand-texture-drift 12s ease-in-out infinite alternate;
-  }
-
-  .sidebar-brand-backdrop__rib {
-    fill: none;
-    vector-effect: non-scaling-stroke;
-  }
-
-  .sidebar-brand-backdrop__rib--shadow {
-    stroke: var(--brand-rib-dark);
-    stroke-width: 4;
-  }
-
-  .sidebar-brand-backdrop__rib--light {
-    stroke: var(--brand-rib-light);
-    stroke-width: 1.5;
-  }
-
-  :global(.dark) .sidebar-brand-backdrop {
-    --brand-texture-start: #103e31;
-    --brand-texture-end: #0a241c;
-    --brand-rib-light: rgb(132 190 157 / 0.2);
-    --brand-rib-dark: rgb(1 17 11 / 0.42);
-    --brand-depth: rgb(0 10 6 / 0.34);
-  }
-
-  @keyframes sidebar-brand-texture-drift {
-    0% { transform: translate3d(-2%, -1%, 0) scale(1.02); }
-    48% { transform: translate3d(1.5%, 1%, 0) scale(1.045); }
-    100% { transform: translate3d(-0.5%, 2%, 0) scale(1.025); }
+  @keyframes sidebar-brand-bloom-drift {
+    0% { transform: translate3d(-4%, -2%, 0) scale(1.04); }
+    50% { transform: translate3d(3%, 2.5%, 0) scale(1.12); }
+    100% { transform: translate3d(-1%, 4%, 0) scale(1.06); }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .sidebar-brand-backdrop__texture {
+    .sidebar-brand-backdrop__bloom {
       animation: none;
-      transform: none;
     }
   }
 
@@ -540,29 +588,32 @@
   .space-tabs {
     display: flex;
     gap: 2px;
-    border-radius: var(--radius-md);
-    background: var(--sidebar-accent);
-    border: 1px solid var(--sidebar-border);
-    padding: 2px;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    border: 0;
+    padding: 3px;
   }
 
   .space-tab {
     min-width: 0;
     flex: 1 1 0;
-    height: 1.75rem;
+    height: 1.875rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.3rem;
+    gap: 0.375rem;
     border: none;
-    border-radius: calc(var(--radius-md) - 2px);
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 500;
     line-height: 1;
     cursor: pointer;
-    transition: background-color 150ms ease, color 150ms ease;
+    transition:
+      background-color var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease),
+      box-shadow var(--motion-fast) var(--motion-ease);
   }
 
   .space-tab-icon {
@@ -581,9 +632,11 @@
     background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
   }
 
+  /* Raised pill on the track — same treatment as .aui-segmented-item.is-active,
+     so tabs read the same wherever they appear. */
   .space-tab.active {
-    background: var(--sidebar-primary);
-    color: var(--sidebar-primary-foreground);
+    background: var(--surface-active);
+    color: var(--foreground);
   }
 
   .space-tab:focus-visible {
@@ -644,8 +697,10 @@
     color: var(--muted-foreground);
     background: transparent;
     border: none;
-    border-radius: var(--radius-md);
-    transition: background-color 150ms ease, color 150ms ease;
+    border-radius: var(--radius-full);
+    transition:
+      background-color var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease);
   }
 
   .chat-item:hover {
@@ -653,9 +708,11 @@
     color: var(--sidebar-accent-foreground);
   }
 
+  /* A quiet raised fill, not an inverted slab. A white pill in a dark sidebar
+     pulls more attention than the conversation itself. */
   .chat-item.is-active {
-    background: var(--sidebar-primary);
-    color: var(--sidebar-primary-foreground);
+    background: var(--sidebar-accent);
+    color: var(--foreground);
   }
 
   .chat-item.is-active .chat-title,
@@ -664,24 +721,7 @@
   }
 
 
-  .chat-rename-input {
-    height: 30px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--sidebar-border);
-    background: var(--background);
-    color: var(--sidebar-foreground);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 1.2;
-    padding: 0 10px;
-    outline: none;
-    transition: border-color 0.12s ease, box-shadow 0.12s ease;
-  }
 
-  .chat-rename-input:focus {
-    border-color: var(--sidebar-ring);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sidebar-ring) 25%, transparent);
-  }
 
   .menu-btn {
     color: inherit;

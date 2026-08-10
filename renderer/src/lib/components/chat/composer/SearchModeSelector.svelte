@@ -2,161 +2,84 @@
 
 <script lang="ts">
   import { ChevronDown, Globe2, Layers, Radar, WifiOff } from 'lucide-svelte';
-  import { flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
-  import { t } from 'svelte-i18n';
+  import { copy } from '$lib/copy';
+  import { Menu } from '$lib/components/ui';
 
-  const searchMode = $derived(appStore.searchMode);
+  type SearchModeId = keyof typeof copy.searchModes;
 
-  type SearchModeId = 'chat' | 'search' | 'deep' | 'max';
+  const MODE_IDS: SearchModeId[] = ['chat', 'search', 'deep', 'max'];
+  const MODE_ICONS = { chat: WifiOff, search: Globe2, deep: Layers, max: Radar } as const;
 
-  const searchModeIds: SearchModeId[] = ['chat', 'search', 'deep', 'max'];
+  let open = $state(false);
 
-  let triggerEl: HTMLButtonElement | undefined = $state();
-  let dropdownEl: HTMLDivElement | undefined = $state();
-  let dropdownOpen = $state(false);
+  const current = $derived(MODE_IDS.find((id) => id === appStore.searchMode) || 'chat');
+  const CurrentIcon = $derived(MODE_ICONS[current]);
 
-  const currentModeId = $derived(searchModeIds.find((id) => id === searchMode) || searchModeIds[0]);
-
-  function getSearchLabel(id: SearchModeId): string {
-    const labels: Record<SearchModeId, string> = {
-      chat: $t('composer.searchOff'),
-      search: $t('composer.webSearch'),
-      deep: $t('composer.deepSearch'),
-      max: $t('composer.maxSearch')
-    };
-    return labels[id] || id;
-  }
-
-  function getSearchDesc(id: SearchModeId): string {
-    const descs: Record<SearchModeId, string> = {
-      chat: $t('composer.searchOffDesc'),
-      search: $t('composer.webSearchDesc'),
-      deep: $t('composer.deepSearchDesc'),
-      max: $t('composer.maxSearchDesc')
-    };
-    return descs[id] || '';
-  }
-
-  function toggleDropdown() {
-    dropdownOpen = !dropdownOpen;
-  }
-
-  function selectMode(mode: SearchModeId) {
+  function select(mode: SearchModeId) {
     appStore.setSearchMode(mode);
-    dropdownOpen = false;
+    open = false;
   }
-
-  $effect(() => {
-    if (!dropdownOpen || !triggerEl || !dropdownEl) return;
-    const trigger = triggerEl;
-    const dropdown = dropdownEl;
-
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Node;
-      if (!trigger.contains(target) && !dropdown.contains(target)) {
-        dropdownOpen = false;
-      }
-    }
-
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') dropdownOpen = false;
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeydown);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeydown);
-    };
-  });
 </script>
 
-<div class="relative inline-flex">
-  <button
-    bind:this={triggerEl}
-    type="button"
-    class="aui-select-trigger mode-trigger"
-    class:is-active={currentModeId !== 'chat'}
-    class:is-deep={currentModeId === 'deep'}
-    class:is-max={currentModeId === 'max'}
-    onclick={toggleDropdown}
-    aria-haspopup="listbox"
-    aria-expanded={dropdownOpen}
-    title={getSearchDesc(currentModeId)}
-  >
-    {#if currentModeId === 'chat'}
-      <WifiOff class="size-3.5 opacity-70" />
-      <span>{getSearchLabel('chat')}</span>
-    {:else if currentModeId === 'search'}
-      <Globe2 class="size-3.5 opacity-80" />
-      <span>{getSearchLabel('search')}</span>
-    {:else if currentModeId === 'deep'}
-      <Layers class="size-3.5 opacity-80" />
-      <span>{getSearchLabel('deep')}</span>
-    {:else}
-      <Radar class="size-3.5 opacity-80" />
-      <span>{getSearchLabel('max')}</span>
-    {/if}
-    <ChevronDown class={`size-3 transition-transform duration-150 ${dropdownOpen ? 'rotate-180' : ''}`} />
-  </button>
-
-  {#if dropdownOpen}
-    <div
-      bind:this={dropdownEl}
-      class="aui-menu mode-menu absolute bottom-full z-[200] mb-1 min-w-[13.5rem] origin-bottom"
-      transition:flyAndScale={{ y: -4, start: 0.95, duration: 150 }}
-      role="listbox"
+<Menu bind:open placement="top-start" minWidth="13.5rem" label={copy.composer.selectSearchMode}>
+  {#snippet trigger(props)}
+    <button
+      type="button"
+      class="aui-select-trigger aui-pill mode-trigger"
+      class:is-emphasized={current === 'deep' || current === 'max'}
+      title={copy.searchModes[current].description}
+      {...props}
     >
-      {#each searchModeIds as modeId (modeId)}
-        <button
-          type="button"
-          class="mode-item {searchMode === modeId ? 'is-active' : ''}"
-          onclick={() => selectMode(modeId)}
-          role="option"
-          aria-selected={searchMode === modeId}
-        >
-          <span class="mode-item-title">{getSearchLabel(modeId)}</span>
-          <span class="mode-item-desc">{getSearchDesc(modeId)}</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
-</div>
+      <CurrentIcon class="size-3.5 {current === 'chat' ? 'opacity-70' : 'opacity-80'}" />
+      <span>{copy.searchModes[current].label}</span>
+      <ChevronDown class="size-3 transition-transform duration-150 {open ? 'rotate-180' : ''}" />
+    </button>
+  {/snippet}
+
+  {#each MODE_IDS as id (id)}
+    <button
+      type="button"
+      role="menuitem"
+      class="mode-item"
+      class:is-active={appStore.searchMode === id}
+      onclick={() => select(id)}
+    >
+      <span class="mode-item-title">{copy.searchModes[id].label}</span>
+      <span class="mode-item-desc">{copy.searchModes[id].description}</span>
+    </button>
+  {/each}
+</Menu>
 
 <style>
   .mode-trigger {
     gap: 0.35rem;
   }
 
-  .mode-trigger.is-deep,
-  .mode-trigger.is-max {
+  .mode-trigger.is-emphasized {
     color: var(--foreground);
     font-weight: 600;
   }
 
-  .mode-menu {
-    padding: 0.3rem;
-  }
-
   .mode-item {
     display: flex;
+    width: 100%;
+    padding: 0.45rem 0.55rem;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.1rem;
-    width: 100%;
     border: 0;
     border-radius: var(--radius-sm);
     background: transparent;
-    padding: 0.45rem 0.55rem;
-    text-align: left;
     cursor: pointer;
+    text-align: left;
     transition: background 120ms ease;
   }
 
-  .mode-item:hover {
+  .mode-item:hover,
+  .mode-item:focus-visible {
     background: var(--muted);
+    outline: none;
   }
 
   .mode-item.is-active {

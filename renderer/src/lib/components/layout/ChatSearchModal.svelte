@@ -2,9 +2,9 @@
 
 <script lang="ts">
   import { Search, X, MessageSquare, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
-  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
-  import RenameChatModal from '$lib/components/layout/RenameChatModal.svelte';
+  import Message from '$lib/components/thread/Message.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { countOf } from '$lib/utils/format';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import type { ChatSession } from '$lib/types/chat';
   import { onMount, tick } from 'svelte';
@@ -14,7 +14,33 @@
   let selectedIndex = $state(-1);
   let resultsContainer: HTMLDivElement | undefined = $state();
   let previewContainer: HTMLDivElement | undefined = $state();
-  let renameTarget: ChatSession | null = $state(null);
+  let renamingChatId = $state<string | null>(null);
+  let renameValue = $state('');
+  let renameOriginal = $state('');
+  let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
+
+  /** Rename in place, matching the sidebar, rather than stacking a second modal. */
+  function startRename(chat: ChatSession) {
+    renamingChatId = chat.id;
+    renameOriginal = chat.title || '';
+    renameValue = chat.title || '';
+    void tick().then(() => {
+      renameInputEl?.focus();
+      renameInputEl?.select();
+    });
+  }
+
+  function closeRename() {
+    renamingChatId = null;
+    renameValue = '';
+    renameOriginal = '';
+  }
+
+  function commitRename(chatId: string) {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== renameOriginal) appStore.renameChat(chatId, trimmed);
+    closeRename();
+  }
 
   function startOfDay(ts: number) {
     const date = new Date(ts);
@@ -146,7 +172,7 @@
     tabindex="-1"
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="search-header flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+    <div class="search-header flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-3">
       <Search class="size-4 shrink-0 text-muted-foreground" />
       <input
         bind:this={searchInput}
@@ -168,13 +194,13 @@
         </button>
       {/if}
       <span class="hidden shrink-0 text-xs text-muted-foreground sm:block">
-        {results.length} {results.length === 1 ? 'conversation' : 'conversations'}
+        {countOf(results.length, 'conversation')}
       </span>
     </div>
 
     <div class="flex min-h-0 flex-1">
-      <div class="results-pane flex w-80 shrink-0 flex-col border-r border-border">
-        <div class="shrink-0 border-b border-border p-2">
+      <div class="results-pane flex w-80 shrink-0 flex-col border-r border-[var(--border-subtle)]">
+        <div class="shrink-0 p-2">
           <button type="button" class="new-chat-row" onclick={createChat}>
             <Plus class="size-3.5" />
             <span>New chat</span>
@@ -183,7 +209,7 @@
         <div bind:this={resultsContainer} class="min-h-0 flex-1 overflow-y-auto p-2">
           {#if results.length === 0}
             <div class="flex h-full min-h-56 flex-col items-center justify-center px-6 text-center">
-              <div class="mb-3 flex size-10 items-center justify-center rounded-md bg-muted">
+              <div class="mb-3 flex size-10 items-center justify-center rounded-full bg-muted">
                 <MessageSquare class="size-5 text-muted-foreground" />
               </div>
               <p class="text-sm font-medium text-foreground">
@@ -202,14 +228,35 @@
                   data-selected={i === selectedIndex}
                   onmouseenter={() => (selectedIndex = i)}
                 >
-                  <p class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{chat.title || 'New chat'}</p>
+                  {#if renamingChatId === chat.id}
+                    <input
+                      bind:this={renameInputEl}
+                      class="chat-rename-input min-w-0 flex-1"
+                      bind:value={renameValue}
+                      onclick={(event) => event.stopPropagation()}
+                      onkeydown={(event) => {
+                        event.stopPropagation();
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          commitRename(chat.id);
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault();
+                          closeRename();
+                        }
+                      }}
+                      onblur={() => commitRename(chat.id)}
+                    />
+                  {:else}
+                    <p class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{chat.title || 'New chat'}</p>
+                  {/if}
                   <div class="result-trailing">
                     <span class="result-date text-[11px] text-muted-foreground">{relativeDate(chat.updatedAt || chat.createdAt)}</span>
                     <div class="result-actions flex items-center gap-0.5">
                       <button type="button" class="result-action" onclick={() => selectChat(chat.id)} aria-label={`Open ${chat.title || 'chat'}`} title="Open">
                         <ExternalLink class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action" onclick={() => (renameTarget = chat)} aria-label={`Rename ${chat.title || 'chat'}`} title="Rename">
+                      <button type="button" class="result-action" onclick={() => startRename(chat)} aria-label={`Rename ${chat.title || 'chat'}`} title="Rename">
                         <Pencil class="size-3.5" />
                       </button>
                       <button type="button" class="result-action danger" onclick={() => deleteChat(chat)} aria-label={`Delete ${chat.title || 'chat'}`} title="Delete">
@@ -224,24 +271,28 @@
         </div>
       </div>
 
-      <section class="chat-preview flex min-w-0 flex-1 flex-col bg-background" aria-label="Conversation preview">
+      <section class="chat-preview relative flex min-w-0 flex-1 flex-col bg-background" aria-label="Conversation preview">
         {#if previewChat}
-          <div bind:this={previewContainer} class="preview-transcript min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div bind:this={previewContainer} class="preview-transcript min-h-0 flex-1 overflow-y-auto px-5 pb-20 pt-5">
             {#if previewChat.messages.length === 0}
               <div class="flex h-full items-center justify-center text-sm text-muted-foreground">This conversation is empty.</div>
             {:else}
               <div class="preview-conversation mx-auto flex max-w-[55rem] flex-col gap-7">
                 {#each previewChat.messages as message (message.id)}
-                  <ChatMessage {message} contextMode={previewChat.contextMode || 'chat'} />
+                  <Message {message} contextMode={previewChat.contextMode || 'chat'} />
                 {/each}
               </div>
             {/if}
           </div>
-          <div class="flex shrink-0 justify-end border-t border-border px-4 py-3">
-            <button type="button" class="open-chat-button" onclick={() => selectChat(previewChat.id)}>
-              Open conversation
-            </button>
-          </div>
+          <!-- Floats over the transcript: a bordered footer strip cut the
+               preview in half for a single action. -->
+          <button
+            type="button"
+            class="open-chat-button open-chat-floating"
+            onclick={() => selectChat(previewChat.id)}
+          >
+            Open conversation
+          </button>
         {:else}
           <div class="flex h-full flex-col items-center justify-center px-6 text-center">
             <div class="mb-3 flex size-11 items-center justify-center rounded-lg bg-muted">
@@ -256,17 +307,14 @@
   </div>
 </div>
 
-{#if renameTarget}
-  <RenameChatModal
-    chatId={renameTarget.id}
-    currentTitle={renameTarget.title}
-    onClose={() => (renameTarget = null)}
-  />
-{/if}
+
 
 <style>
   .chat-search-dialog {
     height: min(76vh, 46rem);
+    border-radius: var(--radius-2xl);
+    background: var(--popover);
+    box-shadow: var(--shadow-xl);
   }
 
   .new-chat-row {
@@ -275,17 +323,17 @@
     align-items: center;
     gap: 0.45rem;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     background: transparent;
-    padding: 0 0.625rem;
+    padding: 0 0.75rem;
     color: var(--foreground);
     font-size: 0.75rem;
     font-weight: 500;
-    transition: background-color 120ms ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .new-chat-row:hover {
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   .search-result {
@@ -295,17 +343,17 @@
     align-items: center;
     gap: 0.5rem;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     background: transparent;
-    padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.85rem;
     text-align: left;
-    transition: background-color 120ms ease;
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .search-result:hover,
   .search-result.is-selected,
   .search-result:focus-within {
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   .result-trailing {
@@ -319,7 +367,7 @@
   }
 
   .result-date {
-    transition: opacity 120ms ease;
+    transition: opacity var(--motion-fast) var(--motion-ease);
   }
 
   .result-actions {
@@ -327,7 +375,7 @@
     right: 0;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 120ms ease;
+    transition: opacity var(--motion-fast) var(--motion-ease);
   }
 
   .search-result:hover .result-date,
@@ -350,13 +398,14 @@
     align-items: center;
     justify-content: center;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--muted-foreground);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .result-action:hover {
-    background: var(--background);
+    background: var(--surface-active);
     color: var(--foreground);
   }
 
@@ -374,12 +423,20 @@
     pointer-events: none;
   }
 
+  .open-chat-floating {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 2;
+    box-shadow: var(--shadow-lg);
+  }
+
   .open-chat-button {
-    height: 2rem;
+    height: 2.25rem;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     background: var(--primary);
-    padding: 0 0.75rem;
+    padding: 0 1rem;
     color: var(--primary-foreground);
     font-size: 0.75rem;
     font-weight: 500;

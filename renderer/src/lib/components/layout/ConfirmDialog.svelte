@@ -30,7 +30,8 @@
 
 {#if confirmStore.open && confirmStore.options}
   <div
-    class="aui-modal-backdrop z-[200]"
+    class="aui-modal-backdrop"
+    style="z-index: var(--z-confirm);"
     role="presentation"
     onclick={() => confirmStore.cancel()}
     transition:motionFade={{ duration: 150 }}

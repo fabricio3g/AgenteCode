@@ -521,7 +521,7 @@
               <div class="provider-node">
                 <button
                   type="button"
-                  class="provider-row flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-[var(--muted)]"
+                  class="provider-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-hover)]"
                   style="-webkit-app-region: no-drag; pointer-events: auto;"
                   onclick={(e) => {
                     e.stopPropagation();
@@ -566,7 +566,7 @@
                           appStore.activeProviderName === prov.id && activeProvider?.model === model.id}
                         <button
                           type="button"
-                          class="model-row flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-[var(--muted)]"
+                          class="model-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-[var(--surface-hover)]"
                           class:is-selected={selected}
                           style="-webkit-app-region: no-drag; pointer-events: auto;"
                           onclick={(e) => {
@@ -721,13 +721,16 @@
     color: var(--muted-foreground);
     background: transparent;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     box-shadow: none;
+    transition:
+      background-color var(--motion-fast) var(--motion-ease),
+      color var(--motion-fast) var(--motion-ease);
   }
 
   .model-trigger:hover,
   .model-trigger.is-open {
-    background: var(--muted);
+    background: var(--surface-hover);
     color: var(--foreground);
   }
 
@@ -749,9 +752,9 @@
 
   .model-dropdown {
     background: var(--popover);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-xl);
     -webkit-app-region: no-drag;
     pointer-events: auto;
   }
@@ -776,7 +779,7 @@
 
   .refresh-btn:hover {
     color: var(--foreground);
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   .loading-indicator {
@@ -787,14 +790,14 @@
   .confirm-card {
     background: var(--muted);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
   }
 
   .confirm-btn.primary {
     background: var(--primary);
     color: var(--primary-foreground);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
   }
 
   .confirm-btn.primary:hover {
@@ -805,7 +808,7 @@
     background: transparent;
     color: var(--muted-foreground);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
   }
 
   .confirm-btn.secondary:hover {
@@ -826,6 +829,8 @@
   .provider-row {
     border: none;
     background: transparent;
+    border-radius: var(--radius-full);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .model-nest {
@@ -836,6 +841,8 @@
   .model-row {
     border: none;
     background: transparent;
+    border-radius: var(--radius-full);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .model-row.is-selected {
@@ -870,8 +877,8 @@
     background: var(--primary);
     color: var(--primary-fg);
     border: none;
-    border-radius: 8px;
-    transition: opacity 0.12s;
+    border-radius: var(--radius-full);
+    transition: opacity var(--motion-fast) var(--motion-ease);
   }
 
   .empty-btn:hover {
@@ -881,12 +888,13 @@
   .model-item {
     background: transparent;
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .model-item:hover,
   .model-item.is-loaded {
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   :global(.dark) .live-badge {
@@ -898,12 +906,13 @@
     background: transparent;
     color: var(--muted-foreground);
     border: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
+    transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .action-btn:hover {
     color: var(--foreground);
-    background: var(--muted);
+    background: var(--surface-hover);
   }
 
   .action-btn.unload:hover {
