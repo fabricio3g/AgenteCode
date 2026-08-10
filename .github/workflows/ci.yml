@@ -37,4 +37,10 @@ jobs:
 
       - name: Run Fallow audit
         if: github.event_name == 'pull_request'
-        run: npm run fallow:audit
+        run: |
+          # `fallow --base main` needs a ref it can resolve. checkout@v4 fetches
+          # the full history (fetch-depth: 0) but leaves the PR base as a
+          # remote-tracking ref only, so a bare `main` does not resolve and the
+          # audit aborted with "could not determine changed files for base ref".
+          git branch -f "$GITHUB_BASE_REF" "origin/$GITHUB_BASE_REF"
+          npm run fallow:audit

@@ -19,8 +19,11 @@ resources/bin/**
 .qwen/
 .fallow/
 .codex-check.txt
-dead-code.json
-fallow-dead-code.json
-fallow-report.txt
-fallow-dead-code-full.json
+# Root-anchored: these are ad-hoc fallow reports dumped at the repo root.
+# Unanchored, `dead-code.json` also matched fallow-baselines/dead-code.json,
+# the committed baseline that `npm run fallow:audit` requires.
+/dead-code.json
+/fallow-dead-code.json
+/fallow-report.txt
+/fallow-dead-code-full.json
 nul
