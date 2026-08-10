@@ -4,6 +4,9 @@
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
   import { Check } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { copy, say } from '$lib/copy';
+  import { formatDuration, plural } from '$lib/utils/format';
+  import { activityLabel as resolveActivityLabel, searchModeChip } from '$lib/utils/tool-ui';
 
   interface Props {
     steps?: ChatMessage['agentSteps'];
@@ -14,11 +17,15 @@
     stopReason?: AgentStopReason;
     currentActivity?: AgentActivity;
     activityLabel?: string;
-    /** @deprecated SourcesBlock owns source count; kept for call-site compatibility. */
-    sourceCount?: number;
     messageId?: string;
     /** When deep/max search is active, show a quiet mode chip */
     searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
+    /**
+     * The run is blocked on an approval. Passed in because the supervised-bash
+     * path never marks a *step* `awaiting_approval`, so sniffing the steps
+     * (below) misses it entirely.
+     */
+    awaitingApproval?: boolean;
   }
 
   let {
@@ -30,40 +37,41 @@
     stopReason = 'none',
     currentActivity,
     activityLabel,
-    sourceCount: _sourceCount = 0,
     messageId = '',
-    searchMode = null
+    searchMode = null,
+    awaitingApproval = false
   }: Props = $props();
-  void _sourceCount;
 
-  const modeChip = $derived(
-    searchMode === 'deep' ? 'Deep' : searchMode === 'max' ? 'Max' : searchMode === 'search' ? 'Search' : ''
-  );
+  const modeChip = $derived(searchModeChip(searchMode));
 
   const errCount = $derived(steps.filter((s) => s.status === 'error').length);
   const doneCount = $derived(steps.filter((s) => s.status === 'done').length);
-  const hasApproval = $derived(steps.some((s) => s.status === 'awaiting_approval'));
+  const hasApproval = $derived(awaitingApproval || steps.some((s) => s.status === 'awaiting_approval'));
   const stoppedByUser = $derived(steps.some((s) => /stopped by user/i.test(s.detail || s.label || '')));
   const isStreaming = $derived(status === 'streaming');
   const hasRelevance = $derived(!!(steps.length || reasoning) || isStreaming);
 
   /** Debounced short label so progress ticks don't thrash the line. */
-  let stableVerb = $state('Working');
+  let stableVerb = $state(resolveActivityLabel(null));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let streamStartedAt = $state<number | null>(null);
   let liveElapsed = $state(0);
   let liveTimer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * Prefer the reported activity; fall back to sniffing the label only for
+   * older messages persisted before `currentActivity` was recorded.
+   */
   function shortVerb(activity?: AgentActivity | null, label?: string | null): string {
+    if (activity) return resolveActivityLabel(activity);
+
     const raw = String(label || '').toLowerCase();
-    if (activity === 'searching' || raw.includes('search')) return 'Searching';
-    if (activity === 'reading' || raw.includes('read') || raw.includes('fetch') || raw.includes('source')) return 'Reading';
-    if (activity === 'creating_files' || raw.includes('file') || raw.includes('document') || raw.includes('artifact')) return 'Writing';
-    if (activity === 'writing' || raw.includes('answer') || raw.includes('response')) return 'Writing';
-    if (activity === 'stopped') return 'Stopped';
-    if (activity === 'completed') return 'Done';
-    if (raw.includes('plan') || raw.includes('think')) return 'Working';
-    return 'Working';
+    if (raw.includes('search')) return resolveActivityLabel('searching');
+    if (raw.includes('read') || raw.includes('fetch') || raw.includes('source')) {
+      return resolveActivityLabel('reading');
+    }
+    if (/file|document|artifact|answer|response/.test(raw)) return resolveActivityLabel('writing');
+    return resolveActivityLabel(null);
   }
 
   $effect(() => {
@@ -91,9 +99,9 @@
 
   // Seed immediately on first stream so we don't wait 400ms for first paint
   $effect(() => {
-    if (isStreaming && stableVerb === 'Working') {
+    if (isStreaming && stableVerb === copy.status.working) {
       const next = shortVerb(currentActivity, activityLabel);
-      if (next !== 'Working') stableVerb = next;
+      if (next !== copy.status.working) stableVerb = next;
     }
   });
 
@@ -134,37 +142,37 @@
 
   const line = $derived.by(() => {
     if (isStreaming) {
-      if (hasApproval) return 'Needs approval';
+      if (hasApproval) return copy.tool.needsApproval;
       const t = elapsedLive();
       const core = t ? `${stableVerb} · ${t}` : stableVerb;
       return modeChip ? `${modeChip} · ${core}` : core;
     }
 
-    if (stoppedByUser) return 'Stopped';
+    if (stoppedByUser) return copy.tool.stopped;
     if (outcome === 'failed') {
       const s = Number(totalElapsedSeconds || 0);
-      return s > 0 ? `Failed · ${s.toFixed(1)}s` : 'Failed';
+      return s > 0 ? `${copy.tool.failed} · ${s.toFixed(1)}s` : copy.tool.failed;
     }
     if (outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none') {
       const s = Number(totalElapsedSeconds || 0);
       const time = s > 0 ? ` · ${s.toFixed(1)}s` : '';
-      return `Stopped${time}`;
+      return `${copy.tool.stopped}${time}`;
     }
 
     if (steps.length) {
-      // SourcesBlock owns source count under the answer — do not repeat it here.
+      // The message footer owns the source count — do not repeat it here.
       const parts: string[] = [];
-      if (errCount) parts.push(`${errCount} error${errCount === 1 ? '' : 's'}`);
-      else if (doneCount) parts.push(`${doneCount} step${doneCount === 1 ? '' : 's'}`);
-      const s = Number(totalElapsedSeconds || 0);
-      if (s > 0) parts.push(s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s)}s`);
-      return parts.length ? parts.join(' · ') : 'Done';
+      if (errCount) parts.push(`${errCount} ${plural(errCount, 'error')}`);
+      else if (doneCount) parts.push(say.steps(doneCount));
+      const elapsed = formatDuration(totalElapsedSeconds);
+      if (elapsed) parts.push(elapsed);
+      return parts.length ? parts.join(' · ') : copy.tool.done;
     }
 
-    const s = Number(totalElapsedSeconds || 0);
-    if (s > 0) return `${s.toFixed(1)}s`;
-    if (reasoning) return 'Reasoning';
-    return 'Done';
+    const elapsed = formatDuration(totalElapsedSeconds);
+    if (elapsed) return elapsed;
+    if (reasoning) return copy.status.reasoning;
+    return copy.tool.done;
   });
 </script>
 
@@ -209,7 +217,7 @@
     font-size: 0.8125rem;
     font-weight: 500;
     text-align: left;
-    transition: color 150ms ease;
+    transition: color var(--motion-fast) var(--motion-ease);
   }
 
   .agent-line:hover {
@@ -238,7 +246,7 @@
   .status-dot {
     width: 0.45rem;
     height: 0.45rem;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     flex-shrink: 0;
     background: var(--muted-foreground);
   }

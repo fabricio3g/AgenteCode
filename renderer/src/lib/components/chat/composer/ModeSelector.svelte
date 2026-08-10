@@ -2,34 +2,25 @@
 
 <script lang="ts">
   import { appStore } from '$lib/stores/app.svelte';
-  import { t } from 'svelte-i18n';
+  import { copy } from '$lib/copy';
 
-  const composerMode = $derived(appStore.composerMode);
-  const modeOptionsIds: Array<'chat' | 'agent'> = ['chat', 'agent'];
-
-  function getModeLabel(id: 'chat' | 'agent'): string {
-    const labels = {
-      chat: $t('composer.modeChat') || 'Chat',
-      agent: $t('composer.modeAgent') || 'Agent'
-    };
-    return labels[id] || id;
-  }
-
-  function selectMode(mode: 'chat' | 'agent') {
-    appStore.setComposerMode(mode);
-  }
+  const MODES = [
+    { id: 'chat', label: 'Chat' },
+    { id: 'agent', label: 'Agent' }
+  ] as const;
 </script>
 
-<div class="aui-segmented" role="tablist" aria-label="Composer mode">
-  {#each modeOptionsIds as modeId (modeId)}
+<div class="aui-segmented" role="tablist" aria-label={copy.composer.selectMode}>
+  {#each MODES as mode (mode.id)}
     <button
       type="button"
-      class="aui-segmented-item px-3 py-1.5 {composerMode === modeId ? 'is-active' : ''}"
-      onclick={() => selectMode(modeId)}
+      class="aui-segmented-item px-3 py-1.5"
+      class:is-active={appStore.composerMode === mode.id}
+      onclick={() => appStore.setComposerMode(mode.id)}
       role="tab"
-      aria-selected={composerMode === modeId}
+      aria-selected={appStore.composerMode === mode.id}
     >
-      {getModeLabel(modeId)}
+      {mode.label}
     </button>
   {/each}
 </div>

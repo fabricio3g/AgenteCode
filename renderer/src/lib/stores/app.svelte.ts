@@ -1,5 +1,7 @@
 import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
+import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
 import { humanizeAgentError } from '$lib/utils/errors';
@@ -70,6 +72,7 @@ import type {
   PersistedState
 } from '$lib/stores/app-store-types';
 import { buildLocalModelOption } from '$lib/utils/local-models';
+import { activityLabel } from '$lib/utils/tool-ui';
 
 import {
   USER_NAME_KEY,
@@ -309,6 +312,11 @@ class AppStore {
     const next = { ...this.activeRunsByChat };
     delete next[chatId];
     this.activeRunsByChat = next;
+    // Deny anything still waiting. This is the one hook covering completion,
+    // abort and error alike; without it a torn-down run left its approval
+    // promises pending forever. Placed past the controller guard above so a
+    // stale controller cannot deny a live run's approvals.
+    approvalsStore.clearForChat(chatId);
     this.refreshGenerationState();
   }
 
@@ -1544,7 +1552,7 @@ class AppStore {
       await this.refreshRagDocuments(targetChatId);
       toastStore.success(
         result.indexed_count > 0
-          ? `Workspace ready: ${result.indexed_count} file${result.indexed_count === 1 ? '' : 's'} indexed`
+          ? `Workspace ready: ${countOf(result.indexed_count, 'file')} indexed`
           : 'Workspace attached, but no files could be indexed.'
       );
     } finally {
@@ -1660,7 +1668,7 @@ class AppStore {
 
       toastStore.success(
         indexedCount > 0
-          ? `Workspace ready: ${indexedCount} file${indexedCount === 1 ? '' : 's'} indexed`
+          ? `Workspace ready: ${countOf(indexedCount, 'file')} indexed`
           : 'Workspace attached, but no files could be indexed.'
       );
     } finally {
@@ -1855,12 +1863,12 @@ class AppStore {
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
-            currentActivity: 'planning',
-            activityLabel: activeComposerMode === 'agent'
-              ? 'Working'
-              : activeSearchMode !== 'chat'
-                ? 'Searching'
-                : 'Working'
+            currentActivity: activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
+              ? 'searching'
+              : 'planning',
+            activityLabel: activityLabel(
+              activeSearchMode !== 'chat' && activeComposerMode !== 'agent' ? 'searching' : 'planning'
+            )
           }
         : undefined,
       workContext,
@@ -1868,7 +1876,7 @@ class AppStore {
         ? [{
             id: createId('step'),
             type: 'thinking',
-            label: 'Planning',
+            label: activityLabel('planning'),
             status: 'running',
             detail: activeComposerMode === 'agent'
               ? 'Preparing tools and context'
@@ -2561,7 +2569,7 @@ class AppStore {
     message.status = 'streaming';
     if (message.mode === 'agent') {
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: 'Planning', status: 'running', detail: 'Preparing tools and context' }
+        { id: createId('step'), type: 'thinking', label: activityLabel('planning'), status: 'running', detail: 'Preparing tools and context' }
       ];
       message.metadata = {
         ...(message.metadata || {}),
@@ -2664,7 +2672,7 @@ class AppStore {
         nextVersion.metadata = {
           ...(nextVersion.metadata || {}),
           currentActivity: 'writing',
-          activityLabel: 'Writing'
+          activityLabel: activityLabel('writing')
         };
         this.touchChats();
         this.persist();

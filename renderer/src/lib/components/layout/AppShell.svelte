@@ -5,7 +5,7 @@
   import { cubicOut } from 'svelte/easing';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
-  import MessageList from '$lib/components/chat/MessageList.svelte';
+  import Thread from '$lib/components/thread/Thread.svelte';
   import Composer from '$lib/components/chat/Composer.svelte';
   import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
@@ -21,16 +21,18 @@
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, Settings } from 'lucide-svelte';
+  import { Plus, Boxes, PanelLeftOpen, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { copy } from '$lib/copy';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isTauri } from '$lib/services/tauri';
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
 
   let showShortcutsHelp = $state(false);
+  const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
   const newSessionLabel = $derived(
-    appStore.activeSpace === 'work' ? 'New Work' : 'New chat'
+    appStore.activeSpace === 'work' ? `New ${copy.spaces.work}` : 'New chat'
   );
 
 
@@ -91,16 +93,20 @@
     if (event.key === 'Escape' && showShortcutsHelp) showShortcutsHelp = false;
   }
 
-  function drawerSlotTransition(node: Element) {
-    const width = node.getBoundingClientRect().width;
+  /**
+   * Slide the activity panel in from the right edge.
+   *
+   * Deliberately transform/opacity only. The previous version animated `width`,
+   * which made the whole conversation reflow and re-wrap on every open and
+   * close; the panel now floats above the thread and leaves it untouched.
+   */
+  function drawerSlotTransition(_node: Element) {
     return {
       duration: 260,
       easing: cubicOut,
       css: (t: number, u: number) => `
-        width: ${Math.max(0.001, width * t)}px;
-        min-width: ${Math.max(0.001, width * t)}px;
         opacity: ${t};
-        transform: translateX(${u * 14}px) scale(${0.985 + t * 0.015});
+        transform: translateX(${u * 100}%);
       `
     };
   }
@@ -139,14 +145,27 @@
   {:else}
     <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
     <div
-      class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden bg-sidebar"
+      class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-sidebar"
       class:expanded={appStore.sidebarOpen}
     >
       <div class="sidebar-view-full absolute inset-0 flex flex-col">
         <Sidebar />
       </div>
 
-      <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-3">
+      <!-- pt-0.5 centres the first 2rem control inside the titlebar's 2.25rem
+           row, so the collapsed rail keeps the same baseline as the expanded
+           header and the titlebar. -->
+      <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-0.5">
+        <Tooltip label="Show sidebar" position="right">
+          <button
+            class="aui-icon-button size-8"
+            onclick={() => (appStore.sidebarOpen = true)}
+            aria-label="Show sidebar"
+          >
+            <PanelLeftOpen class="size-4" />
+          </button>
+        </Tooltip>
+
         <Tooltip label={newSessionLabel}>
           <button
             class="aui-icon-button size-8"
@@ -188,17 +207,25 @@
 
       <div class="flex min-h-0 flex-1 overflow-hidden">
         <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <MessageList />
+          <!-- Empty conversation: the prompt and the composer sit together in
+               the middle of the panel. The composer drops to the bottom as soon
+               as there is a message to read above it. -->
+          <div
+            class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+            class:justify-center={threadIsEmpty}
+          >
+            <Thread />
             <Composer />
           </div>
-        </div>
 
-        {#if appStore.activityDrawerOpen}
-          <div class="activity-drawer-slot" transition:drawerSlotTransition>
-            <ActivityDrawer />
-          </div>
-        {/if}
+          <!-- Floats over the conversation: opening it must not reflow the
+               thread or the composer. -->
+          {#if appStore.activityDrawerOpen}
+            <div class="activity-drawer-slot" transition:drawerSlotTransition>
+              <ActivityDrawer />
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   {/if}
@@ -311,21 +338,31 @@
 
   .chat-panel {
     background: var(--background);
-    border-color: var(--border);
-    border-style: solid;
-    border-width: 1px 0 0 1px;
+    /* No seam between the rail and the conversation — they are one surface. */
+    border: 0;
     border-radius: var(--radius-2xl) 0 0 0;
   }
 
+  /*
+   * A floating panel, not a layout column. It is absolutely positioned inside
+   * the chat panel and inset from the edges, so showing it never changes the
+   * width of the thread or the composer — it only ever animates its own
+   * transform and opacity.
+   */
   .activity-drawer-slot {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 30;
     display: flex;
-    height: 100%;
-    flex: 0 0 auto;
     overflow: hidden;
-    border-left: 1px solid var(--border);
-    background: var(--background);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-2xl);
+    background: var(--popover);
+    box-shadow: var(--shadow-xl);
     transform-origin: right center;
-    will-change: width, min-width, opacity, transform;
+    will-change: transform, opacity;
   }
 
   @media (prefers-reduced-motion: reduce) {

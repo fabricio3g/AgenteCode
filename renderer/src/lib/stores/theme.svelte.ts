@@ -3,14 +3,18 @@ import { loadTheme, saveTheme } from '$lib/utils/storage';
 class ThemeStore {
   current = $state<'light' | 'dark'>('dark');
 
+  /**
+   * Dark is the default, unconditionally.
+   *
+   * A saved preference still wins — this only decides what a fresh install
+   * opens with. The OS `prefers-color-scheme: light` check that used to sit
+   * here meant most machines started in light despite dark being the designed
+   * default.
+   */
   constructor() {
     if (typeof window === 'undefined') return;
     const saved = loadTheme();
-    if (saved) {
-      this.current = saved;
-    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      this.current = 'light';
-    }
+    if (saved) this.current = saved;
     this.apply();
   }
 

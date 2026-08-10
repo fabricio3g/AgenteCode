@@ -3,6 +3,7 @@
 <script lang="ts">
   import type { Attachment } from '$lib/types/chat';
   import DocumentSurface from './DocumentSurface.svelte';
+  import { countOf } from '$lib/utils/format';
   import type { DocumentSurfaceItem } from './document-surface';
 
   interface Props {
@@ -44,13 +45,13 @@
 
 {#if pendingCount}
   <div class="attachment-doc-note">
-    {pendingCount} attachment{pendingCount !== 1 ? 's' : ''} still preparing
+    {countOf(pendingCount, 'attachment')} still preparing
   </div>
 {/if}
 
 {#if errorCount}
   <div class="attachment-doc-note">
-    {errorCount} attachment{errorCount !== 1 ? 's' : ''} could not be previewed
+    {countOf(errorCount, 'attachment')} could not be previewed
   </div>
 {/if}
 

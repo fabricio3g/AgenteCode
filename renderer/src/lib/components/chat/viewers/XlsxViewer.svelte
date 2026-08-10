@@ -1,7 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Loader2, AlertCircle } from 'lucide-svelte';
+  import { copy } from '$lib/copy';
+  import ViewerStatus from './ViewerStatus.svelte';
+  import { highlightTerm } from './viewer-text';
 
   interface Props {
     src: string;
@@ -33,20 +35,7 @@
   });
 
   function highlightedCell(value: string) {
-    const term = query.trim();
-    const escapedValue = escapeHtml(value);
-    if (!term) return escapedValue;
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return escapedValue.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-  }
-
-  function escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+    return highlightTerm(value, query);
   }
 
   async function convertXlsx() {
@@ -90,16 +79,8 @@
 </script>
 
 <div class="xlsx-viewer">
-  {#if loading}
-    <div class="xlsx-status">
-      <Loader2 class="h-4 w-4 animate-spin" />
-      <span>Converting spreadsheet...</span>
-    </div>
-  {:else if error}
-    <div class="xlsx-status error">
-      <AlertCircle class="h-4 w-4" />
-      <span>{error}</span>
-    </div>
+  {#if loading || error}
+    <ViewerStatus {loading} {error} label={copy.viewer.convertingSpreadsheet} />
   {:else if currentSheet}
     <div class="sheet-tabs" aria-label="{filename} sheets">
       {#each sheets as sheet (sheet.name)}
@@ -133,19 +114,7 @@
     gap: 0.55rem;
   }
 
-  .xlsx-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 2rem 0;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
 
-  .xlsx-status.error {
-    color: var(--error);
-  }
 
   .sheet-tabs {
     display: flex;

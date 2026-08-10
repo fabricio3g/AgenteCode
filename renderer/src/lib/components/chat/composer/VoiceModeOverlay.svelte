@@ -4,24 +4,27 @@
   import { HeadphoneOff, Mic, AlertCircle, Loader2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
+  import { copy, say } from '$lib/copy';
+  import type { DictationPhase } from './use-dictation.svelte';
 
   interface Props {
+    /**
+     * Capture phase, reported by the dictation controller. This was previously
+     * inferred by substring-matching the interim transcript, which coupled the
+     * overlay's behavior to the exact wording of status strings.
+     */
+    phase: DictationPhase;
     isListening: boolean;
     interimTranscript: string;
     exitVoiceMode: () => void;
     audioLevels: number[];
   }
 
-  let { isListening, interimTranscript, exitVoiceMode, audioLevels }: Props = $props();
+  let { phase, isListening, interimTranscript, exitVoiceMode, audioLevels }: Props = $props();
 
-  const state = $derived.by((): 'idle' | 'permission' | 'recording' | 'transcribing' | 'error' => {
-    if (interimTranscript.includes('Requesting microphone')) return 'permission';
-    if (interimTranscript.includes('Transcribing')) return 'transcribing';
-    if (interimTranscript.includes('Recording')) return 'recording';
-    if (interimTranscript.includes('Error') || interimTranscript.includes('Failed')) return 'error';
-    if (isListening) return 'recording';
-    return 'idle';
-  });
+  const state = $derived<DictationPhase>(
+    phase === 'idle' && isListening ? 'recording' : phase
+  );
 
   const avgLevel = $derived.by(() => {
     if (!audioLevels?.length) return 0;
@@ -30,23 +33,26 @@
 
   const title = $derived.by(() => {
     if (state === 'permission') return 'Allow microphone';
-    if (state === 'transcribing') return 'Transcribing...';
-    if (state === 'recording') return 'Listening';
+    if (state === 'transcribing') return say.inProgress(copy.status.transcribing);
+    if (state === 'recording') return copy.status.listening;
     if (state === 'error') return 'Error';
-    if (appStore.currentChatGenerating) return 'Thinking...';
-    if (ttsStore.playing) return 'Speaking...';
+    if (appStore.currentChatGenerating) return say.inProgress(copy.status.thinking);
+    if (ttsStore.playing) return say.inProgress('Speaking');
     return 'Voice';
   });
 
   const caption = $derived(
-    state === 'permission' ? 'Waiting for permission...' :
-    state === 'recording' ? 'Tap to stop' :
-    state === 'transcribing' ? 'Processing...' :
-    interimTranscript || ''
+    state === 'permission'
+      ? say.inProgress('Waiting for permission')
+      : state === 'recording'
+        ? interimTranscript || 'Tap to stop'
+        : state === 'transcribing'
+          ? say.inProgress(copy.status.processing)
+          : interimTranscript || ''
   );
 </script>
 
-{#if appStore.voiceModeActive || isListening || !!interimTranscript}
+{#if appStore.voiceModeActive || isListening || phase !== 'idle'}
   <div class="voice-card">
     <!-- Pulse ring orb -->
     <div class="orb-outer">

@@ -1,7 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Loader2, AlertCircle } from 'lucide-svelte';
+  import { copy } from '$lib/copy';
+  import ViewerStatus from './ViewerStatus.svelte';
+  import { readArrayBuffer } from './viewer-source';
 
   interface Props {
     src: string;
@@ -13,26 +15,6 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let htmlContent = $state('');
-
-  async function readArrayBuffer(source: string): Promise<ArrayBuffer> {
-    if (source.startsWith('data:')) {
-      const commaIndex = source.indexOf(',');
-      if (commaIndex < 0) throw new Error('Invalid document data URL');
-      const meta = source.slice(0, commaIndex);
-      const payload = source.slice(commaIndex + 1);
-      if (meta.includes(';base64')) {
-        const binary = atob(payload);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes.buffer;
-      }
-      return new TextEncoder().encode(decodeURIComponent(payload)).buffer;
-    }
-
-    const response = await fetch(source);
-    if (!response.ok) throw new Error(`Unable to load document (${response.status})`);
-    return response.arrayBuffer();
-  }
 
   async function convertDocx() {
     loading = true;
@@ -82,19 +64,14 @@
 </script>
 
 <div class="docx-viewer">
-  {#if loading}
-    <div class="docx-status">
-      <Loader2 class="h-4 w-4 animate-spin" />
-      <span>Converting document...</span>
-    </div>
-  {:else if error}
-    <div class="docx-status error">
-      <AlertCircle class="h-4 w-4" />
-      <div>
-        <strong>Preview unavailable</strong>
-        <span>{error}</span>
-      </div>
-    </div>
+  {#if loading || error}
+    <ViewerStatus
+      {loading}
+      {error}
+      label={copy.viewer.convertingDocument}
+      variant="card"
+      errorTitle={copy.viewer.previewUnavailable}
+    />
   {:else if htmlContent}
     <div class="docx-frame">
       <iframe
@@ -112,41 +89,6 @@
     display: flex;
     min-height: 100%;
     flex-direction: column;
-  }
-
-  .docx-status {
-    display: flex;
-    min-height: 16rem;
-    align-items: center;
-    justify-content: center;
-    gap: 0.65rem;
-    padding: 2rem;
-    font-size: 0.8125rem;
-    color: var(--text-muted);
-  }
-
-  .docx-status.error {
-    align-items: flex-start;
-    width: min(30rem, 100%);
-    min-height: auto;
-    margin: 4rem auto;
-    border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-    background: color-mix(in srgb, var(--surface-hover) 56%, transparent);
-    color: var(--text-secondary);
-    text-align: left;
-  }
-
-  .docx-status.error strong {
-    display: block;
-    color: var(--text);
-    font-size: 0.9rem;
-    margin-bottom: 0.2rem;
-  }
-
-  .docx-status.error span {
-    display: block;
-    line-height: 1.45;
   }
 
   .docx-frame {

@@ -333,7 +333,11 @@
   }
 </script>
 
-<div class={variant === 'artifact' ? 'artifact-chart' : 'my-4 rounded-xl bg-[var(--surface-alt)] overflow-hidden'}>
+<!-- One shell for both variants. The inline variant used to carry
+     `bg-[var(--surface-alt)]`, a token defined nowhere in the app, so inline
+     charts rendered with no background at all while their artifact twin had
+     one — and with a different radius. -->
+<div class="artifact-chart">
   {#if variant === 'artifact' && title}
     <div class="artifact-chart-title">{title}</div>
   {:else if title}
@@ -362,7 +366,10 @@
   {#if error}
     <div class="px-4 py-3 text-sm text-error">{error}</div>
   {:else}
-    <div class="chart-container relative flex justify-center p-2 pb-3">
+    <!-- Not centred: an assistant turn is left-aligned, so a chart narrower
+         than the column must start on the same edge as the prose around it.
+         `relative` stays — the tooltip positions against it. -->
+    <div class="chart-container relative p-2 pb-3">
       <svg bind:this={svgEl} width={W} height={H} viewBox="0 0 {W} {H}" class="text-[var(--text)]" style="max-width:100%;height:auto;"></svg>
       <!-- Tooltip -->
       {#if tooltip.visible}
@@ -383,7 +390,8 @@
 <style>
   .artifact-chart {
     margin: 0.65rem 0 0;
-    width: min(100%, 42rem);
+    width: var(--inline-block-width);
+    max-width: 100%;
     overflow: hidden;
     border: 0;
     border-radius: var(--artifact-radius);

@@ -9,22 +9,50 @@
   import { themeStore } from '$lib/stores/theme.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { i18nReady } from '$lib/i18n';
+  import { installCodeCopyDelegate } from '$lib/utils/code-copy';
+  import { copy } from '$lib/copy';
 
   let startupBypassed = $state(false);
   let activeWorkSyncInterval: ReturnType<typeof setInterval> | null = null;
   let startupHintIndex = $state(0);
   let startupHintInterval: ReturnType<typeof setInterval> | null = null;
+  let teardownCodeCopy: (() => void) | null = null;
+  // Startup is a progress indicator, not a personality. One verb, from the
+  // canonical status vocabulary, plus concrete steps.
   const startupHints = [
-    'Thinking',
+    copy.status.loading,
     'Warming up model',
-    'Finding files',
     'Loading context',
     'Preparing workspace'
   ];
 
+  /**
+   * Run one startup step in isolation.
+   *
+   * Startup used to be a straight line of unguarded calls, so a single failing
+   * step — most of them reach into the Electron bridge — aborted every step
+   * after it. The window still rendered via the bypass timer, which left an app
+   * whose controls were bound to a store that had never been initialised: every
+   * click updated state that nothing was listening to.
+   */
+  function step(name: string, run: () => void) {
+    try {
+      run();
+    } catch (error) {
+      console.error(`[App] startup step "${name}" failed`, error);
+    }
+  }
+
   onMount(async () => {
-    initMotion();
-    await i18nReady;
+    step('motion', initMotion);
+    step('code-copy', () => {
+      teardownCodeCopy = installCodeCopyDelegate();
+    });
+    try {
+      await i18nReady;
+    } catch (error) {
+      console.error('[App] i18n failed to load', error);
+    }
 
     const bypassTimer = window.setTimeout(() => {
       startupBypassed = true;
@@ -37,16 +65,16 @@
       startupHintIndex = (startupHintIndex + 1) % startupHints.length;
     }, 1400);
 
-    themeStore.set(themeStore.current);
-    deepResearchStore.init();
+    step('theme', () => themeStore.set(themeStore.current));
+    step('deep-research', () => deepResearchStore.init());
     // Preload TTS engine in background
     if (!startupBypassed) {
-      void ttsStore.preloadEngine();
+      step('tts-preload', () => void ttsStore.preloadEngine());
     }
     activeWorkSyncInterval = setInterval(() => {
-      void appStore.syncWindowActiveWork();
+      step('work-sync', () => void appStore.syncWindowActiveWork());
     }, 900);
-    void appStore.syncWindowActiveWork();
+    step('work-sync', () => void appStore.syncWindowActiveWork());
     void appStore.init().catch((error) => {
       console.error('[App] init failed', error);
       appStore.error = String((error as Error)?.message || error || 'Failed to initialize');
@@ -65,6 +93,8 @@
       clearInterval(startupHintInterval);
       startupHintInterval = null;
     }
+    teardownCodeCopy?.();
+    teardownCodeCopy = null;
   });
 </script>
 

@@ -282,7 +282,7 @@
       aria-label={ariaLabel}
       aria-labelledby={ariaLabel ? undefined : (ariaLabelledby || triggerId)}
       class={cn(
-        'fixed z-[500] overflow-y-auto rounded-lg bg-[var(--card)] p-1 text-foreground shadow-[var(--shadow-lg)] ring-1 ring-black/5 dark:ring-white/10',
+        'fixed z-[500] overflow-y-auto rounded-lg bg-[var(--card)] p-1 text-foreground shadow-[shadow:var(--shadow-lg)] ring-1 ring-black/5 dark:ring-white/10',
         placement === 'top' ? 'origin-bottom' : 'origin-top',
         menuClass,
       )}

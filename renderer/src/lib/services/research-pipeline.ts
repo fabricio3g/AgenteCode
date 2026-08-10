@@ -78,28 +78,40 @@ export function researchThinSourcesNotice(sourceCount: number, richCount: number
   return undefined;
 }
 
-export function researchSynthesisUserNudge(mode: ResearchMode, medical: boolean, attempt: number, maxAttempts: number): string {
+/**
+ * The "stop searching, start writing" prompt.
+ *
+ * Deliberately says nothing about output shape: the format contract already
+ * arrived with the system prompt, and callers append
+ * `FINAL_ANSWER_CONTRACT_REMINDER` after this. This function used to restate the
+ * whole skeleton — one of six places that did, in a single request.
+ */
+export function researchSynthesisUserNudge(
+  mode: ResearchMode,
+  medical: boolean,
+  attempt: number,
+  maxAttempts: number
+): string {
   const depth =
     mode === 'max'
-      ? 'Write a comprehensive MAX research report for professional readers.'
+      ? 'Write the comprehensive MAX research report for professional readers.'
       : mode === 'deep'
-        ? 'Write a thorough DEEP research report for people who will use the findings at work.'
-        : 'Write a focused SEARCH-mode professional brief (still a real report, not a bullet dump).';
+        ? 'Write the thorough DEEP research report for people who will use the findings at work.'
+        : 'Answer the question directly, at the length it deserves.';
 
   const attemptLine =
     attempt === 1
       ? 'You have finished gathering sources. Do NOT call tools.'
-      : `Synthesis attempt ${attempt}/${maxAttempts}. Do NOT call tools. Write the full report now.`;
+      : `Synthesis attempt ${attempt}/${maxAttempts}. Do NOT call tools. Write the answer now.`;
 
   return [
     attemptLine,
     depth,
-    'Using ONLY the RESEARCH EVIDENCE PACK (and any prior tool results), produce a full professional research report following APA 7th edition — not a summary, not a tool log, not notes.',
-    'Forbidden: dumping the pack; listing raw search hits; sections titled "Gathered Evidence", "Summary", or "Executive Summary"; mentioning step limits, agents, or tools.',
-    'Required skeleton: # Title (name the user\'s search topic); coherent topical ## sections with blank lines between paragraphs; ## Limitations; ## References in APA 7 web format.',
-    'Cite with APA author–date when metadata exists; also use [n] for numbered sources. Never invent authors or dates; use (n.d.) when missing.',
+    'Use ONLY the RESEARCH EVIDENCE PACK and prior tool results. Do not dump the pack, list raw search hits, or mention step limits, agents, or tools.',
     medical
-      ? 'Medical topic: include a brief non-advice disclaimer; structure Definition; Epidemiology/presentation; Diagnosis; Treatment; Prognosis; Limitations; References.'
-      : 'Structure for practitioners/analysts who work with this topic.'
-  ].join('\n\n');
+      ? 'Medical topic: include a brief note that this is general information rather than personal medical advice, and prefer guideline or peer-reviewed sources.'
+      : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }

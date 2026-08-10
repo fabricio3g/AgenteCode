@@ -1,6 +1,31 @@
-/** Shared helpers for assistant-ui–style tool / reasoning chrome. */
+/** Shared helpers for the tool / reasoning chrome above an assistant answer. */
+
+import type { AgentActivity } from '$lib/types/chat';
+import { copy } from '$lib/copy';
 
 export type ToolUiStatus = 'done' | 'running' | 'error' | 'pending' | 'awaiting_approval';
+
+/**
+ * The label shown for each agent activity.
+ *
+ * These verbs were previously spelled inline in seven files — `agent.ts`,
+ * `app.svelte.ts`, `app-store-helpers.ts`, `AgentBlock.svelte`,
+ * `DeepResearchWidget.svelte` and others — which is how the app ended up with
+ * "Thinking", "Thinking...", and "Planning" all describing the same state.
+ */
+export const ACTIVITY_LABELS: Record<AgentActivity, string> = {
+  planning: copy.status.planning,
+  searching: copy.status.searching,
+  reading: copy.status.reading,
+  creating_files: copy.status.writing,
+  writing: copy.status.writing,
+  stopped: copy.tool.stopped,
+  completed: copy.tool.done
+};
+
+export function activityLabel(activity: AgentActivity | undefined | null): string {
+  return (activity && ACTIVITY_LABELS[activity]) || copy.status.working;
+}
 
 export function titleCaseToolName(name: string): string {
   return String(name || '')
@@ -33,9 +58,20 @@ export function toolStatusLabel(
   status: ToolUiStatus | string,
   opts?: { cancelled?: boolean }
 ): string {
-  if (opts?.cancelled || (status === 'error' && opts?.cancelled)) return 'Cancelled';
-  if (status === 'awaiting_approval') return 'Needs approval';
+  if (opts?.cancelled || (status === 'error' && opts?.cancelled)) return copy.tool.cancelled;
+  if (status === 'awaiting_approval') return copy.tool.needsApproval;
   if (status === 'running' || status === 'pending') return '';
-  if (status === 'error') return 'Failed';
+  if (status === 'error') return copy.tool.failed;
   return '';
+}
+
+/**
+ * The quiet mode chip shown beside agent progress ("Deep", "Max", …).
+ *
+ * Returns `''` for plain chat, since an "Off" chip on every ordinary answer is
+ * exactly the kind of redundant furniture this UI is meant to avoid.
+ */
+export function searchModeChip(mode: 'chat' | 'search' | 'deep' | 'max' | null | undefined): string {
+  if (!mode || mode === 'chat') return '';
+  return copy.searchModes[mode].label;
 }

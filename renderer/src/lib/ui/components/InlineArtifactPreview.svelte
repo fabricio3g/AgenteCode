@@ -3,6 +3,7 @@
 <script lang="ts">
   import type { AgentArtifact } from '$lib/types/chat';
   import { resolveArtifactPreview } from '$lib/services/artifact-model';
+  import { countOf } from '$lib/utils/format';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
   import ArtifactMap from './ArtifactMap.svelte';
@@ -56,7 +57,7 @@
 {/if}
 
 {#if previewBuild.externalRefs.length}
-  <div class="blocked-assets">{previewBuild.externalRefs.length} remote asset{previewBuild.externalRefs.length === 1 ? '' : 's'} blocked for a deterministic preview.</div>
+  <div class="blocked-assets">{countOf(previewBuild.externalRefs.length, 'remote asset')} blocked for a deterministic preview.</div>
 {/if}
 
 <style>

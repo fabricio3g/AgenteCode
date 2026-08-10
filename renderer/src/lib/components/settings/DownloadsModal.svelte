@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { flyAndScale } from '$lib/utils/transitions';
+  import { formatBytes, countOf } from '$lib/utils/format';
   import { Ban, CheckCircle2, Download, Loader2, Pause, RefreshCw, RotateCcw, Trash2, X, XCircle } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { cancelDownloadJob, pauseDownloadJob } from '$lib/services/downloads';
@@ -20,13 +21,6 @@
     if (s < 60) return `~${s}s`;
     if (s < 3600) return `~${Math.floor(s / 60)}m ${s % 60}s`;
     return `~${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-  }
-
-  function formatSize(bytes: number): string {
-    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
-    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${bytes} B`;
   }
 
   onMount(() => {
@@ -106,7 +100,7 @@
 
   <!-- Toolbar -->
   <div class="flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
-    <span>{downloadsStore.jobs.length} job{downloadsStore.jobs.length === 1 ? '' : 's'}</span>
+    <span>{countOf(downloadsStore.jobs.length, 'job')}</span>
     <div class="flex items-center gap-2">
       <button
         class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
@@ -163,7 +157,7 @@
                   <span class="tabular-nums">{job.progress.toFixed(1)}%</span>
                   {#if job.total_bytes > 0}
                     <span>·</span>
-                    <span class="tabular-nums">{formatSize(job.downloaded_bytes)} / {formatSize(job.total_bytes)}</span>
+                    <span class="tabular-nums">{formatBytes(job.downloaded_bytes)} / {formatBytes(job.total_bytes)}</span>
                   {/if}
                   {#if job.status === 'running'}
                     {@const speed = downloadsStore.getJobSpeed(job.id)}

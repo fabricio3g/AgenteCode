@@ -42,7 +42,7 @@
 
 <style>
   .html-card {
-    width: min(100%, 42rem);
+    width: 100%;
     margin-top: 0.65rem;
     padding: 0.75rem 0.85rem 0.85rem;
     border: 0;

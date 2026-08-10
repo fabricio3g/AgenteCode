@@ -94,7 +94,7 @@
 <!-- Backdrop -->
 {#if appStore.llmDrawerOpen}
   <div
-    class="fixed inset-0 z-[55] bg-overlay"
+    class="fixed inset-0 z-[55]"
     role="presentation"
     onclick={() => (appStore.llmDrawerOpen = false)}
     transition:motionFade={{ duration: 150 }}
@@ -103,15 +103,17 @@
 
 <!-- Drawer -->
 {#if appStore.llmDrawerOpen}
+<!-- Floats clear of the window edges like the activity panel, rather than
+     anchoring flush to the right as a full-height drawer. -->
 <aside
-  class="fixed right-0 top-0 z-[56] flex h-full w-80 flex-col overflow-hidden border-l border-border bg-background shadow-lg"
+  class="fixed bottom-3 right-3 top-12 z-[56] flex w-80 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--panel-border)] bg-popover shadow-[shadow:var(--shadow-xl)]"
   aria-label="Generation settings"
-  transition:motionFly={{ x: 320, duration: 220, opacity: 1 }}
+  transition:motionFly={{ x: 24, duration: 260, opacity: 0 }}
 >
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <div class="flex items-center justify-between px-4 py-3">
     <div class="flex items-center gap-2">
-      <div class="flex size-7 items-center justify-center rounded-md bg-muted">
+      <div class="flex size-7 items-center justify-center rounded-full bg-muted">
         <Sliders class="size-4 text-foreground" />
       </div>
       <span class="text-sm font-semibold text-foreground">Generation</span>
@@ -150,8 +152,8 @@
     <!-- Status -->
     <div class="mx-4 mt-3 pb-3">
       {#if mode === 'api'}
-        <div class="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-3">
-          <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+        <div class="flex items-center gap-3 rounded-xl bg-[var(--muted)] px-3 py-3">
+          <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
             <Zap class="size-4" />
           </div>
           <div class="min-w-0 flex-1">

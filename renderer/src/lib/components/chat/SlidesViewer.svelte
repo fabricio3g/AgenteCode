@@ -3,6 +3,7 @@
 <script lang="ts">
   import type { SlideData } from '$lib/types/tauri';
   import { ChevronLeft, ChevronRight, Download } from 'lucide-svelte';
+  import { countOf } from '$lib/utils/format';
 
   interface Props {
     slides: SlideData[];
@@ -42,7 +43,7 @@
   <!-- Header bar -->
   <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
     <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
-      Presentation · {total} slide{total === 1 ? '' : 's'}
+      Presentation · {countOf(total, 'slide')}
     </span>
     <button
       class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border-hover)] bg-[var(--primary)] px-3 py-1.5 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-88 active:scale-[0.98]"

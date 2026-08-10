@@ -5,6 +5,7 @@ import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isTauri } from '$lib/services/tauri';
 import { createId as createSharedId } from '$lib/utils/id';
+import { activityLabel } from '$lib/utils/tool-ui';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import type { ApiModelMetadataValue, ContextBudgetValue } from '$lib/stores/app-context-budget';
 
@@ -194,16 +195,26 @@ export function startReasoningTimer() {
   };
 }
 
+/**
+ * Map free-form progress text to an activity. The label always comes from the
+ * shared vocabulary in `tool-ui.ts` so the single-line working UI shows one verb
+ * per state rather than whichever phrasing this file happened to use.
+ */
 export function activityFromProgress(text: string): { currentActivity: AgentActivity; activityLabel: string } {
   const value = String(text || '').toLowerCase();
-  // Short verbs for the single-line working UI (avoid long thrashing sentences)
-  if (value.includes('search')) return { currentActivity: 'searching', activityLabel: 'Searching' };
-  if (value.includes('fetch') || value.includes('read') || value.includes('source')) return { currentActivity: 'reading', activityLabel: 'Reading' };
-  if (value.includes('document') || value.includes('spreadsheet') || value.includes('presentation') || value.includes('pdf') || value.includes('file') || value.includes('artifact') || value.includes('write')) {
-    return { currentActivity: 'creating_files', activityLabel: 'Writing' };
-  }
-  if (value.includes('final') || value.includes('answer') || value.includes('response') || value.includes('producing')) return { currentActivity: 'writing', activityLabel: 'Writing' };
-  return { currentActivity: 'planning', activityLabel: 'Working' };
+
+  const activity: AgentActivity =
+    value.includes('search')
+      ? 'searching'
+      : value.includes('fetch') || value.includes('read') || value.includes('source')
+        ? 'reading'
+        : /document|spreadsheet|presentation|pdf|file|artifact|write/.test(value)
+          ? 'creating_files'
+          : /final|answer|response|producing/.test(value)
+            ? 'writing'
+            : 'planning';
+
+  return { currentActivity: activity, activityLabel: activityLabel(activity) };
 }
 
 /** Skip metadata writes when activity type is unchanged (cuts UI thrash). */
@@ -233,19 +244,21 @@ export function setAgentActivity(message: ChatMessage, activity: AgentActivity, 
 }
 
 export function markAgentWriting(message: ChatMessage) {
-  setAgentActivity(message, 'writing', 'Writing');
+  const label = activityLabel('writing');
+  setAgentActivity(message, 'writing', label);
+
   const steps = message.agentSteps || [];
   const last = steps[steps.length - 1];
-  if (last?.label === 'Writing' || last?.label === 'Writing answer') {
+  if (last?.label === label || last?.label === 'Writing answer') {
     last.status = 'running';
-    last.label = 'Writing';
+    last.label = label;
     last.detail = 'Preparing final response';
     message.agentSteps = [...steps];
     return;
   }
   message.agentSteps = [
     ...steps.map((step) => step.status === 'running' ? { ...step, status: 'done' as const } : step),
-    { id: createId('step'), type: 'thinking', label: 'Writing', status: 'running', detail: 'Preparing final response' }
+    { id: createId('step'), type: 'thinking', label, status: 'running', detail: 'Preparing final response' }
   ];
 }
 

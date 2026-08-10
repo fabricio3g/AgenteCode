@@ -1,5 +1,6 @@
 import type { SearchResult } from '$lib/types/tauri';
 import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
+import { say } from '$lib/copy';
 import type { AgentArtifact } from '$lib/types/chat';
 
 /** How to shape partial answers when the model did not finish. */
@@ -286,6 +287,34 @@ function renderFilesAndMissing(params: {
   return lines.join('\n');
 }
 
+/**
+ * Describe an actual gap in the evidence, or return `''` when there isn't one.
+ *
+ * The prompts tell the model to add Limitations only when something is thin,
+ * conflicting, or unverified. This fallback renderer is code, not a model, so it
+ * has to apply the same test rather than always printing the section.
+ */
+function describeEvidenceGap(items: EvidenceItem[], sources: EvidenceSource[]): string {
+  if (!sources.length) {
+    return 'No live sources could be retrieved for this query, so nothing below is externally verified.';
+  }
+
+  const uncited = items.filter((item) => !item.sourceId).length;
+  const reasons: string[] = [];
+
+  if (sources.length < 3) {
+    reasons.push(
+      `only ${say.sources(sources.length)} could be read for this answer`
+    );
+  }
+  if (uncited > 0 && uncited >= items.length / 2) {
+    reasons.push('several statements below could not be tied to a specific source');
+  }
+
+  if (!reasons.length) return '';
+  return `This answer is based on sources retrieved in this session: ${reasons.join(', and ')}. Treat uncited claims as unverified.`;
+}
+
 function renderReferences(sources: EvidenceSource[]): string {
   if (!sources.length) return '';
   const lines: string[] = ['## References', ''];
@@ -403,12 +432,13 @@ export function renderResearchFallbackReport(params: {
     }
   }
 
-  lines.push(
-    '## Limitations',
-    '',
-    'This report is based only on sources retrieved in this session. It is not a substitute for specialist judgment or primary literature review. Claims without citations should be treated as unverified.',
-    ''
-  );
+  // A Limitations section only when there is a limitation worth naming. This
+  // used to be appended unconditionally, so a well-sourced answer still carried
+  // a canned paragraph about how unreliable it might be.
+  const limitation = describeEvidenceGap(items, sources);
+  if (limitation) {
+    lines.push('## Limitations', '', limitation, '');
+  }
 
   lines.push(renderReferences(sources));
   lines.push(renderFilesAndMissing(params));

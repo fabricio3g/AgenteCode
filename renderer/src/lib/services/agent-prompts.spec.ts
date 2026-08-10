@@ -40,20 +40,28 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('Extra research context');
   });
 
-  it('buildDirectSystemPrompt applies APA contract for search and deep modes', () => {
+  it('buildDirectSystemPrompt keeps citation rules in search mode without demanding a report', () => {
     const search = buildDirectSystemPrompt(undefined, { toolMode: 'search_chat', searchMode: 'search' });
-    const deep = buildDirectSystemPrompt(undefined, { toolMode: 'search_chat', searchMode: 'deep' });
 
-    expect(search).toContain('SEARCH mode');
+    expect(search).toContain('Answer the question directly');
     expect(search).toContain('APA 7');
     expect(search).toContain('blank line');
+    // Search mode must not impose the report skeleton on a short answer.
+    expect(search).not.toMatch(/REQUIRED STRUCTURE/);
+    expect(search).not.toMatch(/professional research report/);
+  });
+
+  it('buildDirectSystemPrompt applies the full report contract for deep mode', () => {
+    const deep = buildDirectSystemPrompt(undefined, { toolMode: 'search_chat', searchMode: 'deep' });
+
     expect(deep).toContain('DEEP research');
     expect(deep).toContain('search topic');
     expect(deep).toContain('(n.d.)');
+    expect(deep).toContain('REQUIRED STRUCTURE');
     expect(deep).not.toMatch(/## Executive Summary/);
   });
 
-  it('getXmlSystemPrompt includes tool inventory, limits, and APA research contract for search_chat', () => {
+  it('getXmlSystemPrompt includes tool inventory, limits, and the final-answer contract for search_chat', () => {
     const prompt = getXmlSystemPrompt('Extra context', 7, 4, [
       {
         type: 'function',
@@ -69,7 +77,9 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('4 reasoning steps');
     expect(prompt).toContain('7 tool calls');
     expect(prompt).toContain('APA 7');
-    expect(prompt).toContain('search topic');
+    // Defaults to search mode, so the report skeleton must not be imposed.
+    expect(prompt).toContain('Answer the question directly');
+    expect(prompt).not.toMatch(/REQUIRED STRUCTURE/);
     expect(prompt).toContain('Extra context');
   });
 
@@ -91,29 +101,45 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('Extra context');
   });
 
-  describe('buildResearchReportInstruction APA 7 contract', () => {
+  describe('buildResearchReportInstruction', () => {
+    // Citation format, spacing, and the ban on dumping search results apply in
+    // every mode. Only the *shape* of the answer varies by depth.
     for (const mode of ['search', 'deep', 'max'] as const) {
-      it(`includes shared APA 7 + spacing rules for ${mode}`, () => {
+      it(`keeps the writing and citation rules for ${mode}`, () => {
         const text = buildResearchReportInstruction(mode, false);
         expect(text).toContain('APA 7');
-        expect(text).toContain('search topic');
         expect(text).toContain('## References');
         expect(text).toContain('(n.d.)');
         expect(text).toMatch(/blank line/i);
         expect(text).toContain('Never invent');
         expect(text).toContain('Gathered Evidence');
-        expect(text).toMatch(/Do NOT use sections named "Summary"/i);
-        expect(text).not.toMatch(/^2\. ## Executive Summary/m);
       });
     }
 
-    it('scales depth for search, deep, and max', () => {
+    it('lets a search-mode answer be as short as the question deserves', () => {
       const search = buildResearchReportInstruction('search', false);
+
+      expect(search).toContain('Answer the question directly');
+      expect(search).toMatch(/at the length the question deserves/i);
+      // No mandatory title, sections, Limitations, or References.
+      expect(search).not.toMatch(/REQUIRED STRUCTURE/);
+      expect(search).not.toMatch(/professional research report/);
+      expect(search).toMatch(/Include ## References only when you cited sources/);
+      expect(search).toMatch(/Include ## Limitations only when evidence was thin/);
+      expect(search).toMatch(/Never add it as a formality/);
+    });
+
+    it('keeps the full report contract for deep and max', () => {
       const deep = buildResearchReportInstruction('deep', false);
       const max = buildResearchReportInstruction('max', false);
 
-      expect(search).toContain('SEARCH mode');
-      expect(search).toContain('2–4 focused body sections');
+      for (const text of [deep, max]) {
+        expect(text).toContain('REQUIRED STRUCTURE');
+        expect(text).toContain('search topic');
+        expect(text).toContain('## Limitations');
+        expect(text).toMatch(/Do NOT use sections named "Summary"/i);
+      }
+
       expect(deep).toContain('DEEP research');
       expect(deep).toContain('thorough');
       expect(max).toContain('MAX research');
@@ -121,7 +147,7 @@ describe('agent-prompts', () => {
       expect(max).toContain('Unresolved Gaps');
     });
 
-    it('keeps medical clinical structure with APA References', () => {
+    it('keeps medical clinical structure with APA References in report modes', () => {
       const medical = buildResearchReportInstruction('deep', true);
       expect(medical).toContain('Epidemiology');
       expect(medical).toContain('pathophysiology');
@@ -130,10 +156,18 @@ describe('agent-prompts', () => {
       expect(medical).toContain('personal medical advice');
     });
 
+    it('adds only a medical caveat in search mode, not a clinical outline', () => {
+      const medical = buildResearchReportInstruction('search', true);
+      expect(medical).toContain('personal medical advice');
+      expect(medical).not.toContain('Epidemiology');
+    });
+
     it('buildResearchFinalAnswerContract matches non-medical instruction', () => {
-      expect(buildResearchFinalAnswerContract('deep')).toBe(
-        buildResearchReportInstruction('deep', false)
-      );
+      for (const mode of ['search', 'deep', 'max'] as const) {
+        expect(buildResearchFinalAnswerContract(mode)).toBe(
+          buildResearchReportInstruction(mode, false)
+        );
+      }
     });
   });
 });

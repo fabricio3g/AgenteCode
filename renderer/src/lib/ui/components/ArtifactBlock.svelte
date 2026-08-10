@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AgentArtifact, ArtifactKind } from '$lib/types/chat';
   import { Download, ExternalLink, FolderOpen } from 'lucide-svelte';
+  import { say } from '$lib/copy';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactFileBlob } from '$lib/utils/artifact-files';
   import ArtifactRenderer from './ArtifactRenderer.svelte';
@@ -40,7 +41,7 @@
         <span class="min-w-0">
           <span class="artifact-title">{artifact.title || 'Artifact'}</span>
           <span class="artifact-subtitle">
-            {kindLabels[resolved.manifest.kind]} · {resolved.visibleFiles.length} file{resolved.visibleFiles.length === 1 ? '' : 's'}
+            {kindLabels[resolved.manifest.kind]} · {say.files(resolved.visibleFiles.length)}
             {#if resolved.manifest.status !== 'ready'} · {resolved.manifest.status}{/if}
           </span>
         </span>
@@ -61,7 +62,8 @@
 {/if}
 
 <style>
-  .artifact-shell { width: min(100%, 42rem); margin-top: 0.75rem; }
+  .artifact-shell { width: var(--inline-block-width);
+    max-width: 100%; margin-top: 0.75rem; }
   .artifact-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.5rem; padding: 0.35rem 0.45rem 0.35rem 0.55rem; border-radius: var(--artifact-radius); background: var(--artifact-surface); box-shadow: var(--artifact-elev); }
   .artifact-heading { display: flex; min-width: 0; align-items: center; gap: 0.55rem; }
   .artifact-icon { display: inline-flex; width: 1.65rem; height: 1.65rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--artifact-surface-hover); color: var(--text-secondary); }

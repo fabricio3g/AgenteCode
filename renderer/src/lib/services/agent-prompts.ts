@@ -1,5 +1,35 @@
 import type { ToolDefinition } from '$lib/services/chat-api';
 
+/**
+ * Rules that apply identically to the native tool-calling and XML tool-calling
+ * prompts. They were previously typed out twice, word for word, in
+ * `getNativeSystemPrompt` and `getXmlSystemPrompt`, so a wording change to one
+ * silently left the other behind.
+ */
+const REPORT_IS_NOT_A_FILE =
+  'A report/informe by itself is an in-chat structured report, not a DOCX/PDF/file. Only create files when the user explicitly asks for docx, Word, PDF, Excel/XLSX, slides/PPTX, download, attachment, or a file.';
+
+const SYNTHESIZE_NOT_DUMP =
+  'For extensive research reports, do not dump raw search results. First synthesize evidence into themes, rank source authority, add tables where useful, and write a polished report with inline source references.';
+
+const MEDICAL_STRUCTURE =
+  'For medical reports, use a clinical-review structure: disclaimer, executive summary, definition, epidemiology, pathophysiology, clinical presentation, diagnosis, differential diagnosis, treatment, complications, prognosis, patient education, emerging evidence, limitations, and references.';
+
+const APA_CITATION_RULES =
+  'For reports, follow APA 7: clear headings, evidence-based synthesis, in-text citations where metadata allows, and a References section formatted as APA 7 web references. Do not invent missing authors or dates; use (n.d.) when no date is available.';
+
+const DATA_FIDELITY =
+  'CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Use the actual facts, numbers, and details from your search results.';
+
+/**
+ * Short pointer used at synthesis time, when the full contract is already in the
+ * system prompt. Restating the contract there — which six different call sites
+ * used to do — burned context and taught the model that repetition is the house
+ * style.
+ */
+export const FINAL_ANSWER_CONTRACT_REMINDER =
+  'Follow the final-answer format contract given in the system prompt.';
+
 function summarizeTools(toolDefs: ToolDefinition[]): string {
   return toolDefs
     .map((tool) => {
@@ -71,7 +101,7 @@ export function getNativeSystemPrompt(
     'Do not invent current facts. If search is thin or blocked, say what was verified and what remains uncertain.',
     'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.',
     '',
-    'FINAL ANSWER FORMAT (APA 7th edition — required for Search, Deep, and Max):',
+    'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
   ].join('\n') : isWorkspace ? [
     'You are an AI coding agent working on a real workspace folder. Use tools to read, write, and modify files, run shell commands, and complete the task.',
@@ -95,14 +125,14 @@ export function getNativeSystemPrompt(
     'When creating artifacts, keep them self-contained and deterministic. Do not use CDN scripts, remote assets, map tiles, or network-dependent rendering. Prefer native inline tools: create_chart, create_dashboard, create_diagram, create_map, create_info_card (weather/facts), create_html_card (small HTML snippets). create_info_card is optional: call it only with at least one concrete evidence-backed label/value row, and never let a widget block the final answer.',
     '',
     'Workflow: inspect context -> use the smallest useful tool set -> answer in chat with optional inline widgets -> create_work_product/create_document/create_spreadsheet/create_presentation/create_pdf/write_file only when the user explicitly asks for a file or concrete format -> preview_project when useful.',
-    'A report/informe by itself is an in-chat structured report, not a DOCX/PDF/file. Only create files when the user explicitly asks for docx, Word, PDF, Excel/XLSX, slides/PPTX, download, attachment, or a file.',
+    REPORT_IS_NOT_A_FILE,
     'When the user asks for multiple deliverables, slides, documents, spreadsheets, Excel workbooks, PDFs, or explicit file formats, prefer create_work_product so every file is generated from the same evidence-aware report schema.',
     'A professional work product must include an executive summary, structured sections, sources when search was used, and limitations for blocked/thin/partial evidence.',
-    'For extensive research reports, do not dump raw search results. First synthesize evidence into themes, rank source authority, add tables where useful, and write a polished report with inline source references.',
-    'For medical reports, use a clinical-review structure: disclaimer, executive summary, definition, epidemiology, pathophysiology, clinical presentation, diagnosis, differential diagnosis, treatment, complications, prognosis, patient education, emerging evidence, limitations, and references.',
-    'For reports, follow APA 7: clear headings, evidence-based synthesis, in-text citations where metadata allows, and a References section formatted as APA 7 web references. Do not invent missing authors or dates; use (n.d.) when no date is available.',
+    SYNTHESIZE_NOT_DUMP,
+    MEDICAL_STRUCTURE,
+    APA_CITATION_RULES,
     'When creating spreadsheets, include actual rows from tool/search evidence. If no rows exist, include a limitations/methodology sheet instead of inventing data.',
-    'CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Use the actual facts, numbers, and details from your search results.',
+    DATA_FIDELITY,
     'If a document/spreadsheet/presentation/PDF tool says content is too thin, do not finalize. Retry once with meaningful body content from gathered evidence, plus sources and limitations when evidence is partial.',
     'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.',
   ].join('\n');
@@ -140,7 +170,7 @@ export function getXmlSystemPrompt(
     '7. If evidence is incomplete, say what was found and what could not be verified.',
     '8. Prefer get_weather / convert_currency / get_quote for live chips; create_chart for plots; create_html_card for small HTML. Use export_research_package only for explicit citation/matrix file downloads.',
     '',
-    'FINAL ANSWER FORMAT (APA 7th edition — required for Search, Deep, and Max):',
+    'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
   ].join('\n') : [
     'You are an AI agent. Call tools using this XML format (one per response):',
@@ -157,11 +187,11 @@ export function getXmlSystemPrompt(
     '2. Never dump code or file content in chat. Use write_file, create_report, create_document, create_spreadsheet, create_presentation, or create_pdf tools only for explicit file/format requests.',
     '3. If a tool fails twice, stop retrying and use only evidence already gathered. Do not invent current facts.',
     '4. Chain tools logically: search → read → synthesize final answer, or create_work_product/create requested artifact only for explicit file/format requests. After web_search returns results, use them; do not loop on the same search.',
-    '5. CRITICAL: When creating spreadsheets, documents, reports, or presentations, you MUST populate them with data from your tool results and web searches. Never fabricate data or create unrelated content. Include limitations for blocked/thin evidence.',
-    '6. A report/informe by itself is an in-chat structured report, not a DOCX/PDF/file. Only create files when the user explicitly asks for docx, Word, PDF, Excel/XLSX, slides/PPTX, download, attachment, or a file.',
-    '7. For extensive research reports, synthesize evidence into themes, rank source authority, add useful tables, and write a polished report with inline source references instead of dumping raw results.',
-    '8. For medical reports, use a clinical-review structure: disclaimer, executive summary, definition, epidemiology, pathophysiology, clinical presentation, diagnosis, differential diagnosis, treatment, complications, prognosis, patient education, emerging evidence, limitations, and references.',
-    '9. For reports, follow APA 7: clear headings, evidence-based synthesis, in-text citations where metadata allows, and a References section formatted as APA 7 web references. Do not invent missing authors or dates; use (n.d.) when no date is available.',
+    `5. ${DATA_FIDELITY} Include limitations for blocked/thin evidence.`,
+    `6. ${REPORT_IS_NOT_A_FILE}`,
+    `7. ${SYNTHESIZE_NOT_DUMP}`,
+    `8. ${MEDICAL_STRUCTURE}`,
+    `9. ${APA_CITATION_RULES}`,
     '10. If a file creation tool rejects thin content, call the tool again once with real body sections, data rows, or slide bullets from gathered evidence before finalizing.',
     '11. For final answer, write plain text with NO tool_call tag.',
     isWorkspace
@@ -213,17 +243,70 @@ export function isMedicalResearchQuery(query: string): boolean {
 }
 
 /**
- * Shared APA 7 final-answer contract for Search / Deep / Max research modes.
- * Single source of truth for system prompts and forced synthesis.
+ * Rules about *how* to write, as opposed to *what shape* the answer takes.
+ * These apply in every research mode: spacing, citation format, and the
+ * prohibition on dumping raw search results are never boilerplate.
  */
-export function buildResearchFinalAnswerContract(mode: 'search' | 'deep' | 'max'): string {
-  return buildResearchReportInstruction(mode, false);
+const RESEARCH_WRITING_RULES = [
+  'READABLE SPACING (mandatory):',
+  '- Put one blank line before and after every heading (## / ###).',
+  '- Put one blank line between paragraphs. Never produce a single dense wall of text.',
+  '- Keep paragraphs readable (about 3–6 sentences).',
+  '- Use bullets only for true lists; prefer narrative paragraphs for analysis.',
+  '- Tables are allowed when they clarify comparisons or data; add a short caption line above the table.',
+  '',
+  'APA 7 IN-TEXT CITATIONS (when metadata exists in evidence):',
+  '- Narrative: Smith (2023) or Organization Name (2023).',
+  '- Parenthetical: (Smith, 2023). Multiple sources: (Smith, 2023; Lee, 2024).',
+  '- No individual author: use organization name, or short title in quotation marks, plus year.',
+  '- Missing date: use (n.d.). Never invent authors, years, titles, statistics, or URLs.',
+  '- When the evidence pack numbers sources, also use [1], [2] so claims map to the numbered index; combine with APA author–date when metadata allows.',
+  '',
+  'APA 7 REFERENCES (## References):',
+  '- Web page pattern when fields exist: Author, A. A. (Year, Month Day). Title of page. Site Name. https://…',
+  '- Missing date → (n.d.). Missing author → move title to the author position.',
+  '- Order alphabetically by author/title, or number entries to match [n] if using a numbered index.',
+  '- Include only sources actually used. Never invent missing bibliographic fields.',
+  '',
+  'QUALITY:',
+  '- Synthesize across sources into coherent themes; never list raw SERP titles or dump "Gathered Evidence".',
+  '- Clearly separate established facts from uncertain or single-source claims.',
+  '- Forbidden section titles: "Gathered Evidence", raw "Search Results" dumps.'
+];
+
+/**
+ * Search mode: answer the question that was asked.
+ *
+ * Search used to receive the same mandatory five-part report skeleton as Max —
+ * `# Title`, topical `##` sections, `## Limitations`, `## References` — so
+ * "what's the capital of Peru?" came back wearing a research report. Structure
+ * is now earned by the content rather than imposed on it. Deep and Max keep the
+ * full contract, because at those depths the reader asked for a report.
+ */
+function searchModeContract(medical: boolean): string[] {
+  return [
+    'Answer the question directly, at the length the question deserves. A narrow factual question gets a short, complete answer; a broad or contested one gets a fuller treatment.',
+    'Lead with the answer, not with preamble about what you searched for or how.',
+    '',
+    'STRUCTURE (earn it, do not impose it):',
+    '- Use ## headings only when the answer genuinely has distinct sections. A two-paragraph answer needs none.',
+    '- Add a # Title only when the answer is long enough to read as a document.',
+    '- Include ## References only when you cited sources. When you do, use the APA 7 rules below.',
+    '- Include ## Limitations only when evidence was thin, blocked, or conflicting — and say what specifically was missing. Never add it as a formality.',
+    '- Do not add an executive summary, an overview section, or a restatement of the question.',
+    '',
+    ...RESEARCH_WRITING_RULES,
+    ...(medical
+      ? [
+        '',
+        'This is a medical topic: note briefly that this is general information rather than personal medical advice, recommend specialist care where appropriate, and prefer guideline or peer-reviewed sources.'
+      ]
+      : [])
+  ];
 }
 
-export function buildResearchReportInstruction(
-  searchMode: 'search' | 'deep' | 'max',
-  medical: boolean
-): string {
+/** Deep and Max: the reader asked for a report, so the full contract applies. */
+function reportModeContract(searchMode: 'deep' | 'max', medical: boolean): string[] {
   const shared = [
     'Write the final answer as a full, well-detailed professional research report following APA 7th edition conventions — not a short summary, not notes, not a search-result dump, not a tool log.',
     'This report is for people who work with the topic (practitioners, analysts, researchers). Write complete, usable prose they can act on — not a condensed overview.',
@@ -235,31 +318,9 @@ export function buildResearchReportInstruction(
     '4. ## Limitations — what is thin, conflicting, or unverified.',
     '5. ## References — APA 7 web references (see below). Prefer this heading over "Sources".',
     '',
-    'READABLE SPACING (mandatory):',
-    '- Put one blank line before and after every heading (## / ###).',
-    '- Put one blank line between paragraphs. Never produce a single dense wall of text.',
-    '- Keep paragraphs readable (about 3–6 sentences) but develop ideas fully across multiple paragraphs when the evidence supports it.',
-    '- Use bullets only for true lists; prefer narrative paragraphs for analysis.',
-    '- Tables are allowed when they clarify comparisons or data; add a short caption line above the table.',
-    '',
-    'APA 7 IN-TEXT CITATIONS (when metadata exists in evidence):',
-    '- Narrative: Smith (2023) or Organization Name (2023).',
-    '- Parenthetical: (Smith, 2023). Multiple sources: (Smith, 2023; Lee, 2024).',
-    '- No individual author: use organization name, or short title in quotation marks, plus year.',
-    '- Missing date: use (n.d.). Never invent authors, years, titles, statistics, or URLs.',
-    '- When the evidence pack numbers sources, also use [1], [2] so claims map to the numbered index; combine with APA author–date when metadata allows.',
-    '',
-    'APA 7 REFERENCES (## References):',
-    '- Web page pattern when fields exist: Author, A. A. (Year, Month Day). Title of page. Site Name. https://…',
-    '- Missing date → (n.d.). Missing author → move title to the author position.',
-    '- Order alphabetically by author/title, or number entries to match [n] if using a numbered index.',
-    '- Include only sources actually used. Never invent missing bibliographic fields.',
-    '',
-    'QUALITY:',
-    '- Synthesize across sources into coherent themes; never list raw SERP titles or dump "Gathered Evidence".',
-    '- Clearly separate established facts from uncertain or single-source claims.',
+    ...RESEARCH_WRITING_RULES,
     '- Formal, objective tone for professional readers — complete explanation, not a briefing memo.',
-    '- Forbidden section titles: "Summary", "Executive Summary", "Gathered Evidence", raw "Search Results" dumps.'
+    '- Also forbidden as section titles here: "Summary", "Executive Summary".'
   ];
 
   const depth =
@@ -272,20 +333,13 @@ export function buildResearchReportInstruction(
         'Where evidence conflicts, present each position with citations and explain which is better supported.',
         'Develop each major theme fully with multi-paragraph analysis when evidence supports it.'
       ]
-      : searchMode === 'deep'
-        ? [
-          '',
-          'This is DEEP research: thorough, practical, and written for people who will use the findings in their work.',
-          'Develop Background, Key Findings, and Detailed Analysis (or domain-equivalent sections) with full depth — not bullet digests.',
-          'Add concise evidence-quality notes where claims rest on weak or single-source evidence.',
-          'Include practical implications or recommendations before Limitations when the topic supports action.'
-        ]
-        : [
-          '',
-          'This is SEARCH mode: a focused APA-style professional brief — shorter than Deep/Max, but still a real write-up, not a summary.',
-          'After the topic title, use 2–4 focused body sections, then brief Limitations and References.',
-          'Still use blank lines between blocks and full APA citation rules.'
-        ];
+      : [
+        '',
+        'This is DEEP research: thorough, practical, and written for people who will use the findings in their work.',
+        'Develop Background, Key Findings, and Detailed Analysis (or domain-equivalent sections) with full depth — not bullet digests.',
+        'Add concise evidence-quality notes where claims rest on weak or single-source evidence.',
+        'Include practical implications or recommendations before Limitations when the topic supports action.'
+      ];
 
   const domain = medical
     ? [
@@ -303,5 +357,24 @@ export function buildResearchReportInstruction(
       'The # title must reflect the user\'s search topic.'
     ];
 
-  return [...shared, ...depth, ...domain].join('\n');
+  return [...shared, ...depth, ...domain];
+}
+
+/**
+ * The final-answer format contract. This is the only place it is expressed —
+ * emit `FINAL_ANSWER_CONTRACT_REMINDER` instead of restating it downstream.
+ */
+export function buildResearchFinalAnswerContract(mode: 'search' | 'deep' | 'max'): string {
+  return buildResearchReportInstruction(mode, false);
+}
+
+export function buildResearchReportInstruction(
+  searchMode: 'search' | 'deep' | 'max',
+  medical: boolean
+): string {
+  const lines =
+    searchMode === 'search'
+      ? searchModeContract(medical)
+      : reportModeContract(searchMode, medical);
+  return lines.join('\n');
 }

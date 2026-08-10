@@ -1,109 +1,154 @@
 <svelte:options runes={true} />
 
+<!--
+  The composer shell: input, drop target, and the pieces that hang off it.
+
+  Speech recognition, drag-and-drop, and OCR progress live in
+  `composer/use-dictation.svelte.ts` and `composer/use-attachments.svelte.ts`;
+  the mode selectors and send button live in `composer/ComposerToolbar.svelte`.
+  What remains here is the textarea and how a message gets submitted.
+-->
+
 <script lang="ts">
-  import { Paperclip, Search, Square, ArrowUp, X, Globe, Database, LoaderCircle, ArrowRight, Mic } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
+  import { Paperclip } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { modelsStore } from '$lib/stores/models.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { isTauri } from '$lib/services/tauri';
-  import { sttTranscribe } from '$lib/services/stt';
-  import { toastStore } from '$lib/stores/toast.svelte';
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { t } from 'svelte-i18n';
+  import { copy, say } from '$lib/copy';
 
-import ModeSelector from './composer/ModeSelector.svelte';
-  import SearchModeSelector from './composer/SearchModeSelector.svelte';
-  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
-  import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import AttachmentCards from './composer/AttachmentCards.svelte';
-  import ContextUsageRing from './composer/ContextUsageRing.svelte';
+  import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
+  import ComposerToolbar from './composer/ComposerToolbar.svelte';
+  import SelectedTextCard from './composer/SelectedTextCard.svelte';
+  import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
+  import { ComposerAttachments } from './composer/use-attachments.svelte';
+  import { Dictation } from './composer/use-dictation.svelte';
 
-  type RecognitionCtor = new () => {
-    continuous: boolean;
-    interimResults: boolean;
-    lang: string;
-    onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; isFinal: boolean }>> }) => void) | null;
-    onerror: ((event: { error: string }) => void) | null;
-    onend: (() => void) | null;
-    start: () => void;
-    stop: () => void;
-  };
+  /** Textarea grows with content up to this height, then scrolls. */
+  const MAX_TEXTAREA_PX = 220;
+  /** Composers narrower than this switch the toolbar to its compact layout. */
+  const COMPACT_WIDTH_PX = 640;
+  /** How long an error placeholder stays before reverting. */
+  const ERROR_PLACEHOLDER_MS = 12_000;
+  /** Debounce before recomputing the context-budget preview. */
+  const BUDGET_DEBOUNCE_MS = 140;
+  /** Pause before re-arming the mic in hands-free voice mode. */
+  const VOICE_REARM_MS = 600;
 
-  let textarea: HTMLTextAreaElement | undefined;
+  const dictation = new Dictation();
+  const attachments = new ComposerAttachments();
+
+  // Must be reactive: the auto-grow effect below bails out while this is still
+  // undefined, so a plain `let` meant it ran once during mount and never again,
+  // leaving the input stuck at whatever height was last written to it.
+  let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let fileInput: HTMLInputElement | undefined;
-  let isListening = $state(false);
-  let recognition: InstanceType<RecognitionCtor> | null = null;
-  let dragOver = $state(false);
-  let windowDragActive = $state(false);
-  let interimTranscript = $state('');
-  let ocrProgress = $state<{ phase: 'rendering' | 'recognizing' | 'done'; page: number; total: number } | null>(null);
-  let ocrProgressHideTimer: ReturnType<typeof setTimeout> | null = null;
-  let voicePulse = $state(0);
-  let pulseInterval: ReturnType<typeof setInterval> | null = null;
   let composerWidth = $state(0);
-  let contextBudgetTimer: ReturnType<typeof setTimeout> | null = null;
-  let selectedTextInsert = $state('');
-  let selectedTextCardText = $state('');
-  let selectedTextSourceMessageId = $state('');
-  let selectedTextExpanded = $state(false);
-
-  // Rotating placeholder with typewriter + shimmer
-  let placeholderIndex = $state(0);
   let showErrorPlaceholder = $state(false);
   let errorPlaceholderTimer: ReturnType<typeof setTimeout> | null = null;
-  let textareaFocused = $state(false);
-  const placeholders = $derived(($t('chat.placeholders') as string || '').split('|').filter(Boolean));
-  const errorPlaceholderText = $derived($t('chat.errorPlaceholder') as string || 'Something went wrong. Try again.');
-  const currentPlaceholder = $derived(
+  let budgetTimer: ReturnType<typeof setTimeout> | null = null;
+  let quotedText = $state('');
+  let quotedSourceMessageId = $state('');
+  let destroyed = false;
+
+  const generating = $derived(appStore.currentChatGenerating);
+  const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
+  const compact = $derived(composerWidth > 0 && composerWidth < COMPACT_WIDTH_PX);
+  const voiceMode = $derived(appStore.voiceModeActive);
+
+  /**
+   * A single stable placeholder. This used to be a rotating list of twenty
+   * suggestions typed out character by character with a shimmer gradient, which
+   * competed for attention with the hint below the composer and never sat still
+   * long enough to read.
+   */
+  const placeholder = $derived(
     showErrorPlaceholder
-      ? errorPlaceholderText
-      : appStore.currentChatGenerating && appStore.composerMode === 'agent'
-        ? 'Agent working…'
-        : (placeholders[placeholderIndex] || 'Message...')
+      ? copy.composer.errorPlaceholder
+      : generating && appStore.composerMode === 'agent'
+        ? say.inProgress('Agent working')
+        : copy.composer.placeholder
   );
 
-  const isHomescreen = $derived(!appStore.currentChat?.messages?.length);
-  const staticPlaceholderText = $derived(
-    showErrorPlaceholder
-      ? errorPlaceholderText
-      : appStore.currentChatGenerating && appStore.composerMode === 'agent'
-        ? 'Agent working…'
-        : 'Ask me anything…'
+  // Mirrors the guards inside sendCurrentMessage so the button reflects reality.
+  const backendReady = $derived(
+    appStore.backendMode === 'local'
+      ? !!(appStore.selectedLocalModelPath && appStore.localModelActive)
+      : !!(
+          (appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key) &&
+          appStore.activeProvider?.model
+        )
   );
+  const sendDisabled = $derived(!generating && (!backendReady || localBusyElsewhere));
 
-  const placeholderVisible = $derived(!appStore.composer.trim() && !textareaFocused);
-  const showAnimatedPlaceholder = $derived(placeholderVisible && isHomescreen);
-  const showStaticPlaceholder = $derived(placeholderVisible && !isHomescreen);
+  /**
+   * Size the input to its content.
+   *
+   * Measured against the *empty* height rather than trusting `scrollHeight`
+   * outright: when this runs before layout has settled — which it does on
+   * mount — `scrollHeight` can come back far too large, and the old version
+   * would clamp that to MAX_TEXTAREA_PX and leave an empty composer stuck at
+   * full height until the next keystroke.
+   */
+  function autoGrow(element: HTMLTextAreaElement) {
+    element.style.height = 'auto';
+    const measured = element.scrollHeight;
+    const next = element.value ? Math.min(measured, MAX_TEXTAREA_PX) : 0;
+    // `0` falls through to the CSS min-height, which is the true empty size.
+    element.style.height = next ? `${next}px` : '';
+  }
 
-  // Typewriter animation state
-  let typedText = $state('');
-  let typingTimer: ReturnType<typeof setTimeout> | null = null;
-  let pauseTimer: ReturnType<typeof setTimeout> | null = null;
-  const TYPING_SPEED_MS = 30;
-  const PLACEHOLDER_DISPLAY_MS = 3500;
+  function focusComposer(moveCursorToEnd = true) {
+    if (!textarea) return;
+    textarea.focus();
+    if (moveCursorToEnd) textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
 
-  function typePlaceholder(text: string) {
-    if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; }
-    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
-    typedText = '';
-    let i = 0;
+  function clearQuote() {
+    quotedText = '';
+    quotedSourceMessageId = '';
+  }
 
-    function step() {
-      if (i < text.length) {
-        typedText = text.slice(0, i + 1);
-        i++;
-        typingTimer = setTimeout(step, TYPING_SPEED_MS);
-      } else {
-        // Done typing — schedule next rotation if still relevant
-        const current = untrack(() => currentPlaceholder);
-        if (current === text && placeholders.length > 1 && !showErrorPlaceholder && !appStore.currentChatGenerating) {
-          pauseTimer = setTimeout(() => {
-            placeholderIndex = (placeholderIndex + 1) % placeholders.length;
-          }, PLACEHOLDER_DISPLAY_MS);
-        }
-      }
+  async function submit() {
+    attachments.clearOcr();
+
+    if (localBusyElsewhere) {
+      toastStore.info('Local model is busy in another chat.', 2400);
+      return;
     }
-    step();
+
+    // A quoted selection is folded into the message as a blockquote, preceded by
+    // a marker naming the message it came from. `UserMessage` parses that marker
+    // to render the quote as a jump-back affordance — the marker was never
+    // actually emitted before, so the jump target was always empty.
+    if (quotedText.trim() && appStore.composer.trim()) {
+      const quote = quotedText
+        .trim()
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+      const marker = quotedSourceMessageId
+        ? `<!-- chatealm-selected-source:${quotedSourceMessageId} -->\n`
+        : '';
+      appStore.updateComposer(`${marker}${quote}\n\n${appStore.composer.trim()}`);
+      clearQuote();
+    }
+
+    await appStore.sendCurrentMessage();
+  }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    void submit();
+  }
+
+  function onInput(event: Event) {
+    const element = event.currentTarget as HTMLTextAreaElement;
+    appStore.updateComposer(element.value);
+    autoGrow(element);
   }
 
   function clearErrorPlaceholder() {
@@ -114,684 +159,104 @@ import ModeSelector from './composer/ModeSelector.svelte';
     }
   }
 
-  // Whisper API recording state (fallback when Web Speech API unavailable)
-  let whisperRecorder: MediaRecorder | null = null;
-  let whisperChunks: BlobPart[] = [];
-  let isWhisperListening = $state(false);
-
-  // ── Audio analyser for voice waveform (drives VoiceModeOverlay dots) ──
-  const VOICE_WAVE_HEIGHTS = [28, 36, 46, 34, 26, 38, 52, 58, 44, 32, 26, 37, 49, 35, 28];
-  const VOICE_BAR_WEIGHTS = VOICE_WAVE_HEIGHTS.map(h => h / 58);
-  let audioLevels = $state<number[]>(Array(15).fill(0));
-  let _audioLevel = 0; // raw RMS
-  let _analyserNode: AnalyserNode | null = null;
-  let _analyserRaf: number | null = null;
-  let _micStream: MediaStream | null = null;
-  let _audioCtx: AudioContext | null = null;
-
-  function _startAnalyser(stream: MediaStream) {
-    try {
-      _audioCtx = new AudioContext();
-      const source = _audioCtx.createMediaStreamSource(stream);
-      _analyserNode = _audioCtx.createAnalyser();
-      _analyserNode.fftSize = 256;
-      _analyserNode.smoothingTimeConstant = 0.6;
-      source.connect(_analyserNode);
-      const buf = new Uint8Array(_analyserNode.frequencyBinCount);
-
-      const tick = () => {
-        if (!_analyserNode) return;
-        _analyserNode.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) {
-          const v = (buf[i] - 128) / 128;
-          sum += v * v;
-        }
-        const rms = Math.sqrt(sum / buf.length);
-        _audioLevel = Math.min(1, _audioLevel * 0.75 + rms * 4);
-        const now = Date.now() / 1000;
-        audioLevels = VOICE_BAR_WEIGHTS.map((w, i) => {
-          const idle = 0.12 + Math.sin(now * 1.8 + i * 0.7) * 0.06;
-          const driven = _audioLevel * w;
-          return Math.max(idle, driven);
-        });
-        _analyserRaf = requestAnimationFrame(tick);
-      };
-      _analyserRaf = requestAnimationFrame(tick);
-    } catch {
-      // Web Audio not available
-    }
-  }
-
-  function _stopAnalyser() {
-    if (_analyserRaf !== null) { cancelAnimationFrame(_analyserRaf); _analyserRaf = null; }
-    if (_analyserNode) { _analyserNode.disconnect(); _analyserNode = null; }
-    if (_audioCtx) { _audioCtx.close().catch(() => {}); _audioCtx = null; }
-    if (_micStream) { _micStream.getTracks().forEach(t => t.stop()); _micStream = null; }
-    _audioLevel = 0;
-    audioLevels = Array(15).fill(0);
-  }
-
-  const hasSpeechRecognition = $derived.by(() => {
-    // In Electron, force local Whisper path and avoid browser Web Speech API
-    // (which can trigger Chromium network uploads and related chunked errors).
-    if (isTauri()) return false;
-    if (typeof window === 'undefined') return false;
-    const w = window as Window & { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
-    return !!(w.SpeechRecognition || w.webkitSpeechRecognition);
-  });
-
-  const hasMediaRecorderSupport = $derived(
-    typeof navigator !== 'undefined' &&
-    !!navigator.mediaDevices?.getUserMedia &&
-    typeof MediaRecorder !== 'undefined'
-  );
-
-  // Can use mic: either Web Speech API or Whisper (when running in Electron)
-  const hasMicSupport = $derived(hasSpeechRecognition || (isTauri() && hasMediaRecorderSupport));
-  const activelyListening = $derived(isListening || isWhisperListening);
-  const micUiActive = $derived(activelyListening || interimTranscript.includes('Requesting microphone'));
-
-  const voiceMode = $derived(appStore.voiceModeActive);
-  const currentChatGenerating = $derived(appStore.currentChatGenerating);
-  const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
-  const composerBusy = $derived(currentChatGenerating || localBusyElsewhere || appStore.workspaceIndexing);
-  const compactComposer = $derived(composerWidth > 0 && composerWidth < 640);
-  const contextBudget = $derived(appStore.contextBudget);
-  const showContextUsage = $derived(contextBudget !== null);
-
-  const PROVIDER_LABELS: Record<string, string> = {
-    openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic',
-    groq: 'Groq', mistral: 'Mistral', together: 'Together AI',
-    deepseek: 'DeepSeek', cohere: 'Cohere', perplexity: 'Perplexity',
-    lmstudio: 'LM Studio', ollama: 'Ollama', custom: 'Custom'
-  };
-
-  const activeModel = $derived(modelsStore.status?.active_model);
-  const runtimeState = $derived(String(modelsStore.status?.state || ''));
-  const isModelLoading = $derived(runtimeState === 'starting' || runtimeState === 'loading_model');
-  const apiProviderLabel = $derived(
-    appStore.backendMode === 'api'
-      ? (PROVIDER_LABELS[appStore.activeProviderName] || appStore.activeProviderName)
-      : null
-  );
-  const hasApiKey = $derived(!!appStore.activeProvider?.has_api_key || !!appStore.activeProvider?.api_key);
-  const modelDisplayName = $derived(
-    activeModel
-      ? activeModel.split(/[\\/]/).pop()?.replace(/\.gguf$/i, '') ?? activeModel
-      : ''
-  );
-
-  // True when the backend is ready to accept messages (mirrors guards in sendCurrentMessage)
-  const backendReady = $derived(
-    appStore.backendMode === 'local'
-      ? !!(appStore.selectedLocalModelPath && appStore.localModelActive)
-      : !!((appStore.activeProvider?.has_api_key || appStore.activeProvider?.api_key) && appStore.activeProvider?.model)
-  );
-  const sendDisabled = $derived(!currentChatGenerating && (!backendReady || localBusyElsewhere));
-
-  function openModelHub(section?: string) {
-    if (section) appStore.modelManagerOpenSection = section;
-    appStore.modelManagerOpen = true;
-  }
-
-  async function submit() {
-    clearOcrProgress();
-    if (localBusyElsewhere) {
-      toastStore.info('Local model is busy in another chat.', 2400);
-      return;
-    }
-
-    if (selectedTextCardText.trim() && appStore.composer.trim()) {
-      const userQuestion = appStore.composer.trim();
-      const quotedSelection = selectedTextCardText
-        .trim()
-        .split('\n')
-        .map((line) => `> ${line}`)
-        .join('\n');
-      appStore.updateComposer(`${quotedSelection}\n\n${userQuestion}`);
-      selectedTextInsert = '';
-      selectedTextCardText = '';
-      selectedTextSourceMessageId = '';
-      selectedTextExpanded = false;
-      await appStore.sendCurrentMessage();
-      return;
-    }
-
-    await appStore.sendCurrentMessage();
-  }
-
-  async function onFilesSelected(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const files = Array.from(input.files || []);
-    if (!files.length) return;
-    clearOcrProgress();
-    await appStore.addFiles(files);
-    input.value = '';
-  }
-
-  function onKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      submit();
-    }
-  }
-
-  function onInput(event: Event) {
-    const el = event.currentTarget as HTMLTextAreaElement;
-    appStore.updateComposer(el.value);
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-  }
-
-  function focusComposer(moveCursorToEnd = true) {
-    if (!textarea) return;
-    textarea.focus();
-    if (moveCursorToEnd) {
-      const length = textarea.value.length;
-      textarea.setSelectionRange(length, length);
-    }
-  }
-
-  function handleAskSelectedText(event: Event) {
-    const detail = (event as CustomEvent<{ text?: string; sourceMessageId?: string }>).detail;
-    const text = (detail?.text || '').trim();
-    if (!text) return;
-
-    selectedTextInsert = text;
-    selectedTextCardText = text;
-    selectedTextSourceMessageId = detail?.sourceMessageId || '';
-    selectedTextExpanded = false;
-    requestAnimationFrame(() => focusComposer());
-  }
-
-  function discardSelectedTextInsert() {
-    if (!selectedTextInsert) return;
-    selectedTextInsert = '';
-    selectedTextCardText = '';
-    selectedTextSourceMessageId = '';
-    selectedTextExpanded = false;
-    requestAnimationFrame(() => focusComposer());
-  }
-
-  function handleFocusComposer() {
-    focusComposer();
-  }
-
-  function getRecognitionCtor(): RecognitionCtor | null {
-    const w = window as Window & { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
-    return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-  }
-
-  function startListening(autoSend = false) {
-    if (isTauri()) {
-      void toggleWhisperRecording(autoSend);
-      return;
-    }
-
-    const Ctor = getRecognitionCtor();
-    if (!Ctor) return;
-
-    if (isListening) {
-      if (recognition) recognition.stop();
-      return;
-    }
-
-    ttsStore.stop();
-
-    if (recognition) {
-      try { recognition.stop(); } catch { /* noop */ }
-      recognition = null;
-    }
-
-    // Prime the preferred mic device before starting speech recognition.
-    // Chrome uses the last-activated audio stream's device for SpeechRecognition.
-    const preferredMicId = appStore.config.stt?.audio_input_device_id;
-    const audioConstraints: MediaStreamConstraints = preferredMicId
-      ? { audio: { deviceId: { exact: preferredMicId } } }
-      : { audio: true };
-
-    void navigator.mediaDevices.getUserMedia(audioConstraints)
-      .then(s => {
-        // Keep stream alive for audio analyser visualization
-        _micStream = s;
-        _startAnalyser(s);
-      })
-      .catch(() => { /* permission denied or device unavailable — proceed anyway */ })
-      .finally(() => {
-        recognition = new Ctor!();
-        recognition!.continuous = false;
-        recognition!.interimResults = true;
-        recognition!.lang = navigator.language || 'en-US';
-        isListening = true;
-        interimTranscript = '';
-        startPulse();
-        _attachRecognitionHandlers(autoSend);
-        try { recognition!.start(); } catch { /* already started */ }
-      });
-    return; // handlers attached in finally block
-  }
-
-  function _attachRecognitionHandlers(autoSend = false) {
-    if (!recognition) return;
-
-    recognition.onresult = (event) => {
-      let final = '';
-      let interim = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result[0]) {
-          if ((result as unknown as { isFinal: boolean }).isFinal) {
-            final += result[0].transcript;
-          } else {
-            interim += result[0].transcript;
-          }
-        }
-      }
-      interimTranscript = interim;
-      if (final.trim()) {
-        const current = appStore.composer.trim();
-        const newText = current ? current + ' ' + final.trim() : final.trim();
-        appStore.updateComposer(newText);
-      }
-    };
-
-    recognition.onerror = () => {
-      isListening = false;
-      interimTranscript = '';
-      stopPulse();
-      _stopAnalyser();
-    };
-
-    recognition.onend = () => {
-      isListening = false;
-      interimTranscript = '';
-      stopPulse();
-      _stopAnalyser();
-
-      if (autoSend && appStore.composer.trim() && !appStore.currentChatGenerating && !appStore.currentChatBlockedByOtherLocalRun) {
-        void appStore.sendCurrentMessage();
-      }
-    };
-  }
-
-  function microphoneAccessMessage(err: unknown): string {
-    const name = err instanceof DOMException ? err.name : '';
-    const platform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
-    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-      if (platform === 'win32') {
-        return 'Microphone permission is blocked. Enable Windows Settings → Privacy & security → Microphone → Microphone access and Let desktop apps access your microphone.';
-      }
-      if (platform === 'darwin') {
-        return 'Microphone permission is blocked. Enable System Settings → Privacy & Security → Microphone for Electron/Terminal, then restart the app.';
-      }
-      return 'Microphone permission is blocked. Please allow microphone access and try again.';
-    }
-    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-      return 'No microphone was found. Connect a microphone and try again.';
-    }
-    if (name === 'NotReadableError' || name === 'TrackStartError') {
-      return 'Microphone is already in use by another app.';
-    }
-    return err instanceof Error ? err.message : 'Unable to access microphone.';
-  }
-
-  function toggleSpeech() {
-    if (!hasMicSupport) {
-      toastStore.error('Microphone recording is not available in this environment.');
-      return;
-    }
-    if (isTauri()) {
-      void toggleWhisperRecording(false);
-    } else if (hasSpeechRecognition) {
-      startListening(false);
-    }
-  }
-
-  async function toggleWhisperRecording(autoSend = false) {
-    if (isWhisperListening) {
-      // Stop recording and transcribe
-      if (whisperRecorder && whisperRecorder.state !== 'inactive') {
-        whisperRecorder.stop();
-      }
-      _stopAnalyser();
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      toastStore.error('Microphone recording is not available in this environment.');
-      return;
-    }
-
-    ttsStore.stop();
-    interimTranscript = 'Requesting microphone access…';
-    startPulse();
-    whisperChunks = [];
-
-    const preferredMicId = appStore.config.stt?.audio_input_device_id;
-    const constraints: MediaStreamConstraints = preferredMicId
-      ? { audio: { deviceId: { exact: preferredMicId } } }
-      : { audio: true };
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      isWhisperListening = true;
-      interimTranscript = '🎤 Recording…';
-      // Start audio analyser for waveform visualization
-      _micStream = stream;
-      _startAnalyser(stream);
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      whisperRecorder = new MediaRecorder(stream, { mimeType });
-      const recordingStartedAt = Date.now();
-
-      whisperRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) whisperChunks.push(e.data);
-      };
-
-      whisperRecorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        isWhisperListening = false;
-        interimTranscript = '⏳ Transcribing…';
-        stopPulse();
-        _stopAnalyser();
-
-        try {
-          const blob = new Blob(whisperChunks, { type: mimeType });
-          const elapsedMs = Date.now() - recordingStartedAt;
-          if (!blob.size || elapsedMs < 250) {
-            interimTranscript = '';
-            toastStore.warning('Recording too short. Please speak a bit longer.');
-            return;
-          }
-          const arrayBuf = await blob.arrayBuffer();
-          const audioBytes = new Uint8Array(arrayBuf);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const result = await sttTranscribe(audioBytes as any, mimeType.split(';')[0]);
-          interimTranscript = '';
-
-          if (result.text?.trim()) {
-            const current = appStore.composer.trim();
-            appStore.updateComposer(current ? current + ' ' + result.text.trim() : result.text.trim());
-            if (autoSend && !appStore.currentChatGenerating && !appStore.currentChatBlockedByOtherLocalRun) {
-              void appStore.sendCurrentMessage();
-            }
-          } else {
-            toastStore.info('No speech detected. Try speaking closer to the microphone.');
-          }
-        } catch (err) {
-          interimTranscript = '';
-          const message = err instanceof Error ? err.message : 'Transcription failed. Please try again.';
-          toastStore.error(message);
-        }
-      };
-
-      whisperRecorder.onerror = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        isWhisperListening = false;
-        interimTranscript = '';
-        stopPulse();
-        _stopAnalyser();
-        toastStore.error('Microphone recording failed. Please check device permissions.');
-      };
-
-      whisperRecorder.start(200);
-
-      // Auto-stop after 30s to keep STT payload small
-      setTimeout(() => {
-        if (whisperRecorder && whisperRecorder.state !== 'inactive') whisperRecorder.stop();
-      }, 30_000);
-    } catch (err) {
-      isWhisperListening = false;
-      interimTranscript = '';
-      stopPulse();
-      _stopAnalyser();
-      toastStore.error(microphoneAccessMessage(err));
-    }
-  }
-
-  function toggleVoiceMode() {
-    if (voiceMode) {
-      exitVoiceMode();
-    } else {
-      enterVoiceMode();
-    }
-  }
-
-  let destroyed = false;
+  // ── Hands-free voice mode ─────────────────────────────────────────────────
 
   function enterVoiceMode() {
     appStore.voiceModeActive = true;
-
     ttsStore.onPlaybackEnd = () => {
-      if (destroyed) return;
-      if (appStore.voiceModeActive && !appStore.currentChatGenerating) {
-        setTimeout(() => {
-          if (destroyed || !appStore.voiceModeActive) return;
-          if (isTauri()) {
-            void toggleWhisperRecording(true);
-          } else {
-            startListening(true);
-          }
-        }, 400);
-      }
+      if (destroyed || !appStore.voiceModeActive || appStore.currentChatGenerating) return;
+      setTimeout(() => {
+        if (destroyed || !appStore.voiceModeActive) return;
+        dictation.toggle(true);
+      }, 400);
     };
-
-    if (isTauri()) {
-      void toggleWhisperRecording(true);
-    } else {
-      startListening(true);
-    }
+    dictation.toggle(true);
   }
 
   function exitVoiceMode() {
     appStore.voiceModeActive = false;
     ttsStore.onPlaybackEnd = null;
     ttsStore.stop();
-
-    if (isListening && recognition) {
-      recognition.stop();
-    }
-    if (isWhisperListening && whisperRecorder && whisperRecorder.state !== 'inactive') {
-      whisperRecorder.stop();
-    }
-    isListening = false;
-    isWhisperListening = false;
-    interimTranscript = '';
-    stopPulse();
-    _stopAnalyser();
+    dictation.stop();
   }
 
+  // Re-arm the mic when a turn finishes and TTS isn't going to speak the reply.
   $effect(() => {
-    if (!voiceMode || appStore.currentChatGenerating || ttsStore.playing || isListening || isWhisperListening) return;
-    const ttsEnabled = appStore.config.tts?.enable_voice_output && appStore.config.tts?.auto_play_voice;
-    if (ttsEnabled) return;
+    if (!voiceMode || appStore.currentChatGenerating || ttsStore.playing || dictation.listening) {
+      return;
+    }
+    const ttsWillSpeak =
+      appStore.config.tts?.enable_voice_output && appStore.config.tts?.auto_play_voice;
+    if (ttsWillSpeak) return;
 
     const timer = setTimeout(() => {
-      if (appStore.voiceModeActive && !appStore.currentChatGenerating && !ttsStore.playing && !isListening && !isWhisperListening) {
-        if (isTauri()) {
-          void toggleWhisperRecording(true);
-        } else if (hasSpeechRecognition) {
-          startListening(true);
-        }
+      if (
+        appStore.voiceModeActive &&
+        !appStore.currentChatGenerating &&
+        !ttsStore.playing &&
+        !dictation.listening
+      ) {
+        dictation.toggle(true);
       }
-    }, 600);
+    }, VOICE_REARM_MS);
     return () => clearTimeout(timer);
   });
 
-  function startPulse() {
-    stopPulse();
-    pulseInterval = setInterval(() => {
-      voicePulse = Math.sin(Date.now() / 200) * 0.5 + 0.5;
-    }, 50);
+  // ── Window events ─────────────────────────────────────────────────────────
+
+  function handleAskSelectedText(event: Event) {
+    const detail = (event as CustomEvent<{ text?: string; sourceMessageId?: string }>).detail;
+    const text = (detail?.text || '').trim();
+    if (!text) return;
+    quotedText = text;
+    quotedSourceMessageId = detail?.sourceMessageId || '';
+    requestAnimationFrame(() => focusComposer());
   }
 
-  function stopPulse() {
-    if (pulseInterval) {
-      clearInterval(pulseInterval);
-      pulseInterval = null;
-    }
-    voicePulse = 0;
-  }
+  $effect(() => attachments.listen());
+
+  $effect(() => {
+    const onFocusComposer = () => focusComposer();
+    window.addEventListener('ask-selected-text', handleAskSelectedText as EventListener);
+    window.addEventListener('focus-composer', onFocusComposer);
+    return () => {
+      window.removeEventListener('ask-selected-text', handleAskSelectedText as EventListener);
+      window.removeEventListener('focus-composer', onFocusComposer);
+    };
+  });
+
+  // ── Reactive housekeeping ─────────────────────────────────────────────────
 
   $effect(() => {
     if (!textarea) return;
     void appStore.composer;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
-  });
-
-  function handleDrop(event: DragEvent) {
-    event.preventDefault();
-    dragOver = false;
-    const files = Array.from(event.dataTransfer?.files || []);
-    if (files.length > 0) {
-      void appStore.addFiles(files);
-    }
-  }
-
-  function handleDragOver(event: DragEvent) {
-    event.preventDefault();
-    dragOver = true;
-  }
-
-  function handleDragLeave(event: DragEvent) {
-    const related = event.relatedTarget as Node | null;
-    const container = (event.currentTarget as HTMLElement);
-    if (!related || !container.contains(related)) dragOver = false;
-  }
-
-  function clearOcrProgress() {
-    if (ocrProgressHideTimer) {
-      clearTimeout(ocrProgressHideTimer);
-      ocrProgressHideTimer = null;
-    }
-    ocrProgress = null;
-  }
-
-  function onOcrProgress(event: Event) {
-    const customEvent = event as CustomEvent<{ page?: number; total?: number; phase?: 'rendering' | 'recognizing' | 'done' }>;
-    const detail = customEvent.detail;
-    if (!detail) return;
-
-    if (ocrProgressHideTimer) {
-      clearTimeout(ocrProgressHideTimer);
-      ocrProgressHideTimer = null;
-    }
-
-    const phase = detail.phase || 'recognizing';
-    const page = Number.isFinite(detail.page) ? Number(detail.page) : 0;
-    const total = Number.isFinite(detail.total) ? Number(detail.total) : 0;
-
-    if (phase === 'done') {
-      ocrProgress = { phase, page, total };
-      ocrProgressHideTimer = setTimeout(() => {
-        ocrProgress = null;
-        ocrProgressHideTimer = null;
-      }, 900);
-      return;
-    }
-
-    ocrProgress = { phase, page, total };
-  }
-
-  const ocrProgressLabel = $derived.by(() => {
-    if (!ocrProgress) return '';
-    const page = Math.max(0, ocrProgress.page || 0);
-    const total = Math.max(0, ocrProgress.total || 0);
-    const progressText = total > 0 ? `${Math.min(page, total)}/${total}` : '…';
-
-    if (ocrProgress.phase === 'rendering') return `Reading document ${progressText}`;
-    if (ocrProgress.phase === 'recognizing') return `Reading document ${progressText}`;
-    return 'Document ready';
+    autoGrow(textarea);
   });
 
   $effect(() => {
     void appStore.currentChatId;
-    clearOcrProgress();
+    attachments.clearOcr();
+    clearQuote();
   });
 
-  // Detect file drags anywhere in the window so we can enable pointer-events on the drop zone
-  let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function onWindowDragEnter(e: DragEvent) {
-    if (e.dataTransfer?.types?.includes('Files')) {
-      if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
-      windowDragActive = true;
-    }
-  }
-  function onWindowDragLeave() {
-    // Small delay to avoid flicker when moving between elements
-    dragLeaveTimer = setTimeout(() => { windowDragActive = false; }, 100);
-  }
-  function onWindowDrop() {
-    windowDragActive = false;
-    if (dragLeaveTimer) { clearTimeout(dragLeaveTimer); dragLeaveTimer = null; }
-  }
-
-  $effect(() => {
-    document.addEventListener('dragenter', onWindowDragEnter);
-    document.addEventListener('dragleave', onWindowDragLeave);
-    document.addEventListener('drop', onWindowDrop);
-    window.addEventListener('ocr-progress', onOcrProgress as EventListener);
-    window.addEventListener('ask-selected-text', handleAskSelectedText as EventListener);
-    window.addEventListener('focus-composer', handleFocusComposer);
-    return () => {
-      document.removeEventListener('dragenter', onWindowDragEnter);
-      document.removeEventListener('dragleave', onWindowDragLeave);
-      document.removeEventListener('drop', onWindowDrop);
-      window.removeEventListener('ocr-progress', onOcrProgress as EventListener);
-      window.removeEventListener('ask-selected-text', handleAskSelectedText as EventListener);
-      window.removeEventListener('focus-composer', handleFocusComposer);
-      if (dragLeaveTimer) clearTimeout(dragLeaveTimer);
-    };
-  });
-
+  // Surface a one-off error placeholder after a failed turn.
   $effect(() => {
     if (appStore.currentChatGenerating) {
       clearErrorPlaceholder();
-    } else {
-      const messages = untrack(() => appStore.currentChat?.messages);
-      const lastMsg = messages?.length ? messages[messages.length - 1] : undefined;
-      if (lastMsg?.role === 'assistant' && lastMsg?.status === 'error' && !showErrorPlaceholder) {
-        showErrorPlaceholder = true;
-        if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
-        errorPlaceholderTimer = setTimeout(() => {
-          showErrorPlaceholder = false;
-        }, 12000);
-      }
+      return;
     }
-  });
+    const last = appStore.currentChat?.messages?.at(-1);
+    if (last?.role !== 'assistant' || last?.status !== 'error' || showErrorPlaceholder) return;
 
-  // Trigger typewriter only on homescreen
-  $effect(() => {
-    if (!appStore.composer.trim() && isHomescreen) {
-      typePlaceholder(currentPlaceholder);
-    }
-  });
-
-  // Stop typewriter when user navigates away from homescreen
-  $effect(() => {
-    if (!isHomescreen) {
-      if (typingTimer) { clearTimeout(typingTimer); typingTimer = null; }
-      if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
-      typedText = '';
-    }
-  });
-
-  onDestroy(() => {
-    destroyed = true;
-    exitVoiceMode();
-    stopPulse();
-    clearOcrProgress();
-    if (typingTimer) clearTimeout(typingTimer);
-    if (pauseTimer) clearTimeout(pauseTimer);
+    showErrorPlaceholder = true;
     if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
+    errorPlaceholderTimer = setTimeout(() => {
+      showErrorPlaceholder = false;
+    }, ERROR_PLACEHOLDER_MS);
   });
 
+  // The context ring depends on far more than the composer text, so this tracks
+  // everything that feeds the estimate and recomputes on a trailing edge.
   $effect(() => {
     void appStore.currentChatId;
     void appStore.composer;
@@ -813,215 +278,131 @@ import ModeSelector from './composer/ModeSelector.svelte';
     void appStore.config.llm?.system_prompt;
     void appStore.userName;
 
-    if (contextBudgetTimer) clearTimeout(contextBudgetTimer);
-    contextBudgetTimer = setTimeout(() => {
+    if (budgetTimer) clearTimeout(budgetTimer);
+    budgetTimer = setTimeout(() => {
       void appStore.refreshContextBudgetPreview();
-    }, 140);
+    }, BUDGET_DEBOUNCE_MS);
 
     return () => {
-      if (contextBudgetTimer) {
-        clearTimeout(contextBudgetTimer);
-        contextBudgetTimer = null;
+      if (budgetTimer) {
+        clearTimeout(budgetTimer);
+        budgetTimer = null;
       }
     };
   });
+
+  onDestroy(() => {
+    destroyed = true;
+    exitVoiceMode();
+    dictation.dispose();
+    if (errorPlaceholderTimer) clearTimeout(errorPlaceholderTimer);
+  });
 </script>
 
-<div class={`composer-dock ${windowDragActive ? 'pointer-events-auto' : 'pointer-events-none'} relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3`} role="region" aria-label="Message composer" ondrop={handleDrop} ondragover={handleDragOver} ondragleave={handleDragLeave}>
-  <input bind:this={fileInput} class="hidden" type="file" multiple accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub" oninput={onFilesSelected} />
+<div
+  class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3 {attachments.windowDragActive
+    ? 'pointer-events-auto'
+    : 'pointer-events-none'}"
+  role="region"
+  aria-label="Message composer"
+  ondrop={(event) => attachments.handleDrop(event)}
+  ondragover={(event) => attachments.handleDragOver(event)}
+  ondragleave={(event) => attachments.handleDragLeave(event)}
+>
+  <input
+    bind:this={fileInput}
+    class="hidden"
+    type="file"
+    multiple
+    accept="image/*,.pdf,.docx,.doc,.txt,.md,.csv,.json,.html,.xml,.rtf,.epub"
+    oninput={(event) => void attachments.handleFileInput(event)}
+  />
 
-  {#if dragOver}
-    <div class="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border-hover)] bg-[var(--surface-hover)]">
+  {#if attachments.dragOver}
+    <div class="drop-overlay">
       <div class="text-center">
-        <Paperclip class="mx-auto mb-2 h-8 w-8 text-[var(--text-tertiary)]" />
-        <p class="text-sm font-medium text-[var(--text-secondary)]">{$t('composer.dropFiles')}</p>
-        <p class="text-xs text-[var(--text-tertiary)]">{$t('composer.dropHint')}</p>
+        <Paperclip class="mx-auto mb-2 size-8 text-muted-foreground" />
+        <p class="text-sm font-medium text-foreground">{copy.composer.dropFiles}</p>
+        <p class="text-xs text-muted-foreground">{copy.composer.dropHint}</p>
       </div>
     </div>
   {/if}
 
-  <div bind:clientWidth={composerWidth} class="welcome-shell mx-auto w-full max-w-[42rem]">
-    {#if isModelLoading}
-      <div class="pointer-events-auto mb-2 flex justify-center">
-        <p class="inline-flex items-center gap-2 text-xs text-[var(--text-muted)]">
-          <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-          {$t('welcome.loadingModel')}
-        </p>
-      </div>
-    {:else if appStore.backendMode === 'local' && !activeModel && !appStore.localModelActive}
-      <div class="pointer-events-auto mb-2 flex flex-wrap items-center justify-center gap-2">
-        <p class="text-xs text-[var(--text-muted)]">{$t('welcome.noModelLoaded')}</p>
-        <button class="welcome-action-btn primary inline-flex items-center gap-1 px-2.5 py-1 text-[0.7rem] font-semibold" onclick={() => openModelHub('explore')}>
-          {$t('welcome.browseAll')}
-          <ArrowRight class="h-3 w-3" />
-        </button>
-        <button class="welcome-action-btn inline-flex items-center gap-1 px-2.5 py-1 text-[0.7rem] font-medium" onclick={() => openModelHub('runtime')}>
-          {$t('welcome.changeRuntime')}
-        </button>
-      </div>
-    {:else if appStore.backendMode === 'api' && !(apiProviderLabel && hasApiKey)}
-      <div class="pointer-events-auto mb-2 flex justify-center">
-        <p class="text-xs text-[var(--text-muted)]">
-          {$t('welcome.noModel')}
-          <button class="ml-1 inline-flex items-center gap-1 text-[var(--text-secondary)] underline decoration-[var(--border)] underline-offset-2 transition hover:text-[var(--text)]" onclick={() => openModelHub('providers')}>
-            {$t('welcome.configureProvider')}
-            <ArrowRight class="h-3 w-3" />
-          </button>
-        </p>
-      </div>
-    {/if}
+  <div
+    bind:clientWidth={composerWidth}
+    class="composer-frame mx-auto w-full"
+    style="max-width: var(--thread-width);"
+  >
+    <ComposerModelNotice />
 
-    <VoiceModeOverlay isListening={activelyListening} interimTranscript={interimTranscript} exitVoiceMode={exitVoiceMode} {audioLevels} />
+    <VoiceModeOverlay
+      phase={dictation.phase}
+      isListening={dictation.listening}
+      interimTranscript={dictation.interim}
+      {exitVoiceMode}
+      audioLevels={dictation.audioLevels}
+    />
 
-    <div class="composer-blur-wrapper">
-      <div class={`composer-shell aui-composer pointer-events-auto transition ${compactComposer ? 'rounded-xl' : 'rounded-2xl'}`}>
-    {#if ocrProgressLabel}
-      <div class="px-3 pt-1">
-        <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-          <span class={`h-1.5 w-1.5 rounded-[2px] bg-[var(--text-tertiary)] ${ocrProgress?.phase === 'done' ? '' : 'animate-pulse'}`}></span>
-          <span>{ocrProgressLabel}</span>
-        </div>
-      </div>
-    {/if}
-
-    <AttachmentCards />
-
-    {#if localBusyElsewhere}
-      <div class="px-4 pt-1 text-[11px] text-[var(--text-muted)]">
-        Local model busy in another chat
-      </div>
-    {/if}
-
-    {#if selectedTextInsert}
-      <div class="px-4 pt-3">
-        <div class="selected-text-card" class:expanded={selectedTextExpanded}>
-          <button type="button" class="selected-text-card-float-close" aria-label="Discard selected text" onclick={discardSelectedTextInsert}>
-            <X class="h-3 w-3" />
-          </button>
-          <div class="selected-text-card-body">
-            {#if selectedTextExpanded}
-              <textarea
-                class="selected-text-card-textarea"
-                bind:value={selectedTextCardText}
-                rows="3"
-                onblur={() => (selectedTextExpanded = false)}
-              ></textarea>
-            {:else}
-              <button type="button" class="selected-text-card-preview" onclick={() => (selectedTextExpanded = true)}>
-                {selectedTextCardText}
-              </button>
-            {/if}
+    <div class="composer-shell aui-composer pointer-events-auto transition"
+      class:rounded-xl={compact}
+      class:rounded-2xl={!compact}
+    >
+      {#if attachments.ocrLabel}
+        <div class="px-3 pt-1">
+          <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
+            <span
+              class="size-1.5 rounded-[2px] bg-muted-foreground"
+              class:animate-pulse={!attachments.ocrSettled}
+            ></span>
+            <span>{attachments.ocrLabel}</span>
           </div>
         </div>
-      </div>
-    {/if}
+      {/if}
 
-    <div class={`px-4 pb-1 relative ${selectedTextInsert ? 'pt-1.5' : 'pt-3'}`}>
-      {#if showAnimatedPlaceholder}
-        <div class="placeholder-overlay pointer-events-none absolute left-4 right-4 top-3 z-10">
-          <span class="placeholder-shimmer-text">{typedText}</span>
-        </div>
-      {:else if showStaticPlaceholder}
-        <div class="placeholder-overlay pointer-events-none absolute left-4 right-4 top-3 z-10">
-          <span class="placeholder-static-text">{staticPlaceholderText}</span>
+      <AttachmentCards />
+
+      {#if localBusyElsewhere}
+        <div class="px-4 pt-1 text-[11px] text-muted-foreground">
+          Local model busy in another chat
         </div>
       {/if}
-      <textarea
-        bind:this={textarea}
-        class="composer-textarea w-full resize-none bg-transparent text-[var(--text)] outline-none"
-        placeholder=""
-        rows="1"
-        value={appStore.composer}
-        oninput={onInput}
-        onkeydown={onKeydown}
-        onfocus={() => (textareaFocused = true)}
-        onblur={() => (textareaFocused = false)}
-      ></textarea>
-    </div>
 
-    <div class={`composer-action-row px-4 pb-3 pt-2 ${compactComposer ? 'compact' : ''}`}>
-      <div class="composer-left-stack min-w-0 flex-1">
-        <div class={`composer-left-actions flex items-center gap-1.5 ${compactComposer ? 'overflow-x-auto' : 'flex-wrap'}`}>
-          {#if appStore.composerModeControl === 'tabs'}
-            <ModeSelector />
-          {/if}
-
-          <SearchModeSelector />
-
-          <ReasoningLevelSelector />
+      {#if quotedText}
+        <div class="px-4 pt-3">
+          <SelectedTextCard bind:text={quotedText} ondiscard={() => { clearQuote(); requestAnimationFrame(() => focusComposer()); }} />
         </div>
-        {#if appStore.searchMode !== 'chat'}
-          <p class="search-mode-hint">
-            {#if appStore.searchMode === 'max'}
-              Exhaustive research · slower, more sources
-            {:else if appStore.searchMode === 'deep'}
-              Thorough research · more sources
-            {:else}
-              Quick web check
-            {/if}
-          </p>
-        {/if}
-      </div>
+      {/if}
 
-      <div class={`composer-right-actions flex items-center gap-1.5 ${compactComposer ? '' : 'pl-2'}`}>
-        {#if showContextUsage}
-          <ContextUsageRing
-            usedTokens={contextBudget?.usedTokens ?? 0}
-            maxTokens={contextBudget?.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
-            reservedTokens={contextBudget?.reservedForCompletion ?? 0}
-            promptCostPerMillionUsd={contextBudget?.promptCostPerMillionUsd}
-            completionCostPerMillionUsd={contextBudget?.completionCostPerMillionUsd}
-            estimatedInputCostUsd={contextBudget?.estimatedInputCostUsd}
-          />
-        {/if}
-        <button class="aui-icon-button size-8" aria-label={$t('chat.attach')} onclick={() => fileInput?.click()}>
-          <Paperclip class="size-4" />
+      <!-- One row: attach · input · trailing controls. -->
+      <div class="composer-row {quotedText ? 'pt-1' : ''}">
+        <button
+          type="button"
+          class="aui-icon-button size-9 shrink-0"
+          aria-label={copy.composer.attach}
+          title={copy.composer.attach}
+          onclick={() => fileInput?.click()}
+        >
+          <Paperclip class="size-[18px]" />
         </button>
-        {#if appStore.composer.trim() || currentChatGenerating}
-          <button
-            class="send-btn flex size-8 items-center justify-center rounded-full transition disabled:opacity-50"
-            onclick={() => (currentChatGenerating ? appStore.stopStreaming() : submit())}
-            disabled={sendDisabled}
-            aria-label={currentChatGenerating ? $t('chat.stop') : $t('chat.send')}
-          >
-            {#if currentChatGenerating}
-              <Square class="size-3.5 fill-current stroke-[2.75]" />
-            {:else}
-              <span class="send-icon-wrap inline-flex">
-                <ArrowUp class="size-3.5 stroke-[2.75]" />
-              </span>
-            {/if}
-          </button>
-        {:else}
-          <button
-            class={`aui-icon-button mic-btn size-8 ${!hasMicSupport ? 'opacity-40 cursor-not-allowed' : ''} ${micUiActive ? 'is-listening' : ''}`}
-            onclick={hasMicSupport ? toggleSpeech : undefined}
-            disabled={!hasMicSupport}
-            aria-label={activelyListening ? 'Stop listening' : 'Voice input'}
-            title={!hasMicSupport ? 'Speech recognition not available' : activelyListening ? 'Listening…' : isWhisperListening ? interimTranscript : 'Tap to speak'}
-          >
-            {#if activelyListening}
-              <span class="mic-lines-wrap">
-                {#each [0, 1, 2, 3, 4] as i}
-                  <span class="mic-line" style="animation-delay: {i * 0.12}s;"></span>
-                {/each}
-              </span>
-            {:else}
-              <Mic class="h-4 w-4 mic-icon" />
-            {/if}
-          </button>
-        {/if}
-      </div>
-    </div>
 
-      </div>
-    </div>
+        <textarea
+          bind:this={textarea}
+          class="composer-textarea min-w-0 flex-1 resize-none bg-transparent text-foreground outline-none"
+          {placeholder}
+          rows="1"
+          value={appStore.composer}
+          oninput={onInput}
+          onkeydown={onKeydown}
+        ></textarea>
 
-    <div class="pointer-events-auto -mt-2 flex justify-center relative z-[-1]">
-      <div class="hint-card rounded-b-xl border border-t-0 border-[var(--border)] bg-[var(--surface)] px-3 pb-2 pt-3 text-center shadow-[var(--shadow-xs)]">
-        <span class="hint-text text-xs">
-          {$t('composer.hintText')}
-        </span>
+        <ComposerToolbar
+          {dictation}
+          {compact}
+          {generating}
+          {sendDisabled}
+          onsubmit={() => void submit()}
+          onstop={() => appStore.stopStreaming()}
+        />
       </div>
     </div>
   </div>
@@ -1032,6 +413,7 @@ import ModeSelector from './composer/ModeSelector.svelte';
     background: var(--chat-bg);
   }
 
+  /* Fade the thread out into the dock rather than cutting it off. */
   .composer-dock::before {
     content: '';
     position: absolute;
@@ -1047,325 +429,73 @@ import ModeSelector from './composer/ModeSelector.svelte';
     );
   }
 
-  .welcome-shell {
+  .composer-frame {
     position: relative;
   }
 
-  .composer-blur-wrapper {
-    position: relative;
-    border-radius: 1.25rem;
-    overflow: visible;
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-float);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--border-hover);
+    border-radius: 1rem;
+    background: var(--surface-hover);
   }
 
+  /* Surface, radius, ring and focus state all live on `.aui-composer` in
+     app.css — the pill is defined once. Only layout belongs here. */
   .composer-shell {
     position: relative;
-    border: 1px solid var(--border);
-    border-radius: 1.25rem;
-    background: var(--card);
-    box-shadow: var(--surface-shadow);
-    transition:
-      border-color 150ms ease,
-      box-shadow 150ms ease;
   }
 
-  :global(.dark) .composer-shell {
-    border-color: color-mix(in srgb, var(--foreground) 14%, transparent);
-  }
-
-  .composer-shell:focus-within {
-    border-color: var(--ring);
-    box-shadow: var(--surface-shadow-focus);
-  }
-
-  :global(.dark) .composer-shell:focus-within {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
-  }
-
-  .composer-textarea {
-    min-height: 26px;
-    max-height: 180px;
-    font-size: 1rem;
-    line-height: 1.6;
-  }
-
-  .selected-text-card {
-    position: relative;
-    background: var(--background);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    overflow: hidden;
-  }
-
-  .selected-text-card-body {
-    padding: 0.65rem 0.75rem;
-  }
-
-  .selected-text-card-preview {
-    width: 100%;
-    text-align: left;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--text);
-    background: transparent;
-    border: 0;
-    padding: 0;
-    cursor: pointer;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .selected-text-card-textarea {
-    width: 100%;
-    background: transparent;
-    border: 0;
-    outline: none;
-    resize: none;
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--text);
-    font-family: inherit;
-    padding: 0;
-  }
-
-  .selected-text-card-float-close {
-    position: absolute;
-    top: 0.35rem;
-    right: 0.35rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.35rem;
-    height: 1.35rem;
-    padding: 0;
-    border-radius: 9999px;
-    border: 0;
-    background: var(--surface);
-    color: var(--text-tertiary);
-    cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-
-  .selected-text-card-float-close:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .composer-attach-btn {
-    color: var(--text-secondary);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-full);
-    transition: all 0.12s ease;
-  }
-
-  .composer-attach-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-    border-color: var(--border);
-  }
-
-  .composer-divider {
-    opacity: 0.5;
-  }
-
-  .composer-action-row {
+  /* Controls sit on the input's baseline so the row stays visually anchored as
+     the textarea grows. */
+  .composer-row {
     display: flex;
     align-items: flex-end;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .composer-left-stack {
-    display: flex;
-    min-width: 0;
-    flex: 1 1 auto;
-    flex-direction: column;
     gap: 0.25rem;
+    padding: 0.5rem;
   }
 
-  .search-mode-hint {
+  /*
+   * The input's box is exactly as tall as the controls beside it (2.25rem) with
+   * the 1.5rem line box padded to sit dead centre inside it. Because the row is
+   * bottom-aligned, matching box heights is what puts the first line of text on
+   * the same optical centre as the attach and send icons; using margins instead
+   * leaves the text a couple of pixels low.
+   */
+  .composer-textarea {
     margin: 0;
-    padding-left: 0.15rem;
-    color: var(--muted-foreground);
-    font-size: 0.68rem;
-    font-weight: 450;
-    line-height: 1.3;
-  }
-
-  .composer-left-actions {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
-  .composer-right-actions {
-    flex: 0 0 auto;
-    justify-content: flex-end;
-  }
-
-  .send-btn {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border: none;
-    box-shadow: none;
-    transition: opacity 150ms ease, transform 150ms var(--motion-ease);
-  }
-
-  .send-btn:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .send-icon-wrap {
-    transform-origin: center;
-    transition: transform 200ms var(--motion-ease);
-  }
-
-  .send-btn:hover:not(:disabled) .send-icon-wrap {
-    transform: translateY(-1px);
-  }
-
-  .send-btn:active:not(:disabled) {
-    transform: scale(0.96);
-  }
-
-  .hint-text {
-    color: var(--text-muted);
-  }
-
-  .mic-icon {
-    transition: transform 0.3s ease;
-  }
-
-  .mic-btn:hover .mic-icon {
-    transform: scale(1.1);
-  }
-
-  .mic-btn.is-listening {
-    background: var(--primary);
-    color: var(--primary-foreground);
-  }
-
-  .mic-btn.is-listening:hover {
-    opacity: 0.9;
-  }
-
-  .mic-lines-wrap {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    height: 14px;
-  }
-
-  .mic-line {
-    width: 2px;
-    height: 6px;
-    border-radius: 1px;
-    background: currentColor;
-    animation: micLineBounce 0.8s ease-in-out infinite;
-  }
-
-  @keyframes micLineBounce {
-    0%, 100% { height: 5px; opacity: 0.5; }
-    50% { height: 14px; opacity: 1; }
-  }
-
-  .welcome-action-btn {
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--foreground);
-    box-shadow: var(--surface-shadow);
-    transition: background-color 150ms ease, opacity 150ms ease, transform 150ms var(--motion-ease);
-  }
-
-  .welcome-action-btn:hover {
-    background: var(--muted);
-  }
-
-  .welcome-action-btn:active {
-    transform: scale(0.97);
-  }
-
-  .welcome-action-btn.primary {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border-color: transparent;
-  }
-
-  .welcome-action-btn.primary:hover {
-    opacity: 0.9;
-  }
-
-  @keyframes shimmer {
-    0% { background-position: 200% 50%; }
-    100% { background-position: -200% 50%; }
-  }
-
-  .placeholder-overlay {
-    min-height: 26px;
+    min-height: 2.25rem;
+    max-height: 11rem;
+    padding: 0.375rem 0;
     font-size: 1rem;
-    line-height: 1.6;
+    line-height: 1.5rem;
   }
 
-  @media (prefers-reduced-motion: reduce), (max-width: 768px), (pointer: coarse) {
-    .placeholder-shimmer-text { animation: none; }
-    .mic-line { animation: none !important; }
+  .composer-textarea::placeholder {
+    color: var(--muted-foreground);
   }
 
-  .placeholder-shimmer-text {
-    color: transparent;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    -webkit-background-clip: text;
-    background-image: linear-gradient(
-      to right,
-      var(--text-muted) 30%,
-      var(--text) 50%,
-      var(--text-muted) 70%
-    );
-    background-size: 200% auto;
-    animation: shimmer 4s infinite linear;
-  }
-
-  .placeholder-static-text {
-    color: var(--text-muted);
+  .hint-card {
+    padding: 0.75rem 0.75rem 0.5rem;
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    background: var(--card);
+    box-shadow: var(--shadow-xs);
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    text-align: center;
   }
 
   @media (max-width: 640px) {
-    .composer-action-row.compact {
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.45rem;
-    }
-
-    .composer-action-row.compact .composer-left-actions {
-      flex: 0 1 auto;
-      width: 100%;
-      max-width: none;
-      min-width: 0;
-      padding-bottom: 1px;
-      scrollbar-width: none;
-    }
-
-    .composer-action-row.compact .composer-left-actions::-webkit-scrollbar {
-      display: none;
-    }
-
-    .composer-action-row.compact .composer-right-actions {
-      margin-left: auto;
-      align-self: center;
-    }
-
-    .composer-action-row.compact .composer-left-actions :global(.mode-selector-trigger),
-    .composer-action-row.compact .composer-left-actions :global(.search-selector-trigger) {
-      white-space: nowrap;
-    }
-
     .composer-textarea {
-      max-height: 160px;
-      min-height: 24px;
-      line-height: 1.5;
+      max-height: 10rem;
+      font-size: 0.9375rem;
     }
   }
 </style>

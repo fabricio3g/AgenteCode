@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ChevronDown, MoreHorizontal, Search, TestTube2 } from 'lucide-svelte';
+  import { say } from '$lib/copy';
   import {
     Badge,
     Button,
@@ -185,7 +186,7 @@
         {
           success: attempt.success,
           detail: attempt.success
-            ? `${attempt.result_count} result${attempt.result_count === 1 ? '' : 's'} · ${attempt.latency_ms} ms`
+            ? `${say.results(attempt.result_count)} · ${attempt.latency_ms} ms`
             : attempt.missing?.length
               ? `Missing ${attempt.missing.join(' and ').replaceAll('_', ' ')}`
               : attempt.cooldown_until
@@ -207,8 +208,8 @@
     <p class="mt-1 text-sm text-muted-foreground">Choose how web results are collected and how broad each standard search should be.</p>
   </div>
 
-  <section class="rounded-xl border border-border bg-card">
-    <div class="divide-y divide-border px-4">
+  <section class="rounded-2xl bg-[var(--muted)]">
+    <div class="px-4">
       <Field
         horizontal
         class="py-4"
@@ -261,7 +262,7 @@
   </section>
 
   {#if providerNeedsConfiguration && searchProvider !== 'aggregator'}
-    <section class="rounded-xl border border-border bg-card p-4">
+    <section class="rounded-2xl bg-[var(--muted)] p-4">
       <h4 class="text-sm font-semibold text-foreground">{currentSearchProvider.label} configuration</h4>
       <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
         This provider remains inactive until its required fields are saved successfully.
@@ -298,8 +299,8 @@
   {/if}
 
   {#if searchProvider === 'aggregator'}
-    <section class="overflow-hidden rounded-xl border border-border bg-card">
-      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4">
+    <section class="overflow-hidden rounded-2xl bg-[var(--muted)]">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4">
         <div>
           <div class="flex items-center gap-2">
             <h4 class="text-sm font-semibold text-foreground">Engine pool</h4>
@@ -345,7 +346,7 @@
         </div>
       </div>
 
-      <div class="border-b border-border p-3">
+      <div class="border-b border-[var(--border-subtle)] p-3">
         <div class="relative">
           <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input class="pl-9" bind:value={engineFilter} placeholder="Filter engines…" aria-label="Filter engines" />
@@ -365,11 +366,11 @@
         {#each ENGINE_GROUPS as group (group.id)}
           {@const items = visibleCatalog.filter(group.includes)}
           {#if items.length}
-            <div class="border-b border-border last:border-b-0">
+            <div class="border-b border-[var(--border-subtle)] last:border-b-0">
               <div class="sticky top-0 z-10 bg-card/95 px-4 py-2 backdrop-blur">
                 <h5 class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{group.label}</h5>
               </div>
-              <div class="divide-y divide-border">
+              <div class="">
                 {#each items as item (item.id)}
                   {@const missing = missingRequirements(item)}
                   {@const selected = aggregatorEngines.includes(item.id)}
@@ -420,7 +421,7 @@
                     </div>
 
                     {#if configurationOpen && item.requires.length}
-                      <div class="border-t border-border py-3" transition:motionSlide={{ duration: 180 }}>
+                      <div class="border-t border-[var(--border-subtle)] py-3" transition:motionSlide={{ duration: 180 }}>
                         <div class="space-y-3 rounded-lg bg-muted/35 p-3">
                           {#if item.requires.includes('base_url')}
                             <Field label="Base URL" htmlFor={`${item.id}-base-url`}>

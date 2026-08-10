@@ -180,7 +180,7 @@
         {#each cloudList as p (p.id)}
           {@const meta = providerMeta(p.id)}
           {@const open = expandedId === p.id}
-          <div class="provider-row overflow-hidden rounded-xl border border-border bg-card">
+          <div class="provider-row overflow-hidden rounded-2xl bg-[var(--muted)]">
             <button
               type="button"
               class="flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20"
@@ -208,7 +208,7 @@
             </button>
 
             {#if open}
-              <div class="space-y-4 border-t border-border px-3 py-3" transition:motionSlide={{ duration: 180 }}>
+              <div class="space-y-4 border-t border-[var(--border-subtle)] px-3 py-3" transition:motionSlide={{ duration: 180 }}>
                 <label class="block space-y-1.5 text-sm">
                   <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
                   <input class="aui-input w-full" bind:value={providerBaseUrl} placeholder={p.defaultBaseUrl} />
@@ -289,7 +289,7 @@
                     {/if}
                     <button
                       type="button"
-                      class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
+                      class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
                       onclick={fetchProviderModels}
                       disabled={fetchingProviderModels}
                       title="Fetch available models"
@@ -360,7 +360,7 @@
                 <div class="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
                     onclick={saveProviderConfig}
                     disabled={savingProvider}
                   >
@@ -368,7 +368,7 @@
                   </button>
                   <button
                     type="button"
-                    class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
+                    class="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
                     onclick={testProviderConnection}
                     disabled={testingProviderConnection}
                   >
@@ -400,7 +400,7 @@
         {#each localList as p (p.id)}
           {@const meta = providerMeta(p.id)}
           {@const open = expandedId === p.id}
-          <div class="provider-row overflow-hidden rounded-xl border border-border bg-card">
+          <div class="provider-row overflow-hidden rounded-2xl bg-[var(--muted)]">
             <button
               type="button"
               class="flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors duration-[var(--motion-fast)] hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/20"
@@ -427,7 +427,7 @@
             </button>
 
             {#if open}
-              <div class="space-y-4 border-t border-border px-3 py-3" transition:motionSlide={{ duration: 180 }}>
+              <div class="space-y-4 border-t border-[var(--border-subtle)] px-3 py-3" transition:motionSlide={{ duration: 180 }}>
                 <label class="block space-y-1.5 text-sm">
                   <span class="font-medium text-[var(--text-secondary)]">Base URL</span>
                   <input class="aui-input w-full" bind:value={providerBaseUrl} placeholder={p.defaultBaseUrl} />
@@ -447,7 +447,7 @@
                     <input class="aui-input flex-1" bind:value={providerModel} placeholder="Model id" />
                     <button
                       type="button"
-                      class="inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
+                      class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] disabled:opacity-50"
                       onclick={fetchProviderModels}
                       disabled={fetchingProviderModels}
                     >
@@ -478,7 +478,7 @@
                 <div class="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-[var(--primary-fg)] disabled:opacity-50"
                     onclick={saveProviderConfig}
                     disabled={savingProvider}
                   >
@@ -486,7 +486,7 @@
                   </button>
                   <button
                     type="button"
-                    class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
+                    class="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-50"
                     onclick={testProviderConnection}
                     disabled={testingProviderConnection}
                   >

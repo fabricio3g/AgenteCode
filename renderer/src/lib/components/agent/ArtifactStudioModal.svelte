@@ -24,6 +24,7 @@
   } from '$lib/services/artifact-draft';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactFileBlob, artifactFilePayload } from '$lib/utils/artifact-files';
+  import { say } from '$lib/copy';
 
   type PathMode = 'create' | 'rename' | null;
   const initialArtifact = appStore.currentArtifact;
@@ -169,8 +170,8 @@
   }
 </script>
 
-<Dialog title={draft.current.title || 'Artifact studio'} description={`${resolved.manifest.kind.replaceAll('_', ' ')} · ${files.length} file${files.length === 1 ? '' : 's'}`} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
-  <div class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-3 sm:px-4">
+<Dialog title={draft.current.title || 'Artifact studio'} description={`${resolved.manifest.kind.replaceAll('_', ' ')} · ${say.files(files.length)}`} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
+  <div class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 sm:px-4">
     <SegmentedControl bind:value={activeView} options={[{ value: 'preview', label: 'Preview', disabled: !resolved.capabilities.preview }, { value: 'source', label: 'Source', disabled: !resolved.capabilities.source }]} label="Artifact view" />
     <div class="flex min-w-0 items-center gap-1.5">
       {#if dirty}<span class="hidden text-[11px] text-muted-foreground sm:inline">Unsaved changes</span>{/if}
@@ -181,7 +182,7 @@
   </div>
 
   {#if resolved.manifest.issues?.length}
-    <div class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">{resolved.manifest.issues[0].message}</div>
+    <div class="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--muted)] px-4 py-2 text-xs text-muted-foreground">{resolved.manifest.issues[0].message}</div>
   {/if}
 
   <div class="flex min-h-0 flex-1 flex-col sm:flex-row">

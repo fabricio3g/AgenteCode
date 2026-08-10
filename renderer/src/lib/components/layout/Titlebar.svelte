@@ -3,8 +3,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
+  import { countOf } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, PanelLeftClose, PanelLeftOpen, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
+  import { Search, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
   import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
   import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -60,27 +61,8 @@
   role="banner"
 >
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
-    {#if appStore.sidebarOpen}
-      <Tooltip label="Hide sidebar">
-        <button
-          class="aui-icon-button size-8 titlebar-no-drag"
-          onclick={() => (appStore.sidebarOpen = false)}
-          aria-label="Hide sidebar"
-        >
-          <PanelLeftClose class="size-4" />
-        </button>
-      </Tooltip>
-    {:else}
-      <Tooltip label="Show sidebar">
-        <button
-          class="aui-icon-button size-8 titlebar-no-drag"
-          onclick={() => (appStore.sidebarOpen = true)}
-          aria-label="Show sidebar"
-        >
-          <PanelLeftOpen class="size-4" />
-        </button>
-      </Tooltip>
-    {/if}
+    <!-- The sidebar toggle lives on the sidebar itself — in its header when
+         expanded, at the top of the rail when collapsed. -->
     <Tooltip label="Search conversations">
       <button
         class="aui-icon-button size-8 titlebar-no-drag"
@@ -124,7 +106,7 @@
     {#if isMac}
       <div class="traffic-lights titlebar-no-drag flex items-center gap-1.5 pl-3">
         <div class="relative flex items-center">
-          <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+          <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
             <button
               bind:this={downloadBtnEl}
               class="aui-icon-button download-btn relative size-8"
@@ -166,7 +148,7 @@
     {:else}
       <div class="win-controls titlebar-no-drag flex h-full items-center">
         <div class="relative flex items-center">
-          <Tooltip label={downloadsStore.activeCount > 0 ? `${downloadsStore.activeCount} active download${downloadsStore.activeCount === 1 ? '' : 's'}` : 'Downloads'} position="left">
+          <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
             <button
               bind:this={downloadBtnEl}
               class="aui-icon-button download-btn relative mr-0.5 size-8"
