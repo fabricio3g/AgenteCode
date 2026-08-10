@@ -1,0 +1,173 @@
+import type { CuratedModelDefinition, ModelArtifact } from '$lib/types/model-hub';
+
+const GB = 1024 ** 3;
+const artifact = (
+  filename: string,
+  quantization: string,
+  sizeGb: number,
+  recommended = false,
+  projectorGb = 0,
+): ModelArtifact => ({
+  filename,
+  quantization,
+  sizeBytes: Math.round(sizeGb * GB),
+  recommended,
+  projectorBytes: projectorGb ? Math.round(projectorGb * GB) : undefined,
+});
+
+/**
+ * Reviewed, public one-click choices only. Keep ordering stable: it is also the
+ * quality ranking used by hardware recommendations.
+ */
+export const CURATED_MODELS: readonly CuratedModelDefinition[] = [
+  {
+    id: 'lfm2.5-1.2b-instruct',
+    name: 'LFM2.5 1.2B Instruct',
+    upstreamRepository: 'LiquidAI/LFM2.5-1.2B-Instruct',
+    ggufRepository: 'LiquidAI/LFM2.5-1.2B-Instruct-GGUF',
+    role: 'Fastest on-device',
+    parametersB: 1.2,
+    architecture: 'lfm2',
+    capabilities: ['Chat', 'Tools'],
+    license: 'LFM Open License',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('LFM2.5-1.2B-Instruct-Q4_K_M.gguf', 'Q4_K_M', 0.714, true),
+      artifact('LFM2.5-1.2B-Instruct-Q8_0.gguf', 'Q8_0', 1.23),
+    ],
+    runtime: { architectures: ['lfm2'], minVersion: 'b9000', reason: 'Requires a current runtime with LFM2 architecture support.' },
+    rank: 1,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'qwen3.5-2b',
+    name: 'Qwen3.5 2B',
+    upstreamRepository: 'Qwen/Qwen3.5-2B',
+    ggufRepository: 'ggml-org/Qwen3.5-2B-GGUF',
+    role: 'Light multilingual',
+    parametersB: 2,
+    architecture: 'qwen35',
+    capabilities: ['Chat', 'Tools', 'Multilingual', 'Vision'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('Qwen3.5-2B-Q4_K_M.gguf', 'Q4_K_M', 1.5, true, 0.9),
+      artifact('Qwen3.5-2B-Q5_K_M.gguf', 'Q5_K_M', 1.75, false, 0.9),
+    ],
+    projectorRequired: true,
+    runtime: { architectures: ['qwen35'], minVersion: 'b9800', reason: 'Requires current Qwen3.5 multimodal support.' },
+    rank: 2,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'qwen3.5-4b',
+    name: 'Qwen3.5 4B',
+    upstreamRepository: 'Qwen/Qwen3.5-4B',
+    ggufRepository: 'ggml-org/Qwen3.5-4B-GGUF',
+    role: 'Everyday default',
+    parametersB: 4,
+    architecture: 'qwen35',
+    capabilities: ['Chat', 'Tools', 'Multilingual', 'Vision'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('Qwen3.5-4B-Q4_K_M.gguf', 'Q4_K_M', 2.8, true, 0.9),
+      artifact('Qwen3.5-4B-Q5_K_M.gguf', 'Q5_K_M', 3.3, false, 0.9),
+    ],
+    projectorRequired: true,
+    runtime: { architectures: ['qwen35'], minVersion: 'b9800', reason: 'Requires current Qwen3.5 multimodal support.' },
+    rank: 3,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'ministral-3-8b-instruct',
+    name: 'Ministral 3 8B Instruct',
+    upstreamRepository: 'mistralai/Ministral-3-8B-Instruct-2512',
+    ggufRepository: 'mistralai/Ministral-3-8B-Instruct-2512-GGUF',
+    role: 'Compact quality',
+    parametersB: 8,
+    architecture: 'ministral3',
+    capabilities: ['Chat', 'Tools', 'Multilingual'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [artifact('Ministral-3-8B-Instruct-2512-Q4_K_M.gguf', 'Q4_K_M', 4.9, true)],
+    runtime: { architectures: ['ministral3'], minVersion: 'b9000' },
+    rank: 4,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'qwen3.5-9b',
+    name: 'Qwen3.5 9B',
+    upstreamRepository: 'Qwen/Qwen3.5-9B',
+    ggufRepository: 'ggml-org/Qwen3.5-9B-GGUF',
+    role: 'Agentic multilingual',
+    parametersB: 9,
+    architecture: 'qwen35',
+    capabilities: ['Chat', 'Tools', 'Multilingual', 'Vision'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('Qwen3.5-9B-Q4_K_M.gguf', 'Q4_K_M', 5.68, true, 0.9),
+      artifact('Qwen3.5-9B-Q5_K_M.gguf', 'Q5_K_M', 6.58, false, 0.9),
+    ],
+    projectorRequired: true,
+    runtime: { architectures: ['qwen35'], minVersion: 'b9800' },
+    rank: 5,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'ministral-3-14b-instruct',
+    name: 'Ministral 3 14B Instruct',
+    upstreamRepository: 'mistralai/Ministral-3-14B-Instruct-2512',
+    ggufRepository: 'mistralai/Ministral-3-14B-Instruct-2512-GGUF',
+    role: 'High-quality local',
+    parametersB: 14,
+    architecture: 'ministral3',
+    capabilities: ['Chat', 'Tools', 'Multilingual'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('Ministral-3-14B-Instruct-2512-Q4_K_M.gguf', 'Q4_K_M', 8.24, true),
+      artifact('Ministral-3-14B-Instruct-2512-Q5_K_M.gguf', 'Q5_K_M', 9.7),
+    ],
+    runtime: { architectures: ['ministral3'], minVersion: 'b9000' },
+    rank: 6,
+    lastReviewed: '2026-07-28',
+  },
+  {
+    id: 'qwen3.6-27b',
+    name: 'Qwen3.6 27B',
+    upstreamRepository: 'Qwen/Qwen3.6-27B',
+    ggufRepository: 'ggml-org/Qwen3.6-27B-GGUF',
+    role: 'Coding and agents',
+    parametersB: 27,
+    architecture: 'qwen36',
+    capabilities: ['Chat', 'Tools', 'Coding', 'Multilingual'],
+    license: 'Apache-2.0',
+    access: 'public',
+    defaultQuant: 'Q4_K_M',
+    artifacts: [
+      artifact('Qwen3.6-27B-Q4_K_M.gguf', 'Q4_K_M', 16.5, true),
+      artifact('Qwen3.6-27B-Q5_K_M.gguf', 'Q5_K_M', 19.2),
+    ],
+    runtime: {
+      architectures: ['qwen36'],
+      minVersion: 'b10159',
+      reason: 'Requires a current runtime build with Qwen3.6 support.',
+    },
+    rank: 7,
+    lastReviewed: '2026-07-28',
+  },
+] as const;
+
+export function defaultArtifact(model: CuratedModelDefinition): ModelArtifact {
+  return model.artifacts.find((item) => item.quantization === model.defaultQuant)
+    ?? model.artifacts.find((item) => item.recommended)
+    ?? model.artifacts[0];
+}

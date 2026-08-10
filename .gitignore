@@ -6,7 +6,10 @@ renderer/dist/
 out/
 web-browser/
 *.log
-models/
+# Root-anchored: downloaded model weights live at the repo root. Unanchored,
+# this also matched renderer/src/lib/models/ and silently kept six source files
+# out of the repo — the build passed locally and failed in CI.
+/models/
 resources/bin/**
 !resources/bin/.gitkeep
 .native-cache/
