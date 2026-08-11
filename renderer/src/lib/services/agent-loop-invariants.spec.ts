@@ -100,7 +100,7 @@ describe('tool timeout and abort', () => {
      * late resolution wrote to a message the user had explicitly stopped.
      */
     const controller = new AbortController();
-    const neverSettles = new Promise<{ success: boolean }>(() => {});
+    const neverSettles = new Promise<{ success: boolean; error?: string }>(() => {});
 
     const pending = executeWithTimeoutAndRetries(runtime({
       signal: controller.signal,
@@ -118,14 +118,14 @@ describe('tool timeout and abort', () => {
     await expect(executeWithTimeoutAndRetries(runtime({
       signal: controller.signal,
       timeoutMs: 60_000,
-      runTool: () => new Promise<{ success: boolean }>(() => {})
+      runTool: () => new Promise<{ success: boolean; error?: string }>(() => {})
     }))).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('still converts a genuine timeout into a failure result, not a throw', async () => {
     const result = await executeWithTimeoutAndRetries(runtime({
       timeoutMs: 10,
-      runTool: () => new Promise<{ success: boolean }>(() => {})
+      runTool: () => new Promise<{ success: boolean; error?: string }>(() => {})
     }));
     expect(result.success).toBe(false);
     expect(result.error).toContain('timed out');
