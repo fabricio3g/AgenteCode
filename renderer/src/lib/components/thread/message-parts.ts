@@ -1,5 +1,6 @@
-import type { ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
+import type { AgentArtifact, ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
 import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
+import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
 
 /**
  * The ordered contents of an assistant message.
@@ -22,7 +23,12 @@ export type MessagePart =
   | { kind: 'document'; title: string; docs: DocumentSurfaceItem[] }
   | { kind: 'slides' }
   | { kind: 'files-created' }
-  | { kind: 'artifact' };
+  /**
+   * One part per artifact the turn produced. A turn can create several — a chart
+   * *and* a diagram — and each gets its own block. `index` disambiguates the
+   * `{#each}` key, since `kind` alone is no longer unique.
+   */
+  | { kind: 'artifact'; artifact: AgentArtifact; index: number };
 
 export type MessagePartKind = MessagePart['kind'];
 
@@ -195,7 +201,9 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
   if (message.slides?.length) parts.push({ kind: 'slides' });
   if (message.filesCreated?.length) parts.push({ kind: 'files-created' });
-  if (message.artifact) parts.push({ kind: 'artifact' });
+  for (const [index, artifact] of artifactsForMessage(message).entries()) {
+    parts.push({ kind: 'artifact', artifact, index });
+  }
 
   return parts;
 }

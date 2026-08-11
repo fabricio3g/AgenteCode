@@ -1,4 +1,4 @@
-import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 
@@ -16,12 +16,15 @@ export type ToolResult = {
   createdFiles?: string[];
   modifiedFiles?: string[];
   deletedFiles?: string[];
-  nextTurnMods?: {
-    instructions?: string;
-    temperature?: number;
-    injectMessages?: RequestMessage[];
-    disableNativeTools?: boolean;
-  };
+  /**
+   * Set by tools that produce an artifact, describing what they just made.
+   * It rides on the *result* rather than on `ToolContext` deliberately: when it
+   * lived on the context, `dispatchArtifactTool` left it set after a successful
+   * call, so the next tool to build an artifact from the same context inherited a
+   * manifest describing someone else's work — a weather card claiming to be a
+   * chart. Per-result means it cannot outlive the call that produced it.
+   */
+  artifactManifest?: ArtifactManifest;
 };
 
 export type ToolObservation = {
@@ -47,16 +50,24 @@ export type ToolContext = {
   runtimeMode?: 'full' | 'supervised';
   debugLogs?: boolean;
   signal?: AbortSignal;
-  onArtifact: (artifact: AgentArtifact | null) => void;
   workProduct?: AgentArtifact['workProduct'];
-  artifactManifest?: AgentArtifact['manifest'];
+  /**
+   * Per-type artifact enable switches, so the dispatcher can refuse a disabled type
+   * at execution time. Filtering the advertised tool list is not enough on its own:
+   * a model working from earlier context can still emit `create_map` after maps were
+   * turned off.
+   */
+  artifactToggles?: Record<string, boolean>;
 };
 
 export type AgentTaskResult = {
   content: string;
   reasoning: string;
   steps: AgentStep[];
+  /** The last artifact the turn produced. Kept for callers that only show one. */
   artifact: AgentArtifact | null;
+  /** Every artifact the turn produced, in creation order. */
+  artifacts: AgentArtifact[];
   sources: SearchResult[];
   outcome: AgentOutcome;
   stopReason: AgentStopReason;
@@ -81,7 +92,8 @@ export type RunAgentTaskArgs = {
   onStep: (steps: AgentStep[]) => void;
   onProgress?: (text: string) => void;
   onReasoning?: (value: string) => void;
-  onArtifact: (artifact: AgentArtifact | null) => void;
+  /** Called with the full list each time it changes, so all of a turn's artifacts render. */
+  onArtifact: (artifacts: AgentArtifact[]) => void;
   onSources?: (sources: SearchResult[]) => void;
   signal?: AbortSignal;
   maxIterations?: number;

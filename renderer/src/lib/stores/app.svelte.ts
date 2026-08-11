@@ -44,7 +44,7 @@ import {
   setBackendModeConfig,
   setLocalModelConfig
 } from '$lib/stores/app-store-config';
-import { applyArtifactToMessage, findLatestArtifactMessage, resolveArtifactForMessage } from '$lib/stores/app-store-artifacts';
+import { findLatestArtifactMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
 import {
   buildLocalModelRuntimeRequest,
   buildLocalModelSettingsPatch,
@@ -291,7 +291,15 @@ class AppStore {
   private refreshGenerationState() {
     const runs = Object.values(this.activeRunsByChat);
     this.loading = runs.length > 0;
-    this.abortController = this.currentRun?.controller || runs[0]?.controller || null;
+    /*
+     * Only ever the *current* chat's controller.
+     *
+     * This used to fall back to `runs[0]?.controller`, so while viewing an idle chat
+     * during another chat's run, `appStore.abortController` pointed at that other
+     * chat. Anything reaching for the store-level controller — a stop button, an
+     * unmount cleanup — aborted a background run the user never asked to stop.
+     */
+    this.abortController = this.currentRun?.controller || null;
   }
 
   private beginGenerationRun(chatId: string, run: ActiveGenerationRun) {
@@ -525,7 +533,7 @@ class AppStore {
     this.currentArtifact = artifact;
     this.currentArtifactMessageId = artifact ? messageId : null;
 
-    if (applyArtifactToMessage(this.currentChat, messageId, artifact)) {
+    if (upsertArtifactOnMessage(this.currentChat, messageId, artifact)) {
       this.touchChats();
       this.persist();
     }
@@ -547,7 +555,7 @@ class AppStore {
 
   saveArtifactToMessage(chatId: string, messageId: string, artifact: AgentArtifact): boolean {
     const chat = this.findChat(chatId);
-    if (!applyArtifactToMessage(chat, messageId, artifact)) return false;
+    if (!upsertArtifactOnMessage(chat, messageId, artifact)) return false;
     this.markChatDirty(chatId);
     this.touchChats(chatId);
     if (this.currentChatId === chatId) {
@@ -1892,14 +1900,31 @@ class AppStore {
 
     const SYNC_INTERVAL_MS = 50;
     let lastSyncTime = 0;
-    let pendingSync = false;
+    let trailingSync: ReturnType<typeof setTimeout> | undefined;
+    const cancelTrailingSync = () => {
+      if (trailingSync === undefined) return;
+      clearTimeout(trailingSync);
+      trailingSync = undefined;
+    };
     const syncMsg = (force = false) => {
       const now = Date.now();
       if (!force && now - lastSyncTime < SYNC_INTERVAL_MS) {
-        pendingSync = true;
+        /*
+         * Trailing edge. This throttle used to just set a `pendingSync` flag that
+         * only a `flushPendingSync` helper cleared — and that helper was never
+         * called anywhere, so the last chunk of a burst sat unrendered until either
+         * another chunk arrived or the run finished. Short answers visibly stalled
+         * mid-sentence. A timer means the tail always lands ~50ms later at worst.
+         */
+        if (trailingSync === undefined) {
+          trailingSync = setTimeout(() => {
+            trailingSync = undefined;
+            syncMsg(true);
+          }, Math.max(1, SYNC_INTERVAL_MS - (now - lastSyncTime)));
+        }
         return;
       }
-      pendingSync = false;
+      cancelTrailingSync();
       lastSyncTime = now;
       const chat = this.findChat(targetChatId);
       if (!chat) return;
@@ -1909,37 +1934,37 @@ class AppStore {
         chat.updatedAt = Date.now();
       }
     };
-    const flushPendingSync = () => {
-      if (pendingSync) {
-        pendingSync = false;
-        lastSyncTime = 0;
-        syncMsg(true);
-      }
-    };
 
     const controller = new AbortController();
-    this.beginGenerationRun(targetChatId, {
-      controller,
-      messageId: assistantMessage.id,
-      backendMode: activeBackendMode,
-      mode: activeComposerMode,
-      startedAt: Date.now()
-    });
-    const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
     const startTime = Date.now();
     const reasoningTimer = startReasoningTimer();
     let exactUsage: CompletionResult['usage'] = null;
-    // Reset modes on the target session (and store mirrors only if still viewing it)
-    const postSendSearch: 'chat' = 'chat';
-    const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : 'chat' as const;
-    targetChat.searchMode = postSendSearch;
-    if (activeComposerMode !== 'agent') targetChat.composerMode = postSendComposer;
-    if (this.currentChatId === targetChatId) {
-      this.searchMode = postSendSearch;
-      this.composerMode = targetChat.composerMode || postSendComposer;
-    }
 
+    /*
+     * The run begins inside the `try`, so the `finally` that ends it covers
+     * everything. It used to start several statements earlier, and anything that
+     * threw in the gap — context building, mode writes — left a run recorded with no
+     * matching end. The UI then showed "generating" forever and `canStartGeneration`
+     * blocked that chat permanently, with no way back short of a reload.
+     */
     try {
+      this.beginGenerationRun(targetChatId, {
+        controller,
+        messageId: assistantMessage.id,
+        backendMode: activeBackendMode,
+        mode: activeComposerMode,
+        startedAt: Date.now()
+      });
+      const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
+      // Reset modes on the target session (and store mirrors only if still viewing it)
+      const postSendSearch: 'chat' = 'chat';
+      const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : 'chat' as const;
+      targetChat.searchMode = postSendSearch;
+      if (activeComposerMode !== 'agent') targetChat.composerMode = postSendComposer;
+      if (this.currentChatId === targetChatId) {
+        this.searchMode = postSendSearch;
+        this.composerMode = targetChat.composerMode || postSendComposer;
+      }
       let searchContext = '';
       let sources: ChatMessage['sources'] = [];
       let searchMeta: SearchMeta | null = null;
@@ -2085,12 +2110,14 @@ class AppStore {
             assistantMessage.reasoning = value;
             syncMsg();
           },
-          onArtifact: (artifact) => {
-            assistantMessage.artifact = artifact;
+          onArtifact: (artifacts) => {
+            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
+            assistantMessage.artifacts = artifacts;
+            assistantMessage.artifact = latest;
             syncMsg(true);
             this.persist();
-            if (this.currentChatId === targetChatId && (artifact || this.currentArtifactMessageId === assistantMessage.id)) {
-              this.setCurrentArtifact(artifact, assistantMessage.id);
+            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === assistantMessage.id)) {
+              this.setCurrentArtifact(latest, assistantMessage.id);
             }
           },
           onSources: (liveSources) => {
@@ -2432,6 +2459,9 @@ class AppStore {
       syncMsg(true);
       this.persist();
     } finally {
+      // The trailing timer must not outlive the run — it would write to a message
+      // the user may have already stopped.
+      cancelTrailingSync();
       this.endGenerationRun(targetChatId, controller);
     }
   }
@@ -2540,13 +2570,6 @@ class AppStore {
 
     this.error = null;
     const controller = new AbortController();
-    this.beginGenerationRun(targetChatId, {
-      controller,
-      messageId: message.id,
-      backendMode: activeBackendMode,
-      mode: (message.mode === 'agent' ? 'agent' : 'chat'),
-      startedAt: Date.now()
-    });
     const startTime = Date.now();
     const reasoningTimer = startReasoningTimer();
     let exactUsage: CompletionResult['usage'] = null;
@@ -2585,14 +2608,29 @@ class AppStore {
         activityLabel: 'Working'
       };
       message.artifact = null;
+      message.artifacts = [];
       if (this.currentArtifactMessageId === message.id) {
         this.setCurrentArtifact(null, message.id, false);
       }
     }
     this.touchChats();
-    this.persist();
 
+    /*
+     * The run begins inside the `try` so the `finally` that ends it always runs.
+     * `persist()` used to sit between `beginGenerationRun` and this `try`, and it
+     * writes localStorage synchronously — a quota error there recorded a run that
+     * could never be ended, pinning the chat in "generating" for the rest of the
+     * session.
+     */
     try {
+      this.beginGenerationRun(targetChatId, {
+        controller,
+        messageId: message.id,
+        backendMode: activeBackendMode,
+        mode: (message.mode === 'agent' ? 'agent' : 'chat'),
+        startedAt: Date.now()
+      });
+      this.persist();
       const styledSystemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt
@@ -2602,6 +2640,14 @@ class AppStore {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const ctxMode = normalizeContextMode(chat.contextMode);
         const regenProfile = ctxMode === 'work' ? 'work' as const : 'chat' as const;
+        /*
+         * The original turn's search depth is carried over. Without it, regenerating a
+         * Deep or Max research answer silently re-ran as a plain chat agent — same
+         * question, far shallower answer, and no indication why.
+         */
+        const regenSearchMode = message.searchMode && message.searchMode !== 'chat'
+          ? message.searchMode
+          : undefined;
         const regenArgs: RunAgentTaskArgs = {
           chatId: targetChatId,
           systemPrompt: styledSystemPrompt,
@@ -2611,9 +2657,11 @@ class AppStore {
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
           toolMode: 'agent',
-          agentProfile: regenProfile,
+          agentProfile: regenSearchMode ? 'search' as const : regenProfile,
+          ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
+          conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
           reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
-          ...(regenProfile === 'chat' ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
+          ...(regenProfile === 'chat' && !regenSearchMode ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
@@ -2646,10 +2694,12 @@ class AppStore {
             message.reasoning = value;
             this.touchChats();
           },
-          onArtifact: (artifact) => {
-            message.artifact = artifact;
-            if (this.currentChatId === targetChatId && (artifact || this.currentArtifactMessageId === message.id)) {
-              this.setCurrentArtifact(artifact, message.id);
+          onArtifact: (artifacts) => {
+            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
+            message.artifacts = artifacts;
+            message.artifact = latest;
+            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === message.id)) {
+              this.setCurrentArtifact(latest, message.id);
             }
             this.touchChats();
             this.persist();

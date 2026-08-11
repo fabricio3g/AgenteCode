@@ -15,6 +15,26 @@ describe('approvalsStore', () => {
     expect(approvalsStore.forChat('c1')).toHaveLength(0);
   });
 
+  it('keeps both approvals alive when two callers pick the same id', async () => {
+    /*
+     * Callers mint ids like `bash-<Date.now()>-<4 random chars>`, so two parallel
+     * `bash` calls in one batch can collide. The second `request` used to overwrite
+     * the first's resolver, so that first promise could never settle — the agent
+     * waited forever on an approval nothing could answer — and the duplicate id was
+     * also a duplicate key in the UI's keyed `{#each}`.
+     */
+    const first = req('dup', 'chat-dup');
+    const second = req('dup', 'chat-dup');
+
+    const ids = approvalsStore.forChat('chat-dup').map((item) => item.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+
+    for (const id of ids) approvalsStore.resolve(id, true);
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(approvalsStore.forChat('chat-dup')).toHaveLength(0);
+  });
+
   it('scopes lookups to a chat, so a step id is never needed to find one', async () => {
     const a = req('a2', 'chat-a');
     const b = req('a3', 'chat-b');

@@ -44,24 +44,38 @@ function uniqueIssues(issues: ArtifactIssue[]): ArtifactIssue[] {
   });
 }
 
+/*
+ * Only reached when an artifact carries no manifest — legacy data, or an artifact
+ * assembled outside the tool dispatcher. Every agent-produced artifact should have
+ * one; see `ArtifactContext.artifactManifest`.
+ *
+ * Office and PDF extensions are tested *before* the HTML/preview check. The other
+ * order looks harmless but was the single most damaging bug in the artifact path:
+ * every generated document also writes a `__preview__.html` for its viewer, so a
+ * .docx/.xlsx/.pptx/.pdf artifact matched `web` first and got a bare sandboxed
+ * iframe. DocxViewer, XlsxViewer and PdfViewer were unreachable from an artifact.
+ */
 function inferredKind(artifact: AgentArtifact, visiblePaths: string[]): ArtifactKind {
   if (artifact.inline?.kind) return artifact.inline.kind;
   if (artifact.workProduct) return 'work_product';
-  if (artifact.previewHtml || visiblePaths.some((path) => /\.html?$/i.test(path))) return 'web';
   const extensions = visiblePaths.map(extension);
   if (extensions.includes('docx')) return 'document';
   if (extensions.includes('xlsx')) return 'spreadsheet';
   if (extensions.includes('pptx')) return 'presentation';
   if (extensions.includes('pdf')) return 'pdf';
+  if (artifact.previewHtml || visiblePaths.some((path) => /\.html?$/i.test(path))) return 'web';
   if (extensions.some((ext) => ext === 'md' || ext === 'markdown')) return 'report';
   return 'files';
 }
 
 function inferredPresentation(artifact: AgentArtifact, kind: ArtifactKind, visiblePaths: string[]): ArtifactPresentation {
-  if (artifact.inline) return 'inline';
+  // Work products come first. When `inline` was checked first, a turn that produced
+  // a work product *and* a chart resolved to `inline`, and the work product's
+  // document surface never rendered — its files were reachable only via the studio.
   if (artifact.workProduct || ['report', 'document', 'spreadsheet', 'presentation', 'pdf', 'research_package'].includes(kind)) {
     return 'document';
   }
+  if (artifact.inline) return 'inline';
   if (artifact.previewHtml || visiblePaths.some((path) => /\.html?$/i.test(path))) return 'web';
   return 'files';
 }

@@ -3,7 +3,7 @@
 <script lang="ts">
   import type { ChatMessage } from '$lib/types/chat';
   import type { ActionEvent } from '$lib/ui';
-  import { renderMarkdown, observeLazyHighlight } from '$lib/utils/markdown';
+  import { renderMarkdown, observeLazyHighlight, splitStreamingMarkdown } from '$lib/utils/markdown';
   import { parseContentSegments, sanitizeAssistantArtifacts, stripChartBlocks } from '$lib/utils/charts';
   import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
   import Renderer from '../Renderer.svelte';
@@ -26,37 +26,37 @@
     searchMode === 'search' || searchMode === 'deep' || searchMode === 'max'
   );
 
-  const STREAM_RENDER_DELAY = 26;
+  /*
+   * The character cap is the only pace-setter, and the frame callback is the only
+   * clock. There used to be a second 26ms `performance.now()` gate here on top of
+   * the store's 50ms `Date.now()` throttle; two unsynchronised throttles beating
+   * against a 16.7ms frame budget is what made the reveal cadence look irregular.
+   * 72 chars/frame is ~4300 chars/s — ahead of any model, so this smooths bursts
+   * without ever becoming the bottleneck.
+   */
   const STREAM_MAX_CHARS_PER_FLUSH = 72;
 
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
   let displayedContent = $state(content);
   let pendingContent = $state(content);
   let renderRaf: number | undefined;
-  let lastFlushAt = $state(0);
-  let isStreamingActive = $state(false);
   let streamRenderMode = $state<'ui' | 'segments' | 'markdown' | null>(null);
 
   function flushRenderedContent() {
-    if (displayedContent !== pendingContent) {
-      if (pendingContent.startsWith(displayedContent)) {
-        const delta = pendingContent.slice(displayedContent.length);
-        displayedContent += delta.slice(0, STREAM_MAX_CHARS_PER_FLUSH);
-      } else {
-        displayedContent = pendingContent;
-      }
+    if (displayedContent === pendingContent) return;
+    if (pendingContent.startsWith(displayedContent)) {
+      const delta = pendingContent.slice(displayedContent.length);
+      displayedContent += delta.slice(0, STREAM_MAX_CHARS_PER_FLUSH);
+    } else {
+      displayedContent = pendingContent;
     }
-    lastFlushAt = performance.now();
   }
 
   function scheduleStreamingRender() {
     if (renderRaf !== undefined) return;
     const tick = () => {
       renderRaf = undefined;
-      const now = performance.now();
-      if (now - lastFlushAt >= STREAM_RENDER_DELAY) {
-        flushRenderedContent();
-      }
+      flushRenderedContent();
       if (status === 'streaming' && displayedContent !== pendingContent) {
         renderRaf = requestAnimationFrame(tick);
       }
@@ -76,12 +76,10 @@
 
     if (status !== 'streaming') {
       clearStreamingRender();
-      isStreamingActive = false;
       if (displayedContent !== content) displayedContent = content;
       return;
     }
 
-    isStreamingActive = true;
     scheduleStreamingRender();
   });
 
@@ -90,14 +88,36 @@
   const hasCharts = $derived(contentSegments.some((segment) => segment.kind === 'chart'));
   const rendersUI = $derived(hasUIContent(sanitizedContent));
   const markdownSource = $derived(hasCharts ? stripChartBlocks(sanitizedContent) : sanitizedContent);
-  const markdownHtml = $derived(renderMarkdown(markdownSource));
+
+  /*
+   * Split the message into a prefix whose DOM can be written once and a trailing
+   * block that is still growing. `{@html}` as an element's only child compiles to
+   * `innerHTML =`, which tears down and rebuilds every child on assignment — so a
+   * single `{@html}` over the whole message re-created the entire subtree on every
+   * flush. That is what restarted the old per-block entry animation (170ms) every
+   * flush (26ms), leaving the trailing block pinned mid-fade and flickering.
+   *
+   * With the split, the settled prefix is written once per block boundary and left
+   * alone; only the tail re-renders, and nothing is animated per flush.
+   */
+  const streamSplit = $derived.by(() => (
+    status === 'streaming'
+      ? splitStreamingMarkdown(markdownSource)
+      : { settled: markdownSource, tail: '' }
+  ));
+  const settledHtml = $derived(streamSplit.settled ? renderMarkdown(streamSplit.settled) : '');
+  const tailHtml = $derived(
+    streamSplit.tail
+      ? renderMarkdown(streamSplit.tail, { highlight: false, math: false, cache: false })
+      : ''
+  );
+
   const detectedRenderMode = $derived.by<'ui' | 'segments' | 'markdown'>(() => {
     if (rendersUI) return 'ui';
     if (hasCharts) return 'segments';
     return 'markdown';
   });
   const activeRenderMode = $derived(status === 'streaming' ? (streamRenderMode || detectedRenderMode) : detectedRenderMode);
-  const useStreamingEffects = $derived(status === 'streaming');
 
   $effect(() => {
     if (status === 'streaming') {
@@ -151,12 +171,22 @@
     }
   }
 
+  const readyForPostRender = $derived(status !== 'streaming' && markdownSource.length > 0);
+
+  /*
+   * Runs on the settled render, not per flush. It reads `settledHtml` so it re-runs
+   * when the rendered DOM is replaced — previously it depended only on `contentEl`
+   * and `sources`, and since sources arrive before the text in search mode it fired
+   * once against a nearly-empty body and never again, leaving most citations
+   * unconverted. Gating on `readyForPostRender` also keeps a full-subtree TreeWalker
+   * off the streaming path.
+   */
   $effect(() => {
     if (!contentEl || !sources?.length || activeRenderMode === 'ui') return;
+    if (!readyForPostRender) return;
+    void settledHtml;
     replaceCitations(contentEl, sources);
   });
-
-  const readyForPostRender = $derived(status !== 'streaming' && markdownSource.length > 0);
 
   // Code-block copy buttons are emitted by the markdown renderer and handled by
   // a single delegated listener (see `utils/code-copy.ts`). This component used
@@ -172,11 +202,11 @@
   {#if activeRenderMode === 'ui'}
     <Renderer response={sanitizedContent} library={uiChatLibrary} isStreaming={status === 'streaming'} onAction={onAction} />
   {:else if activeRenderMode === 'segments'}
-    <div bind:this={contentEl} class="space-y-3" class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects}>
+    <div bind:this={contentEl} class="space-y-3">
       {#each contentSegments as segment}
         {#if segment.kind === 'text'}
           {#if segment.content.trim()}
-            <div class="markdown-body markdown-segment" class:is-research={isResearch} style="content-visibility: auto;">{@html renderMarkdown(segment.content)}</div>
+            <div class="markdown-body markdown-segment" class:is-research={isResearch}>{@html renderMarkdown(segment.content)}</div>
           {/if}
         {:else}
           <ChartBlock
@@ -190,19 +220,16 @@
       {/each}
     </div>
   {:else if content}
-    <div bind:this={contentEl} class="markdown-body" class:is-research={isResearch} class:stream-caret={useStreamingEffects && !!content} class:streaming-active={isStreamingActive && useStreamingEffects} style="content-visibility: auto;">{@html markdownHtml}</div>
+    <!--
+      Two `{@html}` blocks, not one: see `splitStreamingMarkdown`. `settledHtml`
+      holds finished blocks and its DOM is stable between block boundaries;
+      `tailHtml` holds the one block still arriving. `content-visibility: auto` is
+      gone from both — it applies size containment off-screen, so a streaming
+      message crossing the viewport edge repeatedly skipped and unskipped rendering.
+    -->
+    <div bind:this={contentEl} class="markdown-body" class:is-research={isResearch}>
+      {#if settledHtml}<div class="stream-settled">{@html settledHtml}</div>{/if}
+      {#if tailHtml}<div class="stream-tail" class:stream-caret={status === 'streaming'}>{@html tailHtml}</div>{/if}
+    </div>
   {/if}
 {/if}
-
-<style>
-  :global(.streaming-active > .markdown-body > :last-child),
-  :global(.streaming-active.markdown-body > :last-child),
-  :global(.streaming-active > .markdown-segment:last-child) {
-    animation: streamFadeIn 170ms ease-out;
-  }
-
-  @keyframes streamFadeIn {
-    from { opacity: 0.78; }
-    to { opacity: 1; }
-  }
-</style>

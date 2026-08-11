@@ -342,7 +342,14 @@ export interface ChatMessage {
   slides?: SlideData[];
   mode?: 'chat' | 'slides' | 'agent';
   agentSteps?: AgentStep[];
+  /**
+   * The last artifact the turn produced. Retained because chats persisted before
+   * artifacts became a list only have this field, and much of the UI still asks for
+   * a single artifact. Read through `artifactsForMessage` to get the full set.
+   */
   artifact?: AgentArtifact | null;
+  /** Every artifact the turn produced, oldest first. Absent on older messages. */
+  artifacts?: AgentArtifact[];
   workContext?: WorkContextMeta | null;
   filesCreated?: CreatedFile[];
   ttsAudio?: TtsAudioMeta | null;

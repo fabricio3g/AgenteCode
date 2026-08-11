@@ -102,20 +102,6 @@ function displayToolDetail(name: string, args: Record<string, unknown>): string 
     : undefined;
 }
 
-export function applyNextTurnMods(messages: RequestMessage[], result: ToolResult): boolean {
-  let disableNativeTools = false;
-  if (result.nextTurnMods?.disableNativeTools) {
-    disableNativeTools = true;
-  }
-  if (result.nextTurnMods?.instructions) {
-    messages[0] = { role: 'system', content: result.nextTurnMods.instructions };
-  }
-  if (result.nextTurnMods?.injectMessages) {
-    messages.push(...result.nextTurnMods.injectMessages);
-  }
-  return disableNativeTools;
-}
-
 function upsertSource(
   sources: SearchResult[],
   seenUrls: Set<string>,
@@ -341,7 +327,20 @@ export function appendToolResultMessage(params: {
     (params.nativeActive && !params.nativeFailed)
     || !!(lastAssistant?.tool_calls?.some((tc) => tc.id === toolCallId));
 
-  if (expectsToolRole || params.toolCall.id) {
+  /*
+   * The condition is `expectsToolRole` alone. It used to be
+   * `expectsToolRole || params.toolCall.id`, and since the line above *always*
+   * assigns an id, that was unconditionally true and the `role: 'user'` branch below
+   * was unreachable.
+   *
+   * That mattered because XML and code-fence tool parses produce calls with no id and
+   * push assistant messages with no `tool_calls`. Their results were emitted as
+   * `role: 'tool'` with no parent block, and `ensureToolCallPairs` then deleted them
+   * as orphans on the next iteration. Every local model runs XML mode, so local
+   * models never saw the results of their own tool calls — they just re-called the
+   * same tool. The plain-text form below survives that pass.
+   */
+  if (expectsToolRole) {
     params.messages.push({
       role: 'tool',
       content: JSON.stringify(resultPayload),
@@ -357,6 +356,17 @@ export function appendToolResultMessage(params: {
   });
 }
 
-export function publishArtifact(onArtifact: (artifact: AgentArtifact | null) => void, buildArtifact: () => AgentArtifact | null): void {
-  onArtifact(buildArtifact());
+/**
+ * Publish the artifacts accumulated so far for a turn.
+ *
+ * This takes the whole list rather than a single artifact because a turn can create
+ * several — a chart *and* a diagram, or a report *and* a spreadsheet. It used to
+ * take one, which combined with a single shared storage slot meant only the last
+ * one in a turn ever reached the screen.
+ */
+export function publishArtifacts(
+  onArtifact: (artifacts: AgentArtifact[]) => void,
+  artifacts: AgentArtifact[]
+): void {
+  onArtifact([...artifacts]);
 }

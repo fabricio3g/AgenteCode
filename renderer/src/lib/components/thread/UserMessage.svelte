@@ -107,7 +107,7 @@
     title={copy.thread.jumpToSelection}
   >
     <CornerDownLeft class="selected-text-message-icon h-4 w-4" />
-    <div class="markdown-body user-markdown selected-text-message-markdown">{@html quoteHtml}</div>
+    <div class="markdown-body selected-text-message-markdown">{@html quoteHtml}</div>
   </button>
 {/if}
 
@@ -117,7 +117,7 @@
     data-chat-message-content
     data-chat-message-id={ctx.message.id}
   >
-    <div class="markdown-body user-markdown">{@html bodyHtml}</div>
+    <div class="markdown-body">{@html bodyHtml}</div>
   </div>
 
   {#if ctx.message.attachments?.length}

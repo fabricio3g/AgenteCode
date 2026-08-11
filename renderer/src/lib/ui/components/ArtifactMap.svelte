@@ -35,6 +35,10 @@
   }
 
   function normalizeLine(line: MapArtifactPayload['polylines'][number]): Line | null {
+    // The schema is `z.array(z.unknown())` and the tool passes elements through
+    // untouched, so a null entry is reachable. Dereferencing `line.coords` without
+    // this guard threw during render and took the whole message down with it.
+    if (!line || typeof line !== 'object') return null;
     if (Array.isArray(line)) {
       const coords = line.map(normalizePoint).filter(Boolean) as Point[];
       return coords.length > 1 ? { coords } : null;
@@ -106,24 +110,51 @@
   })));
   const centerPoint = $derived(toSvg(center));
   const grid = [0.2, 0.4, 0.6, 0.8];
+
+  /** `Number('thick')` is NaN, which invalidates stroke-width and silently thins the line to 1. */
+  function strokeWidth(weight: unknown) {
+    return Math.max(1.5, Math.min(24, finiteNumber(weight, 3)));
+  }
+
+  /**
+   * Model-supplied colours land in an inline style, so anything containing a
+   * declaration separator or comment could inject extra CSS. Allow only the shapes
+   * a colour can legitimately take.
+   */
+  function cssColor(value: string) {
+    const candidate = String(value || '').trim();
+    if (!candidate || candidate.length > 32) return 'var(--primary)';
+    return /^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(candidate)
+      ? candidate
+      : 'var(--primary)';
+  }
 </script>
 
 <div class="artifact-map">
   {#if payload.title}
     <div class="artifact-map-title">{payload.title}</div>
   {/if}
-  <svg class="artifact-map-svg" viewBox="0 0 {W} {H}" role="img" aria-label={payload.title || 'Map'}>
+  <svg class="artifact-map-svg" width={W} height={H} viewBox="0 0 {W} {H}" role="img" aria-label={payload.title || 'Map'}>
     {#each grid as ratio}
       <line x1={PAD} x2={W - PAD} y1={PAD + (H - PAD * 2) * ratio} y2={PAD + (H - PAD * 2) * ratio} class="grid-line" />
       <line y1={PAD} y2={H - PAD} x1={PAD + (W - PAD * 2) * ratio} x2={PAD + (W - PAD * 2) * ratio} class="grid-line" />
     {/each}
 
     {#each renderedLines as line}
+      <!--
+        `stroke` is set from a CSS class, not from an attribute holding `var()`.
+        SVG presentation attributes do not substitute custom properties, so the old
+        `stroke={line.color || 'var(--primary)'}` produced an invalid value that fell
+        back to `none` — every polyline without an explicit colour was invisible.
+        A model-supplied colour still wins, via an inline style where `var()` and
+        plain colours both resolve.
+      -->
       <polyline
         points={line.points}
         fill="none"
-        stroke={line.color || 'var(--primary)'}
-        stroke-width={Math.max(1.5, Number(line.weight || 3))}
+        class="map-line"
+        style={line.color ? `stroke:${cssColor(line.color)}` : undefined}
+        stroke-width={strokeWidth(line.weight)}
         stroke-linecap="round"
         stroke-linejoin="round"
         opacity="0.86"
@@ -155,7 +186,8 @@
 
 <style>
   .artifact-map {
-    width: 100%;
+    width: var(--inline-block-width);
+    max-width: 100%;
     margin-top: 0.65rem;
     padding: 0.75rem 0.85rem;
     border: 0;
@@ -181,6 +213,10 @@
     background:
       radial-gradient(circle at 28% 22%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 32%),
       color-mix(in srgb, var(--chat-bg) 55%, transparent);
+  }
+
+  .map-line {
+    stroke: var(--primary);
   }
 
   .grid-line {

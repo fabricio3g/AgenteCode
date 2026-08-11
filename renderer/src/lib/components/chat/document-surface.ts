@@ -35,7 +35,12 @@ const DOCUMENT_SURFACE_EXTS = new Set([
   'docx',
   'xlsx',
   'pptx',
-  'csv'
+  'csv',
+  // `export_research_package` emits citations as .bib (BibTeX) and .ris. They are
+  // plain text and were being dropped from the reader, so a citations-only export
+  // showed one .txt file and silently hid the other two.
+  'bib',
+  'ris'
 ]);
 
 export function documentExtension(name: string) {

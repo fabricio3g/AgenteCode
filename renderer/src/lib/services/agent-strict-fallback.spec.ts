@@ -15,7 +15,6 @@ describe('agent-strict-fallback', () => {
         'brief.docx': 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,abc'
       },
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
     const observations: ToolObservation[] = [
       { name: 'web_search', args: {}, success: true, summary: 'Found sources' }
@@ -47,7 +46,6 @@ describe('agent-strict-fallback', () => {
       chatId: 'chat-1',
       files: {},
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
     const observations: ToolObservation[] = [
       {
@@ -106,7 +104,6 @@ describe('agent-strict-fallback', () => {
       chatId: 'chat-1',
       files: {},
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
 
     const content = await buildStrictFallbackContent({
@@ -138,7 +135,6 @@ describe('agent-strict-fallback', () => {
       chatId: 'chat-1',
       files: {},
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
     const observations: ToolObservation[] = [
       {
@@ -180,7 +176,6 @@ describe('agent-strict-fallback', () => {
       chatId: 'chat-1',
       files: {},
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
 
     const content = await buildStrictFallbackContent({
@@ -215,7 +210,6 @@ describe('agent-strict-fallback', () => {
       chatId: 'chat-1',
       files: {},
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
 
     const content = await buildStrictFallbackContent({
@@ -249,7 +243,6 @@ describe('agent-strict-fallback', () => {
         })
       },
       executionMode: 'sandbox',
-      onArtifact: vi.fn()
     };
 
     const content = await buildStrictFallbackContent({
