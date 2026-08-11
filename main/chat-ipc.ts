@@ -98,14 +98,25 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     }).filter(([, v]) => v !== undefined)
   );
 
+  /*
+   * No `signal` here. There used to be a `signal: abortController.signal`, but
+   * `abortController` is local to `startChatStream` below — so this threw
+   * `ReferenceError: abortController is not defined` on every single
+   * `chat_complete` call, taking down the whole non-streaming path.
+   *
+   * It cannot be fixed by moving a controller here either: an `AbortSignal` does
+   * not survive IPC structured cloning, and the renderer sends only
+   * `{ baseUrl, apiKey, providerName, body }`. Cancelling a non-streaming
+   * completion needs a request id plus a matching cancel channel, the way
+   * `startChatStream`/`cancelChatStream` are paired.
+   */
   return provider.completeChat({
     apiKey: realKey,
     baseUrl,
     model: body.model,
     messages: body.messages,
     tools: body.tools,
-         reasoning: body.reasoning,
-         signal: abortController.signal,
+    reasoning: body.reasoning,
     ...params
   });
 }

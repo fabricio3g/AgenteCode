@@ -69,7 +69,7 @@ const sectionSchema = z.object({
 }).passthrough();
 
 function repairInfoCardArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const rowInput = args.rows ?? args.items ?? args.facts ?? args.data;
+  const rowInput = args.rows ?? args.items ?? args.facts ?? args.data ?? args.fields ?? args.details;
   const rawRows = Array.isArray(rowInput)
     ? rowInput
     : rowInput && typeof rowInput === 'object'
@@ -87,8 +87,16 @@ function repairInfoCardArgs(args: Record<string, unknown>): Record<string, unkno
     }
     return { label: 'Detail', value: String(row ?? '') };
   }).filter((row) => row.value.trim());
+  /*
+   * Only emit `title` when there is one. This used to always emit
+   * `String(args.title || '').trim()`, so a model that omitted the title got
+   * `title: ''` — turning a clear "required" error into a baffling "Too small:
+   * expected string to have >=1 characters" and making repair actively worse than
+   * no repair. Common aliases are accepted before giving up.
+   */
+  const title = String(args.title ?? args.heading ?? args.name ?? args.label ?? '').trim();
   return {
-    title: String(args.title || '').trim(),
+    ...(title ? { title } : {}),
     ...(args.subtitle ? { subtitle: String(args.subtitle) } : {}),
     rows,
     ...(args.footer ? { footer: String(args.footer) } : {}),
@@ -163,7 +171,14 @@ const builtinArtifacts = [
     id: 'map', name: 'Maps', description: 'Inline coordinate maps with markers and polylines', icon: 'map', category: 'visuals', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_map', toolDescription: 'Create a deterministic inline coordinate map rendered locally.',
     argsSchema: z.object({
-      title: z.string().min(1), latitude: z.coerce.number().optional(), longitude: z.coerce.number().optional(), zoom: z.coerce.number().optional(),
+      /*
+       * Optional. It was `z.string().min(1)` under a `.strict()` schema, so a model
+       * that sent only coordinates — the one thing a map actually needs — was
+       * rejected outright and retried the identical call until it gave up. Nothing
+       * downstream required it: `handleCreateMap` already falls back to 'Map', and
+       * ArtifactMap renders the heading behind `{#if payload.title}`.
+       */
+      title: z.string().min(1).optional(), latitude: z.coerce.number().optional(), longitude: z.coerce.number().optional(), zoom: z.coerce.number().optional(),
       markers: z.array(z.object({ lat: z.coerce.number(), lng: z.coerce.number(), label: z.string().optional(), popup: z.string().optional() }).passthrough()).optional(),
       polylines: z.array(z.unknown()).optional(), path: pathSchema
     }).strict()
@@ -218,7 +233,11 @@ export function parseArtifactToolArgs(toolName: string, rawArgs: Record<string, 
   const parsed = definition.argsSchema.safeParse(repaired);
   if (parsed.success) return { success: true, data: parsed.data, repaired: !!definition.repairArgs && JSON.stringify(parsed.data) !== JSON.stringify(rawArgs) };
   const detail = parsed.error.issues.slice(0, 4).map((issue) => `${issue.path.join('.') || 'arguments'}: ${issue.message}`).join('; ');
-  return { success: false, error: `Invalid ${toolName} arguments: ${detail}` };
+  const required = definition.toolDefinition.function.parameters?.required;
+  const hint = Array.isArray(required) && required.length
+    ? ` Required: ${required.join(', ')}.`
+    : '';
+  return { success: false, error: `Invalid ${toolName} arguments: ${detail}.${hint}` };
 }
 
 export function getEnabledArtifactIds(toggles: Record<string, boolean> = {}): Set<string> {
