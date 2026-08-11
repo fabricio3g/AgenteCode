@@ -72,6 +72,7 @@ import {
   handleSearchFiles, handlePreviewProject
 } from '$lib/services/agent-tool-fileops';
 import { handleGetWeather, handleConvertCurrency, handleGetQuote } from '$lib/services/agent-tool-livedata';
+import { liveGeocodePlace } from '$lib/services/live-data';
 import { handleWebSearch, handleFetchUrl, handleQueryKnowledge, handleCalculator } from '$lib/services/agent-tool-core';
 import { handleGetDiagnostics } from '$lib/services/agent-tool-diagnostics';
 import { dispatchArtifactTool } from '$lib/services/agent-artifact-dispatch';
@@ -254,6 +255,7 @@ async function executeTool(
     createPptxArtifactFile,
     createPdfArtifactFile,
     addGeneratedArtifactFile,
+    geocodePlace: liveGeocodePlace,
     ok,
     fail,
     failFromError

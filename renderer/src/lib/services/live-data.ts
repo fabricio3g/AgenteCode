@@ -30,7 +30,29 @@ export type LiveQuoteData = {
   rows: LiveInfoRows;
 };
 
+export type LiveGeocodeData = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  country?: string;
+  admin1?: string;
+  /** "City, Region, Country" — ready to use as a map title or marker label. */
+  label: string;
+};
+
 type LiveResponse<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/**
+ * Place name to coordinates. Runs in main against the existing host allowlist, and
+ * only while a tool is executing — the resulting artifact stores plain coordinates,
+ * so the map itself still renders with no network.
+ */
+export async function liveGeocodePlace(place: string): Promise<LiveGeocodeData> {
+  if (!isTauri()) throw new Error('Geocoding requires the desktop app.');
+  const res = await invoke<LiveResponse<LiveGeocodeData>>('live_geocode_place', { place });
+  if (!res?.ok) throw new Error(res?.error || 'Geocoding failed');
+  return res.data;
+}
 
 export async function liveGetWeather(location: string): Promise<LiveWeatherData> {
   if (!isTauri()) throw new Error('Live weather requires the desktop app.');

@@ -169,8 +169,15 @@ const builtinArtifacts = [
   }),
   defineArtifact({
     id: 'map', name: 'Maps', description: 'Inline coordinate maps with markers and polylines', icon: 'map', category: 'visuals', presentation: 'inline', defaultEnabled: true,
-    toolName: 'create_map', toolDescription: 'Create a deterministic inline coordinate map rendered locally.',
+    toolName: 'create_map',
+    toolDescription: 'Create an inline map rendered locally from bundled world geometry. Supply `place` (a city or region name) and the coordinates are resolved for you, or give latitude/longitude directly.',
     argsSchema: z.object({
+      /*
+       * Either `place` or latitude/longitude. Supplying a name is strongly preferred:
+       * a model that only had the coordinate fields would run a web search purely to
+       * find a latitude before it could draw anything.
+       */
+      place: z.string().min(1).optional(),
       /*
        * Optional. It was `z.string().min(1)` under a `.strict()` schema, so a model
        * that sent only coordinates — the one thing a map actually needs — was
