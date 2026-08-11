@@ -76,6 +76,39 @@ describe('projection', () => {
     expect(xy[1]).toBeCloseTo(MAP_H / 2, 1);
   });
 
+  it('never clips its own content, however tight the fit', () => {
+    /*
+     * Regression. The fitted scale used to be clamped to MAX_ZOOM, and the fallback
+     * re-centred on the *first* point — so two markers 55 km apart pushed the second
+     * one off the bottom edge, i.e. a route map that showed one end of the route.
+     * Fitting to content has to honour the content.
+     */
+    const points = [VICTORIA, { lat: -32.72, lng: -60.32 }, ROSARIO];
+    const projection = fitProjection({ center: { lat: -32.85, lng: -60.55 }, points, zoom: 7 });
+
+    for (const point of points) {
+      const xy = projection([point.lng, point.lat])!;
+      expect(xy[0], `${point.lat},${point.lng} x`).toBeGreaterThanOrEqual(0);
+      expect(xy[0], `${point.lat},${point.lng} x`).toBeLessThanOrEqual(MAP_W);
+      expect(xy[1], `${point.lat},${point.lng} y`).toBeGreaterThanOrEqual(0);
+      expect(xy[1], `${point.lat},${point.lng} y`).toBeLessThanOrEqual(MAP_H);
+    }
+  });
+
+  it('keeps a very tight pair of points on screen', () => {
+    // ~2 km apart: still a legitimate fit, not a degenerate one.
+    const a = { lat: 40.4168, lng: -3.7038 };
+    const b = { lat: 40.4300, lng: -3.6900 };
+    const projection = fitProjection({ center: a, points: [a, b], zoom: 9 });
+    for (const point of [a, b]) {
+      const xy = projection([point.lng, point.lat])!;
+      expect(xy[0]).toBeGreaterThanOrEqual(0);
+      expect(xy[0]).toBeLessThanOrEqual(MAP_W);
+      expect(xy[1]).toBeGreaterThanOrEqual(0);
+      expect(xy[1]).toBeLessThanOrEqual(MAP_H);
+    }
+  });
+
   it('does not blow up when two points coincide', () => {
     // fitExtent on a zero-extent collection drives scale to infinity.
     const projection = fitProjection({ center: MADRID, points: [MADRID, { ...MADRID }], zoom: 5 });
@@ -90,9 +123,12 @@ describe('projection', () => {
     expect(scaleForZoom(4) * 2 * Math.PI).toBeCloseTo(256 * 16, 6);
   });
 
-  it('clamps zoom into the range the bundled geometry can actually support', () => {
+  it('clamps zoom into the range the tile layer supports, not the vector fallback', () => {
+    // Regression: this was capped at 10 for the bundled geometry's sake, which meant a
+    // street-level request silently fetched city-scale tiles and never showed streets.
     expect(clampZoom(-5)).toBe(0);
-    expect(clampZoom(99)).toBe(10);
+    expect(clampZoom(15)).toBe(15);
+    expect(clampZoom(99)).toBe(19);
     expect(clampZoom('thick')).toBe(4);
     expect(clampZoom(7)).toBe(7);
   });

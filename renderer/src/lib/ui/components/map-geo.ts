@@ -154,27 +154,64 @@ export function fitProjection(params: {
     collection
   );
 
-  // Two points on top of each other, or a hair apart, drive the fitted scale toward
-  // infinity. Cap it at the same ceiling an explicit zoom would hit.
+  /*
+   * The fitted scale is deliberately NOT clamped to MAX_ZOOM.
+   *
+   * It was, and that clipped the map's own content: two markers 55 km apart fit at a
+   * scale above the ceiling, so the fallback re-centred on the *first* point and
+   * pushed the second one off the bottom edge — a route map showing one end of the
+   * route. Fitting to content has to honour the content; MAX_ZOOM exists to stop an
+   * *explicit* zoom diving past the detail the geometry actually has, which is a
+   * different question.
+   *
+   * The guard below is only for the degenerate case: points close enough to be
+   * indistinguishable drive the scale toward infinity.
+   */
   const fitted = projection.scale();
-  const ceiling = scaleForZoom(MAX_ZOOM);
-  if (!Number.isFinite(fitted) || fitted > ceiling) {
-    const anchor = distinct[0];
+  const degenerate = scaleForZoom(DEGENERATE_ZOOM);
+  if (!Number.isFinite(fitted) || fitted > degenerate) {
+    const anchor = centroidOf(distinct);
     return projection
       .center([anchor.lng, anchor.lat])
-      .scale(ceiling)
+      .scale(scaleForZoom(COINCIDENT_ZOOM))
       .translate([width / 2, height / 2]);
   }
   return projection;
 }
 
+/** Mean of a point set, used to centre a view that cannot be fitted. */
+function centroidOf(points: Point[]): Point {
+  const total = points.reduce(
+    (acc, point) => ({ lat: acc.lat + point.lat, lng: acc.lng + point.lng }),
+    { lat: 0, lng: 0 }
+  );
+  return { lat: total.lat / points.length, lng: total.lng / points.length };
+}
+
 /**
- * Zoom ceiling. The bundled Natural Earth geometry is 1:110m — past roughly this
- * scale there is no more detail to show, only bigger polygons, so clamping keeps the
- * map honest about what it knows.
+ * Zoom ceiling, set by the *tile* layer rather than by the bundled geometry.
+ *
+ * It used to be 10, on the reasoning that 1:110m Natural Earth has no more detail
+ * past that. That silently capped street-level requests: a map asking for z15 was
+ * clamped to z10 and fetched city-scale tiles, so streets never appeared however far
+ * in the caller zoomed. The vector basemap is the *fallback*; it must not dictate what
+ * the primary surface can show. 19 is where tile providers stop.
  */
 export const MIN_ZOOM = 0;
-export const MAX_ZOOM = 10;
+export const MAX_ZOOM = 19;
+
+/**
+ * Where to sit when points are coincident and there is nothing to fit — a
+ * neighbourhood view, which is a defensible guess. Not MAX_ZOOM: landing on a
+ * building because two markers happened to match is worse than being slightly wide.
+ */
+const COINCIDENT_ZOOM = 12;
+
+/**
+ * Above this the points being fitted are effectively the same location and the scale
+ * is running away. A divide-by-zero guard, not a detail limit.
+ */
+const DEGENERATE_ZOOM = 22;
 
 export function clampZoom(zoom: unknown): number {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, finiteNumber(zoom, 4)));
@@ -206,25 +243,30 @@ function niceDistance(km: number): number {
   return step * magnitude;
 }
 
-export type PlacedLabel = { x: number; y: number; text: string };
+export type LabelCandidate = { x: number; y: number; text: string; priority: number };
+export type PlacedLabel = LabelCandidate;
 
 /**
  * Greedy label placement, most important first, skipping any that would overlap
  * something already placed. Width is estimated from character count rather than
  * measured — measuring would need a live DOM and a reflow per label, and the estimate
  * only has to be good enough to reject collisions.
+ *
+ * Generic in the candidate so callers can tag each one (marker / city / country) and
+ * filter the result. Every kind of label has to go through a *single* pass or they
+ * collide with each other: three independent passes each avoid only their own kind.
  */
-export function placeLabels(
-  candidates: Array<{ x: number; y: number; text: string; priority: number }>,
+export function placeLabels<T extends LabelCandidate>(
+  candidates: T[],
   options: { fontSize?: number; width?: number; height?: number } = {}
-): PlacedLabel[] {
+): T[] {
   const fontSize = options.fontSize ?? 11;
   const width = options.width ?? MAP_W;
   const height = options.height ?? MAP_H;
   const charWidth = fontSize * 0.55;
   // Boxes are kept for collision testing; the anchor is what callers draw at.
   const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
-  const placed: PlacedLabel[] = [];
+  const placed: T[] = [];
 
   for (const candidate of [...candidates].sort((a, b) => b.priority - a.priority)) {
     const text = candidate.text.trim();
@@ -244,8 +286,28 @@ export function placeLabels(
     if (collides) continue;
 
     boxes.push(box);
-    placed.push({ x: candidate.x, y: candidate.y, text });
+    placed.push(candidate);
   }
 
   return placed;
 }
+
+/**
+ * Priority bands, so one placement pass can rank three kinds of label against each
+ * other. Within a band the caller's own number breaks ties.
+ *
+ * Markers always win: they are what the answer is actually about. Between cities and
+ * countries the order flips with zoom — a world view wants country names, a regional
+ * view wants city names, and at that scale a country label is usually off-screen or
+ * meaningless anyway.
+ */
+export const LABEL_BAND = {
+  marker: 3e12,
+  cityWhenZoomedIn: 2e12,
+  countryWhenZoomedOut: 2e12,
+  cityWhenZoomedOut: 1e12,
+  countryWhenZoomedIn: 1e12
+} as const;
+
+/** Zoom at which city labels start outranking country labels. */
+export const CITY_LABEL_ZOOM = 4;
