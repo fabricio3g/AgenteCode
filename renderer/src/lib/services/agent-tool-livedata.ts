@@ -1,6 +1,23 @@
+import type { ArtifactManifest } from '$lib/types/chat';
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
 import { liveConvertCurrency, liveGetQuote, liveGetWeather } from '$lib/services/live-data';
 import { handleCreateInfoCard } from '$lib/services/agent-tool-artifacts';
+
+/*
+ * These tools render as info cards, so they declare that themselves. They used to
+ * publish an artifact inline via `buildArtifactFromContext(ctx)` — which read a
+ * manifest off the shared context and so inherited whatever the previous artifact
+ * tool left there, occasionally publishing a weather card as a chart. The tool loop
+ * publishes from the returned result a moment later, so the inline call was
+ * redundant as well as wrong.
+ */
+const INFO_CARD_MANIFEST = (entryPath: string): ArtifactManifest => ({
+  schemaVersion: 1,
+  kind: 'info_card',
+  presentation: 'inline',
+  entryPath,
+  status: 'ready'
+});
 
 function writeChip(
   ctx: ToolContext,
@@ -43,17 +60,9 @@ export async function handleGetWeather(params: {
       params.fail
     );
     if (!chip.success) return chip;
-    // Publish immediately so the card appears in chat as soon as weather returns.
-    try {
-      const { buildArtifactFromContext } = await import('$lib/services/agent-artifact');
-      const artifact = buildArtifactFromContext(params.ctx);
-      if (artifact) params.ctx.onArtifact(artifact);
-    } catch {
-      // non-fatal
-    }
     return params.ok(
       { ...data, chip: true },
-      { createdFiles: ['weather-card.json', '__artifact__.json'] }
+      { createdFiles: ['weather-card.json'], artifactManifest: INFO_CARD_MANIFEST('weather-card.json') }
     );
   } catch (err: unknown) {
     return params.failFromError(err);
@@ -85,16 +94,9 @@ export async function handleConvertCurrency(params: {
       params.fail
     );
     if (!chip.success) return chip;
-    try {
-      const { buildArtifactFromContext } = await import('$lib/services/agent-artifact');
-      const artifact = buildArtifactFromContext(params.ctx);
-      if (artifact) params.ctx.onArtifact(artifact);
-    } catch {
-      // non-fatal
-    }
     return params.ok(
       { ...data, chip: true },
-      { createdFiles: ['fx-card.json', '__artifact__.json'] }
+      { createdFiles: ['fx-card.json'], artifactManifest: INFO_CARD_MANIFEST('fx-card.json') }
     );
   } catch (err: unknown) {
     return params.failFromError(err);
@@ -123,16 +125,9 @@ export async function handleGetQuote(params: {
       params.fail
     );
     if (!chip.success) return chip;
-    try {
-      const { buildArtifactFromContext } = await import('$lib/services/agent-artifact');
-      const artifact = buildArtifactFromContext(params.ctx);
-      if (artifact) params.ctx.onArtifact(artifact);
-    } catch {
-      // non-fatal
-    }
     return params.ok(
       { ...data, chip: true },
-      { createdFiles: ['quote-card.json', '__artifact__.json'] }
+      { createdFiles: ['quote-card.json'], artifactManifest: INFO_CARD_MANIFEST('quote-card.json') }
     );
   } catch (err: unknown) {
     return params.failFromError(err);

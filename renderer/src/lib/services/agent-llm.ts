@@ -156,6 +156,16 @@ export async function agentStreamComplete(options: {
   omitMaxTokens?: boolean;
   onReasoning?: (text: string) => void;
   onContent?: (text: string) => void;
+  /**
+   * Receives the real failure reason whenever this returns `null`.
+   *
+   * The `null` return is deliberately kept — the caller treats it as "native tools
+   * did not work, fall back to XML" — but on its own it erased the provider's actual
+   * message (a 400 body, a tool rejection, a context overflow). That left the
+   * caller's error pattern-matching with nothing to match on, so a model that simply
+   * does not support tools was indistinguishable from a network blip.
+   */
+  onError?: (message: string) => void;
 }): Promise<CompletionResult | null> {
   if (!isTauri()) return null;
 
@@ -164,6 +174,7 @@ export async function agentStreamComplete(options: {
   const transport = await resolveAgentTransport(config);
   if (!transport) {
     debugLog(debugLogs, '[agent-llm] agentStreamComplete ABORT | no base_url for provider');
+    options.onError?.('No base_url is configured for this provider.');
     return null;
   }
 
@@ -272,6 +283,7 @@ export async function agentStreamComplete(options: {
     if (finalResult.content || finalResult.toolCalls?.length) {
       return finalResult;
     }
+    options.onError?.(errStr);
     return null;
   } finally {
     dispatcher.dispose();

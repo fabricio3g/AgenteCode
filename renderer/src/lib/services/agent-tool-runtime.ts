@@ -39,23 +39,38 @@ export async function executeWithTimeoutAndRetries<T extends ToolRuntimeResult>(
   toErrorMessage: (err: unknown) => string;
 }): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const onAbort = () => { if (timeoutId) clearTimeout(timeoutId); };
+  let onAbort: (() => void) | undefined;
 
   const toolArgsStr = JSON.stringify(params.args).slice(0, 120);
   const startedAt = performance.now();
 
   for (let attempt = 1; attempt <= params.maxRetries + 1; attempt++) {
-    const timeoutPromise = new Promise<T>((_, reject) => {
+    /*
+     * Abort *rejects* the race rather than just clearing the timeout.
+     *
+     * The old handler only called `clearTimeout`, so after an abort nothing in the
+     * race could ever settle unless the tool itself finished — and most handlers do
+     * not take the signal. The run's promise leaked, and because `stopStreaming` has
+     * already ended the run by then, a late resolution went on to mutate an
+     * assistant message the user had explicitly stopped.
+     */
+    const settlePromise = new Promise<T>((_, reject) => {
       timeoutId = setTimeout(() => {
         reject(new Error(`Tool "${params.name}" timed out after ${params.timeoutMs / 1000}s`));
       }, params.timeoutMs);
+
+      onAbort = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        reject(new DOMException(`Tool "${params.name}" aborted`, 'AbortError'));
+      };
+      if (params.signal?.aborted) onAbort();
     });
 
-    params.signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (onAbort) params.signal?.addEventListener?.('abort', onAbort, { once: true });
 
     params.onDebug(params.debug, `[agent] tool START | name=${params.name} | args=${toolArgsStr} | attempt=${attempt}`);
     try {
-      const result = await Promise.race([params.runTool(), timeoutPromise]);
+      const result = await Promise.race([params.runTool(), settlePromise]);
       const duration = Math.round(performance.now() - startedAt);
       if (result.success) {
         params.onDebug(params.debug, `[agent] tool DONE | name=${params.name} | success=true | duration=${duration}ms`);
@@ -67,6 +82,9 @@ export async function executeWithTimeoutAndRetries<T extends ToolRuntimeResult>(
       }
       params.onDebug(params.debug, `[agent] tool RETRY | name=${params.name} | attempt=${attempt}/${params.maxRetries} | error=${(result.error || '').slice(0, 100)}`);
     } catch (err: unknown) {
+      // An abort is the user's decision, not a tool failure: propagate it so the run
+      // unwinds and never retries.
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
       const msg = params.toErrorMessage(err);
       const duration = Math.round(performance.now() - startedAt);
       if (msg.includes('timed out')) {
@@ -75,7 +93,7 @@ export async function executeWithTimeoutAndRetries<T extends ToolRuntimeResult>(
       if (!isRetryableToolFailure(msg) || attempt > params.maxRetries) return params.makeFailure(msg);
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
-      params.signal?.removeEventListener?.('abort', onAbort);
+      if (onAbort) params.signal?.removeEventListener?.('abort', onAbort);
     }
   }
 

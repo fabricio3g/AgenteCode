@@ -8,6 +8,7 @@ import {
   mergeWebSearchSources,
   recoverOptionalPresentationFailure
 } from '$lib/services/agent-tool-result';
+import { ensureToolCallPairs } from '$lib/services/agent-message-context';
 
 describe('agent-tool-result', () => {
   it('creates native tool messages when native mode is active', () => {
@@ -25,10 +26,16 @@ describe('agent-tool-result', () => {
     expect(messages[0]).toMatchObject({ role: 'tool', tool_call_id: 'call_1', name: 'web_search' });
   });
 
-  it('still emits role=tool with generated id when native mode is unavailable', () => {
-    // Prefer tool-role messages whenever an id exists/can be generated so
-    // assistant tool_calls turns never become unpaired (OpenAI 400).
-    const messages: RequestMessage[] = [];
+  it('falls back to a plain user message when no assistant tool_calls block owns the call', () => {
+    /*
+     * This used to assert `role: 'tool'`, on the reasoning that a tool-role message is
+     * always preferable because it keeps native turns paired. That was backwards for
+     * XML mode. XML and code-fence parses produce calls with no id and push assistant
+     * messages with no `tool_calls`, so a `role: 'tool'` message there has no parent —
+     * and `ensureToolCallPairs` strips it as an orphan on the next iteration. Every
+     * local model runs XML mode, so local models never saw their own tool results.
+     */
+    const messages: RequestMessage[] = [{ role: 'assistant', content: 'Let me calculate.' }];
     const toolCall: { name: string; arguments: { expression: string }; id?: string } = {
       name: 'calculator',
       arguments: { expression: '1+1' }
@@ -43,10 +50,47 @@ describe('agent-tool-result', () => {
       maxToolResultChars: 1000
     });
 
-    expect(messages[0]?.role).toBe('tool');
-    expect(messages[0]?.name).toBe('calculator');
-    expect(messages[0]?.tool_call_id).toBeTruthy();
-    expect(toolCall.id).toBeTruthy();
+    expect(messages[1]?.role).toBe('user');
+    expect(String(messages[1]?.content)).toContain('Tool result for calculator');
+    expect(String(messages[1]?.content)).toContain('"result": 2');
+  });
+
+  it('keeps using role=tool when the parent assistant really does own the id', () => {
+    const messages: RequestMessage[] = [
+      { role: 'assistant', content: '', tool_calls: [{ id: 'call_9', type: 'function', function: { name: 'calculator', arguments: '{}' } }] }
+    ];
+
+    appendToolResultMessage({
+      toolCall: { id: 'call_9', name: 'calculator', arguments: { expression: '1+1' } },
+      result: { success: true, output: { result: 2 } },
+      messages,
+      // Native reported as failed, but the pairing is what decides.
+      nativeActive: false,
+      nativeFailed: true,
+      maxToolResultChars: 1000
+    });
+
+    expect(messages[1]).toMatchObject({ role: 'tool', tool_call_id: 'call_9' });
+  });
+
+  it('XML-mode tool results survive the ensureToolCallPairs pass that runs next iteration', () => {
+    // The regression this guards: the result reached the provider on turn N and was
+    // silently deleted before turn N+1, so the model re-called the same tool forever.
+    const messages: RequestMessage[] = [{ role: 'assistant', content: '<tool_call>…</tool_call>' }];
+
+    appendToolResultMessage({
+      toolCall: { name: 'web_search', arguments: { query: 'abc' } },
+      result: { success: true, output: { results: [{ title: 'T', url: 'https://a.test' }] } },
+      messages,
+      nativeActive: false,
+      nativeFailed: true,
+      maxToolResultChars: 1000
+    });
+
+    ensureToolCallPairs(messages, 'fill');
+
+    expect(messages).toHaveLength(2);
+    expect(String(messages[1]?.content)).toContain('Tool result for web_search');
   });
 
   it('merges only new web search source urls', () => {

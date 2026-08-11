@@ -42,7 +42,8 @@
 
 <style>
   .html-card {
-    width: 100%;
+    width: var(--inline-block-width);
+    max-width: 100%;
     margin-top: 0.65rem;
     padding: 0.75rem 0.85rem 0.85rem;
     border: 0;
@@ -59,11 +60,16 @@
     color: var(--text);
   }
 
+  /*
+   * The frame fills the wrap instead of being pinned to 220px. Previously the wrap
+   * allowed up to min(48vh, 360px) while the iframe was fixed at 220px under
+   * `overflow: hidden`, so a card taller than 220px was cropped with no scrollbar
+   * and no indication anything was missing. The iframe's own document scrolls now.
+   */
   .html-card-frame-wrap {
     width: 100%;
+    height: min(48vh, 360px);
     min-height: 120px;
-    max-height: min(48vh, 360px);
-    overflow: hidden;
     border-radius: calc(var(--artifact-radius, 12px) - 4px);
     background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
   }
@@ -71,8 +77,7 @@
   .html-card-frame {
     display: block;
     width: 100%;
-    height: 220px;
-    max-height: min(48vh, 360px);
+    height: 100%;
     border: 0;
     background: transparent;
   }

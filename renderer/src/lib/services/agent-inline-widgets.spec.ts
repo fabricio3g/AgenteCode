@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolContext } from '$lib/services/agent-types';
 import { handleCreateHtmlCard, handleCreateInfoCard } from '$lib/services/agent-tool-artifacts';
-import { buildArtifactFromContext, INLINE_ARTIFACT_FILE } from '$lib/services/agent-artifact';
+import type { ArtifactManifest } from '$lib/types/chat';
+import { buildScopedArtifact } from '$lib/services/agent-artifact';
 import { getAllArtifacts } from '$lib/services/artifact-registry';
 
 function makeCtx(): ToolContext {
@@ -9,7 +10,6 @@ function makeCtx(): ToolContext {
     chatId: 'c1',
     files: {},
     executionMode: 'sandbox',
-    onArtifact: () => {}
   };
 }
 
@@ -18,6 +18,22 @@ function ok(output: unknown, extra?: Record<string, unknown>) {
 }
 function fail(error: string) {
   return { success: false as const, error };
+}
+
+/**
+ * Stands in for what `dispatchArtifactTool` attaches in production. Inline payloads
+ * live at their own path now rather than in a single shared `__artifact__.json`
+ * slot, so the artifact is built from the tool's own `createdFiles`.
+ */
+function inlineManifest(entryPath: string): ArtifactManifest {
+  return { schemaVersion: 1, kind: 'info_card', presentation: 'inline', entryPath, status: 'ready' };
+}
+
+function scoped(ctx: ToolContext, createdFiles: string[] | undefined, entryPath: string) {
+  return buildScopedArtifact(
+    { files: ctx.files, artifactManifest: null },
+    { createdFiles, artifactManifest: inlineManifest(entryPath) }
+  );
 }
 
 describe('inline widgets (info_card / html_card)', () => {
@@ -49,8 +65,8 @@ describe('inline widgets (info_card / html_card)', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(ctx.files[INLINE_ARTIFACT_FILE]).toBeTruthy();
-    const artifact = buildArtifactFromContext(ctx);
+    expect(ctx.files['info-card.json']).toBeTruthy();
+    const artifact = scoped(ctx, result.createdFiles, 'info-card.json');
     expect(artifact?.inline?.kind).toBe('info_card');
     if (artifact?.inline?.kind === 'info_card') {
       expect(artifact.inline.title).toBe('Madrid weather');
@@ -73,7 +89,7 @@ describe('inline widgets (info_card / html_card)', () => {
     });
 
     expect(result.success).toBe(true);
-    const raw = ctx.files[INLINE_ARTIFACT_FILE];
+    const raw = ctx.files['html-card.json'];
     const parsed = JSON.parse(raw);
     expect(parsed.kind).toBe('html_card');
     expect(parsed.html).toContain('Hello');
@@ -92,7 +108,7 @@ describe('inline widgets (info_card / html_card)', () => {
     });
     expect(result.success).toBe(true);
     expect(result.output).toMatchObject({ created: false, skipped: true });
-    expect(ctx.files[INLINE_ARTIFACT_FILE]).toBeUndefined();
+    expect(ctx.files['info-card.json']).toBeUndefined();
   });
 
   it('repairs common info card row shapes from model output', () => {
@@ -112,7 +128,7 @@ describe('inline widgets (info_card / html_card)', () => {
     });
 
     expect(result.success).toBe(true);
-    const artifact = buildArtifactFromContext(ctx);
+    const artifact = scoped(ctx, result.createdFiles, 'info-card.json');
     expect(artifact?.inline?.kind).toBe('info_card');
     if (artifact?.inline?.kind === 'info_card') {
       expect(artifact.inline.rows).toEqual([

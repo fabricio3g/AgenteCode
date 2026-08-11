@@ -47,7 +47,7 @@ import {
 } from '$lib/services/agent-evidence';
 import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
 import {
-  buildArtifactFromContext,
+  buildScopedArtifact,
   synthesizeArtifactCompletion as synthesizeArtifactCompletionText,
   addGeneratedArtifactFile as addGeneratedArtifactFileEntry
 } from '$lib/services/agent-artifact';
@@ -83,13 +83,12 @@ import {
 } from '$lib/services/agent-strict-fallback';
 import { executeSingleTool as executeSingleToolCore } from '$lib/services/agent-tool-execution';
 import {
-  applyNextTurnMods,
   appendToolResultMessage,
   createRunningToolStep,
   displayToolLabel,
   finalizeToolStep,
   mergeWebSearchSources,
-  publishArtifact,
+  publishArtifacts,
   recoverOptionalPresentationFailure
 } from '$lib/services/agent-tool-result';
 
@@ -176,6 +175,8 @@ const LOCAL_TOOL_CALLS_PER_STEP = 2;
 const CODE_TOOL_CALLS_PER_STEP = 4;
 const MAX_TOOL_RESULT_CHARS = 12000;
 const TOOL_TIMEOUT_MS = 30000;
+/** Ceiling for a tool blocked on a human answer — see `executeToolWithTimeout`. */
+const APPROVAL_TOOL_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_TOOL_RETRIES = 1;
 const MAX_FORCED_FINAL_ANSWER_ATTEMPTS = 2;
 /** Deep/max research gets extra synthesis retries after tool budget ends. */
@@ -248,7 +249,6 @@ async function executeTool(
     writeWorkspaceFile,
     validateGeneratedDocumentArgs,
     createWorkProductArtifactFiles,
-    buildArtifact,
     createDocxArtifactFile,
     createXlsxArtifactFile,
     createPptxArtifactFile,
@@ -385,7 +385,9 @@ async function executeTool(
           if (!approved) {
             return fail('Command blocked by user');
           }
-        } catch {
+        } catch (err: unknown) {
+          if (isAbortError(err)) throw err;
+          debugLog(!!ctx.debugLogs, `[agent] approval gate unavailable: ${toErrorMessage(err)}`);
           return fail('Approval mechanism unavailable');
         }
       }
@@ -456,12 +458,21 @@ async function executeTool(
 }
 
 async function executeToolWithTimeout(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
+  /*
+   * A supervised `bash` call blocks on a human pressing Allow, so the ordinary 30s
+   * tool timeout is wrong for it: the timeout fired while the approval card was
+   * still on screen, turning the call into a timeout failure and stranding the
+   * approval with a resolver nobody awaited — then the retry raised a *second* card
+   * for the same command. Approval waits get a long ceiling and no retry. Aborting
+   * still cuts it short, because abort now rejects the race.
+   */
+  const awaitsApproval = name === 'bash' && ctx.runtimeMode === 'supervised';
   return executeWithTimeoutAndRetries<ToolResult>({
     name,
     args,
     signal: ctx.signal,
-    timeoutMs: TOOL_TIMEOUT_MS,
-    maxRetries: MAX_TOOL_RETRIES,
+    timeoutMs: awaitsApproval ? APPROVAL_TOOL_TIMEOUT_MS : TOOL_TIMEOUT_MS,
+    maxRetries: awaitsApproval ? 0 : MAX_TOOL_RETRIES,
     debug: !!ctx.debugLogs,
     onDebug: debugLog,
     runTool: () => executeTool(name, args, ctx),
@@ -470,11 +481,34 @@ async function executeToolWithTimeout(name: string, args: Record<string, unknown
   });
 }
 
-function buildArtifact(ctx: ToolContext): AgentArtifact | null {
-  return buildArtifactFromContext({
-    files: ctx.files,
-    workProduct: ctx.workProduct
-  });
+/**
+ * Accumulates one artifact per artifact-producing tool call and republishes the
+ * whole list, so every visual a turn creates reaches the screen.
+ *
+ * Re-running the same tool replaces that tool's entry rather than appending a
+ * duplicate — keyed on `entryPath`, which the dispatcher sets from the tool's first
+ * created file.
+ */
+function createArtifactCollector(
+  ctx: ToolContext,
+  artifacts: AgentArtifact[],
+  onArtifact: (artifacts: AgentArtifact[]) => void,
+  enabled: boolean
+) {
+  return (result: ToolResult) => {
+    if (!enabled) return;
+    const built = buildScopedArtifact({
+      files: ctx.files,
+      workProduct: ctx.workProduct,
+      artifactManifest: result.artifactManifest ?? null
+    }, result);
+    if (!built) return;
+    const key = built.manifest?.entryPath || '';
+    const index = key ? artifacts.findIndex((entry) => entry.manifest?.entryPath === key) : -1;
+    if (index >= 0) artifacts[index] = built;
+    else artifacts.push(built);
+    publishArtifacts(onArtifact, artifacts);
+  };
 }
 
 function synthesizeArtifactCompletion(ctx: ToolContext): string {
@@ -502,6 +536,7 @@ async function ensureRequestedArtifactsFromEvidence(params: {
   ctx: ToolContext;
   observations: ToolObservation[];
   sources: SearchResult[];
+  publishToolArtifact: (result: ToolResult) => void;
 }): Promise<string[]> {
   return ensureRequestedArtifactsFromEvidenceCore({
     ...params,
@@ -513,7 +548,7 @@ async function ensureRequestedArtifactsFromEvidence(params: {
     sourceRows,
     compactText,
     executeTool,
-    buildArtifact,
+    publishToolArtifact: params.publishToolArtifact,
     normPath,
     buildMarkdownReport
   });
@@ -527,12 +562,16 @@ async function buildStrictFallbackContent(params: {
   sources: SearchResult[];
   mode?: 'research' | 'chat';
   notice?: string | null;
+  publishToolArtifact: (result: ToolResult) => void;
 }): Promise<string> {
   return buildStrictFallbackContentCore({
     ...params,
     mode: params.mode || 'research',
     notice: params.notice,
-    ensureRequestedArtifactsFromEvidence: (args) => ensureRequestedArtifactsFromEvidence(args),
+    ensureRequestedArtifactsFromEvidence: (args) => ensureRequestedArtifactsFromEvidence({
+      ...args,
+      publishToolArtifact: params.publishToolArtifact
+    }),
     evidenceSources,
     missingRequestedArtifactExtensions: missingRequestedArtifactExts
   });
@@ -593,6 +632,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const toolObservations: ToolObservation[] = [];
   const seenUrls = new Set<string>();
   const executionMode = args.executionMode || 'sandbox';
+  const artifactToggles = config.ui?.artifact_toggles || {};
   const ctx: ToolContext = {
     chatId: args.chatId,
     files: {},
@@ -606,11 +646,14 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     runtimeMode: args.runtimeMode,
     debugLogs,
     signal: args.signal,
-    onArtifact: args.onArtifact,
+    artifactToggles,
   };
 
   const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
-  const publishArtifacts = executionMode !== 'workspace';
+  // Workspace runs write real files on disk; there is no sandbox artifact to show.
+  const artifactsEnabled = executionMode !== 'workspace';
+  const artifacts: AgentArtifact[] = [];
+  const publishToolArtifact = createArtifactCollector(ctx, artifacts, args.onArtifact, artifactsEnabled);
   const localMode = backendMode === 'local';
   const toolMode = args.toolMode || 'agent';
   const agentProfile = args.agentProfile
@@ -647,7 +690,6 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const wantsWebsiteArtifact = isWebsiteBuildRequest(
     args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
   );
-  const artifactToggles = config.ui?.artifact_toggles || {};
   const toolDefs = toolMode === 'search_chat'
     ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
     : getToolDefinitions(executionMode, artifactToggles, agentProfile);
@@ -800,7 +842,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       ctx,
       observations: toolObservations,
       sources,
-      mode: fallbackMode
+      mode: fallbackMode,
+      publishToolArtifact
     });
 
   // --- Research product: system-owned first gather (competitor pipeline: search → read → write) ---
@@ -875,7 +918,10 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         gatherStep.detail = searchResponse.error ? 'Search unavailable — will retry' : 'No results — will refine';
       }
     } catch (err) {
-      gatherStep.status = 'done';
+      if (isAbortError(err)) throw err;
+      // `error`, not `done`: this step did not succeed, and showing it as done made a
+      // failed bootstrap search look like a completed one in the step list.
+      gatherStep.status = 'error';
       gatherStep.detail = 'Search failed — agent will retry';
       debugLog(debugLogs, `[agent] research bootstrap search failed: ${toErrorMessage(err)}`);
     }
@@ -965,6 +1011,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     let completion;
 
     const streamingReasoningParts: string[] = [];
+    // Captured so the fallback below can report *why* native tools failed.
+    let nativeStreamError = '';
 
     const runComplete = async (msgs: typeof messages) => {
       ensureToolCallPairs(msgs, 'fill');
@@ -989,6 +1037,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           config,
           reasoningLevel: args.reasoningLevel,
           omitMaxTokens: omitResearchMaxTokens,
+          onError: (message) => { nativeStreamError = message; },
           onReasoning: (text) => {
             streamingReasoningParts.push(text);
             finalReasoning = finalReasoning ? `${finalReasoning}${text}` : text;
@@ -1005,9 +1054,13 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         checkAbort();
         if (streamResult === null) {
           nativeFailed = true;
+          debugLog(debugLogs, `[agent] native stream returned no result | reason="${nativeStreamError.slice(0, 200) || 'unreported'}"`);
           // Only poison the cache when we know it's a tool rejection —
           // null here can also mean clone errors, network errors, no base_url, etc.
           // The error catch block below handles tool rejections with proper pattern matching.
+          if (/tool/i.test(nativeStreamError) && /unsupport|not support|invalid|400|422/i.test(nativeStreamError)) {
+            setToolSupportCache(config as any, false);
+          }
           messages[0] = { role: 'system', content: xmlSys };
           completion = await runComplete(messages);
           checkAbort();
@@ -1073,6 +1126,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           completion = await runComplete(messages);
           checkAbort();
         } catch (e3: unknown) {
+          if (isAbortError(e3)) throw e3;
           thinkStep.status = 'error';
           thinkStep.label = 'Error';
           thinkStep.detail = humanizeAgentError(e3);
@@ -1184,7 +1238,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
             reason: 'direct mode tried to finish without creating the requested files',
             ctx,
             observations: [...toolObservations, finalObservation],
-            sources
+            sources,
+            publishToolArtifact
           });
           if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
             pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
@@ -1195,7 +1250,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               ctx,
               observations: [...toolObservations, finalObservation],
               sources,
-              mode: fallbackMode
+              mode: fallbackMode,
+              publishToolArtifact
             });
             stopReason = 'missing_artifacts';
             errorReason = 'The agent answered without creating the requested files.';
@@ -1335,7 +1391,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
             reason: 'the model tried to finish without creating the requested files',
             ctx,
             observations: [...toolObservations, finalObservation],
-            sources
+            sources,
+            publishToolArtifact
           });
           if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
             pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
@@ -1346,7 +1403,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
               ctx,
               observations: [...toolObservations, finalObservation],
               sources,
-              mode: fallbackMode
+              mode: fallbackMode,
+              publishToolArtifact
             });
             stopReason = 'missing_artifacts';
             errorReason = 'The agent answered without creating the requested files.';
@@ -1566,32 +1624,52 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     // Execute tool calls with parallel grouping
     const groups = groupParallelAndSequential(toolCalls);
     for (const group of groups) {
+      checkAbort();
       if (group.length === 1) {
         // Single tool — execute directly
         const tc = group[0];
-        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed, publishArtifacts);
+        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed, publishToolArtifact);
       } else {
         // Multiple independent tools — execute in parallel
         args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
+        checkAbort();
+
+        /*
+         * Steps are created and pushed *before* the work starts. They used to be
+         * created inside the promise and pushed only once every tool had settled, so
+         * a multi-tool turn showed one frozen "thinking" row for its whole duration
+         * while the single-tool path streamed each step correctly.
+         */
+        const running = group.map((tc) => {
+          const toolStep = createRunningToolStep(tc, STEP_TYPE, uid);
+          steps.push(toolStep);
+          return { tc, toolStep };
+        });
+        args.onStep([...steps]);
+
         const results = await Promise.allSettled(
-          group.map(async (tc) => {
-            const toolStep = createRunningToolStep(tc, STEP_TYPE, uid);
-            return { tc, toolStep, result: await executeToolWithTimeout(tc.name, tc.arguments, ctx) };
-          })
+          running.map(({ tc }) => executeToolWithTimeout(tc.name, tc.arguments, ctx))
         );
 
         // Process all results
-        for (const entry of results) {
-          if (entry.status === 'rejected') continue;
-          const { tc, toolStep } = entry.value;
-          const result = recoverOptionalPresentationFailure(tc, entry.value.result);
+        for (const [index, entry] of results.entries()) {
+          const { tc, toolStep } = running[index];
+          /*
+           * A rejection still has to produce a tool_result. Skipping it (the old
+           * `if (entry.status === 'rejected') continue;`) left the assistant's
+           * `tool_calls` block unpaired — recovered only by luck via
+           * `ensureToolCallPairs` at the next loop head, and not at all if the loop
+           * broke first, in which case the provider got a 400.
+           */
+          const settled: ToolResult = entry.status === 'fulfilled'
+            ? entry.value
+            : fail(toErrorMessage(entry.reason) || 'Tool execution failed');
+          const result = recoverOptionalPresentationFailure(tc, settled);
 
-          if (applyNextTurnMods(messages, result)) nativeFailed = true;
           toolObservations.push(summarizeToolObservation(tc.name, tc.arguments, result));
           mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
           finalizeToolStep(toolStep, result, tc.name);
-          steps.push(toolStep);
-          if (publishArtifacts) publishArtifact(args.onArtifact, () => buildArtifact(ctx));
+          publishToolArtifact(result);
           appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars: MAX_TOOL_RESULT_CHARS });
         }
         args.onStep([...steps]);
@@ -1664,6 +1742,21 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         args.onProgress?.(isResearchChat
           ? `Writing research report (attempt ${attempt}/${forcedAttempts})\u2026`
           : 'Producing final answer\u2026');
+        /*
+         * `ensureToolCallPairs` is mandatory here, and its absence was fatal.
+         *
+         * Every break that ends the loop early — the tool budget at
+         * `totalToolCalls >= maxToolCalls`, the explore-only cap, the stagnation
+         * guard, the research force-write — fires *after* the assistant message
+         * carrying `tool_calls` was pushed and *before* any tool ran. History
+         * therefore ends with unpaired `tool_calls`, and providers reject that with
+         * a 400. This call used `completeAssistantReply` directly, which (unlike the
+         * loop head and `runComplete`) never repaired pairs, so all 2-3 attempts
+         * failed and the bare `catch` below swallowed every one of them. The visible
+         * symptom was that hitting any limit silently degraded to generic fallback
+         * text instead of the answer the model was ready to give.
+         */
+        ensureToolCallPairs(messages, 'fill');
         const forced = await completeAssistantReply({
           messages,
           signal: args.signal,
@@ -1694,8 +1787,12 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           warningReason = warningReason || 'Agent reached the iteration limit and produced a final answer from gathered evidence.';
         }
         break;
-      } catch {
-        // continue to next forced attempt, then fall through to strict fallback
+      } catch (err: unknown) {
+        // Abort is the user's decision, not a failed attempt — stop retrying.
+        if (isAbortError(err)) throw err;
+        // Otherwise try again, then fall through to the strict fallback. Logged
+        // rather than discarded: silence here hid the 400s described above.
+        debugLog(debugLogs, `[agent] forced synthesis attempt ${attempt}/${forcedAttempts} failed: ${toErrorMessage(err)}`);
       }
     }
   }
@@ -1714,6 +1811,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         observations: toolObservations,
         sources,
         mode: fallbackMode,
+        publishToolArtifact,
         // Research: product-facing report without "step limit" language
         ...(isResearchChat
           ? { notice: researchThinSourcesNotice(sources.length, richCount) }
@@ -1736,7 +1834,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
 
   finalContent = sanitizeAgentVisibleText(finalContent);
   finalReasoning = sanitizeAgentVisibleText(finalReasoning);
-  const artifact = publishArtifacts ? buildArtifact(ctx) : null;
+  const artifact = artifacts.length ? artifacts[artifacts.length - 1] : null;
   const finalSources = evidenceSources(toolObservations, sources);
 
   // Research product rule: sources + body → completed report (never step-limit Error UI).
@@ -1776,6 +1874,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     reasoning: finalReasoning,
     steps,
     artifact,
+    artifacts,
     sources: finalSources,
     outcome,
     stopReason: effectiveStopReason,
@@ -1798,7 +1897,7 @@ async function executeSingleTool(
   observations: ToolObservation[],
   nativeActive: boolean,
   nativeFailed: boolean,
-  publishArtifacts: boolean
+  publishToolArtifact: (result: ToolResult) => void
 ): Promise<boolean> {
   return executeSingleToolCore({
     tc,
@@ -1815,7 +1914,7 @@ async function executeSingleTool(
     uid,
     executeToolWithTimeout: (name, toolArgs) => executeToolWithTimeout(name, toolArgs, ctx),
     summarizeToolObservation,
-    buildArtifact: () => publishArtifacts ? buildArtifact(ctx) : null,
+    publishToolArtifact,
     maxToolResultChars: MAX_TOOL_RESULT_CHARS
   });
 }

@@ -12,6 +12,7 @@
   import { AlertCircle } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { generatePptx } from '$lib/services/slides';
@@ -37,9 +38,12 @@
   const hasActiveDeepResearch = $derived(
     !!deepResearchStore.getActiveTaskForMessage(ctx.message.id)
   );
+  // Any document artifact in the turn suppresses the metadata-driven report
+  // surface, otherwise the same document renders twice.
   const hasDocumentArtifact = $derived(
-    !!ctx.message.artifact &&
-      resolveArtifactPresentation(ctx.message.artifact).manifest.presentation === 'document'
+    artifactsForMessage(ctx.message).some(
+      (artifact) => resolveArtifactPresentation(artifact).manifest.presentation === 'document'
+    )
   );
 
   /*
@@ -96,7 +100,11 @@
   }
 </script>
 
-{#each parts as part (part.kind)}
+<!--
+  Keyed on kind *plus* index: a turn can contribute more than one `artifact` part,
+  and duplicate keys in a keyed each is a Svelte error.
+-->
+{#each parts as part (part.kind === 'artifact' ? `artifact:${part.index}` : part.kind)}
   {#if part.kind === 'deep-research'}
     <DeepResearchWidget messageId={ctx.message.id} />
   {:else if part.kind === 'reasoning'}
@@ -163,8 +171,8 @@
     <FilesCreatedBlock files={ctx.message.filesCreated || []} />
   {:else if part.kind === 'artifact'}
     <ArtifactBlock
-      artifact={ctx.message.artifact}
-      onOpen={() => appStore.openArtifact(ctx.message.artifact || null, ctx.message.id)}
+      artifact={part.artifact}
+      onOpen={() => appStore.openArtifact(part.artifact, ctx.message.id)}
     />
   {/if}
 {/each}

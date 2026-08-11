@@ -36,12 +36,27 @@ class ApprovalsStore {
     return this.items.filter((item) => item.chatId === chatId);
   }
 
+  /** Monotonic suffix guaranteeing distinct ids even within the same millisecond. */
+  #seq = 0;
+
   /** Resolves once the user answers, or `false` if the run is torn down first. */
   request(input: PendingApproval): Promise<boolean> {
+    /*
+     * The id is made unique here rather than trusted from the caller.
+     *
+     * Callers mint ids like `bash-<Date.now()>-<4 random chars>`, so two parallel
+     * `bash` calls in one batch can collide. On a collision the second `request`
+     * overwrote the first's resolver in the map, orphaning that promise forever —
+     * the agent waited on an approval nothing could ever settle — and pushed a
+     * second `items` entry with the same id, which is also a duplicate key in the
+     * UI's keyed `{#each}`.
+     */
+    this.#seq += 1;
+    const id = this.#resolvers.has(input.id) ? `${input.id}#${this.#seq}` : input.id;
     return new Promise<boolean>((resolve) => {
-      this.#resolvers.set(input.id, resolve);
+      this.#resolvers.set(id, resolve);
       // Reassign rather than mutate so the rune notifies.
-      this.items = [...this.items, { ...input }];
+      this.items = [...this.items, { ...input, id }];
     });
   }
 

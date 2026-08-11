@@ -122,6 +122,28 @@
   --artifact-radius: var(--radius-md);
   --artifact-focus: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
 
+  /*
+   * Chart series colours. These are read with `getComputedStyle` and passed to d3
+   * as concrete values, because d3's `.attr()` writes SVG presentation attributes
+   * and those never substitute `var()`. Named accents used by info cards and
+   * dashboards resolve against the same palette so a chart and a metric strip in
+   * the same answer agree.
+   */
+  --chart-1: #2563eb;
+  --chart-2: #059669;
+  --chart-3: #d97706;
+  --chart-4: #dc2626;
+  --chart-5: #7c3aed;
+  --chart-6: #0891b2;
+  /* Text drawn on top of a filled slice, so it tracks the fill, not the theme. */
+  --chart-label-on-fill: #ffffff;
+
+  --accent-sky: var(--chart-6);
+  --accent-green: var(--chart-2);
+  --accent-amber: var(--chart-3);
+  --accent-red: var(--chart-4);
+  --accent-violet: var(--chart-5);
+
   /* Radius scale (from --radius) */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -292,6 +314,15 @@
   --artifact-elev: none;
   --artifact-radius: var(--radius-md);
   --artifact-focus: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
+
+  /* Lifted for contrast against the near-black surface. See the light-mode note. */
+  --chart-1: #60a5fa;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --chart-label-on-fill: #0b0b0b;
 
   /* A transparent shadow, not `none`. These tokens get composed into shadow
      lists (`inset 0 0 0 1px var(--border), var(--shadow-xs)`), and `none` is
@@ -1435,8 +1466,17 @@ textarea {
   100% { background-position: 0% center; }
 }
 
+/*
+ * `width: 100%` is load-bearing. Without it this stack is a shrink-to-fit flex
+ * item that sizes to the bubble's own max-content, which makes the bubble's
+ * `max-width: 90%` below cyclic: the cap resolves against the text width it is
+ * supposed to be constraining, so the bubble ends up permanently 10% narrower
+ * than its own contents and every message wraps. A definite width makes the 90%
+ * mean what it reads as — 90% of the message column.
+ */
 .user-message-stack {
   display: flex;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   flex-direction: column;
@@ -1471,7 +1511,12 @@ textarea {
   width: fit-content;
   min-width: 0;
   max-width: 90%;
-  overflow-wrap: anywhere;
+  /*
+   * `break-word`, not `anywhere`: `anywhere` also lowers the box's min-content
+   * size to a single character, so any over-tight container shreds words instead
+   * of overflowing once. `break-word` still rescues unbreakable URLs.
+   */
+  overflow-wrap: break-word;
   padding: 0.75rem 1rem;
   background: var(--user-bubble);
   color: var(--user-bubble-text);
@@ -1752,6 +1797,32 @@ kbd {
 }
 
 .markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Streaming splits assistant markdown into .stream-settled + .stream-tail (see
+ * `splitStreamingMarkdown`). `display: contents` keeps the wrappers out of the box
+ * tree, so blocks either side of the seam collapse their margins exactly as they
+ * would in one flat body — no double gap at the join, no trailing gap at the end.
+ * Selectors still see the wrappers though, so the three child-scoped rules above
+ * have to reach through them.
+ */
+.markdown-body > :where(.stream-settled, .stream-tail) {
+  display: contents;
+}
+
+.markdown-body
+  > :where(.stream-settled, .stream-tail)
+  > :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  contain: layout;
+}
+
+.markdown-body > :where(.stream-settled, .stream-tail):first-child > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :where(.stream-settled, .stream-tail):last-child > *:last-child {
   margin-bottom: 0;
 }
 
@@ -2047,11 +2118,18 @@ kbd {
   cursor: help;
 }
 
-/* Stream cursor */
-.stream-caret {
-  will-change: opacity;
-}
-.stream-caret::after {
+/*
+ * Stream cursor. It hangs off the *last block* of the live tail, not off the tail
+ * container: `::after` on a container whose children are block-level `<p>`/`<pre>`
+ * forms an anonymous block, so the caret rendered on its own line below the text
+ * instead of trailing the last word. Inside the block it is an ordinary inline box.
+ *
+ * There is deliberately no `will-change` here. It used to sit on the container and
+ * promoted the whole markdown body to a compositing layer for the entire stream,
+ * re-rasterising it on every DOM write. The caret is a 1s opacity loop on two
+ * pixels — it does not need a layer.
+ */
+.stream-caret > :last-child::after {
   content: '';
   display: inline-block;
   width: 2px;
@@ -2066,12 +2144,6 @@ kbd {
 @keyframes streamCaretPulse {
   0%, 100% { opacity: 0.7; }
   50% { opacity: 0.2; }
-}
-
-/* Block-level streaming fade-in */
-@keyframes streamFadeIn {
-  from { opacity: 0; filter: blur(1px); }
-  to   { opacity: 1; filter: blur(0); }
 }
 
 /* Typing dots (prompt-kit style) */
@@ -2257,5 +2329,13 @@ input[type="range"]::-moz-range-thumb {
   .typing-dot { animation: none !important; opacity: 0.5; }
   .work-composer-generating { animation: none !important; }
 
-  .stream-caret::after { animation: none !important; opacity: 0.7; }
+  /*
+   * Matches the caret's real selector. The old rule here was `.stream-caret::after`,
+   * which stopped matching once the caret moved onto the tail's last block. This
+   * block also used to miss the per-chunk `streamFadeIn` entirely, because that
+   * selector lived in a component `<style>` and Svelte name-mangled it — so
+   * reduced-motion users still got the opacity flicker. There is nothing per-chunk
+   * left to animate now.
+   */
+  .stream-caret > :last-child::after { animation: none !important; opacity: 0.7; }
 }

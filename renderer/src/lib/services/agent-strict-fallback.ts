@@ -542,7 +542,8 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
   sourceRows: (sources: SearchResult[]) => Array<Record<string, string>>;
   compactText: (value: unknown, max?: number) => string;
   executeTool: (name: string, args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
-  buildArtifact: (ctx: ToolContext) => AgentArtifact | null;
+  /** Publishes the artifact one tool call produced. See `buildScopedArtifact`. */
+  publishToolArtifact: (result: ToolResult) => void;
   normPath: (value: unknown) => string;
   buildMarkdownReport: (title: string, sections: Array<{ title?: string; content?: string }>) => string;
 }): Promise<string[]> {
@@ -593,7 +594,7 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     }, params.ctx);
     if (result.success) {
       created.push(...(result.createdFiles || []));
-      params.ctx.onArtifact(params.buildArtifact(params.ctx));
+      params.publishToolArtifact(result);
       return Array.from(new Set(created));
     }
   }
@@ -602,6 +603,7 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     const result = await params.executeTool(toolName, fileArgs, params.ctx);
     if (result.success) {
       created.push(...(result.createdFiles || []));
+      params.publishToolArtifact(result);
       return;
     }
     const fallbackPath = params.normPath(fileArgs.path) || `${title}.md`;
@@ -639,7 +641,6 @@ export async function ensureRequestedArtifactsFromEvidence(params: {
     await addFile('create_pdf', { title, path: `${title}.pdf`, sections });
   }
 
-  params.ctx.onArtifact(params.buildArtifact(params.ctx));
   return Array.from(new Set(created));
 }
 

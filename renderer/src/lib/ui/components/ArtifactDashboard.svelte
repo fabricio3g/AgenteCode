@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { DashboardArtifactPayload } from '$lib/types/chat';
+  import { resolveArtifactAccent } from './artifact-accent';
 
   interface Props {
     payload: DashboardArtifactPayload;
@@ -19,7 +20,7 @@
   {#if payload.metrics?.length}
     <div class="metrics-grid">
       {#each payload.metrics as metric}
-        <div class="metric" style={`--metric-accent:${metric.color || 'var(--primary)'}`}>
+        <div class="metric" style={`--metric-accent:${resolveArtifactAccent(metric.color)}`}>
           <div class="metric-label">{metric.label || 'Metric'}</div>
           <div class="metric-value">
             {metric.value ?? '-'}{#if metric.unit}<span>{metric.unit}</span>{/if}
@@ -44,7 +45,8 @@
 
 <style>
   .artifact-dashboard {
-    width: 100%;
+    width: var(--inline-block-width);
+    max-width: 100%;
     margin-top: 0.65rem;
     padding: 0.85rem 0.95rem;
     border: 0;

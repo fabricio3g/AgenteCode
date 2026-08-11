@@ -1,4 +1,4 @@
-import { marked } from 'marked';
+import { marked, type Tokens } from 'marked';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import { CODE_COPY_BUTTON_HTML } from './code-copy';
@@ -8,29 +8,42 @@ marked.setOptions({
   gfm: true
 });
 
+/**
+ * `highlight: false` always takes the lazy path. Streaming tails re-render on
+ * every flush, and `hljs.highlightAuto` runs language auto-detection across every
+ * registered grammar — synchronously, per code block, per flush. Deferring it to
+ * `observeLazyHighlight` (which only attaches once the message settles) keeps that
+ * cost off the streaming path entirely.
+ */
+function makeCodeRenderer(highlight: boolean) {
+  return ({ text, lang }: Tokens.Code): string => {
+    const language = lang && hljs.getLanguage(lang) ? lang : undefined;
+    // For large code blocks, defer highlighting to avoid blocking the main thread
+    const LAZY_THRESHOLD = 2000;
+    const langLabel = language || (lang ? lang.toLowerCase() : '');
+    const header = langLabel
+      ? `<div class="code-block-header"><span class="code-lang">${langLabel}</span>${CODE_COPY_BUTTON_HTML}</div>`
+      : `<div class="code-block-header code-block-header--bare">${CODE_COPY_BUTTON_HTML}</div>`;
+
+    if (!highlight || text.length > LAZY_THRESHOLD) {
+      // Render plain escaped text initially; a post-render DOM observer will highlight it
+      const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const langAttr = language ? ` data-lang="${language}"` : '';
+      return `<div class="code-block-wrapper">${header}<pre><code class="hljs${language ? ` language-${language}` : ''}" data-lazy-highlight="true"${langAttr}>${escapedText}</code></pre></div>`;
+    }
+
+    const highlighted = language
+      ? hljs.highlight(text, { language }).value
+      : hljs.highlightAuto(text).value;
+    return `<div class="code-block-wrapper">${header}<pre><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre></div>`;
+  };
+}
+
 const renderer = new marked.Renderer();
+renderer.code = makeCodeRenderer(true);
 
-renderer.code = ({ text, lang }) => {
-  const language = lang && hljs.getLanguage(lang) ? lang : undefined;
-  // For large code blocks, defer highlighting to avoid blocking the main thread
-  const LAZY_THRESHOLD = 2000;
-  const langLabel = language || (lang ? lang.toLowerCase() : '');
-  const header = langLabel
-    ? `<div class="code-block-header"><span class="code-lang">${langLabel}</span>${CODE_COPY_BUTTON_HTML}</div>`
-    : `<div class="code-block-header code-block-header--bare">${CODE_COPY_BUTTON_HTML}</div>`;
-
-  if (text.length > LAZY_THRESHOLD) {
-    // Render plain escaped text initially; a post-render DOM observer will highlight it
-    const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const langAttr = language ? ` data-lang="${language}"` : '';
-    return `<div class="code-block-wrapper">${header}<pre><code class="hljs${language ? ` language-${language}` : ''}" data-lazy-highlight="true"${langAttr}>${escapedText}</code></pre></div>`;
-  }
-
-  const highlighted = language
-    ? hljs.highlight(text, { language }).value
-    : hljs.highlightAuto(text).value;
-  return `<div class="code-block-wrapper">${header}<pre><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre></div>`;
-};
+const plainCodeRenderer = new marked.Renderer();
+plainCodeRenderer.code = makeCodeRenderer(false);
 
 // Protect fenced code blocks and inline code from LaTeX processing
 function extractCode(source: string): { protected: string; blocks: string[] } {
@@ -103,10 +116,29 @@ function setCachedMarkdown(source: string, html: string) {
   if (oldestKey) markdownCache.delete(oldestKey);
 }
 
-export function renderMarkdown(source: string): string {
+export type RenderMarkdownOptions = {
+  /** Syntax-highlight fenced code inline. Off for streaming tails — see makeCodeRenderer. */
+  highlight?: boolean;
+  /**
+   * Run KaTeX. Off for streaming tails: a half-arrived `$$` renders as an error
+   * node that flashes and is replaced on the next flush, and the work is thrown
+   * away each time. The block gets full treatment once it settles.
+   */
+  math?: boolean;
+  /**
+   * Consult and populate the LRU. Off for streaming tails: every growing prefix
+   * is a distinct key, so caching them never hits and evicts settled messages.
+   */
+  cache?: boolean;
+};
+
+export function renderMarkdown(source: string, options: RenderMarkdownOptions = {}): string {
+  const { highlight = true, math = true, cache = true } = options;
   const input = source || '';
-  const cached = getCachedMarkdown(input);
-  if (cached != null) return cached;
+  if (cache) {
+    const cached = getCachedMarkdown(input);
+    if (cached != null) return cached;
+  }
 
   // Normalise LLM citation variants before rendering:
   // [REF]2[/REF]  →  [2]
@@ -115,10 +147,118 @@ export function renderMarkdown(source: string): string {
   let cleaned = input
     .replace(/\[REF\]\(?(\d+)\)?\[\/REF\]/gi, '[$1]')
     .replace(/\[\^(\d+)\]/g, '[$1]');
-  const withLatex = renderLatex(cleaned);
-  const html = marked.parse(withLatex, { renderer }) as string;
-  setCachedMarkdown(input, html);
+  const withLatex = math ? renderLatex(cleaned) : cleaned;
+  const html = marked.parse(withLatex, {
+    renderer: highlight ? renderer : plainCodeRenderer
+  }) as string;
+  if (cache) setCachedMarkdown(input, html);
   return html;
+}
+
+const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;
+
+/**
+ * Any leading whitespace. An indented (4-space) code block treats an interior
+ * blank line as part of the block, so splitting there would turn one block into
+ * two; 1–3 spaces can also be a lazy continuation of a list item. Blockquotes and
+ * table rows deliberately are *not* protected — CommonMark and GFM both end those
+ * at a blank line anyway, so a split there produces identical output.
+ */
+const INDENTED = /^[ \t]/;
+
+/**
+ * Split a mid-stream markdown string into a prefix that will not change again and
+ * a trailing block that still might.
+ *
+ * The point is DOM stability. `{@html}` with a single child compiles to
+ * `innerHTML =`, which destroys and rebuilds every child on assignment, so
+ * rendering a whole growing message through one `{@html}` re-creates the entire
+ * subtree on every flush — re-parsing, re-highlighting, re-laying-out, and
+ * restarting any CSS animation attached to it. Rendering the settled prefix
+ * separately means its nodes are written once and then left alone; only the small
+ * tail churns.
+ *
+ * The split is deliberately conservative: it only happens at a blank line that is
+ * outside any fenced code block, outside display math, not inside an indented code
+ * block, and not between two items of the same list. When no such boundary exists
+ * the whole string is returned as the tail, which is correct but unoptimised —
+ * never wrong. Rendering `settled` and `tail` separately and concatenating the HTML
+ * must always equal rendering the whole string.
+ */
+export function splitStreamingMarkdown(source: string): { settled: string; tail: string } {
+  const text = source || '';
+  if (!text) return { settled: '', tail: '' };
+
+  const lines = text.split('\n');
+
+  // Fence state *before* each line, plus where a still-open fence began. An open
+  // fence at EOF means the tail has to start at its opening line, or the fence
+  // would be split from its content.
+  const fenceOpenBefore: boolean[] = new Array(lines.length).fill(false);
+  let fenceChar = '';
+  let fenceLen = 0;
+  let openFenceLine = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    fenceOpenBefore[i] = !!fenceChar;
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]);
+    if (!match) continue;
+    const marker = match[1];
+    if (!fenceChar) {
+      fenceChar = marker[0];
+      fenceLen = marker.length;
+      openFenceLine = i;
+    } else if (marker[0] === fenceChar && marker.length >= fenceLen && !match[2].trim()) {
+      fenceChar = '';
+      fenceLen = 0;
+      openFenceLine = -1;
+    }
+  }
+
+  /*
+   * Whether a list is open *before* each line. A blank line does not end a list
+   * (that is what makes a list "loose"), so splitting between two items would turn
+   * one list into two adjacent ones — visibly different spacing. Splitting
+   * immediately *before* a list starts is fine, which is the common and useful
+   * case: the prose above a list settles while the list itself is still arriving.
+   */
+  const listOpenBefore: boolean[] = new Array(lines.length).fill(false);
+  let listOpen = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    listOpenBefore[i] = listOpen;
+    if (fenceOpenBefore[i]) continue;
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    if (LIST_ITEM.test(line)) {
+      listOpen = true;
+      continue;
+    }
+    if (INDENTED.test(line)) continue;
+    listOpen = false;
+  }
+
+  const maxTailStart = fenceChar ? openFenceLine : lines.length;
+
+  for (let blank = Math.min(lines.length - 1, maxTailStart); blank > 0; blank--) {
+    if (lines[blank].trim() !== '') continue;
+    if (fenceOpenBefore[blank]) continue;
+
+    let start = blank + 1;
+    while (start < lines.length && lines[start].trim() === '') start++;
+    if (start >= lines.length || start > maxTailStart) continue;
+    if (INDENTED.test(lines[start])) continue;
+    if (LIST_ITEM.test(lines[start]) && listOpenBefore[start]) continue;
+
+    // An odd number of `$$` in the prefix means display math straddles the
+    // boundary; splitting there would render two error nodes instead of a formula.
+    const settled = lines.slice(0, start).join('\n');
+    if ((settled.match(/\$\$/g)?.length ?? 0) % 2 !== 0) continue;
+
+    return { settled, tail: lines.slice(start).join('\n') };
+  }
+
+  return { settled: '', tail: text };
 }
 
 // Lazy-highlight large code blocks after they're inserted into the DOM.

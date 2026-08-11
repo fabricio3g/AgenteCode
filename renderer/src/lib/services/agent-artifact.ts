@@ -1,26 +1,45 @@
-import type { AgentArtifact, InlineArtifactPayload } from '$lib/types/chat';
+import type { AgentArtifact, ArtifactManifest, InlineArtifactPayload } from '$lib/types/chat';
 import type { ToolResult } from '$lib/services/agent-types';
 import { normalizeArtifact } from '$lib/services/artifact-model';
+import { viewerPathFor } from '$lib/utils/artifact-files';
 
 export const INLINE_ARTIFACT_FILE = '__artifact__.json';
 
 export type ArtifactContext = {
   files: Record<string, string>;
   workProduct?: AgentArtifact['workProduct'];
-  artifactManifest?: AgentArtifact['manifest'];
+  /**
+   * Required, not optional. This used to be `artifactManifest?`, and the agent's
+   * `buildArtifact` simply forgot to pass it — silently, because the field was
+   * optional. Every agent-produced artifact therefore carried `manifest: null` and
+   * fell back to inference, which mis-resolved every generated document, spreadsheet
+   * and PDF to `kind: 'web'` and routed them to a raw iframe instead of their real
+   * viewer. Making it required turns that whole class of omission into a type error.
+   */
+  artifactManifest: ArtifactManifest | null;
 };
 
-function parseInlineArtifact(files: Record<string, string>): InlineArtifactPayload | null {
-  const raw = files[INLINE_ARTIFACT_FILE];
+export const INLINE_ARTIFACT_KINDS = ['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card'];
+
+function parseInlinePayload(raw: string | undefined): InlineArtifactPayload | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as InlineArtifactPayload;
     if (!parsed || typeof parsed !== 'object' || typeof parsed.kind !== 'string') return null;
-    if (!['chart', 'map', 'diagram', 'dashboard', 'info_card', 'html_card'].includes(parsed.kind)) return null;
+    if (!INLINE_ARTIFACT_KINDS.includes(parsed.kind)) return null;
     return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Legacy whole-context read. Kept for artifacts rehydrated from storage, which were
+ * written when every inline payload shared the single `__artifact__.json` slot.
+ * New artifacts are built per tool call by `buildScopedArtifact`.
+ */
+function parseInlineArtifact(files: Record<string, string>): InlineArtifactPayload | null {
+  return parseInlinePayload(files[INLINE_ARTIFACT_FILE]);
 }
 
 export function buildArtifactFromContext(ctx: ArtifactContext): AgentArtifact | null {
@@ -32,7 +51,57 @@ export function buildArtifactFromContext(ctx: ArtifactContext): AgentArtifact | 
     previewHtml: ctx.files['__preview__.html'] ?? null,
     inline: parseInlineArtifact(ctx.files),
     workProduct: ctx.workProduct || null,
-    manifest: ctx.artifactManifest || null
+    manifest: ctx.artifactManifest
+  });
+}
+
+/**
+ * Build one artifact describing exactly what a single tool call produced.
+ *
+ * `buildArtifactFromContext` reads the *whole* accumulated file map, so a turn that
+ * made a chart and then a diagram produced two artifacts that were both "everything
+ * so far" — and since they shared one inline slot and one message field, only the
+ * last survived. Scoping to `result.createdFiles` lets every visual in a turn stand
+ * on its own and render side by side.
+ *
+ * Note it carries no `previewHtml`. That field was the shared `__preview__.html`
+ * slot, which any later inline artifact overwrote or deleted. Scoped artifacts
+ * carry their own `__viewer__/…` sibling instead, which `resolveArtifactPreview`
+ * finds first anyway.
+ */
+export function buildScopedArtifact(
+  ctx: ArtifactContext,
+  result: { createdFiles?: string[]; artifactManifest?: ArtifactManifest }
+): AgentArtifact | null {
+  const manifest = result.artifactManifest;
+  const created = result.createdFiles || [];
+  if (!manifest || !created.length) return null;
+
+  const files: Record<string, string> = {};
+  for (const path of created) {
+    if (ctx.files[path] !== undefined) files[path] = ctx.files[path];
+    const viewer = viewerPathFor(path);
+    if (ctx.files[viewer] !== undefined) files[viewer] = ctx.files[viewer];
+  }
+  if (!Object.keys(files).length) return null;
+
+  const entryPath = manifest.entryPath && files[manifest.entryPath] !== undefined
+    ? manifest.entryPath
+    : created.find((path) => files[path] !== undefined);
+
+  const visible = Object.keys(files).filter((path) => !path.startsWith('__'));
+
+  return normalizeArtifact({
+    title: manifest.kind === 'work_product'
+      ? (ctx.workProduct?.title || 'Work product')
+      : (visible.length === 1 ? visible[0] : 'Generated documents'),
+    files,
+    previewHtml: null,
+    inline: entryPath ? parseInlinePayload(files[entryPath]) : null,
+    // Only the work-product tool sets `ctx.workProduct`; a chart created afterwards
+    // must not inherit it, or its artifact resolves as a document.
+    workProduct: manifest.kind === 'work_product' ? (ctx.workProduct || null) : null,
+    manifest
   });
 }
 

@@ -1,15 +1,13 @@
-import type { AgentArtifact, AgentStep } from '$lib/types/chat';
+import type { AgentStep } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
 import type { SearchResult } from '$lib/types/tauri';
 import type { ToolCall, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import {
-  applyNextTurnMods,
   appendToolResultMessage,
   createRunningToolStep,
   displayToolLabel,
   finalizeToolStep,
   mergeWebSearchSources,
-  publishArtifact,
   recoverOptionalPresentationFailure
 } from '$lib/services/agent-tool-result';
 
@@ -19,7 +17,6 @@ export async function executeSingleTool(params: {
   args: {
     onProgress?: (text: string) => void;
     onStep: (steps: AgentStep[]) => void;
-    onArtifact: (artifact: AgentArtifact | null) => void;
     onSources?: (sources: SearchResult[]) => void;
   };
   ctx: { signal?: AbortSignal };
@@ -33,13 +30,14 @@ export async function executeSingleTool(params: {
   uid: (prefix: string) => string;
   executeToolWithTimeout: (name: string, args: Record<string, unknown>) => Promise<ToolResult>;
   summarizeToolObservation: (name: string, args: Record<string, unknown>, result: ToolResult) => ToolObservation;
-  buildArtifact: () => AgentArtifact | null;
+  /** Publishes the artifact this one tool call produced. See `buildScopedArtifact`. */
+  publishToolArtifact: (result: ToolResult) => void;
   maxToolResultChars: number;
 }): Promise<boolean> {
   const {
     tc, steps, args, ctx, messages, sources, seenUrls, observations,
     nativeActive, stepTypeMap, uid, executeToolWithTimeout,
-    summarizeToolObservation, buildArtifact, maxToolResultChars
+    summarizeToolObservation, publishToolArtifact, maxToolResultChars
   } = params;
   let nativeFailed = params.nativeFailed;
 
@@ -50,17 +48,22 @@ export async function executeSingleTool(params: {
 
   let result = await executeToolWithTimeout(tc.name, tc.arguments);
   result = recoverOptionalPresentationFailure(tc, result);
-  ctx.signal?.throwIfAborted?.();
   observations.push(summarizeToolObservation(tc.name, tc.arguments, result));
 
-  if (applyNextTurnMods(messages, result)) {
-    nativeFailed = true;
-  }
   mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
   finalizeToolStep(toolStep, result, tc.name);
-  publishArtifact(args.onArtifact, buildArtifact);
+  publishToolArtifact(result);
   args.onStep([...steps]);
   appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars });
+
+  /*
+   * The abort check comes last, after the result has been recorded. It used to sit
+   * immediately after the tool returned, which threw away work that had already
+   * completed *and* left the assistant's `tool_calls` block unpaired — so resuming or
+   * retrying that chat sent malformed history to the provider. The tool has run
+   * either way; the only question is whether the loop continues.
+   */
+  ctx.signal?.throwIfAborted?.();
 
   return nativeFailed;
 }

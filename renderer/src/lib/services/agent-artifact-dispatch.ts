@@ -2,6 +2,7 @@ import type { ToolResult } from '$lib/services/agent-types';
 import type { ToolContext } from '$lib/services/agent-types';
 import {
   getArtifactDefinitionByToolName,
+  isArtifactToolEnabled,
   parseArtifactToolArgs,
   type ArtifactToolName
 } from '$lib/services/artifact-registry';
@@ -70,35 +71,43 @@ export async function dispatchArtifactTool(
   runtime: ArtifactToolRuntime
 ): Promise<ToolResult | null> {
   if (!getArtifactDefinitionByToolName(toolName)) return null;
+  if (!isArtifactToolEnabled(toolName, ctx.artifactToggles || {})) {
+    return runtime.fail(
+      `The ${toolName} tool is disabled in settings.`,
+      'Answer without this artifact type, or ask the user to re-enable it.'
+    );
+  }
   const parsed = parseArtifactToolArgs(toolName, rawArgs);
   if (!parsed.success) {
     return runtime.fail(parsed.error, 'Correct the artifact arguments and retry without inventing missing content.');
   }
   const definition = getArtifactDefinitionByToolName(toolName)!;
-  const previousManifest = ctx.artifactManifest;
-  ctx.artifactManifest = {
-    schemaVersion: 1,
-    kind: definition.id,
-    presentation: definition.presentation,
-    status: parsed.repaired ? 'partial' : 'ready',
-    ...(parsed.repaired ? {
-      issues: [{
-        code: 'artifact.arguments_repaired',
-        severity: 'warning' as const,
-        message: 'The model output used a known alternate shape and was safely normalized.'
-      }]
-    } : {})
-  };
   const result = await executors[toolName as ArtifactToolName](parsed.data, ctx, runtime);
-  if (!result.success || !result.createdFiles?.length) {
-    ctx.artifactManifest = previousManifest;
-    return result;
-  }
-  ctx.artifactManifest = {
-    ...ctx.artifactManifest,
-    entryPath: result.createdFiles[0]
+  if (!result.success || !result.createdFiles?.length) return result;
+
+  /*
+   * The manifest is attached to the result, not written back onto `ctx`. The old
+   * code mutated `ctx.artifactManifest` and only restored it on the failure path,
+   * so a successful call left its manifest behind for whatever built an artifact
+   * next — a `get_weather` card following a `create_chart` was published as a chart.
+   */
+  return {
+    ...result,
+    artifactManifest: {
+      schemaVersion: 1,
+      kind: definition.id,
+      presentation: definition.presentation,
+      entryPath: result.createdFiles[0],
+      status: parsed.repaired ? 'partial' : 'ready',
+      ...(parsed.repaired ? {
+        issues: [{
+          code: 'artifact.arguments_repaired',
+          severity: 'warning' as const,
+          message: 'The model output used a known alternate shape and was safely normalized.'
+        }]
+      } : {})
+    }
   };
-  return result;
 }
 
 export function hasArtifactExecutor(toolName: string): toolName is ArtifactToolName {

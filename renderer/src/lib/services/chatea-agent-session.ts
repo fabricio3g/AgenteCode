@@ -238,6 +238,7 @@ export async function runChateaAgentSession(
           reasoning,
           steps,
           artifact,
+          artifacts: artifact ? [artifact] : [],
           sources,
           outcome: error ? 'failed' : 'completed',
           stopReason: error ? 'error' : 'none',

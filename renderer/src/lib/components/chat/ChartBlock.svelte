@@ -66,22 +66,42 @@
     draw();
   });
 
+  /**
+   * d3's `.attr()` writes an SVG presentation attribute, and those do not
+   * substitute CSS custom properties. Passing a raw `var(--surface)` string here
+   * produced an invalid value that was simply ignored, so line-chart dot halos and
+   * pie-slice separators had no stroke at all. Tokens have to be resolved to
+   * concrete values before they reach d3.
+   */
+  function token(name: string, fallback: string) {
+    if (!svgEl) return fallback;
+    return getComputedStyle(svgEl).getPropertyValue(name).trim() || fallback;
+  }
+
   function draw() {
     if (!svgEl || !parsed) return;
     const svg = select(svgEl);
     svg.selectAll('*').remove();
 
-    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
+    const surface = token('--surface', '#ffffff');
+    const colors = [
+      token('--chart-1', '#3B82F6'),
+      token('--chart-2', '#10B981'),
+      token('--chart-3', '#F59E0B'),
+      token('--chart-4', '#EF4444'),
+      token('--chart-5', '#8B5CF6'),
+      token('--chart-6', '#06B6D4')
+    ];
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     if (type === 'bar' || type === 'line') {
-      drawCartesian(svg, g, colors);
+      drawCartesian(svg, g, colors, surface);
     } else if (type === 'pie' || type === 'donut') {
-      drawPie(svg, g, colors);
+      drawPie(svg, g, colors, surface);
     }
   }
 
-  function drawCartesian(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
+  function drawCartesian(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[], surface: string) {
     if (!parsed) return;
 
     const allValues = parsed.datasets.flatMap(d => d.data);
@@ -172,7 +192,7 @@
           .attr('cy', d => yScale(d))
           .attr('r', 4)
           .attr('fill', color)
-          .attr('stroke', 'var(--surface)')
+          .attr('stroke', surface)
           .attr('stroke-width', 1.5)
           .style('cursor', 'pointer')
           .on('mousemove', (event, d) => showTip(event, parsed!.labels[ds.data.indexOf(d)] ?? '', d, nSeries > 1 ? ds.label : undefined))
@@ -224,7 +244,7 @@
     }
   }
 
-  function drawPie(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[]) {
+  function drawPie(svg: Selection<SVGSVGElement, unknown, null, undefined>, g: Selection<SVGGElement, unknown, null, undefined>, colors: string[], surface: string) {
     if (!parsed) return;
     const radius = Math.min(iw, ih) / 2 - 10;
     const cx = iw / 2;
@@ -246,7 +266,7 @@
       pieG.append('path')
         .attr('d', arc(slice) ?? '')
         .attr('fill', colors[i % colors.length])
-        .attr('stroke', 'var(--surface)')
+        .attr('stroke', surface)
         .attr('stroke-width', 2)
         .attr('opacity', 0.88)
         .style('cursor', 'pointer')
@@ -260,7 +280,7 @@
           .attr('x', lx).attr('y', ly)
           .attr('text-anchor', 'middle')
           .attr('font-size', '11')
-          .attr('fill', '#fff')
+          .attr('fill', token('--chart-label-on-fill', '#ffffff'))
           .attr('font-weight', '600')
           .text(`${pct}%`);
       }

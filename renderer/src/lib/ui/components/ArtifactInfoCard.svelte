@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { InfoCardArtifactPayload } from '$lib/types/chat';
+  import { resolveArtifactAccent } from './artifact-accent';
 
   interface Props {
     payload: InfoCardArtifactPayload;
@@ -9,14 +10,7 @@
 
   let { payload }: Props = $props();
 
-  const accentMap: Record<string, string> = {
-    sky: '#0ea5e9',
-    green: '#10b981',
-    amber: '#f59e0b',
-    red: '#ef4444',
-    violet: '#8b5cf6'
-  };
-  const accent = $derived(accentMap[String(payload.accent || '').toLowerCase()] || 'var(--primary)');
+  const accent = $derived(resolveArtifactAccent(payload.accent));
 </script>
 
 <section class="info-card" style={`--card-accent:${accent}`} aria-label={payload.title || 'Info card'}>
@@ -48,7 +42,8 @@
 
 <style>
   .info-card {
-    width: 100%;
+    width: var(--inline-block-width);
+    max-width: 100%;
     margin-top: 0.65rem;
     padding: 0.9rem 1rem;
     border: 0;

@@ -11,6 +11,7 @@
   import ArtifactDashboard from './ArtifactDashboard.svelte';
   import ArtifactInfoCard from './ArtifactInfoCard.svelte';
   import ArtifactHtmlCard from './ArtifactHtmlCard.svelte';
+  import { FileQuestion } from 'lucide-svelte';
 
   interface Props {
     artifact: AgentArtifact;
@@ -27,6 +28,10 @@
   });
 
   const previewSrc = $derived(previewBuild.html);
+  // Captured before the dispatch chain: inside the terminal {:else} TypeScript has
+  // narrowed `artifact.inline` to `never`, so the unrecognised kind is unreadable there.
+  const inlineKind = $derived(artifact.inline?.kind ? String(artifact.inline.kind) : '');
+
   const chartRaw = $derived.by(() => {
     if (artifact.inline?.kind !== 'chart') return '';
     return JSON.stringify({ labels: artifact.inline.labels, datasets: artifact.inline.datasets });
@@ -54,6 +59,25 @@
       title={artifact.title || 'Artifact preview'}
     ></iframe>
   </div>
+{:else}
+  <!--
+    A terminal branch is required here. Without it an artifact whose presentation
+    resolved to `inline` but whose `kind` matched none of the above rendered
+    literally nothing — and because ArtifactRenderer had already committed to this
+    component, its own fallback was unreachable. That is real: `normalizeArtifact`
+    does not re-validate `inline.kind`, so anything rehydrated from storage or
+    written by another app version bypasses the tool-side whitelist.
+  -->
+  <div class="inline-unsupported">
+    <FileQuestion class="size-4 shrink-0" />
+    <div>
+      <div class="font-medium">This preview type isn't supported here</div>
+      <div class="mt-0.5 text-xs opacity-80">
+        {inlineKind ? `Unrecognized inline artifact "${inlineKind}".` : 'No inline preview data was found.'}
+        Open the studio to inspect or download the files.
+      </div>
+    </div>
+  </div>
 {/if}
 
 {#if previewBuild.externalRefs.length}
@@ -62,7 +86,8 @@
 
 <style>
   .inline-html-artifact {
-    width: 100%;
+    width: var(--inline-block-width);
+    max-width: 100%;
     height: min(58vh, 430px);
     min-height: 320px;
     margin-top: 0.65rem;
@@ -74,6 +99,21 @@
   }
 
   .blocked-assets { margin-top: 0.4rem; color: var(--text-secondary); font-size: 0.68rem; }
+
+  /* Matches `.artifact-state` in ArtifactRenderer so the two fallbacks look alike. */
+  .inline-unsupported {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: var(--inline-block-width);
+    max-width: 100%;
+    margin-top: 0.65rem;
+    padding: 0.8rem;
+    border-radius: var(--artifact-radius);
+    background: var(--artifact-surface);
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+  }
 
   .inline-html-frame {
     display: block;

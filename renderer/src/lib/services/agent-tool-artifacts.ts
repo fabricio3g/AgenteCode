@@ -1,7 +1,6 @@
 import type { AgentArtifact } from '$lib/types/chat';
 import type { GeneratedArtifactFile } from '$lib/services/generated-documents';
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
-import { INLINE_ARTIFACT_FILE } from '$lib/services/agent-artifact';
 import {
   buildEvidenceMatrixRows,
   buildResearchCitations,
@@ -57,7 +56,6 @@ export async function handleCreateWorkProduct(params: {
   viewerPathFor: (path: string) => string;
   createWorkProductArtifactFiles: (args: Record<string, unknown>) => Promise<{ files: GeneratedArtifactFile[]; html?: string; warnings: string[] }>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
-  buildArtifact: (ctx: ToolContext) => AgentArtifact | null;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -115,7 +113,10 @@ export async function handleCreateWorkProduct(params: {
       createdAt: Date.now()
     };
 
-    params.ctx.onArtifact(params.buildArtifact(params.ctx));
+    // No direct `onArtifact` here. The tool loop publishes from the returned result
+    // immediately after this call, and doing it here as well built the artifact
+    // before the manifest existed — which is how work products ended up resolving
+    // as `kind: 'web'` and rendering in a bare iframe.
     return params.ok({ title: params.ctx.workProduct.title, files: createdFiles, warnings: generated.warnings }, { createdFiles });
   } catch (err: unknown) {
     return params.failFromError(err);
@@ -164,11 +165,18 @@ function artifactDataPath(path: string, fallback: string): string {
   return candidate.replace(/\.html?$/i, '.json') || fallback;
 }
 
+/*
+ * One file per call, at its own path.
+ *
+ * This used to also copy the payload into a single shared `__artifact__.json` slot
+ * and then `delete ctx.files['__preview__.html']`. Both were destructive: a turn
+ * that made a chart and then a diagram overwrote the chart's slot so only the
+ * diagram appeared, and a chart created after a report deleted the report's preview.
+ * Artifacts are now scoped per tool call (`buildScopedArtifact`), which reads the
+ * payload straight from this path.
+ */
 function writeInlineArtifact(ctx: ToolContext, path: string, payload: Record<string, unknown>) {
-  const data = JSON.stringify(payload, null, 2);
-  ctx.files[path] = data;
-  ctx.files[INLINE_ARTIFACT_FILE] = data;
-  delete ctx.files['__preview__.html'];
+  ctx.files[path] = JSON.stringify(payload, null, 2);
 }
 
 export async function handleCreateDiagram(params: {
