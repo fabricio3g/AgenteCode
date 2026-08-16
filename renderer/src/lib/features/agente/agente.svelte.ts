@@ -234,7 +234,10 @@ class AgenteStore {
       return;
     }
 
-    Object.assign(run, createAgenteRunState(), { running: true, checkpoints: run.checkpoints });
+    // Keep the last usage report visible between runs — the next turn
+    // refreshes it; it should not blank while the first reply streams.
+    const previousUsage = run.usage;
+    Object.assign(run, createAgenteRunState(), { running: true, checkpoints: run.checkpoints, usage: previousUsage });
     this.#ensureEventSubscription();
 
     if (!this.#sessionIds.has(chatId)) {

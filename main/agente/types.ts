@@ -25,6 +25,15 @@ export type CodeAgentEvent =
       turnIndex: number;
       files: Array<{ path: string; additions: number; deletions: number; kind: string }>;
     }
+  | {
+      /** Real token accounting from the last model call; promptTokens is the context footprint. */
+      type: 'usage';
+      chatId: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      contextWindow: number;
+    }
   | { type: 'error'; chatId: string; message: string };
 
 export interface AgenteStartSessionArgs {

@@ -4,12 +4,20 @@
 import type { CodeAgentEvent } from './agente-protocol';
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange } from '$lib/types/chat';
 
+export interface AgenteUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  contextWindow: number;
+}
+
 export interface AgenteRunState {
   content: string;
   reasoning: string;
   steps: AgentStep[];
   diffStats: CodeAgentDiffStat[];
   fileChanges: CodeAgentFileChange[];
+  usage?: AgenteUsage;
   error?: string;
   done: boolean;
 }
@@ -146,6 +154,15 @@ export function applyCodeAgentEvent(state: AgenteRunState, event: CodeAgentEvent
         writing.fileChanges = [...state.fileChanges];
       }
       return true;
+    }
+    case 'usage': {
+      state.usage = {
+        promptTokens: event.promptTokens,
+        completionTokens: event.completionTokens,
+        totalTokens: event.totalTokens,
+        contextWindow: event.contextWindow
+      };
+      return false; // ring data only — no transcript change
     }
     case 'error': {
       state.error = event.message;

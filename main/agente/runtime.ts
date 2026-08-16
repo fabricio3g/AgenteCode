@@ -8,6 +8,8 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadConfigFromDisk, updateConfig } from '../config.ts';
+import { resolveApiKey } from '../chat-ipc.ts';
+import { resolveProvider } from '../providers/registry.ts';
 import { getAppPaths } from '../paths.ts';
 import { Agent } from './core/agent.ts';
 import type { AgentEvent, AgentTool, StreamFn } from './core/types.ts';
@@ -25,6 +27,52 @@ import { emitCodeAgentEvent } from './event-bridge.ts';
 import type { CodeAgentEvent, AgenteSessionInfo, AgenteStartSessionArgs } from './types.ts';
 
 const DEFAULT_MAX_TURNS = 40;
+/** Assumed context window when the provider cannot tell us. */
+const FALLBACK_CONTEXT_WINDOW = 32_768;
+
+/**
+ * Resolve the active model's context window: local runtime config first,
+ * then a provider metadata lookup, then a conservative fallback.
+ */
+async function resolveContextWindow(transport: AgenteTransport): Promise<number> {
+  const cfg = loadConfigFromDisk() as { llm?: Record<string, any> };
+  const llm = cfg.llm ?? {};
+  if (transport.providerName === 'local') {
+    const local = Number(llm.local?.context_length);
+    if (Number.isFinite(local) && local > 0) return local;
+    return FALLBACK_CONTEXT_WINDOW;
+  }
+  try {
+    const provider = resolveProvider(transport.providerName, transport.baseUrl);
+    const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName);
+    if (!apiKey) return FALLBACK_CONTEXT_WINDOW;
+    const metadata = await withTimeout(
+      provider.fetchModelMetadata(apiKey, transport.baseUrl, transport.model),
+      5000
+    );
+    const window = Number((metadata as { context_window?: number } | null)?.context_window);
+    if (Number.isFinite(window) && window > 0) return window;
+  } catch {
+    // metadata is best-effort
+  }
+  return FALLBACK_CONTEXT_WINDOW;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
 
 interface RuntimeSession {
   chatId: string;
@@ -39,6 +87,8 @@ interface RuntimeSession {
   runtimeMode: 'full' | 'supervised';
   systemPrompt: string;
   extensions: ExtensionRunner;
+  /** Context window of the active model, for the usage ring. */
+  contextWindow: number;
   /** 1-based index of the turn currently executing (0 between runs). */
   currentTurn: number;
   /** Files captured for the current turn's checkpoint. */
@@ -123,6 +173,28 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
 
 function emit(session: RuntimeSession, event: CodeAgentEvent): void {
   emitCodeAgentEvent(null, event);
+}
+
+function emitUsage(session: RuntimeSession, usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }): void {
+  emit(session, {
+    type: 'usage',
+    chatId: session.chatId,
+    promptTokens: Number(usage.prompt_tokens ?? 0),
+    completionTokens: Number(usage.completion_tokens ?? 0),
+    totalTokens: Number(usage.total_tokens ?? 0),
+    contextWindow: session.contextWindow
+  });
+}
+
+/** Last persisted assistant usage in a session tree (resume path). */
+function lastPersistedUsage(tree: SessionTree): { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null {
+  for (let i = tree.listEntries().length - 1; i >= 0; i--) {
+    const entry = tree.listEntries()[i]!;
+    if (entry.kind !== 'assistant') continue;
+    const usage = (entry.data as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } } | null)?.usage;
+    if (usage && (usage.prompt_tokens || usage.total_tokens)) return usage;
+  }
+  return null;
 }
 
 // ── Approval + checkpoint hooks ────────────────────────────────────────
@@ -241,8 +313,12 @@ function attachAgentListeners(session: RuntimeSession): void {
         reasoning: event.message.reasoning,
         toolCalls: event.message.toolCalls,
         stopReason: event.message.stopReason,
-        errorMessage: event.message.errorMessage
+        errorMessage: event.message.errorMessage,
+        usage: event.message.usage ?? undefined
       });
+      if (event.message.usage) {
+        emitUsage(session, event.message.usage);
+      }
     } else if (event.type === 'tool_end') {
       session.tree.append('tool_result', {
         toolCallId: event.toolCallId,
@@ -343,6 +419,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     runtimeMode: args.runtimeMode,
     systemPrompt: args.systemPromptOverride || buildAgenteSystemPrompt(args.projectRoot),
     extensions: extensionRunner,
+    contextWindow: FALLBACK_CONTEXT_WINDOW,
     currentTurn: 0,
     capturedThisTurn: new Set(),
     pendingApprovals: new Map(),
@@ -384,6 +461,15 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
   session.agent = agent;
   attachAgentListeners(session);
   sessions.set(args.chatId, session);
+
+  // Best-effort context window for the usage ring; refreshed on model change.
+  void resolveContextWindow(session.transport).then((contextWindow) => {
+    if (session.disposed) return;
+    session.contextWindow = contextWindow;
+    // A resumed session already has a footprint — surface it immediately.
+    const lastUsage = lastPersistedUsage(tree);
+    if (lastUsage) emitUsage(session, lastUsage);
+  });
 
   return { sessionId: tree.header.id, resumed };
 }
@@ -467,6 +553,10 @@ export function setModel(chatId: string, provider: string, model: string, thinki
   const session = requireSession(chatId);
   if (!session) return { ok: false };
   session.transport = resolveTransport(provider, model, thinkingLevel);
+  // New model → new context window for the ring.
+  void resolveContextWindow(session.transport).then((contextWindow) => {
+    if (!session.disposed) session.contextWindow = contextWindow;
+  });
   const baseStreamFn = createProviderStreamFn(session.transport);
   (session.agent.options as { streamFn: unknown }).streamFn = async (request: Parameters<StreamFn>[0]) => {
     const messages = await session.extensions.applyContextHooks(request.messages);

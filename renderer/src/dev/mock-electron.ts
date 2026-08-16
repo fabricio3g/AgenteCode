@@ -50,6 +50,7 @@ async function scriptAgentRun(chatId: string): Promise<void> {
     await wait(120);
     send({ type: 'text_delta', delta });
   }
+  send({ type: 'usage', promptTokens: 3240, completionTokens: 42, totalTokens: 3282, contextWindow: 200_000 });
 
   await wait(150);
   send({ type: 'tool_start', toolCallId: 'tc-read-1', toolName: 'read', args: { path: 'src/index.ts' } });
@@ -89,6 +90,7 @@ async function finishApprovedRun(chatId: string, decision: 'allow' | 'deny'): Pr
   }
   await wait(150);
   send({ type: 'turn_end', turnIndex: 1 });
+  send({ type: 'usage', promptTokens: 4120, completionTokens: 96, totalTokens: 4216, contextWindow: 200_000 });
   send({ type: 'agent_end' });
 }
 

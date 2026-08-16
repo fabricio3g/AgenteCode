@@ -15,6 +15,7 @@
   import type { ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
+  import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { agenteStore } from './agente.svelte';
   import { setAgenteModel } from './agente-ipc';
 
@@ -30,6 +31,10 @@
   const running = $derived(!!run?.running);
   const supervised = $derived(chat.codeAgent?.runtimeMode !== 'full');
   const canSend = $derived(!!text.trim() || running);
+  // Real accounting from the engine: promptTokens of the last call is the
+  // context footprint. Hidden until the first report, like Home's ring.
+  const usage = $derived(run?.usage);
+  const showContextRing = $derived(!!usage && usage.promptTokens > 0);
 
   const placeholder = $derived(
     running ? $t('agente.steerPlaceholder') : $t('agente.composerPlaceholder')
@@ -154,6 +159,13 @@
           <ModelSwitcher />
 
           <div class="trailing">
+            {#if showContextRing && usage}
+              <ContextUsageRing
+                usedTokens={usage.promptTokens}
+                maxTokens={usage.contextWindow}
+                reservedTokens={usage.completionTokens}
+              />
+            {/if}
             <button
               type="button"
               class="send-btn flex size-8 items-center justify-center rounded-full transition"
