@@ -72,7 +72,7 @@ import { registerModelManagementHandlers } from './ipc/model-handlers.ts';
 import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
-import { registerChateaAgentHandlers, disposeAllChateaAgentSessions } from './ipc/chatea-agent-handlers.ts';
+import { registerAgenteHandlers, disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -307,11 +307,11 @@ export function registerIpcHandlers() {
     generatePdf,
   });
 
-  // ── Chatea Agent (custom coding harness) ──
-  registerChateaAgentHandlers({
+  // ── Agente Coding (built-in coding agent engine) ──
+  registerAgenteHandlers({
     ipcMain,
     getMainWindow,
   });
 }
 
-export { disposeAllChateaAgentSessions };
+export { disposeAllAgenteSessions };

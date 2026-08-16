@@ -42,12 +42,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
-  'chatea_agent_detect', 'chatea_agent_start_session', 'chatea_agent_prompt',
-  'chatea_agent_steer', 'chatea_agent_follow_up', 'chatea_agent_abort',
-  'chatea_agent_compact', 'chatea_agent_set_model', 'chatea_agent_set_runtime_mode',
-  'chatea_agent_set_thinking_level', 'chatea_agent_respond_approval',
-  'chatea_agent_list_checkpoints', 'chatea_agent_rollback', 'chatea_agent_fork',
-  'chatea_agent_close', 'chatea_agent_new_session', 'chatea_agent_cycle_model'
+  'agente_detect', 'agente_start_session', 'agente_prompt',
+  'agente_steer', 'agente_follow_up', 'agente_abort',
+  'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
+  'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
+  'agente_close', 'agente_new_session', 'agente_cycle_model',
+  'agente_list_sessions'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

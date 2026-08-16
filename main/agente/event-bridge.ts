@@ -1,3 +1,4 @@
+// ── Event bridge to the renderer ───────────────────────────────────────
 import type { BrowserWindow } from 'electron';
 import type { CodeAgentEvent } from './types.ts';
 
