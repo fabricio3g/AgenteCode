@@ -199,3 +199,27 @@ describe('artifact tool argument schemas', () => {
     if (research.success) expect(research.data.kinds).toEqual(['citations']);
   });
 });
+
+describe('create_map accepts a place name', () => {
+  it('takes a bare place with no coordinates', () => {
+    const parsed = parseArtifactToolArgs('create_map', { place: 'Victoria, Entre Rios' });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.place).toBe('Victoria, Entre Rios');
+  });
+
+  it('still takes coordinates with no place', () => {
+    expect(parseArtifactToolArgs('create_map', { latitude: -32.6, longitude: -60.1 }).success).toBe(true);
+  });
+
+  it('takes both, and lets the handler prefer the explicit coordinates', () => {
+    expect(parseArtifactToolArgs('create_map', {
+      place: 'Madrid', latitude: 40.4, longitude: -3.7, zoom: 9
+    }).success).toBe(true);
+  });
+
+  it('drops an unknown field, consistent with every other artifact tool', () => {
+    const parsed = parseArtifactToolArgs('create_map', { place: 'Madrid', centre: [1, 2] });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data).not.toHaveProperty('centre');
+  });
+});

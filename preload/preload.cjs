@@ -26,7 +26,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'web_search', 'search:get-catalog', 'search:probe-engines',
   'ingest_search_context', 'fetch_model_catalog',
   'search_hf_models', 'hf_repo_gguf', 'open_url_window', 'open_webviewer',
-  'live_get_weather', 'live_convert_currency', 'live_get_quote',
+  'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 
   'path_exists', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
   'index_workspace_folder', 'snapshot_workspace_files', 'write_workspace_file', 'read_workspace_file',

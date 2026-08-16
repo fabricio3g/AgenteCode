@@ -2,6 +2,43 @@
 
 <script lang="ts">
   import type { MapArtifactPayload } from '$lib/types/chat';
+  import { geoPath, geoGraticule10, geoCentroid, geoArea } from 'd3-geo';
+  import { appStore } from '$lib/stores/app.svelte';
+  import { loadAtlas, detailForZoom, type Atlas } from './map-atlas';
+  import {
+    DEFAULT_TILE_TEMPLATE,
+    OSM_ATTRIBUTION,
+    tileUrl,
+    tilesForViewport
+  } from './map-tiles';
+  import {
+    MAP_DATA_ATTRIBUTION,
+    citiesInView,
+    cityDetailForZoom,
+    formatPopulation,
+    loadCities,
+    type City
+  } from './map-cities';
+  import {
+    MAP_W,
+    MAP_H,
+    MAP_PAD,
+    clampZoom,
+    cssColor,
+    finiteNumber,
+    fitProjection,
+    formatDistance,
+    lineLengthKm,
+    normalizeLine,
+    normalizePoint,
+    placeLabels,
+    scaleBar,
+    CITY_LABEL_ZOOM,
+    LABEL_BAND,
+    strokeWidth,
+    type Line,
+    type Point
+  } from './map-geo';
 
   interface Props {
     payload: MapArtifactPayload;
@@ -9,124 +46,236 @@
 
   let { payload }: Props = $props();
 
-  const W = 720;
-  const H = 420;
-  const PAD = 42;
+  let atlas = $state<Atlas | null>(null);
+  let atlasError = $state('');
+  let cities = $state<City[]>([]);
+  let activeMarker = $state<number | null>(null);
 
-  type Point = { lat: number; lng: number; label?: string; popup?: string };
-  type Line = { coords: Point[]; color?: string; weight?: number; label?: string };
+  /*
+   * Tiles are the default surface and the bundled geometry is the fallback, so the map
+   * shows streets when there is a connection and still renders something real when
+   * there is not. `tilesBroken` latches on the first tile that fails to load, which
+   * covers the cases `navigator.onLine` misses: a captive portal, a blocked or
+   * rate-limited tile host, a bad template.
+   */
+  let tilesBroken = $state(false);
+  let online = $state(typeof navigator === 'undefined' ? true : navigator.onLine);
 
-  function finiteNumber(value: unknown, fallback = 0) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : fallback;
-  }
-
-  function normalizePoint(point: { lat?: number; lng?: number; label?: string; popup?: string } | null | undefined): Point | null {
-    if (!point) return null;
-    const lat = Number(point.lat);
-    const lng = Number(point.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return {
-      lat,
-      lng,
-      label: point.label,
-      popup: point.popup
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const goOnline = () => {
+      online = true;
+      // Give tiles another chance once connectivity returns.
+      tilesBroken = false;
     };
-  }
-
-  function normalizeLine(line: MapArtifactPayload['polylines'][number]): Line | null {
-    // The schema is `z.array(z.unknown())` and the tool passes elements through
-    // untouched, so a null entry is reachable. Dereferencing `line.coords` without
-    // this guard threw during render and took the whole message down with it.
-    if (!line || typeof line !== 'object') return null;
-    if (Array.isArray(line)) {
-      const coords = line.map(normalizePoint).filter(Boolean) as Point[];
-      return coords.length > 1 ? { coords } : null;
-    }
-    const coords = (Array.isArray(line.coords) ? line.coords : []).map(normalizePoint).filter(Boolean) as Point[];
-    return coords.length > 1
-      ? { coords, color: line.color, weight: line.weight, label: line.label }
-      : null;
-  }
-
-  function mercator(lat: number, lng: number) {
-    const safeLat = Math.max(-85, Math.min(85, lat));
-    const rad = safeLat * Math.PI / 180;
-    return {
-      x: (lng + 180) / 360,
-      y: (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2
+    const goOffline = () => { online = false; };
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
     };
-  }
+  });
 
-  const center = $derived({
+  const tileConfig = $derived(appStore.config?.ui?.map_tiles ?? {});
+  const tilesEnabled = $derived(tileConfig.enabled !== false);
+  const tileTemplate = $derived(tileConfig.template || DEFAULT_TILE_TEMPLATE);
+  const useTiles = $derived(tilesEnabled && online && !tilesBroken);
+
+  const center = $derived<Point>({
     lat: finiteNumber(payload.latitude, 0),
     lng: finiteNumber(payload.longitude, 0)
   });
-  const zoom = $derived(Math.max(1, Math.min(18, Math.round(finiteNumber(payload.zoom, 8)))));
+  const zoom = $derived(clampZoom(payload.zoom));
   const markers = $derived((payload.markers || []).map(normalizePoint).filter(Boolean) as Point[]);
   const lines = $derived((payload.polylines || []).map(normalizeLine).filter(Boolean) as Line[]);
-  const allPoints = $derived([center, ...markers, ...lines.flatMap((line) => line.coords)]);
 
-  const bounds = $derived.by(() => {
-    const projected = allPoints.map((point) => mercator(point.lat, point.lng));
-    const centerProjected = mercator(center.lat, center.lng);
-    const zoomSpan = Math.max(0.0015, 1 / Math.pow(2, zoom + 1));
-    let minX = centerProjected.x - zoomSpan;
-    let maxX = centerProjected.x + zoomSpan;
-    let minY = centerProjected.y - zoomSpan;
-    let maxY = centerProjected.y + zoomSpan;
+  /*
+   * Atlas loading mirrors ArtifactDiagram: a module-level cache, a cancellation flag,
+   * and a visible loading state. The `loaded` latch is a plain `let`, not `$state` —
+   * as `$state` it would be read and written inside its own effect, which
+   * self-invalidates the effect and cancels the in-flight import before it resolves.
+   * That exact mistake made diagrams render blank for the life of the feature.
+   */
+  let loadedDetail = '';
+  $effect(() => {
+    const detail = detailForZoom(zoom);
+    if (detail === loadedDetail) return;
+    loadedDetail = detail;
+    let cancelled = false;
 
-    for (const point of projected) {
-      minX = Math.min(minX, point.x);
-      maxX = Math.max(maxX, point.x);
-      minY = Math.min(minY, point.y);
-      maxY = Math.max(maxY, point.y);
-    }
+    loadAtlas(detail)
+      .then((next) => {
+        if (cancelled) return;
+        atlas = next;
+        atlasError = '';
+      })
+      .catch((err: unknown) => {
+        // No `cancelled` guard on the error path: a genuine failure must surface even
+        // if a newer load superseded this one.
+        loadedDetail = '';
+        atlasError = err instanceof Error ? err.message : String(err || 'Could not load map geometry');
+      });
 
-    const dx = Math.max(maxX - minX, 0.0008);
-    const dy = Math.max(maxY - minY, 0.0008);
-    return {
-      minX: minX - dx * 0.12,
-      maxX: maxX + dx * 0.12,
-      minY: minY - dy * 0.12,
-      maxY: maxY + dy * 0.12
+    return () => {
+      cancelled = true;
     };
   });
 
-  function toSvg(point: Point) {
-    const projected = mercator(point.lat, point.lng);
-    const x = PAD + ((projected.x - bounds.minX) / (bounds.maxX - bounds.minX)) * (W - PAD * 2);
-    const y = PAD + ((projected.y - bounds.minY) / (bounds.maxY - bounds.minY)) * (H - PAD * 2);
-    return { x, y };
+  let loadedCityDetail = '';
+  $effect(() => {
+    const detail = cityDetailForZoom(zoom);
+    if (detail === loadedCityDetail) return;
+    loadedCityDetail = detail;
+    let cancelled = false;
+
+    loadCities(detail)
+      .then((next) => {
+        if (!cancelled) cities = next;
+      })
+      .catch(() => {
+        // Cities are an enhancement, not the map. A failure here leaves the geography,
+        // the markers and the routes intact rather than blanking the artifact.
+        loadedCityDetail = '';
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  const projection = $derived(
+    fitProjection({
+      center,
+      points: [...markers, ...lines.flatMap((line) => line.coords)],
+      zoom
+    })
+  );
+  const pathFor = $derived(geoPath(projection));
+  const graticule = $derived(pathFor(geoGraticule10()) || '');
+  const landPath = $derived(atlas ? pathFor(atlas.land) || '' : '');
+  const bordersPath = $derived(atlas ? pathFor(atlas.borders) || '' : '');
+
+  function project(point: Point): { x: number; y: number } | null {
+    const xy = projection([point.lng, point.lat]);
+    if (!xy || !Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) return null;
+    return { x: xy[0], y: xy[1] };
   }
 
-  const renderedMarkers = $derived(markers.map((point) => ({ ...point, ...toSvg(point) })));
-  const renderedLines = $derived(lines.map((line) => ({
-    ...line,
-    points: line.coords.map((point) => {
-      const projected = toSvg(point);
-      return `${projected.x.toFixed(2)},${projected.y.toFixed(2)}`;
-    }).join(' ')
-  })));
-  const centerPoint = $derived(toSvg(center));
-  const grid = [0.2, 0.4, 0.6, 0.8];
+  const renderedMarkers = $derived(
+    markers
+      .map((point, index) => {
+        const xy = project(point);
+        return xy ? { ...point, ...xy, index } : null;
+      })
+      .filter(Boolean) as Array<Point & { x: number; y: number; index: number }>
+  );
 
-  /** `Number('thick')` is NaN, which invalidates stroke-width and silently thins the line to 1. */
-  function strokeWidth(weight: unknown) {
-    return Math.max(1.5, Math.min(24, finiteNumber(weight, 3)));
-  }
+  const renderedLines = $derived(
+    lines
+      .map((line) => {
+        const points = line.coords.map(project).filter(Boolean) as Array<{ x: number; y: number }>;
+        if (points.length < 2) return null;
+        return {
+          ...line,
+          points: points.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' '),
+          km: lineLengthKm(line.coords)
+        };
+      })
+      .filter(Boolean) as Array<Line & { points: string; km: number }>
+  );
 
-  /**
-   * Model-supplied colours land in an inline style, so anything containing a
-   * declaration separator or comment could inject extra CSS. Allow only the shapes
-   * a colour can legitimately take.
+  const tiles = $derived(
+    useTiles ? tilesForViewport(projection, { width: MAP_W, height: MAP_H }) : []
+  );
+
+  /*
+   * With tiles up, the vector layers are suppressed rather than drawn underneath: the
+   * tile imagery already carries coastlines, borders, place names and — at street zoom
+   * — the road grid, so drawing ours on top would double every label.
    */
-  function cssColor(value: string) {
-    const candidate = String(value || '').trim();
-    if (!candidate || candidate.length > 32) return 'var(--primary)';
-    return /^(#[0-9a-f]{3,8}|[a-z]+|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%deg]+\))$/i.test(candidate)
-      ? candidate
-      : 'var(--primary)';
+  const showVectorBasemap = $derived(!tiles.length);
+
+  const visibleCities = $derived(
+    showVectorBasemap && cities.length ? citiesInView(cities, projection) : []
+  );
+
+  /*
+   * One placement pass for every kind of label. Three separate passes would each avoid
+   * only their own kind, so a city name would happily land on top of a country name.
+   *
+   * Marker labels are included as candidates purely to reserve their space — they are
+   * drawn by the marker group itself, so they are filtered back out below.
+   */
+  const labels = $derived.by(() => {
+    const zoomedIn = zoom >= CITY_LABEL_ZOOM;
+    const candidates: Array<{ x: number; y: number; text: string; priority: number; kind: 'marker' | 'city' | 'country' }> = [];
+
+    for (const marker of renderedMarkers) {
+      if (!marker.label) continue;
+      candidates.push({ x: marker.x, y: marker.y, text: marker.label, priority: LABEL_BAND.marker, kind: 'marker' });
+    }
+
+    for (const city of visibleCities) {
+      candidates.push({
+        x: city.x,
+        y: city.y - 9,
+        text: city.name,
+        // Population breaks ties inside the band, so the biggest city wins the space.
+        priority: (zoomedIn ? LABEL_BAND.cityWhenZoomedIn : LABEL_BAND.cityWhenZoomedOut) + city.population,
+        kind: 'city'
+      });
+    }
+
+    if (showVectorBasemap && atlas) {
+      for (const country of atlas.countries) {
+        const name = String((country.properties as { name?: string } | null)?.name || '');
+        if (!name) continue;
+        const centroid = geoCentroid(country as GeoJSON.Feature);
+        const xy = projection(centroid);
+        if (!xy || !Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) continue;
+        if (xy[0] < 0 || xy[1] < 0 || xy[0] > MAP_W || xy[1] > MAP_H) continue;
+        // Too small to hold its own name — dropped before placement even runs.
+        const area = pathFor.area(country as GeoJSON.Feature);
+        if (!Number.isFinite(area) || area < 900) continue;
+        candidates.push({
+          x: xy[0],
+          y: xy[1],
+          text: name,
+          priority: (zoomedIn ? LABEL_BAND.countryWhenZoomedIn : LABEL_BAND.countryWhenZoomedOut) + area,
+          kind: 'country'
+        });
+      }
+    }
+
+    return placeLabels(candidates, { fontSize: 10 });
+  });
+
+  const cityLabels = $derived(labels.filter((label) => label.kind === 'city'));
+  const countryLabels = $derived(labels.filter((label) => label.kind === 'country'));
+  // Only cities whose name survived placement get a dot; an unlabelled dot is noise.
+  const cityDots = $derived.by(() => {
+    const named = new Set(cityLabels.map((label) => label.text));
+    return visibleCities.filter((city) => named.has(city.name));
+  });
+
+  const bar = $derived(scaleBar(projection, MAP_H - MAP_PAD));
+  const legend = $derived(
+    renderedLines
+      .map((line, index) => ({
+        color: line.color ? cssColor(line.color) : 'var(--primary)',
+        label: line.label || `Route ${index + 1}`,
+        distance: formatDistance(line.km)
+      }))
+      .slice(0, 4)
+  );
+
+  const active = $derived(
+    activeMarker === null ? null : renderedMarkers.find((m) => m.index === activeMarker) || null
+  );
+
+  function toggleMarker(index: number) {
+    activeMarker = activeMarker === index ? null : index;
   }
 </script>
 
@@ -134,20 +283,57 @@
   {#if payload.title}
     <div class="artifact-map-title">{payload.title}</div>
   {/if}
-  <svg class="artifact-map-svg" width={W} height={H} viewBox="0 0 {W} {H}" role="img" aria-label={payload.title || 'Map'}>
-    {#each grid as ratio}
-      <line x1={PAD} x2={W - PAD} y1={PAD + (H - PAD * 2) * ratio} y2={PAD + (H - PAD * 2) * ratio} class="grid-line" />
-      <line y1={PAD} y2={H - PAD} x1={PAD + (W - PAD * 2) * ratio} x2={PAD + (W - PAD * 2) * ratio} class="grid-line" />
+
+  <svg
+    class="artifact-map-svg"
+    width={MAP_W}
+    height={MAP_H}
+    viewBox="0 0 {MAP_W} {MAP_H}"
+    role="img"
+    aria-label={payload.title || 'Map'}
+  >
+    {#if showVectorBasemap}
+      <path d={graticule} class="graticule" />
+    {/if}
+
+    {#each tiles as tile (tile.key)}
+      <image
+        href={tileUrl(tileTemplate, tile)}
+        x={tile.sx}
+        y={tile.sy}
+        width={tile.sw}
+        height={tile.sh}
+        class="map-tile"
+        preserveAspectRatio="none"
+        onerror={() => (tilesBroken = true)}
+      />
+    {/each}
+
+    {#if showVectorBasemap && landPath}
+      <path d={landPath} class="land" />
+      <path d={bordersPath} class="borders" />
+    {/if}
+
+    {#each countryLabels as label}
+      <text x={label.x} y={label.y} class="country-label">{label.text}</text>
+    {/each}
+
+    {#each cityDots as city}
+      <circle cx={city.x} cy={city.y} r="2.2" class="city-dot">
+        <title>{city.name} · {formatPopulation(city.population)}</title>
+      </circle>
+    {/each}
+
+    {#each cityLabels as label}
+      <text x={label.x} y={label.y} class="city-label">{label.text}</text>
     {/each}
 
     {#each renderedLines as line}
       <!--
-        `stroke` is set from a CSS class, not from an attribute holding `var()`.
-        SVG presentation attributes do not substitute custom properties, so the old
-        `stroke={line.color || 'var(--primary)'}` produced an invalid value that fell
-        back to `none` — every polyline without an explicit colour was invisible.
-        A model-supplied colour still wins, via an inline style where `var()` and
-        plain colours both resolve.
+        `stroke` comes from a CSS class, not from an attribute holding `var()`: SVG
+        presentation attributes do not substitute custom properties, so a raw
+        `stroke="var(--primary)"` is invalid and falls back to `none` — every
+        default-coloured line was invisible. A model colour still wins, via a style.
       -->
       <polyline
         points={line.points}
@@ -157,31 +343,87 @@
         stroke-width={strokeWidth(line.weight)}
         stroke-linecap="round"
         stroke-linejoin="round"
-        opacity="0.86"
       >
-        {#if line.label}<title>{line.label}</title>{/if}
+        {#if line.label}<title>{line.label} · {formatDistance(line.km)}</title>{/if}
       </polyline>
     {/each}
 
-    <circle cx={centerPoint.x} cy={centerPoint.y} r="7" class="center-dot">
-      <title>Center: {center.lat.toFixed(5)}, {center.lng.toFixed(5)}</title>
-    </circle>
-
     {#each renderedMarkers as marker}
-      <g transform={`translate(${marker.x}, ${marker.y})`} class="marker">
+      <g
+        transform={`translate(${marker.x}, ${marker.y})`}
+        class="marker"
+        class:active={activeMarker === marker.index}
+        role="button"
+        tabindex="0"
+        aria-label={marker.label || `${marker.lat.toFixed(4)}, ${marker.lng.toFixed(4)}`}
+        onclick={() => toggleMarker(marker.index)}
+        onkeydown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleMarker(marker.index);
+          }
+        }}
+      >
         <circle r="9" class="marker-halo" />
         <circle r="5" class="marker-dot" />
-        <title>{marker.popup || marker.label || `${marker.lat.toFixed(5)}, ${marker.lng.toFixed(5)}`}</title>
         {#if marker.label}
           <text x="11" y="4">{marker.label}</text>
         {/if}
       </g>
     {/each}
 
-    <text x={PAD} y={H - 12} class="coordinate-label">
-      {center.lat.toFixed(4)}, {center.lng.toFixed(4)} · z{zoom} · deterministic local map
-    </text>
+    {#if bar}
+      <g class="scale-bar" transform={`translate(${MAP_PAD}, ${MAP_H - 18})`}>
+        <line x1="0" x2={bar.px} y1="0" y2="0" />
+        <line x1="0" x2="0" y1="-4" y2="4" />
+        <line x1={bar.px} x2={bar.px} y1="-4" y2="4" />
+        <text x={bar.px + 7} y="4">{bar.label}</text>
+      </g>
+    {/if}
   </svg>
+
+  {#if active}
+    <!-- The payload has carried `popup` all along; it was only ever an SVG tooltip. -->
+    <div class="map-popup">
+      <span class="map-popup-title">{active.label || 'Marker'}</span>
+      {#if active.popup}<span class="map-popup-body">{active.popup}</span>{/if}
+      <span class="map-popup-coords">{active.lat.toFixed(4)}, {active.lng.toFixed(4)}</span>
+    </div>
+  {/if}
+
+  {#if legend.length}
+    <div class="map-legend">
+      {#each legend as entry}
+        <span class="legend-entry">
+          <span class="legend-swatch" style={`background:${entry.color}`}></span>
+          {entry.label}
+          <span class="legend-distance">{entry.distance}</span>
+        </span>
+      {/each}
+    </div>
+  {/if}
+
+  {#if showVectorBasemap && !atlas && !atlasError}
+    <p class="map-note">Loading map geometry…</p>
+  {/if}
+  {#if showVectorBasemap && atlasError}
+    <p class="map-note map-note-error">Coordinates only — {atlasError}</p>
+  {/if}
+  {#if tilesEnabled && !useTiles}
+    <!-- Says why the map looks different, rather than silently degrading. -->
+    <p class="map-note">
+      {online ? 'Map tiles unavailable' : 'Offline'} — showing the built-in basemap.
+    </p>
+  {/if}
+
+  <!--
+    Attribution is required, not decorative: OSM tiles are ODbL, and the bundled city
+    data is GeoNames CC BY 4.0. It names whichever basemap is actually on screen.
+  -->
+  <p class="map-attribution">
+    {center.lat.toFixed(3)}, {center.lng.toFixed(3)} · z{zoom} ·
+    {showVectorBasemap ? MAP_DATA_ATTRIBUTION : OSM_ATTRIBUTION}
+  </p>
 </div>
 
 <style>
@@ -208,30 +450,83 @@
     display: block;
     width: 100%;
     height: auto;
-    overflow: visible;
     border-radius: var(--radius-sm);
-    background:
-      radial-gradient(circle at 28% 22%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 32%),
-      color-mix(in srgb, var(--chat-bg) 55%, transparent);
+    background: color-mix(in srgb, var(--chat-bg) 55%, transparent);
+  }
+
+  .map-tile {
+    /* Tiles are cut to the projection, so any seam is a rounding artifact, not a gap.
+       Nudging them a hair wider hides the hairlines between neighbours. */
+    shape-rendering: optimizeSpeed;
+    transform: scale(1.001);
+    transform-origin: center;
+    transform-box: fill-box;
+  }
+
+  .graticule {
+    fill: none;
+    stroke: color-mix(in srgb, var(--text-muted) 16%, transparent);
+    stroke-width: 0.5;
+  }
+
+  .land {
+    fill: color-mix(in srgb, var(--text-muted) 16%, transparent);
+    stroke: none;
+  }
+
+  .borders {
+    fill: none;
+    stroke: color-mix(in srgb, var(--text-muted) 42%, transparent);
+    stroke-width: 0.6;
+    stroke-linejoin: round;
+  }
+
+  .country-label {
+    fill: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  .city-dot {
+    fill: var(--text-secondary);
+    opacity: 0.75;
+  }
+
+  /*
+   * Cities read as places, countries as regions, so they are deliberately styled
+   * apart: sentence case against uppercase, and a halo so a city name stays legible
+   * where it crosses a border or a route.
+   */
+  .city-label {
+    fill: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: color-mix(in srgb, var(--chat-bg) 82%, transparent);
+    stroke-width: 2.5px;
+    pointer-events: none;
   }
 
   .map-line {
     stroke: var(--primary);
+    opacity: 0.9;
   }
 
-  .grid-line {
-    stroke: color-mix(in srgb, var(--text-muted) 22%, transparent);
-    stroke-dasharray: 5 8;
-  }
-
-  .center-dot {
-    fill: color-mix(in srgb, var(--text) 50%, transparent);
-    stroke: var(--surface);
-    stroke-width: 2;
+  .marker {
+    cursor: pointer;
   }
 
   .marker-halo {
     fill: color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+
+  .marker.active .marker-halo {
+    fill: color-mix(in srgb, var(--primary) 42%, transparent);
   }
 
   .marker-dot {
@@ -247,8 +542,69 @@
     stroke-width: 3px;
   }
 
-  .coordinate-label {
-    fill: var(--text-muted);
-    font-size: 11px;
+  .scale-bar line {
+    stroke: var(--text-secondary);
+    stroke-width: 1.5;
+  }
+
+  .scale-bar text {
+    fill: var(--text-secondary);
+    font-size: 10px;
+  }
+
+  .map-popup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface-hover);
+    font-size: 0.78rem;
+  }
+
+  .map-popup-title { font-weight: 650; }
+  .map-popup-body { color: var(--text-secondary); }
+  .map-popup-coords { color: var(--text-muted); font-size: 0.7rem; font-family: var(--font-mono); }
+
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+  }
+
+  .legend-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .legend-swatch {
+    width: 12px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  .legend-distance {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .map-note {
+    margin: 0.4rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+  }
+
+  .map-note-error { color: var(--error); }
+
+  .map-attribution {
+    margin: 0.45rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-variant-numeric: tabular-nums;
   }
 </style>
