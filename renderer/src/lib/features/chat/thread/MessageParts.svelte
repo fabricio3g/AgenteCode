@@ -22,7 +22,7 @@
 
   import ApprovalRequest from '$lib/components/agent/ApprovalRequest.svelte';
   import DeepResearchWidget from '$lib/components/search/DeepResearchWidget.svelte';
-  import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
   import AgentBlock from '$lib/ui/components/AgentBlock.svelte';
   import ArtifactBlock from '$lib/ui/components/ArtifactBlock.svelte';
   import FilesCreatedBlock from '$lib/ui/components/FilesCreatedBlock.svelte';

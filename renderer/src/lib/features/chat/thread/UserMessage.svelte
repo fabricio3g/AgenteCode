@@ -7,7 +7,7 @@
   import { copy, say } from '$lib/copy';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { writeToClipboard } from '$lib/utils/clipboard';
-  import AttachmentDocumentsBlock from '$lib/components/chat/AttachmentDocumentsBlock.svelte';
+  import AttachmentDocumentsBlock from '$lib/features/chat/AttachmentDocumentsBlock.svelte';
   import MessageActionBar from './MessageActionBar.svelte';
   import { compactActions, type MessageAction } from './message-actions';
   import { useMessage } from './message-context';

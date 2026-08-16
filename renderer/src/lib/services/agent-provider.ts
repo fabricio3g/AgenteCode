@@ -177,6 +177,33 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
   };
 }
 
+/**
+ * Agente Coding — the Code tab's built-in agent (pi-inspired engine in the
+ * main process). The adapter currently rides the in-process tool loop so the
+ * code profile keeps working; it will be swapped to the agente runtime
+ * session (agente_* IPC) as the engine lands.
+ */
+function createAgenteDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({
+    id: 'agente',
+    driverKind: 'agente',
+    displayName: 'Agente Coding',
+    detail: 'Built-in coding agent · extensible',
+    status: 'ready',
+    accentColor: 'var(--primary)'
+  });
+  return {
+    driver: {
+      driverKind: 'agente',
+      displayName: 'Agente Coding',
+      detail: 'Built-in coding agent for Code projects',
+      supportsMultipleInstances: false
+    },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', createUnavailableRun(entry.displayName))
+  };
+}
+
 function createCodexDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({ id: 'codex', driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', accentColor: '#10a37f' });
   return {
@@ -222,6 +249,7 @@ export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceI
 export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
   if (!driverRegistry) {
     driverRegistry = {
+      agente: createAgenteDriver(),
       chatea: createChateaDriver(),
       'chatea-agent': createFlaxeoAgentDriver(),
       codex: createCodexDriver(),

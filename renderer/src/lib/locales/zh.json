@@ -178,5 +178,18 @@
     "add": "添加",
     "remove": "移除",
     "refresh": "刷新"
+  },
+  "agente": {
+    "projects": "项目",
+    "addProject": "添加项目",
+    "newConversation": "新对话",
+    "noProjects": "还没有项目",
+    "noProjectsHint": "添加一个项目文件夹，Agente 就会和你一起写代码。",
+    "removeProject": "移除",
+    "removeProjectTitle": "移除项目？",
+    "removeProjectMessage": "{name} 的对话会保留在历史记录中，但项目会从列表中移除。",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "选择一个项目文件夹开始对话。",
+    "enginePending": "智能体引擎正在接入此界面，敬请期待。"
   }
 }

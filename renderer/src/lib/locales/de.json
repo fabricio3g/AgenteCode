@@ -178,5 +178,18 @@
     "add": "Hinzufügen",
     "remove": "Entfernen",
     "refresh": "Aktualisieren"
+  },
+  "agente": {
+    "projects": "Projekte",
+    "addProject": "Projekt hinzufügen",
+    "newConversation": "Neue Unterhaltung",
+    "noProjects": "Noch keine Projekte",
+    "noProjectsHint": "Füge einen Projektordner hinzu und Agente codet mit dir.",
+    "removeProject": "Entfernen",
+    "removeProjectTitle": "Projekt entfernen?",
+    "removeProjectMessage": "Unterhaltungen aus {name} bleiben im Verlauf, aber das Projekt verschwindet aus der Liste.",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "Wähle einen Projektordner, um eine Unterhaltung zu starten.",
+    "enginePending": "Die Agent-Engine wird gerade mit dieser Oberfläche verbunden. Bald verfügbar."
   }
 }

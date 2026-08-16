@@ -140,7 +140,7 @@
     "main/config.types.ts:WhisperQualityCatalogEntry",
     "main/config.types.ts:LocalGGUFCatalogEntry",
     "main/config.utils.ts:JsonReadResult",
-    "renderer/src/lib/components/chat/document-surface.ts:DocumentSurfaceProduct",
+    "renderer/src/lib/features/chat/document-surface.ts:DocumentSurfaceProduct",
     "renderer/src/lib/components/ui/index.ts:MenuPlacement",
     "renderer/src/lib/components/ui/index.ts:SelectOption",
     "renderer/src/lib/copy.ts:Copy",

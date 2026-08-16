@@ -178,5 +178,18 @@
     "add": "Adicionar",
     "remove": "Remover",
     "refresh": "Atualizar"
+  },
+  "agente": {
+    "projects": "Projetos",
+    "addProject": "Adicionar projeto",
+    "newConversation": "Nova conversa",
+    "noProjects": "Nenhum projeto ainda",
+    "noProjectsHint": "Adicione uma pasta de projeto e o Agente vai programar com você.",
+    "removeProject": "Remover",
+    "removeProjectTitle": "Remover projeto?",
+    "removeProjectMessage": "As conversas de {name} permanecem no histórico, mas o projeto sai da lista.",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "Escolha uma pasta de projeto para começar uma conversa.",
+    "enginePending": "O motor do agente está sendo conectado a esta superfície. Volte em breve."
   }
 }

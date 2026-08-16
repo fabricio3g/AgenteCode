@@ -180,5 +180,18 @@
     "add": "Add",
     "remove": "Remove",
     "refresh": "Refresh"
+  },
+  "agente": {
+    "projects": "Projects",
+    "addProject": "Add project",
+    "newConversation": "New conversation",
+    "noProjects": "No projects yet",
+    "noProjectsHint": "Add a project folder and Agente will code on it with you.",
+    "removeProject": "Remove",
+    "removeProjectTitle": "Remove project?",
+    "removeProjectMessage": "Conversations from {name} stay in history, but the project leaves the list.",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "Pick a project folder to start a conversation.",
+    "enginePending": "The agent engine is being wired into this surface. Check back soon."
   }
 }

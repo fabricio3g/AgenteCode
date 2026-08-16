@@ -225,7 +225,7 @@ export interface AgentArtifact {
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
 export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
 
-export type CodeAgentDriverKind = 'chatea' | 'chatea-agent' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentDriverKind = 'agente' | 'chatea' | 'chatea-agent' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
 export type CodeAgentInstanceId = string;
 export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';

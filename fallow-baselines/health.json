@@ -668,12 +668,12 @@
         "count": 2
       }
     },
-    "renderer/src/lib/components/chat/AttachmentDocumentsBlock.svelte": {
+    "renderer/src/lib/features/chat/AttachmentDocumentsBlock.svelte": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/Composer.svelte": {
+    "renderer/src/lib/features/chat/Composer.svelte": {
       "crap_critical": {
         "count": 1
       },
@@ -684,12 +684,12 @@
         "count": 3
       }
     },
-    "renderer/src/lib/components/chat/DocumentSurface.svelte": {
+    "renderer/src/lib/features/chat/DocumentSurface.svelte": {
       "crap_high": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/EditMessageInline.svelte": {
+    "renderer/src/lib/features/chat/EditMessageInline.svelte": {
       "crap_high": {
         "count": 1
       },
@@ -697,7 +697,7 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/ModelSwitcher.svelte": {
+    "renderer/src/lib/features/chat/ModelSwitcher.svelte": {
       "crap_critical": {
         "count": 1
       },
@@ -708,7 +708,7 @@
         "count": 4
       }
     },
-    "renderer/src/lib/components/chat/SelectedTextAskAction.svelte": {
+    "renderer/src/lib/features/chat/SelectedTextAskAction.svelte": {
       "complexity_critical": {
         "count": 1
       },
@@ -719,27 +719,27 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/TtsAudioPlayer.svelte": {
+    "renderer/src/lib/features/chat/TtsAudioPlayer.svelte": {
       "crap_moderate": {
         "count": 2
       }
     },
-    "renderer/src/lib/components/chat/composer/ComposerModelNotice.svelte": {
+    "renderer/src/lib/features/chat/composer/ComposerModelNotice.svelte": {
       "crap_high": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/composer/ContextUsageRing.svelte": {
+    "renderer/src/lib/features/chat/composer/ContextUsageRing.svelte": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/composer/VoiceModeOverlay.svelte": {
+    "renderer/src/lib/features/chat/composer/VoiceModeOverlay.svelte": {
       "crap_high": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/composer/use-attachments.svelte.ts": {
+    "renderer/src/lib/features/chat/composer/use-attachments.svelte.ts": {
       "crap_high": {
         "count": 1
       },
@@ -747,7 +747,7 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/chat/composer/use-dictation.svelte.ts": {
+    "renderer/src/lib/features/chat/composer/use-dictation.svelte.ts": {
       "crap_critical": {
         "count": 1
       },
@@ -758,7 +758,7 @@
         "count": 4
       }
     },
-    "renderer/src/lib/components/chat/viewers/PdfViewer.svelte": {
+    "renderer/src/lib/features/chat/viewers/PdfViewer.svelte": {
       "crap_moderate": {
         "count": 1
       }
@@ -937,17 +937,17 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/thread/AssistantMessage.svelte": {
+    "renderer/src/lib/features/chat/thread/AssistantMessage.svelte": {
       "crap_moderate": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/thread/Message.svelte": {
+    "renderer/src/lib/features/chat/thread/Message.svelte": {
       "crap_moderate": {
         "count": 2
       }
     },
-    "renderer/src/lib/components/thread/MessageFooter.svelte": {
+    "renderer/src/lib/features/chat/thread/MessageFooter.svelte": {
       "crap_critical": {
         "count": 1
       },
@@ -955,7 +955,7 @@
         "count": 2
       }
     },
-    "renderer/src/lib/components/thread/MessageParts.svelte": {
+    "renderer/src/lib/features/chat/thread/MessageParts.svelte": {
       "crap_high": {
         "count": 1
       },
@@ -963,7 +963,7 @@
         "count": 2
       }
     },
-    "renderer/src/lib/components/thread/Thread.svelte": {
+    "renderer/src/lib/features/chat/thread/Thread.svelte": {
       "crap_high": {
         "count": 1
       },
@@ -971,12 +971,12 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/thread/UserMessage.svelte": {
+    "renderer/src/lib/features/chat/thread/UserMessage.svelte": {
       "crap_critical": {
         "count": 1
       }
     },
-    "renderer/src/lib/components/thread/message-parts.ts": {
+    "renderer/src/lib/features/chat/thread/message-parts.ts": {
       "complexity_high": {
         "count": 1
       },
@@ -1672,7 +1672,7 @@
     "renderer/src/lib/utils/markdown.ts:high impact",
     "main/providers/helpers.ts:high impact",
     "main/providers/gemini.ts:high impact",
-    "renderer/src/lib/components/thread/message-parts.ts:high impact",
+    "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
     "renderer/src/lib/utils/code-copy.ts:dead code",
     "main/providers/openai-compatible.ts:untested risk",
     "main/providers/openai.ts:untested risk",

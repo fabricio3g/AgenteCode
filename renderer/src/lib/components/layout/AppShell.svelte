@@ -3,10 +3,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { cubicOut } from 'svelte/easing';
+  import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
-  import Thread from '$lib/components/thread/Thread.svelte';
-  import Composer from '$lib/components/chat/Composer.svelte';
+  import Thread from '$lib/features/chat/thread/Thread.svelte';
+  import Composer from '$lib/features/chat/Composer.svelte';
+  import AgenteSurface from '$lib/features/agente/AgenteSurface.svelte';
+  import { agenteStore } from '$lib/features/agente/agente.svelte';
   import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
@@ -31,9 +34,18 @@
 
   let showShortcutsHelp = $state(false);
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
+  const inAgenteSpace = $derived(appStore.activeSpace === 'work');
   const newSessionLabel = $derived(
-    appStore.activeSpace === 'work' ? `New ${copy.spaces.work}` : 'New chat'
+    inAgenteSpace ? $t('agente.addProject') : 'New chat'
   );
+
+  function startNewSession() {
+    if (appStore.activeSpace === 'work') {
+      void agenteStore.addProject();
+      return;
+    }
+    appStore.createChat(appStore.activeSpace);
+  }
 
 
   function openModelHub(section: string = 'models') {
@@ -49,7 +61,7 @@
 
     if (ctrl && event.key === 'k' && !event.shiftKey) {
       event.preventDefault();
-      appStore.createChat(appStore.activeSpace);
+      startNewSession();
       return;
     }
     if (ctrl && event.key === 'k' && event.shiftKey) {
@@ -169,9 +181,7 @@
         <Tooltip label={newSessionLabel}>
           <button
             class="aui-icon-button size-8"
-            onclick={() => {
-              appStore.createChat(appStore.activeSpace);
-            }}
+            onclick={startNewSession}
             aria-label={newSessionLabel}
           >
             <Plus class="size-4" />
@@ -206,29 +216,36 @@
       <Titlebar />
 
       <div class="flex min-h-0 flex-1 overflow-hidden">
-        <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <!-- Empty conversation: the prompt and the composer sit together in
-               the middle of the panel. The composer drops to the bottom as soon
-               as there is a message to read above it. -->
-          <div
-            class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-            class:justify-center={threadIsEmpty}
-          >
-            {#if threadIsEmpty}
-              <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
-            {/if}
-            <Thread />
-            <Composer />
-          </div>
-
-          <!-- Floats over the conversation: opening it must not reflow the
-               thread or the composer. -->
-          {#if appStore.activityDrawerOpen}
-            <div class="activity-drawer-slot" transition:drawerSlotTransition>
-              <ActivityDrawer />
+        <!-- Code tab hosts the Agente Coding surface; Home keeps the classic
+             chat panel. Two features, one shell — the branch point of the
+             home-chat separation. -->
+        {#if inAgenteSpace}
+          <AgenteSurface />
+        {:else}
+          <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <!-- Empty conversation: the prompt and the composer sit together in
+                 the middle of the panel. The composer drops to the bottom as soon
+                 as there is a message to read above it. -->
+            <div
+              class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              class:justify-center={threadIsEmpty}
+            >
+              {#if threadIsEmpty}
+                <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
+              {/if}
+              <Thread />
+              <Composer />
             </div>
-          {/if}
-        </div>
+
+            <!-- Floats over the conversation: opening it must not reflow the
+                 thread or the composer. -->
+            {#if appStore.activityDrawerOpen}
+              <div class="activity-drawer-slot" transition:drawerSlotTransition>
+                <ActivityDrawer />
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
   {/if}

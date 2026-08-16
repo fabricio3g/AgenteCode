@@ -178,5 +178,18 @@
     "add": "Ajouter",
     "remove": "Supprimer",
     "refresh": "Actualiser"
+  },
+  "agente": {
+    "projects": "Projets",
+    "addProject": "Ajouter un projet",
+    "newConversation": "Nouvelle conversation",
+    "noProjects": "Aucun projet pour l'instant",
+    "noProjectsHint": "Ajoutez un dossier de projet et Agente codera avec vous.",
+    "removeProject": "Retirer",
+    "removeProjectTitle": "Retirer le projet ?",
+    "removeProjectMessage": "Les conversations de {name} restent dans l'historique, mais le projet quitte la liste.",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "Choisissez un dossier de projet pour démarrer une conversation.",
+    "enginePending": "Le moteur de l'agent est en cours de raccordement à cette surface. Revenez bientôt."
   }
 }

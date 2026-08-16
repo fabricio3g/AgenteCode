@@ -6,7 +6,7 @@
   import { countOf } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
   import { Search, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
-  import ModelSwitcher from '$lib/components/chat/ModelSwitcher.svelte';
+  import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';

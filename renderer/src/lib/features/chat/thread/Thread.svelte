@@ -15,8 +15,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
-  import EditMessageInline from '$lib/components/chat/EditMessageInline.svelte';
-  import SelectedTextAskAction from '$lib/components/chat/SelectedTextAskAction.svelte';
+  import EditMessageInline from '$lib/features/chat/EditMessageInline.svelte';
+  import SelectedTextAskAction from '$lib/features/chat/SelectedTextAskAction.svelte';
   import Message from './Message.svelte';
   import ThreadTimeline from './ThreadTimeline.svelte';
   import type { TimelineMarker } from './timeline';

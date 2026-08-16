@@ -10,7 +10,7 @@
   import { stripChartBlocks } from '$lib/utils/charts';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
-  import TtsAudioPlayer from '$lib/components/chat/TtsAudioPlayer.svelte';
+  import TtsAudioPlayer from '$lib/features/chat/TtsAudioPlayer.svelte';
   import BranchPicker from './BranchPicker.svelte';
   import MessageActionBar from './MessageActionBar.svelte';
   import MessageFooter from './MessageFooter.svelte';

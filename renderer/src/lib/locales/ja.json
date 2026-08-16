@@ -178,5 +178,18 @@
     "add": "追加",
     "remove": "削除",
     "refresh": "更新"
+  },
+  "agente": {
+    "projects": "プロジェクト",
+    "addProject": "プロジェクトを追加",
+    "newConversation": "新しい会話",
+    "noProjects": "プロジェクトはまだありません",
+    "noProjectsHint": "プロジェクトフォルダを追加すると、Agente が一緒にコードを書きます。",
+    "removeProject": "削除",
+    "removeProjectTitle": "プロジェクトを削除しますか？",
+    "removeProjectMessage": "{name} の会話は履歴に残りますが、プロジェクトは一覧から削除されます。",
+    "surfaceTitle": "Agente Coding",
+    "surfacePickProject": "プロジェクトフォルダを選んで会話を始めましょう。",
+    "enginePending": "エージェントエンジンをこの画面に接続中です。もうしばらくお待ちください。"
   }
 }

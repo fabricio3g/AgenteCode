@@ -1,5 +1,5 @@
 import type { AgentArtifact, ChatMessage, MessageVersion, SearchMeta } from '$lib/types/chat';
-import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
+import type { DocumentSurfaceItem } from '$lib/features/chat/document-surface';
 import { artifactsForMessage } from '$lib/stores/app-store-artifacts';
 
 /**

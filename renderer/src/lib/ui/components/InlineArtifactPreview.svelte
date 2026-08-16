@@ -5,7 +5,7 @@
   import { resolveArtifactPreview } from '$lib/services/artifact-model';
   import { countOf } from '$lib/utils/format';
   import { buildPreviewHtml } from '$lib/utils/preview-builder';
-  import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
+  import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import ArtifactMap from './ArtifactMap.svelte';
   import ArtifactDiagram from './ArtifactDiagram.svelte';
   import ArtifactDashboard from './ArtifactDashboard.svelte';

@@ -3,7 +3,7 @@
 <script lang="ts">
   import { X } from 'lucide-svelte';
   import { getFileIcon } from '$lib/utils/doc-utils';
-  import { fileTypeLabel } from '$lib/components/chat/document-surface';
+  import { fileTypeLabel } from '$lib/features/chat/document-surface';
   import { formatBytes } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
   import type { Attachment } from '$lib/types/chat';

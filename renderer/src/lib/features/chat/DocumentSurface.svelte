@@ -6,7 +6,7 @@
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { parseContentSegments } from '$lib/utils/charts';
-  import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
+  import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import type { ViewerKind } from '$lib/utils/doc-utils';
   import PdfViewer from './viewers/PdfViewer.svelte';
