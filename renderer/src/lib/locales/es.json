@@ -205,6 +205,7 @@
     "rollbackTo": "Restaurar archivos a antes del turno {turn}",
     "extensions": "Extensiones",
     "noExtensions": "Sin extensiones instaladas.",
-    "extensionsHint": "Los cambios se aplican a conversaciones nuevas. Las extensiones de terceros se cargarán desde ~/.flaxeo/agente/extensions."
+    "extensionsHint": "Los cambios se aplican a conversaciones nuevas. Las extensiones de terceros se cargarán desde ~/.flaxeo/agente/extensions.",
+    "composerRegion": "Editor de tareas de Agente"
   }
 }

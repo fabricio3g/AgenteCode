@@ -207,6 +207,7 @@
     "rollbackTo": "Restore files to before turn {turn}",
     "extensions": "Extensions",
     "noExtensions": "No extensions installed.",
-    "extensionsHint": "Changes apply to new conversations. Third-party extensions will load from ~/.flaxeo/agente/extensions."
+    "extensionsHint": "Changes apply to new conversations. Third-party extensions will load from ~/.flaxeo/agente/extensions.",
+    "composerRegion": "Agente task composer"
   }
 }

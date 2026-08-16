@@ -94,7 +94,7 @@
         </div>
 
         {#if expanded}
-          <div class="ml-4 space-y-0.5 border-l border-[var(--sidebar-border)] pl-1" transition:slide={{ duration: 140 }}>
+          <div class="ml-4 mt-1 space-y-0.5 border-l border-[var(--sidebar-border)] pl-1 pb-1" transition:slide={{ duration: 140 }}>
             {#each sessions as session (session.id)}
               <button
                 type="button"

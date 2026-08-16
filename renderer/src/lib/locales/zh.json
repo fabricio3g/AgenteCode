@@ -205,6 +205,7 @@
     "rollbackTo": "将文件恢复到第 {turn} 轮之前",
     "extensions": "扩展",
     "noExtensions": "尚未安装扩展。",
-    "extensionsHint": "更改对新对话生效。第三方扩展将从 ~/.flaxeo/agente/extensions 加载。"
+    "extensionsHint": "更改对新对话生效。第三方扩展将从 ~/.flaxeo/agente/extensions 加载。",
+    "composerRegion": "Agente 任务输入框"
   }
 }

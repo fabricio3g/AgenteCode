@@ -146,6 +146,11 @@ class AgenteStore {
     return this.runs[chatId] ?? null;
   }
 
+  /** True once an engine session has been started for this chat. */
+  hasSession(chatId: string): boolean {
+    return this.#sessionIds.has(chatId);
+  }
+
   get modelLabel(): string {
     return this.#modelLabel;
   }
