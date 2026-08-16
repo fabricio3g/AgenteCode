@@ -179,9 +179,10 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
 
 /**
  * Agente Coding — the Code tab's built-in agent (pi-inspired engine in the
- * main process). The adapter currently rides the in-process tool loop so the
- * code profile keeps working; it will be swapped to the agente runtime
- * session (agente_* IPC) as the engine lands.
+ * main process, driven through features/agente). The Code-tab surface talks
+ * to the engine directly over agente_* IPC; this adapter only serves legacy
+ * resolveCodeAgentInstance() callers, so it rides the in-process tool loop
+ * with the code profile rather than reporting itself unavailable.
  */
 function createAgenteDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
@@ -200,7 +201,15 @@ function createAgenteDriver(): CodeAgentDriverDefinition {
       supportsMultipleInstances: false
     },
     defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', createUnavailableRun(entry.displayName))
+    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', async (args) => runAgentTask({
+      ...args,
+      executionMode: 'workspace',
+      toolMode: 'agent',
+      agentProfile: 'code',
+      maxIterations: args.maxIterations ?? 28,
+      maxToolCalls: args.maxToolCalls ?? 80,
+      maxTimeMs: args.maxTimeMs ?? 8 * 60 * 1000
+    }))
   };
 }
 
