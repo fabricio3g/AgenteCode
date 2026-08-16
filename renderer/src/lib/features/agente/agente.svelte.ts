@@ -109,9 +109,16 @@ class AgenteStore {
    * Create a fresh agente conversation inside a project. The chat is a normal
    * work-space session tagged with the project and the agente driver meta the
    * engine attaches to when it starts.
+   *
+   * The projectId/codeAgent writes MUST go through the reactive proxy from
+   * `appStore.chats` — createChat() returns the raw pre-proxy object, and a
+   * raw-target write never notifies subscribers, leaving the sidebar tree
+   * and the surface blind to the new conversation.
    */
   newConversation(project: CodeProject): ChatSession {
-    const chat = appStore.createChat('work');
+    const created = appStore.createChat('work');
+    const chat = appStore.chats.find((c) => c.id === created.id);
+    if (!chat) return created;
     chat.projectId = project.id;
     chat.codeAgent = {
       instanceId: 'agente',
@@ -267,7 +274,7 @@ class AgenteStore {
       mode: 'agent',
       agentSteps: []
     });
-    if (!chat.title || chat.title === 'New conversation' || chat.title === 'New Work') {
+    if (!chat.title || chat.title === 'New work' || chat.title === 'New chat' || chat.title === 'New conversation' || chat.title === 'New Work') {
       chat.title = text.slice(0, 60);
     }
     chat.updatedAt = Date.now();

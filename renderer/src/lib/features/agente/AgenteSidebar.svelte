@@ -13,6 +13,16 @@
     void agenteStore.load();
   });
 
+  // A restored conversation (restart, space switch) should find its folder
+  // open and highlighted — not require the user to re-navigate the tree.
+  $effect(() => {
+    const projectId = appStore.currentChat?.projectId;
+    if (projectId && agenteStore.projects.some((p) => p.id === projectId)) {
+      if (!agenteStore.expandedProjects[projectId]) agenteStore.expandedProjects[projectId] = true;
+      if (agenteStore.activeProjectId !== projectId) agenteStore.activeProjectId = projectId;
+    }
+  });
+
   function confirmRemoveProject(projectId: string, name: string) {
     confirmStore.show({
       title: $t('agente.removeProjectTitle'),

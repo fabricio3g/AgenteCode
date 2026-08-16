@@ -15,13 +15,21 @@
     void agenteStore.load();
   });
 
-  const activeProject = $derived(agenteStore.projectById(agenteStore.activeProjectId));
-  /** The chat currently selected in the work space, when it belongs to a project. */
+  /**
+   * The conversation to show: whatever work-space chat is current AND belongs
+   * to a project. Keyed off the chat's own projectId — not the sidebar's
+   * project selection — so a restored conversation (currentChatIdBySpace)
+   * renders even if no folder row was ever clicked.
+   */
   const chat = $derived.by(() => {
     const current = appStore.currentChat;
-    if (current?.projectId && current.projectId === agenteStore.activeProjectId) return current;
+    if (current?.projectId && current.contextMode === 'work') return current;
     return null;
   });
+  const activeProject = $derived(
+    agenteStore.projectById(chat?.projectId ?? null) ??
+      agenteStore.projectById(agenteStore.activeProjectId)
+  );
   const run = $derived(agenteStore.runFor(chat?.id));
 
   async function rollback(turnIndex: number) {
