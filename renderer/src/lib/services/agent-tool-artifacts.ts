@@ -207,29 +207,70 @@ export async function handleCreateMap(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
   normPath: (value: unknown) => string;
+  geocodePlace: (place: string) => Promise<{ latitude: number; longitude: number; label: string }>;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  const title = String(params.args.title || 'Map');
-  const lat = Number(params.args.latitude ?? 51.505);
-  const lng = Number(params.args.longitude ?? -0.09);
-  const zoom = Number(params.args.zoom ?? 13);
+  const place = String(params.args.place || '').trim();
   const markers = Array.isArray(params.args.markers) ? params.args.markers as Array<{ lat?: number; lng?: number; label?: string; popup?: string }> : [];
   const polylines = Array.isArray(params.args.polylines) ? params.args.polylines : [];
   const path = artifactDataPath(params.normPath(params.args.path), 'map.json');
 
+  let lat = Number(params.args.latitude);
+  let lng = Number(params.args.longitude);
+  let resolvedLabel = '';
+
+  /*
+   * A place name is resolved here, at execution time, and only when coordinates were
+   * not supplied. Explicit coordinates always win — a model that already knows them
+   * should not pay for a network round trip.
+   */
+  if (place && !(Number.isFinite(lat) && Number.isFinite(lng))) {
+    try {
+      const hit = await params.geocodePlace(place);
+      lat = hit.latitude;
+      lng = hit.longitude;
+      resolvedLabel = hit.label;
+    } catch (err: unknown) {
+      return params.fail(
+        `Could not resolve "${place}": ${err instanceof Error ? err.message : String(err)}`,
+        'Retry with explicit latitude and longitude, or a better-known place name.'
+      );
+    }
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return params.fail(
+      'A map needs either a place name or latitude and longitude.',
+      'Pass `place` (e.g. "Victoria, Entre Rios") and the coordinates will be resolved.'
+    );
+  }
+
+  // No default coordinates. The old fallback silently dropped an under-specified map
+  // on London, which looks like a successful answer to a completely different question.
+  const title = String(params.args.title || resolvedLabel || place || 'Map');
+  const zoom = Number(params.args.zoom);
+
+  // A geocoded place with no markers gets one, so the resolved point is actually shown.
+  const resolvedMarkers = markers.length || !resolvedLabel
+    ? markers
+    : [{ lat, lng, label: resolvedLabel }];
+
   const payload = {
     kind: 'map',
     title,
-    latitude: Number.isFinite(lat) ? lat : 0,
-    longitude: Number.isFinite(lng) ? lng : 0,
+    latitude: lat,
+    longitude: lng,
     zoom: Number.isFinite(zoom) ? zoom : 8,
-    markers,
+    markers: resolvedMarkers,
     polylines
   };
 
   writeInlineArtifact(params.ctx, path, payload);
-  return params.ok({ title, path, markerCount: markers.length }, { createdFiles: [path] });
+  return params.ok(
+    { title, path, latitude: lat, longitude: lng, markerCount: resolvedMarkers.length, ...(resolvedLabel ? { resolved: resolvedLabel } : {}) },
+    { createdFiles: [path] }
+  );
 }
 
 export async function handleCreateDashboard(params: {

@@ -1,4 +1,5 @@
 import { fetchLiveJson } from './fetch-allowlist.ts';
+import { geocodePlace } from './geocode.ts';
 
 const WMO: Record<number, string> = {
   0: 'Clear sky',
@@ -46,23 +47,9 @@ export async function getWeather(location: string): Promise<WeatherResult> {
   const q = String(location || '').trim();
   if (!q) throw new Error('Missing location');
 
-  const geoUrl =
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`;
-  const geo = (await fetchLiveJson(geoUrl)) as {
-    results?: Array<{
-      name?: string;
-      country?: string;
-      latitude?: number;
-      longitude?: number;
-      timezone?: string;
-      admin1?: string;
-    }>;
-  };
-  const hit = geo.results?.[0];
-  if (!hit?.latitude || !hit?.longitude) {
-    throw new Error(`Location not found: ${q}`);
-  }
-
+  // Shared with the map artifact. Also fixes a latent bug in the old inline version:
+  // `!hit.latitude || !hit.longitude` rejected the equator and the prime meridian.
+  const hit = await geocodePlace(q);
   const lat = hit.latitude;
   const lon = hit.longitude;
   const weatherUrl =
@@ -118,7 +105,7 @@ export async function getWeather(location: string): Promise<WeatherResult> {
     country: hit.country,
     latitude: lat,
     longitude: lon,
-    timezone: wx.timezone || hit.timezone,
+    timezone: wx.timezone,
     temperatureC: current.temperature_2m,
     feelsLikeC: current.apparent_temperature,
     humidityPct: current.relative_humidity_2m,

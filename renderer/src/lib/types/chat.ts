@@ -581,6 +581,20 @@ export interface AppConfig {
     agent_debug_logs?: boolean;
     artifact_toggles?: Record<string, boolean>;
     /**
+     * Map artifact basemap. Tiles are the default surface; when they cannot be
+     * fetched the map falls back to the geometry bundled with the app, so a map
+     * always renders.
+     *
+     * `template` is provider-agnostic on purpose. OpenStreetMap's public endpoint
+     * forbids use by redistributed apps, so a shipped build should point this at a
+     * provider the user has a key for.
+     */
+    map_tiles?: {
+      enabled?: boolean;
+      template?: string;
+      attribution?: string;
+    };
+    /**
      * How Chat vs Agent is chosen:
      * - tabs: show Chat | Agent control in composer
      * - auto: hide tabs; route each message by intent

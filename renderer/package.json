@@ -17,6 +17,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-axis": "^3.0.0",
+    "d3-geo": "^3.1.1",
     "d3-scale": "^4.0.2",
     "d3-selection": "^3.0.0",
     "d3-shape": "^3.2.0",
@@ -34,6 +35,8 @@
     "svelte-i18n": "^4.0.1",
     "tailwind-merge": "^3.6.0",
     "tesseract.js": "^7.0.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2",
     "zod": "^4.1.11"
   },
   "devDependencies": {
@@ -41,7 +44,9 @@
     "@tailwindcss/postcss": "^4.1.13",
     "@testing-library/svelte": "^5.4.2",
     "@types/d3": "^7.4.3",
+    "@types/d3-geo": "^3.1.1",
     "@types/node": "^24.5.2",
+    "@types/topojson-client": "^3.1.5",
     "autoprefixer": "^10.4.21",
     "jsdom": "^27.0.1",
     "postcss": "^8.5.6",

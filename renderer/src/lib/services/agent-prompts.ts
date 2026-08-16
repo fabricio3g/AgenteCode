@@ -69,7 +69,7 @@ export function getFlaxeoChatSystemPrompt(): string {
     '- Currency conversion: you MUST call convert_currency(amount, from, to). Uses Frankfurter/ECB rates; inserts a money card. Never invent FX rates.',
     '- Stock/crypto quote: you MUST call get_quote(symbol) e.g. AAPL, BTC. Inserts a quote card. Never invent prices.',
     '- Other short fact packs: create_info_card only after tools provide at least one concrete label/value row. Never call it with empty rows. It is optional and must not replace or block the final answer.',
-    '- Charts/plots: create_chart. KPI numbers: create_dashboard. Flows: create_diagram. Places: create_map.',
+    '- Charts/plots: create_chart. KPI numbers: create_dashboard. Flows: create_diagram. Places: create_map — pass `place` ("Victoria, Entre Rios") and coordinates are resolved for you; never web-search for a latitude.',
     '- Small visual HTML layouts: create_html_card (inline CSS only, no CDN/scripts).',
     'Prefer live-data tools and native inline widgets over free-form guesses or raw HTML in markdown.',
     'Only create Office/PDF files when the user explicitly asks for a document, spreadsheet, slides, PDF, or downloadable file.',
@@ -122,7 +122,7 @@ export function getNativeSystemPrompt(
     'Do not repeat the same tool with similar arguments. After a web_search succeeds, use those results to answer or create the requested artifact instead of searching the same thing again.',
     'If stuck, summarize only the gathered tool results and clearly say what is missing.',
     'Files are not on the host filesystem unless a tool says so. Treat sandbox files as conversation artifacts saved with this chat.',
-    'When creating artifacts, keep them self-contained and deterministic. Do not use CDN scripts, remote assets, map tiles, or network-dependent rendering. Prefer native inline tools: create_chart, create_dashboard, create_diagram, create_map, create_info_card (weather/facts), create_html_card (small HTML snippets). create_info_card is optional: call it only with at least one concrete evidence-backed label/value row, and never let a widget block the final answer.',
+    'When creating artifacts, keep them self-contained and deterministic. Do not use CDN scripts, remote assets, network map tiles, or network-dependent rendering — create_map draws real coastlines and borders from geometry bundled with the app. Prefer native inline tools: create_chart, create_dashboard, create_diagram, create_map, create_info_card (weather/facts), create_html_card (small HTML snippets). create_info_card is optional: call it only with at least one concrete evidence-backed label/value row, and never let a widget block the final answer.',
     '',
     'Workflow: inspect context -> use the smallest useful tool set -> answer in chat with optional inline widgets -> create_work_product/create_document/create_spreadsheet/create_presentation/create_pdf/write_file only when the user explicitly asks for a file or concrete format -> preview_project when useful.',
     REPORT_IS_NOT_A_FILE,
@@ -197,7 +197,7 @@ export function getXmlSystemPrompt(
     isWorkspace
       ? '12. Files persist to disk in the workspace folder. Use read_file, write_file, delete_file, list_files, search_files, and bash tools to work with the real filesystem.'
       : '12. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
-    '13. Artifacts must be self-contained and deterministic. Do not use CDN scripts, remote assets, map tiles, or network-dependent rendering. Prefer native inline artifact tools for charts, maps, diagrams, and dashboards.',
+    '13. Artifacts must be self-contained and deterministic. Do not use CDN scripts, remote assets, network map tiles, or network-dependent rendering. Prefer native inline artifact tools for charts, maps, diagrams, and dashboards.',
     '14. If you cannot finish, final answer must say what was actually found and what could not be verified.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
