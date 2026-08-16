@@ -229,7 +229,7 @@ export type CodeAgentDriverKind = 'agente' | 'chatea' | 'chatea-agent' | 'codex'
 export type CodeAgentInstanceId = string;
 export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
-export type CodeAgentRuntimeMode = 'full' | 'supervised';
+export type CodeAgentRuntimeMode = 'full' | 'supervised' | 'plan';
 
 export interface CodeAgentProvider {
   id: CodeAgentInstanceId;

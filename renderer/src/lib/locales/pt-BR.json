@@ -206,6 +206,9 @@
     "extensions": "Extensões",
     "noExtensions": "Nenhuma extensão instalada.",
     "extensionsHint": "As alterações valem para novas conversas. Extensões de terceiros carregarão de ~/.flaxeo/agente/extensions.",
-    "composerRegion": "Editor de tarefas do Agente"
+    "composerRegion": "Editor de tarefas do Agente",
+    "modeSelector": "Modo do agente",
+    "modePlan": "Planejar primeiro",
+    "modePlanHint": "Investiga, apresenta um plano e só edita após sua aprovação"
   }
 }

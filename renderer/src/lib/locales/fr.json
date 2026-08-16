@@ -206,6 +206,9 @@
     "extensions": "Extensions",
     "noExtensions": "Aucune extension installée.",
     "extensionsHint": "Les changements s'appliquent aux nouvelles conversations. Les extensions tierces se chargeront depuis ~/.flaxeo/agente/extensions.",
-    "composerRegion": "Éditeur de tâches Agente"
+    "composerRegion": "Éditeur de tâches Agente",
+    "modeSelector": "Mode de l'agent",
+    "modePlan": "Planifier d'abord",
+    "modePlanHint": "Investigue, présente un plan et ne modifie qu'après votre approbation"
   }
 }

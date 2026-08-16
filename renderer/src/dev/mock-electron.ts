@@ -6,6 +6,8 @@ type Listener = (payload: unknown) => void;
 
 const eventListeners = new Map<string, Set<Listener>>();
 const savedSessions: unknown[] = [];
+/** Last runtime mode set via agente_set_runtime_mode — steers the script. */
+let runtimeMode: 'full' | 'supervised' | 'plan' = 'supervised';
 const savedProjects: Record<string, unknown>[] = [
   {
     id: 'proj-1',
@@ -46,7 +48,9 @@ async function scriptAgentRun(chatId: string): Promise<void> {
   await wait(100);
   send({ type: 'turn_start', turnIndex: 1 });
 
-  for (const delta of ['Alright, ', 'let me inspect ', 'the project first.']) {
+  for (const delta of runtimeMode === 'plan'
+    ? ['Here is my plan:\n1. ', 'Read src/index.ts to see the boot call.\n2. ', 'Add a verbose flag to boot().\n3. ', 'Verify the file parses.']
+    : ['Alright, ', 'let me inspect ', 'the project first.']) {
     await wait(120);
     send({ type: 'text_delta', delta });
   }
@@ -60,7 +64,14 @@ async function scriptAgentRun(chatId: string): Promise<void> {
   await wait(200);
   send({ type: 'tool_start', toolCallId: 'tc-write-1', toolName: 'edit', args: { path: 'src/index.ts' } });
   await wait(250);
-  send({ type: 'approval_request', requestId: 'apr-1', toolName: 'edit', args: { path: 'src/index.ts' }, diff: '--- src/index.ts\n+++ src/index.ts\n-boot();\n+boot({ verbose: true });' });
+  send({
+    type: 'approval_request',
+    requestId: 'apr-1',
+    toolName: 'edit',
+    args: { path: 'src/index.ts' },
+    diff: '--- src/index.ts\n+++ src/index.ts\n-boot();\n+boot({ verbose: true });',
+    ...(runtimeMode === 'plan' ? { kind: 'plan' as const } : {})
+  });
 
   // The decision arrives when the user clicks Allow/Deny (agente_respond_approval).
 }
@@ -130,7 +141,11 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   build_context_budget: () => ({}),
 
   'agente_detect': () => ({ status: 'ready' }),
-  'agente_start_session': () => ({ sessionId: `sess-${Date.now()}`, resumed: false }),
+  'agente_start_session': (args) => {
+    const mode = (args as { runtimeMode?: 'full' | 'supervised' | 'plan' } | undefined)?.runtimeMode;
+    if (mode === 'plan' || mode === 'supervised' || mode === 'full') runtimeMode = mode;
+    return { sessionId: `sess-${Date.now()}`, resumed: false };
+  },
   'agente_prompt': (args) => {
     void scriptAgentRun(String((args as { chatId?: string } | undefined)?.chatId ?? ''));
     return { ok: true };
@@ -140,7 +155,11 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   'agente_abort': () => ({ ok: true }),
   'agente_compact': () => ({ ok: true }),
   'agente_set_model': () => ({ ok: true }),
-  'agente_set_runtime_mode': () => ({ ok: true }),
+  'agente_set_runtime_mode': (args) => {
+    const mode = (args as { mode?: 'full' | 'supervised' | 'plan' } | undefined)?.mode;
+    if (mode === 'plan' || mode === 'supervised' || mode === 'full') runtimeMode = mode;
+    return { ok: true };
+  },
   'agente_respond_approval': (args) => {
     const { chatId, decision } = (args ?? {}) as { chatId?: string; decision?: 'allow' | 'deny' };
     void finishApprovedRun(String(chatId ?? ''), decision === 'deny' ? 'deny' : 'allow');

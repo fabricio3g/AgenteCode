@@ -2,8 +2,8 @@
 
 import os from 'node:os';
 
-export function buildAgenteSystemPrompt(projectRoot: string, platform = process.platform): string {
-  return [
+export function buildAgenteSystemPrompt(projectRoot: string, platform = process.platform, runtimeMode: 'full' | 'supervised' | 'plan' = 'supervised'): string {
+  const base = [
     'You are Agente, a coding agent working inside the Flaxeo Chat desktop app.',
     'You operate directly on the user\u2019s project files through tools.',
     '',
@@ -25,5 +25,15 @@ export function buildAgenteSystemPrompt(projectRoot: string, platform = process.
     '',
     '## Tone',
     'Concise and technical. Explain what you are about to do and why in a sentence, then do it. No filler.'
-  ].join('\n');
+  ];
+
+  if (runtimeMode === 'plan') {
+    base.push(
+      '',
+      '## Plan-first mode',
+      'Work in two phases. Phase 1: investigate with read-only tools only, then present a concise numbered plan (files to touch, approach, verification) and stop \u2014 your first edit or command will pause for the user to approve the plan. Phase 2: once approved, execute the plan step by step. If the plan is rejected, revise it from the feedback instead of editing anyway.'
+    );
+  }
+
+  return base.join('\n');
 }

@@ -117,8 +117,16 @@ export function applyCodeAgentEvent(state: AgenteRunState, event: CodeAgentEvent
       return true;
     }
     case 'approval_request': {
-      const step = eventToStep(event);
-      if (step) upsertStep(state, step);
+      const step: AgentStep = {
+        id: event.requestId,
+        type: 'approval',
+        label: event.kind === 'plan' ? 'Approve plan' : `Approval: ${event.toolName}`,
+        status: 'awaiting_approval',
+        detail: event.kind === 'plan'
+          ? `${event.diff ?? ''}\n\nApproving lets Agente start editing; every edit still asks individually.`
+          : event.diff
+      };
+      upsertStep(state, step);
       return true;
     }
     case 'approval_resolved': {

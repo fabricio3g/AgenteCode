@@ -51,7 +51,7 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     setModel(args.chatId, args.provider, args.model, args.thinkingLevel)
   );
 
-  ipcMain.handle('agente_set_runtime_mode', (_e, args: { chatId: string; mode: 'full' | 'supervised' }) =>
+  ipcMain.handle('agente_set_runtime_mode', (_e, args: { chatId: string; mode: 'full' | 'supervised' | 'plan' }) =>
     setRuntimeMode(args.chatId, args.mode)
   );
 

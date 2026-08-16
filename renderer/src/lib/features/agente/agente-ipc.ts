@@ -35,7 +35,7 @@ export function setAgenteModel(chatId: string, provider: string, model: string, 
   return invoke('agente_set_model', { chatId, provider, model, thinkingLevel });
 }
 
-export function setAgenteRuntimeMode(chatId: string, mode: 'full' | 'supervised'): Promise<{ ok: boolean }> {
+export function setAgenteRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): Promise<{ ok: boolean }> {
   return invoke('agente_set_runtime_mode', { chatId, mode });
 }
 

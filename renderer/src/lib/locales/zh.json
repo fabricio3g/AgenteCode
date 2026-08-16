@@ -206,6 +206,9 @@
     "extensions": "扩展",
     "noExtensions": "尚未安装扩展。",
     "extensionsHint": "更改对新对话生效。第三方扩展将从 ~/.flaxeo/agente/extensions 加载。",
-    "composerRegion": "Agente 任务输入框"
+    "composerRegion": "Agente 任务输入框",
+    "modeSelector": "智能体模式",
+    "modePlan": "先规划",
+    "modePlanHint": "先调查并给出计划，经你批准后才开始编辑"
   }
 }

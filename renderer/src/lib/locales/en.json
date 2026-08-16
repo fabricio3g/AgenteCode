@@ -208,6 +208,9 @@
     "extensions": "Extensions",
     "noExtensions": "No extensions installed.",
     "extensionsHint": "Changes apply to new conversations. Third-party extensions will load from ~/.flaxeo/agente/extensions.",
-    "composerRegion": "Agente task composer"
+    "composerRegion": "Agente task composer",
+    "modeSelector": "Agent mode",
+    "modePlan": "Plan first",
+    "modePlanHint": "Investigates, presents a plan, and edits only after you approve it"
   }
 }

@@ -84,7 +84,11 @@ interface RuntimeSession {
   checkpoints: CheckpointStore | null;
   checkpointsEnabled: boolean;
   transport: AgenteTransport;
-  runtimeMode: 'full' | 'supervised';
+  runtimeMode: 'full' | 'supervised' | 'plan';
+  /** Plan mode: the run's plan was approved; mutations may proceed. */
+  planApproved: boolean;
+  /** Approval requests that are plan approvals (vs per-action). */
+  planRequests: Set<string>;
   systemPrompt: string;
   extensions: ExtensionRunner;
   /** Context window of the active model, for the usage ring. */
@@ -221,6 +225,37 @@ async function describeDiff(toolName: string, args: Record<string, unknown>): Pr
   return undefined;
 }
 
+/** Emit an approval_request and await the renderer's decision. */
+function requestApproval(
+  session: RuntimeSession,
+  toolName: string,
+  args: Record<string, unknown>,
+  diff: string | undefined,
+  kind: 'action' | 'plan'
+): Promise<'allow' | 'deny'> {
+  const requestId = `apr-${kind === 'plan' ? 'plan' : 'act'}-${crypto.randomUUID().slice(0, 8)}`;
+  if (kind === 'plan') session.planRequests.add(requestId);
+  emit(session, {
+    type: 'approval_request',
+    chatId: session.chatId,
+    requestId,
+    toolName,
+    args,
+    diff,
+    kind
+  });
+  return new Promise<'allow' | 'deny'>((resolve) => {
+    session.pendingApprovals.set(requestId, (decision) => {
+      if (decision === 'allow' && kind === 'plan') session.planApproved = true;
+      emit(session, { type: 'approval_resolved', chatId: session.chatId, requestId, decision });
+      resolve(decision);
+    });
+  }).finally(() => {
+    session.pendingApprovals.delete(requestId);
+    session.planRequests.delete(requestId);
+  });
+}
+
 function buildHooks(session: RuntimeSession): AgentLoopHooks {
   return {
     beforeToolCall: async (toolCallId, toolName, args) => {
@@ -233,24 +268,26 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
         return { block: extensionVerdict.block };
       }
 
-      // 2. Approval gate: supervised mode + mutating tool.
-      if (session.runtimeMode === 'supervised' && tool.mutating) {
-        const requestId = `apr-${crypto.randomUUID().slice(0, 8)}`;
-        emit(session, {
-          type: 'approval_request',
-          chatId: session.chatId,
-          requestId,
-          toolName,
-          args,
-          diff: await describeDiff(toolName, args)
-        });
-        const decision = await new Promise<'allow' | 'deny'>((resolve) => {
-          session.pendingApprovals.set(requestId, resolve);
-        });
-        session.pendingApprovals.delete(requestId);
-        emit(session, { type: 'approval_resolved', chatId: session.chatId, requestId, decision });
-        if (decision === 'deny') {
-          return { block: 'The user denied this action. Ask how to proceed or choose a different approach.' };
+      // 2. Approval gates. Plan mode: the first mutating call of a run pauses
+      //    for plan approval; approving it also executes that call. After the
+      //    plan is approved, mutations go through the per-action gate.
+      if (tool.mutating && !session.disposed) {
+        const diff = await describeDiff(toolName, args);
+        if (session.runtimeMode === 'plan' && !session.planApproved) {
+          const decision = await requestApproval(session, toolName, args, diff, 'plan');
+          if (decision === 'deny') {
+            return {
+              block:
+                'The user rejected the plan. Revise it from their feedback and present it again — do not attempt edits until a plan is approved.'
+            };
+          }
+          session.planApproved = true;
+          // The triggering call executes directly; later mutations are gated per action.
+        } else if (session.runtimeMode === 'supervised' || (session.runtimeMode === 'plan' && session.planApproved)) {
+          const decision = await requestApproval(session, toolName, args, diff, 'action');
+          if (decision === 'deny') {
+            return { block: 'The user denied this action. Ask how to proceed or choose a different approach.' };
+          }
         }
       }
 
@@ -417,7 +454,9 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     checkpoints: null,
     transport,
     runtimeMode: args.runtimeMode,
-    systemPrompt: args.systemPromptOverride || buildAgenteSystemPrompt(args.projectRoot),
+    planApproved: false,
+    planRequests: new Set(),
+    systemPrompt: args.systemPromptOverride || buildAgenteSystemPrompt(args.projectRoot, undefined, args.runtimeMode),
     extensions: extensionRunner,
     contextWindow: FALLBACK_CONTEXT_WINDOW,
     currentTurn: 0,
@@ -503,6 +542,8 @@ export function disposeAllSessions(): void {
 export async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>): Promise<{ ok: boolean; error?: string }> {
   const session = requireSession(chatId);
   if (!session) return { ok: false, error: 'No active agente session for this chat' };
+  // Each task re-enters planning: a new prompt means a new plan to approve.
+  session.planApproved = false;
   session.tree.append('user', { content: text, images });
   await session.extensions.dispatch({ event: 'before_agent_start' });
   // Fire-and-forget: events stream back over code_agent_event.
@@ -542,10 +583,15 @@ export function respondApproval(chatId: string, requestId: string, decision: 'al
   return { ok: true };
 }
 
-export function setRuntimeMode(chatId: string, mode: 'full' | 'supervised'): { ok: boolean } {
+export function setRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): { ok: boolean } {
   const session = requireSession(chatId);
   if (!session) return { ok: false };
   session.runtimeMode = mode;
+  session.planApproved = false;
+  (session.agent.options as { systemPrompt: string }).systemPrompt =
+    mode === 'plan'
+      ? buildAgenteSystemPrompt(session.projectRoot, undefined, 'plan')
+      : buildAgenteSystemPrompt(session.projectRoot);
   return { ok: true };
 }
 

@@ -14,7 +14,7 @@ export type CodeAgentEvent =
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean }
   | { type: 'compaction_start'; chatId: string; reason: string }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
-  | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string }
+  | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: 'allow' | 'deny' }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }
   | {
@@ -40,7 +40,7 @@ export interface AgenteStartSessionArgs {
   provider: string;
   model: string;
   thinkingLevel?: string;
-  runtimeMode: 'full' | 'supervised';
+  runtimeMode: 'full' | 'supervised' | 'plan';
   systemPromptOverride?: string;
   resumeSessionId?: string;
   checkpointsEnabled?: boolean;

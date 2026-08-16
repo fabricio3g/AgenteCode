@@ -206,6 +206,9 @@
     "extensions": "Erweiterungen",
     "noExtensions": "Keine Erweiterungen installiert.",
     "extensionsHint": "Änderungen gelten für neue Unterhaltungen. Drittanbieter-Erweiterungen werden aus ~/.flaxeo/agente/extensions geladen.",
-    "composerRegion": "Agente-Aufgabeneingabe"
+    "composerRegion": "Agente-Aufgabeneingabe",
+    "modeSelector": "Agent-Modus",
+    "modePlan": "Zuerst planen",
+    "modePlanHint": "Untersucht, präsentiert einen Plan und bearbeitet erst nach deiner Freigabe"
   }
 }

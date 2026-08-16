@@ -191,10 +191,13 @@ class AgenteStore {
 
     if (event.type === 'approval_request') {
       void (async () => {
+        const isPlan = event.kind === 'plan';
         const allow = await approvalsStore.request({
           id: event.requestId,
           chatId: event.chatId,
-          command: `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
+          command: isPlan
+            ? `Approve plan — ${summarizeArgs(event.args) || event.toolName}`
+            : `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
           cwd: this.projectById(this.activeProjectId)?.rootPath || 'project'
         });
         await respondToAgenteApproval(event.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
@@ -302,7 +305,7 @@ class AgenteStore {
     await abortAgente(chatId);
   }
 
-  async setMode(chatId: string, mode: 'full' | 'supervised'): Promise<void> {
+  async setMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): Promise<void> {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (chat?.codeAgent) {
       chat.codeAgent.runtimeMode = mode;

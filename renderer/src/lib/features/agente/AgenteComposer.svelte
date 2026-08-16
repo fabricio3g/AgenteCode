@@ -10,7 +10,7 @@
 
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { ArrowUp, ShieldCheck, Square, Zap } from 'lucide-svelte';
+  import { ArrowUp, Check, ChevronDown, ClipboardList, ShieldCheck, Square, Zap } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
@@ -26,15 +26,28 @@
 
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let text = $state('');
+  let modeMenuOpen = $state(false);
 
   const run = $derived(agenteStore.runFor(chat.id));
   const running = $derived(!!run?.running);
-  const supervised = $derived(chat.codeAgent?.runtimeMode !== 'full');
+  const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? 'supervised');
   const canSend = $derived(!!text.trim() || running);
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage);
   const showContextRing = $derived(!!usage && usage.promptTokens > 0);
+
+  const modes = $derived([
+    { id: 'plan' as const, icon: ClipboardList, label: $t('agente.modePlan'), hint: $t('agente.modePlanHint') },
+    { id: 'supervised' as const, icon: ShieldCheck, label: $t('agente.modeSupervised'), hint: $t('agente.modeSupervisedHint') },
+    { id: 'full' as const, icon: Zap, label: $t('agente.modeFull'), hint: $t('agente.modeFullHint') }
+  ]);
+  const activeMode = $derived(modes.find((m) => m.id === runtimeMode) ?? modes[1]!);
+
+  function selectMode(mode: 'plan' | 'supervised' | 'full') {
+    modeMenuOpen = false;
+    if (mode !== runtimeMode) void agenteStore.setMode(chat.id, mode);
+  }
 
   const placeholder = $derived(
     running ? $t('agente.steerPlaceholder') : $t('agente.composerPlaceholder')
@@ -76,10 +89,6 @@
     const element = event.currentTarget as HTMLTextAreaElement;
     text = element.value;
     autoGrow(element);
-  }
-
-  async function toggleMode() {
-    await agenteStore.setMode(chat.id, supervised ? 'full' : 'supervised');
   }
 
   // Re-point the engine session when the app-wide model selection changes
@@ -138,23 +147,50 @@
         ></textarea>
 
         <div class="composer-actions">
-          <!-- Supervised / full-auto gate — the Agente counterpart of Home's
-               mode chips, styled as the same pill as the model trigger. -->
-          <button
-            type="button"
-            class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
-            onclick={() => void toggleMode()}
-            aria-label={supervised ? $t('agente.modeFullHint') : $t('agente.modeSupervisedHint')}
-            title={supervised ? $t('agente.modeSupervisedHint') : $t('agente.modeFullHint')}
-          >
-            {#if supervised}
-              <ShieldCheck class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-              <span class="trigger-label truncate">{$t('agente.modeSupervised')}</span>
-            {:else}
-              <Zap class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-              <span class="trigger-label truncate">{$t('agente.modeFull')}</span>
+          <!-- Runtime mode gate — plan / supervised / full-auto, opened as a
+               list. Styled as the same pill as the model trigger. -->
+          <div class="relative">
+            <button
+              type="button"
+              class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
+              class:is-open={modeMenuOpen}
+              onclick={() => (modeMenuOpen = !modeMenuOpen)}
+              aria-label={$t('agente.modeSelector')}
+              title={activeMode.hint}
+              aria-expanded={modeMenuOpen}
+            >
+              <svelte:component this={activeMode.icon} class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+              <span class="trigger-label truncate">{activeMode.label}</span>
+              <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
+            </button>
+
+            {#if modeMenuOpen}
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+              <div class="fixed inset-0 z-40" onclick={() => (modeMenuOpen = false)}></div>
+              <div class="absolute bottom-10 left-0 z-50 w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+                {#each modes as mode (mode.id)}
+                  <button
+                    type="button"
+                    class="mode-option flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-muted"
+                    class:is-selected={mode.id === runtimeMode}
+                    onclick={() => selectMode(mode.id)}
+                  >
+                    <span class="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                      {#if mode.id === runtimeMode}
+                        <Check class="size-3.5 text-foreground" />
+                      {:else}
+                        <mode.icon class="size-3.5 text-muted-foreground" />
+                      {/if}
+                    </span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
+                      <span class="block text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
+                    </span>
+                  </button>
+                {/each}
+              </div>
             {/if}
-          </button>
+          </div>
 
           <ModelSwitcher />
 
@@ -269,7 +305,8 @@
       color var(--motion-fast) var(--motion-ease);
   }
 
-  .mode-trigger:hover {
+  .mode-trigger:hover,
+  .mode-trigger.is-open {
     border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--muted);
     color: var(--foreground);
@@ -280,6 +317,16 @@
     font-size: 0.8125rem;
     font-weight: 500;
     letter-spacing: -0.01em;
+  }
+
+  .mode-option {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .mode-option.is-selected {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
   }
 
   .trailing {
