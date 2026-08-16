@@ -57,14 +57,14 @@
 
 {#if state === 'loading'}
   <div class="notice pointer-events-auto justify-center">
-    <p class="inline-flex items-center gap-2 text-xs text-muted-foreground">
+    <p class="notice-label inline-flex items-center gap-2">
       <LoaderCircle class="size-3.5 animate-spin" />
       {copy.model.loading}
     </p>
   </div>
 {:else if state === 'no-local-model'}
   <div class="notice pointer-events-auto flex-wrap justify-center gap-2">
-    <p class="text-xs text-muted-foreground">{copy.model.none}</p>
+    <p class="notice-label">{copy.model.none}</p>
     <button
       type="button"
       class="notice-btn primary"
@@ -79,7 +79,7 @@
   </div>
 {:else if state === 'no-provider'}
   <div class="notice pointer-events-auto justify-center">
-    <p class="text-xs text-muted-foreground">
+    <p class="notice-label">
       {copy.model.none}
       <button type="button" class="notice-link" onclick={() => openModelHub('providers')}>
         {copy.model.configureProvider}
@@ -93,28 +93,41 @@
   .notice {
     display: flex;
     align-items: center;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.625rem;
   }
 
+  .notice-label {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+  }
+
+  /* Pill buttons sized to sit level with the composer's own controls. Both
+     actions carry the same visual weight — a solid black button next to a
+     hairline one read as a warning rather than a choice. */
   .notice-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem 0.625rem;
+    gap: 0.375rem;
+    min-height: 1.875rem;
+    padding: 0.3125rem 0.8125rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-full);
     background: var(--card);
     color: var(--foreground);
     box-shadow: var(--surface-shadow);
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
     font-weight: 500;
+    letter-spacing: -0.005em;
     transition:
       background-color 150ms ease,
-      opacity 150ms ease,
+      border-color 150ms ease,
       transform 150ms var(--motion-ease);
   }
 
   .notice-btn:hover {
+    border-color: var(--border-hover, var(--border));
     background: var(--muted);
   }
 
@@ -122,15 +135,22 @@
     transform: scale(0.97);
   }
 
+  .notice-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
+  }
+
+  /* The recommended path stays distinguishable by weight, not by inverting
+     into a heavy black slab. */
   .notice-btn.primary {
-    border-color: transparent;
-    background: var(--primary);
-    color: var(--primary-foreground);
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    background: var(--card);
     font-weight: 600;
   }
 
   .notice-btn.primary:hover {
-    opacity: 0.9;
+    border-color: color-mix(in srgb, var(--foreground) 38%, transparent);
+    background: var(--muted);
   }
 
   .notice-link {
@@ -138,14 +158,22 @@
     align-items: center;
     gap: 0.25rem;
     margin-left: 0.25rem;
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
+    font-weight: 500;
     text-decoration: underline;
-    text-decoration-color: var(--border);
+    text-decoration-color: color-mix(in srgb, var(--foreground) 30%, transparent);
     text-underline-offset: 2px;
     transition: color 150ms ease;
   }
 
   .notice-link:hover {
     color: var(--foreground);
+  }
+
+  .notice-link:focus-visible {
+    outline: none;
+    color: var(--foreground);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
+    border-radius: var(--radius-sm);
   }
 </style>

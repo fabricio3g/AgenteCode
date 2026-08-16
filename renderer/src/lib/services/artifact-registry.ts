@@ -111,29 +111,33 @@ const builtinArtifacts = [
     toolName: 'create_report', toolDescription: 'Create a formatted report document (HTML or Markdown) as an artifact.',
     argsSchema: z.object({
       title: z.string().min(1).describe('Report title'),
-      sections: z.array(sectionSchema).min(1).describe('Report sections'),
+      // Optional: a model that supplies prose in `content` should not be
+      // rejected for omitting a section array it never needed.
+      sections: z.array(sectionSchema).min(1).optional().describe('Report sections'),
+      content: z.string().optional().describe('Report body when not split into sections'),
       format: z.enum(['html', 'markdown']).optional().describe('Output format'),
       path: pathSchema,
       theme: z.enum(['light', 'dark']).optional().describe('Color theme for HTML reports')
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'work_product', name: 'Work Products', description: 'Multi-format professional deliverables', icon: 'briefcase', category: 'documents', presentation: 'document', defaultEnabled: true,
     toolName: 'create_work_product', toolDescription: 'Create a professional evidence-aware work product from one shared report schema.',
     argsSchema: z.object({
       title: z.string().min(1), subtitle: z.string().optional(), executiveSummary: z.string().optional(),
-      sections: z.array(sectionSchema).min(1),
+      sections: z.array(sectionSchema).min(1).optional(),
       tables: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
       sources: z.array(z.object({ id: z.string().optional(), title: z.string().optional(), url: z.string().optional(), provider: z.string().optional(), snippet: z.string().optional() }).passthrough()).optional(),
       limitations: z.array(z.string()).optional(),
-      formats: z.array(z.enum(['md', 'html', 'docx', 'xlsx', 'pptx', 'pdf'])).min(1),
+      // Defaulted: omitting it used to fail the call outright.
+      formats: z.array(z.enum(['md', 'html', 'docx', 'xlsx', 'pptx', 'pdf'])).min(1).default(['md']),
       path: pathSchema
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'document', name: 'Documents', description: 'DOCX documents with preview', icon: 'file-text', category: 'documents', presentation: 'document', defaultEnabled: true,
     toolName: 'create_document', toolDescription: 'Create a real DOCX document with a built-in preview.',
-    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema }).strict()
+    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema })
   }),
   defineArtifact({
     id: 'spreadsheet', name: 'Spreadsheets', description: 'XLSX workbooks with table viewer', icon: 'table', category: 'documents', presentation: 'document', defaultEnabled: true,
@@ -142,37 +146,37 @@ const builtinArtifacts = [
       title: z.string().min(1),
       sheets: z.array(z.object({ name: z.string().optional(), columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional() }).passthrough()).optional(),
       columns: z.array(z.string()).optional(), rows: z.array(z.unknown()).optional(), path: pathSchema
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'presentation', name: 'Presentations', description: 'PPTX slide decks with slide viewer', icon: 'presentation', category: 'documents', presentation: 'document', defaultEnabled: true,
     toolName: 'create_presentation', toolDescription: 'Create a real PPTX slide deck with a built-in slide viewer.',
-    argsSchema: z.object({ title: z.string().min(1), slides: z.array(z.object({ title: z.string().optional(), content: z.string().optional(), bullets: z.array(z.string()).optional(), notes: z.string().optional() }).passthrough()).min(1), path: pathSchema }).strict()
+    argsSchema: z.object({ title: z.string().min(1), slides: z.array(z.object({ title: z.string().optional(), content: z.string().optional(), bullets: z.array(z.string()).optional(), notes: z.string().optional() }).passthrough()).min(1), path: pathSchema })
   }),
   defineArtifact({
     id: 'pdf', name: 'PDF Files', description: 'PDF documents with built-in viewer', icon: 'file', category: 'documents', presentation: 'document', defaultEnabled: true,
     toolName: 'create_pdf', toolDescription: 'Create a PDF document with a built-in PDF viewer.',
-    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema }).strict()
+    argsSchema: z.object({ title: z.string().min(1), sections: z.array(sectionSchema).optional(), content: z.string().optional(), path: pathSchema })
   }),
   defineArtifact({
     id: 'chart', name: 'Charts', description: 'Native inline bar, line, pie, and donut charts', icon: 'bar-chart', category: 'visuals', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_chart', toolDescription: 'Create a deterministic inline chart artifact rendered locally.',
     argsSchema: z.object({
       title: z.string().min(1), chart_type: z.enum(['bar', 'line', 'pie', 'donut']).default('bar'), labels: z.array(z.coerce.string()).min(1),
-      datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number()) }).strict()).min(1), path: pathSchema
-    }).strict()
+      datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number()) })).min(1), path: pathSchema
+    })
   }),
   defineArtifact({
     id: 'diagram', name: 'Diagrams', description: 'Native inline Mermaid diagrams', icon: 'workflow', category: 'visuals', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_diagram', toolDescription: 'Create a deterministic inline diagram artifact using Mermaid syntax.',
-    argsSchema: z.object({ title: z.string().min(1), diagram_type: z.string().optional(), mermaid_source: z.string().min(1), path: pathSchema }).strict()
+    argsSchema: z.object({ title: z.string().min(1), diagram_type: z.string().optional(), mermaid_source: z.string().min(1), path: pathSchema })
   }),
   defineArtifact({
     id: 'map', name: 'Maps', description: 'Inline coordinate maps with markers and polylines', icon: 'map', category: 'visuals', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_map', toolDescription: 'Create a deterministic inline coordinate map rendered locally.',
     argsSchema: z.object({
       /*
-       * Optional. It was `z.string().min(1)` under a `.strict()` schema, so a model
+       * Optional. It was `z.string().min(1)` under a `` schema, so a model
        * that sent only coordinates — the one thing a map actually needs — was
        * rejected outright and retried the identical call until it gave up. Nothing
        * downstream required it: `handleCreateMap` already falls back to 'Map', and
@@ -181,7 +185,7 @@ const builtinArtifacts = [
       title: z.string().min(1).optional(), latitude: z.coerce.number().optional(), longitude: z.coerce.number().optional(), zoom: z.coerce.number().optional(),
       markers: z.array(z.object({ lat: z.coerce.number(), lng: z.coerce.number(), label: z.string().optional(), popup: z.string().optional() }).passthrough()).optional(),
       polylines: z.array(z.unknown()).optional(), path: pathSchema
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'dashboard', name: 'Dashboards', description: 'Metric cards, KPIs, and summary panels', icon: 'layout-dashboard', category: 'visuals', presentation: 'inline', defaultEnabled: true,
@@ -190,7 +194,7 @@ const builtinArtifacts = [
       title: z.string().min(1), subtitle: z.string().optional(),
       metrics: z.array(z.object({ label: z.coerce.string(), value: z.union([z.string(), z.number()]), trend: z.string().optional(), unit: z.string().optional(), color: z.string().optional() }).passthrough()).min(1),
       sections: z.array(z.object({ heading: z.string().optional(), content: z.string().optional() }).passthrough()).optional(), path: pathSchema
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'info_card', name: 'Info cards', description: 'Fact cards for live data and short structured summaries', icon: 'layout-list', category: 'cards', presentation: 'inline', defaultEnabled: true,
@@ -198,19 +202,19 @@ const builtinArtifacts = [
     repairArgs: repairInfoCardArgs,
     argsSchema: z.object({
       title: z.string().min(1), subtitle: z.string().optional(),
-      rows: z.array(z.object({ label: z.string().min(1), value: z.string().min(1), hint: z.string().optional() }).strict()).min(1),
+      rows: z.array(z.object({ label: z.string().min(1), value: z.string().min(1), hint: z.string().optional() })).min(1),
       footer: z.string().optional(), accent: z.enum(['sky', 'green', 'amber', 'red', 'violet']).optional(), path: pathSchema
-    }).strict()
+    })
   }),
   defineArtifact({
     id: 'html_card', name: 'HTML cards', description: 'Small self-contained HTML snippets', icon: 'code', category: 'cards', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_html_card', toolDescription: 'Create a small self-contained HTML card with no remote dependencies.',
-    argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), path: pathSchema }).strict()
+    argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), path: pathSchema })
   }),
   defineArtifact({
     id: 'research_package', name: 'Research exports', description: 'Citations, evidence matrices, and bibliography files', icon: 'library', category: 'research', presentation: 'document', defaultEnabled: true,
     toolName: 'export_research_package', toolDescription: 'Export evidence-backed research deliverables from gathered sources.',
-    argsSchema: z.object({ kinds: z.array(z.enum(['citations', 'matrix', 'shortlist', 'bibliography', 'protocol'])).min(1), title: z.string().optional(), query: z.string().optional() }).strict()
+    argsSchema: z.object({ kinds: z.array(z.enum(['citations', 'matrix', 'shortlist', 'bibliography', 'protocol'])).min(1).default(['citations']), title: z.string().optional(), query: z.string().optional() })
   })
 ] as const satisfies readonly ArtifactTypeEntry[];
 

@@ -3,7 +3,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { Check, ChevronDown, Cloud, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Sparkles, Square, X } from 'lucide-svelte';
-  import { motionFade } from '$lib/utils/transitions';
+  import { flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -25,10 +25,16 @@
   let dropdownEl: HTMLDivElement | undefined = $state();
   let modelSearch = $state('');
   let searchInput = $state<HTMLInputElement | undefined>(undefined);
-  let searchExpanded = $state(false);
   let unloading = $state(false);
   let confirmSwitch = $state<ModelOption | null>(null);
-  let dropdownPos = $state({ top: 0, left: 0, width: 320 });
+  let dropdownPos = $state<{
+    openUp: boolean;
+    top: number | null;
+    bottom: number | null;
+    left: number;
+    width: number;
+    maxHeight: number;
+  }>({ openUp: true, top: null, bottom: 0, left: 0, width: 320, maxHeight: 420 });
   /** Cloud: models cached per provider id (`undefined` = not loaded yet) */
   let modelsByProvider = $state<Record<string, ModelOption[] | undefined>>({});
   let loadingProvider = $state<Record<string, boolean>>({});
@@ -116,6 +122,15 @@
     const gen = ++loadGen;
     const saved = appStore.config.llm?.providers?.[id];
     const baseUrl = saved?.base_url || defaultBaseUrl(id);
+
+    // A provider with no key cannot list models, and asking anyway makes the
+    // main process log a handler error on every start. The seeded list above
+    // is already what the user sees, so there is nothing to gain by calling.
+    // Keyless local runtimes (llama.cpp, Ollama, LM Studio) still get queried.
+    const hasKey = !!(saved?.has_api_key || saved?.api_key);
+    const isLocal = id === 'local' || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(baseUrl);
+    if (!hasKey && !isLocal) return;
+
     loadingProvider = { ...loadingProvider, [id]: true };
 
     try {
@@ -167,11 +182,6 @@
       return;
     }
     appStore.modelMenuOpen = false;
-  }
-
-  function openSearch() {
-    searchExpanded = true;
-    setTimeout(() => searchInput?.focus(), 30);
   }
 
   /** Portal fixed menus out of the titlebar drag region so clicks work on Windows/Electron. */
@@ -264,10 +274,22 @@
     if (!triggerEl) return;
     const rect = triggerEl.getBoundingClientRect();
     const w = Math.min(360, window.innerWidth - 32);
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+
+    // The trigger lives in the composer at the bottom of the window, so the
+    // menu opens upward unless there is genuinely more room below. Anchoring
+    // by `bottom` rather than `top` lets the panel grow upward on its own as
+    // the model list changes length, instead of needing its height measured.
+    const openUp = spaceAbove > spaceBelow;
+
     dropdownPos = {
-      top: rect.bottom + 6,
+      openUp,
+      top: openUp ? null : rect.bottom + 6,
+      bottom: openUp ? window.innerHeight - rect.top + 6 : null,
       left: Math.max(16, rect.left + rect.width / 2 - w / 2),
       width: w,
+      maxHeight: Math.max(200, (openUp ? spaceAbove : spaceBelow) - 20),
     };
   }
 
@@ -299,7 +321,6 @@
     const open = appStore.modelMenuOpen;
     if (!open) {
       modelSearch = '';
-      searchExpanded = false;
       confirmSwitch = null;
       return;
     }
@@ -358,81 +379,78 @@
 
 <!-- Dropdown: portaled to body so Electron titlebar drag region cannot swallow clicks -->
 {#if appStore.modelMenuOpen}
+  <!--
+    Positioning and animation are on separate elements on purpose. `dropdownPos`
+    is reactive, so Svelte rewrites this element's `style` attribute — which
+    wipes the inline transform/opacity a transition writes to the same
+    attribute, and the panel snaps in with no animation at all.
+  -->
+  <div
+    use:portalToBody
+    class="dropdown-anchor fixed"
+    style="{dropdownPos.openUp ? `bottom:${dropdownPos.bottom}px` : `top:${dropdownPos.top}px`}; left:{dropdownPos.left}px; width:{dropdownPos.width}px; max-height:{dropdownPos.maxHeight}px; z-index:10050; -webkit-app-region: no-drag; pointer-events: auto;"
+  >
+  <!-- No reactive `style` here: it is the transitioning element, and Svelte
+       rewriting the attribute would overwrite the transition's own inline
+       transform mid-flight. Sizing lives on the anchor above. -->
   <div
     bind:this={dropdownEl}
-    use:portalToBody
-    class="model-dropdown fixed overflow-hidden"
-    style="top:{dropdownPos.top}px; left:{dropdownPos.left}px; width:{dropdownPos.width}px; z-index:10050; -webkit-app-region: no-drag; pointer-events: auto;"
+    class="model-dropdown overflow-y-auto"
     role="listbox"
     tabindex="-1"
     onpointerdown={(e) => e.stopPropagation()}
-    transition:motionFade={{ duration: 100 }}
+    transition:flyAndScale={{ y: dropdownPos.openUp ? 8 : -8, start: 0.96, duration: 180 }}
   >
-    <!-- Header -->
-    <div class="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
-      <span class="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-        {appStore.backendMode === 'local' ? 'On Device Models' : 'Cloud Models'}
-      </span>
-      <div class="flex items-center gap-0.5">
-        {#if appStore.backendMode === 'api'}
+    <!--
+      Header and mode toggle on one line. The old layout stacked an uppercase
+      "CLOUD MODELS" caption above a Cloud/On Device switch that already said
+      the same thing, costing a whole row to repeat the tab label back.
+    -->
+    <div class="panel-head flex items-center gap-2 px-2.5 pb-2 pt-2.5">
+      {#if isTauri()}
+        <div class="aui-segmented min-w-0 flex-1" style="-webkit-app-region: no-drag;">
           <button
             type="button"
-            class="refresh-btn p-1.5"
-            onclick={openSearch}
-            aria-label="Search models"
-            title="Search models"
-          >
-            <Search class="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            class="refresh-btn p-1.5"
-            onclick={() => {
-              appStore.refreshModels(true);
-              modelsStore.refreshStatus();
-              const active = appStore.activeProviderName;
-              if (active) void loadModelsForProvider(active, true);
+            class={`aui-segmented-item flex-1 py-1 ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
+            style="-webkit-app-region: no-drag; pointer-events: auto;"
+            onclick={(e) => {
+              e.stopPropagation();
+              void appStore.setBackendMode('api').then(() => initCloudListWhenOpen());
             }}
-            aria-label="Refresh"
-          >
-            <RefreshCw class="h-3.5 w-3.5" />
-          </button>
-        {:else}
+          >Cloud</button>
           <button
             type="button"
-            class="refresh-btn p-1.5"
-            onclick={openSearch}
-            aria-label="Search models"
-          >
-            <Search class="h-3.5 w-3.5" />
-          </button>
-        {/if}
-      </div>
-    </div>
+            class={`aui-segmented-item flex-1 py-1 ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
+            style="-webkit-app-region: no-drag; pointer-events: auto;"
+            onclick={(e) => {
+              e.stopPropagation();
+              void appStore.setBackendMode('local');
+            }}
+          >On Device</button>
+        </div>
+      {:else}
+        <span class="flex-1 text-[13px] font-medium text-[var(--text-secondary)]">
+          {appStore.backendMode === 'local' ? 'On device' : 'Cloud'}
+        </span>
+      {/if}
 
-    <!-- Cloud / On Device mode toggle -->
-    {#if isTauri()}
-      <div class="aui-segmented mx-3 mb-2.5 w-[calc(100%-1.5rem)]" style="-webkit-app-region: no-drag;">
+      {#if appStore.backendMode === 'api'}
         <button
           type="button"
-          class={`aui-segmented-item flex-1 py-1.5 ${appStore.backendMode === 'api' ? 'is-active' : ''}`}
-          style="-webkit-app-region: no-drag; pointer-events: auto;"
-          onclick={(e) => {
-            e.stopPropagation();
-            void appStore.setBackendMode('api').then(() => initCloudListWhenOpen());
+          class="refresh-btn shrink-0 p-1.5"
+          onclick={() => {
+            appStore.refreshModels(true);
+            modelsStore.refreshStatus();
+            const active = appStore.activeProviderName;
+            if (active) void loadModelsForProvider(active, true);
           }}
-        >Cloud</button>
-        <button
-          type="button"
-          class={`aui-segmented-item flex-1 py-1.5 ${appStore.backendMode === 'local' ? 'is-active' : ''}`}
-          style="-webkit-app-region: no-drag; pointer-events: auto;"
-          onclick={(e) => {
-            e.stopPropagation();
-            void appStore.setBackendMode('local');
-          }}
-        >On Device</button>
-      </div>
-    {/if}
+          aria-label="Refresh models"
+          title="Refresh models"
+        >
+          <RefreshCw class="h-3.5 w-3.5" />
+        </button>
+      {/if}
+    </div>
 
     <!-- Runtime busy -->
     {#if appStore.backendMode === 'local' && localLoading}
@@ -465,28 +483,27 @@
     {/if}
 
     <!-- Search: always for cloud; local when opened or typing -->
-    {#if searchExpanded || appStore.backendMode === 'api' || appStore.backendMode === 'local' || modelSearch}
-      <div class="search-wrapper relative mx-3 mb-2.5">
-        <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-        <input
-          bind:this={searchInput}
-          bind:value={modelSearch}
-          type="text"
-          placeholder="Search models..."
-          class="search-input w-full py-2 pl-10 pr-10 text-sm text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
-          onclick={(e) => e.stopPropagation()}
-          onkeydown={(e) => e.key === 'Escape' && (appStore.modelMenuOpen = false)}
-        />
-        {#if modelSearch}
-          <button
-            class="clear-btn absolute right-3 top-1/2 -translate-y-1/2 p-1"
-            onclick={() => (modelSearch = '')}
-          >
-            <X class="h-3.5 w-3.5" />
-          </button>
-        {/if}
-      </div>
-    {/if}
+    <!-- Always present: both backends list models worth filtering. -->
+    <div class="search-wrapper relative mx-2.5 mb-2">
+      <Search class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
+      <input
+        bind:this={searchInput}
+        bind:value={modelSearch}
+        type="text"
+        placeholder="Search models…"
+        class="search-input w-full py-1.5 pl-9 pr-9 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.key === 'Escape' && (appStore.modelMenuOpen = false)}
+      />
+      {#if modelSearch}
+        <button
+          class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
+          onclick={() => (modelSearch = '')}
+        >
+          <X class="h-3.5 w-3.5" />
+        </button>
+      {/if}
+    </div>
 
     <!-- Model list -->
     <div class="model-list max-h-72 overflow-y-auto px-2 pb-2.5">
@@ -535,13 +552,13 @@
                   />
                   <span class="min-w-0 flex-1">
                     <span class="flex items-center gap-1.5">
-                      <span class="text-[12px] font-semibold text-[var(--text)]">{prov.label}</span>
+                      <span class="text-[13px] font-medium text-[var(--text)]">{prov.label}</span>
                       {#if prov.isActive}
-                        <span class="text-[10px] font-medium text-[var(--text-muted)]">active</span>
+                        <span class="text-[12px] text-[var(--text-muted)]">active</span>
                       {/if}
                     </span>
                     {#if prov.model && !open}
-                      <span class="mt-0.5 block truncate pl-0 text-[11px] text-[var(--text-muted)]">{prov.model}</span>
+                      <span class="mt-0.5 block truncate text-[12px] text-[var(--text-muted)]">{prov.model}</span>
                     {/if}
                   </span>
                   {#if loading}
@@ -550,7 +567,9 @@
                 </button>
 
                 {#if open}
-                  <div class="model-nest ml-3 border-l border-[var(--border)]/40 pl-2">
+                  <!-- No indent rail: the provider header above already groups
+                       these, so the rail was chrome restating the hierarchy. -->
+                  <div class="model-nest">
                     {#if list.length === 0 && loading}
                       <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-[var(--text-muted)]">
                         <LoaderCircle class="h-3 w-3 animate-spin" />
@@ -714,23 +733,28 @@
       {/if}
     </div>
   </div>
+  </div>
 {/if}
 
 <style>
+  /* A white pill with a hairline border, matching the add button beside it and
+     the suggestion chips below the composer. */
   .model-trigger {
-    color: var(--muted-foreground);
-    background: transparent;
-    border: none;
+    color: var(--text-secondary);
+    background: var(--card);
+    border: 1px solid var(--border);
     border-radius: var(--radius-full);
     box-shadow: none;
     transition:
       background-color var(--motion-fast) var(--motion-ease),
+      border-color var(--motion-fast) var(--motion-ease),
       color var(--motion-fast) var(--motion-ease);
   }
 
   .model-trigger:hover,
   .model-trigger.is-open {
-    background: var(--surface-hover);
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    background: var(--muted);
     color: var(--foreground);
   }
 
@@ -750,13 +774,42 @@
     50% { transform: scale(1.25); opacity: 1; }
   }
 
+  /* Same card as the composer it opens from: white, hairline ring, matching
+     corner. The grey fills inside are stripped below so the panel reads as one
+     surface with text on it rather than a stack of tinted boxes. */
+  .dropdown-anchor {
+    /* Grows upward from its own bottom edge, so the card's scale/slide reads
+       as coming out of the trigger. */
+    transform-origin: bottom center;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Inherits the anchor's max-height so the card still scrolls. */
+  .dropdown-anchor > .model-dropdown {
+    min-height: 0;
+    max-height: 100%;
+  }
+
   .model-dropdown {
-    background: var(--popover);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-2xl);
-    box-shadow: var(--shadow-xl);
+    background: var(--card);
+    border: 0;
+    border-radius: var(--composer-radius);
+    box-shadow:
+      inset 0 0 0 1px var(--composer-ring),
+      var(--shadow-xl);
     -webkit-app-region: no-drag;
     pointer-events: auto;
+  }
+
+  /* Segmented track: outline instead of a filled pill track. */
+  .model-dropdown :global(.aui-segmented) {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .model-dropdown :global(.aui-segmented-item.is-active) {
+    background: var(--muted);
   }
 
   .model-dropdown button,
@@ -817,9 +870,9 @@
   }
 
   .search-wrapper .search-input {
-    background: var(--muted);
-    border: 1px solid transparent;
-    border-radius: var(--radius-md);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
   }
 
   .provider-tree {
@@ -920,13 +973,14 @@
     color: var(--error);
   }
 
+  /* White pills with a hairline, matching the composer's chips. */
   .action-btn.load,
   .refresh-footer-btn,
   .hub-btn {
     color: var(--foreground);
-    border: none;
-    border-radius: var(--radius-md);
-    background: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--card);
   }
 
   .action-btn.load:hover:not(:disabled),

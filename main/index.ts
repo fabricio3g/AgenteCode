@@ -3,46 +3,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
 import { initTts } from './tts-engine.ts';
+import { moduleDirname } from './module-env.ts';
 import { setMainWindow, setPreloadPath, getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 
-// Handle both ESM (tsx dev) and CJS (esbuild bundled) environments
-// esbuild CJS bundle provides __dirname global, ESM uses import.meta.url
-
-// Get __dirname - works in both CJS bundle and ESM with tsx
-const __dirname: string = (() => {
-  // In CJS bundled by esbuild, __dirname is a global
-  // We use eval to safely access it without TypeScript complaining
-  try {
-    const cjsDirname = eval('typeof __dirname === "string" ? __dirname : null');
-    if (cjsDirname) return cjsDirname;
-  } catch {}
-  
-  // In ESM with tsx, derive from import.meta.url
-  try {
-    const metaUrl = (import.meta as any)?.url;
-    if (typeof metaUrl === 'string' && metaUrl) {
-      const { fileURLToPath } = require('node:url');
-      return path.dirname(fileURLToPath(metaUrl));
-    }
-  } catch {}
-  
-  // Fallback
-  return process.cwd();
-})();
+// Resolves under both the esbuild CJS bundle and tsx's ESM loader.
+const moduleDir = moduleDirname(import.meta.url);
 
 const IS_DEV = !app.isPackaged;
 const RENDERER_DEV_URL = 'http://localhost:5173';
-const RENDERER_PROD_PATH = path.join(__dirname, '..', 'renderer', 'dist', 'index.html');
+const RENDERER_PROD_PATH = path.join(moduleDir, '..', 'renderer', 'dist', 'index.html');
 const APP_ICON_PATH = IS_DEV
-  ? path.join(__dirname, '..', '..', 'renderer', 'public', 'app-icon.png')
-  : path.join(__dirname, '..', 'renderer', 'dist', 'app-icon.png');
+  ? path.join(moduleDir, '..', '..', 'renderer', 'public', 'app-icon.png')
+  : path.join(moduleDir, '..', 'renderer', 'dist', 'app-icon.png');
 const APP_NAME = 'Chatea';
 
 let tray = null;
 
 // Resolve preload path - different for dev (bundled) vs production (packaged)
 const PRELOAD_PATH = IS_DEV
-  ? path.join(__dirname, '..', '..', 'preload', 'preload.cjs') // Dev: dist-electron/main/ -> project root
+  ? path.join(moduleDir, '..', '..', 'preload', 'preload.cjs') // Dev: dist-electron/main/ -> project root
   : path.join(app.getAppPath(), 'preload', 'preload.cjs'); // Production: packaged app path
 
 setPreloadPath(PRELOAD_PATH);

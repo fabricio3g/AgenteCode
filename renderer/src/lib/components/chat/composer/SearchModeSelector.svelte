@@ -93,9 +93,10 @@
   }
 
   .mode-item-desc {
-    color: var(--muted-foreground);
-    font-size: 0.68rem;
+    color: var(--text-secondary);
+    /* 0.68rem landed at ~11px, below the point where this stays comfortable. */
+    font-size: 0.75rem;
     font-weight: 450;
-    line-height: 1.3;
+    line-height: 1.4;
   }
 </style>

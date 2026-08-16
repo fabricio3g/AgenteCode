@@ -499,6 +499,13 @@ export interface AppConfig {
       mtp?: boolean;
       mtp_draft_path?: string | null;
       mtp_draft_n_max?: number | null;
+      cpu_moe?: boolean;
+      n_cpu_moe?: number | null;
+      context_shift?: boolean;
+      cache_ram_mb?: number | null;
+      cache_reuse?: number | null;
+      swa_full?: boolean;
+      split_mode?: string;
     };
   };
   search?: {

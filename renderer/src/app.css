@@ -104,7 +104,9 @@
   --user-bubble: rgb(0 0 0 / 0.05);
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
-  --composer-surface: rgb(0 0 0 / 0.04);
+  /* The composer is a white card on the page, separated by its ring rather
+     than by a grey fill. */
+  --composer-surface: var(--card);
   --composer-ring: var(--border);
   --composer-ring-focus: #d0d0d0;
   --chat-bg: var(--background);
@@ -167,7 +169,9 @@
    */
   --inline-block-width: 100%;
   --thread-top-pad: 4rem;
-  --composer-radius: 2rem;
+  /* A rounded card, not a pill: the shell is two rows tall now, and a 2rem
+     corner on that height reads as a lozenge. */
+  --composer-radius: 1.5rem;
   /* A large corner everywhere except the bottom-right, which tucks in to point
      the bubble at its author. */
   --bubble-radius: 1.5rem;
@@ -251,7 +255,10 @@
   --sidebar-border: rgb(255 255 255 / 0.07);
   --sidebar-ring: rgb(255 255 255 / 0.24);
   --surface-shadow: none;
-  --surface-shadow-focus: none;
+  /* A transparent shadow rather than `none`: this token is composed into a
+     comma-separated box-shadow list, and `none` is only legal on its own —
+     it would invalidate the whole declaration and drop the focus ring. */
+  --surface-shadow-focus: 0 0 #0000;
 
   /* Aliases */
   --surface: var(--card);
@@ -297,7 +304,8 @@
   --user-bubble: rgb(255 255 255 / 0.06);
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
-  --composer-surface: rgb(255 255 255 / 0.05);
+  /* Dark's equivalent of the white card: the panel colour, not a tint. */
+  --composer-surface: var(--card);
   --composer-ring: var(--border);
   --composer-ring-focus: var(--border-hover);
   --chat-bg: var(--background);
@@ -473,23 +481,28 @@ textarea {
 
 /* ─── aui-* utilities (ported from Flaxeo) ──────────────────────────────── */
 .aui-composer {
-  /* A pill on its own surface, held by a hairline ring rather than a border so
-     the radius stays perfectly round at any height. */
+  /* A rounded card on its own surface, held by a hairline ring rather than a
+     border so the radius stays clean at any height. Now that the controls sit
+     on their own row the shell is a two-line card, not a pill. */
   border: 0;
   border-radius: var(--composer-radius);
   background: var(--composer-surface);
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px var(--composer-ring);
   transition:
     box-shadow var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease);
 }
 
+/*
+ * Focus tightens the ring and leaves the fill alone. Swapping the background
+ * to --surface-active darkened the shell from #f5f5f5 to #e8e8e8 the moment
+ * the caret landed, so the composer was one colour at rest and another while
+ * you were actually using it.
+ */
 .aui-composer:focus-within {
-  background: var(--surface-active);
-}
-
-.aui-composer:focus-within {
-  box-shadow: var(--surface-shadow-focus);
+  box-shadow:
+    inset 0 0 0 1px var(--composer-ring-focus),
+    var(--surface-shadow-focus);
 }
 
 .aui-dialog-backdrop {
@@ -531,8 +544,10 @@ textarea {
   border-radius: var(--radius-md);
   background: transparent;
   padding: 0 0.625rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
+  /* --text-secondary over --muted-foreground: 7.5:1 against the composer
+     surface instead of 5.2:1, which is what made these read as disabled. */
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
@@ -1852,48 +1867,50 @@ kbd {
   background: var(--surface);
 }
 
-/* ── Code block wrapper (prompt-kit style) ── */
+/* ── Code block wrapper ──
+   One card in the composer's language: white surface, hairline ring, generous
+   corner. It used to paint the wrapper with --code-terminal-bg while the <pre>
+   inside stayed on --surface, so every block rendered as a dark header strip
+   welded to a light body. */
 .markdown-body .code-block-wrapper {
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  border: 0;
   overflow: hidden;
   margin: 0.75rem 0;
-  background: var(--code-terminal-bg);
-}
-
-.dark .markdown-body .code-block-wrapper {
-  border-color: var(--border);
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--composer-ring);
 }
 
 .markdown-body .code-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.875rem;
   background: transparent;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--composer-ring);
 }
 
-.dark .markdown-body .code-block-header {
+/* The block owns the surface; the <pre> just holds the text. */
+.markdown-body .code-block-wrapper pre {
   background: transparent;
-  border-color: var(--border);
+  padding: 0.875rem;
 }
 
+/* A quiet caption, not a badge — the pill competed with the code beneath it. */
 .markdown-body .code-lang {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-hover);
-  color: var(--text-tertiary);
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   text-transform: none;
   letter-spacing: 0;
 }
 
 .dark .markdown-body .code-lang {
-  background: var(--surface-hover);
-  color: var(--text-muted);
+  background: transparent;
+  color: var(--text-secondary);
 }
 
 .markdown-body .code-copy-btn {

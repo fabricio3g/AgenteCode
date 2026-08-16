@@ -8,7 +8,8 @@ import {
 } from './runtime-resolver.ts';
 import { getAppPaths } from './paths.ts';
 import { resolveRuntimeConfig, readGgufMetadataFields } from './runtime-config-resolver.ts';
-import { inspectLlamaServer } from './llama-runtime.ts';
+import { inspectLlamaServer, supportsLlamaFlag } from './llama-runtime.ts';
+import { startLlamaSession, endLlamaSession, llamaSessionHeaders } from './llama-session.ts';
 import { setEmbeddingStatus, getEmbeddingStatus as getEmbeddingStatusState } from './embedding-state.ts';
 
 function toErrorMessage(err: unknown): string {
@@ -83,16 +84,61 @@ function resolveModelPath(inputPath: string): string {
   return candidates[0].fullPath;
 }
 
+/**
+ * Progress patches arrive far more often than state changes, and they carry no
+ * `state` field. Tagging them as `state_change` would make subscribers read a
+ * missing state as 'idle' and drop the active model mid-load, so they get their
+ * own event type.
+ */
+function sendSupervisorEvent(
+  win: BrowserWindow | null | undefined,
+  patch: Record<string, unknown>
+): void {
+  if (!win || win.isDestroyed()) return;
+  const isStateChange = typeof patch.state === 'string';
+  win.webContents.send('supervisor-event', {
+    type: isStateChange ? 'state_change' : 'load_progress',
+    ...(isStateChange ? { from: llamaStatus.state, to: patch.state as string } : {}),
+    ...patch
+  });
+}
+
 function emitStatus(win: BrowserWindow | null | undefined, patch: Record<string, unknown>): void {
   llama.setStatus(patch);
-  if (win && !win.isDestroyed()) {
-    win.webContents.send('supervisor-event', {
-      type: 'state_change',
-      from: llamaStatus.state,
-      to: (patch.state as string) || llamaStatus.state,
-      ...patch
+  sendSupervisorEvent(win, patch);
+}
+
+/**
+ * GET /props reports what the server actually settled on — context size, slot
+ * count, resolved model path. With `--fit` deciding sizing, this is the only
+ * place those numbers exist; the UI can no longer derive them from our config.
+ *
+ * /props is not one of llama-server's public endpoints, so it needs the key.
+ */
+async function fetchServerProps(port: number): Promise<Record<string, unknown> | null> {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/props`, {
+      headers: llamaSessionHeaders(),
+      signal: AbortSignal.timeout(3000)
     });
+    if (!resp.ok) return null;
+    return await resp.json() as Record<string, unknown>;
+  } catch {
+    return null;
   }
+}
+
+function readPropsFields(props: Record<string, unknown> | null): Record<string, unknown> {
+  if (!props) return {};
+  const generation = (props.default_generation_settings || {}) as Record<string, unknown>;
+  const nCtx = Number(generation.n_ctx ?? props.n_ctx);
+  return {
+    n_ctx: Number.isFinite(nCtx) && nCtx > 0 ? nCtx : null,
+    total_slots: Number(props.total_slots) || null,
+    server_model_path: (props.model_path as string) || null,
+    build_info: (props.build_info as string) || null,
+    modalities: props.modalities ?? null
+  };
 }
 
 async function clearEmbeddingCacheSafe(): Promise<void> {
@@ -127,11 +173,16 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
 
   const port = (launchConfig.port as number) || 11435;
   const capabilities = inspectLlamaServer(runtimePath);
-  const args = buildLlamaArgs(launchConfig, runtimePath, systemInfo, capabilities);
+  // Per-launch credential so a stray browser tab cannot drive the local model
+  // through the server's permissive default CORS policy.
+  const apiKey = supportsLlamaFlag(capabilities, '--api-key') ? startLlamaSession(port) : '';
+  const args = buildLlamaArgs({ ...launchConfig, api_key: apiKey }, runtimePath, systemInfo, capabilities);
 
-  // Override the default onStatusChange to emit IPC events
+  // Relay everything the supervisor learns — including the load phases it
+  // parses out of llama-server's own log — straight to the renderer.
   llama._onStatusChange = (status: Record<string, unknown>) => {
     llamaStatus = { ...llamaStatus, ...status };
+    sendSupervisorEvent(win, status);
   };
 
   emitStatus(win, {
@@ -153,9 +204,17 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
         runtime_path: runtimePath
       }
     });
-    emitStatus(win, { state: 'ready', port, model_id: path.basename(launchConfig.model_path as string), model_path: launchConfig.model_path, runtime_path: runtimePath });
+    emitStatus(win, {
+      state: 'ready',
+      port,
+      model_id: path.basename(launchConfig.model_path as string),
+      model_path: launchConfig.model_path,
+      runtime_path: runtimePath,
+      ...readPropsFields(await fetchServerProps(port))
+    });
     return 'started';
   } catch (err: unknown) {
+    endLlamaSession();
     emitStatus(win, { state: 'error', message: toErrorMessage(err) });
     throw err;
   }
@@ -163,6 +222,7 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
 
 export async function stopLlama(win: BrowserWindow | null | undefined): Promise<void> {
   await llama.stop({ runtime_path: null, model_path: null, model_id: null, port: null });
+  endLlamaSession();
   emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
 }
 
@@ -211,9 +271,10 @@ export function getLlamaStatus() {
 export function cleanupLlm() {
   llama.kill();
   embedding.kill();
+  endLlamaSession();
   void clearEmbeddingCacheSafe();
   llamaStatus = { state: 'idle', model_id: null, model_path: null, runtime_path: null, port: null };
-  embeddingStatus = { state: 'idle', port: null };
+  setEmbeddingStatus({ state: 'idle', port: null });
 }
 
 export async function getInstalledRuntimes() {
@@ -245,9 +306,88 @@ export async function getSupervisorStatus() {
     model_path: llamaStatus.model_path || null,
     runtime_path: llamaStatus.runtime_path || null,
     port: llamaStatus.port || null,
+    n_ctx: llamaStatus.n_ctx ?? null,
+    total_slots: llamaStatus.total_slots ?? null,
+    build_info: llamaStatus.build_info ?? null,
+    load_phase: llamaStatus.load_phase ?? null,
+    load_progress: llamaStatus.load_progress ?? null,
+    log_tail: llamaStatus.log_tail ?? null,
     uptime_secs: null,
     memory_mb: null,
     sessions_count: llama.isRunning() ? 1 : 0
+  };
+}
+
+/** Minimal Prometheus text-format reader: `name value` per line, `#` comments. */
+export function parsePrometheusMetrics(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const line of String(text || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    // Drop any `{label="..."}` block before splitting off the value.
+    const match = trimmed.match(/^([A-Za-z_:][\w:]*)(?:\{[^}]*\})?\s+(-?[\d.eE+]+)$/);
+    if (!match) continue;
+    const value = Number(match[2]);
+    if (Number.isFinite(value)) out[match[1]] = value;
+  }
+  return out;
+}
+
+async function fetchLocalJson(port: number, path: string): Promise<unknown | null> {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}${path}`, {
+      headers: llamaSessionHeaders(),
+      signal: AbortSignal.timeout(3000)
+    });
+    // --no-slots / missing --metrics answer 501; that is "not available", not a fault.
+    if (!resp.ok) return null;
+    return path === '/metrics' ? parsePrometheusMetrics(await resp.text()) : await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Live measurements from the running server.
+ *
+ * Slot occupancy comes from /slots (which reports `n_ctx` and `is_processing`
+ * per slot, but no token counts or timings), and throughput from the Prometheus
+ * gauges on /metrics. Everything here is observed rather than estimated, so a
+ * null field means the server did not report it — never a guess.
+ */
+export async function getRuntimeTelemetry() {
+  const port = llamaStatus.port;
+  if (!llama.isRunning() || !port) return null;
+
+  const [slotsResult, metricsResult] = await Promise.all([
+    fetchLocalJson(port, '/slots'),
+    fetchLocalJson(port, '/metrics')
+  ]);
+
+  const slots = Array.isArray(slotsResult) ? slotsResult as Record<string, unknown>[] : [];
+  const metrics = (metricsResult || {}) as Record<string, number>;
+
+  if (!slots.length && !metricsResult) return null;
+
+  const contextSize = Number(slots[0]?.n_ctx) || Number(llamaStatus.n_ctx) || null;
+  // High watermark of context actually observed, which is what a user wants to
+  // know about headroom. There is no per-slot token count to read instead.
+  const contextUsed = Number.isFinite(metrics['llamacpp:n_tokens_max'])
+    ? metrics['llamacpp:n_tokens_max']
+    : null;
+  const tokensPerSecond = Number.isFinite(metrics['llamacpp:predicted_tokens_seconds'])
+    ? metrics['llamacpp:predicted_tokens_seconds']
+    : null;
+
+  return {
+    context_size: contextSize,
+    context_used: contextUsed,
+    context_percent: contextSize && contextUsed
+      ? Math.min(100, Math.round((contextUsed / contextSize) * 100))
+      : null,
+    slots_total: slots.length || Number(llamaStatus.total_slots) || 0,
+    slots_busy: slots.filter((slot) => slot.is_processing).length,
+    tokens_per_second: tokensPerSecond && tokensPerSecond > 0 ? tokensPerSecond : null
   };
 }
 
@@ -273,6 +413,7 @@ export async function getLoadedModels() {
       is_embedding: false
     });
   }
+  const embeddingStatus = getEmbeddingStatusState();
   if (embedding.isRunning() && embeddingStatus.port) {
     models.push({
       id: 'embedding-server',

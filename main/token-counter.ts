@@ -1,11 +1,14 @@
 import { getLlamaStatus } from './llm-runner.ts';
+import { llamaSessionHeaders } from './llama-session.ts';
 
 export async function countTokens(text, baseUrl) {
   const url = baseUrl || `http://127.0.0.1:${getLlamaStatus().port || 11435}`;
   try {
+    // /tokenize is not one of llama-server's public endpoints, so it needs the
+    // session key when the server was launched with --api-key.
     const resp = await fetch(`${url}/tokenize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...llamaSessionHeaders() },
       body: JSON.stringify({ content: text }),
       signal: AbortSignal.timeout(5000)
     });

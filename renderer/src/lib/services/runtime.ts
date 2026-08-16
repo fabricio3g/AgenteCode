@@ -1,5 +1,5 @@
 import type { AppConfig } from '$lib/types/chat';
-import type { LlamaConfig, ModelSession, RecommendedSettings, SupervisorEvent, SupervisorStatus } from '$lib/types/tauri';
+import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/tauri';
 import { invoke, listen } from './tauri';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
@@ -64,12 +64,24 @@ function buildLocalLoadSignature(config: LlamaConfig): string {
     mmproj_path: config.mmproj_path ?? null,
     mtp: config.mtp ?? null,
     mtp_draft_path: config.mtp_draft_path ?? null,
-    mtp_draft_n_max: config.mtp_draft_n_max ?? null
+    mtp_draft_n_max: config.mtp_draft_n_max ?? null,
+    cpu_moe: config.cpu_moe ?? null,
+    n_cpu_moe: config.n_cpu_moe ?? null,
+    context_shift: config.context_shift ?? null,
+    cache_ram_mb: config.cache_ram_mb ?? null,
+    cache_reuse: config.cache_reuse ?? null,
+    swa_full: config.swa_full ?? null,
+    split_mode: config.split_mode ?? null
   });
 }
 
 export async function getSupervisorStatus(): Promise<SupervisorStatus> {
   return invoke<SupervisorStatus>('get_supervisor_status');
+}
+
+/** Live /slots readings, or null when the server is down or too old to report. */
+export async function getRuntimeTelemetry(): Promise<RuntimeTelemetry | null> {
+  return invoke<RuntimeTelemetry | null>('get_runtime_telemetry');
 }
 
 async function supervisorHealthCheck(): Promise<boolean> {
@@ -187,6 +199,13 @@ export async function loadLocalModel(args: {
   mtp?: boolean;
   mtpDraftPath?: string;
   mtpDraftNMax?: number;
+  cpuMoe?: boolean;
+  nCpuMoe?: number;
+  contextShift?: boolean;
+  cacheRamMb?: number;
+  cacheReuse?: number;
+  swaFull?: boolean;
+  splitMode?: string;
 }): Promise<string> {
   const baseUrl = resolveLocalBaseUrl(args.config);
 
@@ -202,14 +221,24 @@ export async function loadLocalModel(args: {
     backend_mode: settings.backend,
     host,
     port,
-    context_length: args.contextLength ?? settings.context_length,
-    gpu_offload: args.gpuLayers ?? settings.gpu_layers,
-    cpu_threads: args.cpuThreads ?? settings.cpu_threads,
-    batch_size: args.batchSize ?? settings.batch_size,
+    // Sizing is left undefined unless the user picked a number. Backfilling
+    // from `settings` here would make every launch look hand-tuned and stop
+    // llama.cpp's own --fit from ever running.
+    context_length: args.contextLength,
+    gpu_offload: args.gpuLayers,
+    cpu_threads: args.cpuThreads,
+    batch_size: args.batchSize,
     flash_attention: args.flashAttention ?? args.config.llm?.local?.flash_attention ?? settings.flash_attention,
     offload_kv_cache: args.offloadKvCache ?? args.config.llm?.local?.offload_kv_cache ?? settings.offload_kv,
     mmap: args.mmap ?? args.config.llm?.local?.mmap ?? settings.use_mmap,
     keep_in_memory: args.keepInMemory ?? args.config.llm?.local?.keep_in_memory ?? true,
+    cpu_moe: args.cpuMoe ?? args.config.llm?.local?.cpu_moe ?? false,
+    n_cpu_moe: args.nCpuMoe ?? args.config.llm?.local?.n_cpu_moe ?? undefined,
+    context_shift: args.contextShift ?? args.config.llm?.local?.context_shift ?? false,
+    cache_ram_mb: args.cacheRamMb ?? args.config.llm?.local?.cache_ram_mb ?? undefined,
+    cache_reuse: args.cacheReuse ?? args.config.llm?.local?.cache_reuse ?? undefined,
+    swa_full: args.swaFull ?? args.config.llm?.local?.swa_full ?? false,
+    split_mode: args.splitMode ?? args.config.llm?.local?.split_mode ?? undefined,
     seed: args.seed ?? args.config.llm?.local?.seed ?? undefined,
     parallel: args.parallel ?? args.config.llm?.local?.parallel ?? undefined,
     rope_freq_base: args.ropeFreqBase ?? args.config.llm?.local?.rope_freq_base ?? undefined,

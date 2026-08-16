@@ -14,7 +14,9 @@ export interface RecommendedLocalModelSettings {
 }
 
 export interface LocalModelLoadState {
+  /** Empty string means "auto" — llama.cpp sizes it with --fit. */
   contextLength: string;
+  /** Empty string means "auto". */
   gpuLayers: string;
   cpuThreads: string;
   batchSize: string;
@@ -35,6 +37,14 @@ export interface LocalModelLoadState {
   mtpEnabled: boolean;
   mtpDraftPath: string;
   mtpDraftNMax: string;
+  cpuMoe: boolean;
+  /** Blank keeps all experts on CPU when `cpuMoe` is on; a number offloads the first N layers. */
+  nCpuMoe: string;
+  contextShift: boolean;
+  cacheRamMb: string;
+  cacheReuse: string;
+  swaFull: boolean;
+  splitMode: string;
 }
 
 export interface LocalModelRuntimeRequest {
@@ -60,6 +70,13 @@ export interface LocalModelRuntimeRequest {
   mtp?: boolean;
   mtpDraftPath?: string;
   mtpDraftNMax?: number;
+  cpuMoe?: boolean;
+  nCpuMoe?: number;
+  contextShift?: boolean;
+  cacheRamMb?: number;
+  cacheReuse?: number;
+  swaFull?: boolean;
+  splitMode?: string;
 }
 
 export function readRememberedLocalModelSettings(): Record<string, Record<string, unknown>> {
@@ -102,20 +119,15 @@ export function resolveLocalModelLoadState(params: {
   const local = config.llm?.local;
   const cpuFallback = params.hardwareConcurrency ?? 4;
 
+  // Context and GPU layers default to auto (''). Only a value the user chose
+  // before — remembered, or saved into config — pins them; the recommendation
+  // is shown as a preset the user can apply, not silently applied for them.
+  const rememberedContext = pickNumber(remembered.context_length, local?.context_length);
+  const rememberedGpuLayers = pickNumber(remembered.gpu_offload, local?.gpu_layers);
+
   return {
-    contextLength: String(pickNumber(
-      remembered.context_length,
-      recommended?.context_length,
-      model.context_length,
-      local?.context_length,
-      4096
-    ) ?? 4096),
-    gpuLayers: String(pickNumber(
-      remembered.gpu_offload,
-      recommended?.gpu_layers,
-      local?.gpu_layers,
-      0
-    ) ?? 0),
+    contextLength: rememberedContext != null ? String(rememberedContext) : '',
+    gpuLayers: rememberedGpuLayers != null ? String(rememberedGpuLayers) : '',
     cpuThreads: String(pickNumber(
       remembered.cpu_threads,
       recommended?.cpu_threads,
@@ -145,7 +157,27 @@ export function resolveLocalModelLoadState(params: {
     mtpEnabled: remembered.mtp != null ? Boolean(remembered.mtp) : (local?.mtp ?? false),
     mtpDraftPath: remembered.mtp_draft_path != null ? String(remembered.mtp_draft_path) : (local?.mtp_draft_path ? String(local.mtp_draft_path) : ''),
     mtpDraftNMax: remembered.mtp_draft_n_max != null ? String(remembered.mtp_draft_n_max) : (local?.mtp_draft_n_max != null ? String(local.mtp_draft_n_max) : ''),
+    cpuMoe: remembered.cpu_moe != null ? Boolean(remembered.cpu_moe) : (local?.cpu_moe ?? false),
+    nCpuMoe: remembered.n_cpu_moe != null ? String(remembered.n_cpu_moe) : (local?.n_cpu_moe != null ? String(local.n_cpu_moe) : ''),
+    contextShift: remembered.context_shift != null ? Boolean(remembered.context_shift) : (local?.context_shift ?? false),
+    cacheRamMb: remembered.cache_ram_mb != null ? String(remembered.cache_ram_mb) : (local?.cache_ram_mb != null ? String(local.cache_ram_mb) : ''),
+    cacheReuse: remembered.cache_reuse != null ? String(remembered.cache_reuse) : (local?.cache_reuse != null ? String(local.cache_reuse) : ''),
+    swaFull: remembered.swa_full != null ? Boolean(remembered.swa_full) : (local?.swa_full ?? false),
+    splitMode: String(remembered.split_mode || local?.split_mode || ''),
     rememberSettings: Object.keys(remembered).length > 0
+  };
+}
+
+/** Shared by the config patch and the remembered-settings entry. */
+function buildModernFlagFields(state: LocalModelLoadState) {
+  return {
+    cpu_moe: state.cpuMoe,
+    n_cpu_moe: state.nCpuMoe ? Number(state.nCpuMoe) : null,
+    context_shift: state.contextShift,
+    cache_ram_mb: state.cacheRamMb ? Number(state.cacheRamMb) : null,
+    cache_reuse: state.cacheReuse ? Number(state.cacheReuse) : null,
+    swa_full: state.swaFull,
+    split_mode: state.splitMode || undefined
   };
 }
 
@@ -170,7 +202,8 @@ export function buildLocalModelSettingsPatch(state: LocalModelLoadState) {
     disable_thinking: state.disableThinking,
     mtp: state.mtpEnabled,
     mtp_draft_path: state.mtpDraftPath || null,
-    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null
+    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null,
+    ...buildModernFlagFields(state)
   };
 }
 
@@ -194,7 +227,8 @@ export function buildRememberedLocalModelSettingsEntry(state: LocalModelLoadStat
     disable_thinking: state.disableThinking,
     mtp: state.mtpEnabled,
     mtp_draft_path: state.mtpDraftPath || null,
-    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null
+    mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null,
+    ...buildModernFlagFields(state)
   };
 }
 
@@ -241,6 +275,13 @@ export function buildLocalModelRuntimeRequest(params: {
     disableThinking: params.state.disableThinking,
     mtp: settings.mtp,
     mtpDraftPath: params.state.mtpDraftPath || settings.mtp_draft_path || undefined,
-    mtpDraftNMax: settings.mtp_draft_n_max ?? undefined
+    mtpDraftNMax: settings.mtp_draft_n_max ?? undefined,
+    cpuMoe: params.state.cpuMoe,
+    nCpuMoe: settings.n_cpu_moe ?? undefined,
+    contextShift: params.state.contextShift,
+    cacheRamMb: settings.cache_ram_mb ?? undefined,
+    cacheReuse: settings.cache_reuse ?? undefined,
+    swaFull: params.state.swaFull,
+    splitMode: settings.split_mode
   };
 }

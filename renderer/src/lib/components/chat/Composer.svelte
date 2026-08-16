@@ -10,7 +10,7 @@
 -->
 
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { Paperclip } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -19,7 +19,10 @@
   import { copy, say } from '$lib/copy';
 
   import AttachmentCards from './composer/AttachmentCards.svelte';
+  import ModelSwitcher from './ModelSwitcher.svelte';
   import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
+  import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
+  import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
@@ -56,6 +59,8 @@
   const generating = $derived(appStore.currentChatGenerating);
   const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
   const compact = $derived(composerWidth > 0 && composerWidth < COMPACT_WIDTH_PX);
+  /* Starter prompts only make sense before the conversation has started. */
+  const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
   const voiceMode = $derived(appStore.voiceModeActive);
 
   /**
@@ -343,10 +348,9 @@
       audioLevels={dictation.audioLevels}
     />
 
-    <div class="composer-shell aui-composer pointer-events-auto transition"
-      class:rounded-xl={compact}
-      class:rounded-2xl={!compact}
-    >
+    <!-- Radius comes from --composer-radius on .aui-composer; the rounded-*
+         utilities that used to sit here fought it at equal specificity. -->
+    <div class="composer-shell aui-composer pointer-events-auto transition">
       {#if attachments.ocrLabel}
         <div class="px-3 pt-1">
           <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
@@ -373,21 +377,16 @@
         </div>
       {/if}
 
-      <!-- One row: attach · input · trailing controls. -->
-      <div class="composer-row {quotedText ? 'pt-1' : ''}">
-        <button
-          type="button"
-          class="aui-icon-button size-9 shrink-0"
-          aria-label={copy.composer.attach}
-          title={copy.composer.attach}
-          onclick={() => fileInput?.click()}
-        >
-          <Paperclip class="size-[18px]" />
-        </button>
-
+      <!--
+        Two rows: the message gets the full width, and every control sits on a
+        second line beneath it. Putting the input and the controls on one line
+        squeezes the text into a shrinking gap as the chips grow, and pins the
+        caret next to icons that have nothing to do with typing.
+      -->
+      <div class="composer-body {quotedText ? 'pt-1' : ''}">
         <textarea
           bind:this={textarea}
-          class="composer-textarea min-w-0 flex-1 resize-none bg-transparent text-foreground outline-none"
+          class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"
           {placeholder}
           rows="1"
           value={appStore.composer}
@@ -395,16 +394,28 @@
           onkeydown={onKeydown}
         ></textarea>
 
-        <ComposerToolbar
-          {dictation}
-          {compact}
-          {generating}
-          {sendDisabled}
-          onsubmit={() => void submit()}
-          onstop={() => appStore.stopStreaming()}
-        />
+        <div class="composer-actions">
+          <ComposerAddMenu onattach={() => fileInput?.click()} />
+
+          <ModelSwitcher />
+
+          <ComposerToolbar
+            {dictation}
+            {compact}
+            {generating}
+            {sendDisabled}
+            onsubmit={() => void submit()}
+            onstop={() => appStore.stopStreaming()}
+          />
+        </div>
       </div>
     </div>
+
+    {#if threadIsEmpty}
+      <!-- await tick() so the textarea holds the inserted prompt before we
+           focus it; otherwise the caret lands at the pre-insert length. -->
+      <ComposerSuggestions onpick={async () => { await tick(); focusComposer(); }} />
+    {/if}
   </div>
 </div>
 
@@ -451,33 +462,44 @@
     position: relative;
   }
 
-  /* Controls sit on the input's baseline so the row stays visually anchored as
-     the textarea grows. */
-  .composer-row {
+  /* Text first, controls under it. The generous top padding is what gives the
+     shell its roominess — the input no longer shares a line with the icons. */
+  .composer-body {
     display: flex;
-    align-items: flex-end;
-    gap: 0.25rem;
-    padding: 0.5rem;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.875rem 0.875rem 0.625rem;
   }
+
+  /* Attach and chips left, dictate/send right, on their own line. */
+  .composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2rem;
+  }
+
 
   /*
-   * The input's box is exactly as tall as the controls beside it (2.25rem) with
-   * the 1.5rem line box padded to sit dead centre inside it. Because the row is
-   * bottom-aligned, matching box heights is what puts the first line of text on
-   * the same optical centre as the attach and send icons; using margins instead
-   * leaves the text a couple of pixels low.
+   * Full width now that nothing sits beside it, so the caret starts at the
+   * shell's text margin and long prompts use the whole line before wrapping.
    */
   .composer-textarea {
+    display: block;
     margin: 0;
-    min-height: 2.25rem;
+    min-height: 1.5rem;
     max-height: 11rem;
-    padding: 0.375rem 0;
+    padding: 0;
     font-size: 1rem;
-    line-height: 1.5rem;
+    line-height: 1.55;
+    letter-spacing: -0.005em;
   }
 
+  /* --muted-foreground put the placeholder at ~4:1 on the composer fill, which
+     is under AA and read as a disabled field. */
   .composer-textarea::placeholder {
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
+    opacity: 1;
   }
 
   .hint-card {

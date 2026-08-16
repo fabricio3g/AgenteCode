@@ -73,45 +73,96 @@
     return Math.min(1.65, availableWidth / page.width);
   }
 
-  async function renderPage(pageNum: number) {
+  /*
+   * Canvas renders are coalesced per page.
+   *
+   * `registerCanvas` and `registerTextLayer` both schedule a render for the
+   * same page on the next frame, and the `dataset.rendered` flag is only set
+   * once the await resolves — so both used to get past the guard and call
+   * `page.render()` on one canvas, which pdf.js rejects outright. A second
+   * caller now awaits the render already in flight instead of starting a rival.
+   */
+  const canvasRenders = new Map<number, Promise<void>>();
+  const textRenders = new Map<number, Promise<void>>();
+
+  async function renderCanvas(pageNum: number) {
     if (!pdfDoc) return;
     const canvas = canvases.get(pageNum);
     const pageMeta = pages.find((page) => page.pageNumber === pageNum);
     if (!canvas || !pageMeta) return;
-    try {
-      const cssScale = pageScale(pageMeta);
-      const outputScale = Math.max(1, window.devicePixelRatio || 1);
-      const page = await pdfDoc.getPage(pageNum);
-      const renderViewport = page.getViewport({ scale: cssScale * outputScale });
-      const cssViewport = page.getViewport({ scale: cssScale });
-      if (canvas.width === Math.floor(renderViewport.width) && canvas.height === Math.floor(renderViewport.height) && canvas.dataset.rendered === 'true') return;
-      canvas.width = Math.floor(renderViewport.width);
-      canvas.height = Math.floor(renderViewport.height);
-      canvas.style.width = `${Math.floor(cssViewport.width)}px`;
-      canvas.style.height = `${Math.floor(cssViewport.height)}px`;
-      const wrapper = canvas.parentElement;
-      if (wrapper) {
-        wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
-        wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
-      }
-      const ctx = canvas.getContext('2d')!;
-      ctx.clearRect(0, 0, renderViewport.width, renderViewport.height);
-      await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
-      const textLayer = textLayers.get(pageNum);
-      if (textLayer) {
-        textLayer.innerHTML = '';
-        textLayer.style.width = `${Math.floor(cssViewport.width)}px`;
-        textLayer.style.height = `${Math.floor(cssViewport.height)}px`;
-        const textContent = await page.getTextContent();
-        const pdfjsLib = await import('pdfjs-dist');
-        await new pdfjsLib.TextLayer({
-          textContentSource: textContent,
-          container: textLayer,
-          viewport: cssViewport
-        }).render();
+    const cssScale = pageScale(pageMeta);
+    const outputScale = Math.max(1, window.devicePixelRatio || 1);
+    const page = await pdfDoc.getPage(pageNum);
+    const renderViewport = page.getViewport({ scale: cssScale * outputScale });
+    const cssViewport = page.getViewport({ scale: cssScale });
+
+    const width = Math.floor(renderViewport.width);
+    const height = Math.floor(renderViewport.height);
+    if (canvas.width === width && canvas.height === height && canvas.dataset.rendered === 'true') {
+      return;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = `${Math.floor(cssViewport.width)}px`;
+    canvas.style.height = `${Math.floor(cssViewport.height)}px`;
+    const wrapper = canvas.parentElement;
+    if (wrapper) {
+      wrapper.style.width = `${Math.floor(cssViewport.width)}px`;
+      wrapper.style.height = `${Math.floor(cssViewport.height)}px`;
+    }
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, width, height);
+    await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+    canvas.dataset.rendered = 'true';
+    // The text layer is sized to this render and must be redrawn with it.
+    const textLayer = textLayers.get(pageNum);
+    if (textLayer) delete textLayer.dataset.rendered;
+  }
+
+  async function renderTextLayer(pageNum: number) {
+    if (!pdfDoc) return;
+    const textLayer = textLayers.get(pageNum);
+    const pageMeta = pages.find((page) => page.pageNumber === pageNum);
+    if (!textLayer || !pageMeta || textLayer.dataset.rendered === 'true') return;
+
+    const page = await pdfDoc.getPage(pageNum);
+    const cssViewport = page.getViewport({ scale: pageScale(pageMeta) });
+    textLayer.innerHTML = '';
+    textLayer.style.width = `${Math.floor(cssViewport.width)}px`;
+    textLayer.style.height = `${Math.floor(cssViewport.height)}px`;
+
+    const textContent = await page.getTextContent();
+    const pdfjsLib = await import('pdfjs-dist');
+    await new pdfjsLib.TextLayer({
+      textContentSource: textContent,
+      container: textLayer,
+      viewport: cssViewport
+    }).render();
+    textLayer.dataset.rendered = 'true';
+  }
+
+  /** Renders a page's canvas and text layer, joining any render already running. */
+  async function renderPage(pageNum: number) {
+    try {
+      let canvasTask = canvasRenders.get(pageNum);
+      if (!canvasTask) {
+        canvasTask = renderCanvas(pageNum).finally(() => canvasRenders.delete(pageNum));
+        canvasRenders.set(pageNum, canvasTask);
       }
-      canvas.dataset.rendered = 'true';
+      await canvasTask;
+
+      // Handled separately so a text layer that mounted after the canvas
+      // finished still gets drawn, rather than being skipped by the
+      // already-rendered short-circuit above.
+      let textTask = textRenders.get(pageNum);
+      if (!textTask) {
+        textTask = renderTextLayer(pageNum).finally(() => textRenders.delete(pageNum));
+        textRenders.set(pageNum, textTask);
+      }
+      await textTask;
     } catch (err) {
       console.error('[PdfViewer] Page render failed:', err);
     }

@@ -31,8 +31,15 @@
 
   const contextBudget = $derived(appStore.contextBudget);
 
-  // Send replaces dictate as soon as there is something to send.
-  const showSend = $derived(!!appStore.composer.trim() || generating);
+  // An empty ring reads as a broken control, so it only appears once there is
+  // actual context to report.
+  const showContextRing = $derived(!!contextBudget && (contextBudget.usedTokens ?? 0) > 0);
+
+  const hasDraft = $derived(!!appStore.composer.trim());
+  // Send is always present so the control row keeps its shape, and greys out
+  // until there is something to send. Dictation sits beside it rather than
+  // being swapped out from under the cursor mid-sentence.
+  const canSend = $derived(!sendDisabled && (hasDraft || generating));
 
   const micTitle = $derived(
     !dictation.supported
@@ -46,16 +53,16 @@
 </script>
 
 <div class="trailing" class:compact>
+  <!-- Search and reasoning moved into the composer's "+" menu; only the mode
+       tabs (an opt-in setting) still sit inline. -->
   <div class="chips" class:overflow-x-auto={compact}>
     {#if appStore.composerModeControl === 'tabs'}
       <ModeSelector />
     {/if}
-    <SearchModeSelector />
-    <ReasoningLevelSelector />
   </div>
 
   <div class="controls">
-    {#if contextBudget}
+    {#if contextBudget && showContextRing}
       <ContextUsageRing
         usedTokens={contextBudget.usedTokens ?? 0}
         maxTokens={contextBudget.maxContext ??
@@ -67,27 +74,10 @@
       />
     {/if}
 
-    {#if showSend}
+    {#if !generating}
       <button
         type="button"
-        class="send-btn flex size-9 items-center justify-center rounded-full transition disabled:opacity-50"
-        onclick={() => (generating ? onstop() : onsubmit())}
-        disabled={sendDisabled}
-        aria-label={generating ? copy.composer.stop : copy.composer.send}
-        title={generating ? copy.composer.stop : copy.composer.send}
-      >
-        {#if generating}
-          <Square class="size-3.5 fill-current stroke-[2.75]" />
-        {:else}
-          <span class="send-icon inline-flex">
-            <ArrowUp class="size-4 stroke-[2.75]" />
-          </span>
-        {/if}
-      </button>
-    {:else}
-      <button
-        type="button"
-        class="aui-icon-button mic-btn size-9"
+        class="aui-icon-button mic-btn size-8"
         class:is-listening={dictation.uiActive}
         class:unavailable={!dictation.supported}
         onclick={dictation.supported ? () => dictation.toggle(false) : undefined}
@@ -106,20 +96,42 @@
         {/if}
       </button>
     {/if}
+
+    <button
+      type="button"
+      class="send-btn flex size-8 items-center justify-center rounded-full transition"
+      onclick={() => (generating ? onstop() : onsubmit())}
+      disabled={!canSend}
+      aria-label={generating ? copy.composer.stop : copy.composer.send}
+      title={generating ? copy.composer.stop : copy.composer.send}
+    >
+      {#if generating}
+        <Square class="size-3.5 fill-current stroke-[2.75]" />
+      {:else}
+        <span class="send-icon inline-flex">
+          <ArrowUp class="size-4 stroke-[2.75]" />
+        </span>
+      {/if}
+    </button>
   </div>
 </div>
 
 <style>
+  /* Spans the composer's action row: mode chips stay left beside the attach
+     button, dictate/send are pushed to the far right. */
   .trailing {
     display: flex;
-    flex: 0 0 auto;
-    align-items: flex-end;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.375rem;
+    min-width: 0;
   }
 
   .chips {
     display: flex;
     min-width: 0;
+    flex: 0 1 auto;
     align-items: center;
     gap: 0.25rem;
   }
@@ -137,12 +149,22 @@
     color: var(--primary-foreground);
     box-shadow: none;
     transition:
+      background-color 150ms ease,
       opacity 150ms ease,
       transform 150ms var(--motion-ease);
   }
 
   .send-btn:hover:not(:disabled) {
     opacity: 0.9;
+  }
+
+  /* Idle send: a quiet filled circle that still reads as the primary action,
+     rather than the black button at half opacity that `disabled:opacity-50`
+     produced. */
+  .send-btn:disabled {
+    background: color-mix(in srgb, var(--foreground) 26%, transparent);
+    color: var(--background);
+    cursor: default;
   }
 
   .send-btn:active:not(:disabled) {
@@ -160,6 +182,11 @@
 
   /* Scale on hover lives on the button: a scoped rule cannot reach the icon,
      which is rendered by a child component. */
+  /* Matches the add button and model chip on the same row. */
+  .mic-btn {
+    color: var(--text-secondary);
+  }
+
   .mic-btn :global(svg) {
     transition: transform 0.3s ease;
   }

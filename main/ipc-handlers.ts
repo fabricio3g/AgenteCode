@@ -8,7 +8,7 @@ import {
 } from './model-manager.ts';
 import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
-  getSupervisorStatus, supervisorHealthCheck, getLoadedModels,
+  getSupervisorStatus, getRuntimeTelemetry, supervisorHealthCheck, getLoadedModels,
   unloadModel, getRecommendedSettings,
   startEmbeddingServer, stopEmbeddingServer, getEmbeddingStatus
 } from './llm-runner.ts';
@@ -129,6 +129,7 @@ export function registerIpcHandlers() {
     startLlama,
     stopLlama,
     getSupervisorStatus,
+    getRuntimeTelemetry,
     supervisorHealthCheck,
     getLoadedModels,
     unloadModel,

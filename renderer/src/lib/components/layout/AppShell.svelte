@@ -214,6 +214,9 @@
             class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             class:justify-center={threadIsEmpty}
           >
+            {#if threadIsEmpty}
+              <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
+            {/if}
             <Thread />
             <Composer />
           </div>
@@ -300,6 +303,28 @@
 {/if}
 
 <style>
+  /* Anchors the centred empty state. Sized to lead the composer without
+     competing with it — the composer is still where the eye should land. */
+  .empty-greeting {
+    margin: 0 auto 1.5rem;
+    padding: 0 1rem;
+    max-width: 48rem;
+    color: var(--foreground);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    text-align: center;
+    text-wrap: balance;
+  }
+
+  @media (max-width: 640px) {
+    .empty-greeting {
+      margin-bottom: 1.125rem;
+      font-size: 1.25rem;
+    }
+  }
+
   .sidebar-outer {
     width: 3.5rem; /* w-14 */
     transition: width 200ms var(--motion-ease);

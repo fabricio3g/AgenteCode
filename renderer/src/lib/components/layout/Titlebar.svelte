@@ -88,7 +88,8 @@
     style="-webkit-app-region: no-drag;"
   >
     <div class="titlebar-no-drag" style="-webkit-app-region: no-drag; pointer-events: auto;">
-      <ModelSwitcher />
+      <!-- The model selector now lives in the composer's control row, beside
+           the attach button, so the active model sits where you compose. -->
     </div>
     <Tooltip label="Open Models">
       <button

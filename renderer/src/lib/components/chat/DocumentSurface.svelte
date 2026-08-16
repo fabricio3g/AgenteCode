@@ -452,15 +452,17 @@
     min-height: 3.15rem;
     padding: 0.5rem 0.6rem;
     border: 0;
-    border-radius: var(--artifact-radius);
-    background: var(--artifact-surface);
-    box-shadow: var(--artifact-elev);
+    /* The composer's card language: white, hairline ring, generous corner. */
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--composer-ring);
     text-align: left;
     transition: background 150ms ease, box-shadow 150ms ease;
   }
 
   .attachment-launcher:hover {
-    background: var(--artifact-surface-hover);
+    background: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--composer-ring-focus);
   }
 
   .attachment-launcher:focus-visible {
@@ -671,9 +673,13 @@
     flex-direction: column;
     overflow: hidden;
     border: 0;
-    border-radius: var(--radius-xl);
-    background: var(--artifact-surface-strong);
-    box-shadow: var(--shadow-lg);
+    /* Same white card and corner as the composer, so the viewer reads as part
+       of the same surface family rather than a tinted panel. */
+    border-radius: var(--composer-radius);
+    background: var(--card);
+    box-shadow:
+      inset 0 0 0 1px var(--composer-ring),
+      var(--shadow-xl);
   }
 
   .workspace-header {
