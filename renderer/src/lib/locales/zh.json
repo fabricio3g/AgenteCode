@@ -190,6 +190,18 @@
     "removeProjectMessage": "{name} 的对话会保留在历史记录中，但项目会从列表中移除。",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "选择一个项目文件夹开始对话。",
-    "enginePending": "智能体引擎正在接入此界面，敬请期待。"
+    "enginePending": "智能体引擎正在接入此界面，敬请期待。",
+    "composerPlaceholder": "描述一个任务给 Agente…",
+    "steerPlaceholder": "调整正在进行的任务…",
+    "send": "发送",
+    "stop": "停止",
+    "running": "Agente 正在工作",
+    "composerHint": "Enter 发送 · Shift+Enter 换行",
+    "modeSupervised": "监督模式",
+    "modeFull": "全自动",
+    "modeSupervisedHint": "编辑、写入和命令需要确认",
+    "modeFullHint": "工具无需确认直接执行",
+    "startConversation": "在此项目上与 Agente 开始对话。",
+    "rollbackTo": "将文件恢复到第 {turn} 轮之前"
   }
 }

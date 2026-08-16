@@ -190,6 +190,18 @@
     "removeProjectMessage": "Unterhaltungen aus {name} bleiben im Verlauf, aber das Projekt verschwindet aus der Liste.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Wähle einen Projektordner, um eine Unterhaltung zu starten.",
-    "enginePending": "Die Agent-Engine wird gerade mit dieser Oberfläche verbunden. Bald verfügbar."
+    "enginePending": "Die Agent-Engine wird gerade mit dieser Oberfläche verbunden. Bald verfügbar.",
+    "composerPlaceholder": "Beschreibe eine Aufgabe für Agente…",
+    "steerPlaceholder": "Laufende Aufgabe umlenken…",
+    "send": "Senden",
+    "stop": "Stopp",
+    "running": "Agente arbeitet",
+    "composerHint": "Enter zum Senden · Umschalt+Enter für neue Zeile",
+    "modeSupervised": "Überwacht",
+    "modeFull": "Vollautomatisch",
+    "modeSupervisedHint": "Bearbeitungen, Schreibvorgänge und Befehle erfragen Freigabe",
+    "modeFullHint": "Werkzeuge laufen ohne Freigabe",
+    "startConversation": "Beginne ein Gespräch mit Agente zu diesem Projekt.",
+    "rollbackTo": "Dateien vor Durchlauf {turn} wiederherstellen"
   }
 }

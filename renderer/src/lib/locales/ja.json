@@ -190,6 +190,18 @@
     "removeProjectMessage": "{name} の会話は履歴に残りますが、プロジェクトは一覧から削除されます。",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "プロジェクトフォルダを選んで会話を始めましょう。",
-    "enginePending": "エージェントエンジンをこの画面に接続中です。もうしばらくお待ちください。"
+    "enginePending": "エージェントエンジンをこの画面に接続中です。もうしばらくお待ちください。",
+    "composerPlaceholder": "Agente へのタスクを説明…",
+    "steerPlaceholder": "実行中のタスクを修正…",
+    "send": "送信",
+    "stop": "停止",
+    "running": "Agente が作業中",
+    "composerHint": "Enter で送信 · Shift+Enter で改行",
+    "modeSupervised": "承認あり",
+    "modeFull": "完全自動",
+    "modeSupervisedHint": "編集・書き込み・コマンドは承認が必要",
+    "modeFullHint": "ツールは承認なしで実行",
+    "startConversation": "このプロジェクトで Agente との会話を始めましょう。",
+    "rollbackTo": "ターン {turn} の前の状態にファイルを復元"
   }
 }

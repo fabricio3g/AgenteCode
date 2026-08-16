@@ -192,6 +192,18 @@
     "removeProjectMessage": "Conversations from {name} stay in history, but the project leaves the list.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Pick a project folder to start a conversation.",
-    "enginePending": "The agent engine is being wired into this surface. Check back soon."
+    "enginePending": "The agent engine is being wired into this surface. Check back soon.",
+    "composerPlaceholder": "Describe a task for Agente…",
+    "steerPlaceholder": "Steer the running task…",
+    "send": "Send",
+    "stop": "Stop",
+    "running": "Agente is working",
+    "composerHint": "Enter to send · Shift+Enter for newline",
+    "modeSupervised": "Supervised",
+    "modeFull": "Full auto",
+    "modeSupervisedHint": "Edits, writes and commands ask for approval",
+    "modeFullHint": "Tools run without approval prompts",
+    "startConversation": "Start a conversation with Agente on this project.",
+    "rollbackTo": "Restore files to before turn {turn}"
   }
 }

@@ -6,6 +6,9 @@ import type { CodeAgentEvent } from './agente-protocol';
 
 type EventHandler = (event: CodeAgentEvent) => void;
 
+/** Subscribe to every chat's events (the store's own fan-out). */
+export const WILDCARD = '*';
+
 let initialized = false;
 let unsub: (() => void) | null = null;
 const handlers = new Map<string, Set<EventHandler>>();
@@ -13,9 +16,14 @@ const handlers = new Map<string, Set<EventHandler>>();
 function handlePushEvent(event: CodeAgentEvent): void {
   const chatId = event.chatId;
   if (!chatId) return;
-  const set = handlers.get(chatId);
-  if (!set) return;
-  for (const handler of set) {
+  for (const handler of handlers.get(chatId) ?? []) {
+    try {
+      handler(event);
+    } catch {
+      // ignore handler errors
+    }
+  }
+  for (const handler of handlers.get(WILDCARD) ?? []) {
     try {
       handler(event);
     } catch {

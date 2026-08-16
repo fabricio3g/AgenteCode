@@ -190,6 +190,18 @@
     "removeProjectMessage": "Las conversaciones de {name} se quedan en el historial, pero el proyecto sale de la lista.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Elige una carpeta de proyecto para empezar una conversación.",
-    "enginePending": "El motor del agente se está integrando en esta superficie. Vuelve pronto."
+    "enginePending": "El motor del agente se está integrando en esta superficie. Vuelve pronto.",
+    "composerPlaceholder": "Describe una tarea para Agente…",
+    "steerPlaceholder": "Redirige la tarea en curso…",
+    "send": "Enviar",
+    "stop": "Detener",
+    "running": "Agente está trabajando",
+    "composerHint": "Enter para enviar · Shift+Enter para nueva línea",
+    "modeSupervised": "Supervisado",
+    "modeFull": "Automático",
+    "modeSupervisedHint": "Ediciones, escrituras y comandos piden aprobación",
+    "modeFullHint": "Las herramientas se ejecutan sin aprobación",
+    "startConversation": "Inicia una conversación con Agente en este proyecto.",
+    "rollbackTo": "Restaurar archivos a antes del turno {turn}"
   }
 }
