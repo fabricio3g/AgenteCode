@@ -7,10 +7,10 @@
 
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadConfigFromDisk } from '../config.ts';
+import { loadConfigFromDisk, updateConfig } from '../config.ts';
 import { getAppPaths } from '../paths.ts';
 import { Agent } from './core/agent.ts';
-import type { AgentEvent, AgentTool } from './core/types.ts';
+import type { AgentEvent, AgentTool, StreamFn } from './core/types.ts';
 import type { AgentLoopHooks } from './core/agent-loop.ts';
 import { createProviderStreamFn, type AgenteTransport } from './llm/stream-fn.ts';
 import { ToolRegistry } from './tools/registry.ts';
@@ -18,6 +18,9 @@ import { createBuiltinTools } from './tools/builtins.ts';
 import { CheckpointStore, type CheckpointSummary } from './tools/checkpoint.ts';
 import { SessionTree, newSessionId, projectSlug } from './sessions/session-tree.ts';
 import { buildAgenteSystemPrompt } from './prompts.ts';
+import { ExtensionRunner } from './extensions/extension-runner.ts';
+import { createBuiltinExtensions } from './extensions/builtin.ts';
+import type { AgenteExtensionDefinition } from './extensions/extension-api.ts';
 import { emitCodeAgentEvent } from './event-bridge.ts';
 import type { CodeAgentEvent, AgenteSessionInfo, AgenteStartSessionArgs } from './types.ts';
 
@@ -35,6 +38,7 @@ interface RuntimeSession {
   transport: AgenteTransport;
   runtimeMode: 'full' | 'supervised';
   systemPrompt: string;
+  extensions: ExtensionRunner;
   /** 1-based index of the turn currently executing (0 between runs). */
   currentTurn: number;
   /** Files captured for the current turn's checkpoint. */
@@ -151,7 +155,13 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
       const tool = session.registry.get(toolName);
       if (!tool) return;
 
-      // Approval gate: supervised mode + mutating tool.
+      // 1. Extension policy hooks (cheap checks first).
+      const extensionVerdict = await session.extensions.dispatch({ event: 'tool_call', toolName, args });
+      if (extensionVerdict.block) {
+        return { block: extensionVerdict.block };
+      }
+
+      // 2. Approval gate: supervised mode + mutating tool.
       if (session.runtimeMode === 'supervised' && tool.mutating) {
         const requestId = `apr-${crypto.randomUUID().slice(0, 8)}`;
         emit(session, {
@@ -197,7 +207,13 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
       }
       return;
     },
-    afterToolCall: async () => void 0
+    afterToolCall: async (toolCallId, toolName, result) => {
+      const hook = await session.extensions.dispatch({ event: 'tool_result', toolName, result });
+      if (hook.block || hook.content !== undefined || hook.isError !== undefined || hook.details !== undefined || hook.terminate) {
+        return session.extensions.mergeToolResult(result, hook);
+      }
+      return;
+    }
   };
 }
 
@@ -205,6 +221,15 @@ function attachAgentListeners(session: RuntimeSession): void {
   session.agent.subscribe((event) => {
     const bridged = toCodeAgentEvent(session.chatId, event);
     if (bridged) emit(session, bridged);
+
+    // Extension lifecycle hooks ride the same event stream.
+    if (event.type === 'turn_start') {
+      void session.extensions.dispatch({ event: 'turn_start', turnIndex: event.turnIndex });
+    } else if (event.type === 'turn_end') {
+      void session.extensions.dispatch({ event: 'turn_end', turnIndex: event.turnIndex });
+    } else if (event.type === 'message_end') {
+      void session.extensions.dispatch({ event: 'message_end' });
+    }
 
     // Session persistence — the JSONL tree is the durable transcript.
     if (event.type === 'turn_start') {
@@ -290,6 +315,21 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
   const registry = new ToolRegistry();
   for (const tool of createBuiltinTools(args.projectRoot)) registry.register(tool);
 
+  // Extensions: built-ins (and later, externally loaded ones) filtered by
+  // the user's config toggles. They register through the same public API a
+  // third-party extension would use.
+  const extensionRunner = new ExtensionRunner(
+    {
+      projectRoot: args.projectRoot,
+      sessionId: tree.header.id,
+      runtimeMode: args.runtimeMode,
+      appendEntry: (type, data) => tree.append('custom', { extension: type, data })
+    },
+    (extensionId, error) => console.warn(`[agente] extension ${extensionId} error: ${error}`)
+  );
+  await extensionRunner.load(enabledExtensions());
+  for (const tool of extensionRunner.tools) registry.register(tool);
+
   // Assigned right after construction; listeners need the session object.
   const session: RuntimeSession = {
     chatId: args.chatId,
@@ -302,6 +342,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     transport,
     runtimeMode: args.runtimeMode,
     systemPrompt: args.systemPromptOverride || buildAgenteSystemPrompt(args.projectRoot),
+    extensions: extensionRunner,
     currentTurn: 0,
     capturedThisTurn: new Set(),
     pendingApprovals: new Map(),
@@ -317,11 +358,18 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     session.transport = resolveTransport(restoredModel.provider, restoredModel.model, restoredModel.thinkingLevel);
   }
 
+  // The context hook lets extensions rewrite the message list on every LLM
+  // call (pi's transformContext choke point).
+  const baseStreamFn = createProviderStreamFn(session.transport);
+
   const agent = new Agent({
     systemPrompt: session.systemPrompt,
     tools: registry.asMap() as Map<string, AgentTool>,
     enabledTools: registry.enabledNames(),
-    streamFn: createProviderStreamFn(session.transport),
+    streamFn: async (request) => {
+      const messages = await extensionRunner.applyContextHooks(request.messages);
+      return baseStreamFn({ ...request, messages });
+    },
     maxTurns: DEFAULT_MAX_TURNS,
     hooks: buildHooks(session)
   });
@@ -370,6 +418,7 @@ export async function prompt(chatId: string, text: string, images?: Array<{ data
   const session = requireSession(chatId);
   if (!session) return { ok: false, error: 'No active agente session for this chat' };
   session.tree.append('user', { content: text, images });
+  await session.extensions.dispatch({ event: 'before_agent_start' });
   // Fire-and-forget: events stream back over code_agent_event.
   void session.agent.prompt({ role: 'user', content: text, images, ts: Date.now() }).catch((err: unknown) => {
     emit(session, { type: 'error', chatId, message: err instanceof Error ? err.message : String(err) });
@@ -418,7 +467,11 @@ export function setModel(chatId: string, provider: string, model: string, thinki
   const session = requireSession(chatId);
   if (!session) return { ok: false };
   session.transport = resolveTransport(provider, model, thinkingLevel);
-  (session.agent.options as { streamFn: unknown }).streamFn = createProviderStreamFn(session.transport);
+  const baseStreamFn = createProviderStreamFn(session.transport);
+  (session.agent.options as { streamFn: unknown }).streamFn = async (request: Parameters<StreamFn>[0]) => {
+    const messages = await session.extensions.applyContextHooks(request.messages);
+    return baseStreamFn({ ...request, messages });
+  };
   session.tree.append('model_change', { provider, model, thinkingLevel });
   return { ok: true };
 }
@@ -533,4 +586,45 @@ export async function newSession(chatId: string): Promise<{ ok: boolean; session
 /** Model cycling needs a model list in main; not wired yet. */
 export function cycleModel(): { ok: boolean } {
   return { ok: false };
+}
+
+// ── Extension management (config-backed toggles) ───────────────────────
+
+interface AgenteConfigSection {
+  extensions?: Record<string, boolean>;
+}
+
+function extensionToggles(): Record<string, boolean> {
+  const cfg = loadConfigFromDisk() as { agente?: AgenteConfigSection };
+  return cfg.agente?.extensions ?? {};
+}
+
+/** Built-in extensions the user has not disabled (defaultEnabled wins when unset). */
+export function enabledExtensions(): AgenteExtensionDefinition[] {
+  const toggles = extensionToggles();
+  return createBuiltinExtensions().filter((definition) => {
+    const setting = toggles[definition.id];
+    return setting === undefined ? (definition.defaultEnabled ?? true) : setting;
+  });
+}
+
+export function listExtensions(): Array<{ id: string; name: string; description: string; icon?: string; enabled: boolean; defaultEnabled: boolean }> {
+  const toggles = extensionToggles();
+  return createBuiltinExtensions().map((definition) => ({
+    id: definition.id,
+    name: definition.name,
+    description: definition.description,
+    icon: definition.icon,
+    enabled: toggles[definition.id] === undefined ? (definition.defaultEnabled ?? true) : toggles[definition.id]!,
+    defaultEnabled: definition.defaultEnabled ?? true
+  }));
+}
+
+export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<{ ok: boolean }> {
+  const known = createBuiltinExtensions().some((definition) => definition.id === extensionId);
+  if (!known) return { ok: false };
+  const cfg = loadConfigFromDisk() as { agente?: AgenteConfigSection };
+  const section = { ...(cfg.agente ?? {}), extensions: { ...(cfg.agente?.extensions ?? {}), [extensionId]: enabled } };
+  await updateConfig({ agente: section } as never);
+  return { ok: true };
 }

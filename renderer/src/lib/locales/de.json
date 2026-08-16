@@ -202,6 +202,9 @@
     "modeSupervisedHint": "Bearbeitungen, Schreibvorgänge und Befehle erfragen Freigabe",
     "modeFullHint": "Werkzeuge laufen ohne Freigabe",
     "startConversation": "Beginne ein Gespräch mit Agente zu diesem Projekt.",
-    "rollbackTo": "Dateien vor Durchlauf {turn} wiederherstellen"
+    "rollbackTo": "Dateien vor Durchlauf {turn} wiederherstellen",
+    "extensions": "Erweiterungen",
+    "noExtensions": "Keine Erweiterungen installiert.",
+    "extensionsHint": "Änderungen gelten für neue Unterhaltungen. Drittanbieter-Erweiterungen werden aus ~/.flaxeo/agente/extensions geladen."
   }
 }

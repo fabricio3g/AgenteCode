@@ -202,6 +202,9 @@
     "modeSupervisedHint": "Ediciones, escrituras y comandos piden aprobación",
     "modeFullHint": "Las herramientas se ejecutan sin aprobación",
     "startConversation": "Inicia una conversación con Agente en este proyecto.",
-    "rollbackTo": "Restaurar archivos a antes del turno {turn}"
+    "rollbackTo": "Restaurar archivos a antes del turno {turn}",
+    "extensions": "Extensiones",
+    "noExtensions": "Sin extensiones instaladas.",
+    "extensionsHint": "Los cambios se aplican a conversaciones nuevas. Las extensiones de terceros se cargarán desde ~/.flaxeo/agente/extensions."
   }
 }

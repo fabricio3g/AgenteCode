@@ -9,6 +9,7 @@
   import { rollbackAgente } from './agente-ipc';
   import AgentTranscript from './AgentTranscript.svelte';
   import AgenteComposer from './AgenteComposer.svelte';
+  import AgenteExtensionsPanel from './AgenteExtensionsPanel.svelte';
 
   onMount(() => {
     void agenteStore.load();
@@ -62,22 +63,25 @@
           <span class="hidden truncate font-mono text-[10px] sm:inline">{agenteStore.modelLabel}</span>
         {/if}
       </div>
-      {#if run?.checkpoints?.length}
-        <div class="flex items-center gap-1">
-          <History class="size-3.5 text-muted-foreground" />
-          {#each run.checkpoints.slice(-3).reverse() as checkpoint (checkpoint.turnIndex)}
-            <button
-              type="button"
-              class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"
-              title={$t('agente.rollbackTo', { values: { turn: checkpoint.turnIndex } })}
-              onclick={() => void rollback(checkpoint.turnIndex)}
-            >
-              <RotateCcw class="size-3" />
-              T{checkpoint.turnIndex} · +{checkpoint.additions}/-{checkpoint.deletions}
-            </button>
-          {/each}
-        </div>
-      {/if}
+      <div class="flex items-center gap-2">
+        {#if run?.checkpoints?.length}
+          <div class="flex items-center gap-1">
+            <History class="size-3.5 text-muted-foreground" />
+            {#each run.checkpoints.slice(-3).reverse() as checkpoint (checkpoint.turnIndex)}
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"
+                title={$t('agente.rollbackTo', { values: { turn: checkpoint.turnIndex } })}
+                onclick={() => void rollback(checkpoint.turnIndex)}
+              >
+                <RotateCcw class="size-3" />
+                T{checkpoint.turnIndex} · +{checkpoint.additions}/-{checkpoint.deletions}
+              </button>
+            {/each}
+          </div>
+        {/if}
+        <AgenteExtensionsPanel />
+      </div>
     </div>
 
     <AgentTranscript messages={chat.messages} chatId={chat.id} />

@@ -202,6 +202,9 @@
     "modeSupervisedHint": "编辑、写入和命令需要确认",
     "modeFullHint": "工具无需确认直接执行",
     "startConversation": "在此项目上与 Agente 开始对话。",
-    "rollbackTo": "将文件恢复到第 {turn} 轮之前"
+    "rollbackTo": "将文件恢复到第 {turn} 轮之前",
+    "extensions": "扩展",
+    "noExtensions": "尚未安装扩展。",
+    "extensionsHint": "更改对新对话生效。第三方扩展将从 ~/.flaxeo/agente/extensions 加载。"
   }
 }

@@ -19,7 +19,9 @@ import {
   listCheckpoints,
   rollback,
   newSession,
-  listSessions
+  listSessions,
+  listExtensions,
+  setExtensionEnabled
 } from '../agente/runtime.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
 import type { AgenteStartSessionArgs } from '../agente/types.ts';
@@ -63,6 +65,10 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_new_session', (_e, args: { chatId: string }) => newSession(args.chatId));
   ipcMain.handle('agente_cycle_model', () => cycleModel());
   ipcMain.handle('agente_list_sessions', (_e, args: { projectRoot: string }) => listSessions(args.projectRoot));
+  ipcMain.handle('agente_list_extensions', () => listExtensions());
+  ipcMain.handle('agente_set_extension_enabled', (_e, args: { extensionId: string; enabled: boolean }) =>
+    setExtensionEnabled(args.extensionId, args.enabled)
+  );
 }
 
 export { disposeAllSessions };

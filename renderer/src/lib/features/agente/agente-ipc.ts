@@ -62,3 +62,20 @@ export function newAgenteSession(chatId: string): Promise<{ ok: boolean; session
 export function listAgenteSessions(projectRoot: string): Promise<AgenteSessionInfo[]> {
   return invoke('agente_list_sessions', { projectRoot });
 }
+
+export interface AgenteExtensionInfo {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  enabled: boolean;
+  defaultEnabled: boolean;
+}
+
+export function listAgenteExtensions(): Promise<AgenteExtensionInfo[]> {
+  return invoke('agente_list_extensions', {});
+}
+
+export function setAgenteExtensionEnabled(extensionId: string, enabled: boolean): Promise<{ ok: boolean }> {
+  return invoke('agente_set_extension_enabled', { extensionId, enabled });
+}

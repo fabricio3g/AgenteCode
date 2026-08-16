@@ -202,6 +202,9 @@
     "modeSupervisedHint": "編集・書き込み・コマンドは承認が必要",
     "modeFullHint": "ツールは承認なしで実行",
     "startConversation": "このプロジェクトで Agente との会話を始めましょう。",
-    "rollbackTo": "ターン {turn} の前の状態にファイルを復元"
+    "rollbackTo": "ターン {turn} の前の状態にファイルを復元",
+    "extensions": "拡張機能",
+    "noExtensions": "拡張機能はありません。",
+    "extensionsHint": "変更は新しい会話に適用されます。サードパーティ拡張は ~/.flaxeo/agente/extensions から読み込まれます。"
   }
 }
