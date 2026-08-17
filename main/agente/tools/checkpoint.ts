@@ -6,18 +6,11 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import type { AgenteCheckpointSummary } from '../../../shared/agente-protocol.ts';
 
 export interface FileDiffStat {
   path: string;
   kind: 'created' | 'modified' | 'deleted';
-  additions: number;
-  deletions: number;
-}
-
-export interface CheckpointSummary {
-  turnIndex: number;
-  createdAt: number;
-  fileCount: number;
   additions: number;
   deletions: number;
 }
@@ -114,14 +107,14 @@ export class CheckpointStore {
     return stats;
   }
 
-  async listTurns(): Promise<CheckpointSummary[]> {
+  async listTurns(): Promise<AgenteCheckpointSummary[]> {
     let turnDirs;
     try {
       turnDirs = await fsp.readdir(this.checkpointRoot, { withFileTypes: true });
     } catch {
       return [];
     }
-    const summaries: CheckpointSummary[] = [];
+    const summaries: AgenteCheckpointSummary[] = [];
     for (const entry of turnDirs) {
       if (!entry.isDirectory()) continue;
       const turnIndex = Number(entry.name);

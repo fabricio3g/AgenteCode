@@ -1,7 +1,7 @@
 // Typed client for the agente_* IPC surface.
 
 import { invoke } from '$lib/services/tauri';
-import type { AgenteCheckpointSummary, AgenteSessionInfo, AgenteStartSessionArgs } from './agente-protocol';
+import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteSessionInfo, AgenteStartSessionArgs, ApprovalDecision } from '$shared/agente-protocol';
 
 export function detectAgente(): Promise<{ status: 'ready' | 'login' | 'missing' }> {
   return invoke('agente_detect', {});
@@ -35,11 +35,11 @@ export function setAgenteModel(chatId: string, provider: string, model: string, 
   return invoke('agente_set_model', { chatId, provider, model, thinkingLevel });
 }
 
-export function setAgenteRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): Promise<{ ok: boolean }> {
+export function setAgenteRuntimeMode(chatId: string, mode: AgenteRuntimeMode): Promise<{ ok: boolean }> {
   return invoke('agente_set_runtime_mode', { chatId, mode });
 }
 
-export function respondToAgenteApproval(chatId: string, requestId: string, decision: 'allow' | 'deny'): Promise<{ ok: boolean }> {
+export function respondToAgenteApproval(chatId: string, requestId: string, decision: ApprovalDecision): Promise<{ ok: boolean }> {
   return invoke('agente_respond_approval', { chatId, requestId, decision });
 }
 

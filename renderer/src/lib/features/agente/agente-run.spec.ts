@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyCodeAgentEvent, createAgenteRunState } from './agente-run';
-import type { CodeAgentEvent } from './agente-protocol';
+import type { CodeAgentEvent } from '$shared/agente-protocol';
 
 function run(events: CodeAgentEvent[]) {
   const state = createAgenteRunState();
