@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { Search, X, MessageSquare, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
-  import Message from '$lib/components/thread/Message.svelte';
+  import Message from '$lib/features/chat/thread/Message.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { countOf } from '$lib/utils/format';
   import { confirmStore } from '$lib/stores/confirm.svelte';

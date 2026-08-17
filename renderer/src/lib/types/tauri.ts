@@ -33,6 +33,8 @@ export interface GgufMeta {
   quantization: string;
   head_count: number;
   head_count_kv: number;
+  /** Non-zero only on MoE architectures. */
+  expert_count?: number;
   embedding_length: number;
   file_size_bytes: number;
   quantization_name: string;
@@ -114,6 +116,14 @@ export interface SupervisorStatus {
   uptime_secs?: number | null;
   memory_mb?: number | null;
   sessions_count: number;
+  /** Reported by the server via GET /props once it is up, not estimated. */
+  n_ctx?: number | null;
+  total_slots?: number | null;
+  build_info?: string | null;
+  load_phase?: string | null;
+  load_progress?: number | null;
+  /** Tail of the server's own log, populated when startup fails. */
+  log_tail?: string[] | null;
 }
 
 export interface SupervisorEvent {
@@ -172,6 +182,28 @@ export interface LlamaConfig {
   mtp?: boolean;
   mtp_draft_path?: string;
   mtp_draft_n_max?: number;
+  /** Keep all MoE expert weights on the CPU. */
+  cpu_moe?: boolean;
+  /** Keep the experts of the first N layers on the CPU. Wins over `cpu_moe`. */
+  n_cpu_moe?: number;
+  /** Drop the oldest turns instead of erroring when the context fills. */
+  context_shift?: boolean;
+  /** Prompt cache budget in MiB, shared across conversations. */
+  cache_ram_mb?: number;
+  /** Minimum chunk size reused from the KV cache. */
+  cache_reuse?: number;
+  /** Full-size sliding-window attention cache. */
+  swa_full?: boolean;
+  split_mode?: string;
+}
+
+export interface RuntimeTelemetry {
+  context_size: number | null;
+  context_used: number | null;
+  context_percent: number | null;
+  slots_total: number;
+  slots_busy: number;
+  tokens_per_second: number | null;
 }
 
 export interface RagChunk {

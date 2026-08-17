@@ -5,13 +5,13 @@
   import { AlertCircle, FileQuestion } from 'lucide-svelte';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { isDataUrlFile, viewerPathFor } from '$lib/utils/artifact-files';
-  import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
+  import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
   import {
     baseName,
     documentExtension,
     isDocumentSurfaceFile,
     type DocumentSurfaceItem
-  } from '$lib/components/chat/document-surface';
+  } from '$lib/features/chat/document-surface';
   import InlineArtifactPreview from './InlineArtifactPreview.svelte';
 
   interface Props { artifact: AgentArtifact }

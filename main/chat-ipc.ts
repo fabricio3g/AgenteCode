@@ -3,6 +3,7 @@ import { loadConfigFromDisk } from './config.ts';
 import { resolveProvider } from './providers/registry.ts';
 import { normalizeBaseUrl } from './providers/helpers.ts';
 import { safeParseJson } from './providers/helpers.ts';
+import { resolveLlamaSessionKey } from './llama-session.ts';
 
 const activeStreams = new Map();
 
@@ -40,6 +41,10 @@ export function resolveApiKeyFromConfig(cfg, apiKey, baseUrl, providerName) {
 }
 
 export function resolveApiKey(apiKey, baseUrl, providerName) {
+  // The local llama-server is launched with a generated per-run --api-key that
+  // is never written to config, so it has to be resolved from the live session.
+  const sessionKey = resolveLlamaSessionKey(baseUrl);
+  if (sessionKey) return sessionKey;
   return resolveApiKeyFromConfig(getCachedConfig(), apiKey, baseUrl, providerName);
 }
 

@@ -69,12 +69,27 @@ describe('space isolation helpers', () => {
     expect(chat.codeAgent).toBeNull();
   });
 
-  it('normalizeChat migrates legacy code sessions to work without code agent', () => {
+  it('normalizeChat migrates legacy code sessions to work and preserves agente identity', () => {
+    // Agente Coding conversations must keep their project link + engine
+    // session meta through hydration — resume depends on both surviving.
     const migrated = normalizeChat({ id: 'k1', contextMode: 'code' as 'work', projectId: 'p1', messages: [] }, 0);
     expect(migrated.contextMode).toBe('work');
-    expect(migrated.codeAgent).toBeNull();
-    expect(migrated.projectId).toBeNull();
+    expect(migrated.projectId).toBe('p1');
     expect(migrated.composerMode).toBe('agent');
+
+    const agente = normalizeChat(
+      {
+        id: 'a1',
+        contextMode: 'work',
+        projectId: 'p2',
+        codeAgent: { instanceId: 'agente', driverKind: 'agente', substrate: 'native', updatedAt: 1 },
+        messages: []
+      },
+      0
+    );
+    expect(agente.projectId).toBe('p2');
+    expect(agente.codeAgent?.sessionId).toBeUndefined();
+    expect(agente.codeAgent?.driverKind).toBe('agente');
 
     const plain = normalizeChat({ id: 'c2', contextMode: 'chat', messages: [] }, 1);
     expect(plain.contextMode).toBe('chat');

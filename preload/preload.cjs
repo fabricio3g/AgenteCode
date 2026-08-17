@@ -9,7 +9,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'chat_db_load_code_projects', 'chat_db_save_code_project', 'chat_db_delete_code_project',
   'get_local_models', 'get_gguf_metadata', 'delete_local_model', 'get_models_dir_path',
   'get_indexed_models', 'refresh_model_index', 'invalidate_model_cache', 'import_local_model',
-  'start_llama', 'stop_llama', 'get_supervisor_status', 'supervisor_health_check',
+  'start_llama', 'stop_llama', 'get_supervisor_status', 'get_runtime_telemetry', 'supervisor_health_check',
   'start_embedding_server', 'stop_embedding_server', 'get_embedding_status',
   'get_loaded_models', 'unload_model', 'get_recommended_settings',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
@@ -42,12 +42,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
-  'chatea_agent_detect', 'chatea_agent_start_session', 'chatea_agent_prompt',
-  'chatea_agent_steer', 'chatea_agent_follow_up', 'chatea_agent_abort',
-  'chatea_agent_compact', 'chatea_agent_set_model', 'chatea_agent_set_runtime_mode',
-  'chatea_agent_set_thinking_level', 'chatea_agent_respond_approval',
-  'chatea_agent_list_checkpoints', 'chatea_agent_rollback', 'chatea_agent_fork',
-  'chatea_agent_close', 'chatea_agent_new_session', 'chatea_agent_cycle_model'
+  'agente_detect', 'agente_start_session', 'agente_prompt',
+  'agente_steer', 'agente_follow_up', 'agente_abort',
+  'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
+  'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
+  'agente_close', 'agente_new_session', 'agente_cycle_model',
+  'agente_list_sessions', 'agente_list_extensions', 'agente_set_extension_enabled'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

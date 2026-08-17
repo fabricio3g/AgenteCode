@@ -26,8 +26,17 @@ interface DocxOcrResult {
   fullText: string;
 }
 
-const TESSERACT_WORKER_PATH = new URL('tesseract.js/dist/worker.min.js', import.meta.url).href;
-const TESSERACT_CORE_PATH = new URL('tesseract.js-core/tesseract-core.wasm.js', import.meta.url).href;
+/*
+ * `?url` imports, not `new URL(bare-specifier, import.meta.url)`.
+ *
+ * The latter resolves to `/node_modules/...` — which the dev server happens to
+ * serve, so OCR works in `npm run dev` and then 404s in a packaged build, where
+ * node_modules is not shipped. `?url` makes Vite emit these as real bundled
+ * assets with hashed paths that survive the build.
+ */
+import TESSERACT_WORKER_PATH from 'tesseract.js/dist/worker.min.js?url';
+import TESSERACT_CORE_PATH from 'tesseract.js-core/tesseract-core.wasm.js?url';
+import PDF_WORKER_PATH from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 type OcrProgressPhase = 'rendering' | 'recognizing' | 'done';
 
@@ -160,10 +169,7 @@ class OcrEngine {
       this.busy = true;
       // Dynamic import to keep bundle small until needed
       const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.min.mjs',
-        import.meta.url
-      ).href;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
 
       await this.init();
       const arrayBuffer = await file.arrayBuffer();
@@ -201,10 +207,7 @@ class OcrEngine {
   async extractPdfText(file: File): Promise<{ text: string; pageCount: number }> {
     try {
       const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.min.mjs',
-        import.meta.url
-      ).href;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_PATH;
 
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;

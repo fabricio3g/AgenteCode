@@ -6,6 +6,7 @@ type LlmRunnerHandlerDeps = {
   startLlama: (config: unknown, win: BrowserWindow | null) => unknown;
   stopLlama: (win: BrowserWindow | null) => unknown;
   getSupervisorStatus: () => unknown;
+  getRuntimeTelemetry: () => unknown;
   supervisorHealthCheck: () => unknown;
   getLoadedModels: () => unknown;
   unloadModel: (modelId: string, win: BrowserWindow | null) => unknown;
@@ -21,6 +22,7 @@ export function registerLlmRunnerHandlers({
   startLlama,
   stopLlama,
   getSupervisorStatus,
+  getRuntimeTelemetry,
   supervisorHealthCheck,
   getLoadedModels,
   unloadModel,
@@ -32,6 +34,7 @@ export function registerLlmRunnerHandlers({
   ipcMain.handle('start_llama', (_e, { config }) => startLlama(config, getMainWindow()));
   ipcMain.handle('stop_llama', () => stopLlama(getMainWindow()));
   ipcMain.handle('get_supervisor_status', () => getSupervisorStatus());
+  ipcMain.handle('get_runtime_telemetry', () => getRuntimeTelemetry());
   ipcMain.handle('supervisor_health_check', () => supervisorHealthCheck());
   ipcMain.handle('get_loaded_models', () => getLoadedModels());
   ipcMain.handle('unload_model', (_e, { modelId }) => unloadModel(modelId, getMainWindow()));

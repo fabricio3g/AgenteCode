@@ -124,6 +124,22 @@ export const copy = {
     clearAll: 'Clear all'
   },
 
+  /** Shown above the composer while a conversation has no messages yet. */
+  emptyState: {
+    greeting: 'How can I help you today?',
+    /**
+     * Starter prompts. Selecting one fills the composer and focuses it — it
+     * never sends on its own, so a mis-tap costs nothing.
+     */
+    suggestions: [
+      { id: 'weather', label: 'Weather', prompt: "What's the weather like today?" },
+      { id: 'code', label: 'Code', prompt: 'Help me write a function that ' },
+      { id: 'write', label: 'Write', prompt: 'Help me write ' },
+      { id: 'analyze', label: 'Analyze', prompt: 'Analyze this for me:\n\n' },
+      { id: 'brainstorm', label: 'Brainstorm', prompt: 'Brainstorm ideas for ' }
+    ]
+  },
+
   model: {
     loading: 'Loading model…',
     none: 'No model loaded',

@@ -177,6 +177,42 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
   };
 }
 
+/**
+ * Agente Coding — the Code tab's built-in agent (pi-inspired engine in the
+ * main process, driven through features/agente). The Code-tab surface talks
+ * to the engine directly over agente_* IPC; this adapter only serves legacy
+ * resolveCodeAgentInstance() callers, so it rides the in-process tool loop
+ * with the code profile rather than reporting itself unavailable.
+ */
+function createAgenteDriver(): CodeAgentDriverDefinition {
+  const instance = defaultInstance({
+    id: 'agente',
+    driverKind: 'agente',
+    displayName: 'Agente Coding',
+    detail: 'Built-in coding agent · extensible',
+    status: 'ready',
+    accentColor: 'var(--primary)'
+  });
+  return {
+    driver: {
+      driverKind: 'agente',
+      displayName: 'Agente Coding',
+      detail: 'Built-in coding agent for Code projects',
+      supportsMultipleInstances: false
+    },
+    defaultInstance: instance,
+    createAdapter: (entry) => makeAdapter(entry, async () => 'ready', async (args) => runAgentTask({
+      ...args,
+      executionMode: 'workspace',
+      toolMode: 'agent',
+      agentProfile: 'code',
+      maxIterations: args.maxIterations ?? 28,
+      maxToolCalls: args.maxToolCalls ?? 80,
+      maxTimeMs: args.maxTimeMs ?? 8 * 60 * 1000
+    }))
+  };
+}
+
 function createCodexDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({ id: 'codex', driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', accentColor: '#10a37f' });
   return {
@@ -222,6 +258,7 @@ export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceI
 export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
   if (!driverRegistry) {
     driverRegistry = {
+      agente: createAgenteDriver(),
       chatea: createChateaDriver(),
       'chatea-agent': createFlaxeoAgentDriver(),
       codex: createCodexDriver(),

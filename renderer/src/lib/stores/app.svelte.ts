@@ -10,7 +10,7 @@ import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
-import { getRecommendedSettings, loadLocalModel, stopLlama } from '$lib/services/runtime';
+import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
 import { isTauri } from '$lib/services/tauri';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
@@ -174,8 +174,9 @@ class AppStore {
   /** Per-code-chat drawer open state (isolated across sessions). */
 
   localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
-  localModelLoadContextLength = $state('4096');
-  localModelLoadGpuLayers = $state('0');
+  // Empty means auto: llama.cpp's --fit sizes these against real device memory.
+  localModelLoadContextLength = $state('');
+  localModelLoadGpuLayers = $state('');
   localModelLoadCpuThreads = $state('4');
   localModelLoadBatchSize = $state('512');
   localModelLoadRuntimePath = $state('');
@@ -194,6 +195,13 @@ class AppStore {
   localModelLoadMtpEnabled = $state(false);
   localModelLoadMtpDraftPath = $state('');
   localModelLoadMtpDraftNMax = $state('');
+  localModelLoadCpuMoe = $state(false);
+  localModelLoadNCpuMoe = $state('');
+  localModelLoadContextShift = $state(false);
+  localModelLoadCacheRamMb = $state('');
+  localModelLoadCacheReuse = $state('');
+  localModelLoadSwaFull = $state(false);
+  localModelLoadSplitMode = $state('');
   localModelRememberSettings = $state(false);
   localModelLoadProgress = $state(0);
   localModelLoadPhase = $state('');
@@ -637,6 +645,13 @@ class AppStore {
     this.localModelLoadMtpEnabled = resolved.mtpEnabled;
     this.localModelLoadMtpDraftPath = resolved.mtpDraftPath;
     this.localModelLoadMtpDraftNMax = resolved.mtpDraftNMax;
+    this.localModelLoadCpuMoe = resolved.cpuMoe;
+    this.localModelLoadNCpuMoe = resolved.nCpuMoe;
+    this.localModelLoadContextShift = resolved.contextShift;
+    this.localModelLoadCacheRamMb = resolved.cacheRamMb;
+    this.localModelLoadCacheReuse = resolved.cacheReuse;
+    this.localModelLoadSwaFull = resolved.swaFull;
+    this.localModelLoadSplitMode = resolved.splitMode;
     this.localModelRememberSettings = resolved.rememberSettings;
   }
 
@@ -699,6 +714,30 @@ class AppStore {
     return found;
   }
 
+  /**
+   * Mirrors llama-server's real startup stages onto the load dialog while the
+   * launch is in flight. Returns an unsubscribe function; the caller owns it.
+   *
+   * The server's own 0-100 scale is remapped into the 24-95 band the dialog
+   * has already reserved for the launch step.
+   */
+  private async subscribeToLoadProgress(): Promise<() => void> {
+    if (!isTauri()) return () => {};
+    try {
+      const unlisten = await onSupervisorEvent((event) => {
+        const progress = Number((event as { load_progress?: unknown }).load_progress);
+        const phase = (event as { load_phase?: unknown }).load_phase;
+        if (Number.isFinite(progress) && progress > 0) {
+          this.localModelLoadProgress = Math.min(95, 24 + Math.round(progress * 0.71));
+        }
+        if (typeof phase === 'string' && phase) this.localModelLoadPhase = phase;
+      });
+      return unlisten;
+    } catch {
+      return () => {};
+    }
+  }
+
   async confirmLocalModelLoad() {
     if (!this.localModelLoadTarget?.path) return;
     this.localModelLoading = true;
@@ -740,6 +779,13 @@ class AppStore {
         mtpEnabled: this.localModelLoadMtpEnabled,
         mtpDraftPath: this.localModelLoadMtpDraftPath,
         mtpDraftNMax: this.localModelLoadMtpDraftNMax,
+        cpuMoe: this.localModelLoadCpuMoe,
+        nCpuMoe: this.localModelLoadNCpuMoe,
+        contextShift: this.localModelLoadContextShift,
+        cacheRamMb: this.localModelLoadCacheRamMb,
+        cacheReuse: this.localModelLoadCacheReuse,
+        swaFull: this.localModelLoadSwaFull,
+        splitMode: this.localModelLoadSplitMode,
         rememberSettings: this.localModelRememberSettings
       };
       await this.updateLocalSettings(buildLocalModelSettingsPatch(loadState));
@@ -753,12 +799,19 @@ class AppStore {
       const config = await loadChatConfig();
       this.localModelLoadProgress = 24;
       this.localModelLoadPhase = 'Launching local runtime';
-      await loadLocalModel(buildLocalModelRuntimeRequest({
-        config,
-        target: this.localModelLoadTarget,
-        state: loadState
-      }));
-      this.localModelLoadProgress = 88;
+      // From here the server reports its own stages (weights, KV cache, warmup)
+      // over `supervisor-event`; see subscribeToLoadProgress.
+      const stopTrackingProgress = await this.subscribeToLoadProgress();
+      try {
+        await loadLocalModel(buildLocalModelRuntimeRequest({
+          config,
+          target: this.localModelLoadTarget,
+          state: loadState
+        }));
+      } finally {
+        stopTrackingProgress();
+      }
+      this.localModelLoadProgress = 96;
       this.localModelLoadPhase = 'Refreshing local model state';
       await modelsStore.refreshIndex();
       await modelsStore.refreshStatus();

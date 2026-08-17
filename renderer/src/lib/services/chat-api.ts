@@ -452,6 +452,13 @@ export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): 
   const apiKey = (apiKeyOverride ?? provider.api_key) || '';
   if (!provider.base_url) return [];
 
+  // Listing models needs a key. Calling without one throws in the main process
+  // and logs a handler error on every startup, and the result is discarded here
+  // anyway. Keyless local runtimes (llama.cpp, Ollama, LM Studio) still apply.
+  const isLocalProvider = providerName === 'local'
+    || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(provider.base_url);
+  if (!apiKey && !provider.has_api_key && !isLocalProvider) return [];
+
   if (isTauri()) {
     try {
       const ids = await invoke<string[]>('fetch_provider_models', {

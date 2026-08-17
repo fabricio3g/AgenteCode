@@ -6,6 +6,7 @@ import { getEmbedding, getEmbeddings } from './embedding-client.ts';
 import { rerankChunks } from './reranker.ts';
 import { vectorStore } from './vector-store.ts';
 import { loadConfig } from './config.ts';
+import { convertFileToMarkdown } from './document-markdown.ts';
 import { ensureRagEmbeddingRuntime } from './rag/embedding-runtime.ts';
 import {
   saveRagDocument, listRagDocumentsDb, deleteRagDocumentDb,
@@ -334,43 +335,24 @@ function ensureStoreLoaded(): void {
   storeLoaded = true;
 }
 
+/**
+ * Reads a file as Markdown for indexing.
+ *
+ * This used to handle only .pdf and .docx and fall through to
+ * `readFileSync(path, 'utf8')` for everything else — so a .xlsx or .pptx was
+ * indexed as decoded binary. Conversion now lives in `document-markdown.ts`,
+ * which refuses formats it cannot actually read instead of guessing.
+ */
 async function extractText(filePath: string): Promise<{ text: string; fileType: string }> {
-  const ext = path.extname(filePath).toLowerCase();
-
-  function hasUsablePdfText(text: string): boolean {
-    const normalized = String(text || '').replace(/\u0000/g, ' ').trim();
-    if (normalized.length < 80) return false;
-    const wordMatches = normalized.match(/[\p{L}\p{N}]{2,}/gu) || [];
-    return wordMatches.length >= 20;
-  }
-
-  if (ext === '.pdf') {
-    try {
-      const pdfParse = (await import('pdf-parse')).default;
-      const buffer = fs.readFileSync(filePath);
-      const data = await pdfParse(buffer);
-      const text = String(data?.text || '').replace(/\u0000/g, ' ').trim();
-      if (!hasUsablePdfText(text)) {
-        throw new Error('PDF parser returned insufficient readable text');
-      }
-      return { text, fileType: 'pdf' };
-    } catch (err: unknown) {
+  try {
+    const { markdown, fileType } = await convertFileToMarkdown(filePath);
+    return { text: markdown.trim(), fileType };
+  } catch (err: unknown) {
+    if (path.extname(filePath).toLowerCase() === '.pdf') {
       throw new Error(`Could not parse PDF text: ${toErrorMessage(err)}`);
     }
+    throw err;
   }
-
-  if (ext === '.docx') {
-    try {
-      const mammoth = (await import('mammoth')).default;
-      const result = await mammoth.extractRawText({ path: filePath });
-      return { text: result.value, fileType: 'docx' };
-    } catch {
-      return { text: fs.readFileSync(filePath, 'utf8'), fileType: 'text' };
-    }
-  }
-
-  const fileType = ext === '.md' ? 'markdown' : ext === '.json' ? 'json' : 'text';
-  return { text: fs.readFileSync(filePath, 'utf8'), fileType };
 }
 
 function makeDocumentFingerprint(source: string, text: string, fileType: string): string {

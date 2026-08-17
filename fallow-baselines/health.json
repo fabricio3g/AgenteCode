@@ -1,5 +1,103 @@
 {
   "finding_counts": {
+    "main/agente/core/agent-loop.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "main/agente/core/agent.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/agente/event-bridge.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/agente/extensions/builtin.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "main/agente/extensions/extension-runner.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/agente/llm/stream-fn.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/agente/runtime.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 7
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "main/agente/sessions/session-tree.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "main/agente/tools/builtins.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/agente/tools/checkpoint.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
     "main/browser-control.ts": {
       "crap_moderate": {
         "count": 1
@@ -27,16 +125,6 @@
         "count": 3
       },
       "crap_high": {
-        "count": 2
-      }
-    },
-    "main/chatea-agent/event-bridge.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "main/chatea-agent/harness.ts": {
-      "crap_moderate": {
         "count": 2
       }
     },
@@ -88,6 +176,20 @@
         "count": 1
       }
     },
+    "main/document-markdown.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 4
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
     "main/download-manager.ts": {
       "crap_critical": {
         "count": 1
@@ -130,11 +232,6 @@
       },
       "crap_moderate": {
         "count": 2
-      }
-    },
-    "main/index.ts": {
-      "crap_high": {
-        "count": 1
       }
     },
     "main/ipc/app-capability-handlers.ts": {
@@ -183,6 +280,11 @@
         "count": 1
       }
     },
+    "main/live-data/geocode.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
     "main/live-data/quotes.ts": {
       "complexity_critical": {
         "count": 1
@@ -195,9 +297,6 @@
       }
     },
     "main/live-data/weather.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
       "crap_critical": {
         "count": 1
       }
@@ -210,15 +309,20 @@
         "count": 1
       }
     },
+    "main/llama-session.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
     "main/llm-runner.ts": {
       "complexity_critical": {
         "count": 2
       },
       "crap_critical": {
-        "count": 2
+        "count": 5
       },
       "crap_high": {
-        "count": 2
+        "count": 3
       },
       "crap_moderate": {
         "count": 2
@@ -241,9 +345,14 @@
         "count": 4
       }
     },
+    "main/module-env.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "main/paths.ts": {
       "crap_high": {
-        "count": 2
+        "count": 1
       }
     },
     "main/process-manager.ts": {
@@ -253,7 +362,7 @@
       "crap_critical": {
         "count": 1
       },
-      "crap_moderate": {
+      "crap_high": {
         "count": 1
       }
     },
@@ -383,7 +492,7 @@
         "count": 4
       },
       "crap_critical": {
-        "count": 6
+        "count": 5
       },
       "crap_high": {
         "count": 1
@@ -417,11 +526,8 @@
       }
     },
     "main/runtime-download.ts": {
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
-        "count": 2
+        "count": 3
       }
     },
     "main/runtime-resolver.ts": {
@@ -628,6 +734,11 @@
         "count": 1
       }
     },
+    "renderer/src/dev/mock-electron.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
     "renderer/src/lib/components/agent/ActivityDrawer.svelte": {
       "crap_critical": {
         "count": 1
@@ -666,101 +777,6 @@
       },
       "crap_moderate": {
         "count": 2
-      }
-    },
-    "renderer/src/lib/components/chat/AttachmentDocumentsBlock.svelte": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/Composer.svelte": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 2
-      },
-      "crap_moderate": {
-        "count": 3
-      }
-    },
-    "renderer/src/lib/components/chat/DocumentSurface.svelte": {
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/EditMessageInline.svelte": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/ModelSwitcher.svelte": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 2
-      },
-      "crap_moderate": {
-        "count": 4
-      }
-    },
-    "renderer/src/lib/components/chat/SelectedTextAskAction.svelte": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/TtsAudioPlayer.svelte": {
-      "crap_moderate": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/components/chat/composer/ComposerModelNotice.svelte": {
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/composer/ContextUsageRing.svelte": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/composer/VoiceModeOverlay.svelte": {
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/composer/use-attachments.svelte.ts": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/chat/composer/use-dictation.svelte.ts": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 3
-      },
-      "crap_moderate": {
-        "count": 4
-      }
-    },
-    "renderer/src/lib/components/chat/viewers/PdfViewer.svelte": {
-      "crap_moderate": {
-        "count": 1
       }
     },
     "renderer/src/lib/components/layout/AppShell.svelte": {
@@ -822,11 +838,8 @@
       }
     },
     "renderer/src/lib/components/onboarding/OnboardingStepRuntime.svelte": {
-      "complexity_critical": {
-        "count": 1
-      },
       "crap_critical": {
-        "count": 3
+        "count": 1
       },
       "crap_moderate": {
         "count": 1
@@ -880,14 +893,8 @@
       }
     },
     "renderer/src/lib/components/settings/LocalRuntimePanel.svelte": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
       "crap_high": {
-        "count": 3
+        "count": 2
       },
       "crap_moderate": {
         "count": 1
@@ -937,56 +944,6 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/thread/AssistantMessage.svelte": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/thread/Message.svelte": {
-      "crap_moderate": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/components/thread/MessageFooter.svelte": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/components/thread/MessageParts.svelte": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
-      }
-    },
-    "renderer/src/lib/components/thread/Thread.svelte": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/thread/UserMessage.svelte": {
-      "crap_critical": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/components/thread/message-parts.ts": {
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "renderer/src/lib/components/ui/SegmentedControl.svelte": {
       "crap_moderate": {
         "count": 1
@@ -1000,6 +957,191 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/agente/AgenteComposer.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/agente/AgenteSidebar.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/agente/agente-events.svelte.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/agente/agente-run.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/agente/agente.svelte.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/features/chat/AttachmentDocumentsBlock.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/Composer.svelte": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/features/chat/DocumentSurface.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/EditMessageInline.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/ModelSwitcher.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "renderer/src/lib/features/chat/SelectedTextAskAction.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/TtsAudioPlayer.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/features/chat/composer/ComposerModelNotice.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/composer/ContextUsageRing.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/composer/VoiceModeOverlay.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/composer/use-attachments.svelte.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/composer/use-dictation.svelte.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "renderer/src/lib/features/chat/thread/AssistantMessage.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/thread/Message.svelte": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/features/chat/thread/MessageFooter.svelte": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/features/chat/thread/MessageParts.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "renderer/src/lib/features/chat/thread/Thread.svelte": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/thread/UserMessage.svelte": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/thread/message-parts.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/viewers/PdfViewer.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/i18n/index.ts": {
       "crap_critical": {
         "count": 1
@@ -1010,6 +1152,11 @@
     },
     "renderer/src/lib/models/model-fit.ts": {
       "complexity_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/services/agent-artifact.ts": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -1039,6 +1186,9 @@
         "count": 1
       },
       "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
         "count": 1
       },
       "crap_critical": {
@@ -1093,7 +1243,7 @@
         "count": 1
       },
       "complexity_moderate": {
-        "count": 1
+        "count": 2
       },
       "crap_critical": {
         "count": 1
@@ -1127,7 +1277,7 @@
       }
     },
     "renderer/src/lib/services/agent-tool-runtime.ts": {
-      "complexity_moderate": {
+      "complexity_high": {
         "count": 1
       },
       "crap_high": {
@@ -1161,46 +1311,24 @@
     },
     "renderer/src/lib/services/artifact-registry.ts": {
       "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "renderer/src/lib/services/chat-api.ts": {
       "complexity_critical": {
-        "count": 5
+        "count": 4
       },
       "complexity_high": {
-        "count": 2
+        "count": 3
       },
       "crap_critical": {
-        "count": 6
+        "count": 5
       },
       "crap_high": {
         "count": 5
       },
       "crap_moderate": {
-        "count": 7
-      }
-    },
-    "renderer/src/lib/services/chatea-agent-bridge.ts": {
-      "crap_critical": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/services/chatea-agent-session.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
+        "count": 5
       }
     },
     "renderer/src/lib/services/composer-route.ts": {
@@ -1216,14 +1344,22 @@
         "count": 3
       }
     },
+    "renderer/src/lib/services/llama-releases.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/services/ocr.ts": {
       "complexity_critical": {
         "count": 1
       },
       "crap_critical": {
-        "count": 2
-      },
-      "crap_moderate": {
         "count": 1
       }
     },
@@ -1253,32 +1389,11 @@
         "count": 2
       }
     },
-    "renderer/src/lib/stores/app-context-budget-preview.ts": {
-      "crap_critical": {
-        "count": 1
-      }
-    },
     "renderer/src/lib/stores/app-context-budget.ts": {
       "complexity_critical": {
         "count": 1
       },
       "crap_critical": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/stores/app-message-pipeline.ts": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/stores/app-prompts.ts": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
         "count": 1
       }
     },
@@ -1298,10 +1413,7 @@
         "count": 1
       },
       "crap_high": {
-        "count": 5
-      },
-      "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "renderer/src/lib/stores/app-store-local-model.ts": {
@@ -1314,24 +1426,25 @@
     },
     "renderer/src/lib/stores/app.svelte.ts": {
       "complexity_critical": {
-        "count": 7
+        "count": 4
+      },
+      "complexity_high": {
+        "count": 2
+      },
+      "complexity_moderate": {
+        "count": 1
       },
       "crap_critical": {
-        "count": 16
+        "count": 5
       },
       "crap_high": {
-        "count": 10
+        "count": 5
       },
       "crap_moderate": {
-        "count": 21
+        "count": 6
       }
     },
     "renderer/src/lib/stores/capabilities.svelte.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "renderer/src/lib/stores/chatea-agent-events.svelte.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -1341,13 +1454,10 @@
         "count": 1
       },
       "crap_critical": {
-        "count": 5
-      },
-      "crap_high": {
-        "count": 5
+        "count": 1
       },
       "crap_moderate": {
-        "count": 9
+        "count": 4
       }
     },
     "renderer/src/lib/stores/hardware.svelte.ts": {
@@ -1356,14 +1466,8 @@
       }
     },
     "renderer/src/lib/stores/models.svelte.ts": {
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
-        "count": 2
+        "count": 1
       }
     },
     "renderer/src/lib/stores/tts.svelte.ts": {
@@ -1371,13 +1475,10 @@
         "count": 1
       },
       "crap_critical": {
-        "count": 3
-      },
-      "crap_high": {
-        "count": 3
+        "count": 1
       },
       "crap_moderate": {
-        "count": 3
+        "count": 2
       }
     },
     "renderer/src/lib/ui/components/AgentBlock.svelte": {
@@ -1392,6 +1493,14 @@
       },
       "crap_moderate": {
         "count": 3
+      }
+    },
+    "renderer/src/lib/ui/components/ArtifactMap.svelte": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
       }
     },
     "renderer/src/lib/ui/components/ArtifactRenderer.svelte": {
@@ -1428,6 +1537,11 @@
     },
     "renderer/src/lib/ui/components/Table.svelte": {
       "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/ui/components/map-tiles.ts": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -1522,16 +1636,11 @@
         "count": 1
       }
     },
-    "renderer/src/lib/utils/local-models.ts": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 2
-      }
-    },
     "renderer/src/lib/utils/markdown.ts": {
       "complexity_high": {
+        "count": 2
+      },
+      "crap_high": {
         "count": 1
       },
       "crap_moderate": {
@@ -1556,9 +1665,6 @@
         "count": 1
       },
       "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
         "count": 1
       }
     },
@@ -1634,79 +1740,86 @@
   "runtime_coverage_findings": [],
   "target_keys": [
     "renderer/src/lib/ui/components/Select.svelte:untested risk",
-    "renderer/src/lib/services/chatea-agent-session.ts:complexity",
-    "renderer/src/lib/utils/tool-ui.ts:high impact",
     "renderer/src/lib/services/workspace-diff.ts:untested risk",
-    "renderer/src/lib/services/chat-api.ts:high impact",
     "scripts/smoke-provider-models.mjs:untested risk",
-    "renderer/src/lib/services/runtime.ts:high impact",
-    "renderer/src/lib/services/agent-llm.ts:untested risk",
+    "renderer/src/lib/services/agent-tool-result.ts:high impact",
+    "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/services/agent-provider.ts:dead code",
-    "renderer/src/lib/stores/app.svelte.ts:high impact",
+    "main/agente/tools/builtins.ts:dead code",
+    "renderer/src/lib/services/agent-llm.ts:untested risk",
     "scripts/bench-agent-stability.mjs:complexity",
-    "renderer/src/lib/services/chatea-agent-ipc.ts:dead code",
+    "renderer/src/lib/stores/app.svelte.ts:complexity",
     "renderer/src/lib/models/model-fit.ts:high impact",
     "renderer/src/lib/ui/message-utils.ts:high impact",
-    "renderer/src/lib/services/artifact-model.ts:high impact",
+    "renderer/src/lib/services/agent-artifact.ts:high impact",
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "renderer/src/lib/ui/components/Chart.svelte:untested risk",
-    "renderer/src/lib/utils/storage.ts:high impact",
-    "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:complexity",
-    "main/search-providers/shared.ts:high impact",
-    "renderer/src/lib/utils/preview-builder.ts:untested risk",
-    "renderer/src/lib/services/agent-evidence.ts:high impact",
+    "main/agente/llm/stream-fn.ts:untested risk",
     "renderer/src/lib/stores/app-store-helpers.ts:high impact",
+    "renderer/src/lib/services/artifact-model.ts:high impact",
     "renderer/src/lib/stores/app-context-budget.ts:high impact",
+    "renderer/src/lib/utils/preview-builder.ts:untested risk",
+    "main/chat-ipc.ts:high impact",
+    "main/search-providers/shared.ts:high impact",
+    "renderer/src/lib/features/agente/agente-events.svelte.ts:dead code",
+    "renderer/src/lib/services/agent-evidence.ts:high impact",
+    "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:complexity",
     "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
+    "renderer/src/lib/services/agent-message-context.ts:high impact",
+    "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
+    "main/agente/extensions/builtin.ts:dead code",
+    "renderer/src/lib/utils/tool-ui.ts:high impact",
     "main/runtime-resolver.ts:complexity",
     "main/providers/openrouter.ts:high impact",
-    "renderer/src/lib/services/agent-artifact.ts:high impact",
     "main/whisper-resolver.ts:complexity",
+    "renderer/src/lib/services/llama-releases.ts:dead code",
+    "renderer/src/lib/services/runtime.ts:high impact",
     "main/providers/groq.ts:high impact",
-    "main/search-providers/aggregator/engines.ts:untested risk",
-    "renderer/src/lib/services/agent-tool-result.ts:high impact",
+    "renderer/src/lib/stores/app-store-local-model.ts:complexity",
+    "renderer/src/lib/utils/storage.ts:high impact",
+    "renderer/src/lib/features/agente/agente-run.ts:complexity",
+    "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
+    "main/search-providers/aggregator/engines.ts:untested risk",
+    "renderer/src/lib/utils/markdown.ts:complexity",
     "main/providers/mistral.ts:untested risk",
     "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
-    "renderer/src/lib/stores/app-store-local-model.ts:complexity",
-    "renderer/src/lib/utils/markdown.ts:high impact",
     "main/providers/helpers.ts:high impact",
-    "main/providers/gemini.ts:high impact",
-    "renderer/src/lib/components/thread/message-parts.ts:high impact",
-    "renderer/src/lib/utils/code-copy.ts:dead code",
-    "main/providers/openai-compatible.ts:untested risk",
-    "main/providers/openai.ts:untested risk",
-    "main/sandbox.ts:dead code",
-    "renderer/src/lib/services/agent-message-context.ts:high impact",
-    "renderer/src/lib/services/kokoro-tts.ts:dead code",
     "renderer/src/lib/utils/local-models.ts:high impact",
+    "main/document-markdown.ts:untested risk",
+    "main/providers/gemini.ts:high impact",
+    "renderer/src/lib/services/kokoro-tts.ts:dead code",
+    "renderer/src/lib/utils/code-copy.ts:dead code",
+    "main/sandbox.ts:dead code",
     "renderer/src/lib/services/agent.ts:high impact",
-    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
-    "main/chat-ipc.ts:untested risk",
+    "main/providers/openai.ts:untested risk",
+    "main/providers/openai-compatible.ts:untested risk",
     "renderer/src/lib/services/generated-documents.ts:high impact",
-    "renderer/src/lib/stores/models.svelte.ts:high impact",
-    "renderer/src/lib/ui/context.ts:high impact",
-    "renderer/src/lib/ui/prompt.ts:untested risk",
+    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "main/llama-runtime.ts:high impact",
-    "main/search-providers/providers.ts:high impact",
-    "renderer/src/lib/components/onboarding/OnboardingStepRuntime.svelte:complexity",
+    "renderer/src/lib/ui/prompt.ts:untested risk",
+    "renderer/src/lib/ui/context.ts:high impact",
     "main/web-scraper.ts:high impact",
+    "renderer/src/lib/stores/models.svelte.ts:high impact",
+    "main/search-providers/providers.ts:high impact",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
-    "main/search-engine.ts:complexity",
-    "main/providers/anthropic.ts:complexity",
-    "renderer/src/lib/components/settings/LocalRuntimePanel.svelte:complexity",
-    "renderer/src/lib/components/layout/AppShell.svelte:complexity",
     "main/runtime-config-resolver.ts:high impact",
+    "main/providers/anthropic.ts:complexity",
     "main/content-summarizer.ts:untested risk",
-    "renderer/src/lib/i18n/index.ts:untested risk",
-    "main/stt-engine.ts:untested risk",
-    "main/rag-engine.ts:high impact",
+    "main/search-engine.ts:complexity",
     "main/utils/logger.ts:high impact",
-    "renderer/src/lib/components/ui/Select.svelte:complexity",
+    "renderer/src/lib/components/layout/AppShell.svelte:complexity",
+    "renderer/src/lib/i18n/index.ts:untested risk",
+    "main/rag-engine.ts:high impact",
+    "main/agente/runtime.ts:complexity",
     "main/process-manager.ts:complexity",
+    "renderer/src/lib/components/ui/Select.svelte:complexity",
+    "main/stt-engine.ts:untested risk",
     "renderer/src/lib/utils/artifact-files.ts:high impact",
-    "main/providers/local.ts:complexity",
     "main/link-scorer.ts:untested risk",
+    "main/providers/local.ts:complexity",
+    "renderer/src/dev/mock-electron.ts:untested risk",
+    "main/agente/extensions/extension-runner.ts:untested risk",
     "main/web-crawler.ts:complexity",
     "scripts/smoke-search-scrape.mjs:untested risk",
     "renderer/src/lib/components/settings/ModelHubModal.svelte:complexity",
@@ -1714,8 +1827,9 @@
     "main/system-info.ts:untested risk",
     "main/generated-documents.ts:complexity",
     "renderer/src/lib/utils/chart-data.ts:complexity",
-    "renderer/src/lib/ui/parser.ts:complexity",
     "main/live-data/quotes.ts:untested risk",
+    "renderer/src/lib/ui/parser.ts:complexity",
+    "main/agente/core/agent-loop.ts:complexity",
     "main/chat-db.ts:complexity",
     "renderer/src/lib/services/ocr.ts:complexity"
   ]

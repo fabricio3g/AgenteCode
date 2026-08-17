@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ChatMessage } from '$lib/types/chat';
-  import DocumentSurface from '$lib/components/chat/DocumentSurface.svelte';
-  import type { DocumentSurfaceItem } from '$lib/components/chat/document-surface';
+  import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
+  import type { DocumentSurfaceItem } from '$lib/features/chat/document-surface';
 
   interface Props {
     slides?: ChatMessage['slides'];

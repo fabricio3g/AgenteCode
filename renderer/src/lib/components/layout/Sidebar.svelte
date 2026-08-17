@@ -7,6 +7,8 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import BrandMark from '$lib/components/BrandMark.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import AgenteSidebar from '$lib/features/agente/AgenteSidebar.svelte';
+  import { agenteStore } from '$lib/features/agente/agente.svelte';
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
@@ -99,7 +101,7 @@
   const isSearching = $derived(search.trim().length > 0);
   const matchCount = $derived(filteredChats.length);
   const sidebarIconColor = $derived('currentColor');
-  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? 'New Work' : $t('sidebar.newChat'));
+  const newButtonLabel = $derived(appStore.activeSpace === 'work' ? $t('agente.addProject') : $t('sidebar.newChat'));
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -137,6 +139,10 @@
   }
 
   function createForActiveSpace() {
+    if (appStore.activeSpace === 'work') {
+      void agenteStore.addProject();
+      return;
+    }
     appStore.createChat(appStore.activeSpace);
   }
 
@@ -276,7 +282,7 @@
       </button>
     </div>
 
-    {#if isSearching || searchFocused}
+    {#if appStore.activeSpace !== 'work' && (isSearching || searchFocused)}
       <div class="pb-3">
         <label class="relative block">
           <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={`color: ${sidebarIconColor};`} />
@@ -309,7 +315,11 @@
     {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
-      {#if groupedChats.length}
+      <!-- Code tab: the sidebar is a project-folder tree; each folder holds
+           that project's agent conversations. -->
+      {#if appStore.activeSpace === 'work'}
+        <AgenteSidebar />
+      {:else if groupedChats.length}
         {#each groupedChats as group (group.key)}
           {@const isCollapsed = !isSearching && collapsedGroups.has(group.key)}
           <div class="mb-1.5">

@@ -510,9 +510,10 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     folderId: chat.folderId ?? null,
     draft: String(chat.draft || ''),
     contextMode,
-    // Code space removed: drop codeAgent / projectId identity; keep workspace if present.
-    codeAgent: null,
-    projectId: null,
+    // Agente Coding conversations carry their project + engine session
+    // identity through persistence — resume depends on both surviving.
+    codeAgent: chat.codeAgent ?? null,
+    projectId: chat.projectId ?? null,
     workspace: chat.workspace || null,
     reasoningLevel: chat.reasoningLevel ?? null,
     composerMode: normalizeSessionComposerMode(chat.composerMode, contextMode),

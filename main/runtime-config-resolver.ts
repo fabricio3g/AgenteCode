@@ -184,6 +184,7 @@ export function readGgufMetadataFields(filePath) {
         embedding_length: null,
         head_count: null,
         head_count_kv: null,
+        expert_count: null,
         parameter_count: null,
         chat_template_uses_tools: null,
         chat_template_supports_thinking: null,
@@ -223,6 +224,10 @@ export function readGgufMetadataFields(filePath) {
         }
         if (key.endsWith('.attention.head_count_kv')) {
           if (isFinitePositiveInt(Number(value))) out.head_count_kv = Number(value);
+        }
+        // Present only on MoE architectures; gates the CPU expert-offload control.
+        if (key.endsWith('.expert_count')) {
+          if (isFinitePositiveInt(Number(value))) out.expert_count = Number(value);
         }
         if (key.endsWith('.parameter_count') || key.endsWith('.n_params')) {
           if (isFinitePositiveInt(Number(value))) out.parameter_count = Number(value);
@@ -458,6 +463,21 @@ function pickDeviceForBackend(backend, runtimeCaps) {
 
 // ── Runtime Config Resolution ──
 
+/**
+ * Resolves backend, device, context and layer counts for a model.
+ *
+ * Two callers with different needs:
+ *
+ * - `buildLlamaArgs` uses this for backend/device selection, and consults the
+ *   `*Source` fields to decide which values are worth passing on the command
+ *   line at all. Anything we leave off is sized by llama.cpp's own `--fit`,
+ *   which measures real device memory instead of estimating from file size.
+ * - `getRecommendedSettings` uses the estimated context/layer numbers to fill
+ *   the load dialog's "Apply recommended" preset and memory gauges.
+ *
+ * So the heuristic branches below still earn their keep for the second caller
+ * even though they no longer drive startup.
+ */
 export function resolveRuntimeConfig(options = {}) {
   const {
     modelPath,
@@ -700,6 +720,11 @@ export function resolveRuntimeConfig(options = {}) {
     ggufContextLength,
     ggufBlockCount: hasModelBlockCount ? ggufBlockCount : null,
     contextSource,
+    // Provenance: 'user' means the person picked this number and we must honour
+    // it. Anything else is our estimate, which llama.cpp's --fit beats.
+    gpuLayersSource: (userAskedMaxGpu || hasUserGpuNumeric) ? 'user' : 'auto',
+    batchSource: batchSize ? 'user' : 'auto',
+    ubatchSource: ubatchSize ? 'user' : 'auto',
     reasonLog
   };
 
@@ -761,12 +786,15 @@ function estimateTokensFromMessages(messages) {
 // ── Startup Log Line ──
 
 export function formatStartupLog(resolved) {
+  // `(auto)` marks values we resolved for display but did not pass on the
+  // command line — llama.cpp's own --fit decides those.
+  const mark = (source) => (source === 'user' ? '' : '(auto)');
   const parts = [
     `[runtime]`,
     `backend=${resolved.backend}`,
     resolved.selectedDevice ? `device=${resolved.selectedDevice}` : null,
-    `gpuLayers=${resolved.gpuLayers}`,
-    `ctx=${resolved.contextSize}`,
+    `gpuLayers=${resolved.gpuLayers}${mark(resolved.gpuLayersSource)}`,
+    `ctx=${resolved.contextSize}${mark(resolved.contextSource)}`,
   ].filter(Boolean);
 
   if (resolved.ggufContextLength != null) {

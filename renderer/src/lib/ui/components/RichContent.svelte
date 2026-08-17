@@ -5,7 +5,7 @@
   import type { ActionEvent } from '$lib/ui';
   import { renderMarkdown, observeLazyHighlight, splitStreamingMarkdown } from '$lib/utils/markdown';
   import { parseContentSegments, sanitizeAssistantArtifacts, stripChartBlocks } from '$lib/utils/charts';
-  import ChartBlock from '$lib/components/chat/ChartBlock.svelte';
+  import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import Renderer from '../Renderer.svelte';
   import { hasUIContent, uiChatLibrary } from '..';
   import { domainLabel } from '../message-utils';

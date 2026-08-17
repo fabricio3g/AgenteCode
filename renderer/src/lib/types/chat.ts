@@ -225,11 +225,11 @@ export interface AgentArtifact {
 export type WorkProductKind = 'report' | 'documents' | 'spreadsheet' | 'presentation' | 'bundle';
 export type WorkProductStatus = 'creating' | 'ready' | 'partial' | 'failed';
 
-export type CodeAgentDriverKind = 'chatea' | 'chatea-agent' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
+export type CodeAgentDriverKind = 'agente' | 'chatea' | 'chatea-agent' | 'codex' | 'claude' | 'cursor' | 'opencode' | 'pi';
 export type CodeAgentInstanceId = string;
 export type CodeAgentProviderId = CodeAgentInstanceId;
 export type CodeAgentProviderStatus = 'ready' | 'missing' | 'login' | 'soon' | 'disabled';
-export type CodeAgentRuntimeMode = 'full' | 'supervised';
+export type CodeAgentRuntimeMode = 'full' | 'supervised' | 'plan';
 
 export interface CodeAgentProvider {
   id: CodeAgentInstanceId;
@@ -499,6 +499,13 @@ export interface AppConfig {
       mtp?: boolean;
       mtp_draft_path?: string | null;
       mtp_draft_n_max?: number | null;
+      cpu_moe?: boolean;
+      n_cpu_moe?: number | null;
+      context_shift?: boolean;
+      cache_ram_mb?: number | null;
+      cache_reuse?: number | null;
+      swa_full?: boolean;
+      split_mode?: string;
     };
   };
   search?: {

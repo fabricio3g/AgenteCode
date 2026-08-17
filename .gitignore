@@ -27,3 +27,4 @@ resources/bin/**
 /fallow-report.txt
 /fallow-dead-code-full.json
 nul
+.zcode/

@@ -21,6 +21,8 @@ export async function downloadRuntime(payload: {
   download_url: string;
   asset_name: string;
   release_tag: string;
+  /** Extra archives extracted alongside the runtime, e.g. Windows CUDA `cudart-*`. */
+  companions?: { asset_name: string; download_url: string }[];
 }): Promise<{ success: boolean; runtime_id: string; path: string }> {
   return invoke<{ success: boolean; runtime_id: string; path: string }>('download_runtime', { payload });
 }

@@ -6,10 +6,12 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { deleteRuntimeBinary, downloadRuntime, getInstalledRuntimes } from '$lib/services/files';
-  import { getSupervisorStatus, stopLlama } from '$lib/services/runtime';
+  import { getSupervisorStatus, getRuntimeTelemetry, stopLlama } from '$lib/services/runtime';
+  import type { RuntimeTelemetry } from '$lib/types/tauri';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { listen } from '$lib/services/tauri';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
+  import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset } from '$lib/services/llama-releases';
 
   let { closeOnUse = false, embedded = false } = $props<{ closeOnUse?: boolean; embedded?: boolean }>();
 
@@ -19,100 +21,23 @@
   const hasGpu = $derived(platformInfo.has_gpu);
   const gpuBackend = $derived(platformInfo.gpu_backend.toLowerCase());
 
-  type ReleaseAsset = { name: string; url: string; tag: string; label: string; variant: 'recommended' | 'gpu' | 'cpu'; description: string };
-
   let releaseAssets = $state<ReleaseAsset[]>([]);
+  let releaseExtras = $state<ReleaseAsset[]>([]);
   let loadingRelease = $state(false);
   let releaseError = $state('');
   let releaseTag = $state('');
-
-  const FALLBACK_TAG = 'b10159';
-  const FALLBACK_BASE = `https://github.com/ggerganov/llama.cpp/releases/download/${FALLBACK_TAG}`;
-
-  function buildFallbackAssets(): ReleaseAsset[] {
-    const { os, arch } = platform;
-    const tag = FALLBACK_TAG;
-    const map: { os: string; arch: string; name: string; variant: ReleaseAsset['variant']; description: string }[] = [
-      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-x64.tar.gz`, variant: 'cpu', description: 'CPU-only - works on all hardware' },
-      { os: 'linux', arch: 'x64', name: `llama-${tag}-bin-ubuntu-vulkan-x64.tar.gz`, variant: 'gpu', description: 'GPU acceleration via Vulkan (AMD / Intel)' },
-      { os: 'linux', arch: 'arm64', name: `llama-${tag}-bin-ubuntu-arm64.tar.gz`, variant: 'cpu', description: 'CPU-only - ARM64' },
-      { os: 'macos', arch: 'arm64', name: `llama-${tag}-bin-macos-arm64.tar.gz`, variant: 'recommended', description: 'Apple Silicon / Metal GPU acceleration' },
-      { os: 'macos', arch: 'x64', name: `llama-${tag}-bin-macos-x64.tar.gz`, variant: 'cpu', description: 'macOS Intel - CPU' },
-      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-cpu-x64.zip`, variant: 'cpu', description: 'CPU - x64' },
-      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-cuda-12.4-x64.zip`, variant: 'gpu', description: 'NVIDIA GPU acceleration (CUDA 12.4)' },
-      { os: 'windows', arch: 'x64', name: `llama-${tag}-bin-win-vulkan-x64.zip`, variant: 'gpu', description: 'GPU acceleration via Vulkan (AMD / Intel)' },
-    ];
-    const forPlatform = map.filter(a => a.os === os && (a.arch === arch || os === 'macos'));
-    const assets: ReleaseAsset[] = forPlatform.map(a => {
-      let variant = a.variant;
-      if (variant === 'cpu' && !hasGpu) variant = 'recommended';
-      if (variant === 'gpu' && gpuBackend === 'cuda' && a.description.includes('CUDA')) variant = 'recommended';
-      if (variant === 'gpu' && gpuBackend === 'vulkan' && a.description.includes('Vulkan')) variant = 'recommended';
-      return { name: a.name, url: `${FALLBACK_BASE}/${a.name}`, tag, label: a.name.replace(/^llama-[^-]+-bin-/, '').replace(/\.(?:zip|tar\.gz)$/, ''), variant, description: a.description };
-    });
-    const order = { recommended: 0, gpu: 1, cpu: 2 };
-    return assets.sort((a, b) => order[a.variant] - order[b.variant]);
-  }
 
   async function fetchLatestRelease() {
     loadingRelease = true;
     releaseError = '';
     releaseAssets = [];
+    releaseExtras = [];
     try {
-      const res = await fetch('https://api.github.com/repos/ggerganov/llama.cpp/releases/latest', {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'chatealm-desktop'
-        }
-      });
-      if (res.status === 403 || res.status === 429) {
-        releaseTag = FALLBACK_TAG;
-        releaseAssets = buildFallbackAssets();
-        releaseError = `GitHub API rate-limited - showing known release ${FALLBACK_TAG}`;
-        return;
-      }
-      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-      const data = await res.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] };
-      releaseTag = data.tag_name;
-      const { os, arch } = platform;
-      const assets: ReleaseAsset[] = [];
-
-      for (const a of (data.assets || [])) {
-        const n = a.name.toLowerCase();
-        if (!n.endsWith('.zip') && !n.includes('.tar')) continue;
-        const matchLinux = os === 'linux' && (n.includes('ubuntu') || n.includes('linux'));
-        const matchMac = os === 'macos' && n.includes('macos');
-        const matchWin = os === 'windows' && n.includes('win');
-        if (!matchLinux && !matchMac && !matchWin) continue;
-        if (arch === 'arm64' && !n.includes('arm') && !n.includes('arm64') && os !== 'macos') continue;
-        if (arch === 'x64' && n.includes('arm64')) continue;
-        if (n.includes('blas') || n.includes('sycl') || n.includes('rpc')) continue;
-        const isCuda = n.includes('cuda');
-        const isVulkan = n.includes('vulkan');
-        const isMetal = n.includes('metal') || os === 'macos';
-        let variant: ReleaseAsset['variant'] = 'cpu';
-        let description = 'CPU-only - works on all hardware';
-        if (isCuda) { variant = gpuBackend === 'cuda' ? 'recommended' : 'gpu'; description = 'NVIDIA GPU acceleration (CUDA)'; }
-        else if (isVulkan) { variant = gpuBackend === 'vulkan' ? 'recommended' : 'gpu'; description = 'GPU acceleration via Vulkan (AMD / Intel)'; }
-        else if (isMetal && os === 'macos') { variant = 'recommended'; description = 'Apple Silicon / Metal GPU acceleration'; }
-        else if (!hasGpu) variant = 'recommended';
-        if (assets.some(x => x.variant === variant && x.label.includes('CUDA') && isCuda)) continue;
-        assets.push({
-          name: a.name,
-          url: a.browser_download_url,
-          tag: data.tag_name,
-          label: a.name.replace(/^llama-[^-]+-bin-/, '').replace(/\.(zip|tar\.gz|tgz)$/, ''),
-          variant,
-          description
-        });
-      }
-      const order = { recommended: 0, gpu: 1, cpu: 2 };
-      releaseAssets = assets.sort((a, b) => order[a.variant] - order[b.variant]).slice(0, 8);
-    } catch {
-      releaseTag = FALLBACK_TAG;
-      releaseAssets = buildFallbackAssets();
-      releaseError = `Could not reach GitHub - showing known release ${FALLBACK_TAG}`;
+      const result = await fetchLlamaReleaseAssets(platformInfo);
+      releaseTag = result.tag;
+      releaseAssets = result.assets;
+      releaseExtras = result.extras;
+      releaseError = result.error;
     } finally {
       loadingRelease = false;
     }
@@ -120,11 +45,13 @@
 
   let runtimes = $state<any[]>([]);
   let supervisor = $state<any | null>(null);
+  let telemetry = $state<RuntimeTelemetry | null>(null);
 
   async function refresh() {
     const out = await getInstalledRuntimes() as { runtimes?: any[] };
     runtimes = Array.isArray(out?.runtimes) ? out.runtimes : [];
     supervisor = await getSupervisorStatus().catch(() => null);
+    telemetry = await getRuntimeTelemetry().catch(() => null);
   }
 
   async function removeRuntime(path: string) {
@@ -153,6 +80,7 @@
   let customTag = $state('');
 
   let unlisten: (() => void) | null = null;
+  let telemetryTimer: ReturnType<typeof setInterval> | null = null;
 
   async function installAsset(asset: ReleaseAsset) {
     downloading = asset.name;
@@ -160,7 +88,7 @@
     downloadPhase = 'downloading';
     downloadError = '';
     try {
-      await downloadRuntime({ download_url: asset.url, asset_name: asset.name, release_tag: asset.tag });
+      await downloadRuntime(toDownloadPayload(asset));
       await refresh();
     } catch (e: any) {
       downloadError = String(e?.message || e || 'Download failed');
@@ -194,9 +122,16 @@
       downloadProgress = Number(event?.progress ?? event?.payload?.progress ?? 0);
       downloadPhase = String(event?.phase ?? event?.payload?.phase ?? 'downloading');
     }) as (() => void);
+
+    telemetryTimer = setInterval(() => {
+      void getRuntimeTelemetry().then((next) => { telemetry = next; }).catch(() => { telemetry = null; });
+    }, 2000);
   });
 
-  onDestroy(() => { unlisten?.(); });
+  onDestroy(() => {
+    unlisten?.();
+    if (telemetryTimer) clearInterval(telemetryTimer);
+  });
 </script>
 
 <div class={embedded ? 'rounded-2xl bg-[var(--muted)]' : 'flex-1 overflow-y-auto'}>
@@ -256,7 +191,9 @@
                 {/if}
                 <span class="text-[12px] font-medium text-[var(--text-secondary)]">{asset.label}</span>
               </div>
-              <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{asset.description}</p>
+              <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">
+                {asset.description}{#if asset.companions.length} — includes the CUDA runtime{/if}
+              </p>
               {#if isDownloading}
                 <div class="mt-1.5 space-y-1">
                   <div class="h-2 w-full overflow-hidden rounded-full bg-[var(--surface)]">
@@ -291,9 +228,26 @@
 
     <button class="flex items-center gap-1 border-0 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => (showAdvanced = !showAdvanced)}>
       {#if showAdvanced}<ChevronUp class="h-3.5 w-3.5" />{:else}<ChevronDown class="h-3.5 w-3.5" />{/if}
-      Custom / manual URL
+      Other builds / manual URL
     </button>
     {#if showAdvanced}
+      {#if releaseExtras.length}
+        <div class="space-y-2 rounded-xl bg-[var(--surface)] px-4 py-3">
+          <p class="text-[12px] text-[var(--text-muted)]">Superseded builds for this platform.</p>
+          {#each releaseExtras as extra}
+            <div class="flex items-center justify-between gap-3">
+              <span class="min-w-0 truncate text-[12px] text-[var(--text-secondary)]">{extra.label}</span>
+              <button
+                class="shrink-0 rounded-full px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
+                onclick={() => installAsset(extra)}
+                disabled={!!downloading}
+              >
+                Install
+              </button>
+            </div>
+          {/each}
+        </div>
+      {/if}
       <div class="space-y-2 rounded-xl bg-[var(--surface)] px-4 py-3">
         <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
         <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
@@ -355,9 +309,12 @@
         <div>
           <p class="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Runtime process</p>
           <p class="mt-0.5 text-[13px] font-medium text-[var(--text-secondary)]">
-            {supervisor.state || 'unknown'}
+            {supervisor.load_phase || supervisor.state || 'unknown'}
             {#if supervisor.active_model} / <span class="text-[var(--text-muted)]">{supervisor.active_model.split(/[\\/]/).pop()}</span>{/if}
           </p>
+          {#if supervisor.build_info}
+            <p class="mt-0.5 text-[11px] text-[var(--text-muted)]">{supervisor.build_info}</p>
+          {/if}
         </div>
         {#if supervisor.state !== 'idle' && supervisor.state !== 'unknown'}
           <button class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={stopRuntime}>
@@ -365,6 +322,41 @@
           </button>
         {/if}
       </div>
+
+      <!-- Measured from the server's own /props and /slots, not estimated. -->
+      {#if supervisor.n_ctx || telemetry}
+        <div class="mt-3 grid gap-2 grid-cols-2 sm:grid-cols-4">
+          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
+            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Context</div>
+            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
+              {(telemetry?.context_size ?? supervisor.n_ctx)?.toLocaleString() ?? '--'}
+            </div>
+          </div>
+          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
+            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]" title="High watermark of context observed since the server started">Peak ctx</div>
+            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
+              {telemetry?.context_percent != null ? `${telemetry.context_percent}%` : '--'}
+            </div>
+          </div>
+          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
+            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Slots</div>
+            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
+              {telemetry ? `${telemetry.slots_busy}/${telemetry.slots_total}` : (supervisor.total_slots ?? '--')}
+            </div>
+          </div>
+          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
+            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Tok/s</div>
+            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
+              {telemetry?.tokens_per_second != null ? telemetry.tokens_per_second.toFixed(1) : '--'}
+            </div>
+          </div>
+        </div>
+        {#if telemetry?.context_percent != null}
+          <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
+            <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width:{telemetry.context_percent}%"></div>
+          </div>
+        {/if}
+      {/if}
     </div>
   {/if}
 </div>
