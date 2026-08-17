@@ -67,7 +67,7 @@
     <div class="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
       <div class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span class="truncate font-medium text-foreground">{activeProject?.rootName ?? chat.title}</span>
-        <span class="hidden truncate font-mono text-[10px] text-muted-foreground/70 sm:inline">{activeProject?.rootPath}</span>
+        <span class="hidden truncate text-[10px] text-muted-foreground/70 sm:inline">{activeProject?.rootPath}</span>
       </div>
       <div class="flex items-center gap-2">
         {#if run?.checkpoints?.length}

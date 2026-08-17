@@ -61,7 +61,6 @@
     "renderer/src/lib/features/agente/agente-events.svelte.ts:disposeCodeAgentEventStore",
     "renderer/src/lib/features/agente/agente-ipc.ts:detectAgente",
     "renderer/src/lib/features/agente/agente-ipc.ts:followUpAgente",
-    "renderer/src/lib/features/agente/agente-ipc.ts:setAgenteModel",
     "renderer/src/lib/features/agente/agente-ipc.ts:closeAgenteSession",
     "renderer/src/lib/features/agente/agente-ipc.ts:newAgenteSession",
     "renderer/src/lib/features/agente/agente-ipc.ts:listAgenteSessions",

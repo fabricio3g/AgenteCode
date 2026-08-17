@@ -18,6 +18,7 @@
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { agenteStore } from './agente.svelte';
   import { setAgenteModel } from './agente-ipc';
+  import { flyAndScale } from '$lib/utils/transitions';
 
   let { chat }: { chat: ChatSession } = $props();
 
@@ -167,22 +168,25 @@
             {#if modeMenuOpen}
               <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <div class="fixed inset-0 z-40" onclick={() => (modeMenuOpen = false)}></div>
-              <div class="absolute bottom-10 left-0 z-50 w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+              <div
+                class="absolute bottom-10 left-0 z-50 flex w-64 flex-col gap-1 rounded-xl border border-border bg-popover p-1.5 shadow-lg"
+                transition:flyAndScale={{ y: 8, start: 0.96, duration: 180 }}
+              >
                 {#each modes as mode (mode.id)}
                   <button
                     type="button"
-                    class="mode-option flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-muted"
+                    class="mode-option flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition"
                     class:is-selected={mode.id === runtimeMode}
                     onclick={() => selectMode(mode.id)}
                   >
-                    <span class="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                    <span class="mode-icon mt-0.5 flex size-4 shrink-0 items-center justify-center">
                       {#if mode.id === runtimeMode}
                         <Check class="size-3.5 text-foreground" />
                       {:else}
-                        <mode.icon class="size-3.5 text-muted-foreground" />
+                        <mode.icon class="size-3.5" />
                       {/if}
                     </span>
-                    <span class="min-w-0 flex-1">
+                    <span class="option-body min-w-0 flex-1">
                       <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
                       <span class="block text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
                     </span>
@@ -312,6 +316,18 @@
     color: var(--foreground);
   }
 
+  .mode-trigger:active {
+    transform: scale(0.98);
+  }
+
+  .mode-trigger :global(svg) {
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+
+  .mode-trigger:hover :global(svg) {
+    transform: scale(1.08);
+  }
+
   .mode-trigger .trigger-label {
     color: inherit;
     font-size: 0.8125rem;
@@ -323,10 +339,36 @@
     border: none;
     background: transparent;
     cursor: pointer;
+    transition:
+      background-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .mode-option:hover {
+    background: var(--muted);
   }
 
   .mode-option.is-selected {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  /* Icons and text lean in on hover: the icon warms to full contrast and the
+     label nudges a pixel, so the row answers before the fill lands. */
+  .mode-icon {
+    color: var(--muted-foreground);
+    transition: color var(--motion-fast) var(--motion-ease);
+  }
+
+  .mode-option:hover .mode-icon,
+  .mode-option.is-selected .mode-icon {
+    color: var(--foreground);
+  }
+
+  .option-body {
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+
+  .mode-option:hover .option-body {
+    transform: translateX(1px);
   }
 
   .trailing {

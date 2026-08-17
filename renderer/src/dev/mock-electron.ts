@@ -178,7 +178,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   'agente_set_extension_enabled': () => ({ ok: true })
 };
 
-export function installMockElectron(): void {
+function installMockElectron(): void {
   if (window.electronAPI) return;
   window.electronAPI = {
     isElectron: true,
@@ -223,3 +223,8 @@ export function installMockElectron(): void {
 }
 
 installMockElectron();
+
+// Side-effect-only module: `main.ts` imports it for the `?mock=1` harness and
+// never reads a symbol from it. The empty export keeps TypeScript treating the
+// file as a module (see `main.ts` dynamic import) without exposing dead API.
+export {};
