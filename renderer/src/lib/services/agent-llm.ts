@@ -6,6 +6,7 @@ import { buildReasoningRequest, hasConfiguredVisionModel, toRequestMessages } fr
 import type { AppConfig, ReasoningLevel } from '$lib/types/chat';
 import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 import { toErrorMessage } from '$lib/utils/errors';
+import { samplingParams } from '$shared/llm-params';
 
 export type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 
@@ -66,11 +67,7 @@ async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport 
     apiKey: provider.api_key || '',
     model: provider.model || '',
     modelForMessages: provider.model || '',
-    params: {
-      ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-      ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-      ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
-    }
+    params: samplingParams(provider)
   };
 }
 

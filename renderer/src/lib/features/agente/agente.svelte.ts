@@ -9,7 +9,7 @@ import {
 import { invoke } from '$lib/services/tauri';
 import { createId } from '$lib/utils/id';
 import type { ChatSession, CodeProject } from '$lib/types/chat';
-import type { AgenteCheckpointSummary, CodeAgentEvent } from './agente-protocol';
+import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createAgenteRunState, type AgenteRunState } from './agente-run';
 import {
   startAgenteSession,

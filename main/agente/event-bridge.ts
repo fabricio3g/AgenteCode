@@ -1,6 +1,6 @@
 // ── Event bridge to the renderer ───────────────────────────────────────
 import type { BrowserWindow } from 'electron';
-import type { CodeAgentEvent } from './types.ts';
+import type { CodeAgentEvent } from '../../shared/agente-protocol.ts';
 
 let getMainWindow: (() => BrowserWindow | null) | null = null;
 
