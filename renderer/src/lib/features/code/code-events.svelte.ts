@@ -2,7 +2,7 @@
 // dormant chatea-agent events store.
 
 import { listen } from '$lib/services/bridge';
-import type { CodeAgentEvent } from './code-protocol';
+import type { CodeAgentEvent } from '$shared/agente-protocol';
 
 type EventHandler = (event: CodeAgentEvent) => void;
 

@@ -13,6 +13,7 @@ export default defineConfig({
   resolve: {
     alias: {
       $lib: path.resolve(__dirname, 'src/lib'),
+      $shared: path.resolve(__dirname, '../shared'),
       'kokoro-js': path.resolve(__dirname, 'node_modules/kokoro-js/dist/kokoro.web.js')
     }
   },

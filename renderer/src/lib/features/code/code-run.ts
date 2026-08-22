@@ -1,7 +1,7 @@
 // Agente run state: folds CodeAgentEvent pushes into AgentSteps + streamed
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
-import type { CodeAgentEvent, CodeStopReason, CodeTodoItem } from './code-protocol';
+import type { CodeAgentEvent, CodeStopReason, CodeTodoItem } from '$shared/agente-protocol';
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange } from '$lib/types/chat';
 
 export interface AgenteUsage {

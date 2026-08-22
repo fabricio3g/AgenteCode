@@ -18,14 +18,24 @@ import { createProviderStreamFn, type AgenteTransport } from './llm/stream-fn.ts
 import { ToolRegistry } from './tools/registry.ts';
 import { createBuiltinTools } from './tools/builtins.ts';
 import { createTodoTool, type TodoStore } from './tools/todo.ts';
-import { CheckpointStore, type CheckpointSummary } from './tools/checkpoint.ts';
-import { SessionTree, projectSlug } from './sessions/session-tree.ts';
+import { CheckpointStore } from './tools/checkpoint.ts';
+import { SessionTree, newSessionId, projectSlug } from './sessions/session-tree.ts';
 import { buildAgenteSystemPrompt, renderTodosSection } from './prompts.ts';
 import { ExtensionRunner } from './extensions/extension-runner.ts';
 import { createBuiltinExtensions } from './extensions/builtin.ts';
 import type { AgenteExtensionDefinition } from './extensions/extension-api.ts';
 import { emitCodeAgentEvent } from './event-bridge.ts';
-import type { CodeAgentEvent, AgenteStartSessionArgs } from './types.ts';
+import { samplingParams } from '../../shared/llm-params.ts';
+import type {
+  AgenteCheckpointSummary,
+  AgenteRuntimeMode,
+  AgenteSessionInfo,
+  AgenteStartSessionArgs,
+  ApprovalDecision,
+  CodeAgentEvent,
+  CodeStopReason,
+  CodeTodoItem
+} from '../../shared/agente-protocol.ts';
 
 const DEFAULT_MAX_TURNS = 40;
 /** Assumed context window when the provider cannot tell us. */
@@ -85,7 +95,7 @@ interface RuntimeSession {
   checkpoints: CheckpointStore | null;
   checkpointsEnabled: boolean;
   transport: AgenteTransport;
-  runtimeMode: 'full' | 'supervised' | 'plan';
+  runtimeMode: AgenteRuntimeMode;
   /** Plan mode: the run's plan was approved; mutations may proceed. */
   planApproved: boolean;
   /** Approval requests that are plan approvals (vs per-action). */
@@ -100,7 +110,7 @@ interface RuntimeSession {
   currentTurn: number;
   /** Files captured for the current turn's checkpoint. */
   capturedThisTurn: Set<string>;
-  pendingApprovals: Map<string, (decision: 'allow' | 'deny') => void>;
+  pendingApprovals: Map<string, (decision: ApprovalDecision) => void>;
   disposed: boolean;
 }
 
@@ -141,11 +151,7 @@ export function resolveTransport(providerName: string, modelOverride?: string, t
     baseUrl: provider.base_url || 'https://api.openai.com/v1',
     model: modelOverride || provider.model || '',
     reasoning,
-    params: {
-      ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-      ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-      ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
-    }
+    params: samplingParams(provider)
   };
 }
 
@@ -241,7 +247,7 @@ function requestApproval(
   args: Record<string, unknown>,
   diff: string | undefined,
   kind: 'action' | 'plan'
-): Promise<'allow' | 'deny'> {
+): Promise<ApprovalDecision> {
   const requestId = `apr-${kind === 'plan' ? 'plan' : 'act'}-${crypto.randomUUID().slice(0, 8)}`;
   if (kind === 'plan') session.planRequests.add(requestId);
   emit(session, {
@@ -253,7 +259,7 @@ function requestApproval(
     diff,
     kind
   });
-  return new Promise<'allow' | 'deny'>((resolve) => {
+  return new Promise<ApprovalDecision>((resolve) => {
     session.pendingApprovals.set(requestId, (decision) => {
       if (decision === 'allow' && kind === 'plan') session.planApproved = true;
       emit(session, { type: 'approval_resolved', chatId: session.chatId, requestId, decision });
@@ -595,7 +601,7 @@ export function abort(chatId: string): { ok: boolean } {
   return { ok: true };
 }
 
-export function respondApproval(chatId: string, requestId: string, decision: 'allow' | 'deny'): { ok: boolean } {
+export function respondApproval(chatId: string, requestId: string, decision: ApprovalDecision): { ok: boolean } {
   const session = requireSession(chatId);
   if (!session) return { ok: false };
   const resolve = session.pendingApprovals.get(requestId);
@@ -604,7 +610,7 @@ export function respondApproval(chatId: string, requestId: string, decision: 'al
   return { ok: true };
 }
 
-export function setRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): { ok: boolean } {
+export function setRuntimeMode(chatId: string, mode: AgenteRuntimeMode): { ok: boolean } {
   const session = requireSession(chatId);
   if (!session) return { ok: false };
   session.runtimeMode = mode;
@@ -681,7 +687,7 @@ export async function compact(chatId: string, customInstructions?: string): Prom
   }
 }
 
-export async function listCheckpoints(chatId: string): Promise<CheckpointSummary[]> {
+export async function listCheckpoints(chatId: string): Promise<AgenteCheckpointSummary[]> {
   const session = requireSession(chatId);
   if (!session?.checkpoints) return [];
   return session.checkpoints.listTurns();

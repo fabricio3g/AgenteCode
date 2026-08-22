@@ -20,7 +20,7 @@ import {
   setExtensionEnabled
 } from '../agente/runtime.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
-import type { AgenteStartSessionArgs } from '../agente/types.ts';
+import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision } from '../../shared/agente-protocol.ts';
 
 type AgenteHandlerDeps = {
   ipcMain: IpcMain;
@@ -45,11 +45,11 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
     setModel(args.chatId, args.provider, args.model, args.thinkingLevel)
   );
 
-  ipcMain.handle('agente_set_runtime_mode', (_e, args: { chatId: string; mode: 'full' | 'supervised' | 'plan' }) =>
+  ipcMain.handle('agente_set_runtime_mode', (_e, args: { chatId: string; mode: AgenteRuntimeMode }) =>
     setRuntimeMode(args.chatId, args.mode)
   );
 
-  ipcMain.handle('agente_respond_approval', (_e, args: { chatId: string; requestId: string; decision: 'allow' | 'deny' }) =>
+  ipcMain.handle('agente_respond_approval', (_e, args: { chatId: string; requestId: string; decision: ApprovalDecision }) =>
     respondApproval(args.chatId, args.requestId, args.decision)
   );
 

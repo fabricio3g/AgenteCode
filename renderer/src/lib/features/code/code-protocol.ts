@@ -1,6 +1,19 @@
-// Agente Coding wire protocol — renderer copy of main/agente/types.ts.
-// Kept in sync by hand; the shapes are frozen behind the `code_agent_event`
-// channel and the `agente_*` invoke channels.
+// ── Agente wire protocol (main ⇄ renderer) ─────────────────────────────
+// The single definition of what crosses the Electron IPC boundary for
+// Agente Coding: a flat CodeAgentEvent stream pushed over the
+// `code_agent_event` channel, and the argument/result shapes of the
+// `agente_*` invoke channels.
+//
+// Both processes import this file — main by relative path, the renderer
+// through the `$shared/*` alias — so a change to the contract is a compile
+// error on the side that has not caught up, instead of a silent drift
+// between two hand-synced copies.
+
+/** How much autonomy the runtime has: plan-first, per-action approval, or free rein. */
+export type AgenteRuntimeMode = 'full' | 'supervised' | 'plan';
+
+/** Answer to an `approval_request`. */
+export type ApprovalDecision = 'allow' | 'deny';
 
 export type CodeStopReason = 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
 
@@ -25,7 +38,7 @@ export type CodeAgentEvent =
   | { type: 'compaction_start'; chatId: string; reason: string }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
-  | { type: 'approval_resolved'; chatId: string; requestId: string; decision: 'allow' | 'deny' }
+  | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }
   | {
       type: 'checkpoint_finalized';
@@ -50,16 +63,29 @@ export interface AgenteStartSessionArgs {
   provider: string;
   model: string;
   thinkingLevel?: string;
-  runtimeMode: 'full' | 'supervised' | 'plan';
+  runtimeMode: AgenteRuntimeMode;
   systemPromptOverride?: string;
   resumeSessionId?: string;
   checkpointsEnabled?: boolean;
 }
 
-export interface CodeCheckpointSummary {
+export interface AgenteSessionInfo {
+  sessionId: string;
+  projectRoot: string;
+  createdAt: number;
+  updatedAt: number;
+  entryCount: number;
+  title: string;
+}
+
+/** One turn's checkpoint, as returned by `agente_list_checkpoints`. */
+export interface AgenteCheckpointSummary {
   turnIndex: number;
   createdAt: number;
   fileCount: number;
   additions: number;
   deletions: number;
 }
+
+/** Alias kept for renderer code that imports CodeCheckpointSummary. */
+export type CodeCheckpointSummary = AgenteCheckpointSummary;

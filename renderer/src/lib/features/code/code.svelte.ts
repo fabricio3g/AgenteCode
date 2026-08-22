@@ -10,7 +10,7 @@ import { invoke } from '$lib/services/bridge';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject } from '$lib/types/chat';
-import type { CodeCheckpointSummary, CodeAgentEvent } from './code-protocol';
+import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, type CodeRunState } from './code-run';
 import {
   startCodeAgentSession,
@@ -28,7 +28,7 @@ import { subscribeToCodeAgentEvents } from './code-events.svelte';
 interface AgenteRun extends CodeRunState {
   chatId: string;
   running: boolean;
-  checkpoints: CodeCheckpointSummary[];
+  checkpoints: AgenteCheckpointSummary[];
   /**
    * Input handed to the engine but not yet consumed by a turn (steers and
    * follow-ups). Approximate — the engine drains asynchronously — but it

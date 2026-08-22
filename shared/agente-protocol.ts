@@ -1,14 +1,30 @@
 // ── Agente wire protocol (main ⇄ renderer) ─────────────────────────────
-// Same shapes the dormant chatea-agent harness defined: a flat
-// CodeAgentEvent stream pushed over the `code_agent_event` IPC channel and
-// a command set accepted over `agente_*` invoke channels. The renderer
-// keeps its own copy of these unions in features/code/code-protocol.ts.
+// The single definition of what crosses the Electron IPC boundary for
+// Agente Coding: a flat CodeAgentEvent stream pushed over the
+// `code_agent_event` channel, and the argument/result shapes of the
+// `agente_*` invoke channels.
+//
+// Both processes import this file — main by relative path, the renderer
+// through the `$shared/*` alias — so a change to the contract is a compile
+// error on the side that has not caught up, instead of a silent drift
+// between two hand-synced copies.
 
-import type { StopReason, TodoItem } from './core/types.ts';
+/** How much autonomy the runtime has: plan-first, per-action approval, or free rein. */
+export type AgenteRuntimeMode = 'full' | 'supervised' | 'plan';
+
+/** Answer to an `approval_request`. */
+export type ApprovalDecision = 'allow' | 'deny';
+
+export type CodeStopReason = 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
+
+export interface CodeTodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
 
 export type CodeAgentEvent =
   | { type: 'agent_start'; chatId: string }
-  | { type: 'agent_end'; chatId: string; stopReason: StopReason }
+  | { type: 'agent_end'; chatId: string; stopReason: CodeStopReason }
   | { type: 'turn_start'; chatId: string; turnIndex: number }
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
@@ -18,11 +34,11 @@ export type CodeAgentEvent =
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean }
   | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number }
   | { type: 'length_continue'; chatId: string; turnIndex: number }
-  | { type: 'todo_update'; chatId: string; todos: TodoItem[] }
+  | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
-  | { type: 'approval_resolved'; chatId: string; requestId: string; decision: 'allow' | 'deny' }
+  | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }
   | {
       type: 'checkpoint_finalized';
@@ -47,8 +63,29 @@ export interface AgenteStartSessionArgs {
   provider: string;
   model: string;
   thinkingLevel?: string;
-  runtimeMode: 'full' | 'supervised' | 'plan';
+  runtimeMode: AgenteRuntimeMode;
   systemPromptOverride?: string;
   resumeSessionId?: string;
   checkpointsEnabled?: boolean;
 }
+
+export interface AgenteSessionInfo {
+  sessionId: string;
+  projectRoot: string;
+  createdAt: number;
+  updatedAt: number;
+  entryCount: number;
+  title: string;
+}
+
+/** One turn's checkpoint, as returned by `agente_list_checkpoints`. */
+export interface AgenteCheckpointSummary {
+  turnIndex: number;
+  createdAt: number;
+  fileCount: number;
+  additions: number;
+  deletions: number;
+}
+
+/** Alias kept for renderer code that imports CodeCheckpointSummary. */
+export type CodeCheckpointSummary = AgenteCheckpointSummary;
