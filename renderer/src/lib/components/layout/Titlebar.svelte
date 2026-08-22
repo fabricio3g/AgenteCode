@@ -107,7 +107,10 @@
         <Tooltip label="Toggle theme" position="left">
           <button
             class="aui-icon-button size-8"
-            onclick={() => themeStore.toggle()}
+            onclick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+            }}
             aria-label="Toggle theme"
           >
             {#if themeStore.current === 'dark'}

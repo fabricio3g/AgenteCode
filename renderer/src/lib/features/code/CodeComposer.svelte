@@ -4,7 +4,7 @@
   The Code composer: the same shell as Home's composer (aui-composer pill,
   two-row body, dock fade) so both spaces read as one product.
 
-  Grammar follows Grok's bar split — scope on the left (runtime-mode gate),
+  Grammar follows the same bar split — scope on the left (runtime-mode gate),
   brain on the right (model), and a send control that only exists when there
   is something shippable. While a run is active the bar switches to steering:
   Enter course-corrects, Alt+Enter queues a follow-up, the button stops.

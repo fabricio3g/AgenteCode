@@ -62,26 +62,43 @@
     return appStore.chats.filter((chat) => normalizeSpace(chat.contextMode) === appStore.activeSpace);
   });
 
-  const results = $derived.by(() => {
+  interface SearchHit {
+    chat: ChatSession;
+    /** First message containing the query — the jump target. */
+    matchMessageId: string | null;
+    snippet: string | null;
+  }
+
+  const results = $derived.by((): SearchHit[] => {
     const q = query.trim().toLowerCase();
     if (!q) {
       return [...spaceChats]
-        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+        .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
+        .map((chat) => ({ chat, matchMessageId: null, snippet: null }));
     }
-    return spaceChats
-      .filter(chat =>
-        chat.title.toLowerCase().includes(q) ||
-        chat.messages.some(m => m.content.toLowerCase().includes(q))
-      )
-      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    const hits: SearchHit[] = [];
+    for (const chat of spaceChats) {
+      const titleHit = chat.title.toLowerCase().includes(q);
+      const msg = chat.messages.find((m) => m.content.toLowerCase().includes(q));
+      if (!titleHit && !msg) continue;
+      let snippet: string | null = null;
+      if (msg) {
+        const at = msg.content.toLowerCase().indexOf(q);
+        const start = Math.max(0, at - 48);
+        const end = at + q.length + 90;
+        snippet = (start > 0 ? '…' : '') + msg.content.slice(start, end).trim() + (end < msg.content.length ? '…' : '');
+      }
+      hits.push({ chat, matchMessageId: msg?.id ?? null, snippet });
+    }
+    return hits.sort((a, b) => (b.chat.updatedAt || b.chat.createdAt) - (a.chat.updatedAt || a.chat.createdAt));
   });
 
-  const previewChat = $derived(selectedIndex >= 0 ? results[selectedIndex] || null : null);
+  const previewChat = $derived(selectedIndex >= 0 ? results[selectedIndex]?.chat ?? null : null);
 
   // Reset selection when results change
   $effect(() => {
     query;
-    results[0]?.id;
+    results[0]?.chat.id;
     selectedIndex = -1;
   });
 
@@ -92,9 +109,15 @@
     });
   });
 
-  function selectChat(id: string) {
+  function selectChat(id: string, messageId?: string | null) {
     appStore.selectChat(id);
     appStore.chatSearchOpen = false;
+    if (!messageId) return;
+    // Slots register after the thread renders; then the existing registry
+    // scrolls the matched message to center and pins its actions.
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('scroll-to-chat-message', { detail: { messageId } }));
+    }, 450);
   }
 
   function createChat() {
@@ -146,9 +169,10 @@
     if (event.key === 'Enter') {
       if (event.target instanceof HTMLButtonElement) return;
       event.preventDefault();
-      if (results.length > 0 && results[selectedIndex]) {
-        selectChat(results[selectedIndex].id);
-      }
+      // Enter with no explicit selection opens the top result.
+      const idx = selectedIndex >= 0 ? selectedIndex : 0;
+      const hit = results[idx];
+      if (hit) selectChat(hit.chat.id, hit.matchMessageId);
       return;
     }
   }
@@ -222,14 +246,15 @@
             </div>
           {:else}
             <div class="space-y-1">
-              {#each results as chat, i (chat.id)}
+              {#each results as hit, i (hit.chat.id)}
                 <div
                   class="search-result"
                   class:is-selected={i === selectedIndex}
                   data-selected={i === selectedIndex}
                   onmouseenter={() => (selectedIndex = i)}
+                  onclick={() => selectChat(hit.chat.id, hit.matchMessageId)}
                 >
-                  {#if renamingChatId === chat.id}
+                  {#if renamingChatId === hit.chat.id}
                     <input
                       bind:this={renameInputEl}
                       class="chat-rename-input min-w-0 flex-1"
@@ -239,28 +264,33 @@
                         event.stopPropagation();
                         if (event.key === 'Enter') {
                           event.preventDefault();
-                          commitRename(chat.id);
+                          commitRename(hit.chat.id);
                         }
                         if (event.key === 'Escape') {
                           event.preventDefault();
                           closeRename();
                         }
                       }}
-                      onblur={() => commitRename(chat.id)}
+                      onblur={() => commitRename(hit.chat.id)}
                     />
                   {:else}
-                    <p class="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{chat.title || 'New chat'}</p>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-foreground">{hit.chat.title || 'New chat'}</p>
+                      {#if hit.snippet}
+                        <p class="result-snippet mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{hit.snippet}</p>
+                      {/if}
+                    </div>
                   {/if}
                   <div class="result-trailing">
-                    <span class="result-date text-[11px] text-muted-foreground">{relativeDate(chat.updatedAt || chat.createdAt)}</span>
+                    <span class="result-date text-[11px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
                     <div class="result-actions flex items-center gap-0.5">
-                      <button type="button" class="result-action" onclick={() => selectChat(chat.id)} aria-label={`Open ${chat.title || 'chat'}`} title="Open">
+                      <button type="button" class="result-action" onclick={() => selectChat(hit.chat.id, hit.matchMessageId)} aria-label={`Open ${hit.chat.title || 'chat'}`} title="Open">
                         <ExternalLink class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action" onclick={() => startRename(chat)} aria-label={`Rename ${chat.title || 'chat'}`} title="Rename">
+                      <button type="button" class="result-action" onclick={() => startRename(hit.chat)} aria-label={`Rename ${hit.chat.title || 'chat'}`} title="Rename">
                         <Pencil class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action danger" onclick={() => deleteChat(chat)} aria-label={`Delete ${chat.title || 'chat'}`} title="Delete">
+                      <button type="button" class="result-action danger" onclick={() => deleteChat(hit.chat)} aria-label={`Delete ${hit.chat.title || 'chat'}`} title="Delete">
                         <Trash2 class="size-3.5" />
                       </button>
                     </div>

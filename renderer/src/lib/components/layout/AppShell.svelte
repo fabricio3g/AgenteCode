@@ -263,8 +263,7 @@
 <style>
   .sidebar-outer {
     width: 3.5rem; /* w-14 */
-    transition: width 200ms var(--motion-ease);
-    will-change: width;
+    transition: width var(--motion-smooth) var(--motion-ease-out);
   }
   .sidebar-outer.expanded {
     width: 13rem; /* w-52 */

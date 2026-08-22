@@ -2,7 +2,7 @@
 
 <!--
   The model-maintained task list, rendered live from todo_update events.
-  Grok-grammar: quiet rows, one accent for the in-progress item, checkmarks
+  Quiet rows, one accent for the in-progress item, checkmarks
   that land the moment the model marks them — progress you can read at a
   glance without opening anything.
 -->

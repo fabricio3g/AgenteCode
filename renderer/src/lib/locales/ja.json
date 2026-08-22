@@ -46,7 +46,10 @@
     "result": "件",
     "results": "件",
     "exported": "チャットを {filename} としてエクスポートしました",
-    "exportFailed": "エクスポートに失敗しました — チャットを手動でコピーしてください。"
+    "exportFailed": "エクスポートに失敗しました — チャットを手動でコピーしてください。",
+    "previous7Days": "過去7日間",
+    "previous30Days": "過去30日間",
+    "emptyHint": "開始した会話はここに表示されます。"
   },
   "settings": {
     "title": "設定",
@@ -218,5 +221,9 @@
     "statusLength": "出力上限に達しました — 実行の一部が切断されました",
     "retrying": "接続エラー — 再試行中（{n} 回目）…",
     "todosTitle": "タスク"
+  },
+  "searchModal": {
+    "inMessages": "メッセージ内",
+    "noContentMatches": "メッセージ内に一致なし"
   }
 }

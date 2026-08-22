@@ -342,6 +342,43 @@ export function saveChatSession(session) {
   transaction();
 }
 
+/**
+ * Full-text chat search: match message CONTENT across every conversation.
+ * LIKE-based (case-insensitive for ASCII) with a ±80-char snippet around the
+ * first hit. FTS5 is the upgrade path if ranking ever matters; this answers
+ * "where did I talk about X" without a migration.
+ */
+export function searchChatContent(query: string, limit = 30) {
+  const needle = String(query || '').trim();
+  if (!needle) return [];
+  const database = getDb();
+  const escaped = needle.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  const rows = database.prepare(
+    `SELECT m.chat_id AS chatId, m.id AS messageId, m.content AS content,
+            m.created_at AS messageAt, c.title AS title, c.updated_at AS updatedAt
+     FROM messages m
+     JOIN chats c ON c.id = m.chat_id
+     WHERE m.content LIKE '%' || @q || '%' ESCAPE '\\'
+     ORDER BY m.created_at DESC
+     LIMIT @limit`
+  ).all({ q: escaped, limit });
+
+  return rows.map((row: Record<string, unknown>) => {
+    const content = String(row.content ?? '');
+    const at = content.toLowerCase().indexOf(needle.toLowerCase());
+    const start = Math.max(0, at - 60);
+    const snippet = (start > 0 ? '…' : '') + content.slice(start, at + needle.length + 80).trim() + (at + needle.length + 80 < content.length ? '…' : '');
+    return {
+      chatId: String(row.chatId),
+      messageId: String(row.messageId),
+      title: String(row.title ?? ''),
+      updatedAt: Number(row.updatedAt ?? 0),
+      messageAt: Number(row.messageAt ?? 0),
+      snippet
+    };
+  });
+}
+
 export function loadAllChats() {
   const database = getDb();
   const chats = database.prepare('SELECT * FROM chats ORDER BY updated_at DESC').all();

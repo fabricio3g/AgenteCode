@@ -12,19 +12,17 @@
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from 'lucide-svelte';
+import { flip } from 'svelte/animate';
+import { smoothEase } from '$lib/utils/transitions';
+  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
   import { copy } from '$lib/copy';
 
-  let search = $state('');
-  let searchFocused = $state(false);
-  let debouncedSearch = $state('');
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let renamingChatId = $state<string | null>(null);
   let renamingChatTitle = $state('');
   let renameValue = $state('');
   let openMenuChatId = $state<string | null>(null);
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
-  let collapsedGroups = $state<Set<number>>(new Set([3]));
+  let collapsedGroups = $state<Set<number>>(new Set([4]));
 
   const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof House }> = [
     { id: 'home', label: copy.spaces.home, icon: House },
@@ -37,69 +35,41 @@
     return d.getTime();
   }
 
-  function groupLabel(ts: number): string {
-    const now = startOfDay(Date.now());
-    const day = startOfDay(ts);
-    const diff = Math.floor((now - day) / 86400000);
-    if (diff === 0) return 'Recent';
-    if (diff === 1) return $t('sidebar.yesterday') || 'Yesterday';
-    if (diff <= 6) return $t('sidebar.thisWeek') || 'This week';
-    return $t('sidebar.older') || 'Older';
+  function groupLabel(key: number): string {
+    switch (key) {
+      case 0: return $t('sidebar.today');
+      case 1: return $t('sidebar.yesterday');
+      case 2: return $t('sidebar.previous7Days');
+      case 3: return $t('sidebar.previous30Days');
+      default: return $t('sidebar.older');
+    }
   }
 
-  const filteredChats = $derived.by(() => {
-    const query = debouncedSearch.trim().toLowerCase();
-    const chats = appStore.visibleChats;
-    if (!query) return chats;
-    return chats.filter((chat) => {
-      return (
-        chat.title.toLowerCase().includes(query) ||
-        chat.messages.some((message) => message.content.toLowerCase().includes(query))
-      );
-    });
-  });
-
-  $effect(() => {
-    const current = search;
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      debouncedSearch = current;
-    }, 150);
-  });
-
   const groupedChats = $derived.by(() => {
-    // Group into stable buckets to avoid duplicate translated labels
-    // (e.g. multiple day-diffs sharing "This week").
-    type ChatGroup = { key: number; label: string; chats: (typeof filteredChats)[number][] };
+    // Recency timeline: the sidebar is memory, not a file system. Buckets are
+    // stable so a chat moving between days never renames its whole group.
+    type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleChats };
     const groups: ChatGroup[] = [];
     const groupMap = new Map<number, ChatGroup>();
 
-    for (const chat of filteredChats) {
+    for (const chat of appStore.visibleChats) {
       const now = startOfDay(Date.now());
       const day = startOfDay(chat.updatedAt || chat.createdAt);
       const diff = Math.floor((now - day) / 86400000);
-      const bucket = diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : 3;
+      const bucket = diff <= 0 ? 0 : diff === 1 ? 1 : diff <= 6 ? 2 : diff <= 29 ? 3 : 4;
       if (!groupMap.has(bucket)) {
-        groupMap.set(bucket, {
-          key: bucket,
-          label: groupLabel(chat.updatedAt || chat.createdAt),
-          chats: []
-        });
+        groupMap.set(bucket, { key: bucket, label: groupLabel(bucket), chats: [] });
       }
       groupMap.get(bucket)!.chats.push(chat);
     }
 
-    // Sort groups: Today (0), Yesterday (1), This week (2), Older (3)
-    const sortedKeys = Array.from(groupMap.keys()).sort((a, b) => a - b);
-    for (const key of sortedKeys) {
+    for (const key of Array.from(groupMap.keys()).sort((a, b) => a - b)) {
       const entry = groupMap.get(key)!;
       if (entry.chats.length) groups.push(entry);
     }
     return groups;
   });
 
-  const isSearching = $derived(search.trim().length > 0);
-  const matchCount = $derived(filteredChats.length);
   const sidebarIconColor = $derived('currentColor');
   const newButtonLabel = $derived(appStore.activeSpace === 'code' ? $t('code.addProject') : $t('sidebar.newChat'));
 
@@ -273,36 +243,17 @@
       </button>
     </div>
 
-    {#if appStore.activeSpace !== 'code' && (isSearching || searchFocused)}
-      <div class="pb-3">
-        <label class="relative block">
-          <Search class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={`color: ${sidebarIconColor};`} />
-          <input
-            bind:value={search}
-            onfocus={() => (searchFocused = true)}
-            onblur={() => (searchFocused = false)}
-            class="search-input w-full rounded-[var(--radius-sm)] py-1.5 pl-8 pr-8 text-[14px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)]"
-            class:focused={searchFocused}
-            placeholder={$t('sidebar.searchPlaceholder')}
-            type="text"
-          />
-          {#if isSearching}
-            <button
-              type="button"
-              class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5"
-              onclick={() => (search = '')}
-              aria-label="Clear search"
-            >
-              <X class="h-3 w-3" style={`color: ${sidebarIconColor};`} />
-            </button>
-          {/if}
-        </label>
-        {#if isSearching}
-          <p class="mt-1 px-0.5 text-[11px] text-[var(--text-muted)]">
-            {matchCount} {matchCount === 1 ? 'result' : 'results'}
-          </p>
-        {/if}
-      </div>
+    {#if appStore.activeSpace !== 'code'}
+      <button
+        type="button"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+        onclick={() => { appStore.chatSearchOpen = true; }}
+        title={$t('sidebar.searchChats')}
+      >
+        <Search class="size-4 shrink-0" />
+        <span class="btn-label btn-label-truncate">{$t('sidebar.searchChats')}</span>
+        <kbd class="btn-kbd shrink-0">⌘K</kbd>
+      </button>
     {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
@@ -312,11 +263,11 @@
         <CodeSidebar />
       {:else if groupedChats.length}
         {#each groupedChats as group (group.key)}
-          {@const isCollapsed = !isSearching && collapsedGroups.has(group.key)}
+          {@const isCollapsed = collapsedGroups.has(group.key)}
           <div class="mb-1.5">
             <button
               type="button"
-              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold r text-[var(--text-muted)]"
+              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold text-[var(--text-muted)]"
               aria-expanded={!isCollapsed}
               onclick={() => toggleGroup(group.key)}
             >
@@ -326,6 +277,7 @@
             <div class="space-y-0.5" transition:slide={{ duration: 140 }}>
               {#each group.chats as chat (chat.id)}
                 <div
+                  animate:flip={{ duration: 220, easing: smoothEase }}
                   class={`chat-item group relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
                   role="button"
                   tabindex="0"
@@ -424,12 +376,8 @@
           <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
             <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
           </div>
-          {#if isSearching}
-            <p class="text-[14px] text-[var(--text-secondary)]">No matches</p>
-            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">Try a different term</p>
-          {:else}
-            <p class="text-[14px] text-[var(--text-muted)]">No conversations yet</p>
-          {/if}
+          <p class="text-[14px] text-[var(--text-muted)]">{$t('sidebar.noConversations')}</p>
+          <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{$t('sidebar.emptyHint')}</p>
         </div>
       {/if}
     </div>
@@ -469,6 +417,27 @@
     border-radius: var(--radius-md);
     background: transparent !important;
     box-shadow: none;
+  }
+
+  .btn-label-truncate {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  .btn-kbd {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 0.3rem;
+    line-height: 1.4;
+    opacity: 0.75;
   }
 
   .new-chat-btn {

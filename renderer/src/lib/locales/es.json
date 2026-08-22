@@ -39,14 +39,17 @@
     "delete": "Eliminar",
     "deleteConfirmTitle": "¿Eliminar chat?",
     "deleteConfirmMessage": "Esta acción no se puede deshacer.",
-    "searchChats": "Buscar chats",
+    "searchChats": "Buscar en chats",
     "searchConversations": "Buscar conversaciones (Ctrl+Shift+K)",
     "noMatches": "Sin resultados",
     "tryDifferent": "Prueba con otro término",
     "result": "resultado",
     "results": "resultados",
     "exported": "Chat exportado como {filename}",
-    "exportFailed": "Error al exportar — intenta copiar el chat manualmente."
+    "exportFailed": "Error al exportar — intenta copiar el chat manualmente.",
+    "previous7Days": "Últimos 7 días",
+    "previous30Days": "Últimos 30 días",
+    "emptyHint": "Las conversaciones que inicies aparecerán aquí."
   },
   "settings": {
     "title": "Configuración",
@@ -218,5 +221,9 @@
     "statusLength": "Se alcanzó el límite de salida — parte de la ejecución se cortó",
     "retrying": "Fallo de conexión — reintentando (intento {n})…",
     "todosTitle": "Tareas"
+  },
+  "searchModal": {
+    "inMessages": "En los mensajes",
+    "noContentMatches": "Sin coincidencias en mensajes"
   }
 }

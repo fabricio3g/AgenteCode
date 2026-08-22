@@ -46,7 +46,10 @@
     "result": "Ergebnis",
     "results": "Ergebnisse",
     "exported": "Chat als {filename} exportiert",
-    "exportFailed": "Export fehlgeschlagen - versuchen Sie, den Chat manuell zu kopieren."
+    "exportFailed": "Export fehlgeschlagen - versuchen Sie, den Chat manuell zu kopieren.",
+    "previous7Days": "Letzte 7 Tage",
+    "previous30Days": "Letzte 30 Tage",
+    "emptyHint": "Gestartete Unterhaltungen erscheinen hier."
   },
   "settings": {
     "title": "Einstellungen",
@@ -218,5 +221,9 @@
     "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
     "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
     "todosTitle": "Aufgaben"
+  },
+  "searchModal": {
+    "inMessages": "In Nachrichten",
+    "noContentMatches": "Keine Treffer in Nachrichten"
   }
 }

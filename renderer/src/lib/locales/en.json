@@ -48,7 +48,10 @@
     "result": "result",
     "results": "results",
     "exported": "Chat exported as {filename}",
-    "exportFailed": "Export failed — try copying the chat manually."
+    "exportFailed": "Export failed — try copying the chat manually.",
+    "previous7Days": "Previous 7 days",
+    "previous30Days": "Previous 30 days",
+    "emptyHint": "Conversations you start will appear here."
   },
   "settings": {
     "title": "Settings",
@@ -220,5 +223,9 @@
     "statusLength": "Hit the output limit — part of the run was cut off",
     "retrying": "Connection hiccup — retrying (attempt {n})…",
     "todosTitle": "Tasks"
+  },
+  "searchModal": {
+    "inMessages": "In messages",
+    "noContentMatches": "No message matches"
   }
 }

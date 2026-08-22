@@ -3,7 +3,7 @@
 <!--
   The Code space surface.
 
-  Radical calm, Grok-style: an almost empty canvas until there is work —
+  Radical calm: an almost empty canvas until there is work —
   one headline and one action per state. The conversation header carries
   only the project name; checkpoint history folds into a single popover so
   the resting bar stays quiet.

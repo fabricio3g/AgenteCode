@@ -2,10 +2,11 @@ import { fade, fly, slide } from 'svelte/transition'
 import type { FadeParams, FlyParams, SlideParams, TransitionConfig } from 'svelte/transition'
 import { reducedMotion } from '$lib/utils/motion.svelte'
 
-const productEase = (t: number): number => {
-  const inverse = 1 - t
-  return 1 - inverse * inverse * inverse
-}
+/*
+ * Expo-out: fast attack, long settle. The signature ease of the smooth-UI
+ * class (Linear and peers) — motion answers immediately, then glides to rest.
+ */
+export const smoothEase = (t: number): number => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t))
 
 interface FlyAndScaleParams {
   y?: number
@@ -26,12 +27,12 @@ export function flyAndScale(
   return {
     duration: p.duration,
     delay: 0,
-    easing: productEase,
+    easing: smoothEase,
     css: (t) => {
       const y = (1 - t) * p.y
       const x = (1 - t) * p.x
       const scale = p.start + t * (1 - p.start)
-      return `transform: ${transform} translate3d(${x}px, ${y}px, 0) scale(${scale});`
+      return `opacity: ${Math.min(1, t * 1.6)}; transform: ${transform} translate3d(${x}px, ${y}px, 0) scale(${scale});`
     }
   }
 }
@@ -57,5 +58,5 @@ export function motionSlide(
   params: SlideParams | undefined
 ): TransitionConfig {
   if (reducedMotion.value) return { duration: 0, css: () => '' }
-  return slide(node, { duration: 180, easing: productEase, ...params })
+  return slide(node, { duration: 180, easing: smoothEase, ...params })
 }

@@ -3,7 +3,7 @@
 <!--
   The Code space transcript.
 
-  Grok-grammar: the user speaks in a quiet right-aligned bubble, the agent
+  The user speaks in a quiet right-aligned bubble; the agent
   answers full-width — thinking as a collapsible ReasoningBlock, tool work as
   inline chronological rows, then the answer. No avatars; hierarchy comes
   from alignment and type, not from icon boxes.

@@ -39,14 +39,17 @@
     "delete": "Excluir",
     "deleteConfirmTitle": "Excluir chat?",
     "deleteConfirmMessage": "Isso não pode ser desfeito.",
-    "searchChats": "Buscar conversas",
+    "searchChats": "Pesquisar conversas",
     "searchConversations": "Buscar conversas (Ctrl+Shift+K)",
     "noMatches": "Sem resultados",
     "tryDifferent": "Tente outro termo",
     "result": "resultado",
     "results": "resultados",
     "exported": "Chat exportado como {filename}",
-    "exportFailed": "Falha na exportação — tente copiar o chat manualmente."
+    "exportFailed": "Falha na exportação — tente copiar o chat manualmente.",
+    "previous7Days": "Últimos 7 dias",
+    "previous30Days": "Últimos 30 dias",
+    "emptyHint": "As conversas iniciadas aparecerão aqui."
   },
   "settings": {
     "title": "Configurações",
@@ -218,5 +221,9 @@
     "statusLength": "Limite de saída atingido — parte da execução foi cortada",
     "retrying": "Falha de conexão — tentando novamente (tentativa {n})…",
     "todosTitle": "Tarefas"
+  },
+  "searchModal": {
+    "inMessages": "Nas mensagens",
+    "noContentMatches": "Nada nas mensagens"
   }
 }

@@ -39,14 +39,17 @@
     "delete": "Supprimer",
     "deleteConfirmTitle": "Supprimer le chat ?",
     "deleteConfirmMessage": "Cette action ne peut pas être annulée.",
-    "searchChats": "Rechercher des conversations",
+    "searchChats": "Rechercher dans les discussions",
     "searchConversations": "Rechercher des conversations (Ctrl+Shift+K)",
     "noMatches": "Aucun résultat",
     "tryDifferent": "Essayez un autre terme",
     "result": "résultat",
     "results": "résultats",
     "exported": "Chat exporté sous {filename}",
-    "exportFailed": "Échec de l'exportation — essayez de copier le chat manuellement."
+    "exportFailed": "Échec de l'exportation — essayez de copier le chat manuellement.",
+    "previous7Days": "7 derniers jours",
+    "previous30Days": "30 derniers jours",
+    "emptyHint": "Les conversations démarrées apparaîtront ici."
   },
   "settings": {
     "title": "Paramètres",
@@ -218,5 +221,9 @@
     "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
     "retrying": "Problème de connexion — nouvelle tentative ({n})…",
     "todosTitle": "Tâches"
+  },
+  "searchModal": {
+    "inMessages": "Dans les messages",
+    "noContentMatches": "Aucun résultat dans les messages"
   }
 }
