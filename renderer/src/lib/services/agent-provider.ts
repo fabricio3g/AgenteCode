@@ -9,7 +9,7 @@ import type {
 } from '$lib/types/chat';
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
-import { isTauri, invoke } from '$lib/services/tauri';
+import { isElectron, invoke } from '$lib/services/bridge';
 import { getFlaxeoCodeSystemPrompt } from '$lib/services/agent-prompts';
 
 export interface CodeAgentAdapter {
@@ -45,7 +45,7 @@ let driverRegistry: CodeAgentDriverRegistry | null = null;
 let instanceRegistry: CodeAgentInstanceRegistry | null = null;
 
 async function cliExists(command: string): Promise<boolean> {
-  if (!isTauri()) return false;
+  if (!isElectron()) return false;
   try {
     const result = await invoke<{ exit_code: number }>('workspace_exec', {
       workspace_root: '',
@@ -178,17 +178,19 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
 }
 
 /**
- * Agente Coding — the Code tab's built-in agent (pi-inspired engine in the
- * main process, driven through features/agente). The Code-tab surface talks
- * to the engine directly over agente_* IPC; this adapter only serves legacy
+ * Code Agent — the Code space's built-in agent (pi-inspired engine in the
+ * main process, driven through features/code). The Code surface talks to the
+ * engine directly over agente_* IPC; this adapter only serves legacy
  * resolveCodeAgentInstance() callers, so it rides the in-process tool loop
  * with the code profile rather than reporting itself unavailable.
+ *
+ * `driverKind: 'agente'` is a persisted value — do not rename it.
  */
 function createAgenteDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
     id: 'agente',
     driverKind: 'agente',
-    displayName: 'Agente Coding',
+    displayName: 'Code Agent',
     detail: 'Built-in coding agent · extensible',
     status: 'ready',
     accentColor: 'var(--primary)'
@@ -196,7 +198,7 @@ function createAgenteDriver(): CodeAgentDriverDefinition {
   return {
     driver: {
       driverKind: 'agente',
-      displayName: 'Agente Coding',
+      displayName: 'Code Agent',
       detail: 'Built-in coding agent for Code projects',
       supportsMultipleInstances: false
     },

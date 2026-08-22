@@ -1,4 +1,4 @@
-import { invoke } from './tauri';
+import { invoke } from './bridge';
 
 export interface SttTranscribeResult {
   text: string;

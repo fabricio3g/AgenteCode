@@ -1,7 +1,7 @@
 // Agente run state: folds CodeAgentEvent pushes into AgentSteps + streamed
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
-import type { CodeAgentEvent } from './agente-protocol';
+import type { CodeAgentEvent, CodeStopReason, CodeTodoItem } from './code-protocol';
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange } from '$lib/types/chat';
 
 export interface AgenteUsage {
@@ -11,7 +11,7 @@ export interface AgenteUsage {
   contextWindow: number;
 }
 
-export interface AgenteRunState {
+export interface CodeRunState {
   content: string;
   reasoning: string;
   steps: AgentStep[];
@@ -20,13 +20,21 @@ export interface AgenteRunState {
   usage?: AgenteUsage;
   error?: string;
   done: boolean;
+  /** Why the run ended — drives the end-of-run status chip. */
+  stopReason?: CodeStopReason;
+  /** Live retry notice (dsh llm/retry); cleared by the next content event. */
+  retrying?: { attempt: number; delayMs: number } | null;
+  /** The model-maintained todo list, updated live via todo_update. */
+  todos: CodeTodoItem[];
+  /** A length-truncated turn was auto-continued at least once this run. */
+  truncatedOnce: boolean;
 }
 
-export function createAgenteRunState(): AgenteRunState {
-  return { content: '', reasoning: '', steps: [], diffStats: [], fileChanges: [], done: false };
+export function createCodeRunState(): CodeRunState {
+  return { content: '', reasoning: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false };
 }
 
-function upsertStep(state: AgenteRunState, step: AgentStep): void {
+function upsertStep(state: CodeRunState, step: AgentStep): void {
   const index = state.steps.findIndex((s) => s.id === step.id);
   if (index >= 0) state.steps[index] = { ...state.steps[index], ...step };
   else state.steps.push(step);
@@ -77,19 +85,22 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
  * returns true when the assistant message changed (content/reasoning/steps)
  * and should be flushed into the chat transcript.
  */
-export function applyCodeAgentEvent(state: AgenteRunState, event: CodeAgentEvent): boolean {
+export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent): boolean {
   switch (event.type) {
     case 'text_delta': {
       state.content += event.delta;
+      state.retrying = null;
       return true;
     }
     case 'thinking_delta': {
       state.reasoning += event.delta;
+      state.retrying = null;
       return true;
     }
     case 'tool_start': {
       const step = eventToStep(event);
       if (step) upsertStep(state, step);
+      state.retrying = null;
       return true;
     }
     case 'tool_update': {
@@ -172,14 +183,37 @@ export function applyCodeAgentEvent(state: AgenteRunState, event: CodeAgentEvent
       };
       return false; // ring data only — no transcript change
     }
+    case 'llm_retry': {
+      state.retrying = { attempt: event.attempt, delayMs: event.delayMs };
+      return true;
+    }
+    case 'length_continue': {
+      state.truncatedOnce = true;
+      const step: AgentStep = {
+        id: `turn-${event.turnIndex}`,
+        type: 'planning',
+        label: `Turn ${event.turnIndex} hit the output cap — continuing`,
+        status: 'done'
+      };
+      upsertStep(state, step);
+      return true;
+    }
+    case 'todo_update': {
+      state.todos = event.todos.map((todo) => ({ ...todo }));
+      return true;
+    }
     case 'error': {
       state.error = event.message;
       return true;
     }
     case 'agent_end': {
       state.done = true;
+      state.stopReason = event.stopReason;
+      state.retrying = null;
+      // A still-running step at the end of a run only means failure if the
+      // run itself failed; on success it was simply never closed out.
       const running = state.steps.find((s) => s.status === 'running');
-      if (running) running.status = 'error';
+      if (running) running.status = state.error ? 'error' : 'done';
       return true;
     }
     default:

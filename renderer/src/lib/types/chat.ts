@@ -1,4 +1,4 @@
-import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/tauri';
+import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
 
 export interface Attachment {
   id: string;
@@ -43,6 +43,8 @@ export interface MessageVersion {
     warning?: string;
     outcome?: AgentOutcome;
     stopReason?: AgentStopReason;
+    /** Why a Code-space agent run ended (the agente loop's StopReason). */
+    codeStopReason?: 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
     currentActivity?: AgentActivity;
     activityLabel?: string;
     publicFallback?: boolean;
@@ -400,7 +402,14 @@ export interface ChatFolder {
   createdAt: number;
 }
 
-export type ChatContextMode = 'chat' | 'work';
+/**
+ * The space a session belongs to. Immutable after create.
+ *
+ * Persisted values may be legacy spellings — `'chat'` (old id of home) and
+ * `'work'`/`'code'` (old ids of code) — and are normalized on read via
+ * `normalizeSpace()` in `$lib/spaces`.
+ */
+export type ChatContextMode = 'home' | 'code';
 
 export interface CodeProject {
   id: string;
@@ -421,7 +430,7 @@ export interface ChatSession {
   updatedAt: number;
   folderId: string | null;
   draft: string;
-  /** Immutable after create: chat | work | code space identity. */
+  /** Immutable after create: home | code space identity. */
   contextMode?: ChatContextMode;
   codeAgent?: CodeAgentSessionMeta | null;
   projectId?: string | null;
@@ -463,6 +472,8 @@ export interface ProviderConfig {
   max_tokens?: number;
   top_p?: number;
   system_prompt?: string;
+  /** Model ids added by hand, kept even when the provider list omits them. */
+  extra_models?: string[];
 }
 
 export interface AppConfig {
@@ -471,6 +482,8 @@ export interface AppConfig {
     system_prompt?: string;
     user_prompt?: string;
     providers?: Record<string, ProviderConfig>;
+    /** User-added OpenAI-compatible endpoints (keys live in providers[id].api_key). */
+    custom_providers?: Array<{ id: string; label: string; base_url: string }>;
     backend_mode?: 'local' | 'api';
     local?: {
       system_prompt?: string;
@@ -582,7 +595,6 @@ export interface AppConfig {
   };
   ui?: {
     theme?: 'light' | 'dark';
-    workspace_mode?: 'legacy' | 'modern';
     show_assistant_text?: boolean;
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;

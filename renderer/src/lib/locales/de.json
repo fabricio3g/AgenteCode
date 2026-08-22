@@ -179,7 +179,7 @@
     "remove": "Entfernen",
     "refresh": "Aktualisieren"
   },
-  "agente": {
+  "code": {
     "projects": "Projekte",
     "addProject": "Projekt hinzufügen",
     "newConversation": "Neue Unterhaltung",
@@ -209,6 +209,14 @@
     "composerRegion": "Agente-Aufgabeneingabe",
     "modeSelector": "Agent-Modus",
     "modePlan": "Zuerst planen",
-    "modePlanHint": "Untersucht, präsentiert einen Plan und bearbeitet erst nach deiner Freigabe"
+    "modePlanHint": "Untersucht, präsentiert einen Plan und bearbeitet erst nach deiner Freigabe",
+    "continue": "Fortfahren",
+    "continuePrompt": "Mach mit der Aufgabe weiter",
+    "queued": "{n} in Warteschlange",
+    "statusCompleted": "Abgeschlossen",
+    "statusStopped": "Gestoppt",
+    "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
+    "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
+    "todosTitle": "Aufgaben"
   }
 }

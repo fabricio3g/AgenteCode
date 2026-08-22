@@ -1,5 +1,5 @@
-import type { LocalModel, WorkspaceIndexResult } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { LocalModel, WorkspaceIndexResult } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 export async function pathExists(path: string): Promise<boolean> {
   return invoke<boolean>('path_exists', { path });

@@ -2,9 +2,16 @@
 // Kept in sync by hand; the shapes are frozen behind the `code_agent_event`
 // channel and the `agente_*` invoke channels.
 
+export type CodeStopReason = 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
+
+export interface CodeTodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export type CodeAgentEvent =
   | { type: 'agent_start'; chatId: string }
-  | { type: 'agent_end'; chatId: string }
+  | { type: 'agent_end'; chatId: string; stopReason: CodeStopReason }
   | { type: 'turn_start'; chatId: string; turnIndex: number }
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
@@ -12,6 +19,9 @@ export type CodeAgentEvent =
   | { type: 'tool_start'; chatId: string; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_update'; chatId: string; toolCallId: string; partialResult: unknown }
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean }
+  | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number }
+  | { type: 'length_continue'; chatId: string; turnIndex: number }
+  | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
@@ -46,16 +56,7 @@ export interface AgenteStartSessionArgs {
   checkpointsEnabled?: boolean;
 }
 
-export interface AgenteSessionInfo {
-  sessionId: string;
-  projectRoot: string;
-  createdAt: number;
-  updatedAt: number;
-  entryCount: number;
-  title: string;
-}
-
-export interface AgenteCheckpointSummary {
+export interface CodeCheckpointSummary {
   turnIndex: number;
   createdAt: number;
   fileCount: number;

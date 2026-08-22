@@ -52,7 +52,7 @@ export function buildOutboundMessages(params: {
 /** Apply local context truncation in-place when message budget overflows. */
 export async function applyLocalContextBudgetTruncation(params: {
   backendMode: 'api' | 'local';
-  isTauri: boolean;
+  isElectron: boolean;
   config: AppConfig;
   messages: RequestMessage[];
   invoke: <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
@@ -60,7 +60,7 @@ export async function applyLocalContextBudgetTruncation(params: {
   /** When true (uploads / RAG docs), do not truncate — preserve document context. */
   preserveDocuments?: boolean;
 }): Promise<void> {
-  if (params.backendMode !== 'local' || !params.isTauri) return;
+  if (params.backendMode !== 'local' || !params.isElectron) return;
   if (params.preserveDocuments) return;
 
   const budget = await params.invoke<{ isOverflow?: boolean }>('build_context_budget', {

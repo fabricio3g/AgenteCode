@@ -14,7 +14,6 @@
   import ContextUsageRing from './ContextUsageRing.svelte';
   import ModeSelector from './ModeSelector.svelte';
   import ReasoningLevelSelector from './ReasoningLevelSelector.svelte';
-  import SearchModeSelector from './SearchModeSelector.svelte';
   import type { Dictation } from './use-dictation.svelte';
 
   interface Props {
@@ -100,6 +99,7 @@
     <button
       type="button"
       class="send-btn flex size-8 items-center justify-center rounded-full transition"
+      class:is-stop={generating}
       onclick={() => (generating ? onstop() : onsubmit())}
       disabled={!canSend}
       aria-label={generating ? copy.composer.stop : copy.composer.send}
@@ -156,6 +156,14 @@
 
   .send-btn:hover:not(:disabled) {
     opacity: 0.9;
+  }
+
+  /* Stop reads as an interrupt, not a submit — same treatment as the Code
+     composer, so both spaces share one grammar. */
+  .send-btn.is-stop {
+    background: color-mix(in srgb, var(--error) 14%, var(--background));
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
   }
 
   /* Idle send: a quiet filled circle that still reads as the primary action,

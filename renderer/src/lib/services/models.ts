@@ -1,5 +1,5 @@
-import type { CachedModelMeta, GgufMeta, LocalModel } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { CachedModelMeta, GgufMeta, LocalModel } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 export async function getLocalModels(): Promise<LocalModel[]> {
   const response = await invoke<{ models: LocalModel[] }>('get_local_models');

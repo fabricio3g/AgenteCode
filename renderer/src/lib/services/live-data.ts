@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '$lib/services/tauri';
+import { invoke, isElectron } from '$lib/services/bridge';
 
 export type LiveInfoRows = Array<{ label: string; value: string; hint?: string }>;
 
@@ -48,28 +48,28 @@ type LiveResponse<T> = { ok: true; data: T } | { ok: false; error: string };
  * so the map itself still renders with no network.
  */
 export async function liveGeocodePlace(place: string): Promise<LiveGeocodeData> {
-  if (!isTauri()) throw new Error('Geocoding requires the desktop app.');
+  if (!isElectron()) throw new Error('Geocoding requires the desktop app.');
   const res = await invoke<LiveResponse<LiveGeocodeData>>('live_geocode_place', { place });
   if (!res?.ok) throw new Error(res?.error || 'Geocoding failed');
   return res.data;
 }
 
 export async function liveGetWeather(location: string): Promise<LiveWeatherData> {
-  if (!isTauri()) throw new Error('Live weather requires the desktop app.');
+  if (!isElectron()) throw new Error('Live weather requires the desktop app.');
   const res = await invoke<LiveResponse<LiveWeatherData>>('live_get_weather', { location });
   if (!res?.ok) throw new Error(res?.error || 'Weather request failed');
   return res.data;
 }
 
 export async function liveConvertCurrency(amount: number, from: string, to: string): Promise<LiveFxData> {
-  if (!isTauri()) throw new Error('Currency conversion requires the desktop app.');
+  if (!isElectron()) throw new Error('Currency conversion requires the desktop app.');
   const res = await invoke<LiveResponse<LiveFxData>>('live_convert_currency', { amount, from, to });
   if (!res?.ok) throw new Error(res?.error || 'Currency conversion failed');
   return res.data;
 }
 
 export async function liveGetQuote(symbol: string): Promise<LiveQuoteData> {
-  if (!isTauri()) throw new Error('Quotes require the desktop app.');
+  if (!isElectron()) throw new Error('Quotes require the desktop app.');
   const res = await invoke<LiveResponse<LiveQuoteData>>('live_get_quote', { symbol });
   if (!res?.ok) throw new Error(res?.error || 'Quote request failed');
   return res.data;

@@ -7,7 +7,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
-  import { isTauri } from '$lib/services/tauri';
+  import { isElectron } from '$lib/services/bridge';
 
   const currentMode = $derived(appStore.backendMode);
   const runtimeStatus = $derived(modelsStore.status);
@@ -139,7 +139,7 @@
           class="aui-segmented-item flex-1 py-1.5 {mode === 'api' ? 'is-active' : ''}"
           onclick={() => { mode = 'api'; }}
         >API</button>
-        {#if isTauri()}
+        {#if isElectron()}
           <button
             type="button"
             class="aui-segmented-item flex-1 py-1.5 {mode === 'local' ? 'is-active' : ''}"

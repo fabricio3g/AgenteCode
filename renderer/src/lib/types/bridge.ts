@@ -84,6 +84,8 @@ export interface DownloadJob {
   model_id: string;
   repo_id: string;
   file: string;
+  /** Every file this job must fetch, in order — usually [file]; more for sharded GGUF. */
+  files?: string[];
   url: string;
   dest_path: string;
   total_bytes: number;
@@ -97,6 +99,8 @@ export interface DownloadJob {
   last_modified?: string | null;
   expected_sha256?: string | null;
   verified: boolean;
+  /** Opt-in auto-load after completion. */
+  load_when_ready?: boolean;
 }
 
 export type SupervisorState = 'idle' | 'starting' | 'ready' | 'loading_model' | 'model_ready' | 'stopping' | 'error';

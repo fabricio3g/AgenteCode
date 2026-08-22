@@ -22,7 +22,7 @@
     forceActionsVisible?: boolean;
   }
 
-  let { message, contextMode = 'chat', forceActionsVisible = false }: Props = $props();
+  let { message, contextMode = 'home', forceActionsVisible = false }: Props = $props();
 
   let hovering = $state(false);
   let menuOpen = $state(false);

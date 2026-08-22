@@ -18,7 +18,7 @@
     "main/generated-documents.ts:172-177|renderer/src/lib/services/generated-documents.ts:335-339",
     "main/live-data/fetch-allowlist.ts:29-35|main/live-data/fetch-allowlist.ts:48-54",
     "main/llm-runner.ts:64-71|main/model-manager.ts:88-95",
-    "main/model-manager.ts:9-26|renderer/src/lib/types/tauri.ts:27-44",
+    "main/model-manager.ts:9-26|renderer/src/lib/types/bridge.ts:27-44",
     "main/model-manager.ts:114-124|main/runtime-config-resolver.ts:155-162",
     "main/providers/anthropic.ts:121-127|main/providers/anthropic.ts:178-192",
     "main/providers/anthropic.ts:129-137|main/providers/anthropic.ts:184-192",

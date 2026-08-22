@@ -5,7 +5,7 @@ import {
   injectResearchEvidencePack
 } from '$lib/services/agent-evidence-pack';
 import type { ToolObservation } from '$lib/services/agent-types';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 
 describe('agent-evidence-pack', () => {
   it('extracts query-relevant paragraphs from long page text', () => {

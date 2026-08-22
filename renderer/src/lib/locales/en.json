@@ -181,7 +181,7 @@
     "remove": "Remove",
     "refresh": "Refresh"
   },
-  "agente": {
+  "code": {
     "projects": "Projects",
     "addProject": "Add project",
     "newConversation": "New conversation",
@@ -211,6 +211,14 @@
     "composerRegion": "Agente task composer",
     "modeSelector": "Agent mode",
     "modePlan": "Plan first",
-    "modePlanHint": "Investigates, presents a plan, and edits only after you approve it"
+    "modePlanHint": "Investigates, presents a plan, and edits only after you approve it",
+    "continue": "Continue",
+    "continuePrompt": "Continue",
+    "queued": "{n} queued",
+    "statusCompleted": "Completed",
+    "statusStopped": "Stopped",
+    "statusLength": "Hit the output limit — part of the run was cut off",
+    "retrying": "Connection hiccup — retrying (attempt {n})…",
+    "todosTitle": "Tasks"
   }
 }

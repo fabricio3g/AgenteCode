@@ -23,8 +23,13 @@ describe('resolveComposerRoute', () => {
     expect(resolveComposerRoute({ prompt: 'summarize', hasAttachments: true })).toBe('tools');
   });
 
-  it('forces agent in work context', () => {
+  it('forces agent in the code space', () => {
+    expect(resolveComposerRoute({ prompt: 'hi', contextMode: 'code' })).toBe('agent');
+  });
+
+  it('normalizes legacy space spellings before routing', () => {
     expect(resolveComposerRoute({ prompt: 'hi', contextMode: 'work' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'hi', contextMode: 'chat' })).not.toBe('agent');
   });
 });
 
@@ -48,5 +53,26 @@ describe('shouldUseToolLoop', () => {
       composerMode: 'agent',
       route: 'conversation'
     })).toBe(true);
+  });
+
+  it('code space always loops, including legacy spellings', () => {
+    expect(shouldUseToolLoop({
+      control: 'auto',
+      composerMode: 'chat',
+      route: 'conversation',
+      contextMode: 'code'
+    })).toBe(true);
+    expect(shouldUseToolLoop({
+      control: 'auto',
+      composerMode: 'chat',
+      route: 'conversation',
+      contextMode: 'work'
+    })).toBe(true);
+    expect(shouldUseToolLoop({
+      control: 'auto',
+      composerMode: 'chat',
+      route: 'conversation',
+      contextMode: 'home'
+    })).toBe(false);
   });
 });

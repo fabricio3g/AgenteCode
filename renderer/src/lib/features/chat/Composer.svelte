@@ -15,7 +15,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
-  import { isTauri } from '$lib/services/tauri';
+  import { isElectron } from '$lib/services/bridge';
   import { copy, say } from '$lib/copy';
 
   import AttachmentCards from './composer/AttachmentCards.svelte';

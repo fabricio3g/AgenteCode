@@ -1,10 +1,10 @@
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import { completeAssistantReply, extractJsonFromResponse, type RequestMessage } from '$lib/services/chat-api';
 import {
   buildResearchReportInstruction,
   isMedicalResearchQuery
 } from '$lib/services/agent-prompts';
-import { listen, invoke, isTauri } from '$lib/services/tauri';
+import { listen, invoke, isElectron } from '$lib/services/bridge';
 import { webSearch } from '$lib/services/search';
 import { createId } from '$lib/utils/id';
 import { safeParse, normalizeWhitespace } from '$lib/utils/storage';
@@ -474,7 +474,7 @@ class DeepResearchStore {
   init() {
     if (this.initialized) return;
     this.initialized = true;
-    if (!isTauri()) return;
+    if (!isElectron()) return;
 
     void listen<{ step: string; detail: string }>('search-progress', (payload) => {
       if (!this.activeTaskId) return;

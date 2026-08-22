@@ -179,7 +179,7 @@
     "remove": "Supprimer",
     "refresh": "Actualiser"
   },
-  "agente": {
+  "code": {
     "projects": "Projets",
     "addProject": "Ajouter un projet",
     "newConversation": "Nouvelle conversation",
@@ -209,6 +209,14 @@
     "composerRegion": "Éditeur de tâches Agente",
     "modeSelector": "Mode de l'agent",
     "modePlan": "Planifier d'abord",
-    "modePlanHint": "Investigue, présente un plan et ne modifie qu'après votre approbation"
+    "modePlanHint": "Investigue, présente un plan et ne modifie qu'après votre approbation",
+    "continue": "Continuer",
+    "continuePrompt": "Poursuis la tâche",
+    "queued": "{n} en attente",
+    "statusCompleted": "Terminé",
+    "statusStopped": "Arrêté",
+    "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
+    "retrying": "Problème de connexion — nouvelle tentative ({n})…",
+    "todosTitle": "Tâches"
   }
 }

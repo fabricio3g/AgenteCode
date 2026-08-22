@@ -132,3 +132,21 @@ export function configuredProviders(
   out.sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.label.localeCompare(b.label));
   return out;
 }
+
+/** Brand-ish accent per provider for settings avatars. */
+export const PROVIDER_COLORS: Record<string, string> = {
+  openai: '#10a37f',
+  openrouter: '#7c7cf4',
+  anthropic: '#d97757',
+  groq: '#f55036',
+  gemini: '#4788f4',
+  mistral: '#ff7000',
+  deepseek: '#4d6bfe',
+  together: '#0f6fff',
+  cohere: '#39594d',
+  perplexity: '#20808d',
+  lmstudio: '#5b6ee1',
+  ollama: '#6b7280',
+  local: '#e8734a',
+  custom: '#64748b'
+};

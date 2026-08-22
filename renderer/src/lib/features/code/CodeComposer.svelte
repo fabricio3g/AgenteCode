@@ -1,23 +1,24 @@
 <svelte:options runes={true} />
 
 <!--
-  The Agente composer: the same shell as Home's composer (aui-composer pill,
-  two-row body, dock fade) so the Code tab reads as one product. The toolbar
-  swaps Home's chat-mode chips for the supervised / full-auto gate and reuses
-  the app-wide ModelSwitcher — model selection is global app config, and the
-  engine session is re-pointed when it changes.
+  The Code composer: the same shell as Home's composer (aui-composer pill,
+  two-row body, dock fade) so both spaces read as one product.
+
+  Grammar follows Grok's bar split — scope on the left (runtime-mode gate),
+  brain on the right (model), and a send control that only exists when there
+  is something shippable. While a run is active the bar switches to steering:
+  Enter course-corrects, Alt+Enter queues a follow-up, the button stops.
 -->
 
 <script lang="ts">
-  import { onDestroy } from 'svelte';
-  import { ArrowUp, Check, ChevronDown, ClipboardList, ShieldCheck, Square, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, Play, ShieldCheck, Square, Zap } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import type { ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
-  import { agenteStore } from './agente.svelte';
-  import { setAgenteModel } from './agente-ipc';
+  import { codeStore } from './code.svelte';
+  import { setAgenteModel } from './code-ipc';
   import { flyAndScale } from '$lib/utils/transitions';
 
   let { chat }: { chat: ChatSession } = $props();
@@ -29,29 +30,58 @@
   let text = $state('');
   let modeMenuOpen = $state(false);
 
-  const run = $derived(agenteStore.runFor(chat.id));
+  const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
   const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? 'supervised');
-  const canSend = $derived(!!text.trim() || running);
+  // Honest model visibility: without a usable model the bar says so instead
+  // of letting a send die inside the provider.
+  const modelReady = $derived(codeStore.modelReady);
+  const canSend = $derived(!!text.trim() && (modelReady || running));
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage);
   const showContextRing = $derived(!!usage && usage.promptTokens > 0);
+  /** Input handed off but not yet consumed by a turn. */
+  const queuedCount = $derived(run?.queuedCount ?? 0);
+  /**
+   * The last run ended on its own terms — offer one-click continuation
+   * (dsh's turn-tail action) instead of making the user retype.
+   */
+  const canContinue = $derived(
+    !running && modelReady && chat.messages.at(-1)?.metadata?.codeStopReason === 'stop'
+  );
 
   const modes = $derived([
-    { id: 'plan' as const, icon: ClipboardList, label: $t('agente.modePlan'), hint: $t('agente.modePlanHint') },
-    { id: 'supervised' as const, icon: ShieldCheck, label: $t('agente.modeSupervised'), hint: $t('agente.modeSupervisedHint') },
-    { id: 'full' as const, icon: Zap, label: $t('agente.modeFull'), hint: $t('agente.modeFullHint') }
+    { id: 'plan' as const, icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint') },
+    { id: 'supervised' as const, icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint') },
+    { id: 'full' as const, icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint') }
   ]);
   const activeMode = $derived(modes.find((m) => m.id === runtimeMode) ?? modes[1]!);
 
   function selectMode(mode: 'plan' | 'supervised' | 'full') {
     modeMenuOpen = false;
-    if (mode !== runtimeMode) void agenteStore.setMode(chat.id, mode);
+    if (mode !== runtimeMode) void codeStore.setMode(chat.id, mode);
+  }
+
+  function openModelHub() {
+    appStore.modelManagerOpenSection = 'models';
+    appStore.modelManagerOpen = true;
   }
 
   const placeholder = $derived(
-    running ? $t('agente.steerPlaceholder') : $t('agente.composerPlaceholder')
+    running
+      ? $t('code.steerPlaceholder')
+      : !modelReady
+        ? 'Select a model to start coding'
+        : $t('code.composerPlaceholder')
+  );
+
+  const hint = $derived(
+    running
+      ? 'Enter steers · Alt+Enter queues · click ■ to stop'
+      : !modelReady
+        ? ''
+        : $t('code.composerHint')
   );
 
   /** Size the input to its content — same empty-height guard as Home's. */
@@ -69,20 +99,36 @@
   }
 
   async function submit() {
-    if (running) {
-      await agenteStore.stop(chat.id);
-      return;
-    }
     const value = text.trim();
     if (!value) return;
+    if (running) {
+      text = '';
+      if (textarea) autoGrow(textarea);
+      await codeStore.steer(chat.id, value);
+      return;
+    }
+    if (!modelReady) return;
     text = '';
     if (textarea) autoGrow(textarea);
-    await agenteStore.send(chat.id, value);
+    await codeStore.send(chat.id, value);
+  }
+
+  async function queueFollowUp() {
+    const value = text.trim();
+    if (!value) return;
+    if (!running && !modelReady) return;
+    text = '';
+    if (textarea) autoGrow(textarea);
+    await codeStore.followUp(chat.id, value);
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.key !== 'Enter') return;
     event.preventDefault();
+    if (event.altKey) {
+      void queueFollowUp();
+      return;
+    }
     void submit();
   }
 
@@ -106,14 +152,13 @@
     }
     if (key === lastAppliedModel) return;
     lastAppliedModel = key;
-    if (agenteStore.hasSession(chat.id)) {
-      void setAgenteModel(
-        chat.id,
-        backend === 'local' ? 'local' : provider,
-        backend === 'local' ? String(appStore.config.llm?.local?.model || '') : model,
-        undefined
-      ).catch(() => {});
-    }
+    if (!codeStore.hasSession(chat.id)) return;
+    void setAgenteModel(
+      chat.id,
+      backend === 'local' ? 'local' : provider,
+      backend === 'local' ? String(appStore.config.llm?.local?.model || '') : model,
+      undefined
+    ).catch(() => {});
   });
 
   $effect(() => {
@@ -127,13 +172,9 @@
     void text;
     autoGrow(textarea);
   });
-
-  onDestroy(() => {
-    // nothing long-lived to tear down here yet
-  });
 </script>
 
-<div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('agente.composerRegion')}>
+<div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}>
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
     <div class="composer-shell aui-composer pointer-events-auto transition">
       <div class="composer-body">
@@ -148,15 +189,15 @@
         ></textarea>
 
         <div class="composer-actions">
-          <!-- Runtime mode gate — plan / supervised / full-auto, opened as a
-               list. Styled as the same pill as the model trigger. -->
+          <!-- Runtime mode gate — plan / supervised / full-auto. Scope lives on
+               the left of the bar; the model picker answers on the right. -->
           <div class="relative">
             <button
               type="button"
               class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
               class:is-open={modeMenuOpen}
               onclick={() => (modeMenuOpen = !modeMenuOpen)}
-              aria-label={$t('agente.modeSelector')}
+              aria-label={$t('code.modeSelector')}
               title={activeMode.hint}
               aria-expanded={modeMenuOpen}
             >
@@ -206,32 +247,72 @@
                 reservedTokens={usage.completionTokens}
               />
             {/if}
-            <button
-              type="button"
-              class="send-btn flex size-8 items-center justify-center rounded-full transition"
-              onclick={() => void submit()}
-              disabled={!canSend}
-              aria-label={running ? $t('agente.stop') : $t('agente.send')}
-              title={running ? $t('agente.stop') : $t('agente.send')}
-            >
-              {#if running}
-                <Square class="size-3.5 fill-current stroke-[2.75]" />
-              {:else}
+
+            {#if running && queuedCount > 0}
+              <!-- QueueDock-lite: proof the queued message landed. -->
+              <span
+                class="queued-pill flex h-8 items-center rounded-full border border-border px-2.5 text-[11px] font-medium text-muted-foreground"
+                role="status"
+              >
+                {$t('code.queued', { values: { n: queuedCount } })}
+              </span>
+            {/if}
+
+            {#if running}
+              <!-- Stop is unambiguous and always reachable mid-run. -->
+              <button
+                type="button"
+                class="send-btn is-stop flex size-8 items-center justify-center rounded-full transition"
+                onclick={() => void codeStore.stop(chat.id)}
+                aria-label={$t('code.stop')}
+                title={$t('code.stop')}
+              >
+                <Square class="size-3 fill-current stroke-[2.75]" />
+              </button>
+            {:else if canSend}
+              <!-- Filled send appears only when there is something to ship. -->
+              <button
+                type="button"
+                class="send-btn flex size-8 items-center justify-center rounded-full transition"
+                onclick={() => void submit()}
+                aria-label={$t('code.send')}
+                title={$t('code.send')}
+              >
                 <span class="send-icon inline-flex">
                   <ArrowUp class="size-4 stroke-[2.75]" />
                 </span>
-              {/if}
-            </button>
+              </button>
+            {:else if !modelReady}
+              <!-- The one honest interruption: point at the fix. -->
+              <button
+                type="button"
+                class="model-cta flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"
+                onclick={openModelHub}
+                title="Open the Model Hub"
+              >
+                <ArrowDownToLine class="size-3.5" />
+                Choose model
+              </button>
+            {:else if canContinue && !text.trim()}
+              <!-- The run finished on its own: one click picks the work back up. -->
+              <button
+                type="button"
+                class="continue-btn flex h-8 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground transition hover:border-foreground/40 hover:bg-muted"
+                onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}
+                title={$t('code.continue')}
+              >
+                <Play class="size-3.5" />
+                {$t('code.continue')}
+              </button>
+            {/if}
           </div>
         </div>
       </div>
     </div>
 
     <p class="composer-hint mx-auto mt-1.5 px-1 text-center text-[11px] text-muted-foreground">
-      {#if running}
-        {$t('agente.running')}
-      {:else}
-        {$t('agente.composerHint')}
+      {#if hint}
+        {hint}
       {/if}
     </p>
   </div>
@@ -395,14 +476,31 @@
     opacity: 0.9;
   }
 
-  .send-btn:disabled {
-    background: color-mix(in srgb, var(--foreground) 26%, transparent);
-    color: var(--background);
-    cursor: default;
+  .send-btn.is-stop {
+    /* Stop reads as an interrupt, not a submit: quiet surface, loud glyph. */
+    background: color-mix(in srgb, var(--error) 14%, var(--background));
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
   }
 
   .send-btn:active:not(:disabled) {
     transform: scale(0.96);
+  }
+
+  .continue-btn {
+    background: transparent;
+    transition:
+      background-color var(--motion-fast) var(--motion-ease),
+      border-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .continue-btn:active {
+    transform: scale(0.98);
+  }
+
+  .queued-pill {
+    background: var(--card);
+    letter-spacing: -0.01em;
   }
 
   .send-icon {

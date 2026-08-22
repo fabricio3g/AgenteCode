@@ -1,4 +1,4 @@
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { ToolObservation } from '$lib/services/agent-types';
 
 export type ResearchMode = 'search' | 'deep' | 'max';

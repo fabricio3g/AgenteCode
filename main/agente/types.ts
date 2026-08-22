@@ -2,11 +2,13 @@
 // Same shapes the dormant chatea-agent harness defined: a flat
 // CodeAgentEvent stream pushed over the `code_agent_event` IPC channel and
 // a command set accepted over `agente_*` invoke channels. The renderer
-// keeps its own copy of these unions in features/agente/agente-protocol.ts.
+// keeps its own copy of these unions in features/code/code-protocol.ts.
+
+import type { StopReason, TodoItem } from './core/types.ts';
 
 export type CodeAgentEvent =
   | { type: 'agent_start'; chatId: string }
-  | { type: 'agent_end'; chatId: string }
+  | { type: 'agent_end'; chatId: string; stopReason: StopReason }
   | { type: 'turn_start'; chatId: string; turnIndex: number }
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
@@ -14,6 +16,9 @@ export type CodeAgentEvent =
   | { type: 'tool_start'; chatId: string; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_update'; chatId: string; toolCallId: string; partialResult: unknown }
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean }
+  | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number }
+  | { type: 'length_continue'; chatId: string; turnIndex: number }
+  | { type: 'todo_update'; chatId: string; todos: TodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }
   | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
@@ -46,13 +51,4 @@ export interface AgenteStartSessionArgs {
   systemPromptOverride?: string;
   resumeSessionId?: string;
   checkpointsEnabled?: boolean;
-}
-
-export interface AgenteSessionInfo {
-  sessionId: string;
-  projectRoot: string;
-  createdAt: number;
-  updatedAt: number;
-  entryCount: number;
-  title: string;
 }

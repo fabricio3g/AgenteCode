@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assessModelFit, recommendCuratedModels } from './model-fit';
-import type { HardwareInfo } from '$lib/types/tauri';
+import type { HardwareInfo } from '$lib/types/bridge';
 
 const hardware = (patch: Partial<HardwareInfo> = {}): HardwareInfo => ({
   total_ram_gb: 32,

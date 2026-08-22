@@ -9,15 +9,16 @@ import {
 import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
   getSupervisorStatus, getRuntimeTelemetry, supervisorHealthCheck, getLoadedModels,
-  unloadModel, getRecommendedSettings,
+  unloadModel, getRecommendedSettings, previewLocalModelCommand,
   startEmbeddingServer, stopEmbeddingServer, getEmbeddingStatus
 } from './llm-runner.ts';
 import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './tts-engine.ts';
 import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.ts';
 import {
   startDownloadHf, getDownloadJobs, cancelDownloadJob,
-  pauseDownloadJob, clearFinishedDownloads, removeDownloadJob
-} from './download-manager.ts';
+  pauseDownloadJob, clearFinishedDownloads, removeDownloadJob,
+  restorePersistedJobs, setAutoLoadHandler
+} from './model-download.ts';
 import {
   ingestDocument, ingestText, ingestTextFast, queryDocuments,
   listRagDocuments, removeRagDocument, clearRagDocuments, hasRagDocuments
@@ -134,6 +135,7 @@ export function registerIpcHandlers() {
     getLoadedModels,
     unloadModel,
     getRecommendedSettings,
+    previewLocalModelCommand,
     startEmbeddingServer,
     stopEmbeddingServer,
     getEmbeddingStatus,
@@ -219,6 +221,32 @@ export function registerIpcHandlers() {
   });
 
   // ── Downloads ──
+  // Restore jobs persisted by a previous session: anything that was mid-flight
+  // comes back as `interrupted` and resumes from its .part on demand.
+  restorePersistedJobs();
+
+  // "Download & load when ready": completed jobs hand the model to the same
+  // runtime path a manual load takes — recommended settings, no user overrides.
+  setAutoLoadHandler((modelPath) => {
+    void (async () => {
+      const settings = await getRecommendedSettings(modelPath, null, null, '') as Record<string, unknown>;
+      await startLlama({
+        model_path: modelPath,
+        backend_mode: settings.backend || 'auto',
+        host: '127.0.0.1',
+        port: 11435,
+        context_length: settings.context_length,
+        gpu_offload: settings.gpu_layers,
+        cpu_threads: settings.cpu_threads,
+        batch_size: settings.batch_size,
+        flash_attention: settings.flash_attention,
+        offload_kv_cache: settings.offload_kv
+      }, getMainWindow());
+    })().catch((err) => {
+      console.warn('[downloads] auto-load failed:', err);
+    });
+  });
+
   registerDownloadHandlers({
     ipcMain,
     startDownloadHf,

@@ -19,7 +19,7 @@ async function createArtifactWithValidation(params: {
 }
 
 export async function handleCreateDocument(params: {
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   ctx: ToolContext;
   args: Record<string, unknown>;
   createDocxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
@@ -28,7 +28,7 @@ export async function handleCreateDocument(params: {
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  if (!params.isTauri()) return params.fail('DOCX generation requires the desktop app.');
+  if (!params.isElectron()) return params.fail('DOCX generation requires the desktop app.');
   try {
     return await createArtifactWithValidation({
       ctx: params.ctx,
@@ -47,7 +47,7 @@ export async function handleCreateDocument(params: {
 }
 
 export async function handleCreateSpreadsheet(params: {
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   ctx: ToolContext;
   args: Record<string, unknown>;
   createXlsxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
@@ -56,7 +56,7 @@ export async function handleCreateSpreadsheet(params: {
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  if (!params.isTauri()) return params.fail('XLSX generation requires the desktop app.');
+  if (!params.isElectron()) return params.fail('XLSX generation requires the desktop app.');
   try {
     return await createArtifactWithValidation({
       ctx: params.ctx,
@@ -75,7 +75,7 @@ export async function handleCreateSpreadsheet(params: {
 }
 
 export async function handleCreatePresentation(params: {
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   ctx: ToolContext;
   args: Record<string, unknown>;
   createPptxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
@@ -84,7 +84,7 @@ export async function handleCreatePresentation(params: {
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  if (!params.isTauri()) return params.fail('PPTX generation requires the desktop app.');
+  if (!params.isElectron()) return params.fail('PPTX generation requires the desktop app.');
   try {
     return await createArtifactWithValidation({
       ctx: params.ctx,
@@ -103,7 +103,7 @@ export async function handleCreatePresentation(params: {
 }
 
 export async function handleCreatePdf(params: {
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   ctx: ToolContext;
   args: Record<string, unknown>;
   createPdfArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
@@ -112,7 +112,7 @@ export async function handleCreatePdf(params: {
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  if (!params.isTauri()) return params.fail('PDF generation requires the desktop app.');
+  if (!params.isElectron()) return params.fail('PDF generation requires the desktop app.');
   try {
     return await createArtifactWithValidation({
       ctx: params.ctx,

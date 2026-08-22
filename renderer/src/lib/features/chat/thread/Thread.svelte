@@ -43,7 +43,7 @@
   let timelineBrowsing = $state(false);
 
   const messages = $derived(appStore.currentChat?.messages || []);
-  const contextMode = $derived(appStore.currentChat?.contextMode || 'chat');
+  const contextMode = $derived(appStore.currentChat?.contextMode || 'home');
   const hasMessages = $derived(messages.length > 0);
   const showTimeline = $derived(messages.length > 1);
 

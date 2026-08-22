@@ -7,9 +7,9 @@
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { deleteRuntimeBinary, downloadRuntime, getInstalledRuntimes } from '$lib/services/files';
   import { getSupervisorStatus, getRuntimeTelemetry, stopLlama } from '$lib/services/runtime';
-  import type { RuntimeTelemetry } from '$lib/types/tauri';
+  import type { RuntimeTelemetry } from '$lib/types/bridge';
   import { modelsStore } from '$lib/stores/models.svelte';
-  import { listen } from '$lib/services/tauri';
+  import { listen } from '$lib/services/bridge';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
   import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset } from '$lib/services/llama-releases';
 

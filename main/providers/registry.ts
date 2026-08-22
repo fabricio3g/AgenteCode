@@ -1,29 +1,42 @@
-import { OpenAIProvider } from './openai.ts';
-import { AnthropicProvider } from './anthropic.ts';
-import { GeminiProvider } from './gemini.ts';
-import { GroqProvider } from './groq.ts';
-import { MistralProvider } from './mistral.ts';
-import { OpenRouterProvider } from './openrouter.ts';
-import { DeepSeekProvider } from './deepseek.ts';
-import { OpenAICompatibleProvider } from './openai-compatible.ts';
-import { LocalProvider } from './local.ts';
+// ── Provider registry ──────────────────────────────────────────────────
+// Resolution is a scan over the dialect table plus two real adapters.
+// Every provider object exposes the same surface: stream() chunks,
+// complete(), and the model-catalog queries. Adding a provider is a row
+// in dialects.ts, not a class.
 
-const providers = [
-  new AnthropicProvider(),          // Check first (URL-based detection)
-  new GeminiProvider(),             // Gemini-specific API format
-  new GroqProvider(),               // Hostname detection
-  new OpenRouterProvider(),         // OpenRouter SDK
-  new MistralProvider(),            // Hostname detection
-  new DeepSeekProvider(),           // DeepSeek (OpenAI-compatible, api.deepseek.com)
-  new OpenAIProvider(),             // Official OpenAI
-  new LocalProvider(),              // localhost/127.0.0.1
-  new OpenAICompatibleProvider(),   // Fallback — always matches
-];
+import { DIALECTS, resolveDialect, getDialect } from './dialects.ts';
+import { createOpenAiProvider, type ProviderObject } from './openai-core.ts';
+import { anthropicProvider } from './anthropic.ts';
+import { geminiProvider } from './gemini.ts';
 
-export function resolveProvider(providerName, baseUrl) {
-  for (const p of providers) {
-    if (p.detect(providerName, baseUrl)) return p;
+const adapters = new Map<string, ProviderObject>();
+
+function adapterFor(dialectId: string): ProviderObject {
+  let adapter = adapters.get(dialectId);
+  if (!adapter) {
+    if (dialectId === 'anthropic') adapter = anthropicProvider as unknown as ProviderObject;
+    else if (dialectId === 'gemini') adapter = geminiProvider as unknown as ProviderObject;
+    else {
+      const dialect = getDialect(dialectId);
+      if (!dialect) throw new Error(`Unknown provider dialect "${dialectId}"`);
+      adapter = createOpenAiProvider(dialect);
+    }
+    adapters.set(dialectId, adapter);
   }
-  // Should never reach here since OpenAICompatibleProvider always matches
-  return providers[providers.length - 1];
+  return adapter;
+}
+
+/**
+ * Resolve the provider for a route. Signature preserved from the old
+ * registry — every caller (chat pipeline, agent runtime, IPC handlers)
+ * keeps working unchanged.
+ */
+export function resolveProvider(providerName?: string, baseUrl?: string): ProviderObject {
+  const dialect = resolveDialect(providerName, baseUrl);
+  return adapterFor(dialect.id);
+}
+
+/** The live provider directory (dsh's configurable-provider list). */
+export function listProviders(): Array<{ id: string; label: string; group: 'cloud' | 'local' }> {
+  return DIALECTS.map((d) => ({ id: d.id, label: d.label, group: d.group }));
 }

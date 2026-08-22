@@ -1,5 +1,5 @@
-import type { TtsRequest } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { TtsRequest } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 type TtsEvent = Record<string, unknown>;
 type ElectronApi = {

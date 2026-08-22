@@ -1,7 +1,7 @@
 import type { AppConfig } from '$lib/types/chat';
 import { isKokoroVoice } from '$lib/services/kokoro-tts';
 import { generateTtsStream, cancelTtsStream, base64ToFloat32Pcm, onTtsChunk, onTtsDone, onTtsStart } from '$lib/services/tts';
-import { invoke } from '$lib/services/tauri';
+import { invoke } from '$lib/services/bridge';
 import { cleanTextForTTS } from '$lib/utils/tts-text';
 
 const SAMPLE_RATE = 24000;

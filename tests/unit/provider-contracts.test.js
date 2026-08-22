@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { GeminiProvider } from '../../main/providers/gemini.ts';
-import { LocalProvider } from '../../main/providers/local.ts';
+import { resolveProvider } from '../../main/providers/registry.ts';
+import { geminiProvider } from '../../main/providers/gemini.ts';
 
 function withFetch(fakeFetch, callback) {
   const original = globalThis.fetch;
@@ -19,10 +19,8 @@ describe('provider endpoint contracts', () => {
       assert.equal(options.headers.Authorization, 'Bearer local-secret');
       return { ok: true, json: async () => ({ data: [{ id: 'test-model' }] }) };
     }, async () => {
-      const models = await new LocalProvider().fetchModels(
-        'local-secret',
-        'http://127.0.0.1:8080/v1/chat/completions'
-      );
+      const models = await resolveProvider('local', 'http://127.0.0.1:8080/v1/chat/completions')
+        .fetchModels('local-secret', 'http://127.0.0.1:8080/v1/chat/completions');
       assert.deepEqual(models, ['test-model']);
     });
   });
@@ -42,7 +40,7 @@ describe('provider endpoint contracts', () => {
         })
       };
     }, async () => {
-      const result = await new LocalProvider().completeChat({
+      const result = await resolveProvider('local', 'http://127.0.0.1:8080/v1').complete({
         apiKey: 'local-secret',
         baseUrl: 'http://127.0.0.1:8080/v1',
         model: 'test-model',
@@ -63,7 +61,7 @@ describe('provider endpoint contracts', () => {
         })
       };
     }, async () => {
-      const models = await new GeminiProvider().fetchModels('test-key', 'https://gemini.example.test');
+      const models = await geminiProvider.fetchModels('test-key', 'https://gemini.example.test');
       assert.deepEqual(models, ['gemini-test']);
     });
   });
@@ -93,14 +91,14 @@ describe('provider endpoint contracts', () => {
       };
     }, async () => {
       const events = [];
-      for await (const event of new LocalProvider().streamChat({
+      for await (const chunk of resolveProvider('local', 'http://127.0.0.1:8080/v1').stream({
         baseUrl: 'http://127.0.0.1:8080/v1',
         model: 'test-model',
         messages: [{ role: 'user', content: 'ping' }]
       })) {
-        events.push(event);
+        events.push(chunk);
       }
-      const usage = events.find((event) => event.usage)?.usage;
+      const usage = events.find((chunk) => chunk.type === 'usage')?.usage;
       assert.equal(usage.timings.predicted_ms, 2000);
       assert.equal(usage.completion_tokens, 4);
     });

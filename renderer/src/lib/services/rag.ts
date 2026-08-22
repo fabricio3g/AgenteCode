@@ -1,5 +1,5 @@
-import type { IndexedDocument, QueryResponse } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { IndexedDocument, QueryResponse } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 function requireChatId(chatId: string): string {
   const value = String(chatId || '').trim();

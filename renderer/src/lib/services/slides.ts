@@ -1,5 +1,5 @@
-import type { PresentationData, SlideData } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { PresentationData, SlideData } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 export async function generatePptx(data: PresentationData): Promise<number[]> {
   return invoke<number[]>('generate_pptx', { data });

@@ -15,6 +15,7 @@
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
+  import { SPACES } from '$lib/spaces';
   import type { ReasoningLevel } from '$lib/types/chat';
 
   interface Props {
@@ -35,6 +36,10 @@
     enabled: 'On', disabled: 'Off', on: 'On'
   };
 
+  // Research depths are a Home capability; the code space offers plain chat.
+  const availableModes = $derived(
+    MODE_IDS.filter((id) => SPACES[appStore.activeSpace].searchModes.includes(id))
+  );
   const searchMode = $derived(MODE_IDS.find((id) => id === appStore.searchMode) || 'chat');
   const capabilities = $derived(appStore.reasoningCapabilities);
   const showThinking = $derived(
@@ -66,21 +71,23 @@
     <span class="row-label">{copy.composer.attach}</span>
   </button>
 
-  <div class="group-label">Search</div>
-  {#each MODE_IDS as id (id)}
-    {@const Icon = MODE_ICONS[id]}
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={searchMode === id}
-      class="row"
-      onclick={() => { appStore.setSearchMode(id); open = false; }}
-    >
-      <Icon class="size-4 shrink-0" />
-      <span class="row-label">{copy.searchModes[id].label}</span>
-      {#if searchMode === id}<Check class="size-3.5 shrink-0" />{/if}
-    </button>
-  {/each}
+  {#if availableModes.length > 1}
+    <div class="group-label">Search</div>
+    {#each availableModes as id (id)}
+      {@const Icon = MODE_ICONS[id]}
+      <button
+        type="button"
+        role="menuitemradio"
+        aria-checked={searchMode === id}
+        class="row"
+        onclick={() => { appStore.setSearchMode(id); open = false; }}
+      >
+        <Icon class="size-4 shrink-0" />
+        <span class="row-label">{copy.searchModes[id].label}</span>
+        {#if searchMode === id}<Check class="size-3.5 shrink-0" />{/if}
+      </button>
+    {/each}
+  {/if}
 
   {#if showThinking}
     <div class="group-label">Thinking</div>

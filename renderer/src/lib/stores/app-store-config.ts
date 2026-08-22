@@ -13,7 +13,9 @@ export function mergeProviderConfig(
     max_tokens?: number;
     top_p?: number;
     system_prompt?: string;
-  }
+    extra_models?: string[];
+  },
+  opts: { activate?: boolean } = {}
 ): AppConfig {
   const existing: ProviderConfig = config.llm?.providers?.[partial.provider] || { base_url: '', model: '' };
   const hasApiKeyField = Object.prototype.hasOwnProperty.call(partial, 'api_key');
@@ -25,7 +27,9 @@ export function mergeProviderConfig(
     ...config,
     llm: {
       ...config.llm,
-      provider: partial.provider,
+      // Saving one provider's fields must not silently switch the active
+      // route — activation is the toggle's job, not every field write's.
+      ...(opts.activate === false ? {} : { provider: partial.provider }),
       providers: {
         ...(config.llm?.providers || {}),
         [partial.provider]: {
@@ -37,7 +41,8 @@ export function mergeProviderConfig(
           ...(Number.isFinite(partial.temperature) ? { temperature: partial.temperature } : partial.temperature === undefined ? {} : { temperature: undefined }),
           ...(partial.max_tokens !== undefined ? { max_tokens: partial.max_tokens || undefined } : {}),
           ...(Number.isFinite(partial.top_p) ? { top_p: partial.top_p } : partial.top_p === undefined ? {} : { top_p: undefined }),
-          ...(partial.system_prompt !== undefined ? { system_prompt: partial.system_prompt || undefined } : {})
+          ...(partial.system_prompt !== undefined ? { system_prompt: partial.system_prompt || undefined } : {}),
+          ...(partial.extra_models !== undefined ? { extra_models: partial.extra_models.filter(Boolean) } : {})
         }
       }
     }
@@ -110,16 +115,6 @@ export function mergeLocalSettingsConfig(
         ...(config.llm?.local || {}),
         ...partial
       }
-    }
-  };
-}
-
-export function mergeWorkspaceModeConfig(config: AppConfig, mode: 'legacy' | 'modern'): AppConfig {
-  return {
-    ...config,
-    ui: {
-      ...(config.ui || {}),
-      workspace_mode: mode
     }
   };
 }

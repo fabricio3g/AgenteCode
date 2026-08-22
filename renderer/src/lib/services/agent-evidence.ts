@@ -1,4 +1,4 @@
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { ToolObservation, ToolResult } from '$lib/services/agent-types';
 
 export function compactText(value: unknown, max = 900): string {

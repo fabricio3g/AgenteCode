@@ -1,7 +1,7 @@
-import type { CachedModelMeta, LocalModel, SupervisorEvent, SupervisorStatus } from '$lib/types/tauri';
+import type { CachedModelMeta, LocalModel, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
 import { getIndexedModels, getLocalModels, refreshModelIndex } from '$lib/services/models';
 import { getSupervisorStatus, onSupervisorEvent } from '$lib/services/runtime';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 
 class ModelsStore {
   indexedModels = $state<CachedModelMeta[]>([]);
@@ -68,7 +68,7 @@ class ModelsStore {
   }
 
   async refresh() {
-    if (!isTauri()) {
+    if (!isElectron()) {
       this.indexedModels = [];
       this.fallbackModels = [];
       this.status = null;
@@ -79,7 +79,7 @@ class ModelsStore {
   }
 
   async refreshIndex() {
-    if (!isTauri()) {
+    if (!isElectron()) {
       this.indexedModels = [];
       this.fallbackModels = [];
       return;
@@ -117,7 +117,7 @@ class ModelsStore {
   }
 
   async refreshStatus() {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     try {
       this.status = await getSupervisorStatus();
     } catch {
@@ -134,7 +134,7 @@ class ModelsStore {
   }
 
   async initPushEvents() {
-    if (this.eventInitialized || !isTauri()) return;
+    if (this.eventInitialized || !isElectron()) return;
     this.eventInitialized = true;
     try {
       this.eventUnlisten = await onSupervisorEvent((event: SupervisorEvent) => {

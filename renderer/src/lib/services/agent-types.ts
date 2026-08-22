@@ -1,6 +1,6 @@
 import type { AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, ArtifactManifest, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 
 export type ToolCall = {
   id?: string;

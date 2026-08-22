@@ -2,21 +2,17 @@
 
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { cubicOut } from 'svelte/easing';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
-  import Thread from '$lib/features/chat/thread/Thread.svelte';
-  import Composer from '$lib/features/chat/Composer.svelte';
-  import AgenteSurface from '$lib/features/agente/AgenteSurface.svelte';
-  import { agenteStore } from '$lib/features/agente/agente.svelte';
-  import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
-  import ActivityDrawer from '$lib/components/agent/ActivityDrawer.svelte';
+  import HomeSurface from '$lib/features/home/HomeSurface.svelte';
+  import CodeSurface from '$lib/features/code/CodeSurface.svelte';
+  import { codeStore } from '$lib/features/code/code.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
   import ArtifactSettingsModal from '$lib/components/settings/ArtifactSettingsModal.svelte';
-  import LegacyWorkspace from '$lib/components/legacy/LegacyWorkspace.svelte';
+  import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
@@ -26,22 +22,20 @@
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Plus, Boxes, PanelLeftOpen, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { copy } from '$lib/copy';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
-  import { isTauri } from '$lib/services/tauri';
+  import { isElectron } from '$lib/services/bridge';
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
 
   let showShortcutsHelp = $state(false);
-  const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
-  const inAgenteSpace = $derived(appStore.activeSpace === 'work');
+  const inCodeSpace = $derived(appStore.activeSpace === 'code');
   const newSessionLabel = $derived(
-    inAgenteSpace ? $t('agente.addProject') : 'New chat'
+    inCodeSpace ? $t('code.addProject') : 'New chat'
   );
 
   function startNewSession() {
-    if (appStore.activeSpace === 'work') {
-      void agenteStore.addProject();
+    if (inCodeSpace) {
+      void codeStore.addProject();
       return;
     }
     appStore.createChat(appStore.activeSpace);
@@ -105,27 +99,9 @@
     if (event.key === 'Escape' && showShortcutsHelp) showShortcutsHelp = false;
   }
 
-  /**
-   * Slide the activity panel in from the right edge.
-   *
-   * Deliberately transform/opacity only. The previous version animated `width`,
-   * which made the whole conversation reflow and re-wrap on every open and
-   * close; the panel now floats above the thread and leaves it untouched.
-   */
-  function drawerSlotTransition(_node: Element) {
-    return {
-      duration: 260,
-      easing: cubicOut,
-      css: (t: number, u: number) => `
-        opacity: ${t};
-        transform: translateX(${u * 100}%);
-      `
-    };
-  }
-
   onMount(() => {
     document.addEventListener('keydown', handleKeydown);
-    if (isTauri()) {
+    if (isElectron()) {
       void hardwareStore.refresh();
       void capabilitiesStore.refresh();
     }
@@ -146,125 +122,90 @@
 </script>
 
 <div class="flex h-full overflow-hidden bg-background text-foreground">
-  {#if appStore.workspaceMode === 'legacy'}
-    <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-      <Titlebar />
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <LegacyWorkspace />
-      </div>
-    </div>
-  {:else}
-    <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
-    <div
-      class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-sidebar"
-      class:expanded={appStore.sidebarOpen}
-    >
-      <div class="sidebar-view-full absolute inset-0 flex flex-col">
-        <Sidebar />
-      </div>
-
-      <!-- pt-0.5 centres the first 2rem control inside the titlebar's 2.25rem
-           row, so the collapsed rail keeps the same baseline as the expanded
-           header and the titlebar. -->
-      <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-0.5">
-        <Tooltip label="Show sidebar" position="right">
-          <button
-            class="aui-icon-button size-8"
-            onclick={() => (appStore.sidebarOpen = true)}
-            aria-label="Show sidebar"
-          >
-            <PanelLeftOpen class="size-4" />
-          </button>
-        </Tooltip>
-
-        <Tooltip label={newSessionLabel}>
-          <button
-            class="aui-icon-button size-8"
-            onclick={startNewSession}
-            aria-label={newSessionLabel}
-          >
-            <Plus class="size-4" />
-          </button>
-        </Tooltip>
-
-        <div class="flex-1"></div>
-
-        <Tooltip label="Models">
-          <button
-            class="aui-icon-button size-8"
-            onclick={() => openModelHub('models')}
-            aria-label="Models"
-          >
-            <Boxes class="size-4" />
-          </button>
-        </Tooltip>
-        <Tooltip label="Settings">
-          <button
-            class="aui-icon-button size-8 mb-1"
-            onclick={() => openModelHub('general')}
-            aria-label="Settings"
-          >
-            <Settings class="size-4" />
-          </button>
-        </Tooltip>
-      </div>
+  <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
+  <div
+    class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-sidebar"
+    class:expanded={appStore.sidebarOpen}
+  >
+    <div class="sidebar-view-full absolute inset-0 flex flex-col">
+      <Sidebar />
     </div>
 
-    <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
-      <Titlebar />
+    <!-- pt-0.5 centres the first 2rem control inside the titlebar's 2.25rem
+         row, so the collapsed rail keeps the same baseline as the expanded
+         header and the titlebar. -->
+    <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-0.5">
+      <Tooltip label="Show sidebar" position="right">
+        <button
+          class="aui-icon-button size-8"
+          onclick={() => (appStore.sidebarOpen = true)}
+          aria-label="Show sidebar"
+        >
+          <PanelLeftOpen class="size-4" />
+        </button>
+      </Tooltip>
 
-      <div class="flex min-h-0 flex-1 overflow-hidden">
-        <!-- Code tab hosts the Agente Coding surface; Home keeps the classic
-             chat panel. Two features, one shell — the branch point of the
-             home-chat separation. -->
-        {#if inAgenteSpace}
-          <AgenteSurface />
-        {:else}
-          <div class="chat-panel relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <!-- Empty conversation: the prompt and the composer sit together in
-                 the middle of the panel. The composer drops to the bottom as soon
-                 as there is a message to read above it. -->
-            <div
-              class="chat-content-layer relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-              class:justify-center={threadIsEmpty}
-            >
-              {#if threadIsEmpty}
-                <h1 class="empty-greeting">{copy.emptyState.greeting}</h1>
-              {/if}
-              <Thread />
-              <Composer />
-            </div>
+      <Tooltip label={newSessionLabel}>
+        <button
+          class="aui-icon-button size-8"
+          onclick={startNewSession}
+          aria-label={newSessionLabel}
+        >
+          <Plus class="size-4" />
+        </button>
+      </Tooltip>
 
-            <!-- Floats over the conversation: opening it must not reflow the
-                 thread or the composer. -->
-            {#if appStore.activityDrawerOpen}
-              <div class="activity-drawer-slot" transition:drawerSlotTransition>
-                <ActivityDrawer />
-              </div>
-            {/if}
-          </div>
-        {/if}
-      </div>
+      <div class="flex-1"></div>
+
+      <Tooltip label="Models">
+        <button
+          class="aui-icon-button size-8"
+          onclick={() => openModelHub('models')}
+          aria-label="Models"
+        >
+          <Boxes class="size-4" />
+        </button>
+      </Tooltip>
+      <Tooltip label="Settings">
+        <button
+          class="aui-icon-button size-8 mb-1"
+          onclick={() => openModelHub('general')}
+          aria-label="Settings"
+        >
+          <Settings class="size-4" />
+        </button>
+      </Tooltip>
     </div>
-  {/if}
+  </div>
 
-  {#if appStore.workspaceMode === 'modern'}
-    {#if appStore.promptConfigOpen}
-      <SystemPromptModal />
-    {/if}
-    <LocalModelLoadModal />
+  <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
+    <Titlebar />
 
-    {#if appStore.modelManagerOpen}
-      <ModelHubModal />
-    {/if}
-
-    {#if appStore.artifactSettingsOpen}
-      <ArtifactSettingsModal />
-    {/if}
-  {/if}
+    <div class="flex min-h-0 flex-1 overflow-hidden">
+      <!-- The one branch point between the two spaces:
+           Code hosts the coding agent surface; Home keeps the chat panel. -->
+      {#if inCodeSpace}
+        <CodeSurface />
+      {:else}
+        <HomeSurface />
+      {/if}
+    </div>
+  </div>
 </div>
+
+{#if appStore.promptConfigOpen}
+  <SystemPromptModal />
+{/if}
+<LocalModelLoadModal />
+
+{#if appStore.modelManagerOpen}
+  <ModelHubModal />
+{/if}
+
+{#if appStore.artifactSettingsOpen}
+  <ArtifactSettingsModal />
+{/if}
 
 <Toaster />
 <ConfirmDialog />
@@ -320,28 +261,6 @@
 {/if}
 
 <style>
-  /* Anchors the centred empty state. Sized to lead the composer without
-     competing with it — the composer is still where the eye should land. */
-  .empty-greeting {
-    margin: 0 auto 1.5rem;
-    padding: 0 1rem;
-    max-width: 48rem;
-    color: var(--foreground);
-    font-size: 1.5rem;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
-    text-align: center;
-    text-wrap: balance;
-  }
-
-  @media (max-width: 640px) {
-    .empty-greeting {
-      margin-bottom: 1.125rem;
-      font-size: 1.25rem;
-    }
-  }
-
   .sidebar-outer {
     width: 3.5rem; /* w-14 */
     transition: width 200ms var(--motion-ease);
@@ -376,35 +295,6 @@
     visibility: hidden;
     pointer-events: none;
     transition-delay: 0s, 120ms;
-  }
-
-  .chat-panel {
-    background: var(--background);
-    /* No seam between the rail and the conversation — they are one surface. */
-    border: 0;
-    border-radius: var(--radius-2xl) 0 0 0;
-  }
-
-  /*
-   * A floating panel, not a layout column. It is absolutely positioned inside
-   * the chat panel and inset from the edges, so showing it never changes the
-   * width of the thread or the composer — it only ever animates its own
-   * transform and opacity.
-   */
-  .activity-drawer-slot {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    bottom: 0.75rem;
-    z-index: 30;
-    display: flex;
-    overflow: hidden;
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-2xl);
-    background: var(--popover);
-    box-shadow: var(--shadow-xl);
-    transform-origin: right center;
-    will-change: transform, opacity;
   }
 
   @media (prefers-reduced-motion: reduce) {

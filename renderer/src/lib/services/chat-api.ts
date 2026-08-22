@@ -1,10 +1,10 @@
 import OpenAI from 'openai';
 import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
-import type { LocalModel } from '$lib/types/tauri';
+import type { LocalModel } from '$lib/types/bridge';
 import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { normalizeStreamingContentDelta, normalizeStreamingReasoningDelta } from '$lib/services/streaming';
-import { invoke, listen, isTauri } from '$lib/services/tauri';
+import { invoke, listen, isElectron } from '$lib/services/bridge';
 import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 
@@ -131,7 +131,7 @@ export function supportsNativeTools(config: AppConfigLike): boolean {
  * Caches the result so supportsNativeTools() returns accurate values.
  */
 export async function detectToolSupport(): Promise<boolean> {
-  if (!isTauri()) return true;
+  if (!isElectron()) return true;
 
   const config = await loadAppConfig();
   const { providerName, modelId, provider } = toolSupportIdentity(config);
@@ -190,7 +190,7 @@ export async function fetchReasoningCapabilities(args: {
   model: string;
   modelPath?: string;
 }): Promise<ReasoningCapabilities> {
-  if (!isTauri()) {
+  if (!isElectron()) {
     return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
   }
   try {
@@ -336,7 +336,7 @@ export function isVisionModel(modelName: string): boolean {
 async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
   const mmprojPath = String(config.llm?.local?.mmproj_path || '').trim();
   if (!mmprojPath) return false;
-  if (!isTauri()) return true;
+  if (!isElectron()) return true;
   try {
     return await invoke<boolean>('path_exists', { path: mmprojPath });
   } catch {
@@ -345,7 +345,7 @@ async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
 }
 
 export async function hasConfiguredVisionModel(config: AppConfig): Promise<boolean> {
-  const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
   if (backendMode === 'local') {
     return hasLocalVisionModel(config);
   }
@@ -395,7 +395,7 @@ export async function loadChatConfig(): Promise<AppConfig> {
     llm: {
       ...config.llm,
       provider: config.llm?.provider || 'openai',
-      backend_mode: config.llm?.backend_mode || (isTauri() ? 'local' : 'api'),
+      backend_mode: config.llm?.backend_mode || (isElectron() ? 'local' : 'api'),
       providers: {
         ...(config.llm?.providers || {}),
         openai: {
@@ -437,7 +437,6 @@ export async function loadChatConfig(): Promise<AppConfig> {
     },
     ui: {
       theme: config.ui?.theme,
-      workspace_mode: config.ui?.workspace_mode || 'modern',
       show_assistant_text: config.ui?.show_assistant_text ?? true,
       enable_thinking: config.ui?.enable_thinking ?? true
     }
@@ -459,7 +458,7 @@ export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): 
     || /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(provider.base_url);
   if (!apiKey && !provider.has_api_key && !isLocalProvider) return [];
 
-  if (isTauri()) {
+  if (isElectron()) {
     try {
       const ids = await invoke<string[]>('fetch_provider_models', {
         baseUrl: provider.base_url,
@@ -595,13 +594,13 @@ export async function streamAssistantReply(args: {
 }): Promise<void> {
   const config = await loadChatConfig();
   const reasoning = buildReasoningRequest(args.reasoningLevel);
-  if (config.llm?.backend_mode === 'local' && isTauri()) {
+  if (config.llm?.backend_mode === 'local' && isElectron()) {
     return streamLocalReply({ ...args, reasoning });
   }
   const { provider, providerName } = resolveProvider(config);
   const apiKey = (args.apiKey ?? provider.api_key) || '';
 
-  if (isTauri()) {
+  if (isElectron()) {
     let streamId = '';
     let resolveStream: (() => void) | null = null;
     let rejectStream: ((error: Error) => void) | null = null;
@@ -668,7 +667,7 @@ export async function streamAssistantReply(args: {
     }
   }
 
-  // Non-Tauri path: use OpenAI SDK directly
+  // Browser path (no Electron IPC): use OpenAI SDK directly
   const client = getOpenAIClient(apiKey, provider.base_url || '');
 
   const stream = await client.chat.completions.create({
@@ -726,7 +725,7 @@ export async function completeAssistantReply(args: {
   const reasoning = buildReasoningRequest(args.reasoningLevel);
   const omitMaxTokens = !!args.omitMaxTokens;
 
-  if (config.llm?.backend_mode === 'local' && isTauri()) {
+  if (config.llm?.backend_mode === 'local' && isElectron()) {
     const baseUrl = await ensureLocalRuntime(config);
     const hasVisionModel = await hasLocalVisionModel(config);
     const response = await fetch(resolveLocalBaseUrl({
@@ -765,7 +764,7 @@ export async function completeAssistantReply(args: {
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
   };
 
-  if (isTauri()) {
+  if (isElectron()) {
     const payload = await invoke<UnknownRecord>('chat_complete', {
       baseUrl: provider.base_url,
       apiKey,
@@ -999,7 +998,7 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
     messages: toRequestMessages(messagesWithSystem, provider.model)
   };
 
-  const isLocalMode = config.llm?.backend_mode === 'local' && isTauri();
+  const isLocalMode = config.llm?.backend_mode === 'local' && isElectron();
   const supportsNativeJson =
     !isLocalMode &&
     (/\bgpt-4o\b|\bgpt-4\.1\b|\bclaude-3\b|\bgemini\b|\bo1\b|\bo3\b|\bo4\b/i.test(provider.model || '') ||
@@ -1166,7 +1165,7 @@ export async function completeWithTools(args: {
   apiKey?: string;
 }): Promise<CompletionResult | null> {
   const config = await loadChatConfig();
-  if (config.llm?.backend_mode === 'local' && isTauri()) return null;
+  if (config.llm?.backend_mode === 'local' && isElectron()) return null;
 
   const { provider, providerName } = resolveProvider(config);
   if (!provider.base_url) return null;
@@ -1178,7 +1177,7 @@ export async function completeWithTools(args: {
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
   };
 
-  if (isTauri()) {
+  if (isElectron()) {
     try {
       const payload = await invoke<UnknownRecord>('chat_complete', {
         baseUrl: provider.base_url,
@@ -1246,7 +1245,7 @@ export async function completeStructuredOutput<T>(
   const { providerName, provider } = resolveProvider(cfg);
   const apiKey = provider.api_key || '';
 
-  if (isTauri()) {
+  if (isElectron()) {
     const payload = await invoke<UnknownRecord>('chat_complete', {
       baseUrl: provider.base_url,
       apiKey,

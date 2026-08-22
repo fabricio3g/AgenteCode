@@ -7,33 +7,20 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { Search, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
-  import DownloadsModal from '$lib/components/settings/DownloadsModal.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
 
   let isMaximized = $state(false);
-  let downloadBtnEl: HTMLButtonElement | undefined = $state();
-  let downloadDropdownEl: HTMLDivElement | undefined = $state();
 
-  function toggleDownloads() {
-    appStore.downloadsOpen = !appStore.downloadsOpen;
-    if (appStore.downloadsOpen) void downloadsStore.refresh();
-  }
-
-  function handleDocMouseDown(event: MouseEvent) {
-    if (!appStore.downloadsOpen) return;
-    if (!downloadBtnEl || !downloadDropdownEl) return;
-    const target = event.target as Node;
-    if (!downloadBtnEl.contains(target) && !downloadDropdownEl.contains(target)) {
-      appStore.downloadsOpen = false;
-    }
-  }
-
-  function handleDocKeydown(event: KeyboardEvent) {
-    if (appStore.downloadsOpen && event.key === 'Escape') {
-      appStore.downloadsOpen = false;
-    }
+  /**
+   * The indicator deep-links into the Hub's Library pane — downloads render
+   * inline on their model rows there, so there is no separate modal to open.
+   */
+  function openDownloads() {
+    void downloadsStore.refresh();
+    appStore.modelManagerOpenSection = 'library';
+    appStore.modelManagerOpen = true;
   }
 
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
@@ -46,12 +33,6 @@
   onMount(() => {
     void checkMaximized();
     void downloadsStore.refresh();
-    document.addEventListener('mousedown', handleDocMouseDown);
-    document.addEventListener('keydown', handleDocKeydown);
-    return () => {
-      document.removeEventListener('mousedown', handleDocMouseDown);
-      document.removeEventListener('keydown', handleDocKeydown);
-    };
   });
 </script>
 
@@ -109,10 +90,9 @@
         <div class="relative flex items-center">
           <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
             <button
-              bind:this={downloadBtnEl}
               class="aui-icon-button download-btn relative size-8"
               class:is-active={downloadsStore.hasActive}
-              onclick={toggleDownloads}
+              onclick={openDownloads}
               aria-label="Downloads"
             >
               {#if downloadsStore.hasActive}
@@ -123,11 +103,6 @@
               {/if}
             </button>
           </Tooltip>
-          {#if appStore.downloadsOpen}
-            <div bind:this={downloadDropdownEl} class="absolute right-0 top-full z-[200] mt-1">
-              <DownloadsModal />
-            </div>
-          {/if}
         </div>
         <Tooltip label="Toggle theme" position="left">
           <button
@@ -151,10 +126,9 @@
         <div class="relative flex items-center">
           <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
             <button
-              bind:this={downloadBtnEl}
               class="aui-icon-button download-btn relative mr-0.5 size-8"
               class:is-active={downloadsStore.hasActive}
-              onclick={toggleDownloads}
+              onclick={openDownloads}
               aria-label="Downloads"
             >
               {#if downloadsStore.hasActive}
@@ -165,11 +139,6 @@
               {/if}
             </button>
           </Tooltip>
-          {#if appStore.downloadsOpen}
-            <div bind:this={downloadDropdownEl} class="absolute right-0 top-full z-[200] mt-1">
-              <DownloadsModal />
-            </div>
-          {/if}
         </div>
         <Tooltip label="Toggle theme" position="left">
           <button

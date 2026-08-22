@@ -12,7 +12,7 @@
   import OnboardingStepReady from './OnboardingStepReady.svelte';
   import { gatherOnboardingHardware, markOnboardingComplete } from '$lib/services/onboarding';
   import { appStore } from '$lib/stores/app.svelte';
-  import type { HardwareInfo } from '$lib/types/tauri';
+  import type { HardwareInfo } from '$lib/types/bridge';
 
   type Step = 'welcome' | 'runtime' | 'model' | 'tts-model' | 'ready';
 

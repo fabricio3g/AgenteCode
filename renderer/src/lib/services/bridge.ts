@@ -1,5 +1,5 @@
-// Electron IPC bridge – replaces the Tauri bridge
-// The preload script exposes `window.electronAPI` via contextBridge
+// Electron IPC bridge.
+// The preload script exposes `window.electronAPI` via contextBridge.
 
 type ElectronAPI = {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -28,11 +28,6 @@ export function isElectron(): boolean {
   // Fallback: Electron injects its version into the user agent
   if (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Electron')) return true;
   return false;
-}
-
-// Keep isTauri as an alias so existing code that checks isTauri() works
-export function isTauri(): boolean {
-  return isElectron();
 }
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {

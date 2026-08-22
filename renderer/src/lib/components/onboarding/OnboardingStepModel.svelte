@@ -7,9 +7,9 @@
   import { getModelCatalog, getRecommendedModels, type OnboardingModel } from '$lib/services/onboarding';
   import { startDownloadHf, getDownloadJobs, cancelDownloadJob } from '$lib/services/downloads';
   import { getLocalModels } from '$lib/services/models';
-  import { invoke } from '$lib/services/tauri';
-  import { listen } from '$lib/services/tauri';
-  import type { HardwareInfo } from '$lib/types/tauri';
+  import { invoke } from '$lib/services/bridge';
+  import { listen } from '$lib/services/bridge';
+  import type { HardwareInfo } from '$lib/types/bridge';
 
   let { onNext, onBack, hardware } = $props<{
     onNext: (modelPath: string) => void;

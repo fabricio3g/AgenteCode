@@ -1,5 +1,5 @@
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 
 export async function handleWebSearch(params: {
   args: Record<string, unknown>;
@@ -93,7 +93,7 @@ export async function handleFetchUrl(params: {
     pages?: number;
     extraction?: string;
   }>;
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -101,7 +101,7 @@ export async function handleFetchUrl(params: {
   const url = String(params.args.url || '');
   if (!url) return params.fail('Missing url');
   try {
-    if (params.isTauri()) {
+    if (params.isElectron()) {
       // Cap extract length for model tokens; scraper still uses Readability / PDF / DOCX extractors.
       const result = await params.fetchUrlContent(url, 24000);
       if (result.error) return params.fail(result.error);

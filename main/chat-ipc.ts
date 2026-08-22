@@ -115,7 +115,7 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
    * completion needs a request id plus a matching cancel channel, the way
    * `startChatStream`/`cancelChatStream` are paired.
    */
-  return provider.completeChat({
+  return provider.complete({
     apiKey: realKey,
     baseUrl,
     model: body.model,
@@ -188,23 +188,33 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       const toolCallAccumulator = new Map();
       let finalUsage = null;
 
-      for await (const delta of provider.streamChat(streamParams)) {
+      // One normalized chunk protocol for every provider — the renderer
+      // events below are the frozen wire and stay byte-identical.
+      for await (const chunk of provider.stream(streamParams)) {
         if (abortController.signal.aborted) {
           break;
         }
 
-        if (delta.usage) finalUsage = delta.usage;
-
-        emit({ type: 'delta', content: delta.content, reasoning: delta.reasoning });
-
-        if (delta.toolCallDeltas) {
-          for (const tc of delta.toolCallDeltas) {
-            accumulateToolCallDelta(toolCallAccumulator, tc, { appendArguments: true });
-          }
-        }
-
-        if (delta.toolCallDelta) {
-          accumulateToolCallDelta(toolCallAccumulator, delta.toolCallDelta, { appendArguments: false });
+        switch (chunk.type) {
+          case 'text-delta':
+            emit({ type: 'delta', content: chunk.text, reasoning: '' });
+            break;
+          case 'reasoning-delta':
+            emit({ type: 'delta', content: '', reasoning: chunk.text });
+            break;
+          case 'tool-call-delta':
+            accumulateToolCallDelta(toolCallAccumulator, {
+              index: chunk.delta.index,
+              id: chunk.delta.id,
+              name: chunk.delta.name,
+              arguments: chunk.delta.argumentsDelta
+            }, { appendArguments: true });
+            break;
+          case 'usage':
+            finalUsage = chunk.usage;
+            break;
+          case 'finish':
+            break;
         }
       }
 

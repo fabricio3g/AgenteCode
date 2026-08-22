@@ -12,7 +12,8 @@ import type {
   StreamFn,
   ToolResult,
   ToolResultMessage,
-  UserMessage
+  UserMessage,
+  WireTool
 } from './types.ts';
 
 export interface AgentLoopHooks {
@@ -53,6 +54,59 @@ export interface AgentLoopResult {
   turns: number;
 }
 
+// ── Run resilience (dsh-inspired) ──────────────────────────────────────
+
+/** Total stream attempts per turn: one live try + two retries. */
+const MAX_STREAM_ATTEMPTS = 3;
+/** Backoff schedule between attempts. */
+const RETRY_DELAYS_MS = [1_000, 2_000];
+/**
+ * Consecutive length-truncated turns tolerated before the run gives up —
+ * each continuation costs a full request, so the cap prevents burn loops.
+ */
+const MAX_LENGTH_CONTINUES = 3;
+/** Identical-call streaks that trigger a change-approach note. */
+const REPEAT_NOTE_THRESHOLDS = [3, 5, 8];
+/** Tail of call signatures kept for repeat detection. */
+const REPEAT_WINDOW = 8;
+
+/** Error codes an automatic retry can plausibly fix (provider protocol). */
+const RETRYABLE_ERROR_CODES = new Set(['RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT']);
+
+/**
+ * Whether a stream failure looks transient and is worth an automatic retry.
+ * The provider protocol classifies errors into stable codes; the text
+ * heuristic remains as a fallback for unclassified failures.
+ */
+export function isTransientStreamError(message: string, code?: string): boolean {
+  if (code) return RETRYABLE_ERROR_CODES.has(code);
+  return /\b(429|rate.?limit|502|503|504|505|gateway|timeout|timed?.?out|overloaded|econn(refused|reset|aborted)?|socket hang up|network|fetch failed)\b/i
+    .test(message);
+}
+
+/** Stable stringify with sorted object keys, so argument order cannot defeat repeat detection. */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
+function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done() {
+      signal.removeEventListener('abort', done);
+      clearTimeout(timer);
+      resolve();
+    }
+    signal.addEventListener('abort', done);
+  });
+}
+
 function toolResultMessage(
   toolCallId: string,
   toolName: string,
@@ -80,7 +134,8 @@ async function executeTool(
   try {
     const result = await tool.execute(toolCallId, args, {
       signal,
-      onUpdate: (partial) => argsEmitter({ type: 'tool_update', toolCallId, toolName: tool.name, partial })
+      onUpdate: (partial) => argsEmitter({ type: 'tool_update', toolCallId, toolName: tool.name, partial }),
+      emit: argsEmitter
     });
     return result;
   } catch (err: unknown) {
@@ -91,13 +146,62 @@ async function executeTool(
   }
 }
 
+/**
+ * One model request with transient-failure retries (dsh's llm/retry pattern).
+ * Only a failure that produced zero deltas retries — once content shipped to
+ * the transcript, a replay would duplicate it.
+ */
+async function callStreamWithRetry(
+  args: AgentLoopArgs,
+  wireTools: WireTool[],
+  emit: (event: AgentEvent) => void
+): Promise<AssistantMessage> {
+  const { signal } = args;
+  let sawDelta = false;
+  for (let attempt = 1; ; attempt += 1) {
+    sawDelta = false;
+    const assistant = await args.streamFn({
+      systemPrompt: args.systemPrompt,
+      messages: args.messages,
+      tools: wireTools,
+      signal,
+      callbacks: {
+        onTextDelta: (delta) => {
+          sawDelta = true;
+          emit({ type: 'text_delta', delta });
+        },
+        onThinkingDelta: (delta) => {
+          sawDelta = true;
+          emit({ type: 'thinking_delta', delta });
+        }
+      }
+    });
+    const retryable =
+      assistant.stopReason === 'error'
+      && !sawDelta
+      && !assistant.content
+      && !(assistant.toolCalls?.length)
+      && !!assistant.errorMessage
+      && isTransientStreamError(assistant.errorMessage, assistant.errorCode);
+    if (!retryable || attempt >= MAX_STREAM_ATTEMPTS || signal.aborted) return assistant;
+    const delayMs = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!;
+    emit({ type: 'llm_retry', attempt, delayMs });
+    await sleepAbortable(delayMs, signal);
+    if (signal.aborted) return assistant;
+  }
+}
+
 export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult> {
-  const { messages, tools, enabledTools, streamFn, emit, signal, hooks } = args;
+  const { messages, tools, enabledTools, emit, signal, hooks } = args;
   const maxTurns = Math.max(1, args.config.maxTurns | 0);
   let turns = 0;
   // Every break assigns stopReason; only the turn budget expiring mid-flight
   // leaves it null. That distinction drives the limit notice below.
   let stopReason: AssistantMessage['stopReason'] | null = null;
+  // Consecutive length-truncated turns — each one auto-continues until the cap.
+  let lengthStreak = 0;
+  // Recent (tool, canonical-args) signatures for repeat-call detection.
+  const repeatWindow: string[] = [];
 
   const wireTools = Array.from(enabledTools)
     .map((name) => tools.get(name))
@@ -117,16 +221,7 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
     turns += 1;
     emit({ type: 'turn_start', turnIndex: turns });
 
-    const assistant = await streamFn({
-      systemPrompt: args.systemPrompt,
-      messages,
-      tools: wireTools,
-      signal,
-      callbacks: {
-        onTextDelta: (delta) => emit({ type: 'text_delta', delta }),
-        onThinkingDelta: (delta) => emit({ type: 'thinking_delta', delta })
-      }
-    });
+    const assistant = await callStreamWithRetry(args, wireTools, emit);
 
     messages.push(assistant);
     emit({ type: 'message_end', message: assistant });
@@ -140,7 +235,9 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
     const toolCalls = assistant.toolCalls ?? [];
 
     if (assistant.stopReason === 'length') {
-      // Truncated arguments are unsafe to execute — fail every pending call.
+      // Truncated arguments are unsafe to execute — fail every pending call
+      // with a re-issue hint, then keep going (dsh treats a cap hit as a
+      // reason to continue, not a reason to abandon the task).
       for (const call of toolCalls) {
         const blocked = toolResultMessage(call.id, call.name, {
           content: 'Error: the response hit the length limit before this tool call completed. Re-issue the call with shorter arguments.',
@@ -149,16 +246,24 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
         messages.push(blocked);
         emit({ type: 'tool_end', toolCallId: call.id, toolName: call.name, result: blocked.content, isError: true });
       }
-      stopReason = 'length';
+      lengthStreak += 1;
       emit({ type: 'turn_end', turnIndex: turns });
-      break;
+      if (lengthStreak >= MAX_LENGTH_CONTINUES) {
+        stopReason = 'length';
+        break;
+      }
+      emit({ type: 'length_continue', turnIndex: turns });
+      continue;
     }
+    lengthStreak = 0;
 
     if (!toolCalls.length) {
-      // Natural stop — unless a follow-up was queued while we were streaming.
-      const followUps = args.drainFollowUps();
-      if (followUps.length && !signal.aborted) {
-        messages.push(...followUps);
+      // Natural stop — unless the user queued a steer or follow-up while we
+      // were streaming: queued input vetoes the stop (dsh keeps the turn
+      // alive whenever next-step input is waiting).
+      const queued = [...args.drainSteered(), ...args.drainFollowUps()];
+      if (queued.length && !signal.aborted) {
+        messages.push(...queued);
         emit({ type: 'turn_end', turnIndex: turns });
         continue;
       }
@@ -226,6 +331,35 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
 
     for (const outcome of outcomes) {
       if (outcome) messages.push(outcome);
+    }
+
+    // ── Repeat-call guard (dsh repeat-tool-reminder) ────────────────────
+    // A model stuck in a loop re-issues the identical call; at the dsh
+    // thresholds we inject a note telling it to change approach instead of
+    // burning turns silently.
+    for (const call of toolCalls) {
+      repeatWindow.push(`${call.name}:${canonicalJson(call.arguments ?? {})}`);
+    }
+    if (repeatWindow.length > REPEAT_WINDOW) {
+      repeatWindow.splice(0, repeatWindow.length - REPEAT_WINDOW);
+    }
+    const lastSignature = repeatWindow[repeatWindow.length - 1];
+    if (lastSignature !== undefined) {
+      let consecutive = 0;
+      for (let i = repeatWindow.length - 1; i >= 0 && repeatWindow[i] === lastSignature; i -= 1) {
+        consecutive += 1;
+      }
+      if (REPEAT_NOTE_THRESHOLDS.includes(consecutive)) {
+        const repeatName = toolCalls[toolCalls.length - 1]?.name ?? 'tool';
+        const note: UserMessage = {
+          role: 'user',
+          content:
+            `[note] You have made the identical ${repeatName} call ${consecutive} times in a row with the same arguments. ` +
+            'The repeated calls are not making progress. Change the approach: read the tool output again, adjust the arguments, or explain what is blocking you instead of repeating the call.',
+          ts: Date.now()
+        };
+        messages.push(note);
+      }
     }
 
     emit({ type: 'turn_end', turnIndex: turns });

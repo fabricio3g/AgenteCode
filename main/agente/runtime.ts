@@ -17,14 +17,15 @@ import type { AgentLoopHooks } from './core/agent-loop.ts';
 import { createProviderStreamFn, type AgenteTransport } from './llm/stream-fn.ts';
 import { ToolRegistry } from './tools/registry.ts';
 import { createBuiltinTools } from './tools/builtins.ts';
+import { createTodoTool, type TodoStore } from './tools/todo.ts';
 import { CheckpointStore, type CheckpointSummary } from './tools/checkpoint.ts';
-import { SessionTree, newSessionId, projectSlug } from './sessions/session-tree.ts';
-import { buildAgenteSystemPrompt } from './prompts.ts';
+import { SessionTree, projectSlug } from './sessions/session-tree.ts';
+import { buildAgenteSystemPrompt, renderTodosSection } from './prompts.ts';
 import { ExtensionRunner } from './extensions/extension-runner.ts';
 import { createBuiltinExtensions } from './extensions/builtin.ts';
 import type { AgenteExtensionDefinition } from './extensions/extension-api.ts';
 import { emitCodeAgentEvent } from './event-bridge.ts';
-import type { CodeAgentEvent, AgenteSessionInfo, AgenteStartSessionArgs } from './types.ts';
+import type { CodeAgentEvent, AgenteStartSessionArgs } from './types.ts';
 
 const DEFAULT_MAX_TURNS = 40;
 /** Assumed context window when the provider cannot tell us. */
@@ -90,6 +91,8 @@ interface RuntimeSession {
   /** Approval requests that are plan approvals (vs per-action). */
   planRequests: Set<string>;
   systemPrompt: string;
+  /** The model-maintained todo list (todo_write tool), injected per request. */
+  todos: TodoStore;
   extensions: ExtensionRunner;
   /** Context window of the active model, for the usage ring. */
   contextWindow: number;
@@ -153,7 +156,7 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
     case 'agent_start':
       return { type: 'agent_start', chatId };
     case 'agent_end':
-      return { type: 'agent_end', chatId };
+      return { type: 'agent_end', chatId, stopReason: event.stopReason };
     case 'turn_start':
       return { type: 'turn_start', chatId, turnIndex: event.turnIndex };
     case 'turn_end':
@@ -168,6 +171,12 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
       return { type: 'tool_update', chatId, toolCallId: event.toolCallId, partialResult: event.partial };
     case 'tool_end':
       return { type: 'tool_end', chatId, toolCallId: event.toolCallId, result: event.result, isError: event.isError };
+    case 'llm_retry':
+      return { type: 'llm_retry', chatId, attempt: event.attempt, delayMs: event.delayMs };
+    case 'length_continue':
+      return { type: 'length_continue', chatId, turnIndex: event.turnIndex };
+    case 'todo_update':
+      return { type: 'todo_update', chatId, todos: event.todos };
     case 'error':
       return { type: 'error', chatId, message: event.message };
     default:
@@ -410,6 +419,11 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
 
   const { sessionsDir, checkpointsDir } = agentePaths();
   const transport = resolveTransport(args.provider, args.model, args.thinkingLevel);
+  // Fail fast: an empty model id would only die later inside the provider
+  // call with a cryptic upstream error.
+  if (!transport.model) {
+    throw new Error('No model selected — pick one in the Model Hub before starting a coding session.');
+  }
 
   let tree: SessionTree;
   let resumed = false;
@@ -427,6 +441,8 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
 
   const registry = new ToolRegistry();
   for (const tool of createBuiltinTools(args.projectRoot)) registry.register(tool);
+  const todos: TodoStore = { items: [] };
+  registry.register(createTodoTool(todos));
 
   // Extensions: built-ins (and later, externally loaded ones) filtered by
   // the user's config toggles. They register through the same public API a
@@ -457,6 +473,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     planApproved: false,
     planRequests: new Set(),
     systemPrompt: args.systemPromptOverride || buildAgenteSystemPrompt(args.projectRoot, undefined, args.runtimeMode),
+    todos,
     extensions: extensionRunner,
     contextWindow: FALLBACK_CONTEXT_WINDOW,
     currentTurn: 0,
@@ -475,7 +492,8 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
   }
 
   // The context hook lets extensions rewrite the message list on every LLM
-  // call (pi's transformContext choke point).
+  // call (pi's transformContext choke point). The system prompt is re-rendered
+  // per request too, so the current todo list is always model-visible.
   const baseStreamFn = createProviderStreamFn(session.transport);
 
   const agent = new Agent({
@@ -484,7 +502,11 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     enabledTools: registry.enabledNames(),
     streamFn: async (request) => {
       const messages = await extensionRunner.applyContextHooks(request.messages);
-      return baseStreamFn({ ...request, messages });
+      return baseStreamFn({
+        ...request,
+        messages,
+        systemPrompt: request.systemPrompt + renderTodosSection(todos.items)
+      });
     },
     maxTurns: DEFAULT_MAX_TURNS,
     hooks: buildHooks(session)
@@ -529,10 +551,6 @@ function closeSessionInternal(chatId: string): void {
   sessions.delete(chatId);
 }
 
-export async function closeSession(chatId: string): Promise<void> {
-  closeSessionInternal(chatId);
-}
-
 export function disposeAllSessions(): void {
   for (const chatId of Array.from(sessions.keys())) closeSessionInternal(chatId);
 }
@@ -542,6 +560,9 @@ export function disposeAllSessions(): void {
 export async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>): Promise<{ ok: boolean; error?: string }> {
   const session = requireSession(chatId);
   if (!session) return { ok: false, error: 'No active agente session for this chat' };
+  if (!session.transport.model) {
+    return { ok: false, error: 'No model selected — pick one in the Model Hub first.' };
+  }
   // Each task re-enters planning: a new prompt means a new plan to approve.
   session.planApproved = false;
   session.tree.append('user', { content: text, images });
@@ -588,10 +609,14 @@ export function setRuntimeMode(chatId: string, mode: 'full' | 'supervised' | 'pl
   if (!session) return { ok: false };
   session.runtimeMode = mode;
   session.planApproved = false;
-  (session.agent.options as { systemPrompt: string }).systemPrompt =
+  const systemPrompt =
     mode === 'plan'
       ? buildAgenteSystemPrompt(session.projectRoot, undefined, 'plan')
       : buildAgenteSystemPrompt(session.projectRoot);
+  // Keep the session record and the agent options in sync — compact() and
+  // future readers must see the same prompt the loop actually uses.
+  session.systemPrompt = systemPrompt;
+  (session.agent.options as { systemPrompt: string }).systemPrompt = systemPrompt;
   return { ok: true };
 }
 
@@ -604,9 +629,14 @@ export function setModel(chatId: string, provider: string, model: string, thinki
     if (!session.disposed) session.contextWindow = contextWindow;
   });
   const baseStreamFn = createProviderStreamFn(session.transport);
+  const todos = session.todos;
   (session.agent.options as { streamFn: unknown }).streamFn = async (request: Parameters<StreamFn>[0]) => {
     const messages = await session.extensions.applyContextHooks(request.messages);
-    return baseStreamFn({ ...request, messages });
+    return baseStreamFn({
+      ...request,
+      messages,
+      systemPrompt: request.systemPrompt + renderTodosSection(todos.items)
+    });
   };
   session.tree.append('model_change', { provider, model, thinkingLevel });
   return { ok: true };
@@ -666,62 +696,6 @@ export async function rollback(chatId: string, turnIndex: number): Promise<{ ok:
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-}
-
-export async function listSessions(projectRoot: string): Promise<AgenteSessionInfo[]> {
-  const { sessionsDir } = agentePaths();
-  const dir = path.join(sessionsDir, projectSlug(projectRoot));
-  const { readdir } = await import('node:fs/promises');
-  let names: string[];
-  try {
-    names = await readdir(dir);
-  } catch {
-    return [];
-  }
-  const infos: AgenteSessionInfo[] = [];
-  for (const name of names.filter((n) => n.endsWith('.jsonl')).sort().reverse()) {
-    try {
-      const tree = await SessionTree.open(path.join(dir, name));
-      const entries = tree.listEntries();
-      const firstUser = entries.find((e) => e.kind === 'user');
-      infos.push({
-        sessionId: tree.header.id,
-        projectRoot,
-        createdAt: tree.header.createdAt,
-        updatedAt: entries.length ? entries[entries.length - 1]!.ts : tree.header.createdAt,
-        entryCount: entries.length,
-        title: firstUser
-          ? String((firstUser.data as { content?: string } | null)?.content ?? '').slice(0, 80) || 'Session'
-          : 'Session'
-      });
-    } catch {
-      // unreadable session file — skip
-    }
-  }
-  return infos;
-}
-
-export function getSessionStatus(chatId: string): { active: boolean; sessionId?: string; busy?: boolean; runtimeMode?: string } {
-  const session = sessions.get(chatId);
-  if (!session) return { active: false };
-  return { active: true, sessionId: session.sessionId, busy: session.agent.busy, runtimeMode: session.runtimeMode };
-}
-
-/** Fresh session for the same chat/project/model — keeps the old file on disk. */
-export async function newSession(chatId: string): Promise<{ ok: boolean; sessionId?: string; error?: string }> {
-  const session = requireSession(chatId);
-  if (!session) return { ok: false, error: 'No active session' };
-  const { providerName, model } = session.transport;
-  const runtimeMode = session.runtimeMode;
-  const projectRoot = session.projectRoot;
-  closeSessionInternal(chatId);
-  const result = await startSession({ chatId, projectRoot, provider: providerName, model, runtimeMode });
-  return { ok: true, sessionId: result.sessionId };
-}
-
-/** Model cycling needs a model list in main; not wired yet. */
-export function cycleModel(): { ok: boolean } {
-  return { ok: false };
 }
 
 // ── Extension management (config-backed toggles) ───────────────────────

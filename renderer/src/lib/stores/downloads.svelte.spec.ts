@@ -3,8 +3,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const mockGetDownloadJobs = vi.fn();
 const mockClearFinishedDownloads = vi.fn();
 
-vi.mock('$lib/services/tauri', () => ({
-  isTauri: () => true
+vi.mock('$lib/services/bridge', () => ({
+  isElectron: () => true
 }));
 
 vi.mock('$lib/services/downloads', () => ({

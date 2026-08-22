@@ -1,5 +1,5 @@
-import type { SearchOptions, SearchResponse } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { SearchOptions, SearchResponse } from '$lib/types/bridge';
+import { invoke } from './bridge';
 import { loadAppConfig } from '$lib/utils/storage';
 import { getStoredHfToken } from './huggingface';
 

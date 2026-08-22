@@ -1,6 +1,7 @@
 import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
-import type { IndexedDocument, SearchResult } from '$lib/types/tauri';
+import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
@@ -11,7 +12,7 @@ import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDi
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
 import { modelsStore } from '$lib/stores/models.svelte';
@@ -40,7 +41,6 @@ import {
   mergeSearchSettingsConfig,
   mergeTtsSettingsConfig,
   mergeUiSettingsConfig,
-  mergeWorkspaceModeConfig,
   setBackendModeConfig,
   setLocalModelConfig
 } from '$lib/stores/app-store-config';
@@ -113,12 +113,12 @@ import {
   toInvoke,
   updateStreamingVersion,
   withTimeout,
+  isDefaultChatTitle,
   type ApiModelMetadata,
   type AssistantMetadata,
   type ContextBudget,
   type ElectronApi,
-  type LocalModelLoadTarget,
-  type MainView
+  type LocalModelLoadTarget
 } from '$lib/stores/app-store-helpers';
 
 class AppStore {
@@ -127,8 +127,8 @@ class AppStore {
   chats = $state<ChatSession[]>([]);
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
-  activeSpace = $state<ChatContextMode>('chat');
-  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ chat: null, work: null });
+  activeSpace = $state<ChatContextMode>('home');
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null });
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
@@ -145,11 +145,9 @@ class AppStore {
   artifactSettingsOpen = $state(false);
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
-  mainView = $state<MainView>('chat');
   chatSearchOpen = $state(false);
   searchSidebarOpen = $state(false);
   searchStateByChat = $state<Record<string, ChatSearchState>>({});
-  downloadsOpen = $state(false);
   voiceModeActive = $state(false);
   loading = $state(false);
   error = $state<string | null>(null);
@@ -224,7 +222,7 @@ class AppStore {
   }
 
   get backendMode() {
-    return this.config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+    return this.config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
   }
 
   get activeProvider() {
@@ -281,7 +279,7 @@ class AppStore {
   }
 
   async syncWindowActiveWork() {
-    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.windowSetActiveWork) return;
+    if (!isElectron() || typeof window === 'undefined' || !window.electronAPI?.windowSetActiveWork) return;
     const payload = {
       active: this.hasActiveWork,
       reasons: this.activeWorkReasons
@@ -337,7 +335,7 @@ class AppStore {
   }
 
   private queueWebAnswerRagIngest(params: { chatId: string; query: string; answer: string; sources: SearchResult[] }) {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     const normalizedAnswer = normalizeText(params.answer);
     if (normalizedAnswer.length < WEB_RAG_MIN_ANSWER_CHARS) return;
 
@@ -364,12 +362,8 @@ class AppStore {
     return this.config.llm?.local?.selected_model_path || '';
   }
 
-  get workspaceMode() {
-    return this.config.ui?.workspace_mode || 'modern';
-  }
-
   get currentContextMode() {
-    return this.currentChat?.contextMode || this.activeSpace || 'chat';
+    return this.currentChat?.contextMode || this.activeSpace || 'home';
   }
 
   get visibleChats() {
@@ -407,7 +401,7 @@ class AppStore {
   }
 
   async refreshContextBudgetPreview() {
-    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
+    if (!isElectron() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       this.contextBudget = null;
       return;
     }
@@ -421,7 +415,7 @@ class AppStore {
     const requestId = ++this.contextBudgetRequestId;
 
     const draftContent = this.composer.trim();
-    const workspaceContext = this.currentContextMode === 'work' && this.currentWorkspace
+    const workspaceContext = this.currentContextMode === 'code' && this.currentWorkspace
       ? buildWorkspacePrompt(this.currentWorkspace)
       : '';
 
@@ -472,7 +466,7 @@ class AppStore {
   }
 
   private async fetchApiModelMetadata(providerName: string, model: string): Promise<ApiModelMetadata | null> {
-    if (!isTauri() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
+    if (!isElectron() || typeof window === 'undefined' || !window.electronAPI?.invoke) {
       return null;
     }
 
@@ -722,7 +716,7 @@ class AppStore {
    * has already reserved for the launch step.
    */
   private async subscribeToLoadProgress(): Promise<() => void> {
-    if (!isTauri()) return () => {};
+    if (!isElectron()) return () => {};
     try {
       const unlisten = await onSupervisorEvent((event) => {
         const progress = Number((event as { load_progress?: unknown }).load_progress);
@@ -823,7 +817,7 @@ class AppStore {
         hasMmproj: !!(this.localModelLoadMmprojPath),
       };
       toastStore.success(`Model loaded: ${this.localModelLoadTarget?.name || 'local model'}`);
-      if (isTauri()) {
+      if (isElectron()) {
         detectToolSupport().catch(() => {});
         this.refreshReasoningCapabilities().catch(() => {});
       }
@@ -892,11 +886,11 @@ class AppStore {
     }
 
     void withTimeout(this.refreshModels(), 2500, undefined);
-    if (isTauri()) {
+    if (isElectron()) {
       void detectToolSupport().catch(() => {});
       void this.refreshReasoningCapabilities().catch(() => {});
     }
-    if (isTauri()) {
+    if (isElectron()) {
       void Promise.allSettled([
         withTimeout(modelsStore.refreshIndex(), 2500, undefined),
         withTimeout(modelsStore.refreshStatus(), 2500, undefined),
@@ -909,7 +903,7 @@ class AppStore {
     }
 
     // Check first-run onboarding
-    if (isTauri()) {
+    if (isElectron()) {
       void this.checkOnboarding();
     }
   }
@@ -961,23 +955,24 @@ class AppStore {
   private normalizeChatIdBySpace(value: unknown): Record<ChatContextMode, string | null> {
     const raw = value && typeof value === 'object' ? value as Partial<Record<string, unknown>> : {};
     return {
-      chat: typeof raw.chat === 'string' ? raw.chat : null,
-      // Legacy code space sessions map to work
-      work: typeof raw.work === 'string' ? raw.work : (typeof raw.code === 'string' ? raw.code : null)
+      // Legacy keys: 'chat' was the old home id; 'work'/'code' both named the
+      // code space at different times.
+      home: typeof raw.home === 'string' ? raw.home : (typeof raw.chat === 'string' ? raw.chat : null),
+      code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null)
     };
   }
 
   private defaultTitleForMode(mode: ChatContextMode) {
-    if (mode === 'work') return 'New work';
+    if (mode === 'code') return 'New session';
     return 'New chat';
   }
 
   private isDefaultTitle(chat: ChatSession, title = chat.title) {
-    return title === 'New chat' || title === 'New work' || title === 'New code' || title === 'Codebase overview' || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
+    return isDefaultChatTitle(title) || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
   }
 
   private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'agent' {
-    return mode === 'work' ? 'agent' : 'chat';
+    return SPACES[mode].defaultComposerMode;
   }
 
   /** Load store UI mirrors from a session (per-chat isolation). */
@@ -1042,7 +1037,7 @@ class AppStore {
   }
 
   private rebuildChatIdBySpace() {
-    const next: Record<ChatContextMode, string | null> = { chat: null, work: null };
+    const next: Record<ChatContextMode, string | null> = { home: null, code: null };
     for (const chat of this.chats) {
       const mode = normalizeContextMode(chat.contextMode);
       if (!next[mode]) next[mode] = chat.id;
@@ -1070,7 +1065,6 @@ class AppStore {
 
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
     const contextMode = normalizeContextMode(mode);
-    this.mainView = 'chat';
     const now = Date.now();
     const composerMode = this.defaultComposerModeFor(contextMode);
     const chat: ChatSession = {
@@ -1083,7 +1077,7 @@ class AppStore {
       contextMode,
       codeAgent: null,
       projectId: null,
-      workspace: contextMode === 'chat' ? null : (options.workspace || null),
+      workspace: contextMode === 'home' ? null : (options.workspace || null),
       reasoningLevel: null,
       composerMode,
       searchMode: 'chat',
@@ -1106,7 +1100,6 @@ class AppStore {
   selectChat(chatId: string) {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
-    this.mainView = 'chat';
     const mode = normalizeContextMode(match.contextMode);
     this.activeSpace = mode;
     this.currentChatIdBySpace = { ...this.currentChatIdBySpace, [mode]: chatId };
@@ -1123,7 +1116,7 @@ class AppStore {
     // Restore per-chat UI slice (modes, draft, panels) — never rewrite contextMode
     this.hydrateUiFromChat(match);
     this.persist();
-    if (isTauri()) {
+    if (isElectron()) {
       void this.refreshRagDocuments(chatId);
     }
   }
@@ -1164,7 +1157,7 @@ class AppStore {
     this.rebuildChatIdBySpace();
     if (!this.chats.length) this.createChat(this.activeSpace);
     this.persist();
-    if (isTauri()) {
+    if (isElectron()) {
       clearRagDocuments(chatId).catch(() => {});
     }
     deleteChatFromDb(chatId).catch(() => {});
@@ -1326,13 +1319,13 @@ class AppStore {
   }
 
   async refreshReasoningCapabilities() {
-    if (!isTauri()) {
+    if (!isElectron()) {
       this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
       return;
     }
     try {
       const config = await loadChatConfig();
-      const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+      const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
       if (backendMode === 'local') {
         const local = config.llm?.local || {};
         this.reasoningCapabilities = await fetchReasoningCapabilities({
@@ -1412,7 +1405,7 @@ class AppStore {
   }
 
   async refreshRagDocuments(chatId = this.currentChatId || '') {
-    if (!isTauri() || !chatId) return;
+    if (!isElectron() || !chatId) return;
     try {
       const docs = await listRagDocuments(chatId);
       this.ragDocumentsByChat = {
@@ -1430,11 +1423,11 @@ class AppStore {
   async clearRag() {
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
-    if (!isTauri() || !targetChatId || !targetChat) return;
+    if (!isElectron() || !targetChatId || !targetChat) return;
     await clearRagDocuments(targetChatId);
     this.pendingAttachments = [];
     // Clear workspace files but never demote Work → Chat
-    if (targetChat.workspace && normalizeContextMode(targetChat.contextMode) === 'work') {
+    if (targetChat.workspace && normalizeContextMode(targetChat.contextMode) === 'code') {
       targetChat.workspace = null;
       this.touchChats();
       this.persist();
@@ -1450,14 +1443,14 @@ class AppStore {
       URL.revokeObjectURL(attachment.preview);
     }
     // If it's a RAG document, remove from backend too
-    if (attachment?.docId && isTauri() && this.currentChatId) {
+    if (attachment?.docId && isElectron() && this.currentChatId) {
       removeRagDocument(attachment.docId, this.currentChatId).catch(() => {});
       this.refreshRagDocuments().catch(() => {});
     }
   }
 
   async removeRagDoc(docId: string) {
-    if (!isTauri() || !this.currentChatId) return;
+    if (!isElectron() || !this.currentChatId) return;
     await removeRagDocument(docId, this.currentChatId);
     this.pendingAttachments = this.pendingAttachments.filter((attachment) => attachment.docId !== docId);
     if (this.currentChat?.workspace) {
@@ -1590,9 +1583,9 @@ class AppStore {
   async pickWorkspaceFolder() {
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
-    if (!isTauri() || !targetChatId || !targetChat) return;
-    if (normalizeContextMode(targetChat.contextMode) !== 'work') {
-      toastStore.info('Switch to the Work tab to attach a folder.', 2800);
+    if (!isElectron() || !targetChatId || !targetChat) return;
+    if (normalizeContextMode(targetChat.contextMode) !== 'code') {
+      toastStore.info('Switch to the Code tab to attach a folder.', 2800);
       return;
     }
     const selectedPath = await pickWorkspaceFolderDialog();
@@ -1607,7 +1600,7 @@ class AppStore {
       const chat = this.findChat(targetChatId);
       if (!chat) return;
       chat.workspace = buildWorkspaceFromIndexResult(result, Date.now());
-      // contextMode stays 'work' — never convert sessions between spaces
+      // contextMode stays 'code' — never convert sessions between spaces
       this.touchChats();
       this.persist();
       await this.refreshRagDocuments(targetChatId);
@@ -1622,15 +1615,15 @@ class AppStore {
   }
 
   async addWorkspaceFolder(files: File[]) {
-    if (!isTauri()) {
+    if (!isElectron()) {
       toastStore.error('Work mode is only available in the desktop app.');
       return;
     }
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
     if (!files.length || !targetChatId || !targetChat) return;
-    if (normalizeContextMode(targetChat.contextMode) !== 'work') {
-      toastStore.info('Switch to the Work tab to attach a folder.', 2800);
+    if (normalizeContextMode(targetChat.contextMode) !== 'code') {
+      toastStore.info('Switch to the Code tab to attach a folder.', 2800);
       return;
     }
 
@@ -1722,7 +1715,7 @@ class AppStore {
         skippedCount,
         files: workspaceFiles
       };
-      // contextMode stays 'work'
+      // contextMode stays 'code'
       this.touchChats();
       this.persist();
       await this.refreshRagDocuments(targetChatId);
@@ -1757,7 +1750,7 @@ class AppStore {
   async refreshWorkspace(chatId = this.currentChatId || '') {
     const chat = this.findChat(chatId);
     const rootPath = chat?.workspace?.rootPath;
-    if (!rootPath || !chatId || !isTauri()) return;
+    if (!rootPath || !chatId || !isElectron()) return;
     this.workspaceIndexing = true;
     try {
       await this.clearWorkspaceDocs(chatId);
@@ -1855,7 +1848,7 @@ class AppStore {
     const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
     const activeComposerMode = normalizeSessionComposerMode(targetChat.composerMode ?? this.composerMode, activeContextMode);
     const activeReasoningLevel = targetChat.reasoningLevel ?? this.reasoningLevel;
-    const activeWorkspace = activeContextMode === 'work' ? targetChat.workspace : null;
+    const activeWorkspace = activeContextMode === 'code' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -1866,7 +1859,7 @@ class AppStore {
 
     this.error = null;
     const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
-    const workContext = activeContextMode === 'work' && activeWorkspace
+    const workContext = activeContextMode === 'code' && activeWorkspace
       ? {
           rootName: activeWorkspace.rootName,
           fileCount: activeWorkspace.fileCount,
@@ -2025,7 +2018,7 @@ class AppStore {
       let ragDocuments: IndexedDocument[] = [];
       const workspaceContext = activeWorkspace ? buildWorkspacePrompt(activeWorkspace) : '';
 
-      if (isTauri() && targetRagDocuments.length && activeSearchMode === 'chat') {
+      if (isElectron() && targetRagDocuments.length && activeSearchMode === 'chat') {
         // No tight retrieval budget when the user attached documents — pull more chunks.
         const ragResponse = await queryDocuments({
           query: content || 'summarize key points from the attached documents',
@@ -2069,13 +2062,13 @@ class AppStore {
 
       const outboundMessages = buildOutboundMessages({ messages: requestMessages, systemPrompt });
       // Context window budget check (local mode only)
-      if (activeBackendMode === 'local' && isTauri()) {
+      if (activeBackendMode === 'local' && isElectron()) {
         try {
           const electronApi = getElectronApi();
           if (electronApi) {
             await applyLocalContextBudgetTruncation({
               backendMode: activeBackendMode,
-              isTauri: true,
+              isElectron: true,
               config: this.config,
               messages: outboundMessages,
               invoke: toInvoke(electronApi),
@@ -2103,16 +2096,16 @@ class AppStore {
       const fullAgentBudget = { maxIterations: 18, maxToolCalls: 40, maxTimeMs: 8 * 60 * 1000 };
 
       if (useToolLoop) {
-        const isWorkMode = activeContextMode === 'work';
+        const isCodeSpace = activeContextMode === 'code';
         const wantsAgent =
           (modeControl === 'tabs' && activeComposerMode === 'agent')
           || composerRoute === 'agent'
-          || isWorkMode;
+          || isCodeSpace;
         const agentProfile =
           activeSearchMode !== 'chat' && !wantsAgent
             ? 'search' as const
             : wantsAgent
-              ? (isWorkMode ? 'work' as const : 'chat' as const)
+              ? (isCodeSpace ? 'work' as const : 'chat' as const)
               : 'chat' as const;
         // Research search modes use search_chat; chat tools & agent use full tool lists.
         const toolMode =
@@ -2122,7 +2115,7 @@ class AppStore {
         const profileBudget =
           agentProfile === 'search' || activeSearchMode !== 'chat'
             ? searchToolBudget
-            : wantsAgent && !isWorkMode
+            : wantsAgent && !isCodeSpace
               ? fullAgentBudget
               : agentProfile === 'chat'
                 ? chatAgentBudget
@@ -2424,7 +2417,7 @@ class AppStore {
 
       // ── Work mode file writing ──────────────────────────────────────
       const activeWorkspaceRoot = activeWorkspace?.rootPath;
-      if (activeComposerMode !== 'agent' && activeWorkspaceRoot && isTauri() && assistantMessage.content) {
+      if (activeComposerMode !== 'agent' && activeWorkspaceRoot && isElectron() && assistantMessage.content) {
         const blocks = parseWriteFileBlocks(assistantMessage.content);
         if (blocks.length > 0) {
           const created: import('$lib/types/chat').CreatedFile[] = [];
@@ -2692,7 +2685,7 @@ class AppStore {
       if (message.mode === 'agent') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const ctxMode = normalizeContextMode(chat.contextMode);
-        const regenProfile = ctxMode === 'work' ? 'work' as const : 'chat' as const;
+        const regenProfile = ctxMode === 'code' ? 'work' as const : 'chat' as const;
         /*
          * The original turn's search depth is carried over. Without it, regenerating a
          * Deep or Max research answer silently re-ran as a plain chat agent — same
@@ -3007,7 +3000,7 @@ class AppStore {
   }
 
   private _apiModelsCacheKey(): string | null {
-    const isLocal = this.config.llm?.backend_mode === 'local' && isTauri();
+    const isLocal = this.config.llm?.backend_mode === 'local' && isElectron();
     if (isLocal) return null;
     const providerName = this.config.llm?.provider || 'openai';
     const provider = this.config.llm?.providers?.[providerName];
@@ -3025,17 +3018,17 @@ class AppStore {
     if (options.refreshModels) {
       await this.refreshModels();
     }
-    if (isTauri() && options.detectTools) {
+    if (isElectron() && options.detectTools) {
       detectToolSupport().catch(() => {});
       this.refreshReasoningCapabilities().catch(() => {});
     }
-    if (isTauri() && options.refreshLocalStatus) {
+    if (isElectron() && options.refreshLocalStatus) {
       await modelsStore.refreshStatus();
     }
   }
 
   async refreshModels(force?: boolean) {
-    if (this.backendMode === 'local' && isTauri()) {
+    if (this.backendMode === 'local' && isElectron()) {
       this.modelsRefreshing = true;
       try {
         await modelsStore.refreshIndex();
@@ -3082,8 +3075,9 @@ class AppStore {
     max_tokens?: number;
     top_p?: number;
     system_prompt?: string;
-  }) {
-    const next = mergeProviderConfig(this.config, partial);
+    extra_models?: string[];
+  }, opts: { activate?: boolean } = {}) {
+    const next = mergeProviderConfig(this.config, partial, opts);
     await this.commitConfig(next, {
       refreshModels: true,
       detectTools: true,
@@ -3091,13 +3085,59 @@ class AppStore {
     });
   }
 
+  /**
+   * Register a user-added OpenAI-compatible endpoint. The key and model are
+   * stored through updateProvider under llm.providers[id] as usual; only the
+   * directory entry lives in llm.custom_providers.
+   */
+  async addCustomProvider(input: { label: string; base_url: string }): Promise<string> {
+    const slug = input.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'endpoint';
+    const existing = this.config.llm?.custom_providers ?? [];
+    let id = `custom-${slug}`;
+    let n = 2;
+    while (existing.some((p) => p.id === id)) id = `custom-${slug}-${n++}`;
+    await this.commitConfig({
+      ...this.config,
+      llm: { ...this.config.llm, custom_providers: [...existing, { id, label: input.label.trim(), base_url: input.base_url.trim() }] }
+    }, { refreshModels: false });
+    return id;
+  }
+
+  /** Remove a custom endpoint and its stored credential/model entry. */
+  async removeCustomProvider(id: string): Promise<void> {
+    const list = (this.config.llm?.custom_providers ?? []).filter((p) => p.id !== id);
+    const providers = { ...(this.config.llm?.providers ?? {}) };
+    delete providers[id];
+    const wasActive = this.config.llm?.provider === id;
+    await this.commitConfig({
+      ...this.config,
+      llm: {
+        ...this.config.llm,
+        custom_providers: list,
+        providers,
+        ...(wasActive ? { provider: '' } : {})
+      }
+    }, { refreshModels: true });
+  }
+
   async setBackendMode(mode: 'local' | 'api') {
-    const current = this.config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+    const current = this.config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
     if (current === mode) return;
     await this.commitConfig(setBackendModeConfig(this.config, mode), {
       refreshModels: true,
       refreshLocalStatus: true
     });
+  }
+
+  /**
+   * Point chats at a provider id ('' = none active) without touching its
+   * stored fields — the settings toggle's primitive.
+   */
+  async setActiveProvider(id: string) {
+    await this.commitConfig({
+      ...this.config,
+      llm: { ...this.config.llm, provider: id }
+    }, { refreshModels: true });
   }
 
   async updateLocalModel(model: ModelOption) {
@@ -3135,7 +3175,7 @@ class AppStore {
   }
 
   async stopLocalModel() {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     await stopLlama();
     this.localModelActive = null;
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -3146,10 +3186,6 @@ class AppStore {
   async setLocalRuntimePath(path: string) {
     await this.updateLocalSettings({ runtime_path: path });
     this.localModelLoadRuntimePath = path;
-  }
-
-  async setWorkspaceMode(mode: 'legacy' | 'modern') {
-    await this.commitConfig(mergeWorkspaceModeConfig(this.config, mode));
   }
 
   async updateUiSettings(partial: {

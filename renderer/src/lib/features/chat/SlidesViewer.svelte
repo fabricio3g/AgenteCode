@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import type { SlideData } from '$lib/types/tauri';
+  import type { SlideData } from '$lib/types/bridge';
   import { ChevronLeft, ChevronRight, Download } from 'lucide-svelte';
   import { countOf } from '$lib/utils/format';
 

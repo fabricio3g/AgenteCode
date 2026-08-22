@@ -1,7 +1,7 @@
-import type { DownloadJob } from '$lib/types/tauri';
-import { clearFinishedDownloads, getDownloadJobs, removeDownloadJob, retryDownloadJob } from '$lib/services/downloads';
+import type { DownloadJob } from '$lib/types/bridge';
+import { cancelDownloadJob, clearFinishedDownloads, getDownloadJobs, pauseDownloadJob, removeDownloadJob, retryDownloadJob, startDownloadHf } from '$lib/services/downloads';
 import { getModelsDirPath } from '$lib/services/models';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 
 const ACTIVE_STATUSES = new Set(['starting', 'running']);
 const POLL_INTERVAL_MS = 1000;
@@ -52,7 +52,7 @@ class DownloadsStore {
   }
 
   async refresh() {
-    if (!isTauri()) {
+    if (!isElectron()) {
       this.jobs = [];
       return;
     }
@@ -85,7 +85,7 @@ class DownloadsStore {
   }
 
   private async _pollTick() {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     try {
       this.jobs = await getDownloadJobs();
     } catch {
@@ -147,20 +147,54 @@ class DownloadsStore {
   }
 
   async clearFinished() {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     await clearFinishedDownloads();
     await this.refresh();
   }
 
   async removeJob(jobId: string) {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     await removeDownloadJob(jobId);
     this._speedSamples.delete(jobId);
     await this.refresh();
   }
 
+  /** Pause keeps the .part file — a later retryJob resumes from it. */
+  async pauseJob(jobId: string) {
+    if (!isElectron()) return;
+    await pauseDownloadJob(jobId);
+    this._speedSamples.delete(jobId);
+    await this.refresh();
+  }
+
+  /** Cancel discards partial bytes and marks the job cancelled. */
+  async cancelJob(jobId: string) {
+    if (!isElectron()) return;
+    await cancelDownloadJob(jobId);
+    this._speedSamples.delete(jobId);
+    await this.refresh();
+  }
+
+  /** Resume an interrupted/paused/errored job — the engine continues from .part. */
+  async resumeJob(job: DownloadJob) {
+    if (!isElectron()) return;
+    const modelsDir = await getModelsDirPath();
+    const destRel = job.dest_path.includes(modelsDir)
+      ? job.dest_path.slice(modelsDir.length).replace(/^[/\\]+/, '')
+      : undefined;
+    await startDownloadHf({
+      repo_id: job.repo_id,
+      file: job.file,
+      models_dir: modelsDir,
+      dest_rel: destRel,
+      load_when_ready: job.load_when_ready
+    });
+    this.startPolling();
+    await this.refresh();
+  }
+
   async retryJob(jobId: string) {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     const job = this.jobs.find((j) => j.id === jobId);
     if (!job) return;
     const modelsDir = await getModelsDirPath();

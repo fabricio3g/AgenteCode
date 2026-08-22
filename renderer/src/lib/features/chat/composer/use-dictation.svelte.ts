@@ -1,7 +1,7 @@
 import { appStore } from '$lib/stores/app.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 import { sttTranscribe } from '$lib/services/stt';
 
 /**
@@ -110,7 +110,7 @@ export class Dictation {
   constructor() {
     // Inside Electron, always take the local Whisper path.
     this.hasSpeechRecognition =
-      !isTauri() && typeof window !== 'undefined' && !!getRecognitionCtor();
+      !isElectron() && typeof window !== 'undefined' && !!getRecognitionCtor();
     this.hasMediaRecorder =
       typeof navigator !== 'undefined' &&
       !!navigator.mediaDevices?.getUserMedia &&
@@ -118,7 +118,7 @@ export class Dictation {
   }
 
   get supported(): boolean {
-    return this.hasSpeechRecognition || (isTauri() && this.hasMediaRecorder);
+    return this.hasSpeechRecognition || (isElectron() && this.hasMediaRecorder);
   }
 
   get listening(): boolean {
@@ -140,7 +140,7 @@ export class Dictation {
       toastStore.error('Microphone recording is not available in this environment.');
       return;
     }
-    if (isTauri()) {
+    if (isElectron()) {
       void this.toggleWhisper(autoSend);
       return;
     }

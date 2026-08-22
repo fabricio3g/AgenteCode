@@ -1,11 +1,10 @@
 // ── agente_* IPC handlers ──────────────────────────────────────────────
-// The renderer's control surface for Agente Coding sessions. Events flow
+// The renderer's control surface for Code space agent sessions. Events flow
 // back over the `code_agent_event` push channel (see event-bridge).
 
 import type { IpcMain, BrowserWindow } from 'electron';
 import {
   startSession,
-  closeSession,
   disposeAllSessions,
   prompt,
   steer,
@@ -13,13 +12,10 @@ import {
   abort,
   compact,
   setModel,
-  cycleModel,
   setRuntimeMode,
   respondApproval,
   listCheckpoints,
   rollback,
-  newSession,
-  listSessions,
   listExtensions,
   setExtensionEnabled
 } from '../agente/runtime.ts';
@@ -33,8 +29,6 @@ type AgenteHandlerDeps = {
 
 export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandlerDeps): void {
   setMainWindowGetter(getMainWindow);
-
-  ipcMain.handle('agente_detect', () => Promise.resolve({ status: 'ready' as const }));
 
   ipcMain.handle('agente_start_session', (_e, args: AgenteStartSessionArgs) => startSession(args));
 
@@ -61,10 +55,6 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
 
   ipcMain.handle('agente_list_checkpoints', (_e, args: { chatId: string }) => listCheckpoints(args.chatId));
   ipcMain.handle('agente_rollback', (_e, args: { chatId: string; turnIndex: number }) => rollback(args.chatId, args.turnIndex));
-  ipcMain.handle('agente_close', (_e, args: { chatId: string }) => closeSession(args.chatId));
-  ipcMain.handle('agente_new_session', (_e, args: { chatId: string }) => newSession(args.chatId));
-  ipcMain.handle('agente_cycle_model', () => cycleModel());
-  ipcMain.handle('agente_list_sessions', (_e, args: { projectRoot: string }) => listSessions(args.projectRoot));
   ipcMain.handle('agente_list_extensions', () => listExtensions());
   ipcMain.handle('agente_set_extension_enabled', (_e, args: { extensionId: string; enabled: boolean }) =>
     setExtensionEnabled(args.extensionId, args.enabled)

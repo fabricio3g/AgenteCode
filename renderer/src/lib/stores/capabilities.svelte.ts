@@ -1,6 +1,6 @@
-import type { DesktopCapabilities } from '$lib/types/tauri';
+import type { DesktopCapabilities } from '$lib/types/bridge';
 import { getDesktopCapabilities } from '$lib/services/capabilities';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 
 class CapabilitiesStore {
   desktop = $state<DesktopCapabilities | null>(null);
@@ -16,7 +16,7 @@ class CapabilitiesStore {
   }
 
   async refresh() {
-    if (!isTauri()) {
+    if (!isElectron()) {
       this.desktop = null;
       return;
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import {
   buildApaReferences,
   buildBibTeX,

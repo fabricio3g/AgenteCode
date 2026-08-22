@@ -1,32 +1,38 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeGroqBaseUrl } from '../../main/providers/groq.ts';
+import { getDialect } from '../../main/providers/dialects.ts';
 
-describe('normalizeGroqBaseUrl', () => {
-  it('defaults to host root', () => {
-    assert.equal(normalizeGroqBaseUrl(), 'https://api.groq.com');
-    assert.equal(normalizeGroqBaseUrl(''), 'https://api.groq.com');
+const normalize = (url) => getDialect('groq').normalizeBaseUrl(url);
+
+describe('groq base URL normalization', () => {
+  it('defaults to the full OpenAI-compat path', () => {
+    assert.equal(normalize(), 'https://api.groq.com/openai/v1');
+    assert.equal(normalize(''), 'https://api.groq.com/openai/v1');
   });
 
-  it('strips /openai/v1 so SDK paths are not doubled', () => {
+  it('keeps a single /openai/v1 suffix so SDK paths are not doubled', () => {
     assert.equal(
-      normalizeGroqBaseUrl('https://api.groq.com/openai/v1'),
-      'https://api.groq.com'
+      normalize('https://api.groq.com/openai/v1'),
+      'https://api.groq.com/openai/v1'
     );
     assert.equal(
-      normalizeGroqBaseUrl('https://api.groq.com/openai/v1/'),
-      'https://api.groq.com'
+      normalize('https://api.groq.com/openai/v1/'),
+      'https://api.groq.com/openai/v1'
     );
   });
 
-  it('leaves host-only URLs unchanged', () => {
-    assert.equal(normalizeGroqBaseUrl('https://api.groq.com'), 'https://api.groq.com');
+  it('appends the path to host-only URLs', () => {
+    assert.equal(normalize('https://api.groq.com'), 'https://api.groq.com/openai/v1');
   });
 
-  it('strips suffix on custom proxies', () => {
+  it('supports custom proxies', () => {
     assert.equal(
-      normalizeGroqBaseUrl('https://proxy.example.com/openai/v1'),
-      'https://proxy.example.com'
+      normalize('https://proxy.example.com/openai/v1'),
+      'https://proxy.example.com/openai/v1'
+    );
+    assert.equal(
+      normalize('https://proxy.example.com'),
+      'https://proxy.example.com/openai/v1'
     );
   });
 });

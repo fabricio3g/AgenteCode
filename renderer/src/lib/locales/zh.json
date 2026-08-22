@@ -179,7 +179,7 @@
     "remove": "移除",
     "refresh": "刷新"
   },
-  "agente": {
+  "code": {
     "projects": "项目",
     "addProject": "添加项目",
     "newConversation": "新对话",
@@ -209,6 +209,14 @@
     "composerRegion": "Agente 任务输入框",
     "modeSelector": "智能体模式",
     "modePlan": "先规划",
-    "modePlanHint": "先调查并给出计划，经你批准后才开始编辑"
+    "modePlanHint": "先调查并给出计划，经你批准后才开始编辑",
+    "continue": "继续",
+    "continuePrompt": "请继续完成这项任务",
+    "queued": "{n} 条排队中",
+    "statusCompleted": "已完成",
+    "statusStopped": "已停止",
+    "statusLength": "达到输出上限 — 部分运行被截断",
+    "retrying": "连接中断 — 正在重试（第 {n} 次）…",
+    "todosTitle": "任务"
   }
 }

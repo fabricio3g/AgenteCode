@@ -179,7 +179,7 @@
     "remove": "Remover",
     "refresh": "Atualizar"
   },
-  "agente": {
+  "code": {
     "projects": "Projetos",
     "addProject": "Adicionar projeto",
     "newConversation": "Nova conversa",
@@ -209,6 +209,14 @@
     "composerRegion": "Editor de tarefas do Agente",
     "modeSelector": "Modo do agente",
     "modePlan": "Planejar primeiro",
-    "modePlanHint": "Investiga, apresenta um plano e só edita após sua aprovação"
+    "modePlanHint": "Investiga, apresenta um plano e só edita após sua aprovação",
+    "continue": "Continuar",
+    "continuePrompt": "Continue a tarefa",
+    "queued": "{n} na fila",
+    "statusCompleted": "Concluído",
+    "statusStopped": "Parado",
+    "statusLength": "Limite de saída atingido — parte da execução foi cortada",
+    "retrying": "Falha de conexão — tentando novamente (tentativa {n})…",
+    "todosTitle": "Tarefas"
   }
 }

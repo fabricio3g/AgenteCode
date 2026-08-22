@@ -21,7 +21,7 @@ export interface ActiveGenerationRun {
 }
 
 export interface ChatSearchState {
-  results: import('$lib/types/tauri').SearchResult[];
+  results: import('$lib/types/bridge').SearchResult[];
   loading: boolean;
   query: string;
 }

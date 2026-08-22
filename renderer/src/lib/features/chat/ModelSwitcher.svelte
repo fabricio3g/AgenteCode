@@ -7,7 +7,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { invoke, isTauri } from '$lib/services/tauri';
+  import { invoke, isElectron } from '$lib/services/bridge';
   import type { ModelOption } from '$lib/types/chat';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl, providerLabel } from '$lib/utils/providers';
@@ -407,7 +407,7 @@
       the same thing, costing a whole row to repeat the tab label back.
     -->
     <div class="panel-head flex items-center gap-2 px-2.5 pb-2 pt-2.5">
-      {#if isTauri()}
+      {#if isElectron()}
         <div class="aui-segmented min-w-0 flex-1" style="-webkit-app-region: no-drag;">
           <button
             type="button"
@@ -711,7 +711,7 @@
           onclick={() => {
             appStore.refreshModels(true);
             modelsStore.refreshStatus();
-            if (isTauri()) modelsStore.refreshIndex();
+            if (isElectron()) modelsStore.refreshIndex();
           }}
           disabled={appStore.modelsRefreshing}
         >

@@ -1,4 +1,4 @@
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { say } from '$lib/copy';
 import type { AgentArtifact } from '$lib/types/chat';

@@ -1,7 +1,7 @@
 import type { AgentArtifact, AgentStep, CodeAgentFileChange, CodeAgentFileChangeKind } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
 import { say } from '$lib/copy';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { ToolCall, ToolResult } from '$lib/services/agent-types';
 
 const OPTIONAL_PRESENTATION_TOOLS = new Set([

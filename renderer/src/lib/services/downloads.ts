@@ -1,5 +1,5 @@
-import type { DownloadJob } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { DownloadJob } from '$lib/types/bridge';
+import { invoke } from './bridge';
 import { getStoredHfToken } from './huggingface';
 
 type StartDownloadArgs = {
@@ -13,10 +13,13 @@ type StartDownloadArgs = {
   hf_token?: string;
   hfToken?: string;
   branch?: string;
+  /** Opt-in: run the local-model load flow when the download completes. */
+  load_when_ready?: boolean;
+  loadWhenReady?: boolean;
 };
 
 export async function startDownloadHf(args: StartDownloadArgs): Promise<string> {
-  // Tauri's JS <> Rust arg mapping expects camelCase keys (e.g. repoId, modelsDir).
+  // The IPC layer expects camelCase keys (e.g. repoId, modelsDir).
   // Accept both snake_case and camelCase here for compatibility with existing call sites.
   const payload: Record<string, unknown> = {
     repoId: args.repoId ?? args.repo_id,
@@ -25,6 +28,7 @@ export async function startDownloadHf(args: StartDownloadArgs): Promise<string> 
     destRel: args.destRel ?? args.dest_rel,
     hfToken: args.hfToken ?? args.hf_token ?? getStoredHfToken(),
     branch: args.branch,
+    loadWhenReady: args.loadWhenReady ?? args.load_when_ready
   };
   return invoke<string>('start_download_hf', payload);
 }
@@ -34,7 +38,7 @@ export async function getDownloadJobs(): Promise<DownloadJob[]> {
 }
 
 export async function cancelDownloadJob(id: string): Promise<void> {
-  // Tauri expects jobId in camelCase for the Rust parameter `job_id`
+  // The handler expects jobId in camelCase
   await invoke<void>('cancel_download_job', { jobId: id });
 }
 

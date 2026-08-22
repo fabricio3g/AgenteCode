@@ -1,6 +1,6 @@
-import type { HardwareInfo } from '$lib/types/tauri';
+import type { HardwareInfo } from '$lib/types/bridge';
 
-export type ModelHubTab = 'curated' | 'downloaded' | 'search';
+export type ModelHubTab = 'discover' | 'library' | 'active';
 
 export interface RuntimeRequirement {
   minVersion?: string;

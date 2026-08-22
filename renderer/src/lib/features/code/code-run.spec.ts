@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { applyCodeAgentEvent, createAgenteRunState } from './agente-run';
-import type { CodeAgentEvent } from './agente-protocol';
+import { applyCodeAgentEvent, createCodeRunState } from './code-run';
+import type { CodeAgentEvent } from './code-protocol';
 
 function run(events: CodeAgentEvent[]) {
-  const state = createAgenteRunState();
+  const state = createCodeRunState();
   for (const event of events) applyCodeAgentEvent(state, event);
   return state;
 }
@@ -64,17 +64,69 @@ describe('agente run reducer', () => {
     expect(state.fileChanges).toHaveLength(1);
   });
 
-  it('completes the run on agent_end and stops stray running steps', () => {
+  it('completes the run on agent_end and closes stray running steps', () => {
     const state = run([
       { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'bash', args: {} },
-      { type: 'agent_end', chatId: 'c' }
+      { type: 'agent_end', chatId: 'c', stopReason: 'stop' }
     ]);
     expect(state.done).toBe(true);
+    expect(state.stopReason).toBe('stop');
+    // No error was reported, so the stray step is closed as done — not
+    // punished as a failure.
+    expect(state.steps.find((s) => s.id === 't1')?.status).toBe('done');
+  });
+
+  it('marks a stray running step error when the run failed', () => {
+    const state = run([
+      { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'bash', args: {} },
+      { type: 'error', chatId: 'c', message: 'provider unreachable' },
+      { type: 'agent_end', chatId: 'c', stopReason: 'error' }
+    ]);
+    expect(state.done).toBe(true);
+    expect(state.error).toBe('provider unreachable');
     expect(state.steps.find((s) => s.id === 't1')?.status).toBe('error');
   });
 
   it('records error events', () => {
     const state = run([{ type: 'error', chatId: 'c', message: 'no model' }]);
     expect(state.error).toBe('no model');
+  });
+
+  it('captures the end-of-run stop reason', () => {
+    const state = run([{ type: 'agent_end', chatId: 'c', stopReason: 'length' }]);
+    expect(state.stopReason).toBe('length');
+  });
+
+  it('shows and clears the retry notice around content', () => {
+    const state = run([
+      { type: 'llm_retry', chatId: 'c', attempt: 1, delayMs: 1000 }
+    ]);
+    expect(state.retrying).toEqual({ attempt: 1, delayMs: 1000 });
+    applyCodeAgentEvent(state, { type: 'text_delta', chatId: 'c', delta: 'back online' });
+    expect(state.retrying).toBeNull();
+  });
+
+  it('records a truncated turn that was auto-continued', () => {
+    const state = run([
+      { type: 'length_continue', chatId: 'c', turnIndex: 2 }
+    ]);
+    expect(state.truncatedOnce).toBe(true);
+    expect(state.steps.find((s) => s.id === 'turn-2')?.label).toContain('output cap');
+  });
+
+  it('replaces the todo list on todo_update', () => {
+    const state = run([
+      {
+        type: 'todo_update',
+        chatId: 'c',
+        todos: [
+          { content: 'read files', status: 'completed' },
+          { content: 'edit config', status: 'in_progress' },
+          { content: 'run tests', status: 'pending' }
+        ]
+      }
+    ]);
+    expect(state.todos).toHaveLength(3);
+    expect(state.todos[1]).toEqual({ content: 'edit config', status: 'in_progress' });
   });
 });

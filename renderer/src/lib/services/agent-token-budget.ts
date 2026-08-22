@@ -3,7 +3,7 @@ import type { RequestMessage } from '$lib/services/chat-api';
 export async function enforceTokenBudget(params: {
   messages: RequestMessage[];
   config: unknown;
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   invoke: <T>(command: string, args: Record<string, unknown>) => Promise<T>;
   debugLog: (enabled: boolean, message: string) => void;
 }): Promise<void> {
@@ -23,7 +23,7 @@ export async function enforceTokenBudget(params: {
     || cfg?.llm?.local?.context_length
     || 8192;
 
-  if (!params.isTauri()) {
+  if (!params.isElectron()) {
     const totalChars = messages.reduce(
       (sum, message) => sum + (typeof message.content === 'string' ? message.content.length : 0),
       0

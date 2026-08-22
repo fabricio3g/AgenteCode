@@ -1,7 +1,7 @@
 /**
  * Invariants the agent loop has to hold but had no coverage for.
  *
- * Nothing here executes `runAgentTask` — it needs a provider, a config and a Tauri
+ * Nothing here executes `runAgentTask` — it needs a provider, a config and an Electron
  * host. These test the specific properties whose absence produced the bugs, at the
  * level where they can actually be asserted.
  */

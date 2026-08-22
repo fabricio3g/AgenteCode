@@ -1,6 +1,6 @@
-import type { HardwareInfo } from '$lib/types/tauri';
+import type { HardwareInfo } from '$lib/types/bridge';
 import { getHardwareLimits } from '$lib/services/hardware';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 import { assessModelFit } from '$lib/models/model-fit';
 
 class HardwareStore {
@@ -41,7 +41,7 @@ class HardwareStore {
   }
 
   async refresh() {
-    if (!isTauri()) return;
+    if (!isElectron()) return;
     this.loading = true;
     this.error = null;
     try {

@@ -15,8 +15,8 @@ describe('manager routing', () => {
     assert.equal(resolveModelHubSection('unknown'), 'models');
   });
 
-  it('maps the legacy Explore route to Models → Search', () => {
-    assert.deepEqual(resolveModelHubRoute('explore'), { section: 'models', modelTab: 'search' });
+  it('maps the legacy Explore route to Models → Discover', () => {
+    assert.deepEqual(resolveModelHubRoute('explore'), { section: 'models', modelTab: 'discover' });
   });
 
   it('routes legacy modal flags into manager sections', () => {

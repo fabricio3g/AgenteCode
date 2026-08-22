@@ -1,5 +1,5 @@
 import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import { say } from '$lib/copy';
 import type { CompletionResult, RequestMessage, NativeToolCall } from '$lib/services/chat-api';
 import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
@@ -8,7 +8,7 @@ import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupport
 import { webSearch, fetchUrlContent } from '$lib/services/search';
 import { queryDocuments } from '$lib/services/rag';
 import { loadAppConfig } from '$lib/utils/storage';
-import { isTauri, invoke } from '$lib/services/tauri';
+import { isElectron, invoke } from '$lib/services/bridge';
 import {
   createDocxArtifactFile, createPdfArtifactFile, createPptxArtifactFile, createXlsxArtifactFile,
   createWorkProductArtifactFiles,
@@ -241,7 +241,7 @@ async function executeTool(
 
   const artifactResult = await dispatchArtifactTool(name, args, ctx, {
     normPath,
-    isTauri,
+    isElectron,
     isWorkspace,
     uid,
     viewerPathFor,
@@ -280,7 +280,7 @@ async function executeTool(
         args,
         webSearch: (searchArgs) => webSearch(searchArgs),
         fetchUrlContent,
-        isTauri,
+        isElectron,
         ok,
         fail,
         failFromError
@@ -651,7 +651,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     artifactToggles,
   };
 
-  const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
   // Workspace runs write real files on disk; there is no sandbox artifact to show.
   const artifactsEnabled = executionMode !== 'workspace';
   const artifacts: AgentArtifact[] = [];
@@ -682,8 +682,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
   const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');
-  let useNativeTools = isTauri() && agentSupportsNativeTools(config as any);
-  debugLog(debugLogs, `[agent] START | profile=${agentProfile} | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isTauri=${isTauri()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls} | maxTimeMs=${maxTimeMs}`);
+  let useNativeTools = isElectron() && agentSupportsNativeTools(config as any);
+  debugLog(debugLogs, `[agent] START | profile=${agentProfile} | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isElectron=${isElectron()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls} | maxTimeMs=${maxTimeMs}`);
   debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config as any)}`);
   let nativeFailed = false;
   let directMode = false;
@@ -986,7 +986,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       await enforceTokenBudgetMessages({
         messages,
         config,
-        isTauri,
+        isElectron,
         invoke,
         debugLog
       });

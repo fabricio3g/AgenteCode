@@ -2,20 +2,27 @@
 
 <script lang="ts">
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
-  import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/tauri';
+  import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
   import { AlertTriangle, BrainCircuit, ChevronDown, ChevronRight, Cpu, Gauge, HardDrive, Layers3, LoaderCircle, MemoryStick, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-svelte';
   import { untrack } from 'svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { getHardwareLimits } from '$lib/services/hardware';
   import { getGgufMetadata } from '$lib/services/models';
-  import { getRecommendedSettings } from '$lib/services/runtime';
+  import { getRecommendedSettings, previewLocalModelCommand } from '$lib/services/runtime';
   import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
   import { formatBytes } from '$lib/utils/format';
   import { Select } from '$lib/components/ui';
 
-  const contextPresets = [4096, 8192, 16384, 32768];
+  /** Presets scale with the model's real trained context, not a hard cap. */
+  const contextPresets = $derived.by(() => {
+    const base = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
+    const presets = base.filter((preset) => preset <= maxContext);
+    // The model's own maximum is always offered as the last stop.
+    if (maxContext >= 512 && !presets.includes(maxContext)) presets.push(maxContext);
+    return presets;
+  });
   const cacheTypes = ['f16', 'q8_0', 'q4_0'];
   const splitModes = ['', 'layer', 'row', 'tensor', 'none'];
   const mtpDraftNMaxPresets = [2, 3, 4, 6, 8];
@@ -186,6 +193,55 @@
 
   async function applyProjectorCandidate(path: string) {
     appStore.localModelLoadMmprojPath = path;
+  }
+
+  // ── Command preview ──────────────────────────────────────────────────
+  // Mirrors the config loadLocalModel() sends, so the preview is the truth.
+  const previewConfig = $derived.by(() => ({
+    model_path: target?.path || '',
+    runtime_path: appStore.localModelLoadRuntimePath || undefined,
+    backend_mode: 'auto',
+    host: '127.0.0.1',
+    port: 11435,
+    context_length: contextIsAuto ? undefined : contextLength,
+    gpu_offload: gpuLayersIsAuto ? undefined : gpuLayers,
+    cpu_threads: Number(appStore.localModelLoadCpuThreads) || undefined,
+    batch_size: Number(appStore.localModelLoadBatchSize) || undefined,
+    flash_attention: appStore.localModelLoadFlashAttention,
+    offload_kv_cache: appStore.localModelLoadOffloadKvCache,
+    keep_in_memory: appStore.localModelLoadKeepInMemory,
+    mmap: appStore.localModelLoadMmap,
+    cache_type_k: appStore.localModelLoadCacheTypeK,
+    cache_type_v: appStore.localModelLoadCacheTypeV,
+    parallel: Number(appStore.localModelLoadParallel) > 1 ? Number(appStore.localModelLoadParallel) : undefined,
+    mmproj_path: appStore.localModelLoadMmprojPath || undefined,
+    disable_thinking: appStore.localModelLoadDisableThinking
+  }));
+
+  let commandPreview = $state('');
+  let previewLoading = $state(false);
+  let copiedPreview = $state(false);
+
+  $effect(() => {
+    if (!advancedOpen || !target?.path) return;
+    const config = previewConfig;
+    const timer = setTimeout(() => {
+      previewLoading = true;
+      void previewLocalModelCommand(config)
+        .then((result) => { commandPreview = result.command; })
+        .catch(() => { commandPreview = ''; })
+        .finally(() => { previewLoading = false; });
+    }, 350);
+    return () => clearTimeout(timer);
+  });
+
+  async function copyCommandPreview() {
+    if (!commandPreview) return;
+    try {
+      await navigator.clipboard.writeText(commandPreview);
+      copiedPreview = true;
+      setTimeout(() => (copiedPreview = false), 1600);
+    } catch { /* clipboard unavailable */ }
   }
 
   function applyRecommendedPreset() {
@@ -940,6 +996,31 @@
   <span>Disable thinking</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadDisableThinking} />
   </label>
+  </div>
+
+  <!-- Command preview: exactly what llama-server will be told, built through
+       the same resolver as a real launch. -->
+  <div class="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+    <div class="flex items-center justify-between gap-2 pb-2">
+      <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Equivalent command</span>
+      {#if commandPreview}
+        <button
+          type="button"
+          class="rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
+          onclick={copyCommandPreview}
+        >
+          {copiedPreview ? 'Copied' : 'Copy'}
+        </button>
+      {/if}
+    </div>
+    {#if previewLoading && !commandPreview}
+      <p class="py-1 text-xs text-[var(--text-muted)]">Resolving command…</p>
+    {:else if commandPreview}
+      <pre class="max-h-32 overflow-auto rounded-md bg-[var(--surface)] p-2.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-[var(--text-secondary)]">{commandPreview}</pre>
+      <p class="pt-1.5 text-[10px] text-[var(--text-muted)]">The app spawns this directly — no shell — with a per-launch API key added automatically.</p>
+    {:else}
+      <p class="py-1 text-xs text-[var(--text-muted)]">Command unavailable — install a runtime first.</p>
+    {/if}
   </div>
   </div>
   {/if}

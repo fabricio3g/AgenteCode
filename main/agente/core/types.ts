@@ -33,6 +33,8 @@ export interface AssistantMessage {
   usage?: TokenUsage | null;
   stopReason?: StopReason;
   errorMessage?: string;
+  /** Stable classification from the provider protocol (AUTH, RATE_LIMIT, …). */
+  errorCode?: string;
   ts: number;
 }
 
@@ -46,6 +48,12 @@ export interface ToolResultMessage {
   /** Structured payload for the UI (diffs, file lists, exit codes). */
   details?: unknown;
   ts: number;
+}
+
+/** One entry of the model-maintained task list (the todo_write tool). */
+export interface TodoItem {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
 }
 
 export type AgentMessage = UserMessage | AssistantMessage | ToolResultMessage;
@@ -76,6 +84,8 @@ export interface ToolExecContext {
   signal: AbortSignal;
   /** Streaming progress for long-running tools (tool_update events). */
   onUpdate?: (partial: unknown) => void;
+  /** Side-channel for tools that announce state (todo_update). */
+  emit?: (event: AgentEvent) => void;
 }
 
 export interface AgentTool {
@@ -103,6 +113,9 @@ export type AgentEvent =
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_update'; toolCallId: string; toolName: string; partial: unknown }
   | { type: 'tool_end'; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | { type: 'llm_retry'; attempt: number; delayMs: number }
+  | { type: 'length_continue'; turnIndex: number }
+  | { type: 'todo_update'; todos: TodoItem[] }
   | { type: 'error'; message: string };
 
 export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;

@@ -1,6 +1,6 @@
 import type { AppConfig } from '$lib/types/chat';
-import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/tauri';
-import { invoke, listen } from './tauri';
+import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
+import { invoke, listen } from './bridge';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 let lastLocalLoadSignature: string | null = null;
@@ -108,6 +108,21 @@ export async function getRecommendedSettings(
     userGpuLayers,
     runtimePath
   });
+}
+
+export interface LocalCommandPreview {
+  args: string[];
+  command: string;
+  runtime_path: string;
+}
+
+/**
+ * The exact llama-server command a load would run, without running it.
+ * Built in main through the same resolver and capability probe as a real
+ * launch, so the preview cannot drift from what actually executes.
+ */
+export async function previewLocalModelCommand(config: Record<string, unknown>): Promise<LocalCommandPreview> {
+  return invoke<LocalCommandPreview>('preview_local_model_command', { config });
 }
 
 async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {

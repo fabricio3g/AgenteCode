@@ -1,8 +1,8 @@
 // Fan-out for code_agent_event pushes, keyed by chatId. Ported from the
 // dormant chatea-agent events store.
 
-import { listen } from '$lib/services/tauri';
-import type { CodeAgentEvent } from './agente-protocol';
+import { listen } from '$lib/services/bridge';
+import type { CodeAgentEvent } from './code-protocol';
 
 type EventHandler = (event: CodeAgentEvent) => void;
 

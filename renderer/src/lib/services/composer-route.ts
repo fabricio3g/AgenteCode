@@ -1,3 +1,5 @@
+import { normalizeSpace } from '$lib/spaces';
+
 export type ComposerRoute = 'conversation' | 'tools' | 'agent';
 
 export type ComposerModeControl = 'tabs' | 'auto';
@@ -12,17 +14,17 @@ export function resolveComposerRoute(input: {
   prompt: string;
   hasAttachments?: boolean;
   searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
-  contextMode?: 'chat' | 'work' | string | null;
+  contextMode?: string | null;
 }): ComposerRoute {
   const prompt = String(input.prompt || '').trim();
   const lower = prompt.toLowerCase();
   const searchMode = input.searchMode || 'chat';
-  const contextMode = input.contextMode || 'chat';
+  const contextMode = normalizeSpace(input.contextMode);
 
   if (searchMode === 'search' || searchMode === 'deep' || searchMode === 'max') {
     return 'tools';
   }
-  if (contextMode === 'work') {
+  if (contextMode === 'code') {
     return 'agent';
   }
   if (input.hasAttachments) {
@@ -79,7 +81,7 @@ export function shouldUseToolLoop(params: {
   contextMode?: string | null;
 }): boolean {
   if (params.searchMode && params.searchMode !== 'chat') return true;
-  if (params.contextMode === 'work') return true;
+  if (normalizeSpace(params.contextMode) === 'code') return true;
   if (params.control === 'tabs') {
     // Tabs: Chat tab still uses light tools when route needs them; Agent always tools.
     if (params.composerMode === 'agent') return true;

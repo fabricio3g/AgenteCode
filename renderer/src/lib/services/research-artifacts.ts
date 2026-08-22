@@ -1,4 +1,4 @@
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { SearchMeta } from '$lib/types/chat';
 
 export type ResearchExportKind =

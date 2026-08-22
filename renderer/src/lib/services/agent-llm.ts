@@ -1,4 +1,4 @@
-import { invoke, listen, isTauri } from '$lib/services/tauri';
+import { invoke, listen, isElectron } from '$lib/services/bridge';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { loadAppConfig } from '$lib/utils/storage';
@@ -30,7 +30,7 @@ type AgentTransport = {
 };
 
 async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport | null> {
-  const backendMode = config.llm?.backend_mode || (isTauri() ? 'local' : 'api');
+  const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
   if (backendMode === 'local') {
     const runtimeBaseUrl = await ensureLocalRuntime(config);
     const baseUrl = resolveLocalBaseUrl({
@@ -118,7 +118,7 @@ export async function agentComplete(options: {
   reasoningLevel?: ReasoningLevel | null;
   omitMaxTokens?: boolean;
 }): Promise<CompletionResult | null> {
-  if (!isTauri()) return null;
+  if (!isElectron()) return null;
 
   const config = options.config || await loadAppConfig();
   const debugLogs = shouldDebugAgentLogs(config);
@@ -167,7 +167,7 @@ export async function agentStreamComplete(options: {
    */
   onError?: (message: string) => void;
 }): Promise<CompletionResult | null> {
-  if (!isTauri()) return null;
+  if (!isElectron()) return null;
 
   const config = options.config || await loadAppConfig();
   const debugLogs = shouldDebugAgentLogs(config);

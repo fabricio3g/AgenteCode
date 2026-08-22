@@ -1,11 +1,12 @@
 import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
-import { isTauri } from '$lib/services/tauri';
+import { isElectron } from '$lib/services/bridge';
 import { createId as createSharedId } from '$lib/utils/id';
 import { activityLabel } from '$lib/utils/tool-ui';
+import { normalizeSpace, SPACES } from '$lib/spaces';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
 import type { ApiModelMetadataValue, ContextBudgetValue } from '$lib/stores/app-context-budget';
 
@@ -17,7 +18,6 @@ export type ElectronApi = {
 };
 
 export type LocalModelLoadTarget = Omit<ModelOption, 'source'> & { source?: string };
-export type MainView = 'chat';
 
 export const USER_NAME_KEY = 'chatealm_user_name';
 
@@ -131,7 +131,7 @@ function noUsageMetadata(timingScope: NonNullable<MessageVersion['metadata']>['t
 export function executionMetadata(backendMode: GenerationBackendMode): NonNullable<MessageVersion['metadata']> {
   return {
     executionBackend: backendMode,
-    executionTransport: backendMode === 'local' ? 'local_runtime' : (isTauri() ? 'provider_ipc' : 'sdk')
+    executionTransport: backendMode === 'local' ? 'local_runtime' : (isElectron() ? 'provider_ipc' : 'sdk')
   };
 }
 
@@ -471,9 +471,9 @@ export function normalizeMessage(message: Partial<ChatMessage>, index: number): 
 }
 
 export function normalizeContextMode(mode: unknown): ChatContextMode {
-  // Legacy 'code' sessions migrate to Work.
-  if (mode === 'work' || mode === 'code') return 'work';
-  return 'chat';
+  // Legacy spellings: 'chat' was the old home id; 'work'/'code' both named
+  // the code space at different times.
+  return normalizeSpace(mode);
 }
 
 export function normalizeSessionComposerMode(
@@ -481,19 +481,35 @@ export function normalizeSessionComposerMode(
   contextMode: ChatContextMode
 ): 'chat' | 'agent' {
   if (mode === 'chat' || mode === 'agent') return mode;
-  return contextMode === 'work' ? 'agent' : 'chat';
+  return SPACES[contextMode].defaultComposerMode;
 }
 
 export function normalizeSessionSearchMode(mode: unknown): 'chat' | 'search' | 'deep' | 'max' {
   return mode === 'search' || mode === 'deep' || mode === 'max' || mode === 'chat' ? mode : 'chat';
 }
 
-/** One-time identity fix: workspace-backed sessions belong in Work. Legacy code → work. */
+/**
+ * Titles the app mints itself. A send over one of these replaces it with the
+ * prompt; a user rename never matches and is always kept.
+ */
+export function isDefaultChatTitle(title: string): boolean {
+  return (
+    title === 'New chat'
+    || title === 'New session'
+    || title === 'New work'
+    || title === 'New code'
+    || title === 'New conversation'
+    || title === 'New Work'
+    || title === 'Codebase overview'
+  );
+}
+
+/** One-time identity fix: workspace-backed sessions belong in Code. */
 export function resolveImmutableContextMode(chat: Partial<ChatSession>): ChatContextMode {
   const mode = normalizeContextMode(chat.contextMode);
-  if (mode === 'work') return 'work';
-  if (chat.workspace) return 'work';
-  return 'chat';
+  if (mode === 'code') return 'code';
+  if (chat.workspace) return 'code';
+  return 'home';
 }
 
 export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSession {
@@ -510,7 +526,7 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     folderId: chat.folderId ?? null,
     draft: String(chat.draft || ''),
     contextMode,
-    // Agente Coding conversations carry their project + engine session
+    // Code space conversations carry their project + engine session
     // identity through persistence — resume depends on both surviving.
     codeAgent: chat.codeAgent ?? null,
     projectId: chat.projectId ?? null,

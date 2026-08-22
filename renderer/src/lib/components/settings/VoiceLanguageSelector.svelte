@@ -34,7 +34,7 @@
   $effect(() => {
     if (loaded || loading) return;
     loading = true;
-    import('$lib/services/tauri').then(({ invoke }) => {
+    import('$lib/services/bridge').then(({ invoke }) => {
       invoke<string[]>('list_tts_voices')
         .then(v => {
           allVoices = v;

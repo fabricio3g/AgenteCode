@@ -1,4 +1,4 @@
-import { invoke, isTauri } from '$lib/services/tauri';
+import { invoke, isElectron } from '$lib/services/bridge';
 import type { CodeAgentDiffStat } from '$lib/types/chat';
 
 export type WorkspaceSnapshotFile = {
@@ -13,7 +13,7 @@ export type WorkspaceSnapshot = {
 };
 
 export async function snapshotWorkspace(rootPath?: string): Promise<WorkspaceSnapshot | null> {
-  if (!rootPath || !isTauri()) return null;
+  if (!rootPath || !isElectron()) return null;
   try {
     const result = await invoke<WorkspaceSnapshot>('snapshot_workspace_files', { workspaceRoot: rootPath });
     return result && Array.isArray(result.files) ? result : { files: [] };

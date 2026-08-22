@@ -179,7 +179,7 @@
     "remove": "削除",
     "refresh": "更新"
   },
-  "agente": {
+  "code": {
     "projects": "プロジェクト",
     "addProject": "プロジェクトを追加",
     "newConversation": "新しい会話",
@@ -209,6 +209,14 @@
     "composerRegion": "Agente タスク入力",
     "modeSelector": "エージェントモード",
     "modePlan": "まず計画",
-    "modePlanHint": "調査して計画を提示し、承認後にのみ編集します"
+    "modePlanHint": "調査して計画を提示し、承認後にのみ編集します",
+    "continue": "続行",
+    "continuePrompt": "タスクを続けてください",
+    "queued": "{n} 件待機中",
+    "statusCompleted": "完了",
+    "statusStopped": "停止しました",
+    "statusLength": "出力上限に達しました — 実行の一部が切断されました",
+    "retrying": "接続エラー — 再試行中（{n} 回目）…",
+    "todosTitle": "タスク"
   }
 }

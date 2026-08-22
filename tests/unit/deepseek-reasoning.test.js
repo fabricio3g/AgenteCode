@@ -1,38 +1,43 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mapDeepSeekReasoningBody } from '../../main/providers/deepseek.ts';
+import { getDialect } from '../../main/providers/dialects.ts';
+
+// The dialect table owns the DeepSeek thinking body now.
+function reasoningBody(level) {
+  return getDialect('deepseek').reasoningBody(level);
+}
 
 describe('DeepSeek reasoning body (official thinking_mode docs)', () => {
   it('disables thinking for off / disabled / minimal', () => {
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'off' }), { thinking: { type: 'disabled' } });
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'disabled' }), { thinking: { type: 'disabled' } });
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'minimal' }), { thinking: { type: 'disabled' } });
-    assert.deepEqual(mapDeepSeekReasoningBody(undefined), { thinking: { type: 'disabled' } });
+    assert.deepEqual(reasoningBody('off'), { thinking: { type: 'disabled' } });
+    assert.deepEqual(reasoningBody('disabled'), { thinking: { type: 'disabled' } });
+    assert.deepEqual(reasoningBody('minimal'), { thinking: { type: 'disabled' } });
+    assert.deepEqual(reasoningBody(undefined), { thinking: { type: 'disabled' } });
   });
 
   it('enables thinking with high effort', () => {
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'high' }), {
+    assert.deepEqual(reasoningBody('high'), {
       thinking: { type: 'enabled' },
       reasoning_effort: 'high'
     });
     // low/medium map to high per DeepSeek docs
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'low' }), {
+    assert.deepEqual(reasoningBody('low'), {
       thinking: { type: 'enabled' },
       reasoning_effort: 'high'
     });
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'medium' }), {
+    assert.deepEqual(reasoningBody('medium'), {
       thinking: { type: 'enabled' },
       reasoning_effort: 'high'
     });
   });
 
   it('enables thinking with max effort', () => {
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'max' }), {
+    assert.deepEqual(reasoningBody('max'), {
       thinking: { type: 'enabled' },
       reasoning_effort: 'max'
     });
     // xhigh maps to max per docs
-    assert.deepEqual(mapDeepSeekReasoningBody({ level: 'xhigh' }), {
+    assert.deepEqual(reasoningBody('xhigh'), {
       thinking: { type: 'enabled' },
       reasoning_effort: 'max'
     });

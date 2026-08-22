@@ -1,5 +1,5 @@
-import type { HardwareInfo } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { HardwareInfo } from '$lib/types/bridge';
+import { invoke } from './bridge';
 import { getHardwareLimits } from './hardware';
 import { getRuntimeRecommendations, type RuntimeRecommendations } from './system-info';
 

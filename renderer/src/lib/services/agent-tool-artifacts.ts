@@ -50,7 +50,7 @@ export async function handleCreateReport(params: {
 export async function handleCreateWorkProduct(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
-  isTauri: () => boolean;
+  isElectron: () => boolean;
   isWorkspace: (ctx: ToolContext) => boolean;
   uid: (prefix: string) => string;
   viewerPathFor: (path: string) => string;
@@ -60,7 +60,7 @@ export async function handleCreateWorkProduct(params: {
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
 }): Promise<ToolResult> {
-  if (!params.isTauri()) return params.fail('Professional work product generation requires the desktop app.');
+  if (!params.isElectron()) return params.fail('Professional work product generation requires the desktop app.');
   if (params.isWorkspace(params.ctx)) return params.fail('Professional work products are currently available in chat sandbox mode only.');
 
   try {

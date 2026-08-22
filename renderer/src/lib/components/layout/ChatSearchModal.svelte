@@ -7,6 +7,7 @@
   import { countOf } from '$lib/utils/format';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import type { ChatSession } from '$lib/types/chat';
+  import { normalizeSpace } from '$lib/spaces';
   import { onMount, tick } from 'svelte';
 
   let searchInput: HTMLInputElement | undefined = $state();
@@ -58,7 +59,7 @@
 
   // Scope search to the active space only (Chat | Work isolation)
   const spaceChats = $derived.by(() => {
-    return appStore.chats.filter((chat) => (chat.contextMode || 'chat') === appStore.activeSpace);
+    return appStore.chats.filter((chat) => normalizeSpace(chat.contextMode) === appStore.activeSpace);
   });
 
   const results = $derived.by(() => {
@@ -178,7 +179,7 @@
         bind:this={searchInput}
         bind:value={query}
         class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-        placeholder={appStore.activeSpace === 'work'
+        placeholder={appStore.activeSpace === 'code'
           ? 'Search work sessions...'
           : 'Search chats...'}
         type="text"
@@ -279,7 +280,7 @@
             {:else}
               <div class="preview-conversation mx-auto flex max-w-[55rem] flex-col gap-7">
                 {#each previewChat.messages as message (message.id)}
-                  <Message {message} contextMode={previewChat.contextMode || 'chat'} />
+                  <Message {message} contextMode={normalizeSpace(previewChat.contextMode)} />
                 {/each}
               </div>
             {/if}

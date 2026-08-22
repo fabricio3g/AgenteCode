@@ -1,6 +1,6 @@
-// Electron window controls – replaces Tauri window API
+// Electron window controls.
 
-import { isElectron } from './tauri';
+import { isElectron } from './bridge';
 
 export const appWindow = {
   async minimize() {

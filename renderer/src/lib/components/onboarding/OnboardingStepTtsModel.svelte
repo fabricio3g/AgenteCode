@@ -5,7 +5,7 @@
   import { t } from 'svelte-i18n';
   import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle, Check, ChevronDown } from 'lucide-svelte';
   import { startDownloadHf, cancelDownloadJob } from '$lib/services/downloads';
-  import { listen } from '$lib/services/tauri';
+  import { listen } from '$lib/services/bridge';
   import { KOKORO_LANGUAGES, getVoiceInfo } from '$lib/services/kokoro-tts';
   import { appStore } from '$lib/stores/app.svelte';
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';

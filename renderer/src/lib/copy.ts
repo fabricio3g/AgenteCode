@@ -89,10 +89,10 @@ export const copy = {
     truncated: '… (truncated)'
   },
 
-  /** The two workspaces the sidebar switches between. */
+  /** The two workspaces the sidebar switches between. Keys mirror SpaceId. */
   spaces: {
-    chat: 'Home',
-    work: 'Code'
+    home: 'Home',
+    code: 'Code'
   },
 
   thread: {

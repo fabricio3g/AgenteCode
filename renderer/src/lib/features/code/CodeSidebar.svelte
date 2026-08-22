@@ -5,32 +5,32 @@
   import { slide } from 'svelte/transition';
   import { ChevronRight, Folder, MessageSquare, Plus, Trash2 } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import { agenteStore } from './agente.svelte';
+  import { codeStore } from './code.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
 
   onMount(() => {
-    void agenteStore.load();
+    void codeStore.load();
   });
 
   // A restored conversation (restart, space switch) should find its folder
   // open and highlighted — not require the user to re-navigate the tree.
   $effect(() => {
     const projectId = appStore.currentChat?.projectId;
-    if (projectId && agenteStore.projects.some((p) => p.id === projectId)) {
-      if (!agenteStore.expandedProjects[projectId]) agenteStore.expandedProjects[projectId] = true;
-      if (agenteStore.activeProjectId !== projectId) agenteStore.activeProjectId = projectId;
+    if (projectId && codeStore.projects.some((p) => p.id === projectId)) {
+      if (!codeStore.expandedProjects[projectId]) codeStore.expandedProjects[projectId] = true;
+      if (codeStore.activeProjectId !== projectId) codeStore.activeProjectId = projectId;
     }
   });
 
   function confirmRemoveProject(projectId: string, name: string) {
     confirmStore.show({
-      title: $t('agente.removeProjectTitle'),
-      message: $t('agente.removeProjectMessage', { values: { name } }),
+      title: $t('code.removeProjectTitle'),
+      message: $t('code.removeProjectMessage', { values: { name } }),
       danger: true,
-      confirmLabel: $t('agente.removeProject'),
+      confirmLabel: $t('code.removeProject'),
       onConfirm: () => {
-        void agenteStore.removeProject(projectId);
+        void codeStore.removeProject(projectId);
       }
     });
   }
@@ -38,40 +38,40 @@
 
 <div class="flex flex-col gap-0.5 pb-2 pt-3">
   <span class="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-    {$t('agente.projects')}
+    {$t('code.projects')}
   </span>
 
-  {#if !agenteStore.loading && !agenteStore.projects.length}
+  {#if !codeStore.loading && !codeStore.projects.length}
     <p class="px-2.5 py-2 text-[13px] leading-relaxed text-[var(--text-muted)]">
-      {$t('agente.noProjects')}
+      {$t('code.noProjects')}
     </p>
     <button
       type="button"
       class="session-item flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[14px]"
-      onclick={() => void agenteStore.addProject()}
+      onclick={() => void codeStore.addProject()}
     >
       <Plus class="size-3.5 shrink-0" />
-      <span class="truncate">{$t('agente.addProject')}</span>
+      <span class="truncate">{$t('code.addProject')}</span>
     </button>
   {:else}
-    {#each agenteStore.projects as project (project.id)}
-      {@const expanded = !!agenteStore.expandedProjects[project.id]}
-      {@const sessions = agenteStore.sessionsFor(project.id)}
+    {#each codeStore.projects as project (project.id)}
+      {@const expanded = !!codeStore.expandedProjects[project.id]}
+      {@const sessions = codeStore.sessionsFor(project.id)}
       <div class="project group/project">
         <div
           class="session-item project-row group/projrow relative flex w-full cursor-pointer items-center gap-1.5 px-2.5 py-[5px] text-left"
-          class:is-active={agenteStore.activeProjectId === project.id}
+          class:is-active={codeStore.activeProjectId === project.id}
           role="button"
           tabindex="0"
           onclick={() => {
-            agenteStore.toggleExpanded(project.id);
-            agenteStore.activeProjectId = project.id;
+            codeStore.toggleExpanded(project.id);
+            codeStore.activeProjectId = project.id;
           }}
           onkeydown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
-              agenteStore.toggleExpanded(project.id);
-              agenteStore.activeProjectId = project.id;
+              codeStore.toggleExpanded(project.id);
+              codeStore.activeProjectId = project.id;
             }
           }}
         >
@@ -87,7 +87,7 @@
               e.stopPropagation();
               confirmRemoveProject(project.id, project.rootName);
             }}
-            aria-label={$t('agente.removeProject')}
+            aria-label={$t('code.removeProject')}
           >
             <Trash2 class="h-3.5 w-3.5" />
           </button>
@@ -100,7 +100,7 @@
                 type="button"
                 class="session-item flex w-full items-center gap-2 px-2.5 py-[5px] text-left"
                 class:is-active={appStore.currentChatId === session.id}
-                onclick={() => agenteStore.openConversation(session.id)}
+                onclick={() => codeStore.openConversation(session.id)}
               >
                 <MessageSquare class="size-3.5 shrink-0" />
                 <span class="min-w-0 flex-1 truncate text-[14px]">{session.title}</span>
@@ -109,10 +109,10 @@
             <button
               type="button"
               class="session-item flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[14px] text-[var(--text-muted)]"
-              onclick={() => agenteStore.newConversation(project)}
+              onclick={() => codeStore.newConversation(project)}
             >
               <Plus class="size-3.5 shrink-0" />
-              <span class="truncate">{$t('agente.newConversation')}</span>
+              <span class="truncate">{$t('code.newConversation')}</span>
             </button>
           </div>
         {/if}

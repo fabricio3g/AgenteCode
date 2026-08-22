@@ -1,4 +1,4 @@
-import type { SlideData } from '$lib/types/tauri';
+import type { SlideData } from '$lib/types/bridge';
 import type { GeneratedWorkProduct, WorkProductStatus } from '$lib/types/chat';
 
 export type DocumentSurfaceKind = 'report' | 'document' | 'slides';

@@ -430,13 +430,44 @@ export async function unloadModel(_modelId: string, win: BrowserWindow | null | 
   await stopLlama(win);
 }
 
+/**
+ * The exact command a load would run, without running it.
+ *
+ * Built through buildLlamaArgs — the same resolver, capability probe and
+ * flag gating a real launch takes — so the preview can never drift from
+ * reality. Only the API key is withheld.
+ */
+export async function previewLocalModelCommand(config: Record<string, unknown>): Promise<{ args: string[]; command: string; runtime_path: string }> {
+  const runtimePath = resolveRuntimeBinary(String(config.runtime_path || ''));
+  if (!runtimePath) {
+    throw new Error('llama-server binary not found. Install a runtime first.');
+  }
+  const resolvedModelPath = resolveModelPath(config.model_path as string);
+  if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
+    throw new Error(`Model file not found: ${config.model_path}`);
+  }
+
+  const launchConfig = resolvedModelPath === config.model_path
+    ? config
+    : { ...config, model_path: resolvedModelPath };
+
+  const systemInfo = await getHardwareLimits();
+  const capabilities = inspectLlamaServer(runtimePath);
+  const args = buildLlamaArgs({ ...launchConfig, api_key: '' }, runtimePath, systemInfo, capabilities);
+
+  // Shell-safe quoting for display; the app itself spawns without a shell.
+  const quote = (value: string) => (/[^\w@%+=:,./-]/.test(value) ? `'${value.replace(/'/g, `'\\''`)}'` : value);
+  const command = [runtimePath, ...args.map(quote)].join(' ');
+
+  return { args, command, runtime_path: runtimePath };
+}
+
 export async function getRecommendedSettings(
   modelPath: string,
   userContext: unknown,
   userGpuLayers: unknown,
   runtimePath: string
-): Promise<Record<string, unknown>> {
-  const resolvedModelPath = resolveModelPath(modelPath);
+): Promise<Record<string, unknown>> {  const resolvedModelPath = resolveModelPath(modelPath);
   if (!resolvedModelPath || !fs.existsSync(resolvedModelPath)) {
     throw new Error(`Model file not found: ${modelPath}`);
   }

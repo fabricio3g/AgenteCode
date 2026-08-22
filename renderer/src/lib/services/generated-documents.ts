@@ -1,5 +1,5 @@
-import type { PresentationData, SlideData } from '$lib/types/tauri';
-import { invoke } from './tauri';
+import type { PresentationData, SlideData } from '$lib/types/bridge';
+import { invoke } from './bridge';
 
 export type GeneratedBinary = {
   bytes: number[];

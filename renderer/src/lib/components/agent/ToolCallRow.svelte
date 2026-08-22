@@ -111,7 +111,7 @@
   }
 </script>
 
-<div class="aui-tool-row" class:has-body={hasBody || showApproval}>
+<div class="aui-tool-row" class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
   <button
     type="button"
     class="aui-tool-fallback-trigger w-full max-w-none"
@@ -176,6 +176,16 @@
 <style>
   .aui-tool-row {
     border-radius: var(--radius-md);
+  }
+
+  /* Completed, collapsed work steps back so the answer leads; hover restores
+     full contrast. Running / error / expanded rows stay at full weight. */
+  .aui-tool-row.is-resting :global(.aui-tool-fallback-trigger) {
+    opacity: 0.72;
+  }
+
+  .aui-tool-row.is-resting:hover :global(.aui-tool-fallback-trigger) {
+    opacity: 1;
   }
 
   .aui-tool-row :global(.aui-tool-fallback-trigger:disabled) {

@@ -1,5 +1,5 @@
 import type { RequestMessage } from '$lib/services/chat-api';
-import type { SearchResult } from '$lib/types/tauri';
+import type { SearchResult } from '$lib/types/bridge';
 import type { ToolObservation } from '$lib/services/agent-types';
 
 export function injectEvidenceSummary(

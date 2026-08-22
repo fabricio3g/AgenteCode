@@ -1,5 +1,5 @@
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
-import { invoke } from '$lib/services/tauri';
+import { invoke } from '$lib/services/bridge';
 import { pathExists } from '$lib/services/files';
 
 export type DiagnosticItem = {

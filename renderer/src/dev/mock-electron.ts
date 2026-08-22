@@ -140,7 +140,6 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   count_tokens: () => 0,
   build_context_budget: () => ({}),
 
-  'agente_detect': () => ({ status: 'ready' }),
   'agente_start_session': (args) => {
     const mode = (args as { runtimeMode?: 'full' | 'supervised' | 'plan' } | undefined)?.runtimeMode;
     if (mode === 'plan' || mode === 'supervised' || mode === 'full') runtimeMode = mode;
@@ -167,10 +166,6 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   },
   'agente_list_checkpoints': () => [{ turnIndex: 1, createdAt: Date.now(), fileCount: 1, additions: 1, deletions: 1 }],
   'agente_rollback': () => ({ ok: true, restored: 1 }),
-  'agente_close': () => ({ ok: true }),
-  'agente_new_session': () => ({ ok: true, sessionId: `sess-${Date.now()}` }),
-  'agente_cycle_model': () => ({ ok: false }),
-  'agente_list_sessions': () => [],
   'agente_list_extensions': () => [
     { id: 'git-tools', name: 'Git Tools', description: 'Adds git_status and git_diff tools (read-only).', enabled: true, defaultEnabled: true },
     { id: 'safety-rails', name: 'Safety Rails', description: 'Blocks destructive commands before execution.', enabled: true, defaultEnabled: true }

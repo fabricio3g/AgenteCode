@@ -6,7 +6,7 @@
   import { Cpu, ArrowRight, ArrowLeft, CheckCircle2, Download, LoaderCircle } from 'lucide-svelte';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
   import { getInstalledRuntimes, downloadRuntime } from '$lib/services/files';
-  import { listen } from '$lib/services/tauri';
+  import { listen } from '$lib/services/bridge';
   import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset } from '$lib/services/llama-releases';
 
   let { onNext, onBack } = $props<{

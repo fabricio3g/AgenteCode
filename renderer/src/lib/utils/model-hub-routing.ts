@@ -3,16 +3,20 @@ export type SettingsSection = 'general' | 'providers' | 'search' | 'local' | 'vo
 export type ModelHubSection =
   | 'models'
   | 'explore'
+  | 'library'
   | SettingsSection;
 
+export type ModelHubTab = 'discover' | 'library' | 'active';
+
 export type ModelHubRoute = {
-  section: Exclude<ModelHubSection, 'explore'>;
-  modelTab?: 'curated' | 'downloaded' | 'search';
+  section: Exclude<ModelHubSection, 'explore' | 'library'>;
+  modelTab?: ModelHubTab;
 };
 
 const MODEL_HUB_SECTIONS = new Set<ModelHubSection>([
   'models',
   'explore',
+  'library',
   'general',
   'providers',
   'search',
@@ -35,6 +39,7 @@ export function legacyFlagToModelHubSection(flag: 'settingsOpen' | 'runtimeManag
 
 export function resolveModelHubRoute(section?: string | null): ModelHubRoute {
   const resolved = resolveModelHubSection(section);
-  if (resolved === 'explore') return { section: 'models', modelTab: 'search' };
-  return { section: resolved };
+  if (resolved === 'explore') return { section: 'models', modelTab: 'discover' };
+  if (resolved === 'library') return { section: 'models', modelTab: 'library' };
+  return { section: resolved as Exclude<ModelHubSection, 'explore' | 'library'> };
 }

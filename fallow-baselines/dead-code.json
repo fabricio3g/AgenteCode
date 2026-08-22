@@ -147,7 +147,7 @@
     "renderer/src/lib/stores/deep-research.svelte.ts:DeepResearchTask",
     "renderer/src/lib/stores/downloads.svelte.ts:JobSpeed",
     "renderer/src/lib/stores/toast.svelte.ts:Toast",
-    "renderer/src/lib/types/tauri.ts:SandboxExecResult",
+    "renderer/src/lib/types/bridge.ts:SandboxExecResult",
     "renderer/src/lib/ui/components/map-geo.ts:PlacedLabel",
     "renderer/src/lib/ui/index.ts:ElementNode",
     "renderer/src/lib/ui/index.ts:ParseResult",
