@@ -643,19 +643,19 @@
   <!-- ==================== ADVANCED VIEW ==================== -->
   <div class="mb-4 grid gap-2 grid-cols-2 lg:grid-cols-4">
   <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"><Layers3 class="h-3 w-3" /> Context</div>
+  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Layers3 class="h-3 w-3" /> Context</div>
   <div class="text-[13px] font-medium text-[var(--text)]">{maxContext.toLocaleString()}t</div>
   </div>
   <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> CPU</div>
+  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> CPU</div>
   <div class="text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.physical_cores}C / ${hardware.cpu_threads}T` : '…'}</div>
   </div>
   <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"><MemoryStick class="h-3 w-3" /> RAM</div>
+  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><MemoryStick class="h-3 w-3" /> RAM</div>
   <div class="text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.total_ram_gb.toFixed(0)} GB` : '…'}</div>
   </div>
   <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]"><Gauge class="h-3 w-3" /> GPU</div>
+  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Gauge class="h-3 w-3" /> GPU</div>
   <div class="truncate text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.gpu_name || 'CPU only'}${hardware.vram_gb > 0 ? ` · ${hardware.vram_estimated ? '~' : ''}${hardware.vram_gb.toFixed(1)}G` : ''}` : '…'}</div>
   </div>
   </div>
@@ -678,7 +678,7 @@
   <div class="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
   <div class="space-y-3">
    <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] uppercase tracking-[0.12em]">
+  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] ">
   <SlidersHorizontal class="h-3.5 w-3.5" />
   Core settings
   </div>
@@ -779,21 +779,21 @@
   </section>
 
    <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] uppercase tracking-[0.12em]">
+  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] ">
   <HardDrive class="h-3.5 w-3.5" />
   Memory estimate
   </div>
   <div class="grid gap-2 grid-cols-3">
   <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Total</div>
+  <div class="text-[10px] text-[var(--text-tertiary)]">Total</div>
   <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{memoryEstimate.totalGb.toFixed(2)} GB</div>
   </div>
   <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">GPU</div>
+  <div class="text-[10px] text-[var(--text-tertiary)]">GPU</div>
   <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{gpuLayers > 0 ? `${memoryEstimate.gpuGb.toFixed(2)} GB` : '--'}</div>
   </div>
   <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">RAM</div>
+  <div class="text-[10px] text-[var(--text-tertiary)]">RAM</div>
   <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{memoryEstimate.ramNeededGb.toFixed(2)} GB</div>
   </div>
   </div>
@@ -810,7 +810,7 @@
   {@const ramPct = barMax > 0 ? (ramUsage / barMax) * 100 : 0}
   {@const freeGb = Math.max(0, totalRam - usedTotal)}
   <div class="mt-3 space-y-1.5">
-  <div class="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+  <div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
   <span>System RAM</span>
   <span>{totalRam.toFixed(1)} GB</span>
   </div>
@@ -859,7 +859,7 @@
   {@const vramUsedPct = totalVram > 0 ? Math.min((gpuUsage / totalVram) * 100, 100) : 0}
   {@const vramOverflows = gpuUsage > totalVram}
   <div class="mt-3 space-y-1.5">
-  <div class="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+  <div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
   <span>VRAM</span>
   <span>{gpuUsage.toFixed(2)} / {totalVram.toFixed(1)} GB ({vramUsedPct.toFixed(0)}%)</span>
   </div>
@@ -889,7 +889,7 @@
   </section>
 
    <section class="rounded-lg bg-[var(--surface)] p-4">
-  <button class="advanced-toggle flex w-full items-center justify-between gap-3 text-left text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
+  <button class="advanced-toggle flex w-full items-center justify-between gap-3 text-left text-[12px] font-semibold text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
   <span class="inline-flex items-center gap-2">
   <BrainCircuit class="h-3.5 w-3.5" />
   Advanced
@@ -1002,7 +1002,7 @@
        the same resolver as a real launch. -->
   <div class="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
     <div class="flex items-center justify-between gap-2 pb-2">
-      <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Equivalent command</span>
+      <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Equivalent command</span>
       {#if commandPreview}
         <button
           type="button"
@@ -1029,7 +1029,7 @@
 
   <div class="space-y-3">
    <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Summary</div>
+  <div class="mb-3 text-[12px] font-semibold text-[var(--text-tertiary)]">Summary</div>
   <div class="space-y-2 text-[13px] text-[var(--text-secondary)]">
   <div class="flex items-center justify-between gap-3"><span>Model max context</span><span class="font-medium text-[var(--text)]">{maxContext.toLocaleString()}</span></div>
   <div class="flex items-center justify-between gap-3"><span>Context</span><span class="font-medium text-[var(--text)]">{contextIsAuto ? 'Auto (--fit)' : contextLength.toLocaleString()}</span></div>

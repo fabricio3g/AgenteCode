@@ -307,7 +307,7 @@
     <div class="border-t border-[var(--border)] p-5">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Runtime process</p>
+          <p class="text-[11px] font-semibold st text-[var(--text-muted)]">Runtime process</p>
           <p class="mt-0.5 text-[13px] font-medium text-[var(--text-secondary)]">
             {supervisor.load_phase || supervisor.state || 'unknown'}
             {#if supervisor.active_model} / <span class="text-[var(--text-muted)]">{supervisor.active_model.split(/[\\/]/).pop()}</span>{/if}
@@ -327,25 +327,25 @@
       {#if supervisor.n_ctx || telemetry}
         <div class="mt-3 grid gap-2 grid-cols-2 sm:grid-cols-4">
           <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Context</div>
+            <div class="text-[10px] text-[var(--text-tertiary)]">Context</div>
             <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
               {(telemetry?.context_size ?? supervisor.n_ctx)?.toLocaleString() ?? '--'}
             </div>
           </div>
           <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]" title="High watermark of context observed since the server started">Peak ctx</div>
+            <div class="text-[10px] text-[var(--text-tertiary)]" title="High watermark of context observed since the server started">Peak ctx</div>
             <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
               {telemetry?.context_percent != null ? `${telemetry.context_percent}%` : '--'}
             </div>
           </div>
           <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Slots</div>
+            <div class="text-[10px] text-[var(--text-tertiary)]">Slots</div>
             <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
               {telemetry ? `${telemetry.slots_busy}/${telemetry.slots_total}` : (supervisor.total_slots ?? '--')}
             </div>
           </div>
           <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Tok/s</div>
+            <div class="text-[10px] text-[var(--text-tertiary)]">Tok/s</div>
             <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
               {telemetry?.tokens_per_second != null ? telemetry.tokens_per_second.toFixed(1) : '--'}
             </div>

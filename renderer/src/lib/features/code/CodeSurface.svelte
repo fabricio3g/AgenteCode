@@ -101,7 +101,7 @@
                 class="absolute right-0 top-8 z-50 w-64 rounded-xl border border-border bg-popover p-1.5 shadow-lg"
                 transition:flyAndScale={{ y: -6, start: 0.96, duration: 160 }}
               >
-                <p class="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <p class="px-2 pb-1 pt-1.5 text-[10px] font-semibold r text-muted-foreground">
                   Restore a checkpoint
                 </p>
                 {#each [...run.checkpoints].reverse() as checkpoint (checkpoint.turnIndex)}

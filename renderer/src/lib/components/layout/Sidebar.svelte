@@ -208,15 +208,6 @@
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <!--
-    Brand bloom. Three soft radial washes drifting against each other read as a
-    single organic surface, with a grain layer over the top to break up the
-    banding that large, low-contrast gradients always show.
-  -->
-  <div class="sidebar-brand-backdrop" aria-hidden="true">
-    <div class="sidebar-brand-backdrop__bloom"></div>
-    <div class="sidebar-brand-backdrop__grain"></div>
-  </div>
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1">
 
     <!-- Same 2.25rem height as the titlebar row, anchored to the top of the
@@ -325,7 +316,7 @@
           <div class="mb-1.5">
             <button
               type="button"
-              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]"
+              class="group-label w-full cursor-pointer px-2 pb-1 pt-3 text-left text-[11px] font-semibold r text-[var(--text-muted)]"
               aria-expanded={!isCollapsed}
               onclick={() => toggleGroup(group.key)}
             >
@@ -466,61 +457,6 @@
 
 
 <style>
-  /*
-   * Brand bloom.
-   *
-   * Three radial washes at different sizes and offsets, each drifting on its own
-   * timing, so the overlaps keep shifting and the surface never reads as a
-   * static gradient. Colour is deliberately confined here — it is the one place
-   * in a monochrome app where brand identity belongs — and the whole thing is
-   * masked to fade out well before it reaches the conversation.
-   */
-  .sidebar-brand-backdrop {
-    --bloom-1: rgb(139 92 246 / 0.55);
-    --bloom-2: rgb(99 102 241 / 0.45);
-    --bloom-3: rgb(217 70 239 / 0.32);
-    --bloom-base: rgb(88 28 135 / 0.28);
-    pointer-events: none;
-    position: absolute;
-    inset: 0 0 auto;
-    height: 9rem;
-    overflow: hidden;
-    border-radius: 0 0 1.25rem 0;
-    -webkit-mask-image: radial-gradient(ellipse 118% 100% at 0 0, #000 0%, #000 34%, rgb(0 0 0 / 0.72) 52%, rgb(0 0 0 / 0.34) 70%, rgb(0 0 0 / 0.1) 84%, transparent 96%);
-    mask-image: radial-gradient(ellipse 118% 100% at 0 0, #000 0%, #000 34%, rgb(0 0 0 / 0.72) 52%, rgb(0 0 0 / 0.34) 70%, rgb(0 0 0 / 0.1) 84%, transparent 96%);
-    background: var(--bloom-base);
-  }
-
-  .sidebar-brand-backdrop__bloom {
-    position: absolute;
-    inset: -35%;
-    background:
-      radial-gradient(circle at 22% 26%, var(--bloom-1) 0%, transparent 58%),
-      radial-gradient(circle at 74% 16%, var(--bloom-2) 0%, transparent 62%),
-      radial-gradient(circle at 48% 76%, var(--bloom-3) 0%, transparent 66%);
-    filter: blur(18px) saturate(125%);
-    animation: sidebar-brand-bloom-drift 18s ease-in-out infinite alternate;
-    will-change: transform;
-  }
-
-  /*
-   * Film grain — the detail that separates this from a plain CSS gradient.
-   *
-   * The noise is desaturated to pure luminance (feColorMatrix) and drawn at full
-   * strength; the layer's own opacity is the only dial. An earlier version
-   * stacked three separate attenuations — a 0.55 alpha inside the SVG, a 0.24
-   * layer opacity, and an `overlay` blend that is nearly a no-op over pale
-   * colours — which multiplied out to nothing visible.
-   */
-  .sidebar-brand-backdrop__grain {
-    position: absolute;
-    inset: 0;
-    opacity: 0.42;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 160px 160px;
-  }
-
   /* Wordmark reads as type on the sidebar surface: the name at full contrast,
      the suffix muted. No slab, no inversion between themes. */
   :global(.sidebar-brand-mark) {
@@ -533,60 +469,6 @@
     border-radius: var(--radius-md);
     background: transparent !important;
     box-shadow: none;
-  }
-
-  /*
-   * The bloom drifts underneath, so contrast cannot be guaranteed by colour
-   * alone — a soft dark halo sits between the type and whatever hue happens to
-   * be passing beneath it.
-   */
-  :global(.sidebar-brand-mark .brand-mark__flaxeo) {
-    color: #ffffff !important;
-    text-shadow:
-      0 1px 2px rgb(0 0 0 / 0.55),
-      0 2px 12px rgb(0 0 0 / 0.4);
-  }
-
-  :global(.sidebar-brand-mark .brand-mark__chat) {
-    color: rgb(255 255 255 / 0.82) !important;
-    text-shadow: 0 1px 6px rgb(0 0 0 / 0.45);
-  }
-
-  /*
-   * The bloom is a dark-mode signature and does not appear in light.
-   *
-   * On white a translucent wash can only darken what is beneath it, so it reads
-   * as a stain rather than as light however the hue is chosen — violet, amber
-   * and sky were each tried and each failed for that same structural reason.
-   * Light mode gets a clean sidebar instead, and the wordmark carries the brand
-   * on its own.
-   */
-  :global(:root:not(.dark)) .sidebar-brand-backdrop {
-    display: none;
-  }
-
-  /* Light mode is a pale wash, so the wordmark stays near-black and needs no
-     halo — the tint never gets dark enough to threaten it. */
-  :global(:root:not(.dark) .sidebar-brand-mark .brand-mark__flaxeo) {
-    color: var(--foreground) !important;
-    text-shadow: none;
-  }
-
-  :global(:root:not(.dark) .sidebar-brand-mark .brand-mark__chat) {
-    color: rgb(13 13 13 / 0.68) !important;
-    text-shadow: none;
-  }
-
-  @keyframes sidebar-brand-bloom-drift {
-    0% { transform: translate3d(-4%, -2%, 0) scale(1.04); }
-    50% { transform: translate3d(3%, 2.5%, 0) scale(1.12); }
-    100% { transform: translate3d(-1%, 4%, 0) scale(1.06); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .sidebar-brand-backdrop__bloom {
-      animation: none;
-    }
   }
 
   .new-chat-btn {

@@ -99,8 +99,6 @@
     color: var(--text-secondary);
     font-size: 0.68rem;
     font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 
   .metric-value {

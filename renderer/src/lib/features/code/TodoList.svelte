@@ -18,7 +18,7 @@
 </script>
 
 <div class="todo-card rounded-xl border border-border bg-muted/40 px-3 py-2.5" role="list" aria-label={$t('code.todosTitle')}>
-  <div class="mb-1.5 flex items-center justify-between text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+  <div class="mb-1.5 flex items-center justify-between text-[11px] font-medium text-muted-foreground">
     <span>{$t('code.todosTitle')}</span>
     <span>{done}/{todos.length}</span>
   </div>

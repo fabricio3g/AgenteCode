@@ -374,11 +374,11 @@
           {:else if filteredSearchItems.length === 0}
             <!-- Calm default while the query is empty: hardware picks instead of an empty wall. -->
             <section class="space-y-2" aria-label="Recommended for your hardware">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Picked for your hardware</p>
+              <p class="text-[11px] font-semibold r text-[var(--text-muted)]">Picked for your hardware</p>
               <div class="grid gap-2 sm:grid-cols-3">
                 {#each recommendationCards as recommendation}
                   <div class="rounded-xl bg-[var(--surface)] p-3 transition-colors hover:bg-[var(--surface-hover)]">
-                    <p class="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{recommendation.label}</p>
+                    <p class="text-[10px] font-semibold text-[var(--text-muted)]">{recommendation.label}</p>
                     <p class="mt-1 text-sm font-semibold text-[var(--text)]">
                       {recommendation.model?.name || (recommendation.label === 'Best balance' ? recommendations.defaultModel.name : 'Hardware needed')}
                     </p>
@@ -393,7 +393,7 @@
             </section>
 
             <section class="space-y-2" aria-label="Curated model catalog">
-              <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Curated</p>
+              <p class="text-[11px] font-semibold r text-[var(--text-muted)]">Curated</p>
               {#each CURATED_MODELS as model (model.id)}
                 {@const primary = defaultArtifact(model)}
                 {@const fit = fitForCurated(model, primary)}
@@ -514,7 +514,7 @@
       {:else if tab === 'library'}
         {#if activeJobs.length}
           <section class="space-y-2" aria-label="Active downloads">
-            <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Downloading</p>
+            <p class="text-[11px] font-semibold r text-[var(--text-muted)]">Downloading</p>
             {#each activeJobs as job (job.id)}
               <ModelDownloadRow {job} compact={false} />
             {/each}
@@ -597,7 +597,7 @@
           <section class="space-y-3 rounded-xl bg-[var(--surface)] p-4">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Loaded model</p>
+                <p class="text-[11px] font-semibold r text-[var(--text-muted)]">Loaded model</p>
                 <h3 class="truncate text-base font-semibold text-[var(--text)]">{activeModelName || 'Starting…'}</h3>
               </div>
               <Button variant="ghost" size="sm" class="shrink-0 text-xs" onclick={() => appStore.stopLocalModel()}>Unload</Button>

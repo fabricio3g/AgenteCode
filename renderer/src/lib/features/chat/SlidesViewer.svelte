@@ -42,7 +42,7 @@
 <div class="mt-4 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
   <!-- Header bar -->
   <div class="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-    <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+    <span class="text-xs font-semibold text-[var(--text-secondary)]">
       Presentation · {countOf(total, 'slide')}
     </span>
     <button

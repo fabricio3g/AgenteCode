@@ -300,7 +300,7 @@
           <div class="fixed inset-0 z-40" onclick={() => voiceOpen = false} onkeydown={() => {}}></div>
           <div class="aui-menu absolute left-0 top-full z-50 mt-1 min-w-[11rem] max-h-[300px] overflow-y-auto py-1" role="listbox">
             {#if femaleVoices.length > 0}
-              <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Female</div>
+              <div class="px-3 py-1 text-[10px] font-semibold text-muted-foreground">Female</div>
               {#each femaleVoices as voice (voice.id)}
                 <button
                   type="button"
@@ -318,7 +318,7 @@
               {/each}
             {/if}
             {#if maleVoices.length > 0}
-              <div class="mt-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Male</div>
+              <div class="mt-1 px-3 py-1 text-[10px] font-semibold text-muted-foreground">Male</div>
               {#each maleVoices as voice (voice.id)}
                 <button
                   type="button"

@@ -126,7 +126,7 @@
           </p>
         {:else}
           {#if femaleVoices.length > 0}
-            <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Female</div>
+            <div class="px-3 py-1 text-[10px] font-semibold text-[var(--text-muted)]">Female</div>
             {#each femaleVoices as voice (voice.id)}
               <button
                 type="button"
@@ -143,7 +143,7 @@
             {/each}
           {/if}
           {#if maleVoices.length > 0}
-            <div class="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Male</div>
+            <div class="px-3 py-1 mt-1 text-[10px] font-semibold text-[var(--text-muted)]">Male</div>
             {#each maleVoices as voice (voice.id)}
               <button
                 type="button"

@@ -45,7 +45,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="fixed inset-0 z-40" onclick={() => (open = false)}></div>
     <div class="absolute right-0 top-9 z-50 flex w-72 flex-col gap-1 rounded-xl border border-border bg-popover/80 p-2 shadow-lg backdrop-blur-md" transition:flyAndScale={{ y: -8, start: 0.96, duration: 180 }}>
-      <p class="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <p class="px-2 pb-1.5 pt-1 text-[11px] font-semibold r text-muted-foreground">
         {$t('code.extensions')}
       </p>
       {#each extensions as extension (extension.id)}

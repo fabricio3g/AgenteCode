@@ -170,7 +170,7 @@
 
       {#if reasoning}
         <section class="mt-3 rounded-md bg-muted/40 px-3 py-2.5">
-          <p class="mb-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+          <p class="mb-1 text-[0.65rem] font-medium text-muted-foreground">
             {copy.status.reasoning}
           </p>
           <p class="m-0 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-muted-foreground">
@@ -192,8 +192,7 @@
     color: var(--muted-foreground);
     font-size: 0.7rem;
     font-weight: 650;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
+    letter-spacing: 0.01em;
   }
 
   .source-row {

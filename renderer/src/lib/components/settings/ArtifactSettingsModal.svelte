@@ -79,7 +79,7 @@
   <div class="min-h-0 flex-1 overflow-auto px-4 py-3 sm:px-5">
     {#each categories as category (category.id)}
       <section class="mb-4 last:mb-1">
-        <h3 class="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{category.label}</h3>
+        <h3 class="mb-1.5 px-1 text-[11px] font-semibold text-muted-foreground">{category.label}</h3>
         <div class="space-y-0.5">
           {#each artifacts.filter((artifact) => artifact.category === category.id) as artifact (artifact.id)}
             {@const Icon = iconComponents[artifact.icon]}

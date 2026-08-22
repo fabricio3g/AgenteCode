@@ -240,9 +240,8 @@
     color: var(--muted-foreground);
     font-size: 0.58rem;
     font-weight: 650;
-    letter-spacing: 0.035em;
+    letter-spacing: 0.01em;
     line-height: 1.2;
-    text-transform: uppercase;
   }
 
   .timeline-tooltip-preview {

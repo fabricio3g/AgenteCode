@@ -116,7 +116,7 @@
   .tr:hover { background: var(--surface-hover); color: var(--foreground); }
   .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
   .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 0.74rem; flex: 1; }
-  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.3rem; font-size: 0.55rem; font-weight: 780; text-transform: uppercase; }
+  .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: 0.625rem; font-weight: 650; letter-spacing: 0.01em; }
   .kind.created { color: var(--success); }
   .kind.modified { color: var(--primary); }
   .kind.deleted { color: var(--error); }

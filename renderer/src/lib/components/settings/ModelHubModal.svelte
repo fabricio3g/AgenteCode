@@ -290,7 +290,7 @@
           <!-- Model Providers group -->
           <div class="min-w-max md:min-w-0 md:mt-3 md:border-t md:border-[var(--border-subtle)] md:pt-3">
             <div class="flex items-center justify-between gap-2 px-3 pb-1">
-              <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Model providers</span>
+              <span class="text-[10px] font-semibold text-muted-foreground">Model providers</span>
               <button
                 type="button"
                 class="flex size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-[var(--surface-hover)] hover:text-foreground"
@@ -304,7 +304,7 @@
 
             {#snippet providerGroup(title: string | null, items: Array<{ id: string; label: string }>)}
               {#if title}
-                <p class="mt-2 px-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">{title}</p>
+                <p class="mt-2 px-3 text-[9px] font-semibold text-muted-foreground/70">{title}</p>
               {/if}
               {#each items as p (p.id)}
                 {@const selected = isProvidersSection && selectedProviderId === p.id}

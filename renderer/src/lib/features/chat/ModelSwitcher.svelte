@@ -402,8 +402,7 @@
     transition:flyAndScale={{ y: dropdownPos.openUp ? 8 : -8, start: 0.96, duration: 180 }}
   >
     <!--
-      Header and mode toggle on one line. The old layout stacked an uppercase
-      "CLOUD MODELS" caption above a Cloud/On Device switch that already said
+      Header and mode toggle on one line. The old layout stacked an "CLOUD MODELS" caption above a Cloud/On Device switch that already said
       the same thing, costing a whole row to repeat the tab label back.
     -->
     <div class="panel-head flex items-center gap-2 px-2.5 pb-2 pt-2.5">

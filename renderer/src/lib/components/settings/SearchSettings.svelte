@@ -368,7 +368,7 @@
           {#if items.length}
             <div class="border-b border-[var(--border-subtle)] last:border-b-0">
               <div class="sticky top-0 z-10 bg-card/95 px-4 py-2 backdrop-blur">
-                <h5 class="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{group.label}</h5>
+                <h5 class="text-[11px] font-semibold text-muted-foreground">{group.label}</h5>
               </div>
               <div class="">
                 {#each items as item (item.id)}

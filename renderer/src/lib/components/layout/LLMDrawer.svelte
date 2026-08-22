@@ -230,7 +230,7 @@
       <!-- Temperature -->
       <div>
         <div class="mb-2 flex items-center justify-between">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Temperature</span>
+          <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Temperature</span>
           <div class="flex items-center gap-1.5">
             <span class="text-[11px] text-[var(--text-muted)]">{tempLabel(temperature)}</span>
             <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{temperature.toFixed(2)}</span>
@@ -246,7 +246,7 @@
         <!-- Top-P -->
         <div>
           <div class="mb-2 flex items-center justify-between">
-            <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Top P</span>
+            <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Top P</span>
             <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{topP.toFixed(2)}</span>
           </div>
           <input type="range" bind:value={topP} min="0" max="1" step="0.01" class="w-full accent-[var(--primary)] cursor-pointer" />
@@ -256,7 +256,7 @@
       <!-- Max tokens -->
       <div>
         <div class="mb-2 flex items-center justify-between">
-          <span class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Max tokens</span>
+          <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Max tokens</span>
           <span class="min-w-[2.5rem] px-1 text-center text-[12px] font-semibold tabular-nums text-[var(--text)]">{maxTokens > 0 ? maxTokens.toLocaleString() : 'Auto'}</span>
         </div>
         <input type="range" bind:value={maxTokens} min="0" max="32768" step="256" class="w-full accent-[var(--primary)] cursor-pointer" />
@@ -264,7 +264,7 @@
 
       <!-- System prompt -->
       <div>
-        <label for="llm-system-prompt" class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">System prompt</label>
+        <label for="llm-system-prompt" class="mb-1.5 block text-[11px] font-semibold r text-[var(--text-muted)]">System prompt</label>
         <textarea
           id="llm-system-prompt"
           bind:value={systemPrompt}
