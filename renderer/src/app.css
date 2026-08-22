@@ -7,9 +7,9 @@
 
 /* ─── Flaxeo-aligned design tokens (monochrome) ─────────────────────────── */
 :root {
-  --font-sans: 'Geist Variable', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-serif: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, Cambria, 'Times New Roman', serif;
-  --font-mono: 'Geist Mono Variable', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --text-base: 14px;
   --text-sm: 13px;
   --text-xs: 12px;
@@ -18,6 +18,9 @@
 
   /* Canonical (Flaxeo / shadcn-style) */
   --radius: 0.625rem;
+  /* Grok's radius tension: pills stay for entry points; utility inputs go
+     sharp so controls read as controls, not as more chrome. */
+  --radius-input: 6px;
   /* One background — see the note in `.dark`. Fills are alpha overlays so they
      work on top of it rather than being separate greys. */
   --background: #ffffff;
@@ -93,6 +96,12 @@
   --info-bg: rgb(0 0 0 / 0.04);
   --info-border: rgb(0 0 0 / 0.1);
 
+  /* The single brand accent (Grok's move, one shade off): the only warmth in
+     the grayscale. Borders, focus moments, status badges — never body text.
+     `-strong` variants clear 4.5:1 where the accent touches small type. */
+  --brand-accent: #e76d1f;
+  --brand-accent-strong: #b34a0e;
+
   /* Work/agent — monochrome (no blue) */
   --work-accent: var(--primary);
   --work-accent-strong: var(--primary-hover);
@@ -108,7 +117,8 @@
      than by a grey fill. */
   --composer-surface: var(--card);
   --composer-ring: var(--border);
-  --composer-ring-focus: #d0d0d0;
+  /* The one orange moment: focus lands in the composer. */
+  --composer-ring-focus: rgb(231 109 31 / 0.55);
   --chat-bg: var(--background);
   --titlebar-bg: var(--sidebar);
   --sidebar-bg: var(--sidebar);
@@ -301,13 +311,16 @@
   --work-accent-border: var(--border);
   --work-glint: rgb(255 255 255 / 0.06);
 
+  --brand-accent: #f08a4a;
+  --brand-accent-strong: #f5a06b;
+
   --user-bubble: rgb(255 255 255 / 0.06);
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
   /* Dark's equivalent of the white card: the panel colour, not a tint. */
   --composer-surface: var(--card);
   --composer-ring: var(--border);
-  --composer-ring-focus: var(--border-hover);
+  --composer-ring-focus: rgb(240 138 74 / 0.6);
   --chat-bg: var(--background);
   --titlebar-bg: var(--sidebar);
   --sidebar-bg: var(--sidebar);
@@ -378,7 +391,7 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   font-weight: 400;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.006em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -570,14 +583,18 @@ textarea {
   border-radius: var(--radius-xl);
   background: var(--popover);
   color: var(--popover-foreground);
-  box-shadow: var(--shadow-lg);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px var(--border-subtle);
   padding: 0.25rem;
   /* Above code/activity drawers and composer chrome */
   z-index: 100;
 }
 
 .dark .aui-menu {
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3),
+    inset 0 0 0 1px var(--border-subtle);
 }
 
 .aui-menu-item {
@@ -796,7 +813,7 @@ textarea {
 .aui-input {
   width: 100%;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-input);
   background: var(--muted);
   padding: 0.5rem 0.75rem;
   color: var(--foreground);
