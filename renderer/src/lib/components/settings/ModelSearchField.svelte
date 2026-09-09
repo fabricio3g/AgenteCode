@@ -35,7 +35,7 @@
   />
   <Input
     variant="surface"
-    class="h-11 rounded-lg pl-10 pr-10"
+    class="h-9 rounded-md pl-10 pr-10 text-[13px]"
     bind:value
     {placeholder}
     aria-label={label}

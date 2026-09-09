@@ -97,6 +97,27 @@ describe('inline widgets (info_card / html_card)', () => {
     expect(parsed.html).not.toMatch(/src=["']https?:/);
   });
 
+  it('strips single-quoted handlers, svg vectors and javascript: urls', () => {
+    const ctx = makeCtx();
+    const result = handleCreateHtmlCard({
+      args: {
+        title: 'X',
+        html: `<div onclick='alert(1)' onload=alert(2)>Hi</div><svg onload="alert(3)"><circle/></svg><a href="javascript:alert(4)">x</a><a href='javascript:alert(5)'>y</a>`
+      },
+      ctx,
+      normPath: (v) => String(v || ''),
+      ok,
+      fail
+    });
+
+    expect(result.success).toBe(true);
+    const parsed = JSON.parse(ctx.files['html-card.json']);
+    expect(parsed.html).not.toMatch(/on\w+\s*=/i);
+    expect(parsed.html).not.toContain('<svg');
+    expect(parsed.html).not.toMatch(/javascript:/i);
+    expect(parsed.html).toContain('Hi');
+  });
+
   it('gracefully skips empty info card rows without failing the agent', () => {
     const ctx = makeCtx();
     const result = handleCreateInfoCard({

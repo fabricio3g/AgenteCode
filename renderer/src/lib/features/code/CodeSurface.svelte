@@ -19,6 +19,7 @@
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
   import CodeExtensionsPanel from './CodeExtensionsPanel.svelte';
+  import { isCodeSession } from '$lib/features/shared/session-guards';
 
   onMount(() => {
     void codeStore.load();
@@ -32,7 +33,7 @@
    */
   const chat = $derived.by(() => {
     const current = appStore.currentChat;
-    if (current?.projectId && current.contextMode === 'code') return current;
+    if (current?.projectId && isCodeSession(current)) return current;
     return null;
   });
   const activeProject = $derived(

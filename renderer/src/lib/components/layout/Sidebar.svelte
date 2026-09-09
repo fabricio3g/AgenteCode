@@ -16,6 +16,7 @@ import { flip } from 'svelte/animate';
 import { smoothEase } from '$lib/utils/transitions';
   import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
   import { copy } from '$lib/copy';
+  import { downloadSessionMarkdown, sessionExportFilename } from '$lib/features/shared/export-session';
 
   let renamingChatId = $state<string | null>(null);
   let renamingChatTitle = $state('');
@@ -46,13 +47,12 @@ import { smoothEase } from '$lib/utils/transitions';
   }
 
   const groupedChats = $derived.by(() => {
-    // Recency timeline: the sidebar is memory, not a file system. Buckets are
-    // stable so a chat moving between days never renames its whole group.
-    type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleChats };
+    // Home sidebar shows home sessions only. Code uses CodeSidebar.
+    type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleHomeChats };
     const groups: ChatGroup[] = [];
     const groupMap = new Map<number, ChatGroup>();
 
-    for (const chat of appStore.visibleChats) {
+    for (const chat of appStore.visibleHomeChats) {
       const now = startOfDay(Date.now());
       const day = startOfDay(chat.updatedAt || chat.createdAt);
       const diff = Math.floor((now - day) / 86400000);
@@ -135,28 +135,9 @@ import { smoothEase } from '$lib/utils/transitions';
   }
 
   function exportChat(chat: (typeof appStore.chats)[0]) {
-    const date = new Date().toISOString().slice(0, 10);
-    const lines: string[] = [`# ${chat.title || 'Chat'}\n\n_Exported ${date}_\n`];
-    for (const m of chat.messages) {
-      if (m.role === 'user') {
-        lines.push(`\n---\n\n**You:**\n\n${m.content}`);
-      } else {
-        const label = m.model ? `**Assistant** (${m.model})` : '**Assistant**';
-        lines.push(`\n---\n\n${label}:\n\n${m.content}`);
-      }
-    }
-    const filename = `${(chat.title || 'chat').replace(/[^a-z0-9]+/gi, '_')}_${date}.md`;
     try {
-      const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.setAttribute('download', filename);
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toastStore.success(`Chat exported as ${filename}`, 2500);
+      downloadSessionMarkdown(chat);
+      toastStore.success(`Chat exported as ${sessionExportFilename(chat.title, new Date().toISOString().slice(0, 10))}`, 2500);
     } catch {
       toastStore.error('Export failed — try copying the chat manually.');
     }

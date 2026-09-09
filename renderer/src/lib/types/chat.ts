@@ -443,6 +443,30 @@ export interface ChatSession {
   messages: ChatMessage[];
 }
 
+/**
+ * Clear space separation on top of ChatSession.
+ *
+ * ChatSession stays as persisted base for compat.
+ * New code branches on these narrowed views:
+ * - HomeSession: no project, no codeAgent, no workspace.
+ * - CodeSession: project-linked agent conversation.
+ * Narrow via `isCodeSession` / `isHomeSession`
+ * in `features/shared/session-guards.ts`.
+ */
+export interface HomeSession extends ChatSession {
+  contextMode?: 'home';
+  codeAgent?: null;
+  projectId?: null;
+  workspace?: null;
+}
+
+export interface CodeSession extends ChatSession {
+  contextMode?: 'code';
+  projectId?: string | null;
+}
+
+export type SpaceSession = HomeSession | CodeSession;
+
 export interface ModelOption {
   id: string;
   name: string;

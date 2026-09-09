@@ -2,8 +2,7 @@
 
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { MessageCircleQuestion } from 'lucide-svelte';
-  import { APP_NAME } from '$lib/app-meta';
+  import { Quote } from 'lucide-svelte';
 
   const MAX_SELECTION_CHARS = 6000;
 
@@ -13,6 +12,8 @@
   let y = $state(0);
   let updateTimer: ReturnType<typeof setTimeout> | null = null;
   let pointerSelecting = false;
+  /** Last pointerup inside message content: exact release point. */
+  let lastPointer = $state<{ x: number; y: number; at: number } | null>(null);
 
   function isEditableElement(node: Node | null): boolean {
     const element = node instanceof Element ? node : node?.parentElement;
@@ -61,34 +62,82 @@
     }
 
     const range = selection.getRangeAt(0);
+    // Streaming re-renders replace text nodes mid-selection. A detached
+    // range reports garbage rects, so hide instead of floating mid-air.
+    if (!range.commonAncestorContainer.isConnected) {
+      hide();
+      return;
+    }
     const selRect = range.getBoundingClientRect();
     if (!selRect || (!selRect.width && !selRect.height)) {
       hide();
       return;
     }
 
-    // Get the position of the last selected character (focus point)
-    let focusX = selRect.right;
-    let focusY = selRect.bottom;
-    if (selection.focusNode) {
-      const cr = document.createRange();
-      try {
-        cr.setStart(selection.focusNode, selection.focusOffset);
-        cr.collapse(true);
-        const crRect = cr.getBoundingClientRect();
-        if (crRect && (crRect.width || crRect.height)) {
-          focusX = crRect.right;
-          focusY = crRect.bottom;
-        }
-      } catch { /* use fallback */ }
-      cr.detach();
+    // Mouse users: the release point IS the selection end. Immune to
+    // caret-rect quirks, which only serve keyboard selections below.
+    const pointer = lastPointer;
+    if (pointer && Date.now() - pointer.at < 500) {
+      selectedText = text.slice(0, MAX_SELECTION_CHARS);
+      x = Math.min(Math.max(pointer.x + 4, 8), window.innerWidth - 150);
+      const belowY = pointer.y + 6;
+      const aboveY = pointer.y - 38;
+      y = Math.min(
+        Math.max(belowY + 34 < window.innerHeight ? belowY : Math.max(aboveY, 8), 8),
+        window.innerHeight - 40
+      );
+      visible = true;
+      return;
     }
 
+    // Anchor to the end of the selection (the focus character).
+    // Order: exact caret rect at focus, directional line rect, bbox corner.
+    // The final clamp keeps the button inside the selection's own box, so
+    // a bad rect can never fling it across the window.
+    const lineRects = range.getClientRects();
+    let backward = false;
+    try {
+      const anchorNode = selection.anchorNode;
+      const focusNode = selection.focusNode;
+      if (anchorNode && focusNode) {
+        if (anchorNode === focusNode) {
+          backward = selection.anchorOffset > selection.focusOffset;
+        } else {
+          backward = Boolean(
+            anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
+          );
+        }
+      }
+    } catch { /* assume forward */ }
+
+    let caretX: number | null = null;
+    let caretY: number | null = null;
+    try {
+      const caret = range.cloneRange();
+      caret.collapse(!backward);
+      const caretRects = caret.getClientRects();
+      const caretRect = caretRects.length ? caretRects[0] : null;
+      if (caretRect && (caretRect.width || caretRect.height)) {
+        caretX = backward ? caretRect.left : caretRect.right;
+        caretY = caretRect.bottom;
+      }
+    } catch { /* fall through to line rects */ }
+
+    let endRect: DOMRect | null = null;
+    if (lineRects.length) {
+      endRect = backward ? lineRects[0] : lineRects[lineRects.length - 1];
+    }
+    const focusX = caretX ?? (endRect ? (backward ? endRect.left : endRect.right) : selRect.right);
+    const focusY = caretY ?? (endRect ? endRect.bottom : selRect.bottom);
+
     selectedText = text.slice(0, MAX_SELECTION_CHARS);
-    x = Math.min(Math.max(focusX, 72), window.innerWidth - 72);
-    const belowY = focusY + 8;
-    const aboveY = focusY - 8;
-    y = belowY + 40 < window.innerHeight ? belowY : Math.max(aboveY, 8);
+    x = Math.min(Math.max(focusX + 4, 8), selRect.right + 4, window.innerWidth - 150);
+    const belowY = focusY + 6;
+    const aboveY = focusY - 38;
+    y = Math.min(
+      Math.max(belowY + 34 < window.innerHeight ? belowY : Math.max(aboveY, 8), 8),
+      window.innerHeight - 40
+    );
     visible = true;
   }
 
@@ -121,9 +170,12 @@
     hide();
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(event?: MouseEvent) {
     if (!pointerSelecting) return;
     pointerSelecting = false;
+    if (event && typeof event.clientX === 'number') {
+      lastPointer = { x: event.clientX, y: event.clientY, at: Date.now() };
+    }
     scheduleUpdate(160);
   }
 
@@ -161,10 +213,10 @@
     class="selected-text-ask-action"
     style={`left:${x}px; top:${y}px;`}
     onclick={askSelectedText}
-    aria-label={`Ask ${APP_NAME} about selected text`}
+    aria-label="Add selected text to chat"
   >
-    <MessageCircleQuestion class="h-4 w-4" />
-    <span>Ask {APP_NAME}</span>
+    <Quote class="size-3.5" />
+    <span>Add to chat</span>
   </button>
 {/if}
 
@@ -172,31 +224,32 @@
   .selected-text-ask-action {
     position: fixed;
     z-index: 80;
-    transform: translateX(-50%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 9999px;
-    gap: 0.45rem;
-    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-    background: color-mix(in srgb, var(--surface) 94%, var(--chat-bg));
-    color: var(--text);
-    box-shadow: var(--shadow-md);
-    padding: 0.58rem 0.95rem;
-    font-size: 13px;
-    font-weight: 700;
+    gap: 0.35rem;
+    border: 1px solid var(--border);
+    background: var(--popover);
+    opacity: 1;
+    color: var(--foreground);
+    box-shadow: var(--shadow-sm);
+    padding: 0.4rem 0.7rem;
+    font-size: 12px;
+    font-weight: 500;
     line-height: 1;
-    backdrop-filter: blur(12px);
     animation: selectedAskIn 110ms ease-out;
   }
 
   .selected-text-ask-action:hover {
-    border-color: var(--border-hover);
-    background: var(--surface-hover);
+    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    background: color-mix(in srgb, var(--foreground) 8%, var(--background));
+    opacity: 1;
+    color: var(--foreground);
   }
 
   @keyframes selectedAskIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(3px); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>

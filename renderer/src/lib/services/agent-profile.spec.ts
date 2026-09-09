@@ -8,6 +8,12 @@ describe('agent profiles', () => {
     expect(names).toContain('web_search');
     expect(names).toContain('fetch_url');
     expect(names).toContain('calculator');
+    expect(names).toContain('browser_open');
+    expect(names).toContain('browser_navigate');
+    expect(names).toContain('browser_snapshot');
+    expect(names).toContain('browser_click');
+    expect(names).toContain('browser_type');
+    expect(names).toContain('browser_screenshot');
     expect(names).not.toContain('bash');
     expect(names).not.toContain('get_diagnostics');
     expect(names).not.toContain('edit_file');

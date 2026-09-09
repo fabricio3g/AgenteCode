@@ -15,13 +15,12 @@
   import { onMount, untrack } from 'svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import {
-    Download, FolderOpen, FolderInput, LoaderCircle, Plus, X,
+    Plus, X,
     Search, Cpu, Volume2, Settings,
   } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
-  import { importLocalModel } from '$lib/services/models';
-  import { openModelsFolder, getInstalledRuntimes, pickModelFile } from '$lib/services/files';
+  import { getInstalledRuntimes } from '$lib/services/files';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { CLOUD_PROVIDERS, PROVIDER_COLORS } from '$lib/utils/providers';
@@ -30,6 +29,7 @@
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
   import HardwareSummary from './VoiceSettings.svelte';
   import ModelWorkspace from './ModelWorkspace.svelte';
+  import ModelNavRail from './ModelNavRail.svelte';
   import VoiceSection from './sections/VoiceSection.svelte';
   import ProviderDetail from './sections/ProviderDetail.svelte';
   import type { ModelHubSection } from '$lib/utils/model-hub-routing';
@@ -40,6 +40,18 @@
   let modelTab = $state<ModelHubTab>(rememberedModelTab);
   let voiceMode = $state<'tts' | 'stt'>('tts');
   let hasRuntime = $state(false);
+
+  const MODEL_AUTO_LOAD_KEY = 'flaxeo_modelhub_autoload';
+  let modelAutoLoad = $state(
+    typeof localStorage !== 'undefined' && localStorage.getItem(MODEL_AUTO_LOAD_KEY) === '1'
+  );
+
+  function setModelAutoLoad(value: boolean) {
+    modelAutoLoad = value;
+    try {
+      localStorage.setItem(MODEL_AUTO_LOAD_KEY, value ? '1' : '0');
+    } catch { /* private mode */ }
+  }
 
   // ── Model Providers nav (Jan grammar) ─────────────────────────────────
   let selectedProviderId = $state('openai');
@@ -54,7 +66,7 @@
     { id: 'voice' as NavSection, label: 'Voice', description: 'Speech output and input', icon: Volume2, active: false },
   ]);
 
-  const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore');
+  const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore' || activeSection === 'loaded');
   const isProvidersSection = $derived(activeSection === 'providers');
   const activeNavItem = $derived(
     settingsNavItems.find((item) => item.id === activeSection)
@@ -132,23 +144,6 @@
     }
   });
 
-  let importingModel = $state(false);
-  async function handleImportLocalModel() {
-    if (importingModel) return;
-    importingModel = true;
-    try {
-      const filePath = await pickModelFile();
-      if (!filePath) return;
-      await importLocalModel(filePath, false);
-      await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
-      toastStore.success('Model imported successfully');
-    } catch (error) {
-      toastStore.error(`Import failed: ${(error as Error)?.message || error}`);
-    } finally {
-      importingModel = false;
-    }
-  }
-
   function close() {
     appStore.modelManagerOpen = false;
   }
@@ -162,6 +157,10 @@
     }
     if (section === 'library') {
       modelTab = 'library';
+      return 'models';
+    }
+    if (section === 'loaded') {
+      modelTab = 'active';
       return 'models';
     }
     if (section === 'providers') {
@@ -209,47 +208,7 @@
     class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-[var(--radius-2xl)] bg-popover text-foreground shadow-[shadow:var(--shadow-xl)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
     transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
   >
-    <!-- Top bar -->
-    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
-      <div class="flex items-center gap-0.5">
-        <button
-          type="button"
-          class="aui-icon-button size-8"
-          onclick={() => { modelTab = 'library'; }}
-          title="Downloads"
-        >
-          <Download class="size-3.5" />
-        </button>
-        {#if isModelSection}
-          <button
-            type="button"
-            class="aui-icon-button size-8"
-            onclick={() => openModelsFolder()}
-            title="Open folder"
-          >
-            <FolderOpen class="size-3.5" />
-          </button>
-          <button
-            type="button"
-            disabled={importingModel}
-            class="aui-icon-button size-8 disabled:opacity-50"
-            onclick={() => { void handleImportLocalModel(); }}
-            title="Import model"
-          >
-            {#if importingModel}
-              <LoaderCircle class="size-3.5 animate-spin" />
-            {:else}
-              <FolderInput class="size-3.5" />
-            {/if}
-          </button>
-        {/if}
-      </div>
-
-      <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
-        <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
-        <p class="truncate text-[11px] text-muted-foreground">{activeNavItem.description}</p>
-      </div>
-
+    {#snippet modalClose()}
       <div class="flex items-center gap-0.5">
         <button
           type="button"
@@ -260,11 +219,47 @@
           <X class="size-3.5" />
         </button>
       </div>
+    {/snippet}
+
+    {#if isModelSection}
+      <!-- Models: rail spans full modal height; title bar has no divider. -->
+      <div class="flex min-h-0 flex-1 flex-row overflow-hidden">
+        <ModelNavRail
+          tab={modelTab}
+          autoLoad={modelAutoLoad}
+          onselecttab={(next) => { modelTab = next; }}
+          onautoload={(next) => setModelAutoLoad(next)}
+        />
+        <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div class="flex h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-5">
+            <div class="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true"></div>
+
+            <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
+              <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
+              <p class="truncate text-[11px] text-muted-foreground">Discover, download, and run — all inline.</p>
+            </div>
+
+            {@render modalClose()}
+          </div>
+
+          <ModelWorkspace bind:tab={modelTab} bind:autoLoad={modelAutoLoad} />
+        </div>
+      </div>
+    {:else}
+    <!-- Top bar -->
+    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
+      <div class="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true"></div>
+
+      <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
+        <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
+        <p class="truncate text-[11px] text-muted-foreground">{activeNavItem.description}</p>
+      </div>
+
+      {@render modalClose()}
     </div>
 
     <!-- Content -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-      {#if !isModelSection}
       <aside class="shrink-0 border-b border-[var(--border-subtle)] bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
         <nav class="flex gap-1 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-visible" aria-label={navAriaLabel}>
           {#each settingsNavItems as item}
@@ -361,12 +356,9 @@
           </div>
         </nav>
       </aside>
-      {/if}
 
       <main class="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
-        {#if isModelSection}
-          <ModelWorkspace bind:tab={modelTab} />
-        {:else if activeSection === 'voice'}
+        {#if activeSection === 'voice'}
           <VoiceSection bind:voiceMode />
         {:else if activeSection === 'general'}
           <UnifiedSettingsPanel activeTab="General" />
@@ -388,5 +380,6 @@
         {/if}
       </main>
     </div>
+    {/if}
   </div>
 </div>

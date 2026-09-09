@@ -29,9 +29,12 @@
   function openWindow() {
     if (!previewBuild.html) return;
     const url = URL.createObjectURL(new Blob([previewBuild.html], { type: 'text/html' }));
-    const opened = window.open(url, '_blank', 'width=1200,height=800');
-    if (opened) opened.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
-    else URL.revokeObjectURL(url);
+    // noopener + null opener: detached blob document must not reach parent.
+    const opened = window.open(url, '_blank', 'width=1200,height=800,noopener');
+    if (opened) {
+      opened.opener = null;
+      opened.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    } else URL.revokeObjectURL(url);
   }
 
   onMount(() => {

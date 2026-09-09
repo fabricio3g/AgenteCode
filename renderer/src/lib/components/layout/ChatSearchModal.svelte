@@ -7,7 +7,7 @@
   import { countOf } from '$lib/utils/format';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import type { ChatSession } from '$lib/types/chat';
-  import { normalizeSpace } from '$lib/spaces';
+  import { getSpaceForSession } from '$lib/features/shared/session-guards';
   import { onMount, tick } from 'svelte';
 
   let searchInput: HTMLInputElement | undefined = $state();
@@ -57,9 +57,9 @@
     return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Scope search to the active space only (Chat | Work isolation)
+  // Scope search to active space only via store boundary, not inline filter.
   const spaceChats = $derived.by(() => {
-    return appStore.chats.filter((chat) => normalizeSpace(chat.contextMode) === appStore.activeSpace);
+    return appStore.getSessionsForSpace(appStore.activeSpace);
   });
 
   interface SearchHit {
@@ -310,7 +310,7 @@
             {:else}
               <div class="preview-conversation mx-auto flex max-w-[55rem] flex-col gap-7">
                 {#each previewChat.messages as message (message.id)}
-                  <Message {message} contextMode={normalizeSpace(previewChat.contextMode)} />
+                  <Message {message} contextMode={getSpaceForSession(previewChat)} />
                 {/each}
               </div>
             {/if}

@@ -39,6 +39,8 @@ export interface CuratedModelDefinition {
   runtime: RuntimeRequirement;
   rank: number;
   lastReviewed: string;
+  /** Hand-picked highlight shown under Staff picks. */
+  staffPick?: boolean;
 }
 
 export type ModelFitStatus =

@@ -10,6 +10,7 @@ type SearchHandlerDeps = {
   fetchModelCatalog: () => unknown;
   searchHfModels: (query: string, sort: string, limit: number, hfToken?: string, cursor?: string, paged?: boolean) => unknown;
   hfRepoGguf: (repoId: string, hfToken?: string) => unknown;
+  fetchHfReadme: (repoId: string, hfToken?: string) => unknown;
   createWebviewerWindow: (url: string, title?: string) => unknown;
   scrapeUrlStructured: (args: { url: string; maxLength?: number; timeoutMs?: number; maxLinks?: number }) => Promise<unknown>;
   crawlWeb: (args: unknown) => unknown;
@@ -27,6 +28,7 @@ export function registerSearchHandlers({
   fetchModelCatalog,
   searchHfModels,
   hfRepoGguf,
+  fetchHfReadme,
   createWebviewerWindow,
   scrapeUrlStructured,
   crawlWeb,
@@ -43,7 +45,18 @@ export function registerSearchHandlers({
   ipcMain.handle('search_hf_models', (_e, { query, sort, limit, hfToken, cursor, paged }) =>
     searchHfModels(query, sort, limit, hfToken, cursor, paged));
   ipcMain.handle('hf_repo_gguf', (_e, { repoId, hfToken }) => hfRepoGguf(repoId, hfToken));
-  ipcMain.handle('open_url_window', (_e, { url }) => shell.openExternal(String(url || '')));
+  ipcMain.handle('fetch_hf_readme', (_e, { repoId, hfToken }) => fetchHfReadme(repoId, hfToken));
+  ipcMain.handle('open_url_window', (_e, { url }) => {
+    try {
+      const parsed = new URL(String(url || ''));
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { error: 'Invalid URL scheme' };
+      }
+      return shell.openExternal(parsed.toString());
+    } catch {
+      return { error: 'Invalid URL' };
+    }
+  });
 
   ipcMain.handle('open_webviewer', (_e, { url, title }) => {
     if (!url || typeof url !== 'string') return { error: 'Invalid URL' };

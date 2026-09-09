@@ -28,9 +28,10 @@
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
   import { Dictation } from './composer/use-dictation.svelte';
+  import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
 
   /** Textarea grows with content up to this height, then scrolls. */
-  const MAX_TEXTAREA_PX = 220;
+  const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
   /** Composers narrower than this switch the toolbar to its compact layout. */
   const COMPACT_WIDTH_PX = 640;
   /** How long an error placeholder stays before reverting. */
@@ -98,11 +99,7 @@
    * full height until the next keystroke.
    */
   function autoGrow(element: HTMLTextAreaElement) {
-    element.style.height = 'auto';
-    const measured = element.scrollHeight;
-    const next = element.value ? Math.min(measured, MAX_TEXTAREA_PX) : 0;
-    // `0` falls through to the CSS min-height, which is the true empty size.
-    element.style.height = next ? `${next}px` : '';
+    autogrowTextarea(element, MAX_TEXTAREA_PX);
   }
 
   function focusComposer(moveCursorToEnd = true) {

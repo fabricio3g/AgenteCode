@@ -367,7 +367,21 @@ class AppStore {
   }
 
   get visibleChats() {
-    return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === this.activeSpace);
+    return this.getSessionsForSpace(this.activeSpace);
+  }
+
+  /** Clear space separation: home sessions only. Code uses visibleCodeChats. */
+  get visibleHomeChats() {
+    return this.getSessionsForSpace('home');
+  }
+
+  /** Clear space separation: code sessions only. Home uses visibleHomeChats. */
+  get visibleCodeChats() {
+    return this.getSessionsForSpace('code');
+  }
+
+  getSessionsForSpace(space: ChatContextMode) {
+    return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === space);
   }
 
   get currentWorkspace() {
@@ -870,7 +884,9 @@ class AppStore {
       if (!this.chats.length) {
         this.createChat(this.activeSpace);
       } else if (!this.currentChat) {
-        this.currentChatId = this.resolveChatIdForSpace(this.activeSpace) || this.chats[0]?.id || null;
+        // Stay in active space. Never fallback to chats[0] cross-space.
+        this.currentChatId = this.resolveChatIdForSpace(this.activeSpace);
+        if (!this.currentChatId) this.createChat(this.activeSpace);
       }
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
@@ -1150,11 +1166,22 @@ class AppStore {
     delete searchStates[chatId];
     this.searchStateByChat = searchStates;
     if (this.currentChatId === chatId) {
-      this.currentChatId = this.resolveChatIdForSpace(deletedMode) || this.chats[0]?.id || null;
-      this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || deletedMode);
-      this.hydrateUiFromChat(this.currentChat);
+      // Stay in deleted space. Never fallback to chats[0] cross-space:
+      // deleting last home chat jumped to code section.
+      this.activeSpace = deletedMode;
+      const nextId = this.resolveChatIdForSpace(deletedMode);
+      if (nextId) {
+        this.currentChatId = nextId;
+        this.hydrateUiFromChat(this.currentChat);
+      } else {
+        this.currentChatId = null;
+      }
     }
     this.rebuildChatIdBySpace();
+    if (!this.currentChatId || !this.currentChat) {
+      this.activeSpace = this.currentChat ? normalizeContextMode(this.currentChat.contextMode) : deletedMode;
+      if (!this.currentChat) this.createChat(this.activeSpace);
+    }
     if (!this.chats.length) this.createChat(this.activeSpace);
     this.persist();
     if (isElectron()) {
@@ -1804,7 +1831,7 @@ class AppStore {
     const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
     if (!rootPath) throw new Error('No workspace attached');
     const fullPath = `${rootPath}/${relativePath}`;
-    await openWorkspaceFile(fullPath);
+    await openWorkspaceFile(fullPath, rootPath);
   }
 
   async createWorkspaceFolder(relativePath: string): Promise<void> {
@@ -2416,8 +2443,11 @@ class AppStore {
       }
 
       // ── Work mode file writing ──────────────────────────────────────
+      // Code space only: home sandbox replies never touch host disk here.
+      // Fence blocks execute only for code-context agent turns with a
+      // workspace attached; main-side containment is second layer.
       const activeWorkspaceRoot = activeWorkspace?.rootPath;
-      if (activeComposerMode !== 'agent' && activeWorkspaceRoot && isElectron() && assistantMessage.content) {
+      if (activeContextMode === 'code' && activeComposerMode !== 'agent' && activeWorkspaceRoot && isElectron() && assistantMessage.content) {
         const blocks = parseWriteFileBlocks(assistantMessage.content);
         if (blocks.length > 0) {
           const created: import('$lib/types/chat').CreatedFile[] = [];

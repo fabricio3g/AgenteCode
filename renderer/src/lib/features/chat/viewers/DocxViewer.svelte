@@ -77,7 +77,8 @@
       <iframe
         class="docx-iframe"
         srcdoc={htmlContent}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
         title="{filename} preview"
       ></iframe>
     </div>

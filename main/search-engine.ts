@@ -742,3 +742,23 @@ export async function hfRepoGguf(repoId: string, hfToken?: string) {
     return null;
   }
 }
+
+const HF_README_MAX_CHARS = 40000;
+
+export async function fetchHfReadme(repoId: string, hfToken?: string) {
+  try {
+    if (!repoId || typeof repoId !== 'string' || repoId.includes('..')) {
+      return { repo_id: repoId, readme: '', error: 'Invalid repository id.' };
+    }
+    const url = `https://huggingface.co/${repoId}/resolve/main/README.md`;
+    const resp = await fetchWithRetry(url, { headers: hfHeaders(hfToken), timeout_ms: 15000 });
+    if (!resp.ok) return { repo_id: repoId, readme: '' };
+    const text = await resp.text();
+    const trimmed = text.length > HF_README_MAX_CHARS
+      ? text.slice(0, HF_README_MAX_CHARS) + '\n\n… (truncated)'
+      : text;
+    return { repo_id: repoId, readme: trimmed };
+  } catch (error) {
+    return { repo_id: repoId, readme: '', error: String((error as Error)?.message || error) };
+  }
+}

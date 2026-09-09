@@ -75,6 +75,7 @@ export function getFlaxeoChatSystemPrompt(): string {
     'Only create Office/PDF files when the user explicitly asks for a document, spreadsheet, slides, PDF, or downloadable file.',
     'If the user explicitly asks for citation files (BibTeX/RIS/APA), matrix files, or bibliography downloads, call export_research_package. Do not invent bibliographic fields.',
     'You do not have host shell access. Stay in the chat sandbox for any files you create.',
+    'AGENT BROWSER (floating panel, isolated profile): when a task needs a real interactive page, call browser_open(url), then browser_snapshot/click/type as needed. The user watches the panel live. Never ask for credentials; if a login wall appears, report it and stop.',
     'When finished, stop calling tools and write a plain-text answer. If you hit limits, summarize progress and invite the user to say "continue".',
   ].join('\n');
 }

@@ -1,7 +1,6 @@
 import { BrowserWindow, dialog, nativeImage } from 'electron';
 
 let mainWindow: BrowserWindow | null = null;
-let webviewerWindow: BrowserWindow | null = null;
 type ActiveWorkState = { active: boolean; reasons: string[] };
 type ActiveWorkStateInput = { active?: unknown; reasons?: unknown };
 
@@ -63,35 +62,6 @@ export async function requestMainWindowClose() {
   return { closed: false, prompted: true };
 }
 
-export function createWebviewerWindow(url: string, title = 'Web Viewer') {
-  if (webviewerWindow && !webviewerWindow.isDestroyed()) {
-    webviewerWindow.focus();
-    webviewerWindow.loadURL(url);
-    return;
-  }
-
-  webviewerWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
-    title,
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-      webSecurity: true
-    }
-  });
-
-  webviewerWindow.loadURL(url);
-  webviewerWindow.setMenuBarVisibility(false);
-
-  webviewerWindow.webContents.setWindowOpenHandler(({ url: openUrl }) => {
-    require('electron').shell.openExternal(openUrl);
-    return { action: 'deny' };
-  });
-
-  webviewerWindow.on('closed', () => {
-    webviewerWindow = null;
-  });
-}
+// Retired: separate webviewer window leaked full preload bridge into
+// guest pages. Browsing now lives in the isolated panel (browser-panel.ts)
+// with no preload, own partition and per-session hardening.

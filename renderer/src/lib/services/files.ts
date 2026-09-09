@@ -93,8 +93,8 @@ export async function readWorkspaceFile(workspaceRoot: string, relativePath: str
   return invoke<string>('read_workspace_file', { workspaceRoot, relativePath });
 }
 
-export async function openWorkspaceFile(absolutePath: string): Promise<void> {
-  return invoke<void>('open_workspace_file', { absolutePath });
+export async function openWorkspaceFile(absolutePath: string, workspaceRoot?: string): Promise<void> {
+  return invoke<void>('open_workspace_file', { absolutePath, workspaceRoot });
 }
 
 export async function createWorkspaceFolder(workspaceRoot: string, relativePath: string): Promise<void> {

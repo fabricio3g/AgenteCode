@@ -1,4 +1,5 @@
 import type { AppConfig, ChatSession, ChatFolder, CodeProject } from '$lib/types/chat';
+import { isElectron } from '$lib/services/bridge';
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
 const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
@@ -19,7 +20,8 @@ export function normalizeWhitespace(text: unknown): string {
 }
 
 function isElectronEnv(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI;
+  // Single source of truth lives in services/bridge (flag + UA fallback).
+  return isElectron();
 }
 
 function mergeDocumentPayloadsFromLocal(dbChats: ChatSession[], localChats: ChatSession[]): ChatSession[] {

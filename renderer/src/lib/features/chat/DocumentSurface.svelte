@@ -369,7 +369,7 @@
                 {#if activeDoc.kind === 'slides' && activeDoc.slides?.length}
                   <SlidesViewer slides={activeDoc.slides} onDownload={onDownloadSlides || (() => {})} />
                 {:else if activeDoc.previewHtml}
-                  <iframe class="reader-iframe" srcdoc={activeDoc.previewHtml} sandbox="allow-scripts allow-same-origin" title="{activeDoc.name} preview"></iframe>
+                  <iframe class="reader-iframe" srcdoc={activeDoc.previewHtml} sandbox="allow-scripts" referrerpolicy="no-referrer" title="{activeDoc.name} preview"></iframe>
                 {:else if isMarkdown(activeDoc)}
                   {#if activeDoc.kind === 'report'}
                     <article class="reader-article">

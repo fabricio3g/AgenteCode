@@ -1,8 +1,8 @@
 <svelte:options runes={true} />
 
 <!--
-  The quoted-selection card that appears above the input when the user asks a
-  question about highlighted text. Click to expand into an editable textarea.
+  The quoted-selection card that appears above the input when highlighted
+  text is added to the chat. Click to expand into an editable textarea.
 -->
 
 <script lang="ts">

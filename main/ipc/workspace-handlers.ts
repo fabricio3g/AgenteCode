@@ -15,7 +15,7 @@ type WorkspaceHandlerDeps = {
   createWorkspaceDocument: (workspaceRoot: string, relativePath: string, docType: string, content: unknown) => unknown;
   renameWorkspaceFile: (workspaceRoot: string, oldPath: string, newPath: string) => unknown;
   deleteWorkspaceFile: (workspaceRoot: string, relativePath: string) => unknown;
-  openWorkspaceFile: (absolutePath: string) => unknown;
+  openWorkspaceFile: (absolutePath: string, workspaceRoot?: string) => unknown;
   createWorkspaceFolder: (workspaceRoot: string, relativePath: string) => unknown;
   workspaceExec: (payload: unknown) => unknown;
   writeTempFile: (name: string, data: unknown) => unknown;
@@ -57,7 +57,7 @@ export function registerWorkspaceHandlers({
     createWorkspaceDocument(workspaceRoot, relativePath, docType, content));
   ipcMain.handle('rename_workspace_file', (_e, { workspaceRoot, oldPath, newPath }) => renameWorkspaceFile(workspaceRoot, oldPath, newPath));
   ipcMain.handle('delete_workspace_file', (_e, { workspaceRoot, relativePath }) => deleteWorkspaceFile(workspaceRoot, relativePath));
-  ipcMain.handle('open_workspace_file', (_e, { absolutePath }) => openWorkspaceFile(absolutePath));
+  ipcMain.handle('open_workspace_file', (_e, { absolutePath, workspaceRoot }) => openWorkspaceFile(absolutePath, workspaceRoot));
   ipcMain.handle('create_workspace_folder', (_e, { workspaceRoot, relativePath }) => createWorkspaceFolder(workspaceRoot, relativePath));
   ipcMain.handle('workspace_exec', (_e, payload) => workspaceExec(payload));
   ipcMain.handle('write_temp_file', (_e, { name, data }) => writeTempFile(name, data));

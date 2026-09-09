@@ -518,6 +518,9 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     : [];
   const contextMode = resolveImmutableContextMode(chat);
 
+  // Clear space separation: home sessions carry no code identity.
+  // Code sessions keep project + engine session identity for resume.
+  const isCode = contextMode === 'code';
   return {
     id: String(chat.id || createId(`chat-${index}`)),
     title: String(chat.title || 'New chat'),
@@ -526,11 +529,9 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     folderId: chat.folderId ?? null,
     draft: String(chat.draft || ''),
     contextMode,
-    // Code space conversations carry their project + engine session
-    // identity through persistence — resume depends on both surviving.
-    codeAgent: chat.codeAgent ?? null,
-    projectId: chat.projectId ?? null,
-    workspace: chat.workspace || null,
+    codeAgent: isCode ? (chat.codeAgent ?? null) : null,
+    projectId: isCode ? (chat.projectId ?? null) : null,
+    workspace: isCode ? chat.workspace || null : null,
     reasoningLevel: chat.reasoningLevel ?? null,
     composerMode: normalizeSessionComposerMode(chat.composerMode, contextMode),
     searchMode: normalizeSessionSearchMode(chat.searchMode),

@@ -36,6 +36,48 @@ function workspaceEnv() {
   return safe;
 }
 
+/**
+ * Containment check for workspace file ops.
+ *
+ * Resolves both root and target so `..` segments, absolute
+ * relativePaths and prefix collisions (`root-evil` vs `root`)
+ * cannot escape. Rejects missing roots and symlink escapes.
+ */
+export function resolveWorkspacePath(workspaceRoot, relativePath) {
+  if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
+    throw new Error('Workspace root is required');
+  }
+  if (typeof relativePath !== 'string' || !relativePath.trim()) {
+    throw new Error('Relative path is required');
+  }
+  const root = path.resolve(workspaceRoot);
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw new Error('Workspace root not found');
+  }
+  const fullPath = path.resolve(root, relativePath);
+  if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+    throw new Error('Path traversal not allowed');
+  }
+  try {
+    const realRoot = fs.realpathSync(root);
+    const parent = path.dirname(fullPath);
+    if (fs.existsSync(fullPath)) {
+      const realTarget = fs.realpathSync(fullPath);
+      if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+        throw new Error('Path traversal not allowed');
+      }
+    } else if (fs.existsSync(parent)) {
+      const realParent = fs.realpathSync(parent);
+      if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep)) {
+        throw new Error('Path traversal not allowed');
+      }
+    }
+  } catch {
+    throw new Error('Path traversal not allowed');
+  }
+  return fullPath;
+}
+
 export async function pathExists(targetPath) {
   return fs.existsSync(targetPath);
 }
@@ -195,16 +237,14 @@ export async function snapshotWorkspaceFiles(workspaceRoot) {
 }
 
 export async function writeWorkspaceFile(workspaceRoot, relativePath, content) {
-  const fullPath = path.join(workspaceRoot, relativePath);
-  if (!fullPath.startsWith(workspaceRoot)) throw new Error('Path traversal not allowed');
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
   fs.writeFileSync(fullPath, content, 'utf8');
   return fullPath;
 }
 
 export async function readWorkspaceFile(workspaceRoot, relativePath) {
-  const fullPath = path.join(workspaceRoot, relativePath);
-  if (!fullPath.startsWith(workspaceRoot)) throw new Error('Path traversal not allowed');
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
   return fs.readFileSync(fullPath, 'utf8');
 }
 
@@ -213,18 +253,15 @@ export async function createWorkspaceDocument(workspaceRoot, relativePath, docTy
 }
 
 export async function renameWorkspaceFile(workspaceRoot, oldPath, newPath) {
-  const oldFull = path.join(workspaceRoot, oldPath);
-  const newFull = path.join(workspaceRoot, newPath);
-  if (!oldFull.startsWith(workspaceRoot) || !newFull.startsWith(workspaceRoot)) {
-    throw new Error('Path traversal not allowed');
-  }
+  const oldFull = resolveWorkspacePath(workspaceRoot, oldPath);
+  const newFull = resolveWorkspacePath(workspaceRoot, newPath);
   fs.mkdirSync(path.dirname(newFull), { recursive: true });
   fs.renameSync(oldFull, newFull);
 }
 
 export async function deleteWorkspaceFile(workspaceRoot, relativePath) {
-  const fullPath = path.join(workspaceRoot, relativePath);
-  if (!fullPath.startsWith(workspaceRoot)) throw new Error('Path traversal not allowed');
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
+  if (fullPath === path.resolve(workspaceRoot)) throw new Error('Refusing to delete workspace root');
   if (fs.existsSync(fullPath)) {
     const stat = fs.statSync(fullPath);
     if (stat.isDirectory()) {
@@ -235,18 +272,40 @@ export async function deleteWorkspaceFile(workspaceRoot, relativePath) {
   }
 }
 
-export async function openWorkspaceFile(absolutePath) {
+export async function openWorkspaceFile(absolutePath, workspaceRoot) {
+  // Pin opens inside workspace when root known; standalone absolute
+  // opens stay for app-owned paths (models folder uses openModelsFolder).
+  if (workspaceRoot) {
+    const fullPath = resolveWorkspacePath(workspaceRoot, path.relative(path.resolve(workspaceRoot), path.resolve(absolutePath)));
+    shell.openPath(fullPath);
+    return;
+  }
   shell.openPath(absolutePath);
 }
 
 export async function createWorkspaceFolder(workspaceRoot, relativePath) {
-  const fullPath = path.join(workspaceRoot, relativePath);
-  if (!fullPath.startsWith(workspaceRoot)) throw new Error('Path traversal not allowed');
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
   fs.mkdirSync(fullPath, { recursive: true });
 }
 
 export async function workspaceExec({ workspace_root, command, args: execArgs, cwd, shell: useShell, timeout_ms }) {
-  const workDir = cwd || workspace_root;
+  // Pin exec cwd inside workspace root; absolute escapes refused.
+  let workDir = workspace_root;
+  if (cwd) {
+    const root = path.resolve(workspace_root || '');
+    const resolved = path.resolve(root, cwd);
+    if (!workspace_root || (resolved !== root && !resolved.startsWith(root + path.sep))) {
+      return {
+        cwd: String(cwd),
+        stdout: '',
+        stderr: 'Working directory escapes workspace root',
+        exit_code: -1,
+        timed_out: false,
+        error: 'Working directory escapes workspace root'
+      };
+    }
+    workDir = resolved;
+  }
 
   if (useShell !== true && !isWorkspaceCommandAllowed(command)) {
     return {
@@ -308,10 +367,19 @@ export async function workspaceExec({ workspace_root, command, args: execArgs, c
   });
 }
 
+const TEMP_FILE_NAME_LIMIT = 128;
+
+export function sanitizeTempFileName(name) {
+  const base = path.basename(String(name || 'upload.bin'));
+  const clean = base.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '').slice(0, TEMP_FILE_NAME_LIMIT);
+  return clean || 'upload.bin';
+}
+
 export async function writeTempFile(name, data) {
   const tmpDir = path.join(os.tmpdir(), 'chatealm');
   fs.mkdirSync(tmpDir, { recursive: true });
-  const filePath = path.join(tmpDir, name);
+  // Basename-only: chat-provided filenames never steer directories.
+  const filePath = path.join(tmpDir, sanitizeTempFileName(name));
   const buffer = Buffer.from(data);
   fs.writeFileSync(filePath, buffer);
   return filePath;

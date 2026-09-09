@@ -20,11 +20,12 @@
   import { codeStore } from './code.svelte';
   import { setAgenteModel } from './code-ipc';
   import { flyAndScale } from '$lib/utils/transitions';
+  import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
 
   let { chat }: { chat: ChatSession } = $props();
 
   /** Textarea grows with content up to this height, then scrolls (Home parity). */
-  const MAX_TEXTAREA_PX = 220;
+  const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
 
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let text = $state('');
@@ -84,12 +85,9 @@
         : $t('code.composerHint')
   );
 
-  /** Size the input to its content — same empty-height guard as Home's. */
+  /** Size the input to its content — shared helper keeps Home parity. */
   function autoGrow(element: HTMLTextAreaElement) {
-    element.style.height = 'auto';
-    const measured = element.scrollHeight;
-    const next = element.value ? Math.min(measured, MAX_TEXTAREA_PX) : 0;
-    element.style.height = next ? `${next}px` : '';
+    autogrowTextarea(element, MAX_TEXTAREA_PX);
   }
 
   function focusComposer() {

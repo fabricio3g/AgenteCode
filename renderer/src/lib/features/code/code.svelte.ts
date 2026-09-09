@@ -109,9 +109,9 @@ class CodeStore {
     return this.projects.find((p) => p.id === projectId) ?? null;
   }
 
-  /** Conversations linked to a project, newest activity first. */
+  /** Conversations linked to a project, newest activity first. Code space only. */
   sessionsFor(projectId: string): ChatSession[] {
-    return appStore.chats
+    return appStore.visibleCodeChats
       .filter((chat) => chat.projectId === projectId)
       .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
   }

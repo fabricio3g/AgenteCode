@@ -65,12 +65,6 @@ export async function generatePptx(data) {
   return Array.from(new Uint8Array(buffer));
 }
 
-export async function savePptx(data, outputPath) {
-  const fs = await import('node:fs');
-  const bytes = await generatePptx(data);
-  fs.writeFileSync(outputPath, Buffer.from(bytes));
-}
-
 export async function parseSlidesFromMarkdown(markdown) {
   const slides = [];
   const sections = markdown.split(/^---+$/m).filter(s => s.trim());

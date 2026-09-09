@@ -18,6 +18,8 @@
   import LLMDrawer from '$lib/components/layout/LLMDrawer.svelte';
   import ChatSearchModal from '$lib/components/layout/ChatSearchModal.svelte';
   import SearchSidebar from '$lib/components/search/SearchSidebar.svelte';
+  import BrowserPanel from '$lib/components/browser/BrowserPanel.svelte';
+  import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Plus, Boxes, PanelLeftOpen, Settings } from 'lucide-svelte';
@@ -26,6 +28,7 @@
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isElectron } from '$lib/services/bridge';
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
+  import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
 
   let showShortcutsHelp = $state(false);
   const inCodeSpace = $derived(appStore.activeSpace === 'code');
@@ -77,20 +80,7 @@
       event.preventDefault();
       const chat = appStore.currentChat;
       if (!chat?.messages?.length) return;
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const lines = [`# ${chat.title || 'Chat'}\n\n*Exported ${dateStr}*\n`];
-      for (const m of chat.messages) {
-        lines.push('---');
-        if (m.role === 'user') lines.push(`**You:**\n\n${m.content}`);
-        else lines.push(`**Assistant**${m.model ? ` (${m.model})` : ''}:\n\n${m.content}`);
-      }
-      const filename = `${(chat.title || 'chat').replace(/[^a-z0-9]+/gi, '_')}_${dateStr}.md`;
-      const blob = new Blob([lines.join('\n\n')], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url;
-      a.setAttribute('download', filename);
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
+      downloadSessionMarkdown(chat);
       return;
     }
     if (event.key === '?' && ctrl) {
@@ -101,6 +91,7 @@
 
   onMount(() => {
     document.addEventListener('keydown', handleKeydown);
+    browserPanelStore.init();
     if (isElectron()) {
       void hardwareStore.refresh();
       void capabilitiesStore.refresh();
@@ -185,10 +176,15 @@
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <!-- The one branch point between the two spaces:
            Code hosts the coding agent surface; Home keeps the chat panel. -->
-      {#if inCodeSpace}
-        <CodeSurface />
-      {:else}
-        <HomeSurface />
+      <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {#if inCodeSpace}
+          <CodeSurface />
+        {:else}
+          <HomeSurface />
+        {/if}
+      </div>
+      {#if browserPanelStore.open}
+        <BrowserPanel />
       {/if}
     </div>
   </div>

@@ -182,6 +182,27 @@ export async function hfRepoGguf(repo_id: string): Promise<HfRepoGgufResponse | 
   return invoke<HfRepoGgufResponse | null>('hf_repo_gguf', { repoId: repo_id, hfToken: getStoredHfToken() });
 }
 
+export interface HfReadmeResponse {
+  repo_id: string;
+  readme: string;
+  error?: string;
+}
+
+export async function fetchHfReadme(repo_id: string): Promise<HfReadmeResponse> {
+  try {
+    const payload = await invoke<HfReadmeResponse>('fetch_hf_readme', { repoId: repo_id, hfToken: getStoredHfToken() });
+    if (payload && typeof payload.readme === 'string') return { ...payload, readme: stripFrontmatter(payload.readme) };
+    return { repo_id, readme: '' };
+  } catch {
+    return { repo_id, readme: '' };
+  }
+}
+
+/** Drop YAML frontmatter (`---` block) so cards show prose, not metadata. */
+export function stripFrontmatter(text: string): string {
+  return String(text || '').replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '').trimStart();
+}
+
 async function openUrlWindow(url: string): Promise<void> {
   await invoke<void>('open_url_window', { url });
 }

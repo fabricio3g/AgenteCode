@@ -221,6 +221,19 @@ function failFromError(err: unknown, note?: string): ToolResult {
   return fail(toErrorMessage(err), note);
 }
 
+/** Keep panel snapshots inside LLM context: full text rides the panel UI. */
+function summariseBrowserSnapshot(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const snap = snapshot as Record<string, unknown>;
+  const text = String(snap['text'] || '');
+  return {
+    ...snap,
+    text: text.length > 4000 ? text.slice(0, 4000) + '\n... (truncated)' : text,
+    links: Array.isArray(snap['links']) ? (snap['links'] as unknown[]).slice(0, 20) : snap['links'],
+    buttons: Array.isArray(snap['buttons']) ? (snap['buttons'] as unknown[]).slice(0, 20) : snap['buttons']
+  };
+}
+
 function addGeneratedArtifactFile(ctx: ToolContext, file: GeneratedArtifactFile): ToolResult {
   return addGeneratedArtifactFileEntry({
     executionMode: ctx.executionMode,
@@ -452,6 +465,56 @@ async function executeTool(
 
     case 'get_quote': {
       return handleGetQuote({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
+    }
+
+    case 'browser_open':
+    case 'browser_navigate':
+    case 'browser_snapshot':
+    case 'browser_click':
+    case 'browser_type':
+    case 'browser_screenshot': {
+      if (!isElectron()) return fail('Agent browser requires the desktop app');
+      try {
+        const { browserPanelStore } = await import('$lib/stores/browser-panel.svelte');
+        browserPanelStore.agentDriving = true;
+        browserPanelStore.userTakeover = false;
+        browserPanelStore.init();
+      } catch { /* store unavailable in tests */ }
+      try {
+        if (name === 'browser_open') {
+          const url = String(args.url || '');
+          if (!url) return fail('Missing url');
+          const snapshot = await invoke<unknown>('browser_navigate', { url });
+          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
+        }
+        if (name === 'browser_navigate') {
+          const url = String(args.url || '');
+          if (!url) return fail('Missing url');
+          const snapshot = await invoke<unknown>('browser_navigate', { url });
+          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
+        }
+        if (name === 'browser_snapshot') {
+          const snapshot = await invoke<unknown>('browser_snapshot', {});
+          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
+        }
+        if (name === 'browser_click') {
+          const text = String(args.text || '');
+          if (!text) return fail('Missing text');
+          const snapshot = await invoke<unknown>('browser_click', { text });
+          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
+        }
+        if (name === 'browser_type') {
+          const selector = String(args.selector || '');
+          const text = String(args.text || '');
+          if (!selector || !text) return fail('Missing selector or text');
+          await invoke('browser_type_text', { selector, text });
+          return ok({ typed: true, selector });
+        }
+        const shot = await invoke<string>('browser_screenshot', {});
+        return ok({ screenshot: String(shot).slice(0, 200000) });
+      } catch (err: unknown) {
+        return failFromError(err, 'Agent browser action failed');
+      }
     }
 
     default:
@@ -1866,6 +1929,11 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const effectiveWarning = rawWarning ? String(rawWarning).trim() || undefined : undefined;
 
   finalizeAgentSteps(steps, fatalError && !isResearchChat);
+
+  try {
+    const { browserPanelStore } = await import('$lib/stores/browser-panel.svelte');
+    browserPanelStore.agentDriving = false;
+  } catch { /* store unavailable in tests */ }
 
   const exitNotice = effectiveWarning && !fatalError ? effectiveWarning : 'none';
   console.log(`[agent] EXIT | contentLen=${finalContent.length} | steps=${steps.length} | outcome=${outcome} | stopReason=${effectiveStopReason} | error=${fatalError ? (errorReason || 'unknown') : 'none'} | notice=${exitNotice}`);

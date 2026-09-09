@@ -23,6 +23,12 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'fetch_url',
   'query_knowledge',
   'calculator',
+  'browser_open',
+  'browser_navigate',
+  'browser_snapshot',
+  'browser_click',
+  'browser_type',
+  'browser_screenshot',
   'read_file',
   'write_file',
   'list_files',
@@ -274,6 +280,74 @@ export function getToolDefinitions(
     },
     {
       type: 'function', function: {
+        name: 'browser_open',
+        description:
+          'Open a URL in the floating agent browser panel (isolated profile, user watches live). Use for any task needing a real page. Returns a text snapshot of the page.',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'http(s) URL to open' }
+          },
+          required: ['url']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_navigate',
+        description: 'Navigate the active agent browser tab to an http(s) URL. Returns a text snapshot.',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'http(s) URL to load' }
+          },
+          required: ['url']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_snapshot',
+        description: 'Read the active agent browser tab: URL, title, text, links, inputs, buttons.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_click',
+        description: 'Click a control in the active agent browser tab by its visible text. Returns a fresh snapshot.',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: { type: 'string', description: 'Visible text of the link or button to click' }
+          },
+          required: ['text']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_type',
+        description: 'Focus a field by CSS selector in the active agent browser tab and type text into it.',
+        parameters: {
+          type: 'object',
+          properties: {
+            selector: { type: 'string', description: 'CSS selector of the input field' },
+            text: { type: 'string', description: 'Text to type' }
+          },
+          required: ['selector', 'text']
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_screenshot',
+        description: 'Capture a screenshot of the active agent browser tab. Returns a data URL image.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
+    {
+      type: 'function', function: {
         name: 'get_diagnostics',
         description:
           'LSP-like project diagnostics without a full language server: runs TypeScript (tsc), optional ESLint on a path, and Ruff for Python when available. Use after edits to find type/lint errors.',
@@ -304,6 +378,8 @@ export function getToolDefinitions(
 
 export const STEP_TYPE: Record<string, AgentStep['type']> = {
   web_search: 'searching', fetch_url: 'reading',
+  browser_open: 'reading', browser_navigate: 'reading', browser_snapshot: 'reading',
+  browser_click: 'executing', browser_type: 'executing', browser_screenshot: 'reading',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
   write_file: 'writing', delete_file: 'writing', edit_file: 'writing',

@@ -81,6 +81,7 @@ export const CURATED_MODELS: readonly CuratedModelDefinition[] = [
     runtime: { architectures: ['qwen35'], minVersion: 'b9800', reason: 'Requires current Qwen3.5 multimodal support.' },
     rank: 3,
     lastReviewed: '2026-07-28',
+    staffPick: true,
   },
   {
     id: 'ministral-3-8b-instruct',
@@ -98,6 +99,7 @@ export const CURATED_MODELS: readonly CuratedModelDefinition[] = [
     runtime: { architectures: ['ministral3'], minVersion: 'b9000' },
     rank: 4,
     lastReviewed: '2026-07-28',
+    staffPick: true,
   },
   {
     id: 'qwen3.5-9b',
@@ -119,6 +121,7 @@ export const CURATED_MODELS: readonly CuratedModelDefinition[] = [
     runtime: { architectures: ['qwen35'], minVersion: 'b9800' },
     rank: 5,
     lastReviewed: '2026-07-28',
+    staffPick: true,
   },
   {
     id: 'ministral-3-14b-instruct',

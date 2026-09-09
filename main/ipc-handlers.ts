@@ -1,5 +1,6 @@
 import { ipcMain, shell } from 'electron';
-import { getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
+import { getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
+import { panelOpenTab as createWebviewerWindow } from './browser-panel.ts';
 import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.ts';
 import { getHardwareLimits, getSystemInfo } from './system-info.ts';
 import {
@@ -25,7 +26,7 @@ import {
 } from './rag-engine.ts';
 import {
   webSearch, ingestSearchContext, fetchModelCatalog,
-  searchHfModels, hfRepoGguf
+  searchHfModels, hfRepoGguf, fetchHfReadme
 } from './search-engine.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
 import { crawlWeb } from './web-crawler.ts';
@@ -41,11 +42,15 @@ import { downloadRuntime } from './runtime-download.ts';
 
 import { sandboxExec } from './sandbox.ts';
 import {
-  browserNavigate, browserSnapshot, browserClick, browserTypeText,
-  browserEvaluate, browserScreenshot, browserGetCurrentUrl, browserClose
-} from './browser-control.ts';
+  panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
+  panelSetVisible, panelSetBounds, panelSetViewport,
+  panelNavigate as browserNavigate, panelSnapshot as browserSnapshot,
+  panelClick as browserClick, panelTypeText as browserTypeText,
+  panelEvaluate as browserEvaluate, panelScreenshot as browserScreenshot,
+  panelCurrentUrl as browserGetCurrentUrl, panelCloseTab as browserClose
+} from './browser-panel.ts';
 import {
-  generatePptx, savePptx, parseSlidesFromMarkdown, slidesToMarkdown
+  generatePptx, parseSlidesFromMarkdown, slidesToMarkdown
 } from './slides.ts';
 import {
   generateDocx, generateXlsx, generatePdf
@@ -281,6 +286,7 @@ export function registerIpcHandlers() {
     fetchModelCatalog,
     searchHfModels,
     hfRepoGguf,
+    fetchHfReadme,
     createWebviewerWindow,
     scrapeUrlStructured,
     crawlWeb,
@@ -319,6 +325,14 @@ export function registerIpcHandlers() {
   registerToolingHandlers({
     ipcMain,
     sandboxExec,
+    panelOpenTab,
+    panelListTabs,
+    panelSetActive,
+    panelCloseTab,
+    panelCloseAll,
+    panelSetVisible,
+    panelSetBounds,
+    panelSetViewport,
     browserNavigate,
     browserSnapshot,
     browserClick,
@@ -328,7 +342,6 @@ export function registerIpcHandlers() {
     browserGetCurrentUrl,
     browserClose,
     generatePptx,
-    savePptx,
     parseSlidesFromMarkdown,
     slidesToMarkdown,
     generateDocx,

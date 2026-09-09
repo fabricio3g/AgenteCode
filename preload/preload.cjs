@@ -26,7 +26,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'remove_rag_document', 'clear_rag_documents', 'has_rag_documents',
   'web_search', 'search:get-catalog', 'search:probe-engines',
   'ingest_search_context', 'fetch_model_catalog',
-  'search_hf_models', 'hf_repo_gguf', 'open_url_window', 'open_webviewer',
+  'search_hf_models', 'hf_repo_gguf', 'fetch_hf_readme', 'open_url_window', 'open_webviewer',
   'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 
   'path_exists', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
@@ -38,9 +38,11 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agent_list_tasks', 'agent_delete_task', 'agent_clear_history',
 
   'sandbox_exec',
+  'browser_open_tab', 'browser_list_tabs', 'browser_set_active', 'browser_close_tab',
+  'browser_close_all', 'browser_panel_visible', 'browser_panel_bounds', 'browser_viewport',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
-  'generate_pptx', 'save_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
+  'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'fetch_url_content', 'crawl_web',
   'agente_detect', 'agente_start_session', 'agente_prompt',
@@ -55,7 +57,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start',
-  'code_agent_event'
+  'code_agent_event', 'browser_panel_state'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {

@@ -302,13 +302,22 @@ export async function handleCreateDashboard(params: {
 
 function sanitizeHtmlCard(html: string): string {
   let out = String(html || '');
-  // Remove scripts and remote resource hooks — self-contained snippets only.
-  out = out.replace(/<script[\s\S]*?<\/script>/gi, '');
+  // Remove scripts and remote/active hooks — self-contained snippets only.
+  // Runs in any JS env (no DOM), so regex pre-strip; the render path
+  // confines cards to a fully sandboxed iframe as second layer.
+  out = out.replace(/<script[\s\S]*?(<\/script>|$)/gi, '');
+  // Event handlers: double-quoted, single-quoted and unquoted forms.
   out = out.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, '');
+  out = out.replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+  out = out.replace(/\son\w+\s*=\s*[^\s>]+/gi, '');
+  // javascript:/data:text/html URLs in any quote style.
+  out = out.replace(/\s(href|src|xlink:href)\s*=\s*(['"]?)\s*javascript:[^'"]*\2/gi, '');
+  out = out.replace(/\s(href|src|xlink:href)\s*=\s*(['"]?)\s*data:text\/html[^'"]*\2/gi, '');
   out = out.replace(/\s(href|src)\s*=\s*(['"])\s*https?:\/\/[^'"]*\2/gi, '');
-  out = out.replace(/<iframe[\s\S]*?<\/iframe>/gi, '');
-  out = out.replace(/<object[\s\S]*?<\/object>/gi, '');
+  out = out.replace(/<iframe[\s\S]*?(<\/iframe>|$)/gi, '');
+  out = out.replace(/<object[\s\S]*?(<\/object>|$)/gi, '');
   out = out.replace(/<embed[\s\S]*?>/gi, '');
+  out = out.replace(/<\/?(svg|math|form|meta|base|link|style)[\s>]/gi, (m) => (m.startsWith('</') ? '</div>' : '<div>'));
   return out.trim();
 }
 

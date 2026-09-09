@@ -151,9 +151,8 @@
         const numbers = match[0].match(/\d+/g) || [];
         for (const numberText of numbers) {
           const source = refs[Number(numberText) - 1];
-          if (source) {
-            const chip = document.createElement('a');
-            chip.className = 'chateaui-pill mx-0.5 inline-flex h-5 min-w-5 items-center justify-center px-1.5 align-middle text-[11px] font-medium text-[var(--text-secondary)]';
+          if (source && /^https?:/i.test(source.url)) {
+            const chip = document.createElement('a');            chip.className = 'chateaui-pill mx-0.5 inline-flex h-5 min-w-5 items-center justify-center px-1.5 align-middle text-[11px] font-medium text-[var(--text-secondary)]';
             chip.href = source.url;
             chip.target = '_blank';
             chip.rel = 'noreferrer';

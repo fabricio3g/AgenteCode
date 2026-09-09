@@ -5,11 +5,12 @@
   import { appWindow } from '$lib/services/window';
   import { countOf } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, ExternalLink, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2 } from 'lucide-svelte';
+  import { Search, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2, Globe } from 'lucide-svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
+  import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
 
   let isMaximized = $state(false);
 
@@ -72,16 +73,6 @@
       <!-- The model selector now lives in the composer's control row, beside
            the attach button, so the active model sits where you compose. -->
     </div>
-    <Tooltip label="Open Models">
-      <button
-        class="aui-icon-button size-8 titlebar-no-drag"
-        style="-webkit-app-region: no-drag;"
-        onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-        aria-label="Open Models"
-      >
-        <ExternalLink class="size-4" />
-      </button>
-    </Tooltip>
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
@@ -120,6 +111,17 @@
             {/if}
           </button>
         </Tooltip>
+        <Tooltip label="Agent browser" position="left">
+          <button
+            class="aui-icon-button size-8"
+            class:is-active={browserPanelStore.open}
+            onclick={() => void browserPanelStore.toggle()}
+            aria-label="Agent browser"
+            aria-pressed={browserPanelStore.open}
+          >
+            <Globe class="size-4" />
+          </button>
+        </Tooltip>
         <button class="dot dot-close" onclick={() => appWindow.close()} aria-label="Close" title="Close"></button>
         <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize"></button>
         <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
@@ -154,6 +156,17 @@
             {:else}
               <MoonStar class="size-4" />
             {/if}
+          </button>
+        </Tooltip>
+        <Tooltip label="Agent browser" position="left">
+          <button
+            class="aui-icon-button mr-0.5 size-8"
+            class:is-active={browserPanelStore.open}
+            onclick={() => void browserPanelStore.toggle()}
+            aria-label="Agent browser"
+            aria-pressed={browserPanelStore.open}
+          >
+            <Globe class="size-4" />
           </button>
         </Tooltip>
         <button class="win-btn" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize">

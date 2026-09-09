@@ -1,4 +1,5 @@
 import { marked, type Tokens } from 'marked';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import katex from 'katex';
 import { CODE_COPY_BUTTON_HTML } from './code-copy';
@@ -64,7 +65,9 @@ function renderKatex(math: string, displayMode: boolean, raw: string): string {
       displayMode,
       throwOnError: false,
       strict: false,
-      trust: true,
+      // Never trust TeX commands: \href{javascript:...} and \htmlData
+      // execute in chat origin when trust is on.
+      trust: false,
       macros: {
         '\\R': '\\mathbb{R}',
         '\\N': '\\mathbb{N}',
@@ -76,6 +79,38 @@ function renderKatex(math: string, displayMode: boolean, raw: string): string {
   } catch {
     return `<span class="katex-error" title="Failed to render LaTeX">${raw}</span>`;
   }
+}
+
+/**
+ * Sanitize rendered assistant HTML before it reaches `{@html}`.
+ *
+ * Raw HTML from model output or fetched pages passes marked through
+ * untouched, so this is the single choke point for chat-origin XSS:
+ * scripts, event handlers, frames, forms and non-http(s) URLs die here.
+ * Links opening off-origin get `target=_blank rel=noopener`.
+ * Skipped outside browsers (unit tests run in node with no DOM).
+ */
+let purifyHooksInstalled = false;
+
+export function sanitizeAssistantHtml(html: string): string {
+  if (typeof window === 'undefined') return html;
+  if (!purifyHooksInstalled) {
+    DOMPurify.addHook('uponSanitizeElement', (node) => {
+      if (node instanceof Element && node.tagName === 'A') {
+        const anchor = node as HTMLAnchorElement;
+        const href = anchor.getAttribute('href') || '';
+        if (/^https?:/i.test(href)) {
+          anchor.setAttribute('target', '_blank');
+          anchor.setAttribute('rel', 'noreferrer noopener');
+        }
+      }
+    });
+    purifyHooksInstalled = true;
+  }
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'base', 'link', 'meta', 'title', 'textarea', 'slot'],
+    ALLOW_UNKNOWN_PROTOCOLS: false
+  });
 }
 
 function renderLatex(source: string): string {
@@ -151,8 +186,9 @@ export function renderMarkdown(source: string, options: RenderMarkdownOptions = 
   const html = marked.parse(withLatex, {
     renderer: highlight ? renderer : plainCodeRenderer
   }) as string;
-  if (cache) setCachedMarkdown(input, html);
-  return html;
+  const safe = sanitizeAssistantHtml(html);
+  if (cache) setCachedMarkdown(input, safe);
+  return safe;
 }
 
 const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;

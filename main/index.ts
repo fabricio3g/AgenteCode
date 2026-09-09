@@ -4,7 +4,7 @@ import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
 import { initTts } from './tts-engine.ts';
 import { moduleDirname } from './module-env.ts';
-import { setMainWindow, setPreloadPath, getMainWindow, createWebviewerWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
+import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
 const moduleDir = moduleDirname(import.meta.url);
