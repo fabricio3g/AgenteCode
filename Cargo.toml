@@ -1,0 +1,71 @@
+[workspace]
+members = [
+    "crates/agente-protocol",
+    "crates/agente-session",
+    "crates/agente-runtime",
+    "crates/agente-acp",
+    "crates/agente-core",
+    "crates/agente-tui",
+    "crates/agente-cli",
+    "crates/agente-node",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+authors = ["Agente Contributors"]
+license = "MIT"
+repository = "https://github.com/fabricio3g/Agente"
+
+# Zero-warning policy, enforced structurally: dead code is an error, the rest
+# of rustc/clippy warns. Every crate inherits via `[lints] workspace = true`.
+[workspace.lints.rust]
+dead_code = "deny"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+serde = { version = "1", features = ["derive"] }
+schemars = { version = "0.8", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+async-trait = "0.1"
+thiserror = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+regex = "1"
+glob = "0.3"
+sha2 = "0.10"
+# 0.29 matches ratatui-image 8 (real PNG via Kitty/Sixel/iTerm2). 0.30 breaks that widget trait.
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+dirs = "5"
+arboard = "3"
+parking_lot = "0.12"
+tokio-util = { version = "0.7", features = ["io", "rt"] }
+tempfile = "3"
+# Line diffing (Myers). Already in the tree via insta; promoted to a real
+# dependency so the approval card and the +N -N badges share one correct differ.
+similar = "2"
+# Whole-tree kill-on-drop process containment (Windows Job Object / POSIX
+# process group) plus timeouts and cancellation tokens.
+processkit = "3.3"
+# .gitignore-aware directory traversal for grep/find.
+ignore = "0.4"
+
+# Internal dependencies
+agente-core = { path = "crates/agente-core" }
+agente-protocol = { path = "crates/agente-protocol" }
+agente-session = { path = "crates/agente-session" }
+agente-runtime = { path = "crates/agente-runtime" }
+agente-acp = { path = "crates/agente-acp" }
+agente-tui = { path = "crates/agente-tui" }

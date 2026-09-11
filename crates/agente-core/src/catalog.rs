@@ -1,0 +1,913 @@
+//! Model catalog from [models.dev](https://models.dev/api.json).
+//!
+//! models.dev uses **flat** model fields (`reasoning`, `tool_call`, `limit.context`).
+//! We normalize into nested `CatalogModel` / `ModelCapabilities` for the rest of the app.
+//! Same source pi uses at codegen time — we parse at runtime instead.
+
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
+
+/// Model capabilities from external catalog
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ModelCapabilities {
+    #[serde(default)]
+    pub temperature: bool,
+    #[serde(default)]
+    pub reasoning: bool,
+    #[serde(default)]
+    pub attachment: bool,
+    #[serde(default)]
+    pub toolcall: bool,
+    #[serde(default)]
+    pub vision: bool,
+    #[serde(default)]
+    pub streaming: bool,
+}
+
+/// models.dev `reasoning_options` entry — authoritative thinking UI/wire metadata.
+/// Never invent levels; only values present here may be cycled or sent.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReasoningOption {
+    Toggle,
+    Effort {
+        /// Exact catalog tokens, e.g. `"high"`, `"max"`, `"minimal"`.
+        #[serde(default)]
+        values: Vec<String>,
+    },
+    BudgetTokens {
+        /// models.dev sometimes sends `-1` as “unbounded” — treat as None.
+        #[serde(default, deserialize_with = "deserialize_opt_u32_nonneg")]
+        min: Option<u32>,
+        #[serde(default, deserialize_with = "deserialize_opt_u32_nonneg")]
+        max: Option<u32>,
+    },
+    /// OpenRouter's live `/models` reasoning object. A present null
+    /// `supported_efforts` means all gateway effort values are accepted;
+    /// an omitted reasoning object is represented by no option at all.
+    OpenRouter {
+        /// True when the API included the `supported_efforts` key. This
+        /// distinguishes an omitted selector from an explicit JSON null.
+        #[serde(default)]
+        effort_selectable: bool,
+        #[serde(default)]
+        supported_efforts: Option<Vec<String>>,
+        #[serde(default)]
+        default_effort: Option<String>,
+        #[serde(default)]
+        default_enabled: Option<bool>,
+        #[serde(default)]
+        mandatory: bool,
+        #[serde(default)]
+        supports_max_tokens: bool,
+    },
+}
+
+/// Deserialize `Option<u32>`, mapping null / missing / negative → `None`.
+/// models.dev uses `-1` as a sentinel for unbounded budget tokens.
+fn deserialize_opt_u32_nonneg<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<i64>::deserialize(deserializer)?;
+    Ok(match v {
+        None => None,
+        Some(n) if n < 0 => None,
+        Some(n) => Some(n as u32),
+    })
+}
+
+/// Model cost information
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ModelCost {
+    #[serde(default)]
+    pub input: f64,
+    #[serde(default)]
+    pub output: f64,
+    #[serde(default)]
+    pub cache_read: f64,
+    #[serde(default)]
+    pub cache_write: f64,
+}
+
+/// Model limits (context window, max tokens)
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ModelLimits {
+    #[serde(default, deserialize_with = "deserialize_u32_nonneg")]
+    pub context: u32,
+    #[serde(default, deserialize_with = "deserialize_opt_u32_nonneg")]
+    pub input: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_u32_nonneg")]
+    pub output: u32,
+}
+
+/// Deserialize u32, mapping null / missing / negative → 0.
+fn deserialize_u32_nonneg<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<i64>::deserialize(deserializer)?;
+    Ok(match v {
+        None => 0,
+        Some(n) if n < 0 => 0,
+        Some(n) => n as u32,
+    })
+}
+
+/// Model status
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelStatus {
+    #[default]
+    Active,
+    Alpha,
+    Beta,
+    Deprecated,
+}
+
+/// External model definition (normalized internal shape)
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ModelProvider {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub npm: Option<String>,
+    /// Optional native transport override for configured models.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_format: Option<String>,
+}
+
+/// External model definition (normalized internal shape).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogModel {
+    pub id: String,
+    #[serde(default, rename = "providerID", alias = "provider_id")]
+    pub provider_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub family: Option<String>,
+    #[serde(default)]
+    pub capabilities: ModelCapabilities,
+    #[serde(default)]
+    pub cost: ModelCost,
+    #[serde(default)]
+    pub limit: ModelLimits,
+    #[serde(default)]
+    pub status: ModelStatus,
+    #[serde(default)]
+    pub api_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ModelProvider>,
+    /// From models.dev `reasoning_options` — source of thinking levels.
+    #[serde(default)]
+    pub reasoning_options: Vec<ReasoningOption>,
+    /// Stream field for interleaved reasoning, e.g. `reasoning_content`.
+    #[serde(default)]
+    pub reasoning_stream_field: Option<String>,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub options: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub variants: HashMap<String, HashMap<String, serde_json::Value>>,
+}
+
+/// External provider definition from catalog
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatalogProvider {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub env: Vec<String>,
+    #[serde(default)]
+    pub api: String,
+    #[serde(default)]
+    pub npm: String,
+    #[serde(default)]
+    pub models: HashMap<String, CatalogModel>,
+    #[serde(default)]
+    pub whitelist: Vec<String>,
+    #[serde(default)]
+    pub blacklist: Vec<String>,
+}
+
+/// Full model catalog
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ModelCatalog {
+    #[serde(flatten)]
+    pub providers: HashMap<String, CatalogProvider>,
+}
+
+// ── models.dev wire format (flat model fields) ─────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct RawCatalog {
+    #[serde(flatten)]
+    providers: HashMap<String, RawProvider>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawProvider {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    env: Vec<String>,
+    #[serde(default)]
+    api: Option<String>,
+    #[serde(default)]
+    npm: Option<String>,
+    #[serde(default)]
+    models: HashMap<String, RawModel>,
+    #[serde(default)]
+    whitelist: Vec<String>,
+    #[serde(default)]
+    blacklist: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawModel {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    family: Option<String>,
+    /// models.dev flat fields
+    #[serde(default)]
+    reasoning: Option<bool>,
+    #[serde(default)]
+    tool_call: Option<bool>,
+    #[serde(default)]
+    attachment: Option<bool>,
+    #[serde(default)]
+    temperature: Option<bool>,
+    /// Nested shape (our cache / hand-written fixtures)
+    #[serde(default)]
+    capabilities: Option<ModelCapabilities>,
+    #[serde(default)]
+    cost: Option<ModelCost>,
+    #[serde(default)]
+    limit: Option<ModelLimits>,
+    #[serde(default)]
+    status: Option<FlexibleStatus>,
+    #[serde(default)]
+    modalities: Option<RawModalities>,
+    #[serde(default)]
+    reasoning_options: Vec<RawReasoningOption>,
+    /// Nested shape when loading our own cache
+    #[serde(default)]
+    reasoning_stream_field: Option<String>,
+    /// models.dev: either `{ "field": "reasoning_content" }` or bare `true`.
+    #[serde(default, deserialize_with = "deserialize_interleaved")]
+    interleaved: Option<RawInterleaved>,
+    #[serde(default, rename = "providerID", alias = "provider_id")]
+    provider_id: Option<String>,
+    #[serde(default)]
+    api_id: Option<String>,
+    #[serde(default)]
+    provider: Option<ModelProvider>,
+    #[serde(default)]
+    headers: HashMap<String, String>,
+    #[serde(default)]
+    options: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    variants: HashMap<String, HashMap<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct RawInterleaved {
+    #[serde(default)]
+    field: Option<String>,
+}
+
+/// Accept `interleaved: true` | `{ "field": "..." }` | null.
+fn deserialize_interleaved<'de, D>(deserializer: D) -> Result<Option<RawInterleaved>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match v {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::Bool(true)) => Some(RawInterleaved { field: None }),
+        Some(serde_json::Value::Bool(false)) => None,
+        Some(serde_json::Value::String(field)) => Some(RawInterleaved { field: Some(field) }),
+        Some(serde_json::Value::Object(map)) => {
+            let field = map
+                .get("field")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string());
+            Some(RawInterleaved { field })
+        }
+        Some(_) => Some(RawInterleaved { field: None }),
+    })
+}
+
+/// Wire form of models.dev reasoning_options (tag on `type`).
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum RawReasoningOption {
+    Toggle,
+    Effort {
+        #[serde(default)]
+        values: Vec<serde_json::Value>,
+    },
+    BudgetTokens {
+        #[serde(default, deserialize_with = "deserialize_opt_u32_nonneg")]
+        min: Option<u32>,
+        #[serde(default, deserialize_with = "deserialize_opt_u32_nonneg")]
+        max: Option<u32>,
+    },
+    OpenRouter {
+        #[serde(default)]
+        effort_selectable: bool,
+        #[serde(default)]
+        supported_efforts: Option<Vec<String>>,
+        #[serde(default)]
+        default_effort: Option<String>,
+        #[serde(default)]
+        default_enabled: Option<bool>,
+        #[serde(default)]
+        mandatory: bool,
+        #[serde(default)]
+        supports_max_tokens: bool,
+    },
+}
+
+impl RawReasoningOption {
+    fn into_option(self) -> ReasoningOption {
+        match self {
+            RawReasoningOption::Toggle => ReasoningOption::Toggle,
+            RawReasoningOption::Effort { values } => ReasoningOption::Effort {
+                values: values
+                    .into_iter()
+                    .filter_map(|v| match v {
+                        serde_json::Value::String(s) if !s.is_empty() => Some(s),
+                        serde_json::Value::Null => Some("none".to_string()),
+                        other => other.as_str().map(|s| s.to_string()),
+                    })
+                    .collect(),
+            },
+            RawReasoningOption::BudgetTokens { min, max } => {
+                ReasoningOption::BudgetTokens { min, max }
+            }
+            RawReasoningOption::OpenRouter {
+                effort_selectable,
+                supported_efforts,
+                default_effort,
+                default_enabled,
+                mandatory,
+                supports_max_tokens,
+            } => ReasoningOption::OpenRouter {
+                effort_selectable,
+                supported_efforts,
+                default_effort,
+                default_enabled,
+                mandatory,
+                supports_max_tokens,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct RawModalities {
+    #[serde(default)]
+    input: Vec<String>,
+}
+
+/// Accept models.dev status strings and our enum forms.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum FlexibleStatus {
+    Str(String),
+    Enum(ModelStatus),
+}
+
+impl FlexibleStatus {
+    fn into_status(self) -> ModelStatus {
+        match self {
+            FlexibleStatus::Enum(s) => s,
+            FlexibleStatus::Str(s) => match s.to_ascii_lowercase().as_str() {
+                "alpha" => ModelStatus::Alpha,
+                "beta" => ModelStatus::Beta,
+                "deprecated" => ModelStatus::Deprecated,
+                _ => ModelStatus::Active,
+            },
+        }
+    }
+}
+
+impl RawModel {
+    fn into_catalog_model(self, provider_id: &str, model_key: &str) -> CatalogModel {
+        let id = self
+            .id
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| model_key.to_string());
+        let name = self
+            .name
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| id.clone());
+        let api_id = self
+            .api_id
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| id.clone());
+        let provider_id = self
+            .provider_id
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| provider_id.to_string());
+
+        let reasoning_options: Vec<ReasoningOption> = self
+            .reasoning_options
+            .into_iter()
+            .map(RawReasoningOption::into_option)
+            .collect();
+
+        let reasoning_stream_field = self
+            .reasoning_stream_field
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                self.interleaved
+                    .and_then(|i| i.field)
+                    .filter(|s| !s.is_empty())
+            });
+
+        let capabilities = if let Some(mut caps) = self.capabilities {
+            // Nested cache may omit reasoning flag; keep catalog bool if set.
+            if let Some(r) = self.reasoning {
+                caps.reasoning = r;
+            }
+            caps
+        } else {
+            let modalities = self.modalities.unwrap_or_default();
+            let vision = modalities.input.iter().any(|m| {
+                let m = m.to_ascii_lowercase();
+                m == "image" || m == "pdf" || m == "video" || m == "audio"
+            });
+            ModelCapabilities {
+                temperature: self.temperature.unwrap_or(true),
+                reasoning: self.reasoning.unwrap_or(false),
+                attachment: self.attachment.unwrap_or(false),
+                toolcall: self.tool_call.unwrap_or(false),
+                vision,
+                streaming: true,
+            }
+        };
+
+        let limit = self.limit.unwrap_or_default();
+        let status = self
+            .status
+            .map(FlexibleStatus::into_status)
+            .unwrap_or_default();
+
+        CatalogModel {
+            id,
+            provider_id,
+            name,
+            family: self.family,
+            capabilities,
+            cost: self.cost.unwrap_or_default(),
+            limit,
+            status,
+            api_id,
+            provider: self.provider,
+            reasoning_options,
+            reasoning_stream_field,
+            headers: self.headers,
+            options: self.options,
+            variants: self.variants,
+        }
+    }
+}
+
+impl ModelCatalog {
+    /// Parse models.dev (or our normalized cache) JSON text.
+    pub fn parse_json(text: &str) -> anyhow::Result<Self> {
+        let raw: RawCatalog = serde_json::from_str(text)
+            .map_err(|e| anyhow::anyhow!("models.dev catalog deserialize failed: {e}"))?;
+        Ok(Self::from_raw(raw))
+    }
+
+    /// Parse from already-decoded JSON value.
+    pub fn from_value(value: serde_json::Value) -> anyhow::Result<Self> {
+        let raw: RawCatalog = serde_json::from_value(value)
+            .map_err(|e| anyhow::anyhow!("models.dev catalog deserialize failed: {e}"))?;
+        Ok(Self::from_raw(raw))
+    }
+
+    fn from_raw(raw: RawCatalog) -> Self {
+        let mut providers = HashMap::new();
+        for (provider_key, raw_provider) in raw.providers {
+            let provider_id = raw_provider
+                .id
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| provider_key.clone());
+            let name = raw_provider
+                .name
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| provider_id.clone());
+            let models = raw_provider
+                .models
+                .into_iter()
+                .map(|(model_key, raw_model)| {
+                    let model = raw_model.into_catalog_model(&provider_id, &model_key);
+                    (model_key, model)
+                })
+                .collect();
+
+            providers.insert(
+                provider_key,
+                CatalogProvider {
+                    id: provider_id,
+                    name,
+                    env: raw_provider.env,
+                    api: raw_provider.api.unwrap_or_default(),
+                    npm: raw_provider.npm.unwrap_or_default(),
+                    models,
+                    whitelist: raw_provider.whitelist,
+                    blacklist: raw_provider.blacklist,
+                },
+            );
+        }
+        Self { providers }
+    }
+
+    pub async fn fetch() -> anyhow::Result<Self> {
+        let url = std::env::var("AGENTE_MODELS_URL")
+            .unwrap_or_else(|_| "https://models.dev/api.json".to_string());
+
+        // models.dev (and many CDNs) return 403 without a browser-like UA.
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .user_agent("agente/0.1 (+https://github.com/agente; models.dev catalog)")
+            .build()?;
+        let response = client
+            .get(&url)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Failed to fetch model catalog: {}",
+                response.status()
+            ));
+        }
+
+        let text = response.text().await?;
+        let catalog = Self::parse_json(&text)?;
+        tracing::info!(
+            providers = catalog.providers.len(),
+            models = catalog.model_count(),
+            reasoning_options = catalog.reasoning_options_count(),
+            "Loaded models.dev catalog"
+        );
+        if catalog.reasoning_options_count() == 0 {
+            return Err(anyhow::anyhow!(
+                "models.dev catalog parsed but has zero reasoning_options — refusing to cache"
+            ));
+        }
+        Ok(catalog)
+    }
+
+    pub fn model_count(&self) -> usize {
+        self.providers.values().map(|p| p.models.len()).sum()
+    }
+
+    /// Count models that have non-empty `reasoning_options` (thinking catalog).
+    pub fn reasoning_options_count(&self) -> usize {
+        self.providers
+            .values()
+            .flat_map(|p| p.models.values())
+            .filter(|m| !m.reasoning_options.is_empty())
+            .count()
+    }
+
+    /// Count models marked `capabilities.reasoning`.
+    pub fn reasoning_model_count(&self) -> usize {
+        self.providers
+            .values()
+            .flat_map(|p| p.models.values())
+            .filter(|m| m.capabilities.reasoning)
+            .count()
+    }
+
+    /// True when the cache was written before we stored `reasoning_options`
+    /// (many reasoning models, zero option lists) — must re-fetch models.dev.
+    pub fn is_stale_for_thinking(&self) -> bool {
+        let reasoning = self.reasoning_model_count();
+        let with_opts = self.reasoning_options_count();
+        // Live models.dev has thousands of reasoning models with options.
+        // A cache with reasoning flags but no options is pre-thinking-catalog.
+        reasoning >= 20 && with_opts == 0
+    }
+
+    /// Delete on-disk catalog so the next load re-fetches.
+    pub fn invalidate_cache() {
+        if let Some(path) = Self::cache_path() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    /// Look up a model by provider + id (and common id variants).
+    pub fn find_model(&self, provider_id: &str, model_id: &str) -> Option<&CatalogModel> {
+        if let Some(provider) = self
+            .providers
+            .get(provider_id)
+            .or_else(|| self.providers.values().find(|p| p.id == provider_id))
+        {
+            if let Some(m) = Self::find_in_provider(provider, model_id) {
+                return Some(m);
+            }
+        }
+        // A shared model name does not imply the same host API or controls.
+        None
+    }
+
+    /// Search every provider for a model id / api_id.
+    pub fn find_model_any(&self, model_id: &str) -> Option<&CatalogModel> {
+        if model_id.is_empty() {
+            return None;
+        }
+        for provider in self.providers.values() {
+            if let Some(m) = Self::find_in_provider(provider, model_id) {
+                return Some(m);
+            }
+        }
+        None
+    }
+
+    fn find_in_provider<'a>(
+        provider: &'a CatalogProvider,
+        model_id: &str,
+    ) -> Option<&'a CatalogModel> {
+        if let Some(m) = provider.models.get(model_id) {
+            return Some(m);
+        }
+        if let Some(m) = provider
+            .models
+            .values()
+            .find(|m| m.id == model_id || m.api_id == model_id)
+        {
+            return Some(m);
+        }
+        if let Some((_, bare)) = model_id.split_once('/') {
+            if let Some(m) = provider.models.get(bare) {
+                return Some(m);
+            }
+            if let Some(m) = provider
+                .models
+                .values()
+                .find(|m| m.id == bare || m.api_id == bare)
+            {
+                return Some(m);
+            }
+        }
+        let prefixed = format!("{}/{}", provider.id, model_id);
+        provider.models.get(&prefixed)
+    }
+
+    pub fn load_from_cache() -> Option<Self> {
+        let path = Self::cache_path()?;
+        let content = std::fs::read_to_string(&path).ok()?;
+        match Self::parse_json(&content) {
+            Ok(catalog) => {
+                if catalog.providers.is_empty() {
+                    tracing::warn!(path = %path.display(), "Cached model catalog is empty");
+                    None
+                } else {
+                    Some(catalog)
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to parse cached model catalog"
+                );
+                None
+            }
+        }
+    }
+
+    pub fn save_to_cache(&self) -> anyhow::Result<()> {
+        let path = Self::cache_path()
+            .ok_or_else(|| anyhow::anyhow!("no cache directory available for model catalog"))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // Compact JSON — models.dev is multi-MB; pretty doubles size.
+        let content = serde_json::to_string(self)?;
+        std::fs::write(&path, content)?;
+        Ok(())
+    }
+
+    fn cache_path() -> Option<std::path::PathBuf> {
+        // v2 retains per-model transport overrides and null effort values.
+        // Old normalized caches have already discarded that information.
+        dirs::cache_dir().map(|d| d.join("agente").join("models-v2.json"))
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelCatalog {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawCatalog::deserialize(deserializer)?;
+        Ok(Self::from_raw(raw))
+    }
+}
+
+/// Last-resort context when catalog and live API both omit a window.
+pub const DEFAULT_CONTEXT_WINDOW: u32 = 128_000;
+pub const DEFAULT_OUTPUT_TOKENS: u32 = 8_192;
+
+/// Build runtime model limits, never leaving context at 0 for UI/compaction.
+pub fn effective_limits(limit: &ModelLimits) -> ModelLimits {
+    ModelLimits {
+        context: if limit.context > 0 {
+            limit.context
+        } else {
+            DEFAULT_CONTEXT_WINDOW
+        },
+        input: limit.input,
+        output: if limit.output > 0 {
+            limit.output
+        } else {
+            DEFAULT_OUTPUT_TOKENS
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FIXTURE: &str = r#"{
+      "deepseek": {
+        "id": "deepseek",
+        "env": ["DEEPSEEK_API_KEY"],
+        "npm": "@ai-sdk/openai-compatible",
+        "api": "https://api.deepseek.com",
+        "name": "DeepSeek",
+        "models": {
+          "deepseek-v4-flash": {
+            "id": "deepseek-v4-flash",
+            "name": "DeepSeek V4 Flash",
+            "family": "deepseek-flash",
+            "attachment": false,
+            "reasoning": true,
+            "reasoning_options": [
+              { "type": "toggle" },
+              { "type": "effort", "values": ["high", "max"] }
+            ],
+            "interleaved": { "field": "reasoning_content" },
+            "tool_call": true,
+            "temperature": true,
+            "modalities": { "input": ["text"], "output": ["text"] },
+            "limit": { "context": 1000000, "output": 384000 },
+            "cost": { "input": 0.14, "output": 0.28, "cache_read": 0.028 }
+          },
+          "deepseek-chat": {
+            "id": "deepseek-chat",
+            "name": "DeepSeek Chat",
+            "reasoning": false,
+            "tool_call": true,
+            "limit": { "context": 1000000, "output": 8192 }
+          }
+        }
+      },
+      "openai": {
+        "id": "openai",
+        "name": "OpenAI",
+        "api": "https://api.openai.com/v1",
+        "env": ["OPENAI_API_KEY"],
+        "npm": "@ai-sdk/openai",
+        "models": {
+          "gpt-4o": {
+            "id": "gpt-4o",
+            "name": "GPT-4o",
+            "attachment": true,
+            "reasoning": false,
+            "tool_call": true,
+            "temperature": true,
+            "modalities": { "input": ["text", "image"], "output": ["text"] },
+            "limit": { "context": 128000, "output": 16384 },
+            "cost": { "input": 2.5, "output": 10 }
+          },
+          "missing-cost": {
+            "id": "missing-cost",
+            "name": "No Cost Model",
+            "reasoning": false,
+            "tool_call": true,
+            "limit": { "context": 32000, "output": 4096 },
+            "status": "deprecated"
+          }
+        }
+      }
+    }"#;
+
+    #[test]
+    fn parses_models_dev_flat_schema() {
+        let catalog = ModelCatalog::parse_json(FIXTURE).expect("parse fixture");
+        assert_eq!(catalog.providers.len(), 2);
+        assert_eq!(catalog.model_count(), 4);
+
+        let flash = catalog
+            .find_model("deepseek", "deepseek-v4-flash")
+            .expect("deepseek-v4-flash");
+        assert_eq!(flash.limit.context, 1_000_000);
+        assert_eq!(flash.limit.output, 384_000);
+        assert!(flash.capabilities.reasoning);
+        assert!(flash.capabilities.toolcall);
+        assert!(!flash.capabilities.vision);
+        assert_eq!(flash.provider_id, "deepseek");
+        assert_eq!(flash.name, "DeepSeek V4 Flash");
+        assert_eq!(
+            flash.reasoning_options,
+            vec![
+                ReasoningOption::Toggle,
+                ReasoningOption::Effort {
+                    values: vec!["high".into(), "max".into()]
+                },
+            ]
+        );
+        assert_eq!(
+            flash.reasoning_stream_field.as_deref(),
+            Some("reasoning_content")
+        );
+
+        let gpt = catalog.find_model("openai", "gpt-4o").expect("gpt-4o");
+        assert_eq!(gpt.limit.context, 128_000);
+        assert!(gpt.capabilities.vision);
+        assert!(!gpt.capabilities.reasoning);
+
+        let bare = catalog
+            .find_model("deepseek", "deepseek/deepseek-v4-flash")
+            .expect("prefixed lookup");
+        assert_eq!(bare.id, "deepseek-v4-flash");
+
+        let no_cost = catalog
+            .find_model("openai", "missing-cost")
+            .expect("missing-cost");
+        assert_eq!(no_cost.cost.input, 0.0);
+        assert_eq!(no_cost.status, ModelStatus::Deprecated);
+        assert_eq!(no_cost.limit.context, 32_000);
+    }
+
+    #[test]
+    fn roundtrip_normalized_cache() {
+        let catalog = ModelCatalog::parse_json(FIXTURE).unwrap();
+        let json = serde_json::to_string(&catalog).unwrap();
+        let again = ModelCatalog::parse_json(&json).unwrap();
+        let flash = again.find_model("deepseek", "deepseek-v4-flash").unwrap();
+        assert_eq!(flash.limit.context, 1_000_000);
+        assert!(flash.capabilities.reasoning);
+    }
+
+    #[test]
+    fn effective_limits_patches_zero() {
+        let lim = effective_limits(&ModelLimits {
+            context: 0,
+            input: None,
+            output: 0,
+        });
+        assert_eq!(lim.context, DEFAULT_CONTEXT_WINDOW);
+        assert_eq!(lim.output, DEFAULT_OUTPUT_TOKENS);
+    }
+
+    #[test]
+    fn accepts_negative_budget_tokens_sentinel() {
+        // models.dev uses -1 for unbounded (e.g. nvidia nemotron budget min).
+        let json = r#"{
+          "nvidia": {
+            "id": "nvidia",
+            "name": "NVIDIA",
+            "api": "https://example.com",
+            "models": {
+              "test": {
+                "id": "test",
+                "name": "Test",
+                "reasoning": true,
+                "reasoning_options": [
+                  { "type": "toggle" },
+                  { "type": "budget_tokens", "min": -1, "max": 8192 }
+                ],
+                "limit": { "context": 128000, "output": -1 }
+              }
+            }
+          }
+        }"#;
+        let catalog = ModelCatalog::parse_json(json).expect("should accept -1 sentinels");
+        let m = catalog.find_model("nvidia", "test").unwrap();
+        assert_eq!(m.limit.output, 0); // -1 → 0
+        match &m.reasoning_options[..] {
+            [ReasoningOption::Toggle, ReasoningOption::BudgetTokens { min, max }] => {
+                assert_eq!(*min, None); // -1 → None
+                assert_eq!(*max, Some(8192));
+            }
+            other => panic!("unexpected options: {other:?}"),
+        }
+    }
+}

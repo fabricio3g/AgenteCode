@@ -1,0 +1,29 @@
+[package]
+name = "agente-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "CLI entry point for Agente Agent"
+
+[[bin]]
+name = "agente"
+path = "src/main.rs"
+
+[dependencies]
+agente-core = { workspace = true }
+agente-acp = { workspace = true }
+agente-protocol = { workspace = true }
+agente-runtime = { workspace = true }
+agente-tui = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dirs = { workspace = true }
+
+[lints]
+workspace = true

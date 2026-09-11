@@ -1,0 +1,783 @@
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc};
+
+use agente_core::agent::{AgentEvent, AgentTaskEvent, ApprovalSource};
+use agente_protocol::{
+    Message, Role, RuntimeEvent, RuntimeEventEnvelope, SessionId, SessionSnapshot, TurnId,
+    TurnOutcome, TurnStatus, Usage,
+};
+use tokio::sync::{mpsc as tokio_mpsc, oneshot};
+
+use crate::{compat, RuntimeInner};
+
+/// Deltas buffered while the event channel is full are capped so a client that
+/// stops draining cannot grow the forwarder without bound.
+const MAX_BUFFERED_TEXT_BYTES: usize = 1 << 20;
+const MAX_BUFFERED_TOOL_PROGRESS_BYTES: usize = 256 * 1024;
+const TRUNCATION_MARKER: &str = "\n…[truncated: client fell behind]…\n";
+
+fn push_buffered_text(buffer: &mut String, text: &str) {
+    if buffer.len() + text.len() <= MAX_BUFFERED_TEXT_BYTES {
+        buffer.push_str(text);
+    } else if !buffer.ends_with(TRUNCATION_MARKER) {
+        buffer.push_str(TRUNCATION_MARKER);
+    }
+}
+
+pub(crate) fn forward_legacy_events(
+    inner: Arc<RuntimeInner>,
+    session_id: SessionId,
+    turn_id: TurnId,
+    receiver: mpsc::Receiver<AgentTaskEvent>,
+    sender: tokio_mpsc::Sender<RuntimeEventEnvelope>,
+    outcome_sender: oneshot::Sender<TurnOutcome>,
+) {
+    let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, sender);
+    let mut terminal_outcome = None;
+
+    while let Ok(task_event) = receiver.recv() {
+        match task_event.event {
+            AgentEvent::Done {
+                conversation,
+                tokens,
+            } => {
+                let revision = commit_conversation(
+                    &inner,
+                    session_id,
+                    turn_id,
+                    compat::conversation_from_core(conversation),
+                );
+                forwarder.emit(RuntimeEvent::TurnFinished { revision });
+                terminal_outcome = Some(TurnOutcome {
+                    turn_id,
+                    session_id,
+                    status: TurnStatus::Completed,
+                    revision,
+                    tokens,
+                    error: None,
+                });
+                break;
+            }
+            AgentEvent::Cancelled {
+                conversation,
+                tokens,
+                partial_text,
+            } => {
+                let revision = commit_conversation(
+                    &inner,
+                    session_id,
+                    turn_id,
+                    compat::conversation_from_core(conversation),
+                );
+                forwarder.emit(RuntimeEvent::TurnCancelled {
+                    revision,
+                    partial_text,
+                });
+                terminal_outcome = Some(TurnOutcome {
+                    turn_id,
+                    session_id,
+                    status: TurnStatus::Cancelled,
+                    revision,
+                    tokens,
+                    error: None,
+                });
+                break;
+            }
+            AgentEvent::Error {
+                message,
+                conversation,
+            } => {
+                // The loop hands back its latest transcript; commit that
+                // instead of the last known snapshot so executed tool work
+                // survives a provider failure. A panic carries no transcript:
+                // fall back to the last known conversation plus any steering
+                // queued before the failure.
+                let committed = if conversation.is_empty() {
+                    inner
+                        .read_sessions()
+                        .get(&session_id)
+                        .map(|snapshot| snapshot.conversation.clone())
+                        .unwrap_or_default()
+                } else {
+                    compat::conversation_from_core(conversation)
+                };
+                let revision = commit_conversation(&inner, session_id, turn_id, committed);
+                forwarder.emit(RuntimeEvent::TurnFailed {
+                    message: message.clone(),
+                });
+                terminal_outcome = Some(TurnOutcome {
+                    turn_id,
+                    session_id,
+                    status: TurnStatus::Failed,
+                    revision,
+                    tokens: 0,
+                    error: Some(message),
+                });
+                break;
+            }
+            AgentEvent::ContextCompacted {
+                summary,
+                compacted_conversation,
+            } => {
+                let revision = replace_conversation(
+                    &inner,
+                    session_id,
+                    compat::conversation_from_core(compacted_conversation),
+                );
+                forwarder.emit(RuntimeEvent::ContextCompacted { summary, revision });
+            }
+            event => {
+                if let Some(event) = map_event(&inner, event) {
+                    forwarder.emit(event);
+                }
+            }
+        }
+    }
+
+    if terminal_outcome.is_none() {
+        let message = "agent event source closed before a terminal outcome".to_string();
+        // Preserve steering queued before the source vanished, same as the
+        // explicit error path.
+        let last_known = inner
+            .read_sessions()
+            .get(&session_id)
+            .map(|snapshot| snapshot.conversation.clone())
+            .unwrap_or_default();
+        let revision = commit_conversation(&inner, session_id, turn_id, last_known);
+        forwarder.emit(RuntimeEvent::TurnFailed {
+            message: message.clone(),
+        });
+        terminal_outcome = Some(TurnOutcome {
+            turn_id,
+            session_id,
+            status: TurnStatus::Failed,
+            revision,
+            tokens: 0,
+            error: Some(message),
+        });
+    }
+
+    forwarder.flush();
+    inner.lock_turns().remove(&turn_id);
+    inner.prune_finished_children();
+    if let Some(outcome) = terminal_outcome {
+        if outcome_sender.send(outcome).is_err() {
+            tracing::debug!("turn outcome receiver dropped before delivery");
+        }
+    }
+}
+
+fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
+    Some(match event {
+        AgentEvent::Thinking => RuntimeEvent::Thinking,
+        AgentEvent::TextDelta(text) => RuntimeEvent::AssistantDelta { text },
+        AgentEvent::ReasoningDelta(text) => RuntimeEvent::ReasoningDelta { text },
+        AgentEvent::AssistantText(text) => RuntimeEvent::AssistantMessage { text },
+        AgentEvent::ToolCallStart { id, name, args } => RuntimeEvent::ToolProposed {
+            id,
+            name,
+            arguments: args,
+        },
+        AgentEvent::ToolCallProgress { id, chunk } => RuntimeEvent::ToolProgress { id, chunk },
+        AgentEvent::ToolHeartbeat { id } => RuntimeEvent::ToolHeartbeat { id },
+        AgentEvent::ToolCallResult {
+            id,
+            name,
+            result,
+            is_error,
+        } => RuntimeEvent::ToolResult {
+            id,
+            name,
+            content: result,
+            is_error,
+        },
+        AgentEvent::FileChange {
+            subagent_id,
+            path,
+            diff_summary,
+            before,
+            after,
+        } => {
+            // A child's checkout is not this session's workspace: never report
+            // its changes as session file changes.
+            if subagent_id.is_some() {
+                return None;
+            }
+            RuntimeEvent::FileChanged {
+                path,
+                summary: diff_summary,
+                before,
+                after,
+            }
+        }
+        AgentEvent::TodoUpdate { subagent_id, todos } => {
+            // A child's todo list is not the session's plan; ignore it.
+            if subagent_id.is_some() {
+                return None;
+            }
+            RuntimeEvent::TodoChanged {
+                todos: serde_json::to_value(todos).unwrap_or(serde_json::Value::Null),
+            }
+        }
+        AgentEvent::TurnUsage {
+            prompt_tokens,
+            completion_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+        } => RuntimeEvent::Usage {
+            usage: Usage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+            },
+        },
+        AgentEvent::Retry {
+            attempt,
+            max_attempts,
+            delay_ms,
+        } => RuntimeEvent::Retry {
+            attempt,
+            max_attempts,
+            delay_ms,
+        },
+        AgentEvent::ModelsDiscovered { provider, models } => RuntimeEvent::Diagnostic {
+            message: format!("discovered {} models for {provider}", models.len()),
+        },
+        AgentEvent::ModelDiscoveryFailed { provider, error } => RuntimeEvent::Diagnostic {
+            message: format!("model discovery failed for {provider}: {error}"),
+        },
+        AgentEvent::ModelCatalogUpdated { result } => RuntimeEvent::Diagnostic {
+            message: match result {
+                Ok(catalog) => format!("model metadata refreshed: {} models", catalog.model_count()),
+                Err(error) => error,
+            },
+        },
+        AgentEvent::ApprovalRequested { source, request } => RuntimeEvent::ApprovalRequested {
+            request_id: request.request_id,
+            source: match source {
+                ApprovalSource::Parent => "parent".to_string(),
+                ApprovalSource::Subagent { id } => format!("subagent:{id}"),
+            },
+            tool_name: request.tool_name,
+            tool_args: request.tool_args,
+            description: request.description,
+            is_dangerous: request.is_dangerous,
+            file_path: request.file_path,
+        },
+        AgentEvent::SubagentStarted {
+            id,
+            subagent_type,
+            description,
+        } => RuntimeEvent::ChildStarted {
+            run_id: inner.child_id(&id),
+            kind: subagent_type,
+            description,
+        },
+        AgentEvent::SubagentText { id, text } => RuntimeEvent::ChildDelta {
+            run_id: inner.child_id(&id),
+            text,
+        },
+        AgentEvent::SubagentToolCallStart {
+            id,
+            call_id,
+            name,
+            args,
+        } => RuntimeEvent::ChildTool {
+            run_id: inner.child_id(&id),
+            call_id,
+            name,
+            content: args,
+            finished: false,
+            is_error: false,
+        },
+        AgentEvent::SubagentToolCallProgress { id, call_id, chunk } => RuntimeEvent::ChildTool {
+            run_id: inner.child_id(&id),
+            call_id,
+            name: String::new(),
+            content: chunk,
+            finished: false,
+            is_error: false,
+        },
+        AgentEvent::SubagentToolCallResult {
+            id,
+            call_id,
+            name,
+            result,
+            is_error,
+        } => RuntimeEvent::ChildTool {
+            run_id: inner.child_id(&id),
+            call_id,
+            name,
+            content: result,
+            finished: true,
+            is_error,
+        },
+        AgentEvent::SubagentDone {
+            id,
+            summary,
+            is_error,
+        } => RuntimeEvent::ChildFinished {
+            run_id: inner.child_id(&id),
+            summary,
+            is_error,
+        },
+        AgentEvent::Done { .. }
+        | AgentEvent::Cancelled { .. }
+        | AgentEvent::ContextCompacted { .. }
+        // Display-only telemetry; the runtime protocol has no progress
+        // shape, and liveness already flows via ToolHeartbeat.
+        | AgentEvent::GenerationProgress { .. }
+        // Push completion notices are a TUI-turn concern (parent
+        // conversation injection); headless consumers already observe the
+        // terminal state via ChildFinished above.
+        | AgentEvent::SubagentCompletedNotice { .. }
+        | AgentEvent::Error { .. } => return None,
+    })
+}
+
+fn commit_conversation(
+    inner: &RuntimeInner,
+    session_id: SessionId,
+    turn_id: TurnId,
+    mut conversation: Vec<Message>,
+) -> u64 {
+    if let Some(control) = inner.lock_turns().get(&turn_id) {
+        conversation.extend(control.steering.iter().map(|input| Message {
+            role: Role::User,
+            content: input.content.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+        }));
+    }
+    replace_conversation(inner, session_id, conversation)
+}
+
+fn replace_conversation(
+    inner: &RuntimeInner,
+    session_id: SessionId,
+    conversation: Vec<Message>,
+) -> u64 {
+    let mut sessions = inner.write_sessions();
+    let revision = sessions
+        .get(&session_id)
+        .map_or(1, |snapshot| snapshot.revision.saturating_add(1));
+    let snapshot = SessionSnapshot {
+        session_id,
+        revision,
+        conversation,
+    };
+    sessions.insert(session_id, snapshot.clone());
+    // Persist while still holding the sessions write lock. Commits are
+    // per-turn (low frequency), the fsync window on the small snapshot file is
+    // tiny, and holding the lock keeps the durable copy strictly ordered with
+    // the in-memory revision. Persistence failures are logged inside
+    // `persist_snapshot`, never propagated — a failed write must not fail the
+    // turn.
+    inner.persist_snapshot(&snapshot);
+    revision
+}
+
+struct EventForwarder {
+    inner: Arc<RuntimeInner>,
+    session_id: SessionId,
+    turn_id: TurnId,
+    sender: tokio_mpsc::Sender<RuntimeEventEnvelope>,
+    assistant: String,
+    reasoning: String,
+    progress: HashMap<String, String>,
+}
+
+impl EventForwarder {
+    fn new(
+        inner: Arc<RuntimeInner>,
+        session_id: SessionId,
+        turn_id: TurnId,
+        sender: tokio_mpsc::Sender<RuntimeEventEnvelope>,
+    ) -> Self {
+        Self {
+            inner,
+            session_id,
+            turn_id,
+            sender,
+            assistant: String::new(),
+            reasoning: String::new(),
+            progress: HashMap::new(),
+        }
+    }
+
+    fn emit(&mut self, event: RuntimeEvent) {
+        // Deltas buffered during a channel-full window must never be delivered
+        // after a newer non-delta event: flush them first, unconditionally,
+        // before any non-delta send (even when the channel has space again).
+        if !matches!(
+            event,
+            RuntimeEvent::AssistantDelta { .. }
+                | RuntimeEvent::ReasoningDelta { .. }
+                | RuntimeEvent::ToolProgress { .. }
+        ) {
+            self.flush();
+        }
+        let envelope = self
+            .inner
+            .envelope(self.session_id, self.turn_id, None, event);
+        match self.sender.try_send(envelope) {
+            Ok(()) => {}
+            Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
+            Err(tokio_mpsc::error::TrySendError::Full(envelope)) => match envelope.event {
+                RuntimeEvent::AssistantDelta { text } => {
+                    push_buffered_text(&mut self.assistant, &text);
+                }
+                RuntimeEvent::ReasoningDelta { text } => {
+                    push_buffered_text(&mut self.reasoning, &text);
+                }
+                RuntimeEvent::ToolProgress { id, chunk } => {
+                    let buffer = self.progress.entry(id).or_default();
+                    if buffer.len() + chunk.len() <= MAX_BUFFERED_TOOL_PROGRESS_BYTES {
+                        buffer.push_str(&chunk);
+                    } else if !buffer.ends_with(TRUNCATION_MARKER) {
+                        buffer.push_str(TRUNCATION_MARKER);
+                    }
+                }
+                // Deltas were already flushed above, so the send can only be
+                // waiting on a full channel, never on stale buffered content.
+                event => {
+                    let envelope = self
+                        .inner
+                        .envelope(self.session_id, self.turn_id, None, event);
+                    let _ = self.sender.blocking_send(envelope);
+                }
+            },
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.assistant.is_empty() {
+            let text = std::mem::take(&mut self.assistant);
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::AssistantDelta { text },
+            );
+            let _ = self.sender.blocking_send(envelope);
+        }
+        if !self.reasoning.is_empty() {
+            let text = std::mem::take(&mut self.reasoning);
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::ReasoningDelta { text },
+            );
+            let _ = self.sender.blocking_send(envelope);
+        }
+        for (id, chunk) in std::mem::take(&mut self.progress) {
+            let envelope = self.inner.envelope(
+                self.session_id,
+                self.turn_id,
+                None,
+                RuntimeEvent::ToolProgress { id, chunk },
+            );
+            let _ = self.sender.blocking_send(envelope);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RuntimeConfig, RuntimeSupervisor, TurnControl};
+    use agente_core::AbortController;
+    use agente_protocol::UserInput;
+
+    fn test_inner() -> Arc<RuntimeInner> {
+        let config =
+            RuntimeConfig::from_app_config(&agente_core::config::AppConfig::default(), "D:/proj");
+        RuntimeSupervisor::start(config).inner
+    }
+
+    fn user_message(content: &str) -> Message {
+        Message {
+            role: Role::User,
+            content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+        }
+    }
+
+    fn core_assistant_message(content: &str) -> agente_core::types::Message {
+        agente_core::types::Message {
+            role: agente_core::types::Role::Assistant,
+            content: content.to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+        }
+    }
+
+    fn task_event(event: AgentEvent) -> AgentTaskEvent {
+        AgentTaskEvent { task_id: 1, event }
+    }
+
+    /// Inserts a turn control with one steering input already queued.
+    fn insert_steering_turn(
+        inner: &RuntimeInner,
+        session_id: SessionId,
+        turn_id: TurnId,
+        events: tokio_mpsc::Sender<RuntimeEventEnvelope>,
+    ) {
+        inner.lock_turns().insert(
+            turn_id,
+            TurnControl {
+                cancel: AbortController::new(),
+                steering: vec![UserInput {
+                    content: "queued steering".to_string(),
+                }],
+                events,
+                session_id,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn steering_is_committed_on_done() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, mut rx_env) = tokio_mpsc::channel(64);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        insert_steering_turn(&inner, session_id, turn_id, tx_env.clone());
+
+        let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
+        legacy_tx
+            .send(task_event(AgentEvent::Done {
+                conversation: vec![core_assistant_message("answer")],
+                tokens: 42,
+            }))
+            .unwrap();
+        drop(legacy_tx);
+
+        let inner2 = Arc::clone(&inner);
+        tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+
+        let outcome = outcome_rx.await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Completed);
+        assert_eq!(outcome.tokens, 42);
+
+        {
+            let sessions = inner.read_sessions();
+            let conversation = &sessions.get(&session_id).unwrap().conversation;
+            assert_eq!(conversation.len(), 2);
+            assert_eq!(conversation[0].content, "answer");
+            assert_eq!(conversation[1].role, Role::User);
+            assert_eq!(conversation[1].content, "queued steering");
+        }
+        assert!(inner.lock_turns().get(&turn_id).is_none());
+        // Drain the event channel so the forwarder's sends never block.
+        while rx_env.recv().await.is_some() {}
+    }
+
+    #[tokio::test]
+    async fn steering_is_committed_on_error() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, mut rx_env) = tokio_mpsc::channel(64);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        insert_steering_turn(&inner, session_id, turn_id, tx_env.clone());
+        replace_conversation(&inner, session_id, vec![user_message("earlier turn")]);
+
+        let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
+        legacy_tx
+            .send(task_event(AgentEvent::Error {
+                message: "provider exploded".to_string(),
+                conversation: Vec::new(),
+            }))
+            .unwrap();
+        drop(legacy_tx);
+
+        let inner2 = Arc::clone(&inner);
+        tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+
+        let outcome = outcome_rx.await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Failed);
+        assert_eq!(outcome.error.as_deref(), Some("provider exploded"));
+
+        {
+            let sessions = inner.read_sessions();
+            let conversation = &sessions.get(&session_id).unwrap().conversation;
+            assert_eq!(conversation.len(), 2, "steering must survive a failed turn");
+            assert_eq!(conversation[0].content, "earlier turn");
+            assert_eq!(conversation[1].content, "queued steering");
+        }
+        while rx_env.recv().await.is_some() {}
+    }
+
+    /// A failure after executed tool work must commit the loop's transcript,
+    /// not the last pre-turn snapshot: otherwise a resumed session forgets
+    /// the tools it already ran.
+    #[tokio::test]
+    async fn error_commits_the_loop_transcript_when_provided() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, mut rx_env) = tokio_mpsc::channel(64);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        insert_steering_turn(&inner, session_id, turn_id, tx_env.clone());
+        replace_conversation(&inner, session_id, vec![user_message("earlier turn")]);
+
+        let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
+        legacy_tx
+            .send(task_event(AgentEvent::Error {
+                message: "provider exploded".to_string(),
+                conversation: vec![user_message("executed tool work")],
+            }))
+            .unwrap();
+        drop(legacy_tx);
+
+        let inner2 = Arc::clone(&inner);
+        tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+
+        let outcome = outcome_rx.await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Failed);
+
+        {
+            let sessions = inner.read_sessions();
+            let conversation = &sessions.get(&session_id).unwrap().conversation;
+            assert_eq!(
+                conversation[0].content, "executed tool work",
+                "the loop transcript must replace the last known snapshot"
+            );
+            assert_eq!(conversation[1].content, "queued steering");
+        }
+        while rx_env.recv().await.is_some() {}
+    }
+
+    #[tokio::test]
+    async fn closed_event_source_still_commits_steering() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, mut rx_env) = tokio_mpsc::channel(64);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        insert_steering_turn(&inner, session_id, turn_id, tx_env.clone());
+        replace_conversation(&inner, session_id, vec![user_message("history")]);
+
+        let (_legacy_tx, legacy_rx) = std::sync::mpsc::channel::<AgentTaskEvent>();
+        drop(_legacy_tx);
+
+        let inner2 = Arc::clone(&inner);
+        tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+
+        let outcome = outcome_rx.await.unwrap();
+        assert_eq!(outcome.status, TurnStatus::Failed);
+        {
+            let sessions = inner.read_sessions();
+            let conversation = &sessions.get(&session_id).unwrap().conversation;
+            assert_eq!(conversation.len(), 2);
+            assert_eq!(conversation[1].content, "queued steering");
+        }
+        while rx_env.recv().await.is_some() {}
+    }
+
+    #[tokio::test]
+    async fn buffered_deltas_are_capped() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx, _rx) = tokio_mpsc::channel(1);
+        let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, tx);
+
+        forwarder.emit(RuntimeEvent::Thinking); // fills the single slot
+        let chunk = "x".repeat(100_000);
+        for _ in 0..40 {
+            forwarder.emit(RuntimeEvent::AssistantDelta {
+                text: chunk.clone(),
+            });
+            forwarder.emit(RuntimeEvent::ReasoningDelta {
+                text: chunk.clone(),
+            });
+            forwarder.emit(RuntimeEvent::ToolProgress {
+                id: "t1".to_string(),
+                chunk: chunk.clone(),
+            });
+        }
+
+        assert!(forwarder.assistant.len() <= MAX_BUFFERED_TEXT_BYTES + TRUNCATION_MARKER.len());
+        assert!(forwarder.assistant.ends_with(TRUNCATION_MARKER));
+        assert!(forwarder.reasoning.len() <= MAX_BUFFERED_TEXT_BYTES + TRUNCATION_MARKER.len());
+        let progress = forwarder.progress.get("t1").unwrap();
+        assert!(progress.len() <= MAX_BUFFERED_TOOL_PROGRESS_BYTES + TRUNCATION_MARKER.len());
+        assert!(progress.ends_with(TRUNCATION_MARKER));
+    }
+
+    #[tokio::test]
+    async fn buffered_deltas_flush_before_non_delta_events() {
+        let inner = test_inner();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx, mut rx) = tokio_mpsc::channel(1);
+        let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, tx);
+
+        forwarder.emit(RuntimeEvent::Thinking); // fills the single slot
+        forwarder.emit(RuntimeEvent::AssistantDelta {
+            text: "streamed".to_string(),
+        }); // buffered: channel full
+
+        let emitter = tokio::task::spawn_blocking(move || {
+            // Channel still full: this flushes the buffered delta first, then
+            // blocks until the ToolResult slot frees up.
+            forwarder.emit(RuntimeEvent::ToolResult {
+                id: "t1".to_string(),
+                name: "shell".to_string(),
+                content: "out".to_string(),
+                is_error: false,
+            });
+        });
+
+        let mut order: Vec<String> = Vec::new();
+        while let Some(envelope) = rx.recv().await {
+            match envelope.event {
+                RuntimeEvent::Thinking => order.push("thinking".to_string()),
+                RuntimeEvent::AssistantDelta { text } => order.push(format!("delta:{text}")),
+                RuntimeEvent::ToolResult { .. } => {
+                    order.push("tool_result".to_string());
+                    break;
+                }
+                _ => order.push("other".to_string()),
+            }
+            if order.len() > 10 {
+                break;
+            }
+        }
+        emitter.await.unwrap();
+
+        eprintln!("ORDER: {order:?}");
+        let delta_pos = order
+            .iter()
+            .position(|event| event.starts_with("delta:"))
+            .expect("buffered delta must be delivered");
+        let result_pos = order
+            .iter()
+            .position(|event| event == "tool_result")
+            .expect("tool result must be delivered");
+        assert!(delta_pos < result_pos, "ordering violated: {order:?}");
+    }
+}

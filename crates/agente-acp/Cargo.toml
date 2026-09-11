@@ -1,0 +1,22 @@
+[package]
+name = "agente-acp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ACP-style JSON-RPC stdio adapter for the Agente runtime"
+
+[dependencies]
+agente-protocol = { workspace = true }
+agente-runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+agente-core = { workspace = true }
+
+[lints]
+workspace = true

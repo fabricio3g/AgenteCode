@@ -1,0 +1,190 @@
+{
+  "$comment": "OpenDev configuration file. Place at ~/.opendev/config.json or ./opendev.json",
+  "provider": {
+    "openai": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "$OPENAI_API_KEY"
+      },
+      "models": {
+        "gpt-4o": { "name": "GPT-4o", "max_tokens": 128000 },
+        "gpt-4o-mini": { "name": "GPT-4o Mini", "max_tokens": 128000 }
+      }
+    },
+    "minimax": {
+      "api_format": "anthropic",
+      "options": {
+        "base_url": "https://api.minimax.io/anthropic/v1",
+        "api_key": "$MINIMAX_API_KEY"
+      },
+      "models": {
+        "MiniMax-M2.7": { "name": "MiniMax M2.7", "max_tokens": 128000 }
+      }
+    },
+    "deepseek": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "$DEEPSEEK_API_KEY"
+      },
+      "models": {
+        "deepseek-chat": { "name": "DeepSeek V3", "max_tokens": 64000 },
+        "deepseek-reasoner": { "name": "DeepSeek R1", "max_tokens": 64000 }
+      }
+    },
+    "groq": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key": "$GROQ_API_KEY"
+      },
+      "models": {
+        "llama-3.3-70b-versatile": { "name": "Llama 3.3 70B", "max_tokens": 128000 }
+      }
+    },
+    "openrouter": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key": "$OPENROUTER_API_KEY"
+      },
+      "models": {
+        "anthropic/claude-sonnet-4-20250514": { "name": "Claude Sonnet 4 (Router)", "max_tokens": 200000 },
+        "openai/gpt-4o": { "name": "GPT-4o (Router)", "max_tokens": 128000 }
+      }
+    },
+    "xai": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://api.x.ai/v1",
+        "api_key": "$XAI_API_KEY"
+      },
+      "models": {
+        "grok-3": { "name": "Grok 3", "max_tokens": 131072 }
+      }
+    },
+    "mistral": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "https://api.mistral.ai/v1",
+        "api_key": "$MISTRAL_API_KEY"
+      },
+      "models": {
+        "mistral-large-latest": { "name": "Mistral Large", "max_tokens": 128000 },
+        "codestral-latest": { "name": "Codestral", "max_tokens": 256000 }
+      }
+    },
+    "ollama": {
+      "api_format": "openai",
+      "options": {
+        "base_url": "http://localhost:11434/v1",
+        "api_key": null
+      },
+      "models": {
+        "deepseek-coder-v2": { "name": "DeepSeek Coder V2", "max_tokens": 128000 },
+        "qwen2.5-coder": { "name": "Qwen 2.5 Coder", "max_tokens": 32000 }
+      }
+    }
+  },
+  "default_provider": "openai",
+  "default_model": "gpt-4o",
+  "planner_model": "gpt-4o",
+  "executor_model": "gpt-4o-mini",
+  "auto_approve": {
+    "read_operations": true,
+    "write_new_files": false,
+    "safe_commands": [
+      "cargo build", "cargo test", "cargo check",
+      "npm run build", "npm test", "npm run lint",
+      "git status", "git diff", "ls", "pwd"
+    ],
+    "max_auto_edit_lines": 10
+  },
+  "mcp": {
+    "_comment": "MCP servers extend the agent with external tools. Uncomment servers you need.",
+    "_comment_local": "Local MCP servers run as subprocesses on your machine.",
+    "_comment_remote": "Remote MCP servers connect over HTTP/SSE. Some require OAuth.",
+
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."],
+      "enabled": false,
+      "plan_mode": true
+    },
+    "git": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-git"],
+      "enabled": false,
+      "plan_mode": true
+    },
+    "github": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "$GITHUB_TOKEN" },
+      "enabled": false,
+      "plan_mode": false
+    },
+    "postgres": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"],
+      "enabled": false,
+      "plan_mode": false
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "-y", "@executeautomation/playwright-mcp-server"],
+      "enabled": false,
+      "plan_mode": false
+    },
+    "puppeteer": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-puppeteer"],
+      "enabled": false,
+      "plan_mode": false
+    },
+    "sqlite": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sqlite", "/path/to/db.sqlite"],
+      "enabled": false,
+      "plan_mode": false
+    },
+    "fetch": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-fetch"],
+      "enabled": false,
+      "plan_mode": true
+    },
+    "memory": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory"],
+      "enabled": false,
+      "plan_mode": true
+    },
+
+    "_comment_sentry": "Remote MCP server example (requires OAuth)",
+    "sentry": {
+      "type": "remote",
+      "url": "https://mcp.sentry.dev/mcp",
+      "enabled": false,
+      "plan_mode": false
+    },
+
+    "_comment_context7": "Remote MCP for documentation search (optional API key)",
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": { "CONTEXT7_API_KEY": "$CONTEXT7_API_KEY" },
+      "enabled": false,
+      "plan_mode": true
+    },
+
+    "_comment_exa": "Remote MCP for web search (Exa)",
+    "exa": {
+      "type": "remote",
+      "url": "https://mcp.exa.ai/mcp",
+      "enabled": false,
+      "plan_mode": true
+    }
+  }
+}

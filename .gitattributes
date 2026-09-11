@@ -1,0 +1,8 @@
+# Normalize line endings: the tree is LF, checkouts are native. Without this
+# every `git` invocation on Windows warns about CRLF conversion on ~60 files.
+* text=auto eol=lf
+
+# Generated / binary — never touched by EOL normalization.
+*.png binary
+*.svg text eol=lf
+*.snap text eol=lf

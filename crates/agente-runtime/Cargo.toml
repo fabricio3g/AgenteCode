@@ -1,0 +1,20 @@
+[package]
+name = "agente-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Authoritative supervised agent runtime for Agente"
+
+[dependencies]
+chrono = { workspace = true }
+agente-core = { workspace = true }
+agente-protocol = { workspace = true }
+agente-session = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true
