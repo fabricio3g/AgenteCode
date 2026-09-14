@@ -1,28 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { getAppPaths } from './paths.ts';
 import { loadConfig, saveConfig } from './config.ts';
-
-function hasNvidiaGpu() {
-  try {
-    const result = spawnSync('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    return result.status === 0 && String(result.stdout || '').trim().length > 0;
-  } catch { return false; }
-}
-
-function hasVulkanSupport() {
-  try {
-    const result = spawnSync('vulkaninfo', ['--summary'], {
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
-    return result.status === 0 && /gpu|device/i.test(String(result.stdout || ''));
-  } catch { return false; }
-}
+import { hasNvidiaGpu, hasVulkanSupport } from './gpu-probe.ts';
 
 function preferredRuntimeVariants(cfg) {
   const requested = String(cfg?.llm?.local?.binary?.install_variant || 'auto').toLowerCase();

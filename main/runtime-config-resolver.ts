@@ -278,14 +278,19 @@ function buf_readBigUInt64LE_safe(buf, offset) {
 
 // ── System / Backend Detection ──
 
-export function detectOsArch() {
+function detectOsArch() {
   return {
     platform: process.platform,
     arch: process.arch
   };
 }
 
-export function detectAvailableBackend() {
+/**
+ * Coarse per-platform default used when the user has not pinned a backend.
+ * `resolveRuntimeConfig` is the only caller; the precise GPU probes that drive
+ * runtime *selection* live in ./gpu-probe.ts.
+ */
+function detectAvailableBackend() {
   const platform = process.platform;
 
   function commandExists(command, args = []) {
@@ -738,49 +743,6 @@ function estimateContextMemory(contextSize, isGpu) {
   const kvCacheGb = (contextSize / 1024) * 0.1; // ~100MB per 1K tokens
   const overheadGb = isGpu ? 1.0 : 0.5;
   return kvCacheGb + overheadGb;
-}
-
-// ── Context Pressure Calculator ──
-
-export function calculateContextPressure(messages, config) {
-  const maxContext = config.contextSize || 4096;
-  const maxTokens = config.maxTokens || Math.floor(maxContext * 0.3);
-  const reservedOutput = maxTokens;
-
-  // Estimate tokens from messages
-  const usedTokens = estimateTokensFromMessages(messages);
-
-  // System + history + retrieved chunks + user input
-  const systemTokens = estimateTokensFromMessages(messages.filter(m => m.role === 'system'));
-  const historyTokens = estimateTokensFromMessages(messages.filter(m => m.role !== 'system' && m.role !== 'user'));
-  const userInputTokens = estimateTokensFromMessages(messages.filter(m => m.role === 'user'));
-
-  const remaining = maxContext - usedTokens - reservedOutput;
-  const usagePercent = Math.round((usedTokens / maxContext) * 100);
-  const isOverflow = remaining < 0;
-
-  return {
-    maxContext,
-    usedTokens,
-    systemTokens,
-    historyTokens,
-    userInputTokens,
-    reservedOutput,
-    remaining: Math.max(0, remaining),
-    usagePercent: Math.min(100, usagePercent),
-    isOverflow,
-    warning: isOverflow ? 'context_truncated' : null
-  };
-}
-
-function estimateTokensFromMessages(messages) {
-  let total = 0;
-  for (const msg of messages) {
-    total += 4; // role overhead
-    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '');
-    total += Math.ceil(content.length / 4); // ~4 chars per token
-  }
-  return total;
 }
 
 // ── Startup Log Line ──

@@ -1,4 +1,11 @@
 import type { PresentationData, SlideData } from '$lib/types/bridge';
+import {
+  escapeHtml,
+  normalizeSections,
+  text,
+  type SectionInput,
+  type SheetInput
+} from '$shared/work-product';
 import { invoke } from './bridge';
 
 export type GeneratedBinary = {
@@ -14,20 +21,6 @@ export type GeneratedArtifactFile = {
 };
 
 export type WorkProductFormat = 'md' | 'html' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
-
-type SectionInput = {
-  title?: string;
-  heading?: string;
-  content?: string;
-  bullets?: string[];
-  citations?: string[];
-};
-
-type SheetInput = {
-  name?: string;
-  columns?: Array<string | { header?: string; key?: string; width?: number }>;
-  rows?: Array<Record<string, unknown> | unknown[]>;
-};
 
 type SourceInput = {
   id?: string;
@@ -58,18 +51,6 @@ const MIME_BY_EXT: Record<string, string> = {
   pdf: 'application/pdf'
 };
 
-function text(value: unknown, fallback = ''): string {
-  return String(value ?? fallback).trim();
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function normalizePath(path: unknown, fallback: string): string {
   const raw = text(path, fallback).replace(/^\/+/, '').replace(/\\/g, '/');
   const cleaned = raw.replace(/[/\\:*?"<>|]+/g, '-').replace(/^-+/, '');
@@ -78,23 +59,6 @@ function normalizePath(path: unknown, fallback: string): string {
 
 function ensureExt(path: string, ext: string): string {
   return path.toLowerCase().endsWith(`.${ext}`) ? path : `${path}.${ext}`;
-}
-
-function normalizeSections(sections: unknown, fallbackContent?: string): SectionInput[] {
-  if (!Array.isArray(sections)) {
-    return fallbackContent ? [{ content: fallbackContent }] : [];
-  }
-  return sections.map((section) => {
-    if (typeof section === 'string') return { content: section };
-    const item = (section && typeof section === 'object') ? section as Record<string, unknown> : {};
-    return {
-      title: text(item.title),
-      heading: text(item.heading),
-      content: text(item.content),
-      bullets: Array.isArray(item.bullets) ? item.bullets.map((bullet) => text(bullet)).filter(Boolean) : [],
-      citations: Array.isArray(item.citations) ? item.citations.map((citation) => text(citation)).filter(Boolean) : []
-    };
-  }).filter((section) => section.title || section.heading || section.content || section.bullets?.length);
 }
 
 function normalizeSources(sources: unknown): SourceInput[] {

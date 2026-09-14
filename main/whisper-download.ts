@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
-import * as tar from 'tar';
-import extract from 'extract-zip';
 import { getAppPaths } from './paths.ts';
+import { downloadToFile, extractArchive, resetDirectory, markExecutable } from './archive-install.ts';
 
 const isWindows = process.platform === 'win32';
 const WHISPER_BINARIES = isWindows
@@ -20,8 +19,7 @@ export async function downloadWhisperRuntime(
     `${release_tag}-${asset_name.replace(/\.(zip|tar\.gz|tgz)$/, '')}`
   );
 
-  fs.rmSync(destDir, { recursive: true, force: true });
-  fs.mkdirSync(destDir, { recursive: true });
+  resetDirectory(destDir);
 
   function emit(progress: number, phase: string) {
     try { win?.webContents?.send('whisper-runtime-download-progress', { progress, phase }); } catch { /* ignore */ }
@@ -29,58 +27,14 @@ export async function downloadWhisperRuntime(
 
   emit(0, 'downloading');
 
-  const resp = await fetch(download_url);
-  if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
-
-  const totalBytes = Number(resp.headers.get('content-length') || 0);
+  // Downloading owns 0-80%, extraction and finalizing the rest.
   const archivePath = path.join(paths.cacheRoot, asset_name);
-  fs.mkdirSync(paths.cacheRoot, { recursive: true });
-
-  const writeStream = fs.createWriteStream(archivePath);
-  let downloaded = 0;
-  const reader = resp.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    writeStream.write(Buffer.from(value));
-    downloaded += value.length;
-    if (totalBytes > 0) {
-      emit(Math.round((downloaded / totalBytes) * 80), 'downloading');
-    }
-  }
-  await new Promise((res, rej) => writeStream.end(err => err ? rej(err) : res()));
+  await downloadToFile(download_url, archivePath, (fraction) => {
+    emit(Math.round(fraction * 80), 'downloading');
+  });
 
   emit(80, 'extracting');
-
-  const ensureSafeEntryPath = (entryPath: string) => {
-    const normalized = path.normalize(String(entryPath || ''));
-    if (!normalized || path.isAbsolute(normalized)) {
-      throw new Error(`Unsafe archive entry path: ${entryPath}`);
-    }
-    if (normalized.split(path.sep).includes('..')) {
-      throw new Error(`Unsafe archive entry path: ${entryPath}`);
-    }
-  };
-
-  if (asset_name.endsWith('.tar.gz') || asset_name.endsWith('.tgz')) {
-    await tar.x({
-      file: archivePath,
-      cwd: destDir,
-      strict: false,
-      preservePaths: false,
-      filter: (entryPath: string) => {
-        ensureSafeEntryPath(entryPath);
-        return true;
-      },
-    });
-  } else if (asset_name.endsWith('.zip')) {
-    await extract(archivePath, {
-      dir: destDir,
-      onEntry: (entry: { fileName: string }) => ensureSafeEntryPath(entry.fileName),
-    });
-  } else {
-    throw new Error(`Unsupported whisper runtime archive format: ${asset_name}`);
-  }
+  await extractArchive(asset_name, archivePath, destDir, 'whisper runtime');
 
   emit(95, 'finalizing');
 
@@ -92,8 +46,7 @@ export async function downloadWhisperRuntime(
       if (e.isDirectory()) {
         findBinary(full);
       } else if (WHISPER_BINARIES.includes(e.name) && !binaryPath) {
-        binaryPath = full;
-        if (process.platform !== 'win32') fs.chmodSync(full, 0o755);
+        binaryPath = markExecutable(full);
       }
     }
   }

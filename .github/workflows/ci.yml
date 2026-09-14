@@ -20,7 +20,10 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # README requires Node 22+ for the native module rebuilds; the
+          # previous pin of 20 meant CI was verifying a configuration the app
+          # is never built or run in.
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -34,6 +37,12 @@ jobs:
 
       - name: Run renderer type check
         run: npm run check
+
+      - name: Run main-process tests
+        run: npm test
+
+      - name: Run renderer tests
+        run: npm test --prefix renderer
 
       - name: Run Fallow audit
         if: github.event_name == 'pull_request'

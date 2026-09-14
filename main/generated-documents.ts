@@ -1,43 +1,10 @@
-type SectionInput = {
-  title?: string;
-  heading?: string;
-  content?: string;
-  bullets?: string[];
-  citations?: string[];
-};
-
-type SheetInput = {
-  name?: string;
-  columns?: Array<string | { header?: string; key?: string; width?: number }>;
-  rows?: Array<Record<string, unknown> | unknown[]>;
-};
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function text(value: unknown, fallback = ''): string {
-  return String(value ?? fallback).trim();
-}
-
-function normalizeSections(sections: unknown): SectionInput[] {
-  if (!Array.isArray(sections)) return [];
-  return sections.map((section) => {
-    if (typeof section === 'string') return { content: section };
-    const item = (section && typeof section === 'object') ? section as Record<string, unknown> : {};
-    return {
-      title: text(item.title),
-      heading: text(item.heading),
-      content: text(item.content),
-      bullets: Array.isArray(item.bullets) ? item.bullets.map((bullet) => text(bullet)).filter(Boolean) : [],
-      citations: Array.isArray(item.citations) ? item.citations.map((citation) => text(citation)).filter(Boolean) : []
-    };
-  }).filter((section) => section.title || section.heading || section.content || section.bullets?.length);
-}
+import {
+  escapeHtml,
+  normalizeSections,
+  text,
+  type SectionInput,
+  type SheetInput
+} from '../shared/work-product.ts';
 
 function bufferToBytes(buffer: Buffer | Uint8Array | ArrayBuffer): number[] {
   return Array.from(buffer instanceof Buffer ? buffer : Buffer.from(buffer));

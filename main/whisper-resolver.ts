@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { getAppPaths } from './paths.ts';
 import { loadConfig, saveConfig } from './config.ts';
+import { hasNvidiaGpu, hasVulkanSupport } from './gpu-probe.ts';
 
 const isWindows = process.platform === 'win32';
 const WHISPER_CLI_NAMES = isWindows
@@ -174,27 +174,6 @@ export function deleteWhisperBinary(binPath: string): void {
   }
 
   clearWhisperSelectionFromConfig(binPath);
-}
-
-function hasNvidiaGpu(): boolean {
-  try {
-    const result = spawnSync('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader'], {
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return result.status === 0 && String(result.stdout).trim().length > 0;
-  } catch { return false; }
-}
-
-function hasVulkanSupport(): boolean {
-  try {
-    const cmd = isWindows ? 'vulkaninfo' : 'vulkaninfo';
-    const result = spawnSync(cmd, ['--summary'], {
-      timeout: 5000,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return result.status === 0 && String(result.stdout).includes('GPU');
-  } catch { return false; }
 }
 
 export interface WhisperBackendInfo {

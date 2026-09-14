@@ -1,6 +1,5 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { validateGeneratedDocumentArgs } from '../../renderer/src/lib/services/generated-documents.ts';
+import { describe, expect, it } from 'vitest';
+import { validateGeneratedDocumentArgs } from './generated-documents';
 
 describe('generated document validation', () => {
   it('rejects title-only report sections', () => {
@@ -9,8 +8,8 @@ describe('generated document validation', () => {
       sections: [{ title: 'Executive summary' }, { title: 'Findings' }]
     }, ['docx']);
 
-    assert.equal(result.ok, false);
-    assert.match(result.error || '', /too thin/i);
+    expect(result.ok).toBe(false);
+    expect(result.error || '').toMatch(/too thin/i);
   });
 
   it('accepts meaningful narrative sections', () => {
@@ -22,7 +21,7 @@ describe('generated document validation', () => {
       }]
     }, ['pdf']);
 
-    assert.equal(result.ok, true);
+    expect(result.ok).toBe(true);
   });
 
   it('accepts spreadsheets with data rows', () => {
@@ -32,7 +31,7 @@ describe('generated document validation', () => {
       rows: [{ Source: 'Example', Finding: 'Evidence-backed row' }]
     }, ['xlsx']);
 
-    assert.equal(result.ok, true);
+    expect(result.ok).toBe(true);
   });
 
   it('rejects empty presentations', () => {
@@ -41,6 +40,6 @@ describe('generated document validation', () => {
       slides: [{ title: 'Only a title', content: [] }]
     }, ['pptx']);
 
-    assert.equal(result.ok, false);
+    expect(result.ok).toBe(false);
   });
 });
