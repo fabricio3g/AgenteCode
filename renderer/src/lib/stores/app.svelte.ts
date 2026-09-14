@@ -69,10 +69,12 @@ import type {
   ChatSearchState,
   GenerationBackendMode,
   GenerationComposerMode,
+  LocalModelLoadTarget,
   PersistedState
 } from '$lib/stores/app-store-types';
 import { buildLocalModelOption } from '$lib/utils/local-models';
 import { activityLabel } from '$lib/utils/tool-ui';
+import { createId } from '$lib/utils/id';
 
 import {
   USER_NAME_KEY,
@@ -90,7 +92,6 @@ import {
   buildSearchConversationContext,
   buildWebRagPayload,
   executionMetadata,
-  createId,
   finalizeAssistantMetadata,
   getElectronApi,
   getMessageRequestContent,
@@ -117,8 +118,7 @@ import {
   type ApiModelMetadata,
   type AssistantMetadata,
   type ContextBudget,
-  type ElectronApi,
-  type LocalModelLoadTarget
+  type ElectronApi
 } from '$lib/stores/app-store-helpers';
 
 class AppStore {

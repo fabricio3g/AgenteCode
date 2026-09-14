@@ -1,10 +1,10 @@
-import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, ModelOption, SearchMeta } from '$lib/types/chat';
+import type { AgentActivity, AgentOutcome, AgentStopReason, ChatContextMode, ChatFolder, ChatMessage, ChatSession, MessageVersion, SearchMeta } from '$lib/types/chat';
 import type { SearchResult } from '$lib/types/bridge';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { runAgentTask } from '$lib/services/agent';
 import { normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { isElectron } from '$lib/services/bridge';
-import { createId as createSharedId } from '$lib/utils/id';
+import { createId } from '$lib/utils/id';
 import { activityLabel } from '$lib/utils/tool-ui';
 import { normalizeSpace, SPACES } from '$lib/spaces';
 import type { GenerationBackendMode } from '$lib/stores/app-store-types';
@@ -16,8 +16,6 @@ export type ApiModelMetadata = ApiModelMetadataValue;
 export type ElectronApi = {
   invoke: <T = unknown>(channel: string, payload?: unknown) => Promise<T>;
 };
-
-export type LocalModelLoadTarget = Omit<ModelOption, 'source'> & { source?: string };
 
 export const USER_NAME_KEY = 'chatealm_user_name';
 
@@ -43,8 +41,6 @@ export function getElectronApi(): ElectronApi | null {
 export function toInvoke(api: ElectronApi): ElectronApi['invoke'] {
   return (channel, payload) => api.invoke(channel, payload);
 }
-
-export const createId = createSharedId;
 
 type AgentStoreResult = Awaited<ReturnType<typeof runAgentTask>>;
 

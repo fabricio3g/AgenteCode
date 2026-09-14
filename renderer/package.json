@@ -13,7 +13,6 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",
-    "chatealm": "file:..",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-axis": "^3.0.0",
@@ -36,6 +35,7 @@
     "svelte-i18n": "^4.0.1",
     "tailwind-merge": "^3.6.0",
     "tesseract.js": "^7.0.0",
+    "tesseract.js-core": "^7.0.0",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2",
     "zod": "^4.1.11"
@@ -48,6 +48,7 @@
     "@types/d3-geo": "^3.1.1",
     "@types/node": "^24.5.2",
     "@types/topojson-client": "^3.1.5",
+    "@types/topojson-specification": "^1.0.5",
     "autoprefixer": "^10.4.21",
     "jsdom": "^27.0.1",
     "postcss": "^8.5.6",

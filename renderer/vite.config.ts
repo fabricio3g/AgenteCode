@@ -30,7 +30,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    target: ['es2021', 'chrome100']
+    // es2022 (not es2021) because src/main.ts awaits the dev-only mock-electron
+    // import at top level. esbuild only allows a feature if *every* listed
+    // target supports it, so listing es2021 here fails the whole build.
+    target: ['es2022', 'chrome100']
   },
   test: {
     environment: 'node',

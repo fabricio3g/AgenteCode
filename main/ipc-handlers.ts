@@ -1,7 +1,8 @@
 import { ipcMain, shell } from 'electron';
 import { getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 import { panelOpenTab as createWebviewerWindow } from './browser-panel.ts';
-import { loadConfig, saveConfig, updateConfig, redactConfig, loadConfigFromDisk } from './config.ts';
+import { loadConfig, saveConfig, updateConfig, loadConfigFromDisk } from './config.ts';
+import { redactConfig } from './config.redact.ts';
 import { getHardwareLimits, getSystemInfo } from './system-info.ts';
 import {
   getLocalModels, getGgufMetadata, deleteLocalModel, getModelsDirPath,
@@ -11,8 +12,9 @@ import {
   startLlama, stopLlama, getInstalledRuntimes, deleteRuntimeBinary,
   getSupervisorStatus, getRuntimeTelemetry, supervisorHealthCheck, getLoadedModels,
   unloadModel, getRecommendedSettings, previewLocalModelCommand,
-  startEmbeddingServer, stopEmbeddingServer, getEmbeddingStatus
+  startEmbeddingServer, stopEmbeddingServer
 } from './llm-runner.ts';
+import { getEmbeddingStatus } from './embedding-state.ts';
 import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './tts-engine.ts';
 import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.ts';
 import {

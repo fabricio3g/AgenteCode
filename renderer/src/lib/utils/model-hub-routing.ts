@@ -1,3 +1,5 @@
+import type { ModelHubTab } from '$lib/types/model-hub';
+
 export type SettingsSection = 'general' | 'providers' | 'search' | 'local' | 'voice';
 
 export type ModelHubSection =
@@ -6,8 +8,6 @@ export type ModelHubSection =
   | 'library'
   | 'loaded'
   | SettingsSection;
-
-export type ModelHubTab = 'discover' | 'library' | 'active';
 
 export type ModelHubRoute = {
   section: Exclude<ModelHubSection, 'explore' | 'library' | 'loaded'>;

@@ -9,7 +9,7 @@ import { accumulateToolCallDelta, finalizeToolCalls, resolveApiKey } from '../..
 import { resolveProvider } from '../../providers/registry.ts';
 import { LlmStreamError, classifyError, type FinishReason } from '../../providers/protocol.ts';
 import type { ReasoningRequest } from '../../providers/base.ts';
-import type { AgentMessage, AssistantMessage, StreamFn, StreamRequest, StopReason, ToolCall, TokenUsage } from '../core/types.ts';
+import type { AgentMessage, AssistantMessage, StreamFn, StreamRequest, StopReason, ToolCall, CoreTokenUsage } from '../core/types.ts';
 
 export interface AgenteTransport {
   providerName: string;
@@ -29,8 +29,8 @@ export interface AgenteTransport {
  */
 export const AGENT_MAX_TOKENS_FLOOR = 4096;
 
-/** Provider TokenUsage → the agent core's snake_case vocabulary. */
-function toCoreUsage(usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null | undefined): TokenUsage | null {
+/** Provider TokenUsage → the agent core's snake_case vocabulary (CoreTokenUsage). */
+function toCoreUsage(usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null | undefined): CoreTokenUsage | null {
   if (!usage) return null;
   const prompt = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
   const completion = Number(usage.output_tokens ?? usage.completion_tokens ?? 0);
@@ -99,7 +99,7 @@ export function createProviderStreamFn(transport: AgenteTransport): StreamFn {
     const toolCallAccumulator = new Map();
     let content = '';
     let reasoning = '';
-    let usage: TokenUsage | null = null;
+    let usage: CoreTokenUsage | null = null;
     let finish: FinishReason | undefined;
     let aborted = false;
 

@@ -20,7 +20,6 @@ import { getAppPaths } from './paths.ts';
 import { slugify, deepMerge, deepClone, readJsonSafe, writeJsonSafe } from './config.utils.ts';
 import { getDefaultConfig } from './config.defaults.ts';
 import { migrateConfig } from './config.migrate.ts';
-import { redactConfig as redactConfigImpl } from './config.redact.ts';
 import { SecretsManager, CryptoProvider } from './config.secrets.ts';
 import type { AppConfig, AppPaths as AppPathsType } from './config.types.ts';
 
@@ -297,13 +296,6 @@ export async function updateConfig(partial: Partial<AppConfig>): Promise<AppConf
   const merged = deepMerge(deepClone(current), partial);
   saveConfig(merged);
   return merged;
-}
-
-/**
- * Redacts sensitive data from config for renderer.
- */
-export function redactConfig(cfg: AppConfig): ReturnType<typeof redactConfigImpl> {
-  return redactConfigImpl(cfg);
 }
 
 // Export types

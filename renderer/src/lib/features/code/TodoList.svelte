@@ -10,7 +10,7 @@
 <script lang="ts">
   import { Circle, CircleCheck } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
-  import type { CodeTodoItem } from './code-protocol';
+  import type { CodeTodoItem } from '$shared/agente-protocol';
 
   let { todos }: { todos: CodeTodoItem[] } = $props();
 

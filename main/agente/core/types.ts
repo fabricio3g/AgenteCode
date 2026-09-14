@@ -4,7 +4,7 @@
 // never in thrown exceptions — the loop can then react without try/catch
 // gymnastics and the event stream stays the only side channel.
 
-export interface TokenUsage {
+export interface CoreTokenUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
@@ -30,7 +30,7 @@ export interface AssistantMessage {
   content: string;
   reasoning?: string;
   toolCalls?: ToolCall[];
-  usage?: TokenUsage | null;
+  usage?: CoreTokenUsage | null;
   stopReason?: StopReason;
   errorMessage?: string;
   /** Stable classification from the provider protocol (AUTH, RATE_LIMIT, …). */

@@ -161,7 +161,8 @@ export function getDefaultSearchConfig(): SearchConfig {
   };
 }
 
-export function getDefaultConfig(paths: AppPaths): AppConfig {
+/** Only these two paths are read; demanding all of `AppPaths` invites stale partial literals. */
+export function getDefaultConfig(paths: Pick<AppPaths, 'modelsRoot' | 'localModelsRoot'>): AppConfig {
   return {
     tts: getDefaultTTSConfig(paths.modelsRoot),
     llm: getDefaultLLMConfig(paths.localModelsRoot),
@@ -176,17 +177,5 @@ export function createDefaultConfigWithPaths(
   modelsRoot: string,
   localModelsRoot: string
 ): AppConfig {
-  return getDefaultConfig({
-    configPath: path.join(modelsRoot, 'config.json'),
-    secretsPath: path.join(modelsRoot, 'secrets.json'),
-    modelsRoot,
-    localModelsRoot,
-    appData: modelsRoot,
-    assetsRoot: modelsRoot,
-    localBinRoot: localModelsRoot,
-    localBinVersionsRoot: localModelsRoot,
-    cacheRoot: modelsRoot,
-    projectRoot: process.cwd(),
-    IS_DEV: true,
-  });
+  return getDefaultConfig({ modelsRoot, localModelsRoot });
 }

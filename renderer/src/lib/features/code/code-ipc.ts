@@ -1,7 +1,7 @@
 // Typed client for the agente_* IPC surface.
 
 import { invoke } from '$lib/services/bridge';
-import type { CodeCheckpointSummary, AgenteStartSessionArgs } from './code-protocol';
+import type { CodeCheckpointSummary, AgenteStartSessionArgs } from '$shared/agente-protocol';
 
 export function startCodeAgentSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean }> {
   return invoke('agente_start_session', args as unknown as Record<string, unknown>);

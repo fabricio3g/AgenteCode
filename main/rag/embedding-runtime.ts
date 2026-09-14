@@ -1,4 +1,5 @@
-import { getEmbeddingStatus, startEmbeddingServer } from '../llm-runner.ts';
+import { getEmbeddingStatus } from '../embedding-state.ts';
+import { startEmbeddingServer } from '../llm-runner.ts';
 import { loadConfig } from '../config.ts';
 
 export async function ensureRagEmbeddingRuntime() {

@@ -1,4 +1,4 @@
-import type { ChatContextMode, ChatFolder, ChatSession } from '$lib/types/chat';
+import type { ChatContextMode, ChatFolder, ChatSession, ModelOption } from '$lib/types/chat';
 
 export interface PersistedState {
   chats: ChatSession[];
@@ -26,10 +26,8 @@ export interface ChatSearchState {
   query: string;
 }
 
-export interface LocalModelLoadTarget {
-  id: string;
-  name: string;
-  path?: string;
-  details?: string;
-  context_length?: number;
-}
+/**
+ * A local model the user asked to load: a full model option without the
+ * `'local' | 'api'` discriminant (the load dialog only handles local files).
+ */
+export type LocalModelLoadTarget = Omit<ModelOption, 'source'> & { source?: string };

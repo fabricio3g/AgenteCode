@@ -258,10 +258,6 @@ export async function stopEmbeddingServer() {
   await clearEmbeddingCacheSafe();
 }
 
-export function getEmbeddingStatus() {
-  return getEmbeddingStatusState();
-}
-
 export function getLlamaStatus() {
   return llamaStatus;
 }
