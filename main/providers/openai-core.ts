@@ -586,7 +586,7 @@ async function getReasoningCapabilities(
 
   // 2. Local models declare thinking support in their GGUF metadata.
   if (dialect.id === 'local') {
-    const LOCAL_UNKNOWN = { supported: false, levels: [], paramShape: 'local_disable_thinking', source: 'unknown' } as const;
+    const LOCAL_UNKNOWN = { supported: false, levels: [], paramShape: 'local_enable_thinking', source: 'unknown' } as const;
     if (!modelPath) return LOCAL_UNKNOWN;
     try {
       const { getGgufMetadata } = await import('../model-manager.ts');
@@ -595,7 +595,7 @@ async function getReasoningCapabilities(
         return {
           supported: meta.chat_template_supports_thinking,
           levels: meta.chat_template_supports_thinking ? ['off', 'on'] as ReasoningCapabilities['levels'] : [],
-          paramShape: 'local_disable_thinking',
+          paramShape: 'local_enable_thinking',
           source: 'metadata'
         };
       }
@@ -680,14 +680,16 @@ export function createOpenAiProvider(dialect: Dialect): ProviderObject {
       return getReasoningCapabilities(dialect, apiKey, baseUrl, modelId, modelPath);
     },
     checkToolSupport(args: ToolProbeArgs) {
-      // Local models declare tool support in GGUF metadata — definitive when present.
+      // A positive GGUF read is definitive. Anything else — absent template key,
+      // unreadable file — means "unknown", not "no tools", so fall through to
+      // the live probe instead of vetoing tools the model may well support.
       if (dialect.id === 'local' && args.modelPath) {
         return (async () => {
           try {
             const { getGgufMetadata } = await import('../model-manager.ts');
             const meta = await getGgufMetadata(args.modelPath!);
-            if (typeof meta?.chat_template_uses_tools === 'boolean') {
-              return { supportsTools: meta.chat_template_uses_tools, source: 'gguf_metadata' };
+            if (meta?.chat_template_uses_tools === true) {
+              return { supportsTools: true, source: 'gguf_metadata' };
             }
           } catch {
             // fall through to the probe

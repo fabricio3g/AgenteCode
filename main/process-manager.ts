@@ -309,6 +309,12 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
   if (config.disable_thinking && supports('--reasoning')) args.push('--reasoning', 'off');
 
+  // Tool calling requires Jinja template rendering server-side (current builds
+  // default it on, but older runtimes need the explicit flag — every upstream
+  // function-calling sample passes it). Without it the server throws
+  // "tools param requires --jinja flag" on any request carrying tools.
+  if (supports('--jinja')) args.push('--jinja');
+
   // Enables GET /metrics for the runtime telemetry panel. `--props` is
   // deliberately not passed: GET /props needs no flag, and the flag only opens
   // up POST /props, which would let anything on the box mutate server state.

@@ -42,7 +42,12 @@ export async function probeToolSupport(
     return { supportsTools: !!(result.toolCalls?.length || result.content), source: 'probe' };
   } catch (err: unknown) {
     const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-    if (/tool|function.?call|unsupported|not.?support/.test(msg)) {
+    // Transient failures say nothing about tools — let the caller proceed and
+    // fail over at runtime instead of caching a negative for the session.
+    if (/unauthor|api key|api-key|401|403|503|network|timeout|econn|fetch failed|load failed/.test(msg)) {
+      return { supportsTools: true, source: 'probe_fallback' };
+    }
+    if (/tool|function.?call|unsupported|not.?support|requires --jinja/.test(msg)) {
       return { supportsTools: false, source: 'probe_rejected' };
     }
     // Auth/network failures say nothing about tools — let the caller proceed.

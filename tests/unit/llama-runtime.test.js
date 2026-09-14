@@ -156,7 +156,8 @@ describe('llama.cpp runtime compatibility', () => {
     for (const flag of [
       '--no-kv-offload', '--cpu-moe', '--n-cpu-moe', '--context-shift', '--cache-ram',
       '--cache-reuse', '--swa-full', '--split-mode', '--api-key', '--metrics',
-      '--load-mode', '--mlock', '--fit', '--flash-attn', '--no-webui', '--reasoning'
+      '--load-mode', '--mlock', '--fit', '--flash-attn', '--no-webui', '--reasoning',
+      '--jinja'
     ]) {
       assert.equal(args.includes(flag), false, `${flag} should not be passed to a runtime that lacks it`);
     }
@@ -207,5 +208,17 @@ describe('llama.cpp runtime compatibility', () => {
 
     assert.equal(args.includes('--metrics'), true);
     assert.equal(args.includes('--props'), false);
+  });
+
+  it('passes --jinja only to runtimes that advertise it (tool calls need it)', () => {
+    const build = (supportedFlags) => buildLlamaArgs(
+      { model_path: '', port: 11435, backend_mode: 'cpu' },
+      process.execPath, null, { supportedFlags: new Set(supportedFlags) }
+    );
+
+    // Without the flag the server 400s any request carrying tools
+    // ("tools param requires --jinja flag").
+    assert.equal(build(['--jinja']).includes('--jinja'), true);
+    assert.equal(build([]).includes('--jinja'), false);
   });
 });

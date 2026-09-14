@@ -23,7 +23,7 @@ export type ReasoningParamShape =
   | 'anthropic_thinking'        // { thinking: { type, budget_tokens?, effort? } }
   | 'gemini_thinking_budget'    // { generationConfig: { thinkingConfig: { thinkingBudget } } }
   | 'mistral_reasoning_effort'  // { reasoningEffort: 'high' | 'none' }
-  | 'local_disable_thinking';   // { disable_thinking: bool }
+  | 'local_enable_thinking';    // { chat_template_kwargs: { enable_thinking: bool } }
 
 export type ReasoningCapabilities = {
   supported: boolean;

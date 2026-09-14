@@ -381,7 +381,7 @@ export type ReasoningParamShape =
   | 'anthropic_thinking'
   | 'gemini_thinking_budget'
   | 'mistral_reasoning_effort'
-  | 'local_disable_thinking';
+  | 'local_enable_thinking';
 
 export interface ReasoningCapabilities {
   supported: boolean;

@@ -138,13 +138,23 @@ function mistralReasoningCapabilities(modelId?: string): ReasoningCapabilities |
   return null;
 }
 
-// ── Local llama.cpp (Qwen3-style disable_thinking) ─────────────────────
-
+// ── Local llama.cpp (chat_template_kwargs.enable_thinking) ─────────────
+// Current llama.cpp has no top-level `disable_thinking` request field — one
+// sent there is silently ignored, so thinking never actually switched. The
+// live mechanism is the Jinja kwarg (the same shape the bundled llama-ui
+// WebUI sends), with `reasoning_format: auto` so thoughts come back in
+// `reasoning_content` instead of leaking into the answer text. Only explicit
+// on/off levels map; anything else is omitted so the server default
+// (--reasoning flag / template default) applies. Values must be real
+// booleans: the server 400s on the string "false".
 function localReasoningBody(level: string | undefined): Record<string, unknown> {
-  if (!level) return {};
-  if (level === 'off' || level === 'disabled' || level === 'none') return { disable_thinking: true };
-  if (level === 'on' || level === 'enabled') return { disable_thinking: false };
-  return {};
+  if (level === 'off' || level === 'disabled' || level === 'none') {
+    return { reasoning_format: 'auto', chat_template_kwargs: { enable_thinking: false } };
+  }
+  if (level === 'on' || level === 'enabled') {
+    return { reasoning_format: 'auto', chat_template_kwargs: { enable_thinking: true } };
+  }
+  return { reasoning_format: 'auto' };
 }
 
 // ── The table ──────────────────────────────────────────────────────────

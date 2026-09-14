@@ -41,7 +41,7 @@ describe('chat-api vision message conversion', () => {
 });
 
 describe('chat-api local backend routing helpers', () => {
-  it('does not treat local backend as the configured API provider for tool support', () => {
+  it('tries native tools for the local backend even before probing (fail open)', () => {
     const config = {
       llm: {
         backend_mode: 'local',
@@ -53,7 +53,11 @@ describe('chat-api local backend routing helpers', () => {
       }
     };
 
-    expect(supportsNativeTools(config)).toBe(false);
+    // The agent falls back to XML when the model rejects tools, so an uncached
+    // local backend must attempt native tools rather than skipping them — the
+    // local server honors tool definitions it understands (llama.cpp renders
+    // them through the model's Jinja template).
+    expect(supportsNativeTools(config)).toBe(true);
   });
 });
 

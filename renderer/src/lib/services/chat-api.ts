@@ -116,8 +116,11 @@ export function supportsNativeTools(config: AppConfigLike): boolean {
   }
 
   if (providerName === 'local') {
-    debugToolSupport(config, `[agent] supportsNativeTools | providerName=local | modelId=${modelId} | uncached -> false`);
-    return false;
+    // Uncached local: try native. The agent falls back to XML when the model
+    // rejects tools, so failing open is correct — failing closed silently
+    // drops tool definitions that the local server would have honored.
+    debugToolSupport(config, `[agent] supportsNativeTools | providerName=local | modelId=${modelId} | uncached -> true`);
+    return true;
   }
 
   // Uncached third-party: default to true (agent will fall back on error)
@@ -1147,81 +1150,6 @@ export async function extractStructuredWithRetry<T = Record<string, unknown>>(ar
   }
 
   return lastResult;
-}
-
-export async function completeWithTools(args: {
-  messages: RequestMessage[];
-  tools: ToolDefinition[];
-  signal?: AbortSignal;
-  apiKey?: string;
-}): Promise<CompletionResult | null> {
-  const config = await loadChatConfig();
-  if (config.llm?.backend_mode === 'local' && isElectron()) return null;
-
-  const { provider, providerName } = resolveProvider(config);
-  if (!provider.base_url) return null;
-  const apiKey = (args.apiKey ?? provider.api_key) || '';
-
-  const genParams = {
-    ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-    ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
-  };
-
-  if (isElectron()) {
-    try {
-      const payload = await invoke<UnknownRecord>('chat_complete', {
-        baseUrl: provider.base_url,
-        apiKey,
-        providerName,
-        body: {
-          model: provider.model,
-          stream: false,
-          messages: toRequestMessages(args.messages, provider.model),
-          tools: args.tools,
-          tool_choice: 'auto',
-          ...genParams
-        }
-      });
-      const result = readCompletionWithTools(payload);
-      return result;
-    } catch (err: unknown) {
-      console.warn('[chat-api] completeWithTools IPC call failed:', toErrorMessage(err));
-      return null;
-    }
-  }
-
-  try {
-    const client = getOpenAIClient(apiKey, provider.base_url || '');
-    const response = await client.chat.completions.create({
-      model: provider.model,
-      stream: false,
-      messages: toRequestMessages(args.messages, provider.model) as any,
-      tools: args.tools as any,
-      tool_choice: 'auto',
-      ...genParams
-    });
-
-    const message = (response?.choices?.[0]?.message || {}) as unknown as UnknownRecord;
-    const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc: unknown) => {
-      const call = (tc || {}) as UnknownRecord;
-      const fn = (call.function as UnknownRecord | undefined) || {};
-      return {
-        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-        name: String(fn.name || ''),
-        arguments: tryParseJsonObject(fn.arguments || '{}')
-      };
-    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
-
-    return {
-      content: String(message.content || ''),
-      reasoning: String(message.reasoning_content || message.reasoning || message.thinking || ''),
-      toolCalls: toolCalls.length ? toolCalls : undefined
-    };
-  } catch (err: unknown) {
-    console.warn('[chat-api] completeWithTools direct call failed:', toErrorMessage(err));
-    return null;
-  }
 }
 
 export async function completeStructuredOutput<T>(

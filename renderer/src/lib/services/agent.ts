@@ -1123,7 +1123,9 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           // Only poison the cache when we know it's a tool rejection —
           // null here can also mean clone errors, network errors, no base_url, etc.
           // The error catch block below handles tool rejections with proper pattern matching.
-          if (/tool/i.test(nativeStreamError) && /unsupport|not support|invalid|400|422/i.test(nativeStreamError)) {
+          // Bare "invalid"/400s are excluded: those also cover auth failures and
+          // context overflows, which say nothing about tool support.
+          if (/tool/i.test(nativeStreamError) && /unsupport|not support|400|422|requires.*jinja/i.test(nativeStreamError)) {
             setToolSupportCache(config as any, false);
           }
           messages[0] = { role: 'system', content: xmlSys };
@@ -1167,7 +1169,12 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       } else if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
         debugLog(debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
         nativeFailed = true;
-        setToolSupportCache(config as any, false);
+        // Only poison the cache when the error names tools — a bare 400 also
+        // covers context overflows and malformed params, which must not
+        // disable native tools for the rest of the session.
+        if (/tool/i.test(errMsg)) {
+          setToolSupportCache(config as any, false);
+        }
         // Keep tool role results; fill any gaps so XML path still has valid history
         ensureToolCallPairs(messages, 'fill');
         messages[0] = { role: 'system', content: xmlSys };
