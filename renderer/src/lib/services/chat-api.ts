@@ -501,84 +501,78 @@ async function streamLocalReply(args: {
   reasoning?: ReasoningRequest;
 }): Promise<void> {
   const config = await loadChatConfig();
-  const baseUrl = await ensureLocalRuntime(config);
+  // Proxied through the main process (chat_stream_start), not fetched from
+  // here: llama-server is launched with a per-run `--api-key` that only main
+  // knows (see main/llama-session.ts — it deliberately never reaches the
+  // renderer, so a stray web page cannot drive the local model). A direct
+  // fetch cannot authenticate and llama.cpp answers 401 "Invalid API Key".
+  const baseUrl = resolveLocalBaseUrl({
+    llm: { local: { base_url: await ensureLocalRuntime(config) } }
+  } as AppConfig);
   const hasVisionModel = await hasLocalVisionModel(config);
-  const response = await fetch(resolveLocalBaseUrl({
-    llm: { local: { base_url: baseUrl } }
-  } as AppConfig).replace(/\/+$/, '') + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    signal: args.signal,
-    body: JSON.stringify({
-      model: resolveLocalModelName(config),
-      stream: true,
-      stream_options: { include_usage: true },
-      messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
-      ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-      ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
-      ...(args.reasoning ? { disable_thinking: args.reasoning.level === 'off' } : {})
-    })
+  const model = resolveLocalModelName(config);
+
+  let streamId = '';
+  let resolveStream: (() => void) | null = null;
+  let rejectStream: ((error: Error) => void) | null = null;
+  const streamPromise = new Promise<void>((resolve, reject) => {
+    resolveStream = resolve;
+    rejectStream = reject;
   });
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => 'Local request failed');
-    throw new Error(detail || `HTTP ${response.status}`);
-  }
+  const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
+    if (!event || event.streamId !== streamId) return;
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No local response stream available');
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = String(line || '').trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const parsed = JSON.parse(payload);
-        const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
-        if (usage) args.onUsage?.(usage);
-        const delta = parsed?.choices?.[0]?.delta || {};
-        const content = delta.content;
-        const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) {
-          const normalized = normalizeStreamingReasoningDelta(String(reasoning));
-          if (normalized) args.onReasoning?.(normalized);
-        }
-        if (content) {
-          const normalized = normalizeStreamingContentDelta(String(content));
-          if (normalized) args.onChunk(normalized);
-        }
-      } catch { /* skip */ }
+    if (event.type === 'delta') {
+      if (event.reasoning) args.onReasoning?.(normalizeStreamingReasoningDelta(String(event.reasoning)));
+      if (event.content) args.onChunk(normalizeStreamingContentDelta(String(event.content)));
+      return;
     }
-  }
-  const trimmedTail = String(buffer || '').trim();
-  if (trimmedTail.startsWith('data:')) {
-    const payload = trimmedTail.slice(5).trim();
-    if (payload && payload !== '[DONE]') {
-      try {
-        const parsed = JSON.parse(payload);
-        const usage = normalizeRuntimeUsage(parsed?.usage, parsed?.timings);
-        if (usage) args.onUsage?.(usage);
-        const delta = parsed?.choices?.[0]?.delta || {};
-        const content = delta.content;
-        const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-        if (reasoning) {
-          const normalized = normalizeStreamingReasoningDelta(String(reasoning));
-          if (normalized) args.onReasoning?.(normalized);
-        }
-        if (content) {
-          const normalized = normalizeStreamingContentDelta(String(content));
-          if (normalized) args.onChunk(normalized);
-        }
-      } catch { /* skip */ }
+
+    if (event.type === 'done' || event.type === 'cancelled') {
+      if (event.usage) args.onUsage?.(event.usage);
+      resolveStream?.();
+      return;
+    }
+
+    if (event.type === 'error') {
+      rejectStream?.(new Error(event.error || 'Streaming request failed'));
+    }
+  });
+
+  let abortListener: (() => void) | null = null;
+
+  try {
+    const started = await invoke<{ streamId: string }>('chat_stream_start', {
+      baseUrl,
+      apiKey: '',
+      providerName: 'local',
+      body: {
+        model,
+        stream: true,
+        messages: toRequestMessages(args.messages, model, hasVisionModel),
+        ...(args.reasoning ? { reasoning: args.reasoning } : {}),
+        ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
+        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+      }
+    });
+
+    streamId = started?.streamId || '';
+    if (!streamId) throw new Error('Failed to start chat stream');
+
+    if (args.signal) {
+      abortListener = () => {
+        void invoke('chat_stream_cancel', { streamId }).catch(() => {});
+      };
+      args.signal.addEventListener('abort', abortListener, { once: true });
+    }
+
+    await streamPromise;
+    return;
+  } finally {
+    off();
+    if (args.signal && abortListener) {
+      args.signal.removeEventListener('abort', abortListener);
     }
   }
 }
@@ -726,32 +720,29 @@ export async function completeAssistantReply(args: {
   const omitMaxTokens = !!args.omitMaxTokens;
 
   if (config.llm?.backend_mode === 'local' && isElectron()) {
-    const baseUrl = await ensureLocalRuntime(config);
+    // Proxied through main (chat_complete) for the same reason as
+    // streamLocalReply: the llama-server `--api-key` session credential never
+    // reaches the renderer.
+    const baseUrl = resolveLocalBaseUrl({
+      llm: { local: { base_url: await ensureLocalRuntime(config) } }
+    } as AppConfig);
     const hasVisionModel = await hasLocalVisionModel(config);
-    const response = await fetch(resolveLocalBaseUrl({
-      llm: { local: { base_url: baseUrl } }
-    } as AppConfig).replace(/\/+$/, '') + '/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: args.signal,
-      body: JSON.stringify({
-        model: resolveLocalModelName(config),
+    const model = resolveLocalModelName(config);
+    const payload = await invoke<UnknownRecord>('chat_complete', {
+      baseUrl,
+      apiKey: '',
+      providerName: 'local',
+      body: {
+        model,
         stream: false,
-        messages: toRequestMessages(args.messages, resolveLocalModelName(config), hasVisionModel),
+        messages: toRequestMessages(args.messages, model, hasVisionModel),
+        ...(reasoning ? { reasoning } : {}),
         ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-        ...(!omitMaxTokens && config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {}),
-        ...(reasoning ? { disable_thinking: reasoning.level === 'off' } : {})
-      })
+        ...(!omitMaxTokens && config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+      }
     });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => 'Local request failed');
-      throw new Error(detail || `HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
     const result = readCompletionPayload(payload);
-    result.usage = normalizeRuntimeUsage(payload?.usage, payload?.timings) || result.usage || null;
+    result.usage = normalizeRuntimeUsage(payload?.usage) || result.usage || null;
     return result;
   }
 

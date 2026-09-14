@@ -6,6 +6,37 @@ import {
   accumulateToolCallDelta,
   finalizeToolCalls
 } from '../../main/chat-ipc.ts';
+import { resolveApiKey } from '../../main/chat-ipc.ts';
+import { startLlamaSession, endLlamaSession, resolveLlamaSessionKey } from '../../main/llama-session.ts';
+
+describe('chat-ipc local session auth', () => {
+  it('resolves the per-launch llama-server key for the live session port', () => {
+    // Regression: the local llama-server is launched with a generated
+    // --api-key that only main knows. Every request path that talks to it
+    // must resolve that key (resolveApiKey), otherwise llama.cpp rejects the
+    // generation with 401 "Invalid API Key" even though the model loaded fine.
+    const sessionKey = startLlamaSession(11435);
+    try {
+      assert.strictEqual(
+        resolveApiKey('', 'http://127.0.0.1:11435/v1', 'local'),
+        sessionKey
+      );
+    } finally {
+      endLlamaSession();
+    }
+  });
+
+  it('does not leak the session key to other ports or hosts', () => {
+    startLlamaSession(11435);
+    try {
+      assert.strictEqual(resolveLlamaSessionKey('http://127.0.0.1:9999/v1'), '');
+      assert.strictEqual(resolveLlamaSessionKey('http://192.168.1.10:11435/v1'), '');
+      assert.strictEqual(resolveLlamaSessionKey('not a url'), '');
+    } finally {
+      endLlamaSession();
+    }
+  });
+});
 
 describe('chat-ipc provider safety', () => {
   it('does not fall back to the default provider key for a different provider', () => {
