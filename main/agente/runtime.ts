@@ -118,7 +118,7 @@ const sessions = new Map<string, RuntimeSession>();
 
 // ── Transport resolution ───────────────────────────────────────────────
 
-const KNOWN_THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'max', 'enabled', 'disabled', 'on', 'none', 'default']);
+const KNOWN_THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'max', 'xhigh', 'enabled', 'disabled', 'on', 'none', 'default']);
 
 function thinkingToReasoning(thinkingLevel?: string): AgenteTransport['reasoning'] {
   if (!thinkingLevel || !KNOWN_THINKING_LEVELS.has(thinkingLevel)) return null;

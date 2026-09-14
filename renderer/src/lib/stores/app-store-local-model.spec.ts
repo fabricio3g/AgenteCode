@@ -3,6 +3,7 @@ import {
   buildLocalModelRuntimeRequest,
   buildLocalModelSettingsPatch,
   buildRememberedLocalModelSettingsEntry,
+  normalizeThinkingMode,
   resolveLocalModelLoadState
 } from '$lib/stores/app-store-local-model';
 
@@ -58,5 +59,43 @@ describe('app-store-local-model', () => {
     expect(request.modelPath).toBe('D:/models/mistral.gguf');
     expect(request.runtimePath).toBe('D:/runtime');
     expect(request.config.llm?.local?.selected_model_path).toBe('D:/models/mistral.gguf');
+  });
+
+  it('defaults the thinking mode to auto and migrates the legacy boolean', () => {
+    expect(normalizeThinkingMode(undefined, undefined)).toBe('auto');
+    expect(normalizeThinkingMode('off', undefined)).toBe('off');
+    expect(normalizeThinkingMode('on', undefined)).toBe('on');
+    expect(normalizeThinkingMode('bogus', undefined)).toBe('auto');
+    // Legacy `disable_thinking: true` still means off; false means auto.
+    expect(normalizeThinkingMode(undefined, true)).toBe('off');
+    expect(normalizeThinkingMode(undefined, false)).toBe('auto');
+    // The new key wins over the legacy boolean.
+    expect(normalizeThinkingMode('on', true)).toBe('on');
+
+    const migrated = resolveLocalModelLoadState({
+      remembered: { disable_thinking: true },
+      config: {},
+      model: { id: 'm', name: 'M', path: 'D:/m.gguf' },
+      runtimePath: 'D:/runtime'
+    });
+    expect(migrated.thinkingMode).toBe('off');
+
+    const fresh = resolveLocalModelLoadState({
+      remembered: {},
+      config: {},
+      model: { id: 'm', name: 'M', path: 'D:/m.gguf' },
+      runtimePath: 'D:/runtime'
+    });
+    expect(fresh.thinkingMode).toBe('auto');
+    const freshPatch = buildLocalModelSettingsPatch(fresh);
+    expect(freshPatch.thinking_mode).toBeUndefined();
+    // Auto must clear a stale legacy flag rather than fight it.
+    expect(freshPatch.disable_thinking).toBeUndefined();
+    const offRequest = buildLocalModelRuntimeRequest({
+      config: {},
+      target: { id: 'm', name: 'M', path: 'D:/m.gguf' },
+      state: { ...fresh, thinkingMode: 'off' }
+    });
+    expect(offRequest.thinkingMode).toBe('off');
   });
 });

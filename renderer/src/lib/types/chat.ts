@@ -485,6 +485,9 @@ export interface ModelOption {
 
 export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'mistral' | 'openai_compat' | 'local';
 
+/** Thinking default for one on-device model (load dialog + remembered settings). */
+export type LocalThinkingMode = 'auto' | 'off' | 'on';
+
 export interface ProviderConfig {
   base_url: string;
   api_key?: string;
@@ -532,7 +535,14 @@ export interface AppConfig {
       cache_type_k?: string;
       cache_type_v?: string;
       mmproj_path?: string;
+      /** Legacy server-default override; superseded by `thinking_mode` below. */
       disable_thinking?: boolean;
+      /**
+       * Thinking default for this model: 'auto' (omit --reasoning, llama.cpp
+       * detects from the template), 'off' (--reasoning off), 'on'
+       * (--reasoning on). Absent means 'auto'.
+       */
+      thinking_mode?: LocalThinkingMode;
       mtp?: boolean;
       mtp_draft_path?: string | null;
       mtp_draft_n_max?: number | null;

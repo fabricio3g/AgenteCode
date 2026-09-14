@@ -221,4 +221,30 @@ describe('llama.cpp runtime compatibility', () => {
     assert.equal(build(['--jinja']).includes('--jinja'), true);
     assert.equal(build([]).includes('--jinja'), false);
   });
+
+  it('maps the tri-state thinking mode onto --reasoning (legacy boolean still works)', () => {
+    const build = (config) => buildLlamaArgs(
+      { model_path: '', port: 11435, backend_mode: 'cpu', ...config },
+      process.execPath, null, { supportedFlags: new Set(['--reasoning']) }
+    );
+
+    // Auto (and absent) omit the flag so the server detects from the template.
+    assert.deepEqual(build({ thinking_mode: 'auto' }).filter((a) => a === '--reasoning'), []);
+    assert.deepEqual(build({}).filter((a) => a === '--reasoning'), []);
+    assert.deepEqual(
+      build({ thinking_mode: 'off' }).slice(
+        build({ thinking_mode: 'off' }).indexOf('--reasoning'),
+        build({ thinking_mode: 'off' }).indexOf('--reasoning') + 2
+      ),
+      ['--reasoning', 'off']
+    );
+    const on = build({ thinking_mode: 'on' });
+    assert.deepEqual(on.slice(on.indexOf('--reasoning'), on.indexOf('--reasoning') + 2), ['--reasoning', 'on']);
+    // Legacy `disable_thinking: true` still means off.
+    const legacy = build({ disable_thinking: true });
+    assert.deepEqual(
+      legacy.slice(legacy.indexOf('--reasoning'), legacy.indexOf('--reasoning') + 2),
+      ['--reasoning', 'off']
+    );
+  });
 });

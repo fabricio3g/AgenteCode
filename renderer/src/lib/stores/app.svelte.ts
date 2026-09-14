@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
@@ -189,7 +189,8 @@ class AppStore {
   localModelLoadCacheTypeK = $state('f16');
   localModelLoadCacheTypeV = $state('f16');
   localModelLoadMmprojPath = $state('');
-  localModelLoadDisableThinking = $state(false);
+  /** Thinking default for this load: 'auto' omits --reasoning (server detects). */
+  localModelLoadThinkingMode = $state<LocalThinkingMode>('auto');
   localModelLoadMtpEnabled = $state(false);
   localModelLoadMtpDraftPath = $state('');
   localModelLoadMtpDraftNMax = $state('');
@@ -650,6 +651,7 @@ class AppStore {
     this.localModelLoadCacheTypeK = resolved.cacheTypeK;
     this.localModelLoadCacheTypeV = resolved.cacheTypeV;
     this.localModelLoadMmprojPath = resolved.mmprojPath;
+    this.localModelLoadThinkingMode = resolved.thinkingMode;
     this.localModelLoadMtpEnabled = resolved.mtpEnabled;
     this.localModelLoadMtpDraftPath = resolved.mtpDraftPath;
     this.localModelLoadMtpDraftNMax = resolved.mtpDraftNMax;
@@ -783,7 +785,7 @@ class AppStore {
         cacheTypeK: this.localModelLoadCacheTypeK,
         cacheTypeV: this.localModelLoadCacheTypeV,
         mmprojPath: this.localModelLoadMmprojPath,
-        disableThinking: this.localModelLoadDisableThinking,
+        thinkingMode: this.localModelLoadThinkingMode,
         mtpEnabled: this.localModelLoadMtpEnabled,
         mtpDraftPath: this.localModelLoadMtpDraftPath,
         mtpDraftNMax: this.localModelLoadMtpDraftNMax,
@@ -3198,6 +3200,9 @@ class AppStore {
     system_prompt?: string;
     temperature?: number;
     max_tokens?: number;
+    thinking_mode?: LocalThinkingMode;
+    /** Legacy equivalent of thinking_mode 'off'; cleared on write. */
+    disable_thinking?: boolean;
   }) {
     await this.commitConfig(mergeLocalSettingsConfig(this.config, partial), {
       refreshLocalStatus: true

@@ -1,4 +1,4 @@
-import type { AppConfig, ModelOption, ProviderConfig } from '$lib/types/chat';
+import type { AppConfig, LocalThinkingMode, ModelOption, ProviderConfig } from '$lib/types/chat';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 
@@ -99,6 +99,9 @@ export function mergeLocalSettingsConfig(
     cache_type_k?: string;
     cache_type_v?: string;
     mmproj_path?: string;
+    thinking_mode?: LocalThinkingMode;
+    /** Legacy equivalent of thinking_mode 'off'; cleared on write. */
+    disable_thinking?: boolean;
     mtp?: boolean;
     mtp_draft_path?: string | null;
     mtp_draft_n_max?: number | null;

@@ -212,10 +212,13 @@ export async function fetchReasoningCapabilities(args: {
 
 /**
  * Build a `reasoning` request object for the API body from a chat-level
- * `reasoningLevel`. 'off'/null/undefined → omit (provider default).
+ * `reasoningLevel`. null/undefined → omit (server default). 'off' is a real
+ * level, not an alias for "unset": dialects that can disable thinking map it
+ * (local → enable_thinking false, gemini → budget 0, deepseek → disabled)
+ * while the rest ignore it.
  */
 export function buildReasoningRequest(level?: ReasoningLevel | null): ReasoningRequest | undefined {
-  if (!level || level === 'off') return undefined;
+  if (!level) return undefined;
   return { level };
 }
 

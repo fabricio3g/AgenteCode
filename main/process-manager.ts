@@ -307,7 +307,9 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   if (config.rope_freq_base) args.push('--rope-freq-base', String(config.rope_freq_base));
   if (config.rope_freq_scale) args.push('--rope-freq-scale', String(config.rope_freq_scale));
   if (config.mmproj_path) args.push('--mmproj', config.mmproj_path);
-  if (config.disable_thinking && supports('--reasoning')) args.push('--reasoning', 'off');
+  const thinkingMode = config.thinking_mode || (config.disable_thinking ? 'off' : 'auto');
+  if (thinkingMode === 'off' && supports('--reasoning')) args.push('--reasoning', 'off');
+  else if (thinkingMode === 'on' && supports('--reasoning')) args.push('--reasoning', 'on');
 
   // Tool calling requires Jinja template rendering server-side (current builds
   // default it on, but older runtimes need the explicit flag — every upstream

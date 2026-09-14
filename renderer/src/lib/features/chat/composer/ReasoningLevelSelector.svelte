@@ -44,8 +44,10 @@
     return LEVEL_LABELS[level] || String(level);
   }
 
-  function select(level: ReasoningLevel) {
-    appStore.setReasoningLevel(level === 'off' ? null : level);
+  function select(level: ReasoningLevel | null) {
+    // 'off' is a real level (dialects map it to "disable thinking"); only
+    // Auto clears back to unset so the server default applies.
+    appStore.setReasoningLevel(level);
     open = false;
   }
 </script>
@@ -55,11 +57,16 @@
     {#snippet trigger(props)}
       <button type="button" class="aui-select-trigger aui-pill" title={triggerTitle} {...props}>
         <Brain class="size-3.5" />
-        <span>{labelFor(currentLevel || 'off')}</span>
+        <span>{currentLevel ? labelFor(currentLevel) : 'Auto'}</span>
         <ChevronDown class="size-3 transition-transform duration-150 {open ? 'rotate-180' : ''}" />
       </button>
     {/snippet}
 
+    <MenuItem
+      label="Auto"
+      active={!currentLevel}
+      onselect={() => select(null)}
+    />
     {#each capabilities.levels as level (level)}
       <MenuItem
         label={labelFor(level)}

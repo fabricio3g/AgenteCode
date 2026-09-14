@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isVisionModel, normalizeRuntimeUsage, supportsNativeTools, toRequestMessages } from './chat-api';
+import { buildReasoningRequest, isVisionModel, normalizeRuntimeUsage, supportsNativeTools, toRequestMessages } from './chat-api';
 
 describe('chat-api vision message conversion', () => {
   const imageAttachment = {
@@ -78,5 +78,16 @@ describe('llama.cpp runtime telemetry', () => {
 
   it('returns null when a response contains neither usage nor timings', () => {
     expect(normalizeRuntimeUsage(null, null)).toBeNull();
+  });
+});
+
+describe('reasoning level builder', () => {
+  it('keeps off as a real level instead of collapsing it to unset', () => {
+    // 'off' must reach the dialects: local maps it to enable_thinking:false,
+    // gemini to budget 0, deepseek to disabled. Only null/undefined omits.
+    expect(buildReasoningRequest('off')).toEqual({ level: 'off' });
+    expect(buildReasoningRequest('on')).toEqual({ level: 'on' });
+    expect(buildReasoningRequest(null)).toBeUndefined();
+    expect(buildReasoningRequest(undefined)).toBeUndefined();
   });
 });

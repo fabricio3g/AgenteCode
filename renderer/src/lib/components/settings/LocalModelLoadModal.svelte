@@ -141,8 +141,16 @@
     if (supported === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
     return { label: 'Unknown', tone: 'text-fg-secondary' };
   });
-  const thinkingOn = $derived(!appStore.localModelLoadDisableThinking);
-  const thinkingLockedOff = $derived(thinkingSupport.label === 'Not supported');
+  const thinkingMode = $derived(appStore.localModelLoadThinkingMode);
+  const thinkingLocked = $derived(thinkingSupport.label === 'Not supported');
+  const thinkingSummary = $derived.by(() => {
+    const mode = thinkingMode === 'auto' ? 'Auto' : thinkingMode === 'off' ? 'Off' : 'On';
+    return `${thinkingSupport.label} · ${mode}`;
+  });
+
+  function setThinkingMode(mode: 'auto' | 'off' | 'on') {
+    appStore.localModelLoadThinkingMode = mode;
+  }
 
   const visionSupport = $derived.by(() => {
     if (appStore.localModelLoadMmprojPath) {
@@ -215,7 +223,9 @@
     cache_type_v: appStore.localModelLoadCacheTypeV,
     parallel: Number(appStore.localModelLoadParallel) > 1 ? Number(appStore.localModelLoadParallel) : undefined,
     mmproj_path: appStore.localModelLoadMmprojPath || undefined,
-    disable_thinking: appStore.localModelLoadDisableThinking
+    thinking_mode: appStore.localModelLoadThinkingMode === 'auto'
+      ? undefined
+      : appStore.localModelLoadThinkingMode
   }));
 
   let commandPreview = $state('');
@@ -353,7 +363,7 @@
   <div class="info-card mb-5 grid gap-2 sm:grid-cols-2 text-[13px] leading-5 text-[var(--text-secondary)]">
   <div class="flex items-center justify-between gap-3"><span>Tools</span><span class={`font-medium ${toolSupport.tone}`}>{toolSupport.label}</span></div>
   <div class="flex items-center justify-between gap-3"><span>Vision</span><span class={`font-medium ${visionSupport.tone}`}>{visionSupport.label}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Thinking</span><span class={`font-medium ${thinkingSupport.tone}`}>{thinkingSupport.label}</span></div>
+  <div class="flex items-center justify-between gap-3"><span>Thinking</span><span class={`font-medium ${thinkingSupport.tone}`}>{thinkingSummary}</span></div>
   <div class="flex items-center justify-between gap-3"><span>MTP</span><span class={`font-medium ${mtpSupport.tone}`}>{mtpSupport.label}</span></div>
   </div>
 
@@ -514,24 +524,25 @@
       </div>
     {/if}
 
-    <!-- Thinking toggle -->
+    <!-- Thinking level: server default unless the user pins off/on. -->
     <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface)] px-3 py-2">
       <div>
         <div class="text-[13px] font-medium text-[var(--text)]">Thinking</div>
-          <div class="text-[11px] text-[var(--text-tertiary)]">Lets the model show a thinking block before answering.</div>
+          <div class="text-[11px] text-[var(--text-tertiary)]">Auto lets the server decide from the model's template. Off passes --reasoning off.</div>
       </div>
-      <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-        <input
-          type="checkbox"
-          class="peer sr-only"
-          checked={thinkingOn}
-          disabled={thinkingLockedOff}
-          onchange={(e) => { appStore.localModelLoadDisableThinking = !(e.currentTarget as HTMLInputElement).checked; }}
-        />
-        <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)] peer-disabled:opacity-50"></span>
-        <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
-        <span class="text-[11px] font-semibold">{thinkingOn ? 'On' : 'Off'}</span>
-      </label>
+      <div class="flex items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]" role="group" aria-label="Thinking level">
+        {#each [['auto', 'Auto'], ['off', 'Off'], ['on', 'On']] as [mode, label]}
+          <button
+            type="button"
+            class={`rounded-full px-3 py-1.5 text-[12px] transition ${thinkingMode === mode ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'} disabled:opacity-50`}
+            disabled={thinkingLocked}
+            title={thinkingLocked ? 'This model template does not support thinking' : undefined}
+            onclick={() => setThinkingMode(mode as 'auto' | 'off' | 'on')}
+          >
+            {label}
+          </button>
+        {/each}
+      </div>
     </div>
 
     <!-- Vision projector selector -->
@@ -991,10 +1002,6 @@
    <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
   <span title="Full-size sliding-window cache. Improves prompt reuse on Gemma-style models.">Full SWA cache</span>
   <input type="checkbox" bind:checked={appStore.localModelLoadSwaFull} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span>Disable thinking</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadDisableThinking} />
   </label>
   </div>
 

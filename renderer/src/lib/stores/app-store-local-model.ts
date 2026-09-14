@@ -1,4 +1,4 @@
-import type { AppConfig } from '$lib/types/chat';
+import type { AppConfig, LocalThinkingMode } from '$lib/types/chat';
 import type { LocalModelLoadTarget } from '$lib/stores/app-store-types';
 
 const LOCAL_MODEL_SETTINGS_KEY = 'chatealm_model_load_settings_by_model';
@@ -33,7 +33,8 @@ export interface LocalModelLoadState {
   cacheTypeV: string;
   mmprojPath: string;
   rememberSettings: boolean;
-  disableThinking: boolean;
+  /** 'auto' omits --reasoning so llama.cpp detects from the template. */
+  thinkingMode: LocalThinkingMode;
   mtpEnabled: boolean;
   mtpDraftPath: string;
   mtpDraftNMax: string;
@@ -66,7 +67,7 @@ export interface LocalModelRuntimeRequest {
   cacheTypeK?: string;
   cacheTypeV?: string;
   mmprojPath?: string;
-  disableThinking?: boolean;
+  thinkingMode?: LocalThinkingMode;
   mtp?: boolean;
   mtpDraftPath?: string;
   mtpDraftNMax?: number;
@@ -104,6 +105,19 @@ export function pickNumber(...values: unknown[]): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+/**
+ * Normalizes a thinking mode from remembered settings, saved config, or the
+ * legacy `disable_thinking` boolean. Anything unrecognized falls back to
+ * 'auto' (omit --reasoning).
+ */
+export function normalizeThinkingMode(...values: unknown[]): LocalThinkingMode {
+  for (const value of values) {
+    if (value === 'off' || value === 'on' || value === 'auto') return value;
+    if (value === true) return 'off';
+  }
+  return 'auto';
 }
 
 export function resolveLocalModelLoadState(params: {
@@ -153,7 +167,12 @@ export function resolveLocalModelLoadState(params: {
     cacheTypeK: String(remembered.cache_type_k || local?.cache_type_k || 'f16'),
     cacheTypeV: String(remembered.cache_type_v || local?.cache_type_v || 'f16'),
     mmprojPath: params.mmprojPath || '',
-    disableThinking: remembered.disable_thinking ? Boolean(remembered.disable_thinking) : (local?.disable_thinking ?? false),
+    thinkingMode: normalizeThinkingMode(
+      remembered.thinking_mode,
+      remembered.disable_thinking,
+      local?.thinking_mode,
+      local?.disable_thinking
+    ),
     mtpEnabled: remembered.mtp != null ? Boolean(remembered.mtp) : (local?.mtp ?? false),
     mtpDraftPath: remembered.mtp_draft_path != null ? String(remembered.mtp_draft_path) : (local?.mtp_draft_path ? String(local.mtp_draft_path) : ''),
     mtpDraftNMax: remembered.mtp_draft_n_max != null ? String(remembered.mtp_draft_n_max) : (local?.mtp_draft_n_max != null ? String(local.mtp_draft_n_max) : ''),
@@ -199,7 +218,10 @@ export function buildLocalModelSettingsPatch(state: LocalModelLoadState) {
     cache_type_v: state.cacheTypeV || undefined,
     runtime_path: state.runtimePath || undefined,
     mmproj_path: state.mmprojPath || undefined,
-    disable_thinking: state.disableThinking,
+    // New key wins; explicitly clearing the legacy boolean so an old
+    // `disable_thinking: true` cannot fight the tri-state after migration.
+    thinking_mode: state.thinkingMode === 'auto' ? undefined : state.thinkingMode,
+    disable_thinking: undefined,
     mtp: state.mtpEnabled,
     mtp_draft_path: state.mtpDraftPath || null,
     mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null,
@@ -224,7 +246,8 @@ export function buildRememberedLocalModelSettingsEntry(state: LocalModelLoadStat
     cache_type_k: state.cacheTypeK || 'f16',
     cache_type_v: state.cacheTypeV || 'f16',
     runtime_path: state.runtimePath || '',
-    disable_thinking: state.disableThinking,
+    thinking_mode: state.thinkingMode === 'auto' ? undefined : state.thinkingMode,
+    disable_thinking: undefined,
     mtp: state.mtpEnabled,
     mtp_draft_path: state.mtpDraftPath || null,
     mtp_draft_n_max: state.mtpDraftNMax ? Number(state.mtpDraftNMax) : null,
@@ -272,7 +295,7 @@ export function buildLocalModelRuntimeRequest(params: {
     cacheTypeK: settings.cache_type_k,
     cacheTypeV: settings.cache_type_v,
     mmprojPath: settings.mmproj_path,
-    disableThinking: params.state.disableThinking,
+    thinkingMode: params.state.thinkingMode,
     mtp: settings.mtp,
     mtpDraftPath: params.state.mtpDraftPath || settings.mtp_draft_path || undefined,
     mtpDraftNMax: settings.mtp_draft_n_max ?? undefined,

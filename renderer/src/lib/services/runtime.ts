@@ -1,4 +1,4 @@
-import type { AppConfig } from '$lib/types/chat';
+import type { AppConfig, LocalThinkingMode } from '$lib/types/chat';
 import type { LlamaConfig, ModelSession, RecommendedSettings, RuntimeTelemetry, SupervisorEvent, SupervisorStatus } from '$lib/types/bridge';
 import { invoke, listen } from './bridge';
 
@@ -210,7 +210,7 @@ export async function loadLocalModel(args: {
   cacheTypeK?: string;
   cacheTypeV?: string;
   mmprojPath?: string;
-  disableThinking?: boolean;
+  thinkingMode?: LocalThinkingMode;
   mtp?: boolean;
   mtpDraftPath?: string;
   mtpDraftNMax?: number;
@@ -262,7 +262,11 @@ export async function loadLocalModel(args: {
     cache_type_v: args.cacheTypeV ?? args.config.llm?.local?.cache_type_v ?? undefined,
     runtime_path: args.runtimePath || args.config.llm?.local?.runtime_path,
     mmproj_path: args.mmprojPath || args.config.llm?.local?.mmproj_path || undefined,
-    disable_thinking: args.disableThinking ?? args.config.llm?.local?.disable_thinking ?? false,
+    // Tri-state with legacy fallback: an old `disable_thinking: true` still
+    // means off; 'auto'/absent omits the key so the server detects.
+    thinking_mode: args.thinkingMode
+      ?? args.config.llm?.local?.thinking_mode
+      ?? (args.config.llm?.local?.disable_thinking ? 'off' : 'auto'),
     mtp: args.mtp ?? args.config.llm?.local?.mtp ?? false,
     mtp_draft_path: args.mtpDraftPath || args.config.llm?.local?.mtp_draft_path || undefined,
     mtp_draft_n_max: args.mtpDraftNMax ?? args.config.llm?.local?.mtp_draft_n_max ?? undefined

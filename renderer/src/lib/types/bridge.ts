@@ -182,6 +182,12 @@ export interface LlamaConfig {
   cache_type_v?: string;
   runtime_path?: string;
   mmproj_path?: string;
+  /**
+   * Thinking default: 'auto' (omit --reasoning, server detects from the
+   * template), 'off' (--reasoning off), 'on' (--reasoning on).
+   */
+  thinking_mode?: 'auto' | 'off' | 'on';
+  /** Legacy equivalent of thinking_mode 'off'; still honored on read. */
   disable_thinking?: boolean;
   mtp?: boolean;
   mtp_draft_path?: string;
