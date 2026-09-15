@@ -2034,6 +2034,31 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     }
   }
 
+  /*
+   * Safety net for website builds: preview_project publishes the artifact, but a
+   * native-tool model can write index.html and never call it. In that case the
+   * sandbox files are only in `ctx.files`, so publish the entry here or the site
+   * is gone when the run ends.
+   */
+  if (artifactsEnabled && wantsWebsiteArtifact && !artifacts.some((entry) => entry.manifest?.kind === 'web')) {
+    const entryPath = ctx.files['index.html'] !== undefined
+      ? 'index.html'
+      : Object.keys(ctx.files).find((path) => !path.startsWith('__') && /\.html?$/i.test(path));
+    if (entryPath) {
+      publishToolArtifact({
+        success: true,
+        createdFiles: Object.keys(ctx.files).filter((path) => !path.startsWith('__')),
+        artifactManifest: {
+          schemaVersion: 1,
+          kind: 'web',
+          presentation: 'web',
+          entryPath,
+          status: 'ready'
+        }
+      });
+    }
+  }
+
   finalContent = sanitizeAgentVisibleText(finalContent);
   finalReasoning = sanitizeAgentVisibleText(finalReasoning);
   const artifact = artifacts.length ? artifacts[artifacts.length - 1] : null;

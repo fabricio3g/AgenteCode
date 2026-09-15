@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ArtifactManifest } from '$lib/types/chat';
 import { buildArtifactFromContext, buildScopedArtifact } from '$lib/services/agent-artifact';
+import { resolveArtifactPreview } from '$lib/services/artifact-model';
 
 function manifest(over: Partial<ArtifactManifest> = {}): ArtifactManifest {
   return {
@@ -53,6 +54,28 @@ describe('buildScopedArtifact', () => {
     expect(artifact?.manifest?.presentation).toBe('document');
     // The viewer sibling has to come along or the document cannot be previewed.
     expect(artifact?.files['__viewer__/report.docx.html']).toBe('<h1>R</h1>');
+  });
+
+  it('publishes a whole website as one web artifact with a resolvable entry', () => {
+    const files = {
+      'index.html': '<link rel="stylesheet" href="style.css"><script src="script.js"></script>',
+      'style.css': 'body { color: red; }',
+      'script.js': 'console.log("hi");',
+      '__preview__.html': '<html>preview</html>'
+    };
+
+    const site = buildScopedArtifact(
+      { files, artifactManifest: null },
+      {
+        createdFiles: ['index.html', 'style.css', 'script.js'],
+        artifactManifest: { schemaVersion: 1, kind: 'web', presentation: 'web', entryPath: 'index.html', status: 'ready' }
+      }
+    );
+
+    expect(site?.manifest).toMatchObject({ kind: 'web', presentation: 'web', entryPath: 'index.html' });
+    expect(Object.keys(site!.files).sort()).toEqual(['index.html', 'script.js', 'style.css']);
+    // The entry must resolve for the inline card and the studio preview.
+    expect(resolveArtifactPreview(site!)).toMatchObject({ basePath: 'index.html', source: 'manifest' });
   });
 
   it('returns null without a manifest or without created files', () => {

@@ -252,5 +252,28 @@ export function handlePreviewProject(params: {
     return params.ok({ message: 'No HTML entry point found', files: Object.keys(params.files).filter((file) => !file.startsWith('__')) });
   }
   params.files['__preview__.html'] = html;
-  return params.ok({ preview: true, entryPoint: entry });
+  /*
+   * Publishing the preview is what makes the site reachable from the chat. The
+   * scoped artifact collector only builds artifacts from results that carry a
+   * manifest + created files, and neither write_file nor this tool used to
+   * provide one — so a finished website lived only in the run's in-memory file
+   * map and disappeared from the transcript when the run ended.
+   */
+  const siteFiles = Object.keys(params.files).filter((path) => !path.startsWith('__'));
+  const entryPath = params.files[entry] !== undefined
+    ? entry
+    : (params.files['index.html'] !== undefined ? 'index.html' : siteFiles.find((path) => /\.html?$/i.test(path)));
+  return params.ok(
+    { preview: true, entryPoint: entryPath ?? entry },
+    {
+      createdFiles: siteFiles,
+      artifactManifest: {
+        schemaVersion: 1,
+        kind: 'web',
+        presentation: 'web',
+        ...(entryPath ? { entryPath } : {}),
+        status: 'ready'
+      }
+    }
+  );
 }

@@ -12,6 +12,7 @@ import { loadAppConfig } from '$lib/utils/storage';
 import { buildMessageParts, isAssistantMessageEmpty } from '$lib/features/chat/thread/message-parts';
 import type { ChatMessage } from '$lib/types/chat';
 import { runAgentTask } from './agent';
+import { resolveArtifactPreview } from './artifact-model';
 import { shouldUseToolLoop } from './composer-route';
 
 describe('Home agent tool round trip', () => {
@@ -63,6 +64,49 @@ describe('Home agent tool round trip', () => {
     const display = { message, displayContent: '', displayReasoning: '', displayMetadata: null, hasActiveDeepResearch: false };
     expect(isAssistantMessageEmpty(display)).toBe(false);
     expect(buildMessageParts({ ...display, enableThinking: true, hasDocumentArtifact: false, hasPendingApproval: false })).toContainEqual(expect.objectContaining({ kind: 'artifact' }));
+  });
+
+  it('publishes a code-block website as a previewable web artifact', async () => {
+    const html = '<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><h1>Lumina</h1><script src="script.js"></script></body></html>';
+    const website = ['```html', html, '```', '```css', 'body { color: #111; }', '```', '```js', 'console.log("lumina");', '```'].join('\n');
+    vi.mocked(agentStreamComplete)
+      .mockImplementationOnce(async (args) => {
+        args.onContent?.(website);
+        return { content: website, reasoning: '' };
+      })
+      .mockImplementationOnce(async (args) => {
+        args.onContent?.('The Lumina site is ready.');
+        return { content: 'The Lumina site is ready.', reasoning: '' };
+      });
+    const onArtifact = vi.fn();
+    const result = await runAgentTask({ chatId: 'home-site', rawPrompt: 'Build a website for Lumina', messages: [{ role: 'user', content: 'Build a website for Lumina' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact });
+
+    // The auto-write path writes the files, then preview_project publishes them.
+    const sites = result.artifacts.filter((artifact) => artifact.manifest?.kind === 'web');
+    expect(sites).toHaveLength(1);
+    expect(Object.keys(sites[0]!.files).sort()).toEqual(['index.html', 'script.js', 'style.css']);
+    expect(sites[0]!.manifest?.entryPath).toBe('index.html');
+    // The entry has to resolve, or the chat card and studio preview stay empty.
+    expect(resolveArtifactPreview(sites[0]!)).toMatchObject({ basePath: 'index.html', source: 'manifest' });
+    expect(onArtifact).toHaveBeenCalled();
+  });
+
+  it('publishes a website even when the model writes files but never previews them', async () => {
+    const html = '<!doctype html><html><body><h1>Lumina</h1></body></html>';
+    vi.mocked(agentStreamComplete)
+      .mockImplementationOnce(async () => ({
+        content: '',
+        reasoning: '',
+        toolCalls: [{ id: 'w1', name: 'write_file', arguments: { path: 'index.html', content: html } }]
+      }))
+      .mockImplementationOnce(async () => ({ content: 'Wrote the Lumina site.', reasoning: '' }));
+    const result = await runAgentTask({ chatId: 'home-site-native', rawPrompt: 'Build a website for Lumina', messages: [{ role: 'user', content: 'Build a website for Lumina' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact: vi.fn() });
+
+    // No preview_project call: the run-end safety net must still publish the site.
+    const sites = result.artifacts.filter((artifact) => artifact.manifest?.kind === 'web');
+    expect(sites).toHaveLength(1);
+    expect(sites[0]!.manifest?.entryPath).toBe('index.html');
+    expect(resolveArtifactPreview(sites[0]!)).toMatchObject({ basePath: 'index.html' });
   });
 
   it('answers ordinary chat in one streamed turn without manufacturing files from code examples', async () => {
