@@ -204,6 +204,15 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     }
     case 'error': {
       state.error = event.message;
+      state.retrying = null;
+      // An error can be the last event of a run: the engine's prompt()
+      // rejection path emits `error` without a following `agent_end`, which
+      // left the assistant placeholder streaming forever. Close the run here
+      // defensively; a later agent_end still refines the stop reason.
+      state.done = true;
+      state.stopReason ??= 'error';
+      const broken = state.steps.find((s) => s.status === 'running');
+      if (broken) broken.status = 'error';
       return true;
     }
     case 'agent_end': {

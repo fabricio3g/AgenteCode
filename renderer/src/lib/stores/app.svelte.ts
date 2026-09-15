@@ -15,6 +15,7 @@ import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } 
 import { isElectron } from '$lib/services/bridge';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
+import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
 import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
@@ -1154,6 +1155,20 @@ class AppStore {
     try { localStorage.setItem(USER_NAME_KEY, name); } catch {}
   }
 
+  /**
+   * Per-chat caches owned by feature stores (e.g. the Code run map) register
+   * teardown here. Keeping the hook on AppStore makes `deleteChat` the single
+   * deletion choke point without AppStore importing feature stores, which
+   * would create an import cycle through the stores they depend on.
+   */
+  readonly chatDeletedHooks = new Set<(chatId: string) => void>();
+
+  /** Register per-chat cache teardown. Returns an unregister function. */
+  onChatDeleted(hook: (chatId: string) => void): () => void {
+    this.chatDeletedHooks.add(hook);
+    return () => this.chatDeletedHooks.delete(hook);
+  }
+
   deleteChat(chatId: string) {
     if (this.isChatGenerating(chatId)) {
       this.stopStreaming(chatId);
@@ -1161,6 +1176,10 @@ class AppStore {
     const title = this.chats.find((c) => c.id === chatId)?.title;
     const deletedMode = normalizeContextMode(this.chats.find((c) => c.id === chatId)?.contextMode || this.activeSpace);
     this.chats = this.chats.filter((chat) => chat.id !== chatId);
+    for (const hook of this.chatDeletedHooks) {
+      // A feature cache failing to tear down must never block the deletion.
+      try { hook(chatId); } catch { /* ignore */ }
+    }
     const activeRuns = { ...this.activeRunsByChat };
     delete activeRuns[chatId];
     this.activeRunsByChat = activeRuns;
@@ -2562,6 +2581,10 @@ class AppStore {
   }
 
   stopStreaming(chatId = this.currentChatId || '') {
+    // The browser tool sets this when an agent starts driving a page, and only
+    // the normal agent exit used to clear it — aborting left the "Agent" badge
+    // stuck on the browser panel. Stopping a run is always a safe reset point.
+    browserPanelStore.agentDriving = false;
     const run = chatId ? this.activeRunsByChat[chatId] : null;
     run?.controller.abort();
     if (run) {
