@@ -46,7 +46,8 @@
     systemPrompt: string;
   }
 
-  let draft = $state<DetailDraft>(buildDraft(providerId));
+  // Rebuilt by the providerId effect below; this only seeds the first render.
+  let draft = $state<DetailDraft>(untrack(() => buildDraft(providerId)));
 
   function buildDraft(id: string): DetailDraft {
     const savedProvider = appStore.config.llm?.providers?.[id];

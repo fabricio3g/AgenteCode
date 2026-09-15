@@ -58,6 +58,8 @@
     { id: 'full' as const, icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint') }
   ]);
   const activeMode = $derived(modes.find((m) => m.id === runtimeMode) ?? modes[1]!);
+  // Svelte 5 dynamic components: a capitalized reference renders directly.
+  const ModeIcon = $derived(activeMode.icon);
 
   function selectMode(mode: 'plan' | 'supervised' | 'full') {
     modeMenuOpen = false;
@@ -199,7 +201,7 @@
               title={activeMode.hint}
               aria-expanded={modeMenuOpen}
             >
-              <svelte:component this={activeMode.icon} class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+              <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
               <span class="trigger-label truncate">{activeMode.label}</span>
               <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
             </button>

@@ -3,7 +3,7 @@
 <script lang="ts">
   import { Check, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   interface Props {
     messageId: string;
@@ -16,7 +16,9 @@
   let { messageId, initialContent, role, onCancel, onDone }: Props = $props();
 
   let textarea: HTMLTextAreaElement | undefined;
-  let content = $state(initialContent);
+  // Edited draft starts from the message and must not be clobbered if the
+  // prop changes while the editor is open (same message is saved on done).
+  let content = $state(untrack(() => initialContent));
 
   const minHeight = 44;
   const maxHeight = 300;

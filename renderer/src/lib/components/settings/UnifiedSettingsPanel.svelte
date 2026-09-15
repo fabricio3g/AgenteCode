@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import GeneralSettings from './GeneralSettings.svelte';
   import SearchSettings from './SearchSettings.svelte';
   import { StatusIndicator } from '$lib/components/ui';
@@ -79,16 +79,17 @@
     applySearchState,
   );
 
-  let previousGeneralSignature = JSON.stringify({
+  // Baselines are captured once; later comparisons happen in effects.
+  let previousGeneralSignature = JSON.stringify(untrack(() => ({
     showAssistantText,
     enableThinking,
-  });
-  let previousSearchSignature = JSON.stringify({
+  })));
+  let previousSearchSignature = JSON.stringify(untrack(() => ({
     searchProvider,
     searchMaxResults,
     aggregatorEngines,
     searchSafeSearch,
-  });
+  })));
 
   const providersRequiringConfiguration = new Set([
     'searxng', 'brave', 'google_cse', 'tavily', 'exa', 'serpapi',

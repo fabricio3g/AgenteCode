@@ -24,7 +24,7 @@
 {#each approvals as approval (approval.id)}
   <section class="approval" aria-label={copy.tool.needsApproval}>
     <header class="head">
-      <ShieldQuestion class="ico" />
+      <ShieldQuestion class="size-3.5 shrink-0" />
       <span class="title">{copy.tool.needsApproval}</span>
     </header>
 
@@ -68,12 +68,6 @@
     /* Matches AgentBlock's status line, which this sits directly beneath. */
     font-size: 0.8125rem;
     font-weight: 500;
-  }
-
-  .ico {
-    width: 0.9rem;
-    height: 0.9rem;
-    flex-shrink: 0;
   }
 
   .title {

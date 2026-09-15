@@ -282,12 +282,6 @@
     backdrop-filter: blur(10px);
   }
 
-  .pdf-divider {
-    width: 1px;
-    height: 1rem;
-    background: var(--border);
-  }
-
   .pdf-nav-btn {
     display: inline-flex;
     align-items: center;

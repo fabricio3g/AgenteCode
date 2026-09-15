@@ -30,15 +30,18 @@
 
 <div
   class="aui-modal-backdrop z-[61]"
-  role="dialog"
-  aria-modal="true"
+  role="presentation"
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
     if (e.target === e.currentTarget) appStore.promptConfigOpen = false;
   }}
 >
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class="aui-modal-surface max-w-2xl"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >

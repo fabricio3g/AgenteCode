@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { createUIContext } from './context';
   import RenderNode from './RenderNode.svelte';
   import { createParser } from './parser';
@@ -33,11 +34,11 @@
 
   // createUIContext must run at init; use getters so callbacks always see current props.
   const context = createUIContext({
-    library,
+    library: untrack(() => library),
     isStreaming: false,
     onAction: (event) => onAction?.(event),
     onStateUpdate: (state) => onStateUpdate?.(state),
-    initialState: initialState || {},
+    initialState: untrack(() => initialState) || {},
     renderNode: (value: unknown) => value
   });
 
