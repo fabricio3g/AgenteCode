@@ -5,7 +5,7 @@
   import { appWindow } from '$lib/services/window';
   import { countOf } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2, Globe } from 'lucide-svelte';
+  import { Search, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
@@ -43,8 +43,19 @@
   role="banner"
 >
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
-    <!-- The sidebar toggle lives on the sidebar itself — in its header when
-         expanded, at the top of the rail when collapsed. -->
+    <Tooltip label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}>
+      <button
+        class="aui-icon-button size-8 titlebar-no-drag"
+        onclick={() => (appStore.sidebarOpen = !appStore.sidebarOpen)}
+        aria-label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+      >
+        {#if appStore.sidebarOpen}
+          <PanelLeftClose class="size-4" />
+        {:else}
+          <PanelLeftOpen class="size-4" />
+        {/if}
+      </button>
+    </Tooltip>
     <Tooltip label="Search conversations">
       <button
         class="aui-icon-button size-8 titlebar-no-drag"

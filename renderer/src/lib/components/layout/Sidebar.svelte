@@ -5,8 +5,6 @@
   import { modelsStore } from '$lib/stores/models.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import BrandMark from '$lib/components/BrandMark.svelte';
-  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import type { ChatContextMode } from '$lib/types/chat';
@@ -14,7 +12,7 @@
   import { slide } from 'svelte/transition';
 import { flip } from 'svelte/animate';
 import { smoothEase } from '$lib/utils/transitions';
-  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, PanelLeftClose, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
+  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import { downloadSessionMarkdown, sessionExportFilename } from '$lib/features/shared/export-session';
 
@@ -159,29 +157,8 @@ import { smoothEase } from '$lib/utils/transitions';
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
-  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1">
-
-    <!-- Same 2.25rem height as the titlebar row, anchored to the top of the
-         window, so the wordmark, the collapse control and the titlebar actions
-         all sit on one baseline. -->
-    <div class="flex h-9 shrink-0 items-center justify-between gap-2">
-      <BrandMark
-        size="sm"
-        class="sidebar-brand-mark"
-      />
-      <Tooltip label="Hide sidebar" position="bottom">
-        <button
-          type="button"
-          class="aui-icon-button size-8 shrink-0"
-          onclick={() => (appStore.sidebarOpen = false)}
-          aria-label="Hide sidebar"
-        >
-          <PanelLeftClose class="size-4" />
-        </button>
-      </Tooltip>
-    </div>
-
-    <div class="flex flex-col gap-1.5 pb-3 pt-3">
+  <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
+    <div class="flex flex-col gap-1.5 pb-3 pt-1">
       <div
         class="space-tabs"
         role="tablist"
@@ -386,20 +363,6 @@ import { smoothEase } from '$lib/utils/transitions';
 
 
 <style>
-  /* Wordmark reads as type on the sidebar surface: the name at full contrast,
-     the suffix muted. No slab, no inversion between themes. */
-  :global(.sidebar-brand-mark) {
-    /* No align-self override — it would pin the wordmark to the top of the
-       header row and break the shared baseline with the titlebar. */
-    position: relative;
-    z-index: 1;
-    min-width: 0;
-    padding: 0.375rem 0.5rem;
-    border-radius: var(--radius-md);
-    background: transparent !important;
-    box-shadow: none;
-  }
-
   .btn-label-truncate {
     min-width: 0;
     flex: 1 1 auto;

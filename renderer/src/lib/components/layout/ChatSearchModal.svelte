@@ -284,13 +284,13 @@
                   <div class="result-trailing">
                     <span class="result-date text-[11px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
                     <div class="result-actions flex items-center gap-0.5">
-                      <button type="button" class="result-action" onclick={() => selectChat(hit.chat.id, hit.matchMessageId)} aria-label={`Open ${hit.chat.title || 'chat'}`} title="Open">
+                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); selectChat(hit.chat.id, hit.matchMessageId); }} aria-label={`Open ${hit.chat.title || 'chat'}`} title="Open">
                         <ExternalLink class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action" onclick={() => startRename(hit.chat)} aria-label={`Rename ${hit.chat.title || 'chat'}`} title="Rename">
+                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); startRename(hit.chat); }} aria-label={`Rename ${hit.chat.title || 'chat'}`} title="Rename">
                         <Pencil class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action danger" onclick={() => deleteChat(hit.chat)} aria-label={`Delete ${hit.chat.title || 'chat'}`} title="Delete">
+                      <button type="button" class="result-action danger" onclick={(e) => { e.stopPropagation(); deleteChat(hit.chat); }} aria-label={`Delete ${hit.chat.title || 'chat'}`} title="Delete">
                         <Trash2 class="size-3.5" />
                       </button>
                     </div>

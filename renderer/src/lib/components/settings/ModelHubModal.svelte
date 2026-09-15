@@ -23,7 +23,8 @@
   import { getInstalledRuntimes } from '$lib/services/files';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { CLOUD_PROVIDERS, PROVIDER_COLORS } from '$lib/utils/providers';
+  import { CLOUD_PROVIDERS } from '$lib/utils/providers';
+  import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import LocalRuntimePanel from './LocalRuntimePanel.svelte';
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
@@ -55,9 +56,22 @@
 
   // ── Model Providers nav (Jan grammar) ─────────────────────────────────
   let selectedProviderId = $state('openai');
-  let addCardOpen = $state(false);
+  let addModalOpen = $state(false);
   let newEndpointLabel = $state('');
   let newEndpointUrl = $state('');
+  let newEndpointKey = $state('');
+  let addingEndpoint = $state(false);
+
+  function openAddModal() {
+    newEndpointLabel = '';
+    newEndpointUrl = '';
+    newEndpointKey = '';
+    addModalOpen = true;
+  }
+
+  function closeAddModal() {
+    addModalOpen = false;
+  }
 
   const settingsNavItems = $derived([
     { id: 'general' as NavSection, label: 'General', description: 'Profile and chat behavior', icon: Settings, active: false },
@@ -68,13 +82,6 @@
 
   const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore' || activeSection === 'loaded');
   const isProvidersSection = $derived(activeSection === 'providers');
-  const activeNavItem = $derived(
-    settingsNavItems.find((item) => item.id === activeSection)
-      ?? (isProvidersSection
-        ? { label: providerLabelOf(selectedProviderId), description: 'Cloud and custom endpoints' }
-        : settingsNavItems[0]!)
-  );
-  const shellTitle = $derived(isModelSection ? 'Models' : 'Settings');
   const navAriaLabel = $derived('Settings sections');
 
   /** Legacy providers.custom config surfaces as a row so nothing is orphaned. */
@@ -114,16 +121,21 @@
   async function submitNewEndpoint() {
     const name = newEndpointLabel.trim();
     const url = newEndpointUrl.trim();
-    if (!name || !url) return;
+    if (!name || !url || addingEndpoint) return;
+    addingEndpoint = true;
     try {
       const id = await appStore.addCustomProvider({ label: name, base_url: url });
-      newEndpointLabel = '';
-      newEndpointUrl = '';
-      addCardOpen = false;
+      const key = newEndpointKey.trim();
+      if (key) {
+        await appStore.updateProvider({ provider: id, api_key: key }, { activate: false });
+      }
+      closeAddModal();
       selectProvider(id);
-      toastStore.success(`${name} added — add your API key to finish setup`);
+      toastStore.success(key ? `${name} added and ready` : `${name} added — add your API key to finish setup`);
     } catch (err) {
       toastStore.error('Failed to add endpoint: ' + ((err as Error)?.message || String(err)));
+    } finally {
+      addingEndpoint = false;
     }
   }
 
@@ -192,7 +204,15 @@
   });
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
+<svelte:window onkeydown={(e) => {
+  if (e.key !== 'Escape') return;
+  if (addModalOpen) {
+    e.stopPropagation();
+    closeAddModal();
+    return;
+  }
+  close();
+}} />
 
 <div
   role="presentation"
@@ -203,7 +223,7 @@
   <div
     role="dialog"
     aria-modal="true"
-    aria-labelledby="settings-manager-title"
+    aria-label="Models and settings"
     tabindex="-1"
     class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-[var(--radius-2xl)] bg-popover text-foreground shadow-[shadow:var(--shadow-xl)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
     transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
@@ -222,7 +242,8 @@
     {/snippet}
 
     {#if isModelSection}
-      <!-- Models: rail spans full modal height; title bar has no divider. -->
+      <!-- Models: rail spans full modal height; no title bar — close floats
+           top-right with no divider. -->
       <div class="flex min-h-0 flex-1 flex-row overflow-hidden">
         <ModelNavRail
           tab={modelTab}
@@ -231,14 +252,7 @@
           onautoload={(next) => setModelAutoLoad(next)}
         />
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div class="flex h-14 shrink-0 items-center justify-between gap-3 px-4 sm:px-5">
-            <div class="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true"></div>
-
-            <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
-              <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
-              <p class="truncate text-[11px] text-muted-foreground">Discover, download, and run — all inline.</p>
-            </div>
-
+          <div class="flex h-14 shrink-0 items-center justify-end px-4 sm:px-5">
             {@render modalClose()}
           </div>
 
@@ -246,19 +260,8 @@
         </div>
       </div>
     {:else}
-    <!-- Top bar -->
-    <div class="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-4 sm:px-5">
-      <div class="flex w-8 shrink-0 items-center gap-0.5" aria-hidden="true"></div>
-
-      <div class="pointer-events-none absolute left-1/2 min-w-0 max-w-[45%] -translate-x-1/2 text-center">
-        <h2 id="settings-manager-title" class="truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">{shellTitle}</h2>
-        <p class="truncate text-[11px] text-muted-foreground">{activeNavItem.description}</p>
-      </div>
-
-      {@render modalClose()}
-    </div>
-
-    <!-- Content -->
+    <!-- Settings: no top title bar — the nav spans the full modal height and
+         the close floats top-right over the content with no divider. -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
       <aside class="shrink-0 border-b border-[var(--border-subtle)] bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
         <nav class="flex gap-1 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-visible" aria-label={navAriaLabel}>
@@ -289,11 +292,11 @@
               <button
                 type="button"
                 class="flex size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-[var(--surface-hover)] hover:text-foreground"
-                onclick={() => { addCardOpen = !addCardOpen; }}
+                onclick={openAddModal}
                 title="Add custom endpoint"
                 aria-label="Add custom endpoint"
               >
-                {#if addCardOpen}<X class="size-3" />{:else}<Plus class="size-3.5" />{/if}
+                <Plus class="size-3.5" />
               </button>
             </div>
 
@@ -310,10 +313,7 @@
                   aria-current={selected ? 'page' : undefined}
                   onclick={() => selectProvider(p.id)}
                 >
-                  <span
-                    class="flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white"
-                    style={`background:${PROVIDER_COLORS[p.id] ?? '#64748b'}`}
-                  >{(providerLabelOf(p.id)[0] || '?').toUpperCase()}</span>
+                  <ProviderIcon provider={p.id} size={18} />
                   <span class="min-w-0 flex-1 truncate text-left">{providerLabelOf(p.id)}</span>
                   {#if routing}
                     <span class="mr-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]" title="Active route"></span>
@@ -324,40 +324,16 @@
 
             {@render providerGroup('Local', localProviderItems)}
             {@render providerGroup('Remote', remoteProviderItems)}
-
-            {#if addCardOpen}
-              <div class="mx-1 mt-2 space-y-2 rounded-xl border border-border bg-muted/40 p-2.5">
-                <input
-                  class="aui-input w-full text-xs"
-                  bind:value={newEndpointLabel}
-                  placeholder="Name — e.g. My gateway"
-                />
-                <input
-                  class="aui-input w-full text-xs"
-                  bind:value={newEndpointUrl}
-                  placeholder="https://api.example.com/v1"
-                  onkeydown={(e) => { if (e.key === 'Enter') void submitNewEndpoint(); }}
-                />
-                <div class="flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    class="rounded-full px-2 py-1 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
-                    onclick={() => { addCardOpen = false; newEndpointLabel = ''; newEndpointUrl = ''; }}
-                  >Cancel</button>
-                  <button
-                    type="button"
-                    class="rounded-full bg-[var(--primary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--primary-fg)] disabled:opacity-50"
-                    onclick={() => void submitNewEndpoint()}
-                    disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim()}
-                  >Add</button>
-                </div>
-              </div>
-            {/if}
           </div>
         </nav>
       </aside>
 
-      <main class="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
+      <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div class="flex h-14 shrink-0 items-center justify-end px-4 sm:px-5">
+          {@render modalClose()}
+        </div>
+
+        <main class="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
         {#if activeSection === 'voice'}
           <VoiceSection bind:voiceMode />
         {:else if activeSection === 'general'}
@@ -378,8 +354,91 @@
             </div>
           </div>
         {/if}
-      </main>
+        </main>
+      </div>
     </div>
+    {/if}
+
+    {#if addModalOpen}
+      <!-- Add custom endpoint — floats over the settings dialog. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        role="presentation"
+        class="absolute inset-0 z-10 flex items-center justify-center rounded-[inherit] bg-[var(--overlay)] p-4"
+        onclick={(e) => { if (e.target === e.currentTarget) closeAddModal(); }}
+        onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAddModal(); } }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add custom provider"
+          tabindex="-1"
+          class="w-[min(440px,100%)] rounded-[var(--radius-2xl)] border border-border bg-popover text-foreground shadow-[shadow:var(--shadow-xl)]"
+          onclick={(e) => e.stopPropagation()}
+        >
+          <div class="flex items-center justify-between gap-3 px-5 pb-1 pt-4">
+            <div>
+              <h3 class="text-[15px] font-semibold tracking-[-0.01em]">Add custom provider</h3>
+              <p class="mt-0.5 text-xs text-muted-foreground">Connect any OpenAI-compatible endpoint.</p>
+            </div>
+            <button
+              type="button"
+              class="aui-icon-button size-8 shrink-0"
+              onclick={closeAddModal}
+              aria-label="Close"
+            >
+              <X class="size-3.5" />
+            </button>
+          </div>
+          <form
+            class="space-y-3 px-5 py-4"
+            onsubmit={(e) => { e.preventDefault(); void submitNewEndpoint(); }}
+          >
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-muted-foreground">Name</span>
+              <input
+                class="aui-input w-full text-sm"
+                bind:value={newEndpointLabel}
+                placeholder="e.g. My gateway"
+                autocomplete="off"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-muted-foreground">Base URL</span>
+              <input
+                class="aui-input w-full text-sm"
+                bind:value={newEndpointUrl}
+                placeholder="https://api.example.com/v1"
+                inputmode="url"
+                autocomplete="off"
+              />
+            </label>
+            <label class="block">
+              <span class="mb-1 block text-xs font-medium text-muted-foreground">API key <span class="font-normal opacity-70">(optional)</span></span>
+              <input
+                type="password"
+                class="aui-input w-full text-sm"
+                bind:value={newEndpointKey}
+                placeholder="sk-…"
+                autocomplete="off"
+              />
+            </label>
+            <div class="flex justify-end gap-1.5 pt-1">
+              <button
+                type="button"
+                class="rounded-full px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+                onclick={closeAddModal}
+              >Cancel</button>
+              <button
+                type="submit"
+                class="rounded-full bg-[var(--primary)] px-4 py-1.5 text-[13px] font-semibold text-[var(--primary-fg)] transition disabled:opacity-50"
+                disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim() || addingEndpoint}
+              >{addingEndpoint ? 'Adding…' : 'Add provider'}</button>
+            </div>
+          </form>
+        </div>
+      </div>
     {/if}
   </div>
 </div>

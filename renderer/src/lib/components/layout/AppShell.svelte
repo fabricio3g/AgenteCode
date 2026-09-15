@@ -22,7 +22,7 @@
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
-  import { Plus, Boxes, PanelLeftOpen, Settings } from 'lucide-svelte';
+  import { Plus, Boxes, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -123,19 +123,8 @@
     </div>
 
     <!-- pt-0.5 centres the first 2rem control inside the titlebar's 2.25rem
-         row, so the collapsed rail keeps the same baseline as the expanded
-         header and the titlebar. -->
+         row, so the collapsed rail keeps the same baseline as the titlebar. -->
     <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-0.5">
-      <Tooltip label="Show sidebar" position="right">
-        <button
-          class="aui-icon-button size-8"
-          onclick={() => (appStore.sidebarOpen = true)}
-          aria-label="Show sidebar"
-        >
-          <PanelLeftOpen class="size-4" />
-        </button>
-      </Tooltip>
-
       <Tooltip label={newSessionLabel}>
         <button
           class="aui-icon-button size-8"
