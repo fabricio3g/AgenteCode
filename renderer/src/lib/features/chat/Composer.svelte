@@ -499,18 +499,6 @@
     opacity: 1;
   }
 
-  .hint-card {
-    padding: 0.75rem 0.75rem 0.5rem;
-    border: 1px solid var(--border);
-    border-top: 0;
-    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-    background: var(--card);
-    box-shadow: var(--shadow-xs);
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    text-align: center;
-  }
-
   @media (max-width: 640px) {
     .composer-textarea {
       max-height: 10rem;

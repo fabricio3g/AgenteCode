@@ -80,7 +80,7 @@
   <section class="research-card" aria-label="Deep research">
     <div class="status-row">
       {#if isWorking}
-        <Loader2 class="status-icon spin" aria-hidden="true" />
+        <Loader2 class="size-3.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
       {/if}
       <span class="status-text">{stageLabel}</span>
       {#if activeTask.mode === 'max' || activeTask.mode === 'deep'}
@@ -174,16 +174,6 @@
     color: var(--muted-foreground);
     font-size: 0.8125rem;
     font-weight: 600;
-  }
-
-  .status-icon {
-    width: 0.85rem;
-    height: 0.85rem;
-    flex-shrink: 0;
-  }
-
-  .status-icon.spin {
-    animation: spin 0.75s linear infinite;
   }
 
   .mode-chip {
@@ -333,11 +323,4 @@
     background: color-mix(in srgb, var(--artifact-surface-hover, var(--surface-hover)) 80%, transparent);
   }
 
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .status-icon.spin { animation: none; }
-  }
 </style>

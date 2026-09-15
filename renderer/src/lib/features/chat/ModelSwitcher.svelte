@@ -844,11 +844,6 @@
     background: var(--muted);
   }
 
-  .mode-icon-btn.is-active {
-    color: var(--foreground);
-    background: var(--muted);
-  }
-
   .loading-indicator {
     background: transparent;
     border: none;
