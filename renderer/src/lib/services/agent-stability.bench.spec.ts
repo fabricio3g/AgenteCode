@@ -62,10 +62,15 @@ describe('functional: Auto routing matrix', () => {
     });
   }
 
-  it('auto conversation does not start tool loop; tools/agent do', () => {
-    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'conversation' })).toBe(false);
-    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'tools' })).toBe(true);
-    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'agent' })).toBe(true);
+  it('home and code always use the tool loop; route no longer gates it', () => {
+    // Home is one conversational agent: tools stay connected on every route
+    // (resolveComposerRoute still classifies intent for search/tool affordances).
+    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'conversation', contextMode: 'home' })).toBe(true);
+    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'tools', contextMode: 'home' })).toBe(true);
+    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'agent', contextMode: 'home' })).toBe(true);
+    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'conversation', contextMode: 'code' })).toBe(true);
+    // Missing contextMode normalizes to home, the default space.
+    expect(shouldUseToolLoop({ control: 'auto', composerMode: 'chat', route: 'conversation' })).toBe(true);
   });
 
   it('tabs Agent always uses tool loop even for greetings', () => {
