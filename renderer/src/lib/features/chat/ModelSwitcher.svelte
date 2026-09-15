@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { Check, ChevronDown, Cloud, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Sparkles, Square, X } from 'lucide-svelte';
+  import { Check, ChevronDown, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Sparkles, Square, X } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
@@ -10,6 +10,8 @@
   import { invoke, isElectron } from '$lib/services/bridge';
   import { Button } from '$lib/components/ui';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
+  import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { ModelOption } from '$lib/types/chat';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl, providerLabel } from '$lib/utils/providers';
@@ -32,7 +34,11 @@
   let modelsByProvider = $state<Record<string, ModelOption[] | undefined>>({});
   let loadingProvider = $state<Record<string, boolean>>({});
   let expandedProviders = $state<Record<string, boolean>>({});
-  let loadGen = $state(0);
+  let providerErrors = $state<Record<string, string>>({});
+  let selectingModel = $state('');
+  let changingMode = $state(false);
+  let panelEl = $state<HTMLDivElement>();
+  const dialogId = $props.id();
 
   const activeProvider = $derived(appStore.activeProvider);
   const displayLabel = $derived(appStore.activeModelLabel);
@@ -74,9 +80,16 @@
     const cached = modelsByProvider[id];
     const list = cached !== undefined ? cached : seedModels(id);
     const q = modelSearch.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+    const matchesProvider = providerLabel(id).toLowerCase().includes(q);
+    const matches = !q || matchesProvider ? list : list.filter((m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+    return matches.slice().sort((a, b) => {
+      const selected = id === appStore.activeProviderName ? activeProvider?.model : '';
+      return Number(b.id === selected) - Number(a.id === selected) || a.name.localeCompare(b.name);
+    });
   }
+
+  const visibleProviders = $derived(configured.filter((provider) => !modelSearch.trim() || modelsForProvider(provider.id).length || loadingProvider[provider.id] || providerErrors[provider.id]));
+  const resultCount = $derived(appStore.backendMode === 'api' ? visibleProviders.reduce((sum, provider) => sum + modelsForProvider(provider.id).length, 0) : filteredModels.length);
 
   function isProviderExpanded(id: string): boolean {
     if (modelSearch.trim()) {
@@ -112,7 +125,6 @@
       modelsByProvider = { ...modelsByProvider, [id]: seeded };
     }
 
-    const gen = ++loadGen;
     const saved = appStore.config.llm?.providers?.[id];
     const baseUrl = saved?.base_url || defaultBaseUrl(id);
 
@@ -125,6 +137,7 @@
     if (!hasKey && !isLocal) return;
 
     loadingProvider = { ...loadingProvider, [id]: true };
+    providerErrors = { ...providerErrors, [id]: '' };
 
     try {
       // Empty key → main process resolves stored secret by providerName
@@ -136,10 +149,7 @@
         }),
         12_000
       );
-      if (gen !== loadGen && !force) {
-        // stale; still apply if this id is still relevant
-      }
-      let list: ModelOption[] = (Array.isArray(ids) ? ids : []).map((mid) => ({
+      let list: ModelOption[] = [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === 'string' && id.trim()))].map((mid) => ({
         id: String(mid),
         name: String(mid),
         source: 'api' as const
@@ -147,6 +157,7 @@
       if (!list.length) list = seedModels(id);
       modelsByProvider = { ...modelsByProvider, [id]: list };
     } catch {
+      providerErrors = { ...providerErrors, [id]: 'Could not refresh models. Your saved model is still available.' };
       // Keep seed / previous list — never leave empty-loading state
       if (modelsByProvider[id] === undefined) {
         modelsByProvider = { ...modelsByProvider, [id]: seedModels(id) };
@@ -163,6 +174,12 @@
   }
 
   async function selectCloudModel(providerId: string, modelId: string) {
+    if (selectingModel || changingMode) return;
+    if (providerId === appStore.activeProviderName && modelId === activeProvider?.model) {
+      appStore.modelMenuOpen = false;
+      return;
+    }
+    selectingModel = `${providerId}/${modelId}`;
     const saved = appStore.config.llm?.providers?.[providerId];
     try {
       await appStore.updateProvider({
@@ -173,8 +190,23 @@
     } catch (err) {
       toastStore.error('Could not switch model');
       return;
+    } finally {
+      selectingModel = '';
     }
     appStore.modelMenuOpen = false;
+  }
+
+  async function changeBackend(mode: string) {
+    if (changingMode || selectingModel || mode === appStore.backendMode) return;
+    changingMode = true;
+    try {
+      await appStore.setBackendMode(mode as 'api' | 'local');
+      initCloudListWhenOpen();
+    } catch {
+      toastStore.error('Could not change model source. Please try again.');
+    } finally {
+      changingMode = false;
+    }
   }
 
   /** Portal fixed menus out of the titlebar drag region so clicks work on Windows/Electron. */
@@ -278,9 +310,6 @@
       const active = appStore.activeProviderName;
       if (!active) return;
       expandedProviders = { ...expandedProviders, [active]: true };
-      if (appStore.models.length && modelsByProvider[active] === undefined) {
-        modelsByProvider = { ...modelsByProvider, [active]: appStore.models.slice() };
-      }
       void loadModelsForProvider(active);
     });
   }
@@ -299,13 +328,50 @@
     const focusTimer = window.setTimeout(() => searchInput?.focus(), 60);
 
     function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') appStore.modelMenuOpen = false;
+      if (!panelEl) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        appStore.modelMenuOpen = false;
+        return;
+      }
+      if (event.key === 'Tab') {
+        const focusable = [...panelEl.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]')];
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && (document.activeElement === first || !panelEl.contains(document.activeElement))) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !panelEl.contains(document.activeElement))) {
+          event.preventDefault(); first?.focus();
+        }
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        const rows = [...panelEl.querySelectorAll<HTMLButtonElement>('[data-model-option]:not(:disabled)')];
+        const current = rows.findIndex((row) => row === document.activeElement);
+        if (document.activeElement !== searchInput && current < 0) return;
+        event.preventDefault();
+        const next = current + (event.key === 'ArrowDown' ? 1 : -1);
+        if (next < 0 && current >= 0) searchInput?.focus();
+        else {
+          const row = rows[Math.min(rows.length - 1, Math.max(0, next))];
+          row?.focus(); row?.scrollIntoView({ block: 'nearest' });
+        }
+      }
     }
     document.addEventListener('keydown', handleKeydown);
     return () => {
       clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeydown);
+      triggerEl?.focus();
     };
+  });
+
+  // Search all configured providers, including groups that haven't been opened.
+  $effect(() => {
+    if (!appStore.modelMenuOpen || appStore.backendMode !== 'api' || !modelSearch.trim()) return;
+    const timer = setTimeout(() => untrack(() => {
+      for (const provider of configured) void loadModelsForProvider(provider.id);
+    }), 180);
+    return () => clearTimeout(timer);
   });
 </script>
 
@@ -317,11 +383,15 @@
   class:is-open={appStore.modelMenuOpen}
   style="-webkit-app-region: no-drag; pointer-events: auto;"
   onclick={toggleMenu}
+  aria-haspopup="dialog"
+  aria-expanded={appStore.modelMenuOpen}
+  aria-controls={dialogId}
+  aria-label={`Choose model: ${displayLabel || 'On device'}`}
 >
   {#if appStore.backendMode === 'local'}
     <Cpu class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
   {:else}
-    <Cloud class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    <ProviderIcon provider={appStore.activeProviderName} size={15} />
   {/if}
   <span class="trigger-label truncate">
     {#if appStore.backendMode === 'local' && isAnyModelLoaded}
@@ -348,24 +418,36 @@
     <div class="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div
+        bind:this={panelEl}
+        id={dialogId}
         class="model-modal pointer-events-auto flex max-h-full min-h-0 flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
-        aria-label="Select model"
+        aria-labelledby={`${dialogId}-title`}
         tabindex="-1"
         onclick={(e) => e.stopPropagation()}
         onpointerdown={(e) => e.stopPropagation()}
         transition:flyAndScale={{ y: 10, start: 0.96, duration: 180 }}
-      >
-    <!-- Toolbar: search plus backend icons. Mode switch lives here as two
-         icon buttons with tooltips instead of a full segmented row. -->
+       >
+    <header class="picker-heading">
+      <div><h2 id={`${dialogId}-title`}>Choose a model</h2><p>The right model for your next conversation.</p></div>
+      <button type="button" class="aui-icon-button size-8" onclick={() => (appStore.modelMenuOpen = false)} aria-label="Close model picker"><X class="size-4" /></button>
+    </header>
+    <div class="picker-source">
+      {#if isElectron()}
+        <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: 'Cloud', disabled: changingMode || !!selectingModel }, { value: 'local', label: 'On device', disabled: changingMode || !!selectingModel }]} label="Model source" onchange={(mode) => void changeBackend(mode)} />
+      {/if}
+      <span class="source-caption">{appStore.backendMode === 'local' ? 'Runs on your computer' : 'Your connected providers'}</span>
+    </div>
+    <!-- Search stays anchored while provider groups scroll below it. -->
     <div class="panel-head flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
       <div class="search-wrapper relative min-w-0 flex-1">
         <Search class="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <input
           bind:this={searchInput}
           bind:value={modelSearch}
-          type="text"
+           type="search"
+           aria-label="Search models"
           placeholder="Search models…"
           class="search-input w-full py-1.5 pl-9 pr-9 text-[13px] text-foreground outline-none transition placeholder:text-muted-foreground"
           onclick={(e) => e.stopPropagation()}
@@ -373,46 +455,14 @@
         />
         {#if modelSearch}
           <button
-            class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
+             class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
+             aria-label="Clear model search"
             onclick={() => (modelSearch = '')}
           >
             <X class="h-3.5 w-3.5" />
           </button>
         {/if}
       </div>
-      {#if isElectron()}
-        <Tooltip label="Cloud models" position="bottom">
-          <button
-            type="button"
-            class="mode-icon-btn shrink-0"
-            class:is-active={appStore.backendMode === 'api'}
-            onclick={(e) => {
-              e.stopPropagation();
-              void appStore.setBackendMode('api').then(() => initCloudListWhenOpen());
-            }}
-            aria-label="Cloud models"
-            aria-pressed={appStore.backendMode === 'api'}
-          >
-            <Cloud class="h-4 w-4" />
-          </button>
-        </Tooltip>
-        <Tooltip label="On-device models" position="bottom">
-          <button
-            type="button"
-            class="mode-icon-btn shrink-0"
-            class:is-active={appStore.backendMode === 'local'}
-            onclick={(e) => {
-              e.stopPropagation();
-              void appStore.setBackendMode('local');
-            }}
-            aria-label="On-device models"
-            aria-pressed={appStore.backendMode === 'local'}
-          >
-            <Cpu class="h-4 w-4" />
-          </button>
-        </Tooltip>
-      {/if}
-
       {#if appStore.backendMode === 'api'}
         <Tooltip label="Refresh models" position="bottom">
           <button
@@ -425,8 +475,9 @@
               if (active) void loadModelsForProvider(active, true);
             }}
             aria-label="Refresh models"
+            disabled={!!loadingProvider[appStore.activeProviderName]}
           >
-            <RefreshCw class="h-4 w-4" />
+            <RefreshCw class="h-4 w-4 {loadingProvider[appStore.activeProviderName] ? 'animate-spin' : ''}" />
           </button>
         </Tooltip>
         <Tooltip label="Manage API providers" position="bottom">
@@ -493,7 +544,7 @@
     {/if}
 
     <!-- Model list -->
-    <div class="model-list max-h-72 overflow-y-auto px-2 pb-2.5">
+    <div class="model-list min-h-0 flex-1 overflow-y-auto px-2 pb-2.5" aria-label="Available models" aria-busy={changingMode}>
       {#if appStore.backendMode === 'api'}
         {#if !configured.length}
           <div class="empty-state flex flex-col items-center gap-3 px-4 py-6 text-center">
@@ -516,10 +567,12 @@
               Configure Provider
             </Button>
           </div>
+        {:else if !visibleProviders.length}
+          <div class="picker-empty"><Search class="size-5" /><p>No models found</p><span>Try a model name or a provider.</span><button type="button" onclick={() => (modelSearch = '')}>Clear search</button></div>
         {:else}
           <!-- Nested tree: provider → models (no card borders) -->
           <div class="provider-tree space-y-0.5 px-0.5">
-            {#each configured as prov (prov.id)}
+            {#each visibleProviders as prov (prov.id)}
               {@const open = isProviderExpanded(prov.id)}
               {@const list = modelsForProvider(prov.id)}
               {@const loading = !!loadingProvider[prov.id]}
@@ -528,11 +581,13 @@
                   type="button"
                   class="provider-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-muted/60"
                   style="-webkit-app-region: no-drag; pointer-events: auto;"
-                  onclick={(e) => {
+                   onclick={(e) => {
                     e.stopPropagation();
                     toggleProvider(prov.id);
-                  }}
-                >
+                   }}
+                   aria-expanded={open}
+                 >
+                  <span class="provider-mark"><ProviderIcon provider={prov.id} size={18} /></span>
                   <ChevronDown
                     class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {open
                       ? 'rotate-0'
@@ -542,7 +597,7 @@
                     <span class="flex items-center gap-1.5">
                       <span class="text-[13px] font-medium text-foreground">{prov.label}</span>
                       {#if prov.isActive}
-                        <span class="text-[12px] text-muted-foreground">active</span>
+                        <span class="provider-active">Connected</span>
                       {/if}
                     </span>
                     {#if prov.model && !open}
@@ -558,6 +613,9 @@
                   <!-- No indent rail: the provider header above already groups
                        these, so the rail was chrome restating the hierarchy. -->
                   <div class="model-nest">
+                    {#if providerErrors[prov.id]}
+                      <div class="provider-error" role="status"><span>{providerErrors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void loadModelsForProvider(prov.id, true)}>Retry</button></div>
+                    {/if}
                     {#if list.length === 0 && loading}
                       <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
                         <LoaderCircle class="h-3 w-3 animate-spin" />
@@ -574,21 +632,28 @@
                         <button
                           type="button"
                           class="model-row flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left transition hover:bg-muted/60"
-                          class:is-selected={selected}
+                           class:is-selected={selected}
+                           data-model-option
+                           aria-pressed={selected}
+                           disabled={!!selectingModel || changingMode}
+                           title={model.id}
                           style="-webkit-app-region: no-drag; pointer-events: auto;"
                           onclick={(e) => {
                             e.stopPropagation();
                             void selectCloudModel(prov.id, model.id);
                           }}
                         >
-                          {#if selected}
+                          {#if selectingModel === `${prov.id}/${model.id}`}
+                            <LoaderCircle class="h-3.5 w-3.5 shrink-0 animate-spin" />
+                          {:else if selected}
                             <Check class="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
                           {:else}
                             <span class="inline-block w-3.5 shrink-0"></span>
                           {/if}
                           <span class="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground"
                             >{model.name}</span
-                          >
+                           >
+                          {#if selected}<span class="selected-label">In use</span>{/if}
                         </button>
                       {/each}
                     {/if}
@@ -664,6 +729,7 @@
                       await handleLoad(model);
                     }}
                     disabled={localLoading}
+                    data-model-option
                   >
                     {#if loadingTarget}
                       <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
@@ -680,6 +746,7 @@
         </div>
       {/if}
     </div>
+    <footer class="picker-footer"><span aria-live="polite">{resultCount} {resultCount === 1 ? 'model' : 'models'}{modelSearch ? ' found' : ' available'}</span><span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate <kbd>esc</kbd> Close</span></footer>
   </div>
     </div>
   </div>
@@ -714,15 +781,6 @@
     letter-spacing: -0.01em;
   }
 
-  :global(.dark) .mode-info svg {
-    filter: invert(1);
-  }
-
-  @keyframes modelDotPulse {
-    0%, 100% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.25); opacity: 1; }
-  }
-
   /* Centered modal over a gray backdrop. Square-ish card sized to
      content, capped to the window. */
   .model-modal-root {
@@ -735,8 +793,9 @@
   }
 
   .model-modal {
-    width: min(430px, calc(100vw - 32px));
-    max-height: min(600px, calc(100vh - 64px));
+    width: min(520px, calc(100vw - 32px));
+    height: min(640px, calc(100dvh - 64px));
+    max-height: calc(100dvh - 32px);
     background: var(--card);
     border: 0;
     border-radius: var(--radius-2xl);
@@ -849,12 +908,15 @@
   .model-row {
     border: none;
     background: transparent;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-lg);
+    min-height: 2.5rem;
+    padding-inline: 0.8rem;
     transition: background-color var(--motion-fast) var(--motion-ease);
   }
 
   .model-row.is-selected {
     background: var(--surface-active);
+    box-shadow: inset 0 0 0 1px var(--border-subtle);
   }
 
   .search-wrapper .search-input:focus {
@@ -881,8 +943,29 @@
     border-radius: 8px;
   }
 
-  :global(.dark) .live-badge {
-    color: var(--live-indicator-dark);
-    background: var(--success-bg);
-  }
+  .picker-heading { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.15rem 0.9rem; gap: 1rem; }
+  .picker-heading h2 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.025em; color: var(--foreground); }
+  .picker-heading p { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--muted-foreground); }
+  .picker-source { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0 1rem 0.6rem; }
+  .source-caption { font-size: 11px; color: var(--muted-foreground); }
+  .panel-head { border-bottom: 1px solid var(--border-subtle); padding: 0.45rem 1rem 0.8rem; }
+  .search-wrapper .search-input { height: 2.5rem; background: var(--surface); }
+  .search-input::-webkit-search-cancel-button { display: none; }
+  .model-list { padding-top: 0.6rem; scrollbar-gutter: stable; overscroll-behavior: contain; }
+  .provider-row { min-height: 2.75rem; }
+  .provider-mark { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; border-radius: var(--radius-md); background: var(--surface); }
+  .provider-active, .selected-label { flex-shrink: 0; font-size: 10px; font-weight: 500; color: var(--muted-foreground); }
+  .selected-label { padding: 0.2rem 0.45rem; border-radius: var(--radius-full); background: var(--background); }
+  .model-nest { margin: 0.1rem 0.3rem 0.6rem; }
+  .model-row:disabled { cursor: wait; opacity: 0.65; }
+  .model-item { min-height: 3.25rem; padding: 0.6rem; }
+  .model-trigger:focus-visible, .model-modal button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .picker-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.8rem 1rem; border-top: 1px solid var(--border-subtle); font-size: 11px; color: var(--muted-foreground); }
+  .picker-key-hint { display: inline-flex; align-items: center; gap: 0.25rem; }
+  .picker-key-hint kbd { padding: 1px 4px; border: 1px solid var(--border-subtle); border-radius: 4px; font: inherit; }
+  .picker-empty { display: flex; align-items: center; flex-direction: column; padding: 2.5rem 1rem; gap: 0.5rem; color: var(--muted-foreground); font-size: 12px; }
+  .picker-empty p { font-size: 14px; font-weight: 500; color: var(--foreground); }
+  .picker-empty button, .provider-error button { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; background: transparent; border: 0; }
+  .provider-error { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem; font-size: 11px; color: var(--muted-foreground); }
+  @media (max-width: 480px) { .source-caption, .picker-key-hint { display: none; } .model-modal { height: min(640px, calc(100dvh - 32px)); } }
 </style>

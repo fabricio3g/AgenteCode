@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import type { HtmlCardArtifactPayload } from '$lib/types/chat';
+  import { buildPreviewHtml } from '$lib/utils/preview-builder';
 
   interface Props {
     payload: HtmlCardArtifactPayload;
@@ -12,14 +13,14 @@
   const srcdoc = $derived.by(() => {
     const body = String(payload.html || '');
     // Minimal document shell; styles inherit readable defaults for light/dark-ish content.
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>
+    return buildPreviewHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>
       :root { color-scheme: light dark; }
       html, body { margin: 0; padding: 0; background: transparent; color: inherit; font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
       body { padding: 0.35rem 0.15rem; }
       table { border-collapse: collapse; width: 100%; }
       th, td { border: 1px solid rgba(127,127,127,0.35); padding: 0.35rem 0.5rem; text-align: left; }
       img { max-width: 100%; height: auto; }
-    </style></head><body>${body}</body></html>`;
+    </style></head><body>${body}</body></html>`, {}, 'index.html').html;
   });
 </script>
 

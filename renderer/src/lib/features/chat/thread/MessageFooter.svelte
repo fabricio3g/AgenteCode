@@ -101,17 +101,14 @@
     if (!meta) return null;
     if (meta.usageSource !== 'provider' && meta.usageSource !== 'runtime') return null;
 
-    const tokens =
-      meta.usageSource === 'runtime'
-        ? meta.outputTokens || meta.tokens || meta.totalTokens || 0
-        : meta.outputTokens || meta.totalTokens || meta.tokens || 0;
+    const tokens = meta.outputTokens ?? meta.tokens ?? 0;
     const elapsed = formatDuration(meta.totalElapsedSeconds);
     const rate = meta.tokensPerSecond ? `${meta.tokensPerSecond.toFixed(0)} tok/s` : '';
 
     const segments = [
       tokens ? `${formatCount(tokens)} ${copy.thread.outputTokens}` : '',
       rate,
-      elapsed
+      elapsed ? `${elapsed} total` : ''
     ].filter(Boolean);
     return segments.length ? segments.join(' · ') : null;
   });

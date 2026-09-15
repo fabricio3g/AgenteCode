@@ -1,6 +1,6 @@
 import type { AppConfig, ChatMessage } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
-import { getMessageRequestContent } from '$lib/stores/app-store-helpers';
+import { getMessageRequestContent, getMessageRequestReasoning } from '$lib/stores/app-store-helpers';
 
 /**
  * Build clean LLM request messages from the chat transcript.
@@ -30,7 +30,8 @@ export function buildRequestMessagesWithPatchedUser(params: {
     const role = message.role === 'assistant' ? 'assistant' : 'user';
     const content = getMessageRequestContent(message).trim();
     if (!content) continue;
-    outbound.push({ role, content });
+    const reasoning = getMessageRequestReasoning(message);
+    outbound.push({ role, content, ...(reasoning ? { reasoning_content: reasoning } : {}) });
   }
 
   return outbound;

@@ -32,13 +32,11 @@
   let {
     showAssistantText = $bindable(),
     enableThinking = $bindable(),
-    composerModeControl = $bindable(),
     hfToken = $bindable(),
     onsaveHfToken,
   }: {
     showAssistantText: boolean;
     enableThinking: boolean;
-    composerModeControl: 'tabs' | 'auto';
     hfToken: string;
     onsaveHfToken: () => void;
   } = $props();
@@ -119,22 +117,6 @@
         <div class="flex justify-end"><Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} /></div>
       </Field>
 
-      <Field
-        horizontal
-        class="py-4"
-        label="Chat and Agent control"
-        description="Auto routes each message by intent. Tabs keeps the manual mode selector visible."
-        htmlFor="composer-control"
-      >
-        <Select
-          id="composer-control"
-          bind:value={composerModeControl}
-          options={[
-            { value: 'auto', label: 'Auto (recommended)' },
-            { value: 'tabs', label: 'Show Chat / Agent tabs' },
-          ]}
-        />
-      </Field>
     </div>
   </section>
 

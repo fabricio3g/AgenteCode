@@ -187,7 +187,6 @@ describe('buildMessageParts', () => {
       displayMetadata: { documentSurface: { kind: 'report', title: 'Report' } }
     });
     expect(kinds).toEqual([
-      'reasoning',
       'tool-status',
       'content',
       'document',
@@ -216,6 +215,7 @@ describe('isAssistantMessageEmpty', () => {
     ['reasoning', { displayReasoning: 'hmm' }],
     ['sources', { message: message({ sources: [{} as never] }) }],
     ['an artifact', { message: message({ artifact: {} as never }) }],
+    ['an artifact collection', { message: message({ artifacts: [{} as never] }) }],
     ['a warning', { displayMetadata: { warning: 'partial' } }],
     ['streaming status', { message: message({ status: 'streaming' as const }) }]
   ])('is not empty when it has %s', (_label, overrides) => {

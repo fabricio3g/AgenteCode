@@ -125,7 +125,8 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
   if (hasActiveDeepResearch) parts.push({ kind: 'deep-research' });
 
-  if (hasReasoning) {
+  const hasAgentActivity = hasSteps || message.mode === 'agent';
+  if (hasReasoning && !hasAgentActivity) {
     parts.push({
       kind: 'reasoning',
       reasoning: displayReasoning,
@@ -139,7 +140,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // vertical noise in an agent turn.
   const awaitingFirstAgentOutput =
     message.mode === 'agent' && isStreaming && !hasContent && !hasActiveDeepResearch;
-  if (hasSteps || awaitingFirstAgentOutput) parts.push({ kind: 'tool-status' });
+  if (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity) parts.push({ kind: 'tool-status' });
 
   // Directly under the status line: the run is stopped until this is answered,
   // so it outranks everything else in the turn. Pushing it here also means the
@@ -225,7 +226,7 @@ export function isAssistantMessageEmpty(input: {
   if (message.sources?.length) return false;
   if (message.slides?.length) return false;
   if (message.filesCreated?.length) return false;
-  if (message.artifact) return false;
+  if (artifactsForMessage(message).length) return false;
   if (message.agentSteps?.some((step) => step.diffStats?.length)) return false;
   if (displayMetadata?.error || displayMetadata?.warning) return false;
   return true;

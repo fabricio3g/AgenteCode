@@ -18,6 +18,22 @@ describe('resolveComposerRoute', () => {
     expect(resolveComposerRoute({ prompt: 'Fix the bug in this code' })).toBe('agent');
   });
 
+  it('routes visual deliverables to agent so the tool loop can build them', () => {
+    expect(resolveComposerRoute({ prompt: 'Show me a map of Madrid' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Make a bar chart of sales by quarter' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Draw a flowchart of the login flow' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Build a KPI dashboard for the team' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Create an HTML card for pricing' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Chart my expenses' })).toBe('agent');
+    expect(resolveComposerRoute({ prompt: 'Plot the results' })).toBe('agent');
+  });
+
+  it('keeps non-deliverable lookalikes in conversation', () => {
+    expect(resolveComposerRoute({ prompt: 'Map these fields to the new schema' })).toBe('conversation');
+    expect(resolveComposerRoute({ prompt: 'What is the plot of Dune?' })).toBe('conversation');
+    expect(resolveComposerRoute({ prompt: 'Draw a conclusion from the data' })).toBe('conversation');
+  });
+
   it('forces tools for search modes and attachments', () => {
     expect(resolveComposerRoute({ prompt: 'hello', searchMode: 'deep' })).toBe('tools');
     expect(resolveComposerRoute({ prompt: 'summarize', hasAttachments: true })).toBe('tools');
@@ -34,12 +50,12 @@ describe('resolveComposerRoute', () => {
 });
 
 describe('shouldUseToolLoop', () => {
-  it('auto only loops for tools/agent routes', () => {
+  it('Home always offers tools, including ordinary chat and keyword-free follow-ups', () => {
     expect(shouldUseToolLoop({
       control: 'auto',
       composerMode: 'chat',
       route: 'conversation'
-    })).toBe(false);
+    })).toBe(true);
     expect(shouldUseToolLoop({
       control: 'auto',
       composerMode: 'chat',
@@ -73,6 +89,6 @@ describe('shouldUseToolLoop', () => {
       composerMode: 'chat',
       route: 'conversation',
       contextMode: 'home'
-    })).toBe(false);
+    })).toBe(true);
   });
 });

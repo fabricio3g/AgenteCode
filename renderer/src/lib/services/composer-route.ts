@@ -38,6 +38,8 @@ export function resolveComposerRoute(input: {
   if (
     /\b(use tools?|as an agent|autonomous|multi[- ]?step)\b/i.test(prompt)
     || /\b(create|build|write|generate|make)\b.+\b(file|docx|xlsx|pdf|pptx|slides?|spreadsheet|document|app|website|page)\b/i.test(prompt)
+    || /\b(create|build|write|generate|make|show|display|draw|plot|give|produce)\b.+\b(charts?|graphs?|diagrams?|flowcharts?|maps?|dashboards?|infographics?|html[- ]?cards?|info[- ]?cards?|fact[- ]?sheets?)\b/i.test(prompt)
+    || /\b(charts?|graphs?|plots?)\b\s+(my|this|that|these|those|the|our|your)\b/i.test(prompt)
     || /\b(fix|debug|refactor|implement|install|deploy|migrate)\b/i.test(prompt)
     || /\b(edit|modify|update)\b.+\b(code|file|project)\b/i.test(prompt)
   ) {
@@ -80,13 +82,8 @@ export function shouldUseToolLoop(params: {
   searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
   contextMode?: string | null;
 }): boolean {
-  if (params.searchMode && params.searchMode !== 'chat') return true;
-  if (normalizeSpace(params.contextMode) === 'code') return true;
-  if (params.control === 'tabs') {
-    // Tabs: Chat tab still uses light tools when route needs them; Agent always tools.
-    if (params.composerMode === 'agent') return true;
-    return params.route === 'tools' || params.route === 'agent';
-  }
-  // Auto
-  return params.route === 'tools' || params.route === 'agent';
+  // Home is one conversational agent: the model can answer directly or call
+  // tools on any turn, including follow-ups with no routing keywords. Legacy
+  // mode preferences no longer disconnect tools. Code uses its workspace loop.
+  return normalizeSpace(params.contextMode) === 'home' || normalizeSpace(params.contextMode) === 'code';
 }

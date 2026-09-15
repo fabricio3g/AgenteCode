@@ -20,7 +20,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { invoke, isElectron } from '$lib/services/bridge';
-  import { CLOUD_PROVIDERS, PROVIDER_COLORS, defaultBaseUrl, isProviderConfigured } from '$lib/utils/providers';
+  import { CLOUD_PROVIDERS, PROVIDER_DOCS, defaultBaseUrl, isProviderConfigured } from '$lib/utils/providers';
+  import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
 
   let { providerId }: { providerId: string } = $props();
 
@@ -29,8 +30,6 @@
   const customEntry = $derived(appStore.config.llm?.custom_providers?.find((p) => p.id === providerId));
   const label = $derived(builtIn?.label ?? customEntry?.label ?? providerId);
   const isRemovable = $derived(!!(customEntry ?? providerId.startsWith('custom')));
-  const color = $derived(PROVIDER_COLORS[providerId] ?? '#64748b');
-  const initial = $derived((label[0] || '?').toUpperCase());
 
   const saved = $derived(appStore.config.llm?.providers?.[providerId]);
   const isActiveProvider = $derived(
@@ -243,12 +242,14 @@
       <!-- Header -->
       <header class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 items-center gap-3">
-          <span
-            class="flex size-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
-            style={`background:${color}`}
-          >{initial}</span>
+          <span class="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground">
+            <ProviderIcon provider={providerId} size={24} />
+          </span>
           <div class="min-w-0">
             <h3 class="truncate text-lg font-semibold tracking-[-0.02em] text-foreground">{label}</h3>
+            {#if PROVIDER_DOCS[providerId]}
+              <a href={PROVIDER_DOCS[providerId]} target="_blank" rel="noreferrer" class="text-xs text-muted-foreground hover:text-foreground hover:underline">Official API documentation ↗</a>
+            {/if}
             {#if isRemovable}
               <p class="text-xs text-muted-foreground">Custom OpenAI-compatible endpoint</p>
             {/if}

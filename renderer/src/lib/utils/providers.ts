@@ -16,7 +16,7 @@ export const CLOUD_PROVIDERS: CloudProviderMeta[] = [
   { id: 'mistral', label: 'Mistral AI', defaultBaseUrl: 'https://api.mistral.ai/v1', group: 'cloud' },
   { id: 'together', label: 'Together AI', defaultBaseUrl: 'https://api.together.xyz/v1', group: 'cloud' },
   { id: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com/v1', group: 'cloud' },
-  { id: 'cohere', label: 'Cohere', defaultBaseUrl: 'https://api.cohere.ai/v1', group: 'cloud' },
+  { id: 'cohere', label: 'Cohere', defaultBaseUrl: 'https://api.cohere.ai/compatibility/v1', group: 'cloud' },
   { id: 'perplexity', label: 'Perplexity', defaultBaseUrl: 'https://api.perplexity.ai', group: 'cloud' },
   { id: 'lmstudio', label: 'LM Studio', defaultBaseUrl: 'http://localhost:1234/v1', group: 'local' },
   { id: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', group: 'local' },
@@ -26,6 +26,21 @@ export const CLOUD_PROVIDERS: CloudProviderMeta[] = [
 export const PROVIDER_URLS: Record<string, string> = Object.fromEntries(
   CLOUD_PROVIDERS.map((p) => [p.id, p.defaultBaseUrl])
 );
+
+export const PROVIDER_DOCS: Record<string, string> = {
+  openai: 'https://developers.openai.com/api/docs/guides/reasoning',
+  anthropic: 'https://platform.claude.com/docs/en/build-with-claude/extended-thinking',
+  gemini: 'https://ai.google.dev/gemini-api/docs/function-calling',
+  groq: 'https://console.groq.com/docs/reasoning',
+  openrouter: 'https://openrouter.ai/docs/guides/best-practices/reasoning-tokens',
+  mistral: 'https://docs.mistral.ai/studio/conversations/function-calling',
+  deepseek: 'https://api-docs.deepseek.com/guides/thinking_mode/',
+  together: 'https://docs.together.ai/docs/reasoning-overview',
+  cohere: 'https://docs.cohere.com/docs/compatibility-api',
+  perplexity: 'https://docs.perplexity.ai/docs/sonar/quickstart',
+  lmstudio: 'https://lmstudio.ai/docs/developer/openai-compat/tools',
+  ollama: 'https://docs.ollama.com/api/openai-compatibility'
+};
 
 export const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
   CLOUD_PROVIDERS.map((p) => [p.id, p.label])

@@ -121,7 +121,7 @@
     <div class="aui-cot-stack mb-1 w-full">
       <AgentBlock
         steps={ctx.message.agentSteps || []}
-        reasoning={ctx.displayReasoning}
+        reasoning={appStore.config.ui?.enable_thinking ? ctx.displayReasoning : ''}
         status={ctx.message.status}
         totalElapsedSeconds={resolveTotalElapsed(ctx.message, ctx.displayMetadata)}
         outcome={ctx.displayMetadata?.outcome}

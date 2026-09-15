@@ -412,6 +412,12 @@ export function getMessageRequestContent(message: Partial<ChatMessage>) {
   return String(message.content || '');
 }
 
+export function getMessageRequestReasoning(message: Partial<ChatMessage>) {
+  return message.role === 'assistant'
+    ? getAssistantActiveVersion(message)?.reasoning ?? message.reasoning
+    : undefined;
+}
+
 export function buildRequestMessagesFromHistory(messages: ChatMessage[], upToIndex = messages.length - 1): RequestMessage[] {
   const endIndex = Math.max(-1, Math.min(upToIndex, messages.length - 1));
   const outbound: RequestMessage[] = [];
@@ -422,7 +428,8 @@ export function buildRequestMessagesFromHistory(messages: ChatMessage[], upToInd
     if (!content) continue;
     outbound.push({
       role: message.role,
-      content
+      content,
+      ...(getMessageRequestReasoning(message) ? { reasoning_content: getMessageRequestReasoning(message) } : {})
     });
   }
   return outbound;
@@ -676,4 +683,3 @@ export function buildContextualPrompt(args: {
 
   return [guidance.join(' '), extras.join('\n\n'), `User question:\n${args.content}`].join('\n\n');
 }
-

@@ -117,6 +117,8 @@ export async function agentComplete(options: {
 }): Promise<CompletionResult | null> {
   if (!isElectron()) return null;
 
+  options.signal?.throwIfAborted();
+
   const config = options.config || await loadAppConfig();
   const debugLogs = shouldDebugAgentLogs(config);
   const transport = await resolveAgentTransport(config);
@@ -165,6 +167,7 @@ export async function agentStreamComplete(options: {
   onError?: (message: string) => void;
 }): Promise<CompletionResult | null> {
   if (!isElectron()) return null;
+  options.signal?.throwIfAborted();
 
   const config = options.config || await loadAppConfig();
   const debugLogs = shouldDebugAgentLogs(config);
@@ -215,19 +218,14 @@ export async function agentStreamComplete(options: {
 
     if (event.type === 'done') {
       dispatcher.flush();
+      finalResult.providerState = event.providerState as CompletionResult['providerState'];
       const eventToolCalls = Array.isArray(event.toolCalls) ? event.toolCalls as Array<Record<string, unknown>> : [];
       debugLog(debugLogs, `[agent-llm] stream done | contentLen=${finalResult.content.length} | reasoningLen=${finalResult.reasoning.length} | toolCalls=${eventToolCalls.length}${eventToolCalls.length ? ' names=[' + eventToolCalls.map((tc) => String(tc.name || ((tc.function as Record<string, unknown> | undefined)?.name) || '?')).join(',') + ']' : ''}`);
       if (event.usage) {
         finalResult.usage = event.usage;
       }
       if (eventToolCalls.length) {
-        finalResult.toolCalls = eventToolCalls.map((tc) => ({
-          id: String(tc.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-          name: String(tc.name || ''),
-          arguments: typeof tc.arguments === 'string'
-            ? (parseJson(tc.arguments) || {})
-            : ((tc.arguments as Record<string, unknown>) || {})
-        })).filter((toolCall: NativeToolCall) => !!toolCall.name);
+        finalResult.toolCalls = readCompletionWithTools({ content: finalResult.content, toolCalls: eventToolCalls }).toolCalls;
       }
       resolveStream?.();
       return;
@@ -266,13 +264,16 @@ export async function agentStreamComplete(options: {
     if (options.signal) {
       abortListener = () => {
         void invoke('chat_stream_cancel', { streamId }).catch(() => {});
+        rejectStream?.(new DOMException('Agent task cancelled by user', 'AbortError'));
       };
       options.signal.addEventListener('abort', abortListener, { once: true });
+      if (options.signal.aborted) abortListener();
     }
 
     await streamPromise;
     return finalResult;
   } catch (err: unknown) {
+    if (options.signal?.aborted) throw new DOMException('Agent task cancelled by user', 'AbortError');
     const errStr = toErrorMessage(err);
     const isCloneError = errStr.includes('could not be cloned') || errStr.includes('DataCloneError');
     debugLog(debugLogs, `[agent-llm] agentStreamComplete FAILED | err=${errStr.slice(0, 200)} | hasPartialContent=${!!(finalResult.content || finalResult.toolCalls?.length)} | isCloneError=${isCloneError}`);
@@ -289,10 +290,6 @@ export async function agentStreamComplete(options: {
       options.signal.removeEventListener('abort', abortListener);
     }
   }
-}
-
-function parseJson(str: string): Record<string, unknown> | null {
-  try { return JSON.parse(str); } catch { return null; }
 }
 
 function readCompletionWithTools(payload: Record<string, unknown>): CompletionResult {
@@ -313,6 +310,7 @@ function readCompletionWithTools(payload: Record<string, unknown>): CompletionRe
     return {
       content: payload.content,
       reasoning: String(payload.reasoning || ''),
+      providerState: payload.providerState as CompletionResult['providerState'],
       usage: payload.usage || null,
       toolCalls: toolCalls.length ? toolCalls : undefined
     };

@@ -181,6 +181,23 @@ export function setToolSupportCache(config: AppConfigLike, supports: boolean): v
 }
 
 /**
+ * Identity of the route a reasoning-capabilities probe belongs to. The store
+ * skips re-probing when the identity is unchanged, so every settings save
+ * doesn't hit the provider catalog — and a stale probe can never pass as
+ * the current route's levels after a backend/provider/model switch.
+ */
+export function reasoningRouteIdentity(config: AppConfig | null | undefined): string {
+  const backendMode = config?.llm?.backend_mode || 'local';
+  if (backendMode === 'local') {
+    const local = config?.llm?.local || {};
+    return `local:${local.model || ''}:${local.selected_model_path || ''}`;
+  }
+  const providerName = config?.llm?.provider || 'openai';
+  const provider = (config?.llm?.providers?.[providerName] || {}) as { base_url?: string; model?: string };
+  return `api:${providerName}:${provider.base_url || ''}:${provider.model || ''}`;
+}
+
+/**
  * Ask the active provider what reasoning levels it supports for the current
  * model. The provider is the single source of truth — no model-name guessing
  * in the renderer. Returns `source: 'unknown'` (selector hidden) when the
@@ -238,6 +255,7 @@ export type ContentPart =
   | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
 
 export interface RequestMessage {
+  providerState?: { provider: string; blocks: Array<Record<string, unknown>> };
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | ContentPart[] | null;
   /** DeepSeek / OpenAI-compatible chain-of-thought; required when echoing tool-call turns. */
@@ -285,6 +303,7 @@ export interface NativeToolCall {
 }
 
 export interface CompletionResult {
+  providerState?: RequestMessage['providerState'];
   content: string;
   reasoning: string;
   toolCalls?: NativeToolCall[];
@@ -384,12 +403,16 @@ export function toRequestMessages(messages: RequestMessage[], modelName?: string
       }
       base.content = parts;
     } else {
-      base.content = (message.content || '') + ocrContext;
+      base.content = Array.isArray(message.content)
+        ? [...message.content, ...(ocrContext ? [{ type: 'text' as const, text: ocrContext }] : [])]
+        : (message.content || '') + ocrContext;
     }
 
     if (message.tool_calls) base.tool_calls = message.tool_calls;
     if (message.tool_call_id) base.tool_call_id = message.tool_call_id;
     if (message.name) base.name = message.name;
+    if (message.reasoning_content != null) base.reasoning_content = message.reasoning_content;
+    if (message.providerState) base.providerState = message.providerState;
     return base;
   });
 }

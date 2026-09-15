@@ -55,7 +55,8 @@
     <iframe
       class="inline-html-frame"
       srcdoc={previewSrc}
-      sandbox="allow-scripts allow-forms allow-modals allow-popups"
+      sandbox=""
+      referrerpolicy="no-referrer"
       title={artifact.title || 'Artifact preview'}
     ></iframe>
   </div>

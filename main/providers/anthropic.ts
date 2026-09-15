@@ -19,7 +19,9 @@ import { normalizeBaseUrl, safeParseJson } from './helpers.ts';
 import { probeToolSupport, type ToolProbeArgs } from './tool-probe.ts';
 
 /** Adaptive effort levels (Claude 4.6+). Legacy `enabled` keeps budget_tokens for older models. */
-const ANTHROPIC_LEVELS = ['off', 'low', 'medium', 'high', 'max', 'enabled', 'disabled'] as const;
+function supportsAdaptiveThinking(modelId: string): boolean {
+  return /claude-(opus|sonnet)-(4[.-][6-9]|[5-9])/.test(modelId);
+}
 
 const ANTHROPIC_EFFORT: Record<string, 'low' | 'medium' | 'high' | 'max'> = {
   low: 'low',
@@ -66,7 +68,7 @@ function findLastAssistantBlock(messages: Array<Record<string, any>>) {
   return null;
 }
 
-function buildMessages(messages: Array<Record<string, any>>) {
+export function buildMessages(messages: Array<Record<string, any>>) {
   const systemMessages: Array<Record<string, unknown>> = [];
   const chatMessages: Array<Record<string, unknown>> = [];
 
@@ -100,7 +102,8 @@ function buildMessages(messages: Array<Record<string, any>>) {
       });
     } else if (msg.role === 'assistant') {
       if (msg.tool_calls?.length) {
-        const content: Array<Record<string, unknown>> = [];
+        const content: Array<Record<string, unknown>> = msg.providerState?.provider === 'anthropic'
+          ? [...msg.providerState.blocks] : [];
         const textContent = typeof msg.content === 'string' ? msg.content : '';
         if (textContent) content.push({ type: 'text', text: textContent });
         for (const tc of msg.tool_calls) {
@@ -126,6 +129,16 @@ function buildMessages(messages: Array<Record<string, any>>) {
     }
   }
 
+  // Parallel tool results belong to one immediately-following user turn.
+  for (let i = chatMessages.length - 1; i > 0; i--) {
+    const previous = chatMessages[i - 1];
+    const current = chatMessages[i];
+    if (previous.role === 'user' && current.role === 'user' && Array.isArray(previous.content) && Array.isArray(current.content)
+      && current.content.every((b) => b.type === 'tool_result') && previous.content.every((b) => b.type === 'tool_result')) {
+      previous.content.push(...current.content);
+      chatMessages.splice(i, 1);
+    }
+  }
   return {
     system: systemMessages.length ? systemMessages : undefined,
     messages: chatMessages
@@ -134,17 +147,16 @@ function buildMessages(messages: Array<Record<string, any>>) {
 
 /**
  * Map UI level → Anthropic Messages body.
- * - off / omit → no thinking param (provider default)
- * - disabled → thinking off
+ * - omit → provider default; off / disabled → explicit thinking off
  * - enabled → legacy manual budget (Claude ≤4.5 / 4.6 compat)
  * - low|medium|high|max → adaptive + output_config.effort
  */
-export function mapThinkingBody(reasoning?: StreamParams['reasoning'], maxTokens = 4096): Record<string, unknown> {
-  if (!reasoning || !reasoning.level || reasoning.level === 'off') return {};
-  if (reasoning.level === 'disabled' || reasoning.level === 'none') {
+export function mapThinkingBody(reasoning?: StreamParams['reasoning'], maxTokens = 4096, modelId?: string): Record<string, unknown> {
+  if (!reasoning || !reasoning.level) return {};
+  if (reasoning.level === 'off' || reasoning.level === 'disabled' || reasoning.level === 'none') {
     return { thinking: { type: 'disabled' } };
   }
-  if (reasoning.level === 'enabled') {
+  if (reasoning.level === 'enabled' || (modelId && !supportsAdaptiveThinking(modelId))) {
     const budget = Math.min(
       reasoning.budgetTokens ?? 10000,
       Math.max(1024, Math.floor(maxTokens * 0.75))
@@ -185,9 +197,11 @@ async function* stream(params: StreamParams): AsyncGenerator<StreamChunk> {
       messages: chatMessages,
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
-      ...mapThinkingBody(params.reasoning, maxTokens),
-      ...(params.temperature != null ? { temperature: params.temperature } : {}),
-      ...(params.top_p != null ? { top_p: params.top_p } : {})
+      ...mapThinkingBody(params.reasoning, maxTokens, params.model),
+      ...(!params.reasoning || ['off', 'disabled', 'none'].includes(params.reasoning.level) ? {
+        ...(params.temperature != null ? { temperature: params.temperature } : {}),
+        ...(params.top_p != null ? { top_p: params.top_p } : {})
+      } : {})
     } as never, { signal: params.signal }) as never;
   } catch (err: unknown) {
     throw new LlmStreamError(classifyError(err));
@@ -197,21 +211,33 @@ async function* stream(params: StreamParams): AsyncGenerator<StreamChunk> {
   // the deltas that follow. Unlike the old adapter, we forward FRAGMENTS and
   // let the consumer accumulate — one convention everywhere.
   const toolIds = new Map<number, { id: string; name: string }>();
+  const thinkingBlocks = new Map<number, Record<string, any>>();
+  let inputTokens = 0;
 
   try {
     for await (const event of eventStream) {
       if (params.signal?.aborted) break;
-      if (event.type === 'content_block_start') {
+      if (event.type === 'message_start') {
+        inputTokens = Number(event.message?.usage?.input_tokens || 0);
+      } else if (event.type === 'content_block_start') {
         const block = event.content_block;
         if (block?.type === 'tool_use') {
           toolIds.set(event.index, { id: block.id || '', name: block.name || '' });
+          yield { type: 'tool-call-delta', delta: { index: event.index, id: block.id, name: block.name, argumentsDelta: '' } };
+        } else if (block?.type === 'thinking' || block?.type === 'redacted_thinking') {
+          thinkingBlocks.set(event.index, { ...block });
         }
       } else if (event.type === 'content_block_delta') {
         const delta = event.delta;
         if (delta.type === 'text_delta') {
           if (delta.text) yield { type: 'text-delta', text: delta.text ?? '' };
         } else if (delta.type === 'thinking_delta') {
+          const block = thinkingBlocks.get(event.index);
+          if (block) block.thinking = (block.thinking || '') + (delta.thinking || '');
           if (delta.thinking) yield { type: 'reasoning-delta', text: delta.thinking ?? '' };
+        } else if (delta.type === 'signature_delta') {
+          const block = thinkingBlocks.get(event.index);
+          if (block) block.signature = (block.signature || '') + (delta.signature || '');
         } else if (delta.type === 'input_json_delta') {
           const known = toolIds.get(event.index);
           yield {
@@ -225,12 +251,15 @@ async function* stream(params: StreamParams): AsyncGenerator<StreamChunk> {
           };
         }
       } else if (event.type === 'message_delta') {
+        if (event.usage) yield { type: 'usage', usage: { input_tokens: inputTokens, output_tokens: event.usage.output_tokens,
+          total_tokens: inputTokens + Number(event.usage.output_tokens || 0) } };
         // Anthropic parks the stop reason on the final message_delta event.
         const reason = (event.delta as { stop_reason?: string } | undefined)?.stop_reason;
         const finish = mapStopReason(reason);
         if (finish) yield { type: 'finish', reason: finish };
       }
     }
+    if (thinkingBlocks.size) yield { type: 'provider-state', state: { provider: 'anthropic', blocks: [...thinkingBlocks.values()] } };
   } catch (err: unknown) {
     throw new LlmStreamError(classifyError(err));
   }
@@ -249,9 +278,11 @@ async function complete(params: StreamParams): Promise<CompletionResult> {
       messages: chatMessages,
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
-      ...mapThinkingBody(params.reasoning, maxTokens),
-      ...(params.temperature != null ? { temperature: params.temperature } : {}),
-      ...(params.top_p != null ? { top_p: params.top_p } : {})
+      ...mapThinkingBody(params.reasoning, maxTokens, params.model),
+      ...(!params.reasoning || ['off', 'disabled', 'none'].includes(params.reasoning.level) ? {
+        ...(params.temperature != null ? { temperature: params.temperature } : {}),
+        ...(params.top_p != null ? { top_p: params.top_p } : {})
+      } : {})
     } as never, { signal: params.signal }) as Record<string, any>;
 
     const contentBlocks = response?.content || [];
@@ -277,6 +308,7 @@ async function complete(params: StreamParams): Promise<CompletionResult> {
     return {
       content,
       reasoning: thinkingContent,
+      providerState: { provider: 'anthropic', blocks: contentBlocks.filter((b: Record<string, unknown>) => b.type === 'thinking' || b.type === 'redacted_thinking') },
       usage,
       toolCalls: toolCalls.length ? toolCalls : null,
       finishReason: mapStopReason(response?.stop_reason) ?? undefined
@@ -308,10 +340,13 @@ async function fetchModelMetadata(_apiKey: string, _baseUrl: string | undefined,
   return null;
 }
 
-async function getReasoningCapabilities(): Promise<ReasoningCapabilities> {
+async function getReasoningCapabilities(_apiKey?: string, _baseUrl?: string, modelId = ''): Promise<ReasoningCapabilities> {
+  const adaptive = supportsAdaptiveThinking(modelId);
+  const manual = /claude-(3[.-]7|sonnet-4|opus-4|haiku-4[.-]5)/.test(modelId);
   return {
-    supported: true,
-    levels: [...ANTHROPIC_LEVELS] as ReasoningCapabilities['levels'],
+    supported: adaptive || manual,
+    levels: adaptive ? (modelId.includes('opus') ? ['off', 'low', 'medium', 'high', 'max'] : ['off', 'low', 'medium', 'high'])
+      : manual ? ['off', 'enabled'] : [],
     paramShape: 'anthropic_thinking',
     source: 'sdk'
   };

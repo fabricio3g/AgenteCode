@@ -37,7 +37,8 @@ const EFFORT_LEVELS = ['off', 'low', 'medium', 'high'] as const;
 
 /** Plain {reasoning_effort} dialects share this body builder. */
 function effortBody(level: string | undefined): Record<string, unknown> {
-  if (!level || level === 'off' || level === 'disabled' || level === 'none') return {};
+  if (!level) return {};
+  if (level === 'off' || level === 'disabled') return { reasoning_effort: 'none' };
   return { reasoning_effort: level };
 }
 
@@ -58,8 +59,8 @@ function supportedParametersCaps(record: Record<string, unknown>, levels: readon
 
 // ── Groq family logic (console.groq.com/docs/reasoning) ────────────────
 
-const GROQ_GPT_OSS_LEVELS = ['off', 'low', 'medium', 'high'] as const;
-const GROQ_QWEN_LEVELS = ['off', 'none', 'default'] as const;
+const GROQ_GPT_OSS_LEVELS = ['low', 'medium', 'high'] as const;
+const GROQ_QWEN_LEVELS = ['none', 'default'] as const;
 
 function groqFamily(modelId?: string): 'gpt-oss' | 'qwen' | null {
   const id = String(modelId || '').toLowerCase();
@@ -70,7 +71,6 @@ function groqFamily(modelId?: string): 'gpt-oss' | 'qwen' | null {
 }
 
 function groqReasoningBody(level: string | undefined, modelId?: string): Record<string, unknown> {
-  if (!level || level === 'off') return {};
   const family = groqFamily(modelId);
   if (family === 'gpt-oss') {
     if (level === 'low' || level === 'medium' || level === 'high') {
@@ -79,14 +79,17 @@ function groqReasoningBody(level: string | undefined, modelId?: string): Record<
     return {};
   }
   if (family === 'qwen') {
+    // Groq requires parsed or hidden format when combining reasoning and tools.
+    if (!level) return { reasoning_format: 'parsed' };
+    if (level === 'off') return { reasoning_effort: 'none', reasoning_format: 'parsed' };
     if (level === 'none' || level === 'default') {
-      return { reasoning_effort: level, include_reasoning: true };
+      return { reasoning_effort: level, reasoning_format: 'parsed' };
     }
     if (level === 'disabled' || level === 'minimal') {
-      return { reasoning_effort: 'none', include_reasoning: true };
+      return { reasoning_effort: 'none', reasoning_format: 'parsed' };
     }
     if (['low', 'medium', 'high', 'on', 'enabled'].includes(level)) {
-      return { reasoning_effort: 'default', include_reasoning: true };
+      return { reasoning_effort: 'default', reasoning_format: 'parsed' };
     }
   }
   return {};
@@ -109,7 +112,8 @@ function groqReasoningCapabilities(modelId?: string): ReasoningCapabilities | nu
 const DEEPSEEK_LEVELS = ['off', 'high', 'max'] as const;
 
 function deepseekReasoningBody(level: string | undefined): Record<string, unknown> {
-  if (!level || level === 'off' || level === 'disabled' || level === 'minimal' || level === 'none') {
+  if (!level) return {};
+  if (level === 'off' || level === 'disabled' || level === 'minimal' || level === 'none') {
     return { thinking: { type: 'disabled' } };
   }
   const effort = level === 'max' || level === 'xhigh' ? 'max' : 'high';
@@ -122,7 +126,8 @@ const MISTRAL_LEVELS = ['off', 'none', 'high'] as const;
 const MISTRAL_REASONING_MODEL_RE = /mistral-small|mistral-medium|magistral|mistral-medium-3/i;
 
 function mistralReasoningBody(level: string | undefined): Record<string, unknown> {
-  if (!level || level === 'off') return {};
+  if (!level) return {};
+  if (level === 'off') return { reasoningEffort: 'none' };
   if (level === 'none' || level === 'high') return { reasoningEffort: level };
   // Compat for shared UI levels: low/medium → high, disabled variants → none.
   if (['low', 'medium', 'on', 'enabled', 'default'].includes(level)) return { reasoningEffort: 'high' };
@@ -201,7 +206,8 @@ export const DIALECTS: Dialect[] = [
       return { 'HTTP-Referer': 'https://chatea.app', 'X-Title': 'Chatea' };
     },
     reasoningBody(level) {
-      if (!level || level === 'off') return {};
+      if (!level) return {};
+      if (level === 'off') return { reasoning: { effort: 'none' } };
       if (level === 'enabled' || level === 'on') return { reasoning: { effort: 'medium' } };
       if (level === 'disabled') return { reasoning: { effort: 'none' } };
       return { reasoning: { effort: level } };
@@ -230,9 +236,9 @@ export const DIALECTS: Dialect[] = [
     transport: 'sdk',
     matchHosts: ['api.deepseek.com'],
     streamUsage: true,
-    normalizeBaseUrl() {
+    normalizeBaseUrl(baseUrl) {
       // DeepSeek's compat root has no /v1; the SDK appends /chat/completions.
-      return 'https://api.deepseek.com';
+      return String(baseUrl || '').trim().replace(/\/+$/, '') || 'https://api.deepseek.com';
     },
     reasoningBody: deepseekReasoningBody,
     reasoningCapabilities(modelId) {
@@ -282,7 +288,8 @@ export const DIALECTS: Dialect[] = [
     group: 'local',
     defaultBaseUrl: 'http://localhost:11434/v1',
     transport: 'sdk',
-    reasoningBody: effortBody
+    reasoningBody: effortBody,
+    streamUsage: true
   },
   {
     id: 'together',
@@ -300,7 +307,16 @@ export const DIALECTS: Dialect[] = [
     defaultBaseUrl: 'https://api.cohere.ai/compatibility/v1',
     transport: 'sdk',
     matchHosts: ['api.cohere.ai'],
-    reasoningBody: effortBody
+    normalizeBaseUrl(baseUrl) {
+      const raw = String(baseUrl || '').trim().replace(/\/+$/, '');
+      // Repair the old settings default; preserve custom gateways.
+      return !raw || /^https:\/\/api\.cohere\.(ai|com)(\/v1)?$/.test(raw)
+        ? 'https://api.cohere.ai/compatibility/v1' : raw;
+    },
+    reasoningBody(level) {
+      if (!level) return {};
+      return { reasoning_effort: ['off', 'none', 'disabled'].includes(level) ? 'none' : 'high' };
+    }
   },
   {
     id: 'perplexity',
@@ -336,17 +352,19 @@ export function resolveDialect(providerName?: string, baseUrl?: string): Dialect
   const name = String(providerName || '').toLowerCase();
   const url = String(baseUrl || '').toLowerCase();
 
-  // Named match first (an explicit provider id wins over URL sniffing),
-  // except localhost URLs which historically always take the local transport.
-  const isLocalUrl = url.includes('127.0.0.1') || url.includes('localhost');
-  if (isLocalUrl && !(name === 'openai')) {
+  // Explicit protocol selection wins, including local gateways for SDK providers.
+  const named = getDialect(name);
+  if (named) return named;
+  let hostname = '';
+  try { hostname = new URL(url).hostname; } catch { /* no usable URL */ }
+  if (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]') {
     return getDialect('local')!;
   }
 
   for (const dialect of DIALECTS) {
     if (ADAPTER_DIALECT_IDS.has(dialect.id)) continue; // adapters detect below
     if (name === dialect.id) return dialect;
-    if (dialect.matchHosts?.some((host) => url.includes(host))) return dialect;
+    if (dialect.matchHosts?.some((host) => hostname === host || hostname.endsWith(`.${host}`))) return dialect;
   }
 
   // Adapter-owned protocols detect on looser aliases (claude, google, …).

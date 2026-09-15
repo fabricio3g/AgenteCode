@@ -1,8 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  The composer's "+" menu: attach a file, pick a search level, pick a thinking
-  level.
+  The composer's "+" menu: attach a file or pick a search level.
 
   The options are listed flat rather than as nested dropdowns. A dropdown inside
   a dropdown portals its panel outside this menu's DOM, so selecting an item
@@ -11,12 +10,11 @@
 -->
 
 <script lang="ts">
-  import { Brain, Check, Globe2, Layers, Paperclip, Plus, Radar, WifiOff } from 'lucide-svelte';
+  import { Bot, Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar } from 'lucide-svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
   import { SPACES } from '$lib/spaces';
-  import type { ReasoningLevel } from '$lib/types/chat';
 
   interface Props {
     /** Opens the file picker owned by the composer. */
@@ -28,23 +26,13 @@
 
   type SearchModeId = keyof typeof copy.searchModes;
   const MODE_IDS: SearchModeId[] = ['chat', 'search', 'deep', 'max'];
-  const MODE_ICONS = { chat: WifiOff, search: Globe2, deep: Layers, max: Radar } as const;
-
-  const LEVEL_LABELS: Partial<Record<ReasoningLevel, string>> = {
-    off: 'Off', none: 'None', default: 'Default', minimal: 'Minimal', low: 'Low',
-    medium: 'Medium', high: 'High', max: 'Max', xhigh: 'X-High',
-    enabled: 'On', disabled: 'Off', on: 'On'
-  };
+  const MODE_ICONS = { chat: MessageSquare, search: Globe2, deep: Layers, max: Radar } as const;
 
   // Research depths are a Home capability; the code space offers plain chat.
   const availableModes = $derived(
     MODE_IDS.filter((id) => SPACES[appStore.activeSpace].searchModes.includes(id))
   );
   const searchMode = $derived(MODE_IDS.find((id) => id === appStore.searchMode) || 'chat');
-  const capabilities = $derived(appStore.reasoningCapabilities);
-  const showThinking = $derived(
-    capabilities.supported && capabilities.source !== 'unknown' && capabilities.levels.length > 1
-  );
 </script>
 
 <Menu bind:open placement="top-start" minWidth="14rem" label="Composer options">
@@ -89,22 +77,15 @@
     {/each}
   {/if}
 
-  {#if showThinking}
-    <div class="group-label">Thinking</div>
-    {#each capabilities.levels as level (level)}
-      <button
-        type="button"
-        role="menuitemradio"
-        aria-checked={appStore.reasoningLevel === level}
-        class="row"
-        onclick={() => { appStore.setReasoningLevel(level); open = false; }}
-      >
-        <Brain class="size-4 shrink-0" />
-        <span class="row-label">{LEVEL_LABELS[level] || level}</span>
-        {#if appStore.reasoningLevel === level}<Check class="size-3.5 shrink-0" />{/if}
-      </button>
-    {/each}
+  {#if appStore.activeSpace === 'code'}
+  <button type="button" role="menuitemcheckbox" aria-checked={appStore.composerMode === 'agent'} class="row"
+    onclick={() => { appStore.setComposerMode(appStore.composerMode === 'agent' ? 'chat' : 'agent'); open = false; }}>
+    <Bot class="size-4 shrink-0" />
+    <span class="row-label">Agent</span>
+    {#if appStore.composerMode === 'agent'}<Check class="size-3.5 shrink-0" />{/if}
+  </button>
   {/if}
+
 </Menu>
 
 <style>

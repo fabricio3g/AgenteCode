@@ -40,8 +40,8 @@ function createWindow() {
       preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
-      nodeIntegrationInWorker: true,
-      sandbox: false,
+      nodeIntegrationInWorker: false,
+      sandbox: true,
       webSecurity: true
     }
   });
@@ -60,7 +60,11 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      if (['https:', 'http:', 'mailto:'].includes(new URL(url).protocol)) {
+        void shell.openExternal(url).catch(() => {});
+      }
+    } catch { /* Ignore invalid external URLs. */ }
     return { action: 'deny' };
   });
 
@@ -85,18 +89,7 @@ function createTray() {
   tray.on('double-click', () => getMainWindow()?.show());
 }
 
-// Disable Chromium sandbox if SUID helper is not configured (dev environments)
-app.commandLine.appendSwitch('no-sandbox');
-
 app.whenReady().then(async () => {
-  // Remove CSP headers that could block LLM-generated preview content in iframes
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = { ...details.responseHeaders };
-    delete headers['content-security-policy'];
-    delete headers['Content-Security-Policy'];
-    callback({ responseHeaders: headers });
-  });
-
   // Grant microphone and camera permissions for media devices (getUserMedia)
   if (process.platform === 'darwin') {
     systemPreferences.askForMediaAccess('microphone').catch(() => {});

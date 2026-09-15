@@ -12,7 +12,7 @@ describe('DeepSeek reasoning body (official thinking_mode docs)', () => {
     assert.deepEqual(reasoningBody('off'), { thinking: { type: 'disabled' } });
     assert.deepEqual(reasoningBody('disabled'), { thinking: { type: 'disabled' } });
     assert.deepEqual(reasoningBody('minimal'), { thinking: { type: 'disabled' } });
-    assert.deepEqual(reasoningBody(undefined), { thinking: { type: 'disabled' } });
+    assert.deepEqual(reasoningBody(undefined), {});
   });
 
   it('enables thinking with high effort', () => {

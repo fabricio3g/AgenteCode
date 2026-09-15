@@ -48,11 +48,11 @@
       </div>
       <div class="artifact-actions">
         {#if resolved.visibleFiles.length === 1}
-          <button type="button" class="artifact-action" onclick={downloadOnlyFile} aria-label="Download artifact" title="Download artifact">
+          <button type="button" class="aui-icon-button size-8" onclick={downloadOnlyFile} aria-label="Download artifact" title="Download artifact">
             <Download class="size-3.5" />
           </button>
         {/if}
-        <button type="button" class="artifact-action" onclick={onOpen} aria-label="Open artifact studio" title="Open artifact studio">
+        <button type="button" class="aui-icon-button size-8" onclick={onOpen} aria-label="Open artifact studio" title="Open artifact studio">
           <ExternalLink class="size-3.5" />
         </button>
       </div>
@@ -64,14 +64,11 @@
 <style>
   .artifact-shell { width: var(--inline-block-width);
     max-width: 100%; margin-top: 0.75rem; }
-  .artifact-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.5rem; padding: 0.35rem 0.45rem 0.35rem 0.55rem; border-radius: var(--artifact-radius); background: var(--artifact-surface); box-shadow: var(--artifact-elev); }
+  .artifact-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 3rem; padding: 0.5rem 0.6rem 0.5rem 0.8rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-2xl); background: var(--surface); }
   .artifact-heading { display: flex; min-width: 0; align-items: center; gap: 0.55rem; }
   .artifact-icon { display: inline-flex; width: 1.65rem; height: 1.65rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--artifact-surface-hover); color: var(--text-secondary); }
   .artifact-title, .artifact-subtitle { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .artifact-title { color: var(--text); font-size: 0.78rem; font-weight: 600; }
   .artifact-subtitle { margin-top: 0.05rem; color: var(--text-secondary); font-size: 0.67rem; text-transform: capitalize; }
   .artifact-actions { display: flex; align-items: center; gap: 0.1rem; }
-  .artifact-action { display: inline-flex; width: 1.85rem; height: 1.85rem; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); }
-  .artifact-action:hover { background: var(--artifact-surface-hover); color: var(--text); }
-  .artifact-action:focus-visible { outline: none; box-shadow: var(--artifact-focus); }
 </style>

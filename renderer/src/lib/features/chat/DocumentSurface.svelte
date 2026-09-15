@@ -5,6 +5,7 @@
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
+  import { buildPreviewHtml } from '$lib/utils/preview-builder';
   import { parseContentSegments } from '$lib/utils/charts';
   import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
@@ -70,6 +71,7 @@
   const warnings = $derived(Array.from(new Set(visibleDocs.flatMap((doc) => doc.warnings || []))));
   const status = $derived(visibleDocs.find((doc) => doc.status)?.status || (warnings.length ? 'partial' : 'ready'));
   const activeText = $derived((activeDoc?.content || '').toLowerCase());
+  const safePreviewHtml = $derived(activeDoc?.previewHtml ? buildPreviewHtml(activeDoc.previewHtml, {}, activeDoc.name).html : '');
   const searchTerm = $derived(query.trim());
   const canSearch = $derived.by(() => {
     if (!activeDoc) return false;
@@ -368,8 +370,10 @@
               {#if activeDoc}
                 {#if activeDoc.kind === 'slides' && activeDoc.slides?.length}
                   <SlidesViewer slides={activeDoc.slides} onDownload={onDownloadSlides || (() => {})} />
+                {:else if viewerKind(activeDoc) === 'pdf' && docSource(activeDoc)}
+                  <PdfViewer src={docSource(activeDoc)} filename={activeDoc.name} />
                 {:else if activeDoc.previewHtml}
-                  <iframe class="reader-iframe" srcdoc={activeDoc.previewHtml} sandbox="allow-scripts" referrerpolicy="no-referrer" title="{activeDoc.name} preview"></iframe>
+                  <iframe class="reader-iframe" srcdoc={safePreviewHtml} sandbox="" referrerpolicy="no-referrer" title="{activeDoc.name} preview"></iframe>
                 {:else if isMarkdown(activeDoc)}
                   {#if activeDoc.kind === 'report'}
                     <article class="reader-article">

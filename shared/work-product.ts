@@ -22,6 +22,28 @@ export type SheetInput = {
   rows?: Array<Record<string, unknown> | unknown[]>;
 };
 
+/** One cell ordering for document tables and text exports. */
+export function tableData(sheet: SheetInput): { headers: string[]; rows: string[][] } {
+  const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+  let columns = Array.isArray(sheet.columns) ? sheet.columns : [];
+  if (!columns.length) {
+    columns = [...new Set(rows.flatMap((row) => row && typeof row === 'object' && !Array.isArray(row) ? Object.keys(row) : []))];
+  }
+  const width = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), columns.length);
+  const headers = Array.from({ length: width }, (_, index) => {
+    const column = columns[index];
+    return typeof column === 'string' ? column : text(column?.header || column?.key, `Column ${index + 1}`);
+  });
+  return {
+    headers,
+    rows: rows.map((row) => headers.map((_header, index) => {
+      const column = columns[index];
+      const key = typeof column === 'string' ? column : text(column?.key || column?.header);
+      return text(Array.isArray(row) ? row[index] : row?.[key]);
+    }))
+  };
+}
+
 /** Trimmed string, with a fallback for nullish input. */
 export function text(value: unknown, fallback = ''): string {
   return String(value ?? fallback).trim();

@@ -19,7 +19,7 @@ import { modelsStore } from '$lib/stores/models.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
-import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, streamAssistantReply } from '$lib/services/chat-api';
+import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
@@ -835,7 +835,9 @@ class AppStore {
       toastStore.success(`Model loaded: ${this.localModelLoadTarget?.name || 'local model'}`);
       if (isElectron()) {
         detectToolSupport().catch(() => {});
-        this.refreshReasoningCapabilities().catch(() => {});
+        // Forced: a fresh server just came up, so re-probe even when the
+        // model identity is unchanged.
+        this.refreshReasoningCapabilities(true).catch(() => {});
       }
       this.localModelLoadTarget = null;
     } finally {
@@ -1347,17 +1349,29 @@ class AppStore {
     }
   }
 
-  async refreshReasoningCapabilities() {
+  /** Route identity the reasoning capabilities were last probed for. */
+  private reasoningCapabilitiesKey = '';
+  /** Monotonic guard so a slow probe cannot overwrite a newer route's result. */
+  private reasoningCapabilitiesSeq = 0;
+
+  async refreshReasoningCapabilities(force = false) {
     if (!isElectron()) {
       this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
       return;
     }
+    const seq = ++this.reasoningCapabilitiesSeq;
     try {
       const config = await loadChatConfig();
+      if (seq !== this.reasoningCapabilitiesSeq) return; // superseded while loading
+      const identity = reasoningRouteIdentity(config);
+      if (!force && identity === this.reasoningCapabilitiesKey && this.reasoningCapabilities.source !== 'unknown') {
+        return; // already probed for this exact route — skip probe spam
+      }
       const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
+      let capabilities: ReasoningCapabilities;
       if (backendMode === 'local') {
         const local = config.llm?.local || {};
-        this.reasoningCapabilities = await fetchReasoningCapabilities({
+        capabilities = await fetchReasoningCapabilities({
           providerName: 'local',
           model: local.model || 'local-model',
           modelPath: local.selected_model_path || ''
@@ -1365,14 +1379,19 @@ class AppStore {
       } else {
         const providerName = config.llm?.provider || 'openai';
         const provider = (config.llm?.providers?.[providerName] || {}) as { base_url?: string; api_key?: string; model?: string };
-        this.reasoningCapabilities = await fetchReasoningCapabilities({
+        capabilities = await fetchReasoningCapabilities({
           baseUrl: provider.base_url,
           apiKey: provider.api_key,
           providerName,
           model: provider.model || ''
         });
       }
-      // If the current reasoning level isn't in the new capabilities' levels, reset it
+      if (seq !== this.reasoningCapabilitiesSeq) return; // stale response — a newer refresh won
+      this.reasoningCapabilitiesKey = identity;
+      this.reasoningCapabilities = capabilities;
+      // The level resets only on a successful probe that excludes it. A
+      // failed probe keeps the previous capabilities and level — transient
+      // failures must not wipe the user's choice.
       if (this.reasoningCapabilities.supported && this.reasoningLevel &&
           !this.reasoningCapabilities.levels.includes(this.reasoningLevel)) {
         this.setReasoningLevel(null);
@@ -1381,8 +1400,8 @@ class AppStore {
         this.setReasoningLevel(null);
       }
     } catch {
-      this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
-      this.setReasoningLevel(null);
+      if (seq !== this.reasoningCapabilitiesSeq) return;
+      // Keep previous capabilities and level on transient failure.
     }
   }
 
@@ -2113,7 +2132,7 @@ class AppStore {
         }
       }
 
-      // Auto: route by intent. Tabs: Chat tab tools-light when needed; Agent always tools.
+      // Home uses one conversational agent, with optional research depth.
       const searchToolBudget = activeSearchMode === 'max'
         ? { maxIterations: 48, maxToolCalls: 140, maxTimeMs: 22 * 60 * 1000 }
         : activeSearchMode === 'deep'
@@ -2122,14 +2141,10 @@ class AppStore {
             ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
             : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
       const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      const fullAgentBudget = { maxIterations: 18, maxToolCalls: 40, maxTimeMs: 8 * 60 * 1000 };
 
       if (useToolLoop) {
         const isCodeSpace = activeContextMode === 'code';
-        const wantsAgent =
-          (modeControl === 'tabs' && activeComposerMode === 'agent')
-          || composerRoute === 'agent'
-          || isCodeSpace;
+        const wantsAgent = isCodeSpace;
         const agentProfile =
           activeSearchMode !== 'chat' && !wantsAgent
             ? 'search' as const
@@ -2144,9 +2159,7 @@ class AppStore {
         const profileBudget =
           agentProfile === 'search' || activeSearchMode !== 'chat'
             ? searchToolBudget
-            : wantsAgent && !isCodeSpace
-              ? fullAgentBudget
-              : agentProfile === 'chat'
+            : agentProfile === 'chat'
                 ? chatAgentBudget
                 : {};
         const agentTaskArgs: RunAgentTaskArgs = {
@@ -2162,6 +2175,10 @@ class AppStore {
           agentProfile,
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
           reasoningLevel: activeReasoningLevel,
+          onContent: (value) => {
+            assistantMessage.content = value;
+            syncMsg();
+          },
           preserveDocumentContext: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
           ...profileBudget,
           signal: controller.signal,
@@ -2739,6 +2756,11 @@ class AppStore {
           ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
           conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
           reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
+          onContent: (value) => {
+            nextVersion.content = value;
+            message.content = value;
+            this.touchChats();
+          },
           ...(regenProfile === 'chat' && !regenSearchMode ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
           signal: controller.signal,
           onStep: (steps) => {
@@ -3157,6 +3179,7 @@ class AppStore {
     if (current === mode) return;
     await this.commitConfig(setBackendModeConfig(this.config, mode), {
       refreshModels: true,
+      detectTools: true,
       refreshLocalStatus: true
     });
   }
@@ -3169,12 +3192,13 @@ class AppStore {
     await this.commitConfig({
       ...this.config,
       llm: { ...this.config.llm, provider: id }
-    }, { refreshModels: true });
+    }, { refreshModels: true, detectTools: true });
   }
 
   async updateLocalModel(model: ModelOption) {
     await this.commitConfig(setLocalModelConfig(this.config, model), {
       refreshModels: true,
+      detectTools: true,
       refreshLocalStatus: true
     });
   }

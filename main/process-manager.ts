@@ -1,7 +1,90 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
-import { resolveRuntimeConfig, formatStartupLog } from './runtime-config-resolver.ts';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { resolveRuntimeConfig, formatStartupLog, readGgufMetadataFields } from './runtime-config-resolver.ts';
 import { supportsLlamaFlag } from './llama-runtime.ts';
+import { resolveEffectiveTemplate } from './chat-templates.ts';
+
+const CHAT_TEMPLATE_DIR = path.join(os.tmpdir(), 'chatea-chat-templates');
+
+/**
+ * Materialize a resolved (non-embedded) chat template on disk so llama-server
+ * can load it with `--chat-template-file`. Keyed by a short content hash, so
+ * repeated loads of the same model reuse one file and concurrent servers do
+ * not race on a shared path.
+ */
+function writeChatTemplateFile(template: string, tag: string): string {
+  const hash = createHash('sha1').update(template).digest('hex').slice(0, 12);
+  fs.mkdirSync(CHAT_TEMPLATE_DIR, { recursive: true });
+  const filePath = path.join(CHAT_TEMPLATE_DIR, `${slugifyTag(tag)}-${hash}.jinja`);
+  if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, template, 'utf8');
+  pruneChatTemplateFiles(path.basename(filePath));
+  return filePath;
+}
+
+/**
+ * The cache is content-addressed, so files are immutable; only the current
+ * file per model prefix is useful. Keeping the last two per prefix avoids
+ * unbounded growth across model switches without deleting a file a running
+ * server may still hold open.
+ */
+function pruneChatTemplateFiles(keepFileName: string): void {
+  try {
+    const keepTag = keepFileName.replace(/-[0-9a-f]{12}\.jinja$/, '');
+    const entries = fs.readdirSync(CHAT_TEMPLATE_DIR)
+      .filter((name) => name.startsWith(keepTag) && name.endsWith('.jinja'))
+      .sort();
+    for (const name of entries.slice(0, Math.max(0, entries.length - 2))) {
+      if (name === keepFileName) continue;
+      fs.rmSync(path.join(CHAT_TEMPLATE_DIR, name), { force: true });
+    }
+  } catch {
+    // best-effort cache hygiene only
+  }
+}
+
+function slugifyTag(value: string): string {
+  return String(value || 'model').replace(/[^a-z0-9]+/gi, '-').slice(0, 40).toLowerCase() || 'model';
+}
+
+/**
+ * Decide which chat template llama-server should render with for this model,
+ * and materialize it when it does not come from the GGUF itself. Embedded
+ * templates need no file (the server reads them), so the returned path is
+ * null and only the source is reported.
+ */
+export function resolveChatTemplateForModel(
+  modelPath: string | undefined | null,
+  canPassTemplateFile: boolean
+): { source: 'gguf' | 'sidecar' | 'builtin' | 'none'; family: string | null; templateFile: string | null } {
+  if (!modelPath) return { source: 'none', family: null, templateFile: null };
+  try {
+    const fields = readGgufMetadataFields(modelPath);
+    const effective = resolveEffectiveTemplate({
+      modelPath,
+      fields,
+      ggufTemplate: fields?.chat_template ?? null
+    });
+    if (effective.source === 'gguf' || !effective.template) {
+      return { source: effective.source, family: effective.family, templateFile: null };
+    }
+    if (!canPassTemplateFile) {
+      console.warn('[process-manager] runtime lacks --chat-template-file; template fallback not applied');
+      return { source: effective.source, family: effective.family, templateFile: null };
+    }
+    const tag = path.basename(modelPath).replace(/\.gguf$/i, '');
+    return {
+      source: effective.source,
+      family: effective.family,
+      templateFile: writeChatTemplateFile(effective.template, tag)
+    };
+  } catch (err) {
+    console.warn('[process-manager] chat template resolution failed:', err instanceof Error ? err.message : String(err));
+    return { source: 'none', family: null, templateFile: null };
+  }
+}
 
 const DEFAULT_STARTUP_TIMEOUT = 30000;
 const DEFAULT_HEALTH_TIMEOUT = 20000;
@@ -317,6 +400,17 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
   // "tools param requires --jinja flag" on any request carrying tools.
   if (supports('--jinja')) args.push('--jinja');
 
+  // A GGUF without `tokenizer.chat_template` (common in re-quants) would
+  // otherwise render through llama-server's generic ChatML shell: no thinking
+  // control, no tool-call parsing, even though the model itself was trained
+  // for both. Resolve the template the server should use — sidecar file from
+  // the HF repo, embedded GGUF, or the family/generic fallback library — and
+  // pass a materialized copy when it did not come from the GGUF.
+  const templateResolution = resolveChatTemplateForModel(config.model_path, supports('--chat-template-file'));
+  if (templateResolution.templateFile) {
+    args.push('--chat-template-file', templateResolution.templateFile);
+  }
+
   // Enables GET /metrics for the runtime telemetry panel. `--props` is
   // deliberately not passed: GET /props needs no flag, and the flag only opens
   // up POST /props, which would let anything on the box mutate server state.
@@ -339,8 +433,18 @@ export function buildLlamaArgs(config, runtimePath, systemInfo = null, capabilit
     }
   }
 
-  // Log resolved configuration for debugging
+  // Log resolved configuration for debugging. The chat-template source is
+  // part of it: "builtin"/"sidecar" means the file had no embedded template
+  // and the fallback was applied, which is the difference between a model
+  // that can think and use tools and one that cannot.
   console.log(formatStartupLog(resolved));
+  if (templateResolution.source !== 'gguf') {
+    console.log(
+      `[runtime] chatTemplate=${templateResolution.source}` +
+      `${templateResolution.family ? ` family=${templateResolution.family}` : ''}` +
+      `${templateResolution.templateFile ? ` file=${templateResolution.templateFile}` : ''}`
+    );
+  }
 
   return args;
 }

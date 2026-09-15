@@ -110,34 +110,22 @@ function extractMistralContentParts(content: unknown): { text: string; reasoning
   return { text, reasoning };
 }
 
-interface MistralSplit {
-  systemMessage?: string;
-  messages: Array<Record<string, unknown>>;
-}
-
-function splitMistralMessages(messages: Array<Record<string, unknown>>): MistralSplit {
-  const system: string[] = [];
-  const chat: Array<Record<string, unknown>> = [];
-  for (const msg of messages) {
-    if (msg.role === 'system') system.push(String(msg.content ?? ''));
-    else chat.push({ role: msg.role, content: msg.content });
-  }
-  return {
-    systemMessage: system.length ? system.join('\n') : undefined,
-    messages: chat
-  };
-}
-
-function buildMistralRequest(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
-  const { systemMessage, messages } = splitMistralMessages(params.messages);
+export function buildMistralRequest(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
+  const messages = params.messages.map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+    ...(msg.name ? { name: msg.name } : {}),
+    ...(msg.tool_calls ? { toolCalls: msg.tool_calls } : {}),
+    ...(msg.tool_call_id ? { toolCallId: msg.tool_call_id } : {})
+  }));
   return {
     model: params.model,
     messages,
-    ...(systemMessage ? { systemMessage } : {}),
     ...(params.max_tokens ? { maxTokens: params.max_tokens } : {}),
     ...(params.temperature != null ? { temperature: params.temperature } : {}),
     ...(params.top_p != null ? { topP: params.top_p } : {}),
     ...(params.tools?.length ? { tools: params.tools } : {}),
+    ...(params.tool_choice ? { toolChoice: params.tool_choice === 'required' ? 'any' : params.tool_choice } : {}),
     ...dialect.reasoningBody?.(params.reasoning?.level ?? undefined, params.model),
     stream
   };
@@ -150,10 +138,32 @@ function buildMistralRequest(dialect: Dialect, params: StreamParams, stream: boo
  * fetch-sse dialect flows through here — casing variants of the reasoning
  * field are absorbed once, for good.
  */
+/**
+ * The provider's own error payload travels next to the finish reason on some
+ * routes (OpenRouter: `choices[0].error` with an HTTP-200 `"error"` finish).
+ * Pulled out here so `mapOpenAiFinishReason` can report the real cause
+ * instead of `unknown finish reason "error"`.
+ */
+function providerErrorDetail(choice: Record<string, unknown> | undefined, raw: unknown): string | undefined {
+  const err = (choice as { error?: unknown } | undefined)?.error
+    ?? (raw as { error?: unknown } | undefined)?.error;
+  if (!err) return undefined;
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object') {
+    const record = err as { message?: unknown; code?: unknown };
+    const message = typeof record.message === 'string' ? record.message : '';
+    const code = typeof record.code === 'string' || typeof record.code === 'number' ? String(record.code) : '';
+    const joined = [code, message].filter(Boolean).join(': ');
+    if (joined) return joined;
+  }
+  return undefined;
+}
+
 function choiceToChunks(
   choice: { delta?: Record<string, unknown>; finish_reason?: string | null } | undefined,
   chunkUsage?: unknown,
-  mapUsage: (u: unknown) => TokenUsage | null = normalizeOpenAiUsage
+  mapUsage: (u: unknown) => TokenUsage | null = normalizeOpenAiUsage,
+  rawChunk?: unknown
 ): StreamChunk[] {
   const chunks: StreamChunk[] = [];
   const delta = choice?.delta ?? {};
@@ -183,18 +193,25 @@ function choiceToChunks(
   const usage = mapUsage(chunkUsage);
   if (usage) chunks.push({ type: 'usage', usage });
 
-  const finish = mapOpenAiFinishReason(choice?.finish_reason);
+  const finish = mapOpenAiFinishReason(
+    choice?.finish_reason,
+    providerErrorDetail(choice as Record<string, unknown> | undefined, rawChunk ?? chunkUsage)
+  );
   if (finish) chunks.push({ type: 'finish', reason: finish });
 
   return chunks;
 }
 
-function buildBody(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
+export function buildBody(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: params.model,
-    messages: params.messages,
+    messages: params.messages.map(({ providerState, ...message }) => ({
+      ...message,
+      ...(dialect.id === 'openrouter' && (providerState as CompletionResult['providerState'])?.provider === 'openrouter'
+        ? { reasoning_details: (providerState as NonNullable<CompletionResult['providerState']>).blocks } : {})
+    })),
     ...(params.tools?.length ? { tools: params.tools } : {}),
-    ...(params.tool_choice !== undefined ? { tool_choice: params.tool_choice } : {}),
+    ...(params.tool_choice !== undefined && dialect.id !== 'ollama' ? { tool_choice: params.tool_choice } : {}),
     ...dialect.reasoningBody?.(params.reasoning?.level ?? undefined, params.model),
     ...(stream && dialect.streamUsage ? { stream_options: { include_usage: true } } : {}),
     stream
@@ -220,11 +237,24 @@ async function* streamSdk(dialect: Dialect, params: StreamParams): AsyncGenerato
     throw new LlmStreamError(classifyError(err));
   }
 
+  const reasoningDetails = new Map<number, Record<string, any>>();
   try {
     for await (const chunk of stream) {
       if (params.signal?.aborted) break;
-      yield* choiceToChunks(chunk.choices?.[0], chunk.usage);
+      if (dialect.id === 'openrouter') {
+        for (const block of chunk.choices?.[0]?.delta?.reasoning_details || []) {
+          const index = block.index ?? 0;
+          const previous = reasoningDetails.get(index) || {};
+          const next = { ...previous, ...block };
+          for (const field of ['text', 'summary', 'data', 'signature']) {
+            if (typeof block[field] === 'string') next[field] = (previous[field] || '') + block[field];
+          }
+          reasoningDetails.set(index, next);
+        }
+      }
+      yield* choiceToChunks(chunk.choices?.[0], chunk.usage, normalizeOpenAiUsage, chunk);
     }
+    if (reasoningDetails.size) yield { type: 'provider-state', state: { provider: 'openrouter', blocks: [...reasoningDetails.values()] } };
   } catch (err: unknown) {
     throw new LlmStreamError(classifyError(err));
   }
@@ -312,7 +342,7 @@ async function* streamMistral(dialect: Dialect, params: StreamParams): AsyncGene
       if (extracted.text) yield { type: 'text-delta', text: extracted.text };
       if (extracted.reasoning) yield { type: 'reasoning-delta', text: extracted.reasoning };
 
-      const toolCalls = delta.tool_calls;
+      const toolCalls = delta.toolCalls ?? delta.tool_calls;
       if (Array.isArray(toolCalls)) {
         for (let i = 0; i < toolCalls.length; i++) {
           const tc = toolCalls[i] as Record<string, any>;
@@ -322,13 +352,18 @@ async function* streamMistral(dialect: Dialect, params: StreamParams): AsyncGene
               index: tc.index ?? i,
               id: tc.id ?? undefined,
               name: tc.function?.name ?? undefined,
-              argumentsDelta: tc.function?.arguments ?? ''
+              argumentsDelta: typeof tc.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function?.arguments ?? {})
             }
           };
         }
       }
 
-      const finish = mapOpenAiFinishReason(choice?.finish_reason);
+      if (chunk.data?.usage) yield { type: 'usage', usage: {
+        input_tokens: chunk.data.usage.promptTokens,
+        output_tokens: chunk.data.usage.completionTokens,
+        total_tokens: chunk.data.usage.totalTokens
+      } };
+      const finish = mapOpenAiFinishReason(choice?.finishReason ?? choice?.finish_reason);
       if (finish) yield { type: 'finish', reason: finish };
     }
   } catch (err: unknown) {
@@ -358,12 +393,21 @@ async function completeSdk(dialect: Dialect, params: StreamParams): Promise<Comp
     const choice = response?.choices?.[0] ?? {};
     const message = choice.message ?? {};
     const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+    const finishReason = mapOpenAiFinishReason(
+      choice.finishReason ?? choice.finish_reason,
+      providerErrorDetail(choice, response)
+    ) ?? undefined;
+    // An error finish is a failure, not an empty answer — returning it as one
+    // mislabels provider outages as "Empty response" downstream.
+    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
     return {
       content: message.content || '',
       reasoning: reasoning ? String(reasoning) : '',
+      ...(dialect.id === 'openrouter' && Array.isArray(message.reasoning_details)
+        ? { providerState: { provider: 'openrouter', blocks: message.reasoning_details } } : {}),
       usage: normalizeOpenAiUsage(response?.usage),
       toolCalls: toolCallsFromOpenAi(message),
-      finishReason: (mapOpenAiFinishReason(choice.finish_reason) ?? undefined) as FinishReason | undefined
+      finishReason: finishReason as FinishReason | undefined
     };
   } catch (err: unknown) {
     throw new LlmStreamError(classifyError(err));
@@ -392,12 +436,17 @@ async function completeFetchSse(dialect: Dialect, params: StreamParams): Promise
     const choice = data?.choices?.[0] ?? {};
     const message = choice.message ?? {};
     const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+    const finishReason = mapOpenAiFinishReason(
+      choice.finishReason ?? choice.finish_reason,
+      providerErrorDetail(choice, data)
+    ) ?? undefined;
+    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
     return {
       content: message.content || '',
       reasoning: reasoning ? String(reasoning) : '',
       usage: preserveLocalUsage(data),
       toolCalls: toolCallsFromOpenAi(message),
-      finishReason: (mapOpenAiFinishReason(choice.finish_reason) ?? undefined) as FinishReason | undefined
+      finishReason: finishReason as FinishReason | undefined
     };
   } catch (err: unknown) {
     if (err instanceof LlmStreamError) throw err;
@@ -417,6 +466,11 @@ async function completeMistral(dialect: Dialect, params: StreamParams): Promise<
     const extracted = extractMistralContentParts(message.content);
     const usageRecord = (response?.usage ?? {}) as Record<string, number>;
     const calls = message.toolCalls;
+    const finishReason = mapOpenAiFinishReason(
+      choice.finishReason ?? choice.finish_reason,
+      providerErrorDetail(choice, response)
+    ) ?? undefined;
+    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
     return {
       content: extracted.text,
       reasoning: extracted.reasoning,
@@ -434,9 +488,10 @@ async function completeMistral(dialect: Dialect, params: StreamParams): Promise<
             arguments: safeParseJson(tc.function?.arguments) ?? tc.function?.arguments ?? ''
           }))
         : null,
-      finishReason: (mapOpenAiFinishReason(choice.finish_reason) ?? undefined) as FinishReason | undefined
+      finishReason: finishReason as FinishReason | undefined
     };
   } catch (err: unknown) {
+    if (err instanceof LlmStreamError) throw err;
     throw new LlmStreamError(classifyError(err));
   }
 }
@@ -584,22 +639,34 @@ async function getReasoningCapabilities(
   const known = dialect.reasoningCapabilities?.(modelId, modelPath);
   if (known) return known;
 
-  // 2. Local models declare thinking support in their GGUF metadata.
+  // 2. Local models: report what the template the server will actually
+  // render with grants. Embedded GGUF template first, then the same
+  // sidecar/family/generic fallback that process-manager passes to
+  // llama-server — so the UI can never disagree with rendering (the old
+  // path read only the GGUF and wiped the user's level when a re-quant had
+  // no template).
   if (dialect.id === 'local') {
     const LOCAL_UNKNOWN = { supported: false, levels: [], paramShape: 'local_enable_thinking', source: 'unknown' } as const;
     if (!modelPath) return LOCAL_UNKNOWN;
     try {
-      const { getGgufMetadata } = await import('../model-manager.ts');
-      const meta = await getGgufMetadata(modelPath);
-      if (typeof meta?.chat_template_supports_thinking === 'boolean') {
-        return {
-          supported: meta.chat_template_supports_thinking,
-          levels: meta.chat_template_supports_thinking ? ['off', 'on'] as ReasoningCapabilities['levels'] : [],
-          paramShape: 'local_enable_thinking',
-          source: 'metadata'
-        };
-      }
-      return LOCAL_UNKNOWN;
+      const { readGgufMetadataFields } = await import('../runtime-config-resolver.ts');
+      const { resolveEffectiveTemplate, detectTemplateThinkingSupport } = await import('../chat-templates.ts');
+      const fields = readGgufMetadataFields(modelPath);
+      const effective = resolveEffectiveTemplate({
+        modelPath,
+        fields,
+        ggufTemplate: fields?.chat_template ?? null
+      });
+      const supportsThinking = detectTemplateThinkingSupport(effective.template);
+      return {
+        supported: supportsThinking,
+        levels: supportsThinking ? ['off', 'on'] as ReasoningCapabilities['levels'] : [],
+        paramShape: 'local_enable_thinking',
+        // The UI treats any non-'unknown' source as trustworthy; the template
+        // origin (embedded file, sidecar, or built-in fallback) is what the
+        // support verdict is actually made from.
+        source: 'metadata'
+      };
     } catch {
       return LOCAL_UNKNOWN;
     }
@@ -680,15 +747,22 @@ export function createOpenAiProvider(dialect: Dialect): ProviderObject {
       return getReasoningCapabilities(dialect, apiKey, baseUrl, modelId, modelPath);
     },
     checkToolSupport(args: ToolProbeArgs) {
-      // A positive GGUF read is definitive. Anything else — absent template key,
-      // unreadable file — means "unknown", not "no tools", so fall through to
-      // the live probe instead of vetoing tools the model may well support.
+      // A positive read of the *effective* template (embedded, sidecar, or
+      // fallback) is definitive. Anything else — unreadable file, no template
+      // anywhere — means "unknown", not "no tools", so fall through to the
+      // live probe instead of vetoing tools the model may well support.
       if (dialect.id === 'local' && args.modelPath) {
         return (async () => {
           try {
-            const { getGgufMetadata } = await import('../model-manager.ts');
-            const meta = await getGgufMetadata(args.modelPath!);
-            if (meta?.chat_template_uses_tools === true) {
+            const { readGgufMetadataFields } = await import('../runtime-config-resolver.ts');
+            const { resolveEffectiveTemplate, detectTemplateToolSupport } = await import('../chat-templates.ts');
+            const fields = readGgufMetadataFields(args.modelPath!);
+            const effective = resolveEffectiveTemplate({
+              modelPath: args.modelPath!,
+              fields,
+              ggufTemplate: fields?.chat_template ?? null
+            });
+            if (detectTemplateToolSupport(effective.template)) {
               return { supportsTools: true, source: 'gguf_metadata' };
             }
           } catch {

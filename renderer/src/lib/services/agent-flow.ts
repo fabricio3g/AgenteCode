@@ -87,7 +87,7 @@ export function hasProgressSince(snapshots: ProgressSnapshot[], minDraftGrowth: 
 export function isWebsiteBuildRequest(prompt: string): boolean {
   const normalized = String(prompt || '');
   if (!normalized) return false;
-  return /\b(website|web\s*site|webpage|web\s*page|landing\s*page|landing|site|homepage|index\.html|html|css|javascript|script\.js)\b/i.test(normalized);
+  return /\b(build|create|make|generate|write|design|develop)\b[\s\S]{0,100}\b(website|web\s*site|webpage|web\s*page|landing\s*page|homepage|index\.html)\b/i.test(normalized);
 }
 
 export function finalizeAgentSteps(steps: AgentStep[], hasError: boolean): void {

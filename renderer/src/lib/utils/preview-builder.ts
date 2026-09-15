@@ -1,4 +1,5 @@
 import type { AgentArtifact } from '$lib/types/chat';
+import { artifactPreviewCsp } from '$shared/artifact-preview-policy';
 
 const TEXT_ASSET_EXTENSIONS = new Set(['html', 'htm', 'css', 'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx', 'json', 'svg', 'txt', 'md', 'xml', 'webmanifest']);
 const MIME_BY_EXT: Record<string, string> = {
@@ -93,60 +94,29 @@ function rewriteCssAssetUrls(css: string, cssPath: string, allFiles: Record<stri
   });
 }
 
-function buildPreviewBridgeScript(): string {
-  return `(() => {
-  const send = (level, args) => {
-    try {
-      parent.postMessage({
-        source: 'chateaui-preview',
-        level,
-        text: args.map((value) => {
-          if (typeof value === 'string') return value;
-          try { return JSON.stringify(value); } catch { return String(value); }
-        }).join(' ')
-      }, '*');
-    } catch {}
-  };
-
-  ['log', 'warn', 'error'].forEach((level) => {
-    const original = console[level];
-    console[level] = (...args) => {
-      send(level, args);
-      return original.apply(console, args);
-    };
-  });
-
-  window.addEventListener('error', (event) => {
-    send('error', [event.message || 'Preview error']);
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Unhandled promise rejection');
-    send('error', [reason]);
-  });
-
-  document.addEventListener('click', (e) => {
-    const link = e.target.closest('a');
-    if (!link || !link.href) return;
-    const href = link.getAttribute('href') || link.href;
-    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-    const isExternal = /^(?:https?:|mailto:|tel:)/i.test(href);
-    if (isExternal) {
-      e.preventDefault();
-      window.open(href, '_blank', 'noopener,noreferrer');
-    }
-  }, true);
-})();`;
-}
-
 export function buildPreviewHtml(
   htmlSource: string,
   allFiles: Record<string, string>,
-  basePath: string
+  basePath: string,
+  interactive = false
 ): { html: string; externalRefs: string[] } {
   const externalRefs: string[] = [];
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlSource, 'text/html');
+
+  // Static embedded previews must not navigate their own frame or create other
+  // browsing contexts. Interactive execution is reserved for the native guest.
+  doc.querySelectorAll('base, meta[http-equiv], iframe, frame, frameset, object, embed').forEach((node) => node.remove());
+  // SVG animation can mutate link destinations even when JavaScript is disabled.
+  if (!interactive) doc.querySelectorAll('animate, set, animateMotion, animateTransform').forEach((node) => node.remove());
+  doc.querySelectorAll('a, area').forEach((anchor) => {
+    for (const attr of ['href', 'xlink:href']) {
+      const ref = anchor.getAttribute(attr);
+      if (ref && !ref.startsWith('#')) anchor.removeAttribute(attr);
+    }
+    anchor.removeAttribute('ping');
+    anchor.removeAttribute('target');
+  });
 
   doc.querySelectorAll('link[href]').forEach((link) => {
     const href = link.getAttribute('href');
@@ -205,6 +175,7 @@ export function buildPreviewHtml(
   doc.querySelectorAll('link[href]').forEach((linkEl) => {
     const href = linkEl.getAttribute('href');
     if (!href) return;
+    if (href.startsWith('data:')) return;
     if (isBlockedLocalResource(href)) {
       linkEl.remove();
       return;
@@ -271,9 +242,14 @@ export function buildPreviewHtml(
     head.appendChild(viewport);
   }
 
-  const bridgeScript = doc.createElement('script');
-  bridgeScript.textContent = buildPreviewBridgeScript();
-  (doc.body || doc.documentElement).appendChild(bridgeScript);
+  const policy = doc.createElement('meta');
+  policy.setAttribute('http-equiv', 'Content-Security-Policy');
+  policy.setAttribute('content', artifactPreviewCsp(interactive));
+  head.insertBefore(policy, head.firstChild);
+  const referrer = doc.createElement('meta');
+  referrer.setAttribute('name', 'referrer');
+  referrer.setAttribute('content', 'no-referrer');
+  head.insertBefore(referrer, policy.nextSibling);
 
   return { html: '<!DOCTYPE html>' + doc.documentElement.outerHTML, externalRefs };
 }

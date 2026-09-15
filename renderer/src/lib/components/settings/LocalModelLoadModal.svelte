@@ -141,6 +141,20 @@
     if (supported === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
     return { label: 'Unknown', tone: 'text-fg-secondary' };
   });
+  // When the model's GGUF lost its chat template, the server gets one from a
+  // downloaded sidecar or the built-in family template. Say so — otherwise a
+  // repaired model reads as a normal one and a truly unsupported one reads
+  // as a mystery.
+  const templateFallbackNote = $derived.by(() => {
+    const source = metadata?.chat_template_source;
+    if (source === 'sidecar') return 'Chat template loaded from Hugging Face.';
+    if (source === 'builtin') {
+      const family = metadata?.chat_template_family;
+      return family ? `Chat template restored (${family}).` : 'Chat template restored.';
+    }
+    if (source === 'none') return 'No chat template found — thinking and tools are unavailable.';
+    return '';
+  });
   const thinkingMode = $derived(appStore.localModelLoadThinkingMode);
   const thinkingLocked = $derived(thinkingSupport.label === 'Not supported');
   const thinkingSummary = $derived.by(() => {
@@ -365,6 +379,9 @@
   <div class="flex items-center justify-between gap-3"><span>Vision</span><span class={`font-medium ${visionSupport.tone}`}>{visionSupport.label}</span></div>
   <div class="flex items-center justify-between gap-3"><span>Thinking</span><span class={`font-medium ${thinkingSupport.tone}`}>{thinkingSummary}</span></div>
   <div class="flex items-center justify-between gap-3"><span>MTP</span><span class={`font-medium ${mtpSupport.tone}`}>{mtpSupport.label}</span></div>
+  {#if templateFallbackNote}
+    <div class="sm:col-span-2 text-[12px] leading-5 text-[var(--text-tertiary)]">{templateFallbackNote}</div>
+  {/if}
   </div>
 
  <!-- Runtime missing warning -->

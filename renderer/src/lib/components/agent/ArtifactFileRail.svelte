@@ -21,6 +21,11 @@
 
 <div class="mobile-files border-b border-[var(--border-subtle)] p-2">
   <Select value={selectedPath} options={files.map(([path]) => ({ value: path, label: path }))} onchange={onselect} aria-label="Artifact file" variant="surface" class="w-full" />
+  <div class="mt-1 flex gap-1">
+    <Button variant="ghost" size="icon-sm" onclick={oncreate} aria-label="Create file"><Plus /></Button>
+    <Button variant="ghost" size="icon-sm" onclick={onrename} disabled={!selectedPath} aria-label="Rename selected file"><Pencil /></Button>
+    <Button variant="ghost" size="icon-sm" onclick={ondelete} disabled={!selectedPath} aria-label="Delete selected file"><Trash2 /></Button>
+  </div>
 </div>
 
 <aside class:collapsed class="file-rail min-h-0 shrink-0 border-r border-[var(--border-subtle)] bg-[var(--muted)]">
@@ -38,7 +43,7 @@
     </div>
     <div class="min-h-0 overflow-auto p-1.5">
       {#each files as [path] (path)}
-        <button type="button" class:active={path === selectedPath} class="file-row" onclick={() => onselect(path)} title={path}>
+        <button type="button" class:active={path === selectedPath} aria-current={path === selectedPath ? 'true' : undefined} class="file-row" onclick={() => onselect(path)} title={path}>
           <FileCode class="size-3.5 shrink-0" /><span class="truncate">{path}</span>
         </button>
       {/each}

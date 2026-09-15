@@ -116,6 +116,7 @@
     type="button"
     class="aui-tool-fallback-trigger w-full max-w-none"
     onclick={toggle}
+    aria-expanded={hasBody || showApproval ? expanded : undefined}
     disabled={!hasBody && !showApproval}
   >
     <Icon class="aui-tool-fallback-trigger-icon {isRunning ? 'is-running' : ''}" />
@@ -149,7 +150,7 @@
       {#if isError && (step.output || step.detail)}
         <div>
           <p class="aui-tool-fallback-error-header">{copy.tool.error}:</p>
-          <p class="aui-tool-fallback-error-reason">{step.output || step.detail}</p>
+          <p class="aui-tool-fallback-error-reason">{(step.output || step.detail || '').slice(0, OUTPUT_LIMIT)}</p>
         </div>
       {:else}
         {#if step.detail}
@@ -176,7 +177,13 @@
 <style>
   .aui-tool-row {
     border-radius: var(--radius-md);
+    overflow: hidden;
   }
+
+  .aui-tool-row :global(.aui-tool-fallback-trigger) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
+  .aui-tool-row :global(.aui-tool-fallback-trigger:hover) { background: var(--muted); }
+  .aui-tool-row :global(.aui-tool-fallback-content) { margin: 0 0.625rem 0.5rem; border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; background: transparent; }
+  .aui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: 0.6875rem; }
 
   /* Completed, collapsed work steps back so the answer leads; hover restores
      full contrast. Running / error / expanded rows stay at full weight. */

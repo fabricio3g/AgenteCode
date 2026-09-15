@@ -11,9 +11,8 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { ArrowDown } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { copy } from '$lib/copy';
+  import { reducedMotion } from '$lib/utils/motion.svelte';
   import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
   import EditMessageInline from '$lib/features/chat/EditMessageInline.svelte';
   import SelectedTextAskAction from '$lib/features/chat/SelectedTextAskAction.svelte';
@@ -23,12 +22,12 @@
 
   /** Treat anything within this many pixels of the bottom as "at the bottom". */
   const BOTTOM_THRESHOLD_PX = 96;
+  /** Resume following once the user scrolls back this close to the live edge. */
+  const FOLLOW_RESUME_PX = 32;
   /** How long the action bar stays pinned after jumping to a message. */
   const ACTION_PIN_MS = 1400;
 
   let container = $state<HTMLDivElement | undefined>(undefined);
-  let showJumpToLatest = $state(false);
-  let scrollRafId = 0;
   let timelineRafId = 0;
   let previousChatId = $state<string | null>(null);
   let previousMessageCount = $state(0);
@@ -41,36 +40,51 @@
   let timelineMarkers = $state<TimelineMarker[]>([]);
   let timelineIndex = $state(0);
   let timelineBrowsing = $state(false);
+  /** Stick to the live edge while true. Any user scroll away pauses it; scrolling
+   * back to the bottom resumes it. Programmatic jumps land at the bottom, so
+   * they converge on the same state without special-casing. */
+  let followingLatest = true;
 
   const messages = $derived(appStore.currentChat?.messages || []);
   const contextMode = $derived(appStore.currentChat?.contextMode || 'home');
   const hasMessages = $derived(messages.length > 0);
   const showTimeline = $derived(messages.length > 1);
 
+  function distanceToBottom(): number {
+    if (!container) return 0;
+    return container.scrollHeight - (container.scrollTop + container.clientHeight);
+  }
+
   function isNearBottom(): boolean {
-    if (!container) return true;
-    const distance = container.scrollHeight - (container.scrollTop + container.clientHeight);
-    return distance <= BOTTOM_THRESHOLD_PX;
+    return distanceToBottom() <= BOTTOM_THRESHOLD_PX;
+  }
+
+  function snapToBottom() {
+    followingLatest = true;
+    if (container) container.scrollTop = container.scrollHeight;
   }
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
-    cancelAnimationFrame(scrollRafId);
-    scrollRafId = requestAnimationFrame(() => {
-      container?.scrollTo({ top: container.scrollHeight, behavior });
+    followingLatest = true;
+    container?.scrollTo({
+      top: container.scrollHeight,
+      behavior: reducedMotion.value ? 'auto' : behavior
     });
+  }
+
+  /** Content grew mid-stream: stay pinned instantly when following, never ease.
+   * Easing perpetually lags a fast stream and fights the user's own scrolling. */
+  function followContentGrowth() {
+    if (!followingLatest || appStore.editingMessageId || !container) return;
+    container.scrollTop = container.scrollHeight;
   }
 
   function handleScroll() {
     if (!container) return;
-    showJumpToLatest = !isNearBottom();
+    const distance = distanceToBottom();
+    if (distance <= FOLLOW_RESUME_PX) followingLatest = true;
+    else if (distance > BOTTOM_THRESHOLD_PX) followingLatest = false;
     queueTimelineRefresh();
-  }
-
-  function jumpToLatest() {
-    scrollToBottom('smooth');
-    showJumpToLatest = false;
-    timelineBrowsing = false;
-    timelineIndex = Math.max(0, timelineMarkers.length - 1);
   }
 
   function pinActionsFor(messageId: string) {
@@ -85,7 +99,8 @@
   function scrollMessageIntoView(messageId: string, block: ScrollLogicalPosition) {
     const slot = slotRefs[messageId];
     if (!slot) return;
-    slot.scrollIntoView({ behavior: 'smooth', block });
+    followingLatest = false;
+    slot.scrollIntoView({ behavior: reducedMotion.value ? 'auto' : 'smooth', block });
     pinActionsFor(messageId);
   }
 
@@ -201,7 +216,10 @@
     if (!scrollContainer) return;
 
     const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => queueTimelineRefresh());
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+        queueTimelineRefresh();
+        followContentGrowth();
+      });
     observer?.observe(scrollContainer);
     const content = scrollContainer.firstElementChild;
     if (content) observer?.observe(content);
@@ -236,14 +254,11 @@
 
       if (chatChanged) {
         timelineBrowsing = false;
-        scrollToBottom('auto');
-        showJumpToLatest = false;
-      } else if (isNearBottom() || isStreaming) {
+        snapToBottom();
+      } else if (followingLatest) {
         timelineBrowsing = false;
-        scrollToBottom(isStreaming ? 'auto' : 'smooth');
-        showJumpToLatest = false;
-      } else {
-        showJumpToLatest = true;
+        if (isStreaming) snapToBottom();
+        else scrollToBottom('smooth');
       }
 
       previousChatId = chatId;
@@ -253,6 +268,8 @@
 
   $effect(() => () => {
     if (pinTimer) clearTimeout(pinTimer);
+    cancelAnimationFrame(timelineRafId);
+    scrollTicket++;
   });
 </script>
 
@@ -278,8 +295,6 @@
         role="region"
         aria-label="Conversation messages"
         onscroll={handleScroll}
-        onwheel={() => (timelineBrowsing = false)}
-        ontouchstart={() => (timelineBrowsing = false)}
       >
         <div
           class="mx-auto flex w-full flex-col gap-7"
@@ -319,18 +334,6 @@
           onbrowse={browseTimeline}
         />
       {/if}
-
-      {#if showJumpToLatest}
-        <button
-          type="button"
-          class="jump-latest-btn"
-          onclick={jumpToLatest}
-          aria-label={copy.thread.jumpToLatest}
-          title={copy.thread.jumpToLatest}
-        >
-          <ArrowDown class="h-4 w-4" />
-        </button>
-      {/if}
     </div>
   {/if}
 </div>
@@ -341,8 +344,9 @@
     contain: layout style;
   }
 
+  /* No smooth scrolling here: programmatic jumps choose their own behavior and
+     instant follow updates must not be eased, or the live edge lags the stream. */
   .thread-scroll {
-    scroll-behavior: smooth;
     scrollbar-width: none;
   }
 
@@ -353,49 +357,6 @@
 
   .message-slot {
     position: relative;
-  }
-
-  .jump-latest-btn {
-    position: absolute;
-    bottom: 1rem;
-    left: 50%;
-    z-index: var(--z-sticky);
-    display: inline-flex;
-    width: 2rem;
-    height: 2rem;
-    transform: translateX(-50%);
-    align-items: center;
-    justify-content: center;
-    border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--chat-bg) 92%, var(--card));
-    color: var(--muted-foreground);
-    backdrop-filter: blur(8px);
-    box-shadow:
-      0 10px 26px rgba(0, 0, 0, 0.18),
-      0 2px 8px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    transition:
-      background 0.15s ease,
-      color 0.15s ease,
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
-    animation: fadeInSoft 120ms ease-out;
-  }
-
-  .jump-latest-btn:hover {
-    border-color: var(--border);
-    background: color-mix(in srgb, var(--surface-hover) 88%, var(--chat-bg));
-    color: var(--foreground);
-    box-shadow:
-      0 14px 32px rgba(0, 0, 0, 0.22),
-      0 4px 12px rgba(0, 0, 0, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  }
-
-  @keyframes fadeInSoft {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 
   .edit-inline-container {

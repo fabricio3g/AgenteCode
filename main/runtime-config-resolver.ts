@@ -4,6 +4,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolveRuntimeBinary } from './runtime-resolver.ts';
 import { createLogger } from './utils/logger.ts';
+import { detectTemplateThinkingSupport, detectTemplateToolSupport } from './chat-templates.ts';
 
 // ── Constants ──
 
@@ -179,6 +180,10 @@ export function readGgufMetadataFields(filePath) {
 
       const out = {
         architecture: null,
+        tokenizer_model: null,
+        tokenizer_pre: null,
+        general_basename: null,
+        general_name: null,
         context_length: null,
         block_count: null,
         embedding_length: null,
@@ -188,6 +193,8 @@ export function readGgufMetadataFields(filePath) {
         parameter_count: null,
         chat_template_uses_tools: null,
         chat_template_supports_thinking: null,
+        chat_template_present: false,
+        chat_template: null,
         has_mtp_layers: null
       };
 
@@ -232,10 +239,29 @@ export function readGgufMetadataFields(filePath) {
         if (key.endsWith('.parameter_count') || key.endsWith('.n_params')) {
           if (isFinitePositiveInt(Number(value))) out.parameter_count = Number(value);
         }
+        if (key === 'tokenizer.ggml.model' && typeof value === 'string') {
+          out.tokenizer_model = value;
+        }
+        if ((key === 'tokenizer.ggml.pre' || key === 'tokenizer.ggml.precompiled') && typeof value === 'string') {
+          out.tokenizer_pre = value;
+        }
+        if (key === 'general.basename' && typeof value === 'string') {
+          out.general_basename = value;
+        }
+        if (key === 'general.name' && typeof value === 'string') {
+          out.general_name = value;
+        }
         if (key === 'tokenizer.chat_template' && typeof value === 'string') {
-          const t = value.toLowerCase();
-          out.chat_template_uses_tools = /tool|function[_\s-]?call|tool_calls/.test(t);
-          out.chat_template_supports_thinking = /enable_thinking|<think>|reasoning_content|thinking/i.test(t);
+          // Shared llama-ui-style detectors (main/chat-templates.ts): the old
+          // bare /thinking/i regex fired on template prose and missed the real
+          // control variables, so thinking support could be reported either
+          // way. Capability probing now reads the raw template through the
+          // effective-template resolver, but these flags stay for older
+          // consumers.
+          out.chat_template_present = true;
+          out.chat_template = value;
+          out.chat_template_uses_tools = detectTemplateToolSupport(value);
+          out.chat_template_supports_thinking = detectTemplateThinkingSupport(value);
         }
         if (key === 'clip.has_vision_encoder' || key === 'general.has_vision') {
           // Reserved for future: not consumed by metadata but recognized.

@@ -4,6 +4,7 @@
   import { copy } from '$lib/copy';
   import ViewerStatus from './ViewerStatus.svelte';
   import { readArrayBuffer } from './viewer-source';
+  import { buildPreviewHtml } from '$lib/utils/preview-builder';
 
   interface Props {
     src: string;
@@ -16,24 +17,24 @@
   let error = $state<string | null>(null);
   let htmlContent = $state('');
 
-  async function convertDocx() {
+  async function convertDocx(source: string, name: string, isCurrent: () => boolean) {
     loading = true;
     error = null;
     htmlContent = '';
     try {
-      if (!/\.docx$/i.test(filename)) {
+      if (!/\.docx$/i.test(name)) {
         throw new Error('Only DOCX preview is supported. Download this document to open it.');
       }
       const mammothModule = await import('mammoth');
       const mammoth = (mammothModule as any).default || mammothModule;
-      const arrayBuffer = await readArrayBuffer(src);
+      const arrayBuffer = await readArrayBuffer(source);
       const result = await mammoth.convertToHtml({ arrayBuffer });
-      htmlContent = buildPreviewFrame(result.value || '<p>This document has no readable text.</p>');
+      if (isCurrent()) htmlContent = buildPreviewHtml(buildPreviewFrame(result.value || '<p>This document has no readable text.</p>'), {}, 'index.html').html;
     } catch (err) {
       console.error('[DocxViewer] Failed to convert DOCX:', err);
-      error = err instanceof Error ? err.message : 'Document preview is unavailable. Download it to open.';
+      if (isCurrent()) error = err instanceof Error ? err.message : 'Document preview is unavailable. Download it to open.';
     } finally {
-      loading = false;
+      if (isCurrent()) loading = false;
     }
   }
 
@@ -59,7 +60,9 @@
   }
 
   $effect(() => {
-    if (src) convertDocx();
+    let current = true;
+    void convertDocx(src, filename, () => current);
+    return () => { current = false; };
   });
 </script>
 
@@ -77,7 +80,7 @@
       <iframe
         class="docx-iframe"
         srcdoc={htmlContent}
-        sandbox="allow-scripts"
+        sandbox=""
         referrerpolicy="no-referrer"
         title="{filename} preview"
       ></iframe>

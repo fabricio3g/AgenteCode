@@ -51,10 +51,13 @@ export type StreamChunk =
   | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-call-delta'; delta: ToolCallDelta }
   | { type: 'usage'; usage: TokenUsage }
+  | { type: 'provider-state'; state: { provider: string; blocks: Array<Record<string, unknown>> } }
   | { type: 'finish'; reason: FinishReason };
 
 /** Non-streaming completion result — the long-standing chat wire shape. */
 export interface CompletionResult {
+  /** Opaque signed content to replay on subsequent tool turns, never display text. */
+  providerState?: { provider: string; blocks: Array<Record<string, unknown>> };
   content: string;
   reasoning: string;
   usage: TokenUsage | null;
@@ -154,8 +157,14 @@ export class LlmStreamError extends Error {
 /**
  * Map an OpenAI-style finish_reason string onto the typed reason.
  * Accepts the casing variants providers actually send.
+ *
+ * `detail` carries the provider's own error payload when one arrives
+ * alongside the finish (OpenRouter reports an upstream failure as
+ * `finish_reason: "error"` on an HTTP-200 stream, with the real cause in
+ * `choices[0].error`). Without it the UI could only print
+ * `unknown finish reason "error"`.
  */
-export function mapOpenAiFinishReason(raw: string | null | undefined): FinishReason | null {
+export function mapOpenAiFinishReason(raw: string | null | undefined, detail?: string): FinishReason | null {
   if (!raw) return null;
   switch (raw) {
     case 'length':
@@ -170,6 +179,17 @@ export function mapOpenAiFinishReason(raw: string | null | undefined): FinishRea
     case 'end_turn':
     case 'STOP':
       return { kind: 'stop' };
+    case 'error':
+    case 'ERROR':
+      return {
+        kind: 'error',
+        failure: {
+          message: detail?.trim()
+            ? detail.trim().slice(0, 300)
+            : 'The provider reported an error while generating the reply.',
+          code: 'SERVER'
+        }
+      };
     default:
       return { kind: 'error', failure: { message: `unknown finish reason "${raw}"`, code: 'UNKNOWN' } };
   }

@@ -40,6 +40,10 @@ export interface GgufMeta {
   quantization_name: string;
   chat_template_uses_tools: boolean;
   chat_template_supports_thinking?: boolean;
+  /** Where the effective template came from: gguf, sidecar, builtin, none. */
+  chat_template_source?: string;
+  /** Family id when a built-in fallback was applied. */
+  chat_template_family?: string | null;
   has_mtp_layers?: boolean;
   is_mmproj?: boolean;
 }

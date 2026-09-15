@@ -8,7 +8,7 @@
 -->
 
 <script lang="ts">
-  import { ArrowUp, Mic, Paperclip, Square } from 'lucide-svelte';
+  import { ArrowUp, Mic, Square } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';
   import ContextUsageRing from './ContextUsageRing.svelte';
@@ -52,12 +52,12 @@
 </script>
 
 <div class="trailing" class:compact>
-  <!-- Search and reasoning moved into the composer's "+" menu; only the mode
-       tabs (an opt-in setting) still sit inline. -->
+  <!-- Keep the per-chat thinking override visible beside the send controls. -->
   <div class="chips" class:overflow-x-auto={compact}>
-    {#if appStore.composerModeControl === 'tabs'}
+    {#if appStore.activeSpace === 'code' && (appStore.composerModeControl === 'tabs' || appStore.composerMode === 'agent')}
       <ModeSelector />
     {/if}
+    <ReasoningLevelSelector />
   </div>
 
   <div class="controls">

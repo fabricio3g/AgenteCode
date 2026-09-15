@@ -164,7 +164,7 @@ export const copy = {
 
   /** Composer search modes. Label and description together, so they can't drift. */
   searchModes: {
-    chat: { label: 'Off', description: 'Answer from the model only' },
+    chat: { label: 'Auto', description: 'Use tools and search when needed' },
     search: { label: 'Search', description: 'Quick web check' },
     deep: { label: 'Deep', description: 'Thorough research · more sources' },
     max: { label: 'Max', description: 'Exhaustive research · slower, more sources' }

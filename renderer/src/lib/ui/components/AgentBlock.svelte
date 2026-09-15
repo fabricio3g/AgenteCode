@@ -2,9 +2,10 @@
 
 <script lang="ts">
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { Check } from 'lucide-svelte';
+  import { Check, ChevronDown, CircleAlert, LoaderCircle, Square } from 'lucide-svelte';
+  import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
   import { appStore } from '$lib/stores/app.svelte';
-  import { copy, say } from '$lib/copy';
+  import { copy } from '$lib/copy';
   import { formatDuration, plural } from '$lib/utils/format';
   import { activityLabel as resolveActivityLabel, searchModeChip } from '$lib/utils/tool-ui';
 
@@ -45,11 +46,15 @@
   const modeChip = $derived(searchModeChip(searchMode));
 
   const errCount = $derived(steps.filter((s) => s.status === 'error').length);
-  const doneCount = $derived(steps.filter((s) => s.status === 'done').length);
+  const visibleSteps = $derived(steps.filter((s) => s.type !== 'thinking' && s.type !== 'planning' || s.status === 'error'));
+  const doneCount = $derived(visibleSteps.filter((s) => s.status === 'done').length);
   const hasApproval = $derived(awaitingApproval || steps.some((s) => s.status === 'awaiting_approval'));
   const stoppedByUser = $derived(steps.some((s) => /stopped by user/i.test(s.detail || s.label || '')));
   const isStreaming = $derived(status === 'streaming');
   const hasRelevance = $derived(!!(steps.length || reasoning) || isStreaming);
+  let expanded = $state(false);
+  const failed = $derived(outcome === 'failed' || status === 'error' || errCount > 0);
+  const stopped = $derived(stoppedByUser || outcome === 'partial' || outcome === 'stopped' || stopReason !== 'none');
 
   /** Debounced short label so progress ticks don't thrash the line. */
   let stableVerb = $state(resolveActivityLabel(null));
@@ -163,7 +168,8 @@
       // The message footer owns the source count — do not repeat it here.
       const parts: string[] = [];
       if (errCount) parts.push(`${errCount} ${plural(errCount, 'error')}`);
-      else if (doneCount) parts.push(say.steps(doneCount));
+      else if (doneCount) parts.push(`${doneCount} ${plural(doneCount, 'action')}`);
+      else parts.push(reasoning ? 'Thought' : copy.tool.done);
       const elapsed = formatDuration(totalElapsedSeconds);
       if (elapsed) parts.push(elapsed);
       return parts.length ? parts.join(' · ') : copy.tool.done;
@@ -178,15 +184,17 @@
 
 {#if hasRelevance}
   <div class="agent-status">
-    <button type="button" class="agent-line" onclick={openActivity} aria-label="Open agent activity">
+    <button type="button" class="agent-line" onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} agent activity`}>
       {#if isStreaming}
-        <span class="agent-line-text aui-shimmer-host">
+        <LoaderCircle class="size-3.5 motion-safe:animate-spin" />
+        <span class="agent-line-text">
           <span>{line}</span>
-          <span class="aui-shimmer" aria-hidden="true">{line}</span>
         </span>
       {:else}
-        {#if errCount}
-          <span class="status-dot error" aria-hidden="true"></span>
+        {#if failed}
+          <CircleAlert class="size-3.5 text-destructive" />
+        {:else if stopped}
+          <Square class="size-3" />
         {:else}
           <span class="status-icon done" aria-hidden="true">
             <Check class="size-3.5" />
@@ -194,22 +202,38 @@
         {/if}
         <span class="agent-line-text">{line}</span>
       {/if}
+      <ChevronDown class={`size-3 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
     </button>
+    {#if expanded}
+      <div class="activity-steps">
+        {#if reasoning}
+          <div class="thinking-text">{reasoning}</div>
+        {/if}
+        {#each visibleSteps as step (step.id)}
+          <ToolCallRow {step} />
+        {/each}
+        {#if messageId}
+          <button type="button" class="activity-link" onclick={openActivity}>View full activity ↗</button>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/if}
 
 <style>
   .agent-status {
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.75rem;
     width: 100%;
+    overflow: hidden;
   }
 
   .agent-line {
-    display: inline-flex;
+    display: flex;
+    width: 100%;
     max-width: 100%;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.2rem 0;
+    padding: 0.375rem 0;
     border: none;
     background: transparent;
     color: var(--muted-foreground);
@@ -243,19 +267,8 @@
     opacity: 0.75;
   }
 
-  .status-dot {
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: var(--radius-full);
-    flex-shrink: 0;
-    background: var(--muted-foreground);
-  }
-
-  .status-dot.error {
-    background: var(--error, #ef4444);
-  }
-
   .agent-line-text {
+    flex: 1;
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
@@ -264,9 +277,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Shimmer host needs inline-block for gradient text; keep ellipsis on outer */
-  .agent-line-text.aui-shimmer-host {
-    display: inline-block;
-    vertical-align: bottom;
-  }
+  .activity-steps { border-left: 1px solid var(--border); padding: 0.375rem 0.75rem; margin-top: 0.25rem; }
+  .thinking-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8125rem; line-height: 1.6; color: var(--muted-foreground); padding: 0.25rem 0 0.75rem; }
+  .activity-steps { max-height: 24rem; overflow-y: auto; }
+  .activity-link { margin: 0.375rem; padding: 0.25rem; border: 0; background: transparent; color: var(--muted-foreground); font-size: 0.75rem; }
+  .activity-link:hover { color: var(--foreground); }
 </style>

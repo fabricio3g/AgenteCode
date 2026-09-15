@@ -60,6 +60,9 @@ export function humanizeAgentError(err: unknown): string {
   if (/empty response|no content|no completion/i.test(lower)) {
     return 'The model returned an empty reply. Please try again.';
   }
+  if (/unknown finish reason|finish_reason/i.test(lower)) {
+    return 'The provider stopped the reply unexpectedly. Please try again.';
+  }
 
   // Strip Electron IPC wrappers and nested Error prefixes
   let cleaned = raw

@@ -82,7 +82,7 @@
 
   function discard() {
     draft = createArtifactDraft(draft.original);
-    if (!draft.current.files[selectedPath]) selectedPath = visibleDraftFiles(draft.current)[0]?.[0] || '';
+    if (!(selectedPath in draft.current.files)) selectedPath = visibleDraftFiles(draft.current)[0]?.[0] || '';
   }
 
   function updateSelected(content: string) {
@@ -171,12 +171,12 @@
 </script>
 
 <Dialog title={draft.current.title || 'Artifact studio'} description={`${resolved.manifest.kind.replaceAll('_', ' ')} · ${say.files(files.length)}`} onclose={requestClose} class="artifact-studio-dialog h-[88vh] w-[96vw] max-w-6xl">
-  <div class="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-3 sm:px-4">
+  <div class="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] px-3 py-2 sm:px-4">
     <SegmentedControl bind:value={activeView} options={[{ value: 'preview', label: 'Preview', disabled: !resolved.capabilities.preview }, { value: 'source', label: 'Source', disabled: !resolved.capabilities.source }]} label="Artifact view" />
     <div class="flex min-w-0 items-center gap-1.5">
       {#if dirty}<span class="hidden text-[11px] text-muted-foreground sm:inline">Unsaved changes</span>{/if}
-      <Button variant="ghost" size="sm" onclick={discard} disabled={!dirty}><RotateCcw /> <span class="hidden sm:inline">Discard</span></Button>
-      <Button variant="outline" size="sm" onclick={downloadZip} loading={downloading} disabled={!files.length}><Download /> <span class="hidden sm:inline">ZIP</span></Button>
+      <Button variant="ghost" size="sm" onclick={discard} disabled={!dirty} aria-label="Discard changes" title="Discard changes"><RotateCcw /> <span class="hidden sm:inline">Discard</span></Button>
+      <Button variant="outline" size="sm" onclick={downloadZip} loading={downloading} disabled={!files.length} aria-label="Download all files as ZIP" title="Download all files as ZIP"><Download /> <span class="hidden sm:inline">ZIP</span></Button>
       <Button size="sm" onclick={save} disabled={!dirty}><Save /> Save</Button>
     </div>
   </div>
@@ -186,12 +186,14 @@
   {/if}
 
   <div class="flex min-h-0 flex-1 flex-col sm:flex-row">
-    <ArtifactFileRail {files} {selectedPath} collapsed={railCollapsed} onselect={(path) => (selectedPath = path)} ontoggle={() => (railCollapsed = !railCollapsed)} oncreate={() => openPathDialog('create')} onrename={() => openPathDialog('rename')} ondelete={requestDelete} />
+    <ArtifactFileRail {files} {selectedPath} collapsed={railCollapsed} onselect={(path) => { selectedPath = path; activeView = 'source'; }} ontoggle={() => (railCollapsed = !railCollapsed)} oncreate={() => openPathDialog('create')} onrename={() => openPathDialog('rename')} ondelete={requestDelete} />
     <main class="min-h-0 min-w-0 flex-1">
       {#if activeView === 'preview'}
         <ArtifactStudioPreview artifact={draft.current} />
       {:else}
-        <ArtifactSourcePane path={selectedPath} content={selectedContent} onchange={updateSelected} ondownload={downloadSelected} />
+        {#key selectedPath}
+          <ArtifactSourcePane path={selectedPath} content={selectedContent} onchange={updateSelected} ondownload={downloadSelected} />
+        {/key}
       {/if}
     </main>
   </div>
@@ -200,7 +202,7 @@
 {#if pathMode}
   <Dialog title={pathMode === 'create' ? 'Create artifact file' : 'Rename artifact file'} description="Use a relative path; folders are created implicitly." onclose={() => (pathMode = null)} class="max-w-sm">
     <div class="space-y-4 p-4">
-      <input class="aui-input" bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
+      <input class="aui-input" aria-label="Artifact file path" bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
       <div class="flex justify-end gap-2">
         <Button variant="ghost" onclick={() => (pathMode = null)}>Cancel</Button>
         <Button onclick={applyPathDialog}>{pathMode === 'create' ? 'Create' : 'Rename'}</Button>

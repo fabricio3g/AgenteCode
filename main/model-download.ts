@@ -20,6 +20,8 @@ import { Transform } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { getAppPaths } from './paths.ts';
 import { getMainWindow } from './window-manager.ts';
+import { readGgufMetadataFields } from './runtime-config-resolver.ts';
+import { sidecarTemplatePath } from './chat-templates.ts';
 import {
   aggregateProgress,
   applyResumeResponse,
@@ -258,6 +260,142 @@ async function freeDiskBytes(dir: string): Promise<number> {
 
 // ── Public API (IPC surface unchanged) ─────────────────────────────────
 
+/**
+ * Pull the model's own chat template from Hugging Face and store it next to
+ * the GGUF as a sidecar (`<model>.chat-template.jinja`). Many re-quants drop
+ * `tokenizer.chat_template`; without it llama-server renders a generic shell
+ * where thinking cannot be toggled and tool calls never parse.
+ *
+ * Quant repos usually carry no tokenizer files at all, so after the repo
+ * itself the *base model* repo is tried (`cardData.base_model` /
+ * `base_model` from the Hub API) — that is where `tokenizer_config.json`
+ * with the training-time template lives.
+ *
+ * Sources, in order: `chat_template.jinja` (new convention), then
+ * `tokenizer_config.json.chat_template` (string or a `{default, tool_use}`
+ * map — `default` is the one the server uses).
+ *
+ * Best-effort: missing or private files just leave the model on the
+ * family/generic fallback, so callers never fail a download over this.
+ */
+export async function captureRepoChatTemplate(
+  repoId: string,
+  modelPath: string,
+  options: { hfToken?: string; branch?: string } = {}
+): Promise<{ written: boolean; source: string | null; repo: string | null }> {
+  const headers: Record<string, string> = {};
+  if (options.hfToken) headers.Authorization = `Bearer ${options.hfToken}`;
+
+  const fetchText = async (url: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(url, {
+        headers,
+        redirect: 'follow',
+        signal: AbortSignal.timeout(20000)
+      });
+      if (!resp.ok) return null;
+      const text = (await resp.text()).trim();
+      return text || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const extractFromTokenizerConfig = (raw: string | null): string | null => {
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { chat_template?: unknown };
+      const template = parsed.chat_template;
+      if (typeof template === 'string') return template.trim() || null;
+      if (template && typeof template === 'object') {
+        const map = template as Record<string, unknown>;
+        for (const key of ['default', 'tool_use']) {
+          if (typeof map[key] === 'string' && String(map[key]).trim()) return String(map[key]).trim();
+        }
+      }
+    } catch {
+      // not JSON — ignore
+    }
+    return null;
+  };
+
+  const captureFromRepo = async (repo: string): Promise<{ template: string; source: string } | null> => {
+    const ref = options.branch || 'main';
+    const base = `https://huggingface.co/${repo}/resolve/${ref}/`;
+    const direct = await fetchText(`${base}chat_template.jinja`);
+    if (direct) return { template: direct, source: 'chat_template.jinja' };
+    const fromConfig = extractFromTokenizerConfig(await fetchText(`${base}tokenizer_config.json`));
+    if (fromConfig) return { template: fromConfig, source: 'tokenizer_config.json' };
+    return null;
+  };
+
+  /** Base-model repos the Hub records for this repo (card metadata or API). */
+  const findBaseRepos = async (repo: string): Promise<string[]> => {
+    const meta = await fetchText(`https://huggingface.co/api/models/${repo}`);
+    if (!meta) return [];
+    try {
+      const parsed = JSON.parse(meta) as {
+        cardData?: { base_model?: unknown };
+        base_model?: unknown;
+      };
+      const raw = parsed.cardData?.base_model ?? parsed.base_model;
+      const candidates: string[] = Array.isArray(raw) ? raw.map(String) : raw ? [String(raw)] : [];
+      // Entries may be tagged like "base_model:finetune:org/repo" — keep the repo id.
+      return candidates
+        .map((value) => value.split(':').pop() || '')
+        .filter((value) => value.includes('/'))
+        .slice(0, 2);
+    } catch {
+      return [];
+    }
+  };
+
+  const own = await captureFromRepo(repoId);
+  let found = own;
+  let usedRepo = own ? repoId : null;
+  if (!found) {
+    for (const baseRepo of await findBaseRepos(repoId)) {
+      if (baseRepo === repoId) continue;
+      const fromBase = await captureFromRepo(baseRepo);
+      if (fromBase) {
+        found = fromBase;
+        usedRepo = baseRepo;
+        break;
+      }
+    }
+  }
+  if (!found || !usedRepo) return { written: false, source: null, repo: null };
+
+  const destination = sidecarTemplatePath(modelPath);
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, found.template, 'utf8');
+    return { written: true, source: found.source, repo: usedRepo };
+  } catch (err) {
+    console.warn('[downloads] failed to store chat template sidecar:', err instanceof Error ? err.message : String(err));
+    return { written: false, source: null, repo: null };
+  }
+}
+
+/**
+ * After a model download completes, capture the repo's chat template when
+ * the GGUF itself did not embed one. Embedded templates stay authoritative —
+ * they are what the checkpoint was trained with.
+ */
+async function ensureChatTemplateSidecar(job: DownloadJob, hfToken?: string): Promise<void> {
+  if (!job.dest_path || !/\.gguf$/i.test(job.dest_path)) return;
+  try {
+    const fields = readGgufMetadataFields(job.dest_path);
+    if (fields?.chat_template_present) return;
+    const result = await captureRepoChatTemplate(job.repo_id, job.dest_path, { hfToken, branch: 'main' });
+    if (result.written) {
+      console.log(`[downloads] captured chat template from ${result.repo} (${result.source}) for ${path.basename(job.dest_path)}`);
+    }
+  } catch (err) {
+    console.warn('[downloads] chat template capture skipped:', err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function startDownloadHf({
   repoId,
   file,
@@ -395,6 +533,10 @@ async function runJob(job: DownloadJob, hfToken?: string): Promise<void> {
         throw new Error(`Size mismatch for ${shard.file}: got ${size}, expected ${shard.sizeBytes}`);
       }
     }
+
+    // Capture the hub's chat template before marking complete so the very
+    // first load already renders with the model's real template.
+    await ensureChatTemplateSidecar(job, hfToken);
 
     job.verified = true;
     aggregate(job);

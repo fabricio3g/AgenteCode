@@ -111,7 +111,7 @@ export function ensureToolCallPairs(
     const missing = toolCalls.filter((tc) => tc.id && !present.has(tc.id));
 
     if (missing.length && mode === 'strip') {
-      const { tool_calls: _drop, ...rest } = msg;
+      const { tool_calls: _drop, providerState: _state, ...rest } = msg;
       out.push({ ...rest, content: rest.content ?? '' });
       // skip following tools that belonged to this incomplete set
       i = k;

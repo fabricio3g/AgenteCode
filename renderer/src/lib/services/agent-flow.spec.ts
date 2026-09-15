@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { stoppedWarning } from '$lib/services/agent-flow';
+import { isWebsiteBuildRequest, stoppedWarning } from '$lib/services/agent-flow';
+
+it('enforces website files only for website build requests', () => {
+  expect(isWebsiteBuildRequest('Build a landing page with HTML and CSS')).toBe(true);
+  expect(isWebsiteBuildRequest('Create a website for my cafe')).toBe(true);
+  expect(isWebsiteBuildRequest('Explain addition in JavaScript')).toBe(false);
+  expect(isWebsiteBuildRequest('Create an HTML card for pricing')).toBe(false);
+  expect(isWebsiteBuildRequest('Show a map of this archaeological site')).toBe(false);
+});
 
 describe('stoppedWarning', () => {
   const reasons: Array<Parameters<typeof stoppedWarning>[0]> = [

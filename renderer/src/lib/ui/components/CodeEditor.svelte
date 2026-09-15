@@ -14,8 +14,12 @@
   let { value = '', language = 'plaintext', readOnly = false, onchange }: Props = $props();
 
   let containerEl = $state<HTMLDivElement | undefined>(undefined);
-  let editor: Monaco.editor.IStandaloneCodeEditor | undefined;
+  let editor = $state.raw<Monaco.editor.IStandaloneCodeEditor>();
   let monaco: typeof Monaco | undefined;
+  let destroyed = false;
+  let themeObserver: MutationObserver | undefined;
+  let contentListener: Monaco.IDisposable | undefined;
+  let loadError = $state(false);
   let ignoreNextChange = false;
 
   function getMonacoLanguage(lang: string): string {
@@ -64,17 +68,14 @@
   }
 
   function getTheme(): 'vs' | 'vs-dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'vs-dark' : 'vs';
-    }
-    return 'vs-dark';
+    return document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs';
   }
 
-  onMount(async () => {
+  async function initializeEditor() {
     if (!containerEl) return;
 
     monaco = await import('monaco-editor');
-    if (!containerEl) return;  // Guard: component may have been destroyed during async import
+    if (destroyed || !containerEl) return;
     editor = monaco.editor.create(containerEl, {
       value,
       language: getMonacoLanguage(language),
@@ -82,7 +83,7 @@
       readOnly,
       minimap: { enabled: false },
       fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+      fontFamily: "'IBM Plex Mono', Consolas, monospace",
       fontLigatures: true,
       lineNumbers: 'on',
       lineNumbersMinChars: 4,
@@ -118,27 +119,32 @@
       accessibilitySupport: 'auto'
     });
 
-    if (!readOnly) {
-      editor.onDidChangeModelContent(() => {
-        if (ignoreNextChange) return;
-        const newValue = editor?.getValue() || '';
-        onchange?.(newValue);
-      });
-    }
+    contentListener = editor.onDidChangeModelContent(() => {
+      if (ignoreNextChange || readOnly) return;
+      const newValue = editor?.getValue() || '';
+      onchange?.(newValue);
+    });
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleThemeChange = () => {
+    themeObserver = new MutationObserver(() => {
       monaco?.editor.setTheme(getTheme());
-    };
-    mediaQuery.addEventListener('change', handleThemeChange);
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  onMount(() => {
+    void initializeEditor().catch((error) => {
+      console.warn('[CodeEditor] Falling back to plain text:', error);
+      if (!destroyed) loadError = true;
+    });
   });
 
   onDestroy(() => {
-    // Remove Monaco's DOM node before disposal to prevent parentNode access on detached nodes
-    const domNode = editor?.getDomNode();
-    if (domNode) domNode.remove();
-    if (containerEl) containerEl.innerHTML = '';
+    destroyed = true;
+    themeObserver?.disconnect();
+    contentListener?.dispose();
+    const model = editor?.getModel();
     editor?.dispose();
+    model?.dispose();
   });
 
   $effect(() => {
@@ -166,7 +172,11 @@
   });
 </script>
 
-<div bind:this={containerEl} class="monaco-container"></div>
+{#if loadError}
+  <textarea class="h-full w-full resize-none bg-background p-3 font-mono text-xs text-foreground" aria-label="Source code" {value} readonly={readOnly} oninput={(event) => onchange?.(event.currentTarget.value)} spellcheck="false"></textarea>
+{:else}
+  <div bind:this={containerEl} class="monaco-container"></div>
+{/if}
 
 <style>
   .monaco-container {

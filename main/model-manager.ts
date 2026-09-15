@@ -4,6 +4,7 @@ import { getAppPaths } from './paths.ts';
 import { loadConfig } from './config.ts';
 import { slugify } from './config.utils.ts';
 import { readGgufContextLength, readGgufMetadataFields } from './runtime-config-resolver.ts';
+import { resolveEffectiveTemplate, detectTemplateThinkingSupport, detectTemplateToolSupport } from './chat-templates.ts';
 
 type GgufMetadata = {
   architecture: string;
@@ -22,6 +23,10 @@ type GgufMetadata = {
   quantization_name: string;
   chat_template_uses_tools: boolean;
   chat_template_supports_thinking?: boolean;
+  /** Where the effective template came from: gguf, sidecar, builtin, none. */
+  chat_template_source?: string;
+  /** Family id when a built-in fallback was applied. */
+  chat_template_family?: string | null;
   has_mtp_layers?: boolean;
   is_mmproj?: boolean;
 };
@@ -134,6 +139,18 @@ function readGgufMetadata(filePath: string): GgufMetadata {
 
     const fileName = path.basename(filePath);
 
+    // The loader UI must show the capabilities of the template the server
+    // will actually render with — the embedded one, a downloaded sidecar, or
+    // the family/generic fallback — not just the raw GGUF flags, which are
+    // absent on re-quants that still support thinking and tools.
+    const effectiveTemplate = resolveEffectiveTemplate({
+      modelPath: filePath,
+      fields: ggufFields,
+      ggufTemplate: ggufFields?.chat_template ?? null
+    });
+    const effectiveTools = detectTemplateToolSupport(effectiveTemplate.template);
+    const effectiveThinking = detectTemplateThinkingSupport(effectiveTemplate.template);
+
     const result: GgufMetadata = {
       architecture: ggufFields?.architecture || guessArchitecture(fileName),
       context_length: contextLength,
@@ -148,12 +165,10 @@ function readGgufMetadata(filePath: string): GgufMetadata {
       embedding_length: Number(ggufFields?.embedding_length || 0),
       file_size_bytes: stat.size,
       quantization_name: guessQuantization(fileName),
-      chat_template_uses_tools: typeof ggufFields?.chat_template_uses_tools === 'boolean'
-        ? ggufFields.chat_template_uses_tools
-        : false,
-      chat_template_supports_thinking: typeof ggufFields?.chat_template_supports_thinking === 'boolean'
-        ? ggufFields.chat_template_supports_thinking
-        : undefined,
+      chat_template_uses_tools: effectiveTools,
+      chat_template_supports_thinking: effectiveThinking,
+      chat_template_source: effectiveTemplate.source,
+      chat_template_family: effectiveTemplate.family,
       has_mtp_layers: typeof ggufFields?.has_mtp_layers === 'boolean'
         ? ggufFields.has_mtp_layers
         : undefined,

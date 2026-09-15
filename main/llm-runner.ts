@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { getHardwareLimits } from './system-info.ts';
-import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs } from './process-manager.ts';
+import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs, resolveChatTemplateForModel } from './process-manager.ts';
 import {
   resolveRuntimeBinary, listRuntimeBinaries, clearRuntimeSelectionFromConfig
 } from './runtime-resolver.ts';
@@ -152,7 +152,23 @@ async function clearEmbeddingCacheSafe(): Promise<void> {
   }
 }
 
-// ── LLM server ──
+  // ── LLM server ──
+
+/**
+ * Resolve the chat-template situation for status reporting: a template-less
+ * GGUF normally gets the family/generic fallback from buildLlamaArgs; the
+ * renderer shows this so a model that cannot think/tool-call is visible
+ * rather than silently misbehaving.
+ */
+function templateStatusFor(modelPath: string | null | undefined): { source: string; family: string | null } {
+  if (!modelPath) return { source: 'none', family: null };
+  try {
+    const resolved = resolveChatTemplateForModel(modelPath, true);
+    return { source: resolved.source, family: resolved.family };
+  } catch {
+    return { source: 'none', family: null };
+  }
+}
 
 export async function startLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined): Promise<string> {
   const runtimePath = resolveRuntimeBinary(config.runtime_path as string);
@@ -189,7 +205,8 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
     state: 'starting',
     model_id: path.basename(launchConfig.model_path as string),
     model_path: launchConfig.model_path,
-    runtime_path: runtimePath
+    runtime_path: runtimePath,
+    ...templateStatusFor(launchConfig.model_path as string)
   });
 
   try {
@@ -201,7 +218,8 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
         port,
         model_id: path.basename(launchConfig.model_path as string),
         model_path: launchConfig.model_path,
-        runtime_path: runtimePath
+        runtime_path: runtimePath,
+        ...templateStatusFor(launchConfig.model_path as string)
       }
     });
     emitStatus(win, {
@@ -210,6 +228,7 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
       model_id: path.basename(launchConfig.model_path as string),
       model_path: launchConfig.model_path,
       runtime_path: runtimePath,
+      ...templateStatusFor(launchConfig.model_path as string),
       ...readPropsFields(await fetchServerProps(port))
     });
     return 'started';

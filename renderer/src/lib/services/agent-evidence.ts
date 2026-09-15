@@ -189,6 +189,45 @@ export function requestedArtifactKinds(prompt: string): { docx: boolean; xlsx: b
   };
 }
 
+/**
+ * Inline visual artifacts the user asked for (charts, diagrams, maps,
+ * dashboards, cards). Unlike file artifacts these leave no file extension to
+ * match, so detection is keyword-based and the caller must compare against
+ * created artifact manifests. Keep patterns to explicit deliverable language —
+ * a bare verb like "map" ("map these fields") must not trigger enforcement.
+ */
+export type VisualArtifactKind = 'chart' | 'diagram' | 'map' | 'dashboard' | 'info_card' | 'html_card';
+
+export const VISUAL_ARTIFACT_TOOL: Record<VisualArtifactKind, string> = {
+  chart: 'create_chart',
+  diagram: 'create_diagram',
+  map: 'create_map',
+  dashboard: 'create_dashboard',
+  info_card: 'create_info_card',
+  html_card: 'create_html_card'
+};
+
+export function requestedVisualArtifacts(prompt: string): VisualArtifactKind[] {
+  const text = String(prompt || '').toLowerCase();
+  // Completion enforcement must distinguish a deliverable from a question
+  // about one. The model still receives tools for all ordinary conversation.
+  if (/\b(don't|do not|never|no need to)\b[^.!?]{0,60}\b(make|create|build|generate|show|draw|plot)\b/.test(text)) return [];
+  if (!/\b(make|create|build|generate|show|display|draw|plot|chart|graph|visualize|visualise|give|produce|pin|mark)\b/.test(text)) return [];
+  if (/^(what|why|how)\b/.test(text) && !/\b(and|then)\s+(show|create|draw|make)\b/.test(text)) return [];
+  const kinds: VisualArtifactKind[] = [];
+  if (/\b(bar charts?|line charts?|pie charts?|donut charts?|histograms?|plots?|graphs?|visualiz\w+|visualis\w+|trend charts?)\b/.test(text)) kinds.push('chart');
+  else if ((/\bcharts?\b/.test(text) && /\b(make|create|build|generate|show|draw|plot|compare)\b/.test(text)) || /^(chart|graph|plot)\s+(my|this|that|these|those|the|our|your)\b/.test(text)) kinds.push('chart');
+  if (/\b(flowcharts?|flow charts?|sequence diagrams?|architecture diagrams?|mindmaps?|mind maps?|mermaid|diagrams?|er diagrams?)\b/.test(text)) kinds.push('diagram');
+  if (/\b(show|display|draw|create|make|build|generate|plot|pin|mark)\b[^.]{0,60}\b((?<!mind\s)maps?|markers?|locations?|routes?|geograph\w+|coordinates?)\b/.test(text)) kinds.push('map');
+  if (/\b(dashboards?|kpis?|scorecards?)\b/.test(text)) kinds.push('dashboard');
+  else if (/\bmetrics\b/.test(text) && /\b(make|create|build|generate|show|display|track)\b/.test(text)) kinds.push('dashboard');
+  if (/\b(info ?cards?|fact ?sheets?|fact ?packs?|summary cards?)\b/.test(text)) kinds.push('info_card');
+  // Explicit "html card" only: bare "html"/"widget"/"snippet" collide with the
+  // website-build flow, which has its own enforcement via write_file/preview.
+  if (/\bhtml cards?\b/.test(text)) kinds.push('html_card');
+  return kinds;
+}
+
 export function requestedArtifactExtensions(prompt: string): string[] {
   const kinds = requestedArtifactKinds(prompt);
   return Object.entries(kinds)

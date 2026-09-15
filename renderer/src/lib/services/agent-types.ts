@@ -92,6 +92,8 @@ export type RunAgentTaskArgs = {
   onStep: (steps: AgentStep[]) => void;
   onProgress?: (text: string) => void;
   onReasoning?: (value: string) => void;
+  /** Current model turn's accumulated visible text; replaced when the next turn starts. */
+  onContent?: (value: string) => void;
   /** Called with the full list each time it changes, so all of a turn's artifacts render. */
   onArtifact: (artifacts: AgentArtifact[]) => void;
   onSources?: (sources: SearchResult[]) => void;

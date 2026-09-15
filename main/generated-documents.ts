@@ -1,6 +1,7 @@
 import {
   escapeHtml,
   normalizeSections,
+  tableData,
   text,
   type SectionInput,
   type SheetInput
@@ -69,6 +70,22 @@ export async function generateDocx(data: Record<string, unknown>) {
     }
   }
 
+  for (const table of Array.isArray(data.tables) ? data.tables as Array<SheetInput & { title?: string; description?: string }> : []) {
+    const { headers, rows } = tableData(table);
+    if (!headers.length) continue;
+    children.push(new docx.Paragraph({ text: text(table.title || table.name, 'Table'), heading: docx.HeadingLevel.HEADING_1 }));
+    if (table.description) children.push(new docx.Paragraph({ text: table.description }));
+    children.push(new docx.Table({
+      width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      rows: [headers, ...rows].map((cells, index) => new docx.TableRow({
+        tableHeader: index === 0,
+        children: cells.map((value) => new docx.TableCell({
+          children: [new docx.Paragraph({ children: [new docx.TextRun({ text: value, bold: index === 0 })] })]
+        }))
+      }))
+    }));
+  }
+
   const document = new docx.Document({
     creator: author,
     title,
@@ -106,8 +123,8 @@ export async function generateDocx(data: Record<string, unknown>) {
 /** Excel sheet names must be unique and ≤ 31 chars. */
 export function uniqueWorksheetName(raw: string, used: Set<string>): string {
   let base = text(raw, 'Sheet').slice(0, 31) || 'Sheet';
-  // Excel forbids: \ / ? * [ ]
-  base = base.replace(/[\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Sheet';
+  // Excel also forbids colons and leading/trailing apostrophes.
+  base = base.replace(/[\\/:?*[\]\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^'+|'+$/g, '').slice(0, 31) || 'Sheet';
   let candidate = base;
   let n = 2;
   while (used.has(candidate.toLowerCase())) {
@@ -223,24 +240,17 @@ function wrapPdfLine(value: string, maxChars: number): string[] {
 export async function generatePdf(data: Record<string, unknown>) {
   const html = text(data.html);
   if (html) {
+    const { createArtifactWindow, loadArtifactHtml, withArtifactTimeout } = await import('./artifact-preview.ts');
+    const win = createArtifactWindow();
     try {
-      const { BrowserWindow } = await import('electron');
-      const win = new BrowserWindow({
-        show: false,
-        width: 920,
-        height: 1200,
-        webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true }
-      });
-      await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      const buffer = await win.webContents.printToPDF({
-        printBackground: true,
-        margins: { marginType: 'default' },
-        pageSize: 'A4'
-      });
-      win.destroy();
+      const buffer = await withArtifactTimeout((async () => {
+        await loadArtifactHtml(win, html);
+        return win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', preferCSSPageSize: true });
+      })());
       return { bytes: bufferToBytes(buffer), mime: 'application/pdf' };
-    } catch {
-      // Fall through to the simple PDF writer if Chromium PDF rendering is unavailable.
+    } finally {
+      // Fail explicitly rather than replacing the requested layout with a lossy PDF.
+      if (!win.isDestroyed()) win.destroy();
     }
   }
   const title = text(data.title, 'Document');

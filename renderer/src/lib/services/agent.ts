@@ -24,7 +24,8 @@ import {
 } from '$lib/services/agent-workspace';
 import { toErrorMessage, isAbortError, humanizeAgentError } from '$lib/utils/errors';
 import {
-  parseXmlToolCall, parseToolCallCodeblocks, sanitizeAgentVisibleText,
+  parseXmlToolCall, parseToolCallCodeblocks, parseDegradedXmlToolCalls, hasToolIntent,
+  sanitizeAgentVisibleText,
   isPublicFallbackContent, stripToolCallArtifacts, parseCodeblockWrites
 } from '$lib/services/agent-parsing';
 import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
@@ -42,6 +43,7 @@ import {
 import {
   compactText, sourceRows, summarizeToolObservation, evidenceSources, buildEvidenceText,
   requestedArtifactKinds, missingRequestedArtifactExtensions as missingRequestedArtifactExts, fallbackTitle,
+  requestedVisualArtifacts, VISUAL_ARTIFACT_TOOL, type VisualArtifactKind,
   hasAllRequestedArtifacts as hasAllRequestedArtifactsForFiles,
   hasGatheredEvidence as hasGatheredEvidenceForContext
 } from '$lib/services/agent-evidence';
@@ -719,6 +721,19 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const artifactsEnabled = executionMode !== 'workspace';
   const artifacts: AgentArtifact[] = [];
   const publishToolArtifact = createArtifactCollector(ctx, artifacts, args.onArtifact, artifactsEnabled);
+  /**
+   * Inline visuals the prompt asked for that no tool has created yet. Compared
+   * against created artifact manifests (not file extensions — inline visuals
+   * leave no extension to match). Website builds are excluded: they are
+   * enforced separately through write_file/preview_project.
+   */
+  const missingRequestedVisuals = (prompt: string): VisualArtifactKind[] => {
+    if (wantsWebsiteArtifact) return [];
+    const requested = requestedVisualArtifacts(prompt);
+    if (!requested.length) return [];
+    const createdKinds = new Set(artifacts.map((entry) => entry.manifest?.kind));
+    return requested.filter((kind) => toolDefs.some((tool) => tool.function.name === VISUAL_ARTIFACT_TOOL[kind]) && !createdKinds.has(kind));
+  };
   const localMode = backendMode === 'local';
   const toolMode = args.toolMode || 'agent';
   const agentProfile = args.agentProfile
@@ -752,6 +767,12 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   let directMode = false;
   let consecutiveEmptyResponses = 0;
   let consecutiveExploreOnly = 0;
+  // The model talked about tools without emitting a parseable call — remind
+  // it of the exact format once, then accept whatever comes back.
+  let toolFormatRetryDone = false;
+  // The model answered a visual-deliverable request in prose without calling
+  // the tool — nudge it once with the exact tool name, then accept the answer.
+  let visualNudgeDone = false;
   const wantsWebsiteArtifact = isWebsiteBuildRequest(
     args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
   );
@@ -814,7 +835,8 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         content: typeof message.content === 'string' ? message.content : (message.content ? JSON.stringify(message.content) : ''),
         ...(message.name ? { name: message.name } : {}),
         ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
-        ...(message.tool_calls ? { tool_calls: message.tool_calls } : {})
+        ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+        ...(message.providerState ? { providerState: message.providerState } : {})
       };
       const rc = (message as RequestMessage).reasoning_content;
       if (typeof rc === 'string' && rc.trim()) {
@@ -1071,16 +1093,53 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     debugLog(debugLogs, `[agent] after trim: messageCount=${messages.length} | sysCount=${sysCount} | userCount=${userCount} | otherCount=${otherCount}`);
 
     const nativeActive = useNativeTools && !nativeFailed && !directMode;
+    messages[0] = { role: 'system', content: directMode ? directSys : nativeActive ? nativeSys : xmlSys };
     const callMode = directMode ? 'direct' : nativeActive ? 'native' : 'xml';
     debugLog(debugLogs, `[agent] calling LLM via: ${callMode} | toolDefs=${nativeActive ? toolDefs.length : 0} | messages=${messages.length}`);
     let completion;
 
-    const streamingReasoningParts: string[] = [];
+    const reasoningBeforeTurn = finalReasoning;
+    let streamedReasoning = '';
+    let streamedContent = '';
+    args.onContent?.('');
     // Captured so the fallback below can report *why* native tools failed.
     let nativeStreamError = '';
 
+    const runStream = async (msgs: typeof messages, tools?: typeof toolDefs) => {
+      streamedReasoning = '';
+      streamedContent = '';
+      return agentStreamComplete({
+        messages: msgs,
+        tools,
+        signal: args.signal,
+        config,
+        reasoningLevel: args.reasoningLevel,
+        omitMaxTokens: omitResearchMaxTokens,
+        onError: (message) => { nativeStreamError = message; },
+        onReasoning: (text) => {
+          streamedReasoning += text;
+          finalReasoning = [reasoningBeforeTurn, sanitizeAgentVisibleText(streamedReasoning)].filter(Boolean).join('\n\n');
+          args.onReasoning?.(finalReasoning);
+        },
+        onContent: (text) => {
+          streamedContent += text;
+          const visible = sanitizeAgentVisibleText(streamedContent);
+          args.onContent?.(visible);
+          const preview = visible.slice(0, 120).trim();
+          if (preview) {
+            thinkStep.detail = preview.length < visible.length ? `${preview}\u2026` : preview;
+            args.onStep([...steps]);
+          }
+        }
+      });
+    };
     const runComplete = async (msgs: typeof messages) => {
       ensureToolCallPairs(msgs, 'fill');
+      if (isElectron()) {
+        const result = await runStream(msgs);
+        if (!result) throw new Error(nativeStreamError || 'The model did not return a response.');
+        return result;
+      }
       return completeAssistantReply({
         messages: msgs,
         signal: args.signal,
@@ -1095,27 +1154,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
         completion = await runComplete(messages);
         checkAbort();
       } else if (nativeActive) {
-        const streamResult = await agentStreamComplete({
-          messages,
-          tools: toolDefs,
-          signal: args.signal,
-          config,
-          reasoningLevel: args.reasoningLevel,
-          omitMaxTokens: omitResearchMaxTokens,
-          onError: (message) => { nativeStreamError = message; },
-          onReasoning: (text) => {
-            streamingReasoningParts.push(text);
-            finalReasoning = finalReasoning ? `${finalReasoning}${text}` : text;
-            args.onReasoning?.(finalReasoning);
-          },
-          onContent: (text) => {
-            const preview = text.slice(0, 120).trim();
-            if (preview) {
-              thinkStep.detail = preview.length < text.length ? `${preview}\u2026` : preview;
-              args.onStep([...steps]);
-            }
-          }
-        });
+        const streamResult = await runStream(messages, toolDefs);
         checkAbort();
         if (streamResult === null) {
           nativeFailed = true;
@@ -1218,13 +1257,15 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     }
 
     aggregateUsage = mergeCompletionUsage(aggregateUsage, completion.usage);
-    const rawContent = sanitizeAgentVisibleText(String(completion.content || ''));
+    // Parse the protocol before sanitizing display text. Sanitizing here erased
+    // XML calls (including llama.cpp fallbacks) before any executor saw them.
+    const rawContent = String(completion.content || '');
     const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
     const resultMode = directMode ? 'direct' : (useNativeTools && !nativeFailed) ? 'native' : 'xml';
     maxObservedDraftChars = Math.max(maxObservedDraftChars, rawContent.length);
     debugLog(debugLogs, `[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0} | mode=${resultMode}`);
     if (reasoning) {
-      finalReasoning = finalReasoning ? `${finalReasoning}\n${reasoning}` : reasoning;
+      finalReasoning = [reasoningBeforeTurn, reasoning].filter(Boolean).join('\n\n');
       args.onReasoning?.(finalReasoning);
     }
 
@@ -1268,7 +1309,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     let cleanContent = rawContent;
 
     if (directMode) {
-      const codeblockFiles = parseCodeblockWrites(rawContent);
+      const codeblockFiles = wantsWebsiteArtifact ? parseCodeblockWrites(rawContent) : [];
       if (codeblockFiles.length) {
         toolCalls = codeblockFiles.map((f, i) => ({
           id: `auto-write-${i}`,
@@ -1298,7 +1339,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           errorReason = 'The model did not produce website files.';
           break;
         }
-        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
+        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '') || missingRequestedVisuals(args.rawPrompt || '').length > 0) {
           const finalObservation: ToolObservation = {
             name: 'assistant_draft',
             args: {},
@@ -1313,8 +1354,19 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
             sources,
             publishToolArtifact
           });
-          if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
-            pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
+          const stillMissingFiles = !hasAllRequestedArtifacts(ctx, args.rawPrompt || '');
+          const stillMissingVisuals = missingRequestedVisuals(args.rawPrompt || '');
+          if (stillMissingFiles || stillMissingVisuals.length > 0) {
+            if (stillMissingFiles) pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
+            if (stillMissingVisuals.length > 0) {
+              steps.push({
+                id: uid('step'),
+                type: 'error',
+                label: 'Missing requested visual',
+                status: 'error',
+                detail: `Could not create: ${stillMissingVisuals.map((kind) => VISUAL_ARTIFACT_TOOL[kind]).join(', ')}`
+              });
+            }
             args.onStep([...steps]);
             finalContent = await buildStrictFallbackContent({
               prompt: args.rawPrompt || '',
@@ -1356,14 +1408,15 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
       const assistantToolMsg: RequestMessage = {
         role: 'assistant',
         content: rawContent || null,
+        ...(completion.providerState ? { providerState: completion.providerState } : {}),
         tool_calls: toolCalls.map(tc => ({
           id: tc.id!,
           type: 'function' as const,
           function: { name: tc.name, arguments: JSON.stringify(tc.arguments) }
         }))
       };
-      if (reasoning) {
-        assistantToolMsg.reasoning_content = reasoning;
+      if (completion.reasoning) {
+        assistantToolMsg.reasoning_content = completion.reasoning;
       }
       messages.push(assistantToolMsg);
     } else {
@@ -1381,29 +1434,60 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
           if (nativeActive && !nativeFailed) nativeFailed = true;
         } else {
-          const codeblockFiles = parseCodeblockWrites(rawContent);
-          if (codeblockFiles.length) {
-            toolCalls = codeblockFiles.map((f, i) => ({
-              id: `auto-write-${i}`,
-              name: 'write_file',
-              arguments: { path: f.path, content: f.code }
+          // Small models often emit the tagless shape
+          // (`name="web_search"> name="query">…`) when the XML contract
+          // does not stick — recover it instead of finalizing the draft.
+          const degradedResult = parseDegradedXmlToolCalls(rawContent);
+          if (degradedResult.toolCalls.length) {
+            toolCalls = degradedResult.toolCalls.map((toolCall, index) => ({
+              id: `degraded-${iter}-${index}`,
+              name: toolCall.name,
+              arguments: toolCall.arguments
             }));
-            const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
-            if (hasHtml) {
-              toolCalls.push({
-                id: `auto-preview`,
-                name: 'preview_project',
-                arguments: { entryPoint: 'index.html' }
-              });
-            }
-            cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
-            messages.push({ role: 'assistant', content: cleanContent || 'Files have been written and are ready for preview.' });
+            cleanContent = stripToolCallArtifacts(degradedResult.cleanContent);
+            messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
             if (nativeActive && !nativeFailed) nativeFailed = true;
+          } else {
+            const codeblockFiles = wantsWebsiteArtifact ? parseCodeblockWrites(rawContent) : [];
+            if (codeblockFiles.length) {
+              toolCalls = codeblockFiles.map((f, i) => ({
+                id: `auto-write-${i}`,
+                name: 'write_file',
+                arguments: { path: f.path, content: f.code }
+              }));
+              const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
+              if (hasHtml) {
+                toolCalls.push({
+                  id: `auto-preview`,
+                  name: 'preview_project',
+                  arguments: { entryPoint: 'index.html' }
+                });
+              }
+              cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
+              messages.push({ role: 'assistant', content: cleanContent || 'Files have been written and are ready for preview.' });
+              if (nativeActive && !nativeFailed) nativeFailed = true;
+            }
           }
         }
       }
     }
 
+    // Recover the known map-widget dialect without changing the provider's
+    // original call IDs or signed history. Execution still validates the schema
+    // and honors the artifact toggle.
+    toolCalls = toolCalls.map((call) => {
+      if (call.name !== 'create_map' && !(call.name === 'maps' && (!nativeActive || nativeFailed))) return call;
+      const { center, ...parameters } = call.arguments;
+      return {
+        ...call,
+        name: 'create_map',
+        arguments: {
+          ...parameters,
+          ...(typeof center === 'string' && !parameters.place ? { place: center } : {})
+        }
+      };
+    });
+    cleanContent = sanitizeAgentVisibleText(cleanContent);
     const parseMode = directMode ? 'codeblocks' : (nativeActive && !nativeFailed) ? 'native' : 'xml/codeblocks';
     debugLog(debugLogs, `[agent] parsed ${toolCalls.length} toolCalls from ${parseMode} mode${toolCalls.length ? ': ' + toolCalls.map(t => t.name).join(', ') : ''}`);
     thinkStep.status = 'done';
@@ -1449,6 +1533,52 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           });
           args.onStep([...steps]);
           errorReason = 'The model answered without creating website files.';
+          break;
+        }
+        // The model described tool use instead of emitting a call (and even
+        // the degraded-shape recovery found nothing). Show it the exact
+        // format once rather than finalizing its draft as the answer.
+        if (!toolFormatRetryDone && !directMode && totalToolCalls === 0 && hasToolIntent(rawContent)) {
+          toolFormatRetryDone = true;
+          debugLog(debugLogs, '[agent] -> tool-format retry (draft talked about tools, retrying with exact format)');
+          messages.push({ role: 'assistant', content: stripToolCallArtifacts(sanitizeAgentVisibleText(rawContent)) || 'Preparing to use tools\u2026' });
+          messages.push({
+            role: 'user',
+            content: `The tool call could not be read. Use an available tool name and its real arguments: <tool_call>{"name":"TOOL_NAME","arguments":{}}</tool_call>. Available tools: ${toolDefs.map((tool) => tool.function.name).join(', ')}. For a map, use create_map with {"place":"City, Country","zoom":12}. Do not use label or parameters attributes.`
+          });
+          thinkStep.detail = 'Clarifying the tool format and retrying';
+          args.onStep([...steps]);
+          continue;
+        }
+        // The prompt asked for a visual deliverable (chart, diagram, map,
+        // dashboard, card) but the model answered in prose without calling the
+        // tool. Name the exact tool once and make it retry — a description is
+        // not the deliverable. One shot only; a second miss finalizes as text.
+        if (!visualNudgeDone && !directMode) {
+          const missingVisuals = missingRequestedVisuals(args.rawPrompt || '');
+          if (missingVisuals.length) {
+            visualNudgeDone = true;
+            const toolList = missingVisuals.map((kind) => VISUAL_ARTIFACT_TOOL[kind]).join(', ');
+            debugLog(debugLogs, `[agent] -> visual-artifact nudge (missing: ${missingVisuals.join(', ')})`);
+            messages.push({ role: 'assistant', content: stripToolCallArtifacts(sanitizeAgentVisibleText(rawContent)) || 'Preparing to use tools…' });
+            messages.push({
+              role: 'user',
+              content: `You answered in prose, but the user asked for a visual deliverable. Call the matching tool now with real arguments (${toolList}) — do not describe it, create it. If no visual was actually requested, answer normally without tools.`
+            });
+            thinkStep.detail = 'Requesting the missing visual artifact';
+            args.onStep([...steps]);
+            continue;
+          }
+        }
+        const missingVisuals = missingRequestedVisuals(args.rawPrompt || '');
+        if (missingVisuals.length || hasToolIntent(rawContent) && !sanitizeAgentVisibleText(rawContent)) {
+          errorReason = missingVisuals.length
+            ? `The model did not create the requested ${missingVisuals.join(', ')} widget.`
+            : 'The model returned a tool call that could not be executed.';
+          stopReason = missingVisuals.length ? 'missing_artifacts' : 'error';
+          finalContent = `${errorReason} Please try again.`;
+          steps.push({ id: uid('step'), type: 'error', label: 'Could not complete request', status: 'error', detail: errorReason });
+          args.onStep([...steps]);
           break;
         }
         if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {

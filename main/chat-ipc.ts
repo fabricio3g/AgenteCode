@@ -85,7 +85,7 @@ export function finalizeToolCalls(toolCallAccumulator) {
 export async function completeChatRequest({ baseUrl, apiKey, providerName, body }) {
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey && provider.name !== 'local') {
+  if (!realKey && !['local', 'lmstudio', 'ollama', 'custom'].includes(provider.name)) {
     const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
@@ -129,7 +129,7 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey && provider.name !== 'local') {
+  if (!realKey && !['local', 'lmstudio', 'ollama', 'custom'].includes(provider.name)) {
     const cfg = getCachedConfig();
     const defaultProvider = cfg?.llm?.provider || 'none';
     const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
@@ -175,6 +175,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         messages: body.messages,
         tools: body.tools,
         reasoning: body.reasoning,
+        signal: abortController.signal,
         ...Object.fromEntries(
           Object.entries({
             max_tokens: body.max_tokens,
@@ -187,6 +188,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
 
       const toolCallAccumulator = new Map();
       let finalUsage = null;
+      let providerState;
 
       // One normalized chunk protocol for every provider — the renderer
       // events below are the frozen wire and stay byte-identical.
@@ -213,7 +215,11 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
           case 'usage':
             finalUsage = chunk.usage;
             break;
+          case 'provider-state':
+            providerState = chunk.state;
+            break;
           case 'finish':
+            if (chunk.reason.kind === 'error') throw new Error(chunk.reason.failure.message);
             break;
         }
       }
@@ -224,7 +230,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       }
 
       const finalToolCalls = finalizeToolCalls(toolCallAccumulator);
-      emit({ type: 'done', toolCalls: finalToolCalls, usage: finalUsage });
+      emit({ type: 'done', toolCalls: finalToolCalls, usage: finalUsage, providerState });
     } catch (error) {
       if (abortController.signal.aborted) {
         emit({ type: 'cancelled' });

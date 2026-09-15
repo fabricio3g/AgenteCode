@@ -4,11 +4,23 @@ import {
   buildDirectSystemPrompt,
   buildResearchFinalAnswerContract,
   buildResearchReportInstruction,
+  getFlaxeoChatSystemPrompt,
+  getNativeSystemPrompt,
   getXmlSystemPrompt
 } from '$lib/services/agent-prompts';
 import { compactText } from '$lib/services/agent-evidence';
+import { parseXmlToolCall } from './agent-parsing';
 
 describe('agent-prompts', () => {
+  it('gives fallback models executable XML examples', () => {
+    for (const mode of ['agent', 'search_chat'] as const) {
+      const prompt = getXmlSystemPrompt(undefined, 12, 6, [], mode);
+      const examples = [...prompt.matchAll(/<tool_call>[\s\S]*?<\/tool_call>/g)];
+      expect(examples.length).toBeGreaterThan(0);
+      for (const [example] of examples) expect(parseXmlToolCall(example).toolCall).not.toBeNull();
+      expect(prompt).not.toMatch(/<\/?tool_call\n/);
+    }
+  });
   it('buildCurrentRequestReminder keeps the active request prominent', () => {
     const reminder = buildCurrentRequestReminder('Keep the answer short and create a docx.', compactText);
 
@@ -83,8 +95,7 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('Extra context');
   });
 
-  it('getXmlSystemPrompt includes tool inventory and limits for agent mode', () => {
-    const prompt = getXmlSystemPrompt('Extra context', 7, 4, [
+  it('getXmlSystemPrompt includes tool inventory and limits for agent mode', () => {    const prompt = getXmlSystemPrompt('Extra context', 7, 4, [
       {
         type: 'function',
         function: {
@@ -169,5 +180,35 @@ describe('agent-prompts', () => {
         );
       }
     });
+  });
+
+  it('chat prompt mandates calling artifact tools instead of describing deliverables', () => {
+    const prompt = getFlaxeoChatSystemPrompt();
+
+    expect(prompt).toContain('DELIVERABLES');
+    expect(prompt).toContain('call the matching create_* tool');
+    expect(prompt).not.toMatch(/must not replace or block the final answer/);
+  });
+
+  it('native sandbox prompt forbids prose substitutes for deliverables', () => {
+    const prompt = getNativeSystemPrompt(undefined, 24, 12, 'agent', 'sandbox');
+
+    expect(prompt).toContain('A prose description of the deliverable is not the deliverable');
+  });
+
+  it('XML agent prompt shows an artifact call example', () => {
+    const prompt = getXmlSystemPrompt('Extra context', 7, 4, [
+      {
+        type: 'function',
+        function: {
+          name: 'create_chart',
+          description: 'Create a chart',
+          parameters: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] }
+        }
+      }
+    ]);
+
+    expect(prompt).toContain('create_chart');
+    expect(prompt).toMatch(/prose description is never an acceptable substitute/);
   });
 });

@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { buildReasoningRequest, isVisionModel, normalizeRuntimeUsage, supportsNativeTools, toRequestMessages } from './chat-api';
+import type { AppConfig } from '$lib/types/chat';
+import { buildReasoningRequest, isVisionModel, normalizeRuntimeUsage, reasoningRouteIdentity, supportsNativeTools, toRequestMessages } from './chat-api';
 
 describe('chat-api vision message conversion', () => {
+  it('preserves reasoning, opaque signed state and paired tool identities across IPC conversion', () => {
+    const providerState = { provider: 'gemini', blocks: [{ thoughtSignature: 'opaque==', functionCall: { name: 'calculator', args: {} } }] };
+    const messages = toRequestMessages([
+      { role: 'assistant', content: '', reasoning_content: 'original reasoning', providerState,
+        tool_calls: [{ id: 'a', type: 'function', function: { name: 'calculator', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'a', name: 'calculator', content: '4' }
+    ]);
+    expect(messages[0].reasoning_content).toBe('original reasoning');
+    expect(messages[0].providerState).toEqual(providerState);
+    expect(messages[1].tool_call_id).toBe('a');
+  });
+
+  it('does not stringify existing multimodal parts into object text', () => {
+    const content = [{ type: 'text' as const, text: 'Describe' }, { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,test' } }];
+    expect(toRequestMessages([{ role: 'user', content }])[0].content).toEqual(content);
+  });
   const imageAttachment = {
     id: 'att-1',
     name: 'scan.png',
@@ -89,5 +106,40 @@ describe('reasoning level builder', () => {
     expect(buildReasoningRequest('on')).toEqual({ level: 'on' });
     expect(buildReasoningRequest(null)).toBeUndefined();
     expect(buildReasoningRequest(undefined)).toBeUndefined();
+  });
+});
+
+describe('reasoning route identity', () => {
+  const local = (over: { model?: string; selected_model_path?: string } = {}): AppConfig => ({
+    llm: { backend_mode: 'local', local: { model: 'm', selected_model_path: '/p/a.gguf', ...over } }
+  });
+  const api = (provider = 'openrouter', over: { base_url?: string; model?: string } = {}): AppConfig => ({
+    llm: { backend_mode: 'api', provider, providers: { [provider]: { base_url: 'https://x.test/v1', model: 'm1', ...over } } }
+  });
+
+  it('is stable for the same route', () => {
+    expect(reasoningRouteIdentity(local())).toBe(reasoningRouteIdentity(local()));
+    expect(reasoningRouteIdentity(api())).toBe(reasoningRouteIdentity(api()));
+  });
+
+  it('changes on every route-affecting switch', () => {
+    const base = reasoningRouteIdentity(local());
+    // Backend toggle (the reported stale-chip case).
+    expect(reasoningRouteIdentity(api())).not.toBe(base);
+    // Local GGUF swap (different template = different thinking support).
+    expect(reasoningRouteIdentity(local({ selected_model_path: '/p/b.gguf' }))).not.toBe(base);
+    expect(reasoningRouteIdentity(local({ model: 'other' }))).not.toBe(base);
+    // Provider activation and model change.
+    const openrouter = reasoningRouteIdentity(api());
+    expect(reasoningRouteIdentity(api('groq'))).not.toBe(openrouter);
+    expect(reasoningRouteIdentity(api('openrouter', { model: 'm2' }))).not.toBe(openrouter);
+    expect(reasoningRouteIdentity(api('openrouter', { base_url: 'https://y.test/v1' }))).not.toBe(openrouter);
+  });
+
+  it('ignores unrelated settings so saves do not re-probe', () => {
+    const config = api();
+    const before = reasoningRouteIdentity(config);
+    config.llm!.providers!['openrouter']!.temperature = 0.9;
+    expect(reasoningRouteIdentity(config)).toBe(before);
   });
 });

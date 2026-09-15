@@ -8,8 +8,8 @@ import { getDialect } from '../../main/providers/dialects.ts';
 const reasoningBody = (id, level, modelId) => getDialect(id).reasoningBody(level, modelId);
 
 describe('Anthropic adaptive thinking body', () => {
-  it('omits body for off', () => {
-    assert.deepEqual(mapThinkingBody({ level: 'off' }), {});
+  it('distinguishes explicit off from the provider default', () => {
+    assert.deepEqual(mapThinkingBody({ level: 'off' }), { thinking: { type: 'disabled' } });
     assert.deepEqual(mapThinkingBody(undefined), {});
   });
 
@@ -72,11 +72,11 @@ describe('Groq reasoning body (family-aware dialect)', () => {
   it('sends none/default for Qwen', () => {
     assert.deepEqual(reasoningBody('groq', 'none', 'qwen/qwen3.6-27b'), {
       reasoning_effort: 'none',
-      include_reasoning: true
+      reasoning_format: 'parsed'
     });
     assert.deepEqual(reasoningBody('groq', 'default', 'qwen/qwen3.6-27b'), {
       reasoning_effort: 'default',
-      include_reasoning: true
+      reasoning_format: 'parsed'
     });
   });
 
@@ -96,8 +96,9 @@ describe('OpenRouter reasoning body', () => {
     });
   });
 
-  it('omits for off and maps enabled to medium', () => {
-    assert.deepEqual(reasoningBody('openrouter', 'off'), {});
+  it('disables for off, preserves Auto, and maps enabled to medium', () => {
+    assert.deepEqual(reasoningBody('openrouter', 'off'), { reasoning: { effort: 'none' } });
+    assert.deepEqual(reasoningBody('openrouter', undefined), {});
     assert.deepEqual(reasoningBody('openrouter', 'enabled'), {
       reasoning: { effort: 'medium' }
     });

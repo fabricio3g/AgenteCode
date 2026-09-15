@@ -1,6 +1,9 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { onDestroy, untrack } from 'svelte';
+  import { createStreamReveal } from '$lib/utils/stream-reveal';
+  import { reducedMotion } from '$lib/utils/motion.svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import type { ActionEvent } from '$lib/ui';
   import { renderMarkdown, observeLazyHighlight, splitStreamingMarkdown } from '$lib/utils/markdown';
@@ -26,62 +29,19 @@
     searchMode === 'search' || searchMode === 'deep' || searchMode === 'max'
   );
 
-  /*
-   * The character cap is the only pace-setter, and the frame callback is the only
-   * clock. There used to be a second 26ms `performance.now()` gate here on top of
-   * the store's 50ms `Date.now()` throttle; two unsynchronised throttles beating
-   * against a 16.7ms frame budget is what made the reveal cadence look irregular.
-   * 72 chars/frame is ~4300 chars/s — ahead of any model, so this smooths bursts
-   * without ever becoming the bottleneck.
-   */
-  const STREAM_MAX_CHARS_PER_FLUSH = 72;
-
   let contentEl = $state<HTMLDivElement | undefined>(undefined);
-  let displayedContent = $state(content);
-  let pendingContent = $state(content);
-  let renderRaf: number | undefined;
+  let displayedContent = $state(untrack(() => content));
+  const reveal = createStreamReveal(untrack(() => content), (value) => { displayedContent = value; });
   let streamRenderMode = $state<'ui' | 'segments' | 'markdown' | null>(null);
-
-  function flushRenderedContent() {
-    if (displayedContent === pendingContent) return;
-    if (pendingContent.startsWith(displayedContent)) {
-      const delta = pendingContent.slice(displayedContent.length);
-      displayedContent += delta.slice(0, STREAM_MAX_CHARS_PER_FLUSH);
-    } else {
-      displayedContent = pendingContent;
-    }
-  }
-
-  function scheduleStreamingRender() {
-    if (renderRaf !== undefined) return;
-    const tick = () => {
-      renderRaf = undefined;
-      flushRenderedContent();
-      if (status === 'streaming' && displayedContent !== pendingContent) {
-        renderRaf = requestAnimationFrame(tick);
-      }
-    };
-    renderRaf = requestAnimationFrame(tick);
-  }
-
-  function clearStreamingRender() {
-    if (renderRaf !== undefined) {
-      cancelAnimationFrame(renderRaf);
-      renderRaf = undefined;
-    }
-  }
-
   $effect(() => {
-    pendingContent = content;
-
-    if (status !== 'streaming') {
-      clearStreamingRender();
-      if (displayedContent !== content) displayedContent = content;
-      return;
-    }
-
-    scheduleStreamingRender();
+    reveal.update(content, status === 'streaming' && !reducedMotion.value && !document.hidden);
   });
+  $effect(() => {
+    const onVisibility = () => { if (document.hidden) reveal.flush(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  });
+  onDestroy(() => reveal.dispose());
 
   const sanitizedContent = $derived(sanitizeAssistantArtifacts(displayedContent));
   const contentSegments = $derived(parseContentSegments(sanitizedContent));
@@ -228,7 +188,7 @@
     -->
     <div bind:this={contentEl} class="markdown-body" class:is-research={isResearch}>
       {#if settledHtml}<div class="stream-settled">{@html settledHtml}</div>{/if}
-      {#if tailHtml}<div class="stream-tail" class:stream-caret={status === 'streaming'}>{@html tailHtml}</div>{/if}
+      {#if tailHtml}<div class="stream-tail">{@html tailHtml}</div>{/if}
     </div>
   {/if}
 {/if}

@@ -1,4 +1,5 @@
 import type { IpcMain } from 'electron';
+import { registerArtifactPreviewHandlers } from '../artifact-preview.ts';
 
 type ToolingHandlerDeps = {
   ipcMain: IpcMain;
@@ -53,6 +54,7 @@ export function registerToolingHandlers({
   generateXlsx,
   generatePdf,
 }: ToolingHandlerDeps): void {
+  registerArtifactPreviewHandlers(ipcMain);
   ipcMain.handle('sandbox_exec', (_e, args) => sandboxExec(args));
 
   ipcMain.handle('browser_open_tab', (_e, { url } = {}) => panelOpenTab(url));
