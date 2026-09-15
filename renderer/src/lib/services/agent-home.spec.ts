@@ -39,13 +39,13 @@ describe('Home agent tool round trip', () => {
     const requests: Parameters<typeof agentStreamComplete>[0][] = [];
     vi.mocked(agentStreamComplete).mockImplementationOnce(async (args) => {
       requests.push(structuredClone({ messages: args.messages, tools: args.tools }));
-      if (mode === 'native') return { content: '', toolCalls: [{ id: 'map-1', name: 'create_map', arguments: { place: 'Buenos Aires, Argentina', zoom: 12 } }] };
+      if (mode === 'native') return { content: '', reasoning: '', toolCalls: [{ id: 'map-1', name: 'create_map', arguments: { place: 'Buenos Aires, Argentina', zoom: 12 } }] };
       for (let i = 0; i < tag.length; i += 7) args.onContent?.(tag.slice(i, i + 7));
-      return { content: tag };
+      return { content: tag, reasoning: '' };
     }).mockImplementationOnce(async (args) => {
       requests.push(structuredClone({ messages: args.messages, tools: args.tools }));
       args.onContent?.('Here is Buenos Aires.');
-      return { content: 'Here is Buenos Aires.' };
+      return { content: 'Here is Buenos Aires.', reasoning: '' };
     });
     const onArtifact = vi.fn();
     const onContent = vi.fn();
@@ -111,7 +111,7 @@ describe('Home agent tool round trip', () => {
 
   it('answers ordinary chat in one streamed turn without manufacturing files from code examples', async () => {
     const content = 'Here is an example:\n```js\nconst sum = 2 + 2;\n```';
-    vi.mocked(agentStreamComplete).mockResolvedValueOnce({ content });
+    vi.mocked(agentStreamComplete).mockResolvedValueOnce({ content, reasoning: '' });
     const onArtifact = vi.fn();
     const result = await runAgentTask({ chatId: 'home-chat', rawPrompt: 'Explain addition in JavaScript', messages: [{ role: 'user', content: 'Explain addition in JavaScript' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact });
     expect(result.content).toBe(content);
@@ -120,7 +120,7 @@ describe('Home agent tool round trip', () => {
   });
 
   it('retries a missing widget and reports a visible failure on another miss', async () => {
-    vi.mocked(agentStreamComplete).mockResolvedValue({ content: 'I can show a map.' });
+    vi.mocked(agentStreamComplete).mockResolvedValue({ content: 'I can show a map.', reasoning: '' });
     const result = await runAgentTask({ chatId: 'missing-map', rawPrompt: 'Show me a map of Madrid', messages: [{ role: 'user', content: 'Show me a map of Madrid' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact: vi.fn() });
     expect(agentStreamComplete).toHaveBeenCalledTimes(2);
     expect(result.stopReason).toBe('missing_artifacts');
@@ -130,7 +130,7 @@ describe('Home agent tool round trip', () => {
 
   it('honors disabled map settings without repeatedly asking the model for that tool', async () => {
     vi.mocked(loadAppConfig).mockResolvedValueOnce({ llm: { backend_mode: 'api' }, ui: { artifact_toggles: { map: false } } });
-    vi.mocked(agentStreamComplete).mockResolvedValueOnce({ content: 'Map widgets are disabled.' });
+    vi.mocked(agentStreamComplete).mockResolvedValueOnce({ content: 'Map widgets are disabled.', reasoning: '' });
     const result = await runAgentTask({ chatId: 'disabled-map', rawPrompt: 'Show me a map of Madrid', messages: [{ role: 'user', content: 'Show me a map of Madrid' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact: vi.fn() });
     expect(agentStreamComplete).toHaveBeenCalledTimes(1);
     expect(vi.mocked(agentStreamComplete).mock.calls[0][0].tools?.some((tool) => tool.function.name === 'create_map')).toBe(false);
