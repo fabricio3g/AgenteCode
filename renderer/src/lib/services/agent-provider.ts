@@ -9,7 +9,6 @@ import type {
 } from '$lib/types/chat';
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
-import { isElectron, invoke } from '$lib/services/bridge';
 import { getFlaxeoCodeSystemPrompt } from '$lib/services/agent-prompts';
 
 export interface CodeAgentAdapter {
@@ -24,7 +23,9 @@ export interface CodeAgentDriverDefinition {
   createAdapter(instance: CodeAgentInstance): CodeAgentAdapter;
 }
 
-export type CodeAgentDriverRegistry = Record<CodeAgentDriverKind, CodeAgentDriverDefinition>;
+// Not every CodeAgentDriverKind is runnable — retired external CLI kinds stay in
+// the type for persisted-value compatibility but have no registry entry.
+export type CodeAgentDriverRegistry = Partial<Record<CodeAgentDriverKind, CodeAgentDriverDefinition>>;
 export type CodeAgentInstanceRegistry = Record<CodeAgentInstanceId, CodeAgentAdapter>;
 export type ProviderRegistry = Record<CodeAgentProviderId, CodeAgentAdapter>;
 
@@ -34,30 +35,14 @@ const LEGACY_PROVIDER_TO_INSTANCE: Record<string, CodeAgentInstanceId> = {
   'chatea-agent': 'chatea-agent',
   'flaxeo-agent': 'chatea-agent',
   flaxeo: 'chatea-agent',
-  codex: 'codex',
-  claude: 'claude',
-  cursor: 'cursor',
-  opencode: 'opencode',
   pi: 'chatea-agent' // Pi-inspired built-in path is Flaxeo Agent
 };
 
+/** Built-in code profile. Unknown ids fall back here (never to the chat-only `chatea`). */
+const FALLBACK_INSTANCE_ID: CodeAgentInstanceId = 'chatea-agent';
+
 let driverRegistry: CodeAgentDriverRegistry | null = null;
 let instanceRegistry: CodeAgentInstanceRegistry | null = null;
-
-async function cliExists(command: string): Promise<boolean> {
-  if (!isElectron()) return false;
-  try {
-    const result = await invoke<{ exit_code: number }>('workspace_exec', {
-      workspace_root: '',
-      command: process.platform === 'win32' ? 'where' : 'which',
-      args: [command],
-      timeout_ms: 5000
-    });
-    return result.exit_code === 0;
-  } catch {
-    return false;
-  }
-}
 
 function defaultInstance(input: {
   id: CodeAgentInstanceId;
@@ -84,20 +69,6 @@ function makeAdapter(
   run: (args: RunAgentTaskArgs) => Promise<AgentTaskResult>
 ): CodeAgentAdapter {
   return { instance, detect, run };
-}
-
-function createUnavailableRun(displayName: string) {
-  return async (): Promise<AgentTaskResult> => ({
-    content: `${displayName} is detected as a provider instance, but its runtime adapter is not implemented in Chatea yet.`,
-    reasoning: '',
-    steps: [],
-    artifact: null,
-    artifacts: [],
-    sources: [],
-    outcome: 'failed',
-    stopReason: 'error',
-    error: `${displayName} adapter not implemented`,
-  });
 }
 
 function createChateaDriver(): CodeAgentDriverDefinition {
@@ -215,42 +186,6 @@ function createAgenteDriver(): CodeAgentDriverDefinition {
   };
 }
 
-function createCodexDriver(): CodeAgentDriverDefinition {
-  const instance = defaultInstance({ id: 'codex', driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', accentColor: '#10a37f' });
-  return {
-    driver: { driverKind: 'codex', displayName: 'Codex', detail: 'OpenAI Codex CLI', supportsMultipleInstances: true },
-    defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('codex')) ? 'ready' : 'missing', createUnavailableRun(entry.displayName))
-  };
-}
-
-function createClaudeDriver(): CodeAgentDriverDefinition {
-  const instance = defaultInstance({ id: 'claude', driverKind: 'claude', displayName: 'Claude Code', detail: 'Anthropic Claude Code', accentColor: '#d97706' });
-  return {
-    driver: { driverKind: 'claude', displayName: 'Claude Code', detail: 'Anthropic Claude Code', supportsMultipleInstances: true },
-    defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('claude')) ? 'login' : 'missing', createUnavailableRun(entry.displayName))
-  };
-}
-
-function createCursorDriver(): CodeAgentDriverDefinition {
-  const instance = defaultInstance({ id: 'cursor', driverKind: 'cursor', displayName: 'Cursor Agent', detail: 'Cursor coding agent', status: 'disabled', accentColor: '#f8fafc' });
-  return {
-    driver: { driverKind: 'cursor', displayName: 'Cursor Agent', detail: 'Cursor coding agent', supportsMultipleInstances: true },
-    defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => 'disabled', createUnavailableRun(entry.displayName))
-  };
-}
-
-function createOpenCodeDriver(): CodeAgentDriverDefinition {
-  const instance = defaultInstance({ id: 'opencode', driverKind: 'opencode', displayName: 'OpenCode', detail: 'OpenCode runtime', accentColor: '#22c55e' });
-  return {
-    driver: { driverKind: 'opencode', displayName: 'OpenCode', detail: 'OpenCode runtime', supportsMultipleInstances: true },
-    defaultInstance: instance,
-    createAdapter: (entry) => makeAdapter(entry, async () => (await cliExists('opencode')) ? 'ready' : 'missing', createUnavailableRun(entry.displayName))
-  };
-}
-
 export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceId {
   const raw = typeof value === 'string' ? value.trim() : '';
   if (!raw) return 'chatea-agent';
@@ -259,16 +194,15 @@ export function normalizeCodeAgentInstanceId(value: unknown): CodeAgentInstanceI
 
 export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
   if (!driverRegistry) {
+    // Only runnable adapters belong here. The Codex/Claude/Cursor/OpenCode CLI
+    // stubs could detect a binary but never run one (createUnavailableRun), and
+    // listing them offered users providers that always failed; `pi` duplicated
+    // the `chatea-agent` instance id in the registry and is now an alias
+    // resolved through LEGACY_PROVIDER_TO_INSTANCE instead.
     driverRegistry = {
       agente: createAgenteDriver(),
       chatea: createChateaDriver(),
-      'chatea-agent': createFlaxeoAgentDriver(),
-      codex: createCodexDriver(),
-      claude: createClaudeDriver(),
-      cursor: createCursorDriver(),
-      opencode: createOpenCodeDriver(),
-      // Pi CLI not shipped; built-in Flaxeo Agent is the Pi-inspired path
-      pi: createFlaxeoAgentDriver()
+      'chatea-agent': createFlaxeoAgentDriver()
     };
   }
   return driverRegistry;
@@ -278,10 +212,12 @@ export function getCodeAgentInstanceRegistry(): CodeAgentInstanceRegistry {
   if (!instanceRegistry) {
     const drivers = getCodeAgentDriverRegistry();
     instanceRegistry = Object.fromEntries(
-      Object.values(drivers).map((definition) => {
-        const instance = definition.defaultInstance;
-        return [instance.id, definition.createAdapter(instance)];
-      })
+      Object.values(drivers)
+        .filter((definition): definition is CodeAgentDriverDefinition => !!definition)
+        .map((definition) => {
+          const instance = definition.defaultInstance;
+          return [instance.id, definition.createAdapter(instance)];
+        })
     );
   }
   return instanceRegistry;
@@ -294,7 +230,14 @@ export function listCodeAgentInstances(): CodeAgentInstance[] {
 export function resolveCodeAgentInstance(id?: CodeAgentInstanceId | null): CodeAgentAdapter {
   const registry = getCodeAgentInstanceRegistry();
   const instanceId = normalizeCodeAgentInstanceId(id);
-  return registry[instanceId] || registry['chatea'] || registry['chatea-agent'];
+  const adapter = registry[instanceId];
+  if (adapter) return adapter;
+  // A typo'd or retired persisted id must not silently switch profiles: the old
+  // chain (chatea -> chatea-agent) could run a chat/sandbox profile where a
+  // workspace/code profile was expected. Fall back to the built-in code agent —
+  // deterministically, and loudly enough to diagnose.
+  console.warn(`[agent-provider] Unknown code agent instance "${String(id ?? '')}" — falling back to "${FALLBACK_INSTANCE_ID}".`);
+  return registry[FALLBACK_INSTANCE_ID];
 }
 
 export async function detectCodeAgentInstanceStatus(id: CodeAgentInstanceId): Promise<CodeAgentProviderStatus> {
@@ -342,14 +285,9 @@ export function getProviderRegistry(): ProviderRegistry {
 }
 
 export function listCodeAgentProviders(): CodeAgentProvider[] {
-  // Prefer Flaxeo Agent first; de-dupe if pi maps to same adapter instance id
-  const seen = new Set<string>();
-  const list: CodeAgentProvider[] = [];
-  for (const adapter of Object.values(getCodeAgentInstanceRegistry())) {
-    if (seen.has(adapter.instance.id)) continue;
-    seen.add(adapter.instance.id);
-    list.push(adapterToProvider(adapter));
-  }
+  // Instance ids are unique by construction now that `pi` is an alias rather
+  // than a duplicate registry entry; prefer Flaxeo Agent first.
+  const list = Object.values(getCodeAgentInstanceRegistry()).map(adapterToProvider);
   list.sort((a, b) => {
     if (a.id === 'chatea-agent') return -1;
     if (b.id === 'chatea-agent') return 1;
