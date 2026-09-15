@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  getCodeAgentDriverRegistry,
   listCodeAgentProviders,
   normalizeCodeAgentInstanceId,
   resolveCodeAgentInstance
@@ -29,6 +30,39 @@ describe('Flaxeo Agent (built-in code)', () => {
     const adapter = resolveCodeAgentInstance('flaxeo-agent');
     expect(adapter.instance.displayName).toBe('Flaxeo Agent');
     expect(adapter.instance.driverKind).toBe('chatea-agent');
+  });
+
+  it('registers only runnable adapters and lists every instance once', () => {
+    expect(Object.keys(getCodeAgentDriverRegistry()).sort()).toEqual(['agente', 'chatea', 'chatea-agent']);
+
+    const providers = listCodeAgentProviders();
+    const ids = providers.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const retired of ['codex', 'claude', 'cursor', 'opencode', 'pi']) {
+      expect(ids).not.toContain(retired);
+    }
+  });
+
+  it('treats pi as an alias instead of a duplicate registry entry', () => {
+    expect(getCodeAgentDriverRegistry().pi).toBeUndefined();
+    expect(resolveCodeAgentInstance('pi').instance.id).toBe('chatea-agent');
+  });
+
+  it('warns and falls back to the built-in code agent for unknown ids', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // A typo'd or retired persisted id must land on the code profile, never
+      // silently on the chat-only `chatea` profile.
+      for (const unknown of ['typo-instance', 'codex', 'cursor']) {
+        const adapter = resolveCodeAgentInstance(unknown);
+        expect(adapter.instance.id).toBe('chatea-agent');
+        expect(adapter.instance.driverKind).toBe('chatea-agent');
+      }
+      expect(warn).toHaveBeenCalledTimes(3);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('typo-instance'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('code profile exposes coding + web + diagnostics tools', () => {
