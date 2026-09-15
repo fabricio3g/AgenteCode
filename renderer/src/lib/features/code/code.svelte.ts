@@ -64,6 +64,15 @@ class CodeStore {
   #sessionIds = new Map<string, string>();
   #unsubEvents: (() => void) | null = null;
 
+  constructor() {
+    // Deleted conversations must not leave run state behind (unbounded growth)
+    // nor a live engine session pointing at a chat that no longer exists.
+    appStore.onChatDeleted((chatId) => {
+      if (this.runs[chatId]?.running) void abortCodeAgent(chatId).catch(() => {});
+      this.evictChat(chatId, { force: true });
+    });
+  }
+
   async load(): Promise<void> {
     if (this.loading) return;
     this.loading = true;
@@ -98,6 +107,11 @@ class CodeStore {
     await deleteCodeProjectFromDb(projectId);
     await this.load();
     if (this.activeProjectId === projectId) this.activeProjectId = null;
+    // Conversations of a removed project leave the Code tree, so their cached
+    // runs are unreachable — drop the idle ones (live runs finish streaming).
+    for (const chat of appStore.chats) {
+      if (chat.projectId === projectId) this.evictChat(chat.id);
+    }
   }
 
   toggleExpanded(projectId: string): void {
@@ -183,6 +197,21 @@ class CodeStore {
     return this.runs[chatId] ?? null;
   }
 
+  /**
+   * Drop cached run/session state for a chat. Live runs are kept unless
+   * `force` is set — chat deletion aborts the engine first, and the late
+   * `agent_end` of a deleted chat must not re-materialize its run.
+   */
+  evictChat(chatId: string, options: { force?: boolean } = {}): void {
+    if (!options.force && this.runs[chatId]?.running) return;
+    if (this.runs[chatId]) {
+      const next = { ...this.runs };
+      delete next[chatId];
+      this.runs = next;
+    }
+    this.#sessionIds.delete(chatId);
+  }
+
   /** True once an engine session has been started for this chat. */
   hasSession(chatId: string): boolean {
     return this.#sessionIds.has(chatId);
@@ -201,19 +230,26 @@ class CodeStore {
   }
 
   #handleEvent(event: CodeAgentEvent): void {
-    const run = this.runs[event.chatId];
-    if (run) {
-      applyCodeAgentEvent(run, event);
-      if (event.type === 'agent_start') {
-        run.queuedCount = 0;
-      }
-      if (event.type === 'agent_end') {
-        run.running = false;
-        run.queuedCount = 0;
-        void this.refreshCheckpoints(event.chatId);
-      }
-      this.#flushToMessage(event.chatId, run);
+    let run = this.runs[event.chatId];
+    if (!run) {
+      // Post-reload or out-of-order pushes used to vanish when the run map had
+      // not been populated yet. Materialize a run for chats we know about so
+      // deltas have somewhere to land; ignore events for unknown chats.
+      if (!appStore.chats.some((chat) => chat.id === event.chatId)) return;
+      run = this.#requireRun(event.chatId);
     }
+
+    applyCodeAgentEvent(run, event);
+    if (event.type === 'agent_start') {
+      run.running = true;
+      run.queuedCount = 0;
+    }
+    if (run.done) run.running = false;
+    if (event.type === 'agent_end') {
+      run.queuedCount = 0;
+      void this.refreshCheckpoints(event.chatId);
+    }
+    this.#flushToMessage(event.chatId, run);
 
     if (event.type === 'approval_request') {
       void (async () => {
@@ -382,8 +418,14 @@ class CodeStore {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat || !text.trim()) return;
     this.#appendUserTurn(chat, text);
-    this.#requireRun(chatId).queuedCount += 1;
-    await steerCodeAgent(chatId, text).catch(() => {});
+    const run = this.#requireRun(chatId);
+    run.queuedCount += 1;
+    try {
+      const result = await steerCodeAgent(chatId, text);
+      if (!result.ok) this.#rollbackQueued(run);
+    } catch {
+      this.#rollbackQueued(run);
+    }
   }
 
   /** Queue input that runs only when the agent would otherwise stop. */
@@ -397,7 +439,17 @@ class CodeStore {
     }
     this.#appendUserTurn(chat, text);
     run.queuedCount += 1;
-    await followUpCodeAgent(chatId, text).catch(() => {});
+    try {
+      const result = await followUpCodeAgent(chatId, text);
+      if (!result.ok) this.#rollbackQueued(run);
+    } catch {
+      this.#rollbackQueued(run);
+    }
+  }
+
+  /** Undo a queued-count bump when the engine never accepted the input. */
+  #rollbackQueued(run: AgenteRun): void {
+    run.queuedCount = Math.max(0, run.queuedCount - 1);
   }
 
   async stop(chatId: string): Promise<void> {

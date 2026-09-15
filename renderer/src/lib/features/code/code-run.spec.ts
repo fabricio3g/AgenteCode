@@ -92,6 +92,19 @@ describe('agente run reducer', () => {
     expect(state.error).toBe('no model');
   });
 
+  it('finalizes the run on error even when agent_end never follows', () => {
+    // The engine's prompt() rejection path emits `error` as the last event.
+    // Without finalizing here the assistant placeholder streamed forever.
+    const state = run([
+      { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'bash', args: {} },
+      { type: 'error', chatId: 'c', message: 'prompt failed' }
+    ]);
+    expect(state.done).toBe(true);
+    expect(state.stopReason).toBe('error');
+    expect(state.error).toBe('prompt failed');
+    expect(state.steps.find((s) => s.id === 't1')?.status).toBe('error');
+  });
+
   it('captures the end-of-run stop reason', () => {
     const state = run([{ type: 'agent_end', chatId: 'c', stopReason: 'length' }]);
     expect(state.stopReason).toBe('length');
