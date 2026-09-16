@@ -171,6 +171,20 @@ const SEARCH_TOOL_NAMES = new Set([
   'create_map',
   'export_research_package'
 ]);
+/**
+ * Ask fast-path allowlist: grounded answers and math only. No artifact
+ * creators, no file writes, no workspace edits — those live on the Agent
+ * tab. Port as one pack subset if Home moves to the core engine (#12).
+ */
+export const ASK_TOOL_NAMES = new Set([
+  'web_search',
+  'fetch_url',
+  'query_knowledge',
+  'calculator',
+  'get_weather',
+  'convert_currency',
+  'get_quote'
+]);
 /** Max tool-loop messages after chat history (structural cap only; budget still applies). */
 const MAX_LOOP_MESSAGES_LOCAL = 12;
 const MAX_LOOP_MESSAGES_API = 16;
@@ -737,6 +751,9 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   };
   const localMode = backendMode === 'local';
   const toolMode = args.toolMode || 'agent';
+  // Ask: intent-gated fast path — answer directly, tools only when needed,
+  // tight budgets (set by the caller), no artifact/file machinery.
+  const isAsk = toolMode === 'ask';
   const agentProfile = args.agentProfile
     || (toolMode === 'search_chat' ? 'search' : (executionMode === 'workspace' ? 'code' : 'work'));
   const isCodeProfile = agentProfile === 'code';
@@ -774,12 +791,14 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   // The model answered a visual-deliverable request in prose without calling
   // the tool — nudge it once with the exact tool name, then accept the answer.
   let visualNudgeDone = false;
-  const wantsWebsiteArtifact = isWebsiteBuildRequest(
+  const wantsWebsiteArtifact = !isAsk && isWebsiteBuildRequest(
     args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
   );
   const toolDefs = toolMode === 'search_chat'
     ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
-    : getToolDefinitions(executionMode, artifactToggles, agentProfile);
+    : isAsk
+      ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => ASK_TOOL_NAMES.has(tool.function.name))
+      : getToolDefinitions(executionMode, artifactToggles, agentProfile);
   const modeNote = isCodeProfile || (executionMode === 'workspace' && !isChatProfile)
     ? [
       isCodeProfile ? getFlaxeoCodeSystemPrompt() : '',
@@ -817,9 +836,17 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           : 'Search mode means use web search for current information and follow up if the first search is insufficient.'
     ].join(' ')
     : '';
+  const askModeNote = isAsk
+    ? [
+      'Fast-answer mode: respond directly and briefly whenever you already know the answer.',
+      'Reach for a tool only when the answer genuinely needs grounding — current information (web_search/fetch_url), retrieved documents (query_knowledge), live data (get_weather/convert_currency/get_quote), or exact arithmetic (calculator).',
+      'Never more than a couple of tool calls per question; do not go on research journeys.',
+      'You cannot create files, artifacts, or visuals in this mode — answer in prose, with sources where they matter.'
+    ].join(' ')
+    : '';
   const agentExtra = (isCodeProfile || isChatProfile)
-    ? [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n')
-    : [modeNote, searchModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
+    ? [modeNote, searchModeNote, askModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n')
+    : [modeNote, searchModeNote, askModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
   const promptSearchMode = args.searchMode === 'max' || args.searchMode === 'deep' || args.searchMode === 'search'
     ? args.searchMode
     : 'search';
@@ -1340,7 +1367,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
           errorReason = 'The model did not produce website files.';
           break;
         }
-        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '') || missingRequestedVisuals(args.rawPrompt || '').length > 0) {
+        if (!isAsk && (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '') || missingRequestedVisuals(args.rawPrompt || '').length > 0)) {
           const finalObservation: ToolObservation = {
             name: 'assistant_draft',
             args: {},
@@ -1902,9 +1929,14 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   }
 
   if (!finalContent) {
-    const forcedAttempts = isResearchChat
-      ? MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS
-      : MAX_FORCED_FINAL_ANSWER_ATTEMPTS;
+    // Ask gets one synthesis shot, not two: the strict template fallback
+    // below already produces an honest answer from gathered evidence, and
+    // every extra model call costs the immediacy Ask exists for.
+    const forcedAttempts = isAsk
+      ? 1
+      : isResearchChat
+        ? MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS
+        : MAX_FORCED_FINAL_ANSWER_ATTEMPTS;
     const medicalResearch = isResearchChat && isMedicalResearchQuery(args.rawPrompt || '');
     for (let attempt = 1; attempt <= forcedAttempts; attempt++) {
       try {

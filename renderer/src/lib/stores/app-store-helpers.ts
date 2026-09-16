@@ -482,8 +482,8 @@ export function normalizeContextMode(mode: unknown): ChatContextMode {
 export function normalizeSessionComposerMode(
   mode: unknown,
   contextMode: ChatContextMode
-): 'chat' | 'agent' {
-  if (mode === 'chat' || mode === 'agent') return mode;
+): 'chat' | 'ask' | 'agent' {
+  if (mode === 'chat' || mode === 'ask' || mode === 'agent') return mode;
   return SPACES[contextMode].defaultComposerMode;
 }
 
@@ -624,7 +624,7 @@ export function buildContextualPrompt(args: {
   researchSummary?: string;
   ragContext?: string;
   workspaceContext?: string;
-  mode: 'chat' | 'agent';
+  mode: 'chat' | 'ask' | 'agent';
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
 }) {
   const extras: string[] = [];

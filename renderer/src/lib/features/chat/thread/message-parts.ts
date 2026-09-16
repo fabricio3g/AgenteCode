@@ -18,7 +18,7 @@ export type MessagePart =
   | { kind: 'approval' }
   | { kind: 'error'; title: string; detail: string }
   | { kind: 'warning'; detail: string }
-  | { kind: 'pending' }
+  | { kind: 'pending'; status?: string }
   | { kind: 'content'; content: string }
   | { kind: 'document'; title: string; docs: DocumentSurfaceItem[] }
   | { kind: 'slides' }
@@ -120,7 +120,11 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   const parts: MessagePart[] = [];
   const isStreaming = message.status === 'streaming';
   const hasContent = !!displayContent;
-  const hasReasoning = enableThinking && !!displayReasoning;
+  // Ask fast path renders a single quiet status, never the planning chrome:
+  // no reasoning trace, no tool-status line. Steps are still recorded on the
+  // message (and approvals still render below) — only the surfacing is hushed.
+  const isQuietAsk = message.mode === 'ask';
+  const hasReasoning = enableThinking && !!displayReasoning && !isQuietAsk;
   const hasSteps = !!message.agentSteps?.length;
 
   if (hasActiveDeepResearch) parts.push({ kind: 'deep-research' });
@@ -140,7 +144,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // vertical noise in an agent turn.
   const awaitingFirstAgentOutput =
     message.mode === 'agent' && isStreaming && !hasContent && !hasActiveDeepResearch;
-  if (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity) parts.push({ kind: 'tool-status' });
+  if (!isQuietAsk && (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
 
   // Directly under the status line: the run is stopped until this is answered,
   // so it outranks everything else in the turn. Pushing it here also means the
@@ -167,7 +171,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // agent turn that had started but not yet recorded a step showed the dots
   // underneath its own "Planning…" line.
   if (isStreaming && !hasContent && parts.length === 0) {
-    parts.push({ kind: 'pending' });
+    parts.push(isQuietAsk && displayMetadata?.activityLabel ? { kind: 'pending', status: displayMetadata.activityLabel } : { kind: 'pending' });
   }
 
   if (hasContent) parts.push({ kind: 'content', content: displayContent });

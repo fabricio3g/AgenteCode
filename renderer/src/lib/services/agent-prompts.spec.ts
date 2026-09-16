@@ -211,4 +211,18 @@ describe('agent-prompts', () => {
     expect(prompt).toContain('create_chart');
     expect(prompt).toMatch(/prose description is never an acceptable substitute/);
   });
+
+  it('gives ask mode a lean direct-answer base with no artifact mandates', () => {
+    const native = getNativeSystemPrompt(undefined, 8, 4, 'ask');
+    expect(native).toMatch(/answer directly/i);
+    expect(native).toMatch(/cannot create files or visuals/i);
+    expect(native).not.toMatch(/MUST call/);
+    expect(native).not.toMatch(/never an acceptable substitute/);
+
+    const xml = getXmlSystemPrompt(undefined, 8, 4, [], 'ask');
+    expect(xml).toMatch(/answer directly/i);
+    expect(xml).toMatch(/cannot create files or visuals/i);
+    expect(xml).not.toMatch(/create_chart/);
+    expect(xml).not.toMatch(/never an acceptable substitute/);
+  });
 });

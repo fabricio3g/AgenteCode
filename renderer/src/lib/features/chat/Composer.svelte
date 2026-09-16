@@ -24,6 +24,7 @@
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
   import ComposerToolbar from './composer/ComposerToolbar.svelte';
+  import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
@@ -75,7 +76,9 @@
       ? copy.composer.errorPlaceholder
       : generating && appStore.composerMode === 'agent'
         ? say.inProgress('Agent working')
-        : copy.composer.placeholder
+        : generating && appStore.composerMode === 'ask'
+          ? say.inProgress('Asking')
+          : copy.composer.placeholder
   );
 
   // Mirrors the guards inside sendCurrentMessage so the button reflects reality.
@@ -337,6 +340,15 @@
   >
     <ComposerModelNotice />
 
+    {#if appStore.activeSpace === 'home'}
+      <!-- The mode tab lives above the input shell on Home: Ask for instant
+           grounded answers, Agent for the full tool loop. Code keeps its own
+           inline selector in the toolbar row. -->
+      <div class="mode-tab-row">
+        <ModeSelector />
+      </div>
+    {/if}
+
     <VoiceModeOverlay
       phase={dictation.phase}
       isListening={dictation.listening}
@@ -439,6 +451,26 @@
 
   .composer-frame {
     position: relative;
+  }
+
+  /* Ask/Agent tab above the input shell: quiet, left-aligned, attached to
+     the shell rather than floating in the thread. The dock is
+     pointer-events:none so the thread stays scrollable behind it — opt back
+     in, or the tabs render but never receive clicks. */
+  .mode-tab-row {
+    display: flex;
+    justify-content: flex-start;
+    padding: 0 0.35rem 0.35rem;
+    pointer-events: auto;
+  }
+
+  /* Raised white thumb on the track (iOS-style): the shared
+     .aui-segmented active state reads flat grey here, so lift it with a
+     card surface + soft shadow, scoped to this row only. */
+  .mode-tab-row :global(.aui-segmented-item.is-active) {
+    background: var(--card);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+    font-weight: 600;
   }
 
   .drop-overlay {

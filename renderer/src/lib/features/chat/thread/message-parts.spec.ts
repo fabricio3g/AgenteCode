@@ -195,6 +195,48 @@ describe('buildMessageParts', () => {
       'artifact'
     ]);
   });
+
+  it('hushes ask runs: no reasoning trace, no tool-status line', () => {
+    const kinds = build({
+      message: message({
+        mode: 'ask',
+        status: 'streaming',
+        agentSteps: [{ id: 's1', type: 'tool', label: 'web_search', status: 'running' }]
+      }),
+      displayContent: 'Answer',
+      displayReasoning: 'Because',
+      displayMetadata: {}
+    });
+    expect(kinds).toEqual(['content']);
+  });
+
+  it('carries the quiet status on the ask typing indicator', () => {
+    const parts = buildMessageParts({
+      message: message({ mode: 'ask', status: 'streaming' }),
+      displayContent: '',
+      displayReasoning: '',
+      displayMetadata: { activityLabel: 'Searching' },
+      enableThinking: true,
+      hasActiveDeepResearch: false,
+      hasDocumentArtifact: false,
+      hasPendingApproval: false
+    });
+    expect(parts).toEqual([{ kind: 'pending', status: 'Searching' }]);
+  });
+
+  it('leaves plain pending dots status-free outside ask mode', () => {
+    const parts = buildMessageParts({
+      message: message({ mode: 'chat', status: 'streaming' }),
+      displayContent: '',
+      displayReasoning: '',
+      displayMetadata: { activityLabel: 'Planning' },
+      enableThinking: true,
+      hasActiveDeepResearch: false,
+      hasDocumentArtifact: false,
+      hasPendingApproval: false
+    });
+    expect(parts).toEqual([{ kind: 'pending' }]);
+  });
 });
 
 describe('isAssistantMessageEmpty', () => {

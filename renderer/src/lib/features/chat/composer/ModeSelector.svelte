@@ -6,6 +6,7 @@
 
   const MODES = [
     { id: 'chat', label: 'Chat' },
+    { id: 'ask', label: 'Ask' },
     { id: 'agent', label: 'Agent' }
   ] as const;
 </script>

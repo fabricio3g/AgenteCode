@@ -347,7 +347,7 @@ export interface ChatMessage {
   ragDocuments?: IndexedDocument[];
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
   slides?: SlideData[];
-  mode?: 'chat' | 'slides' | 'agent';
+  mode?: 'chat' | 'slides' | 'ask' | 'agent';
   agentSteps?: AgentStep[];
   /**
    * The last artifact the turn produced. Retained because chats persisted before
@@ -425,7 +425,7 @@ export interface CodeProject {
   updatedAt: number;
 }
 
-export type SessionComposerMode = 'chat' | 'agent';
+export type SessionComposerMode = 'chat' | 'ask' | 'agent';
 export type SessionSearchMode = 'chat' | 'search' | 'deep' | 'max';
 
 export interface ChatSession {

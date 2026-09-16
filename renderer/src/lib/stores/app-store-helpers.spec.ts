@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
-import { markAgentStopped, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
+import { markAgentStopped, normalizeSessionComposerMode, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
+
+describe('normalizeSessionComposerMode', () => {
+  it('preserves ask alongside chat and agent', () => {
+    expect(normalizeSessionComposerMode('ask', 'home')).toBe('ask');
+    expect(normalizeSessionComposerMode('agent', 'home')).toBe('agent');
+    expect(normalizeSessionComposerMode('chat', 'home')).toBe('chat');
+  });
+});
 
 describe('assistant runtime usage metadata', () => {
   it('uses llama.cpp completion tokens and generation speed instead of total wall time', () => {
