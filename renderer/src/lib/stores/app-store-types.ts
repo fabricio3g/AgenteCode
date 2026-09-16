@@ -9,7 +9,7 @@ export interface PersistedState {
 }
 
 export type GenerationBackendMode = 'api' | 'local';
-export type GenerationComposerMode = 'chat' | 'ask' | 'agent';
+export type GenerationComposerMode = 'chat' | 'instant' | 'agent';
 
 export interface ActiveGenerationRun {
   controller: AbortController;

@@ -212,17 +212,29 @@ describe('agent-prompts', () => {
     expect(prompt).toMatch(/prose description is never an acceptable substitute/);
   });
 
-  it('gives ask mode a lean direct-answer base with no artifact mandates', () => {
-    const native = getNativeSystemPrompt(undefined, 8, 4, 'ask');
+  it('gives instant mode a lean direct-answer base with no artifact mandates', () => {
+    const native = getNativeSystemPrompt(undefined, 8, 4, 'instant');
     expect(native).toMatch(/answer directly/i);
     expect(native).toMatch(/cannot create files or visuals/i);
     expect(native).not.toMatch(/MUST call/);
     expect(native).not.toMatch(/never an acceptable substitute/);
 
-    const xml = getXmlSystemPrompt(undefined, 8, 4, [], 'ask');
+    const xml = getXmlSystemPrompt(undefined, 8, 4, [], 'instant');
     expect(xml).toMatch(/answer directly/i);
     expect(xml).toMatch(/cannot create files or visuals/i);
     expect(xml).not.toMatch(/create_chart/);
     expect(xml).not.toMatch(/never an acceptable substitute/);
+  });
+
+  it('opens agent turns with an acknowledgement first, never instant ones', () => {
+    const agentNative = getNativeSystemPrompt(undefined, 24, 12, 'agent');
+    expect(agentNative).toMatch(/one-line confirmation of what you understood/i);
+    const agentXml = getXmlSystemPrompt(undefined, 24, 12, [], 'agent');
+    expect(agentXml).toMatch(/one-line confirmation of what you understood/i);
+
+    const instantNative = getNativeSystemPrompt(undefined, 8, 4, 'instant');
+    expect(instantNative).not.toMatch(/one-line confirmation/);
+    const searchNative = getNativeSystemPrompt(undefined, 24, 12, 'search_chat');
+    expect(searchNative).not.toMatch(/one-line confirmation/);
   });
 });

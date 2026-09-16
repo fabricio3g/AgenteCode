@@ -159,7 +159,7 @@ class AppStore {
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
   reasoningLevel = $state<ReasoningLevel | null>(null);
   reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' });
-  composerMode = $state<'chat' | 'ask' | 'agent'>('chat');
+  composerMode = $state<'chat' | 'instant' | 'agent'>('agent');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
@@ -992,7 +992,7 @@ class AppStore {
     return isDefaultChatTitle(title) || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
   }
 
-  private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'ask' | 'agent' {
+  private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'instant' | 'agent' {
     return SPACES[mode].defaultComposerMode;
   }
 
@@ -1040,7 +1040,7 @@ class AppStore {
     }
   }
 
-  private writeComposerModeToCurrentChat(mode: 'chat' | 'ask' | 'agent') {
+  private writeComposerModeToCurrentChat(mode: 'chat' | 'instant' | 'agent') {
     this.composerMode = mode;
     if (this.currentChat) {
       this.currentChat.composerMode = mode;
@@ -1462,8 +1462,8 @@ class AppStore {
     this.searchSidebarOpen = true;
   }
 
-  setComposerMode(mode: 'chat' | 'ask' | 'agent') {
-    if (mode === 'agent' || mode === 'ask') {
+  setComposerMode(mode: 'instant' | 'agent') {
+    if (mode === 'agent' || mode === 'instant') {
       this.writeSearchModeToCurrentChat('chat');
     }
     // Work/Code default to agent but user can still switch; value is per-chat.
@@ -1984,13 +1984,13 @@ class AppStore {
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
-            currentActivity: activeComposerMode === 'ask'
+            currentActivity: activeComposerMode === 'instant'
               ? 'searching'
               : activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
                 ? 'searching'
                 : 'planning',
             activityLabel: activityLabel(
-              activeComposerMode === 'ask' || (activeSearchMode !== 'chat' && activeComposerMode !== 'agent') ? 'searching' : 'planning'
+              activeComposerMode === 'instant' || (activeSearchMode !== 'chat' && activeComposerMode !== 'agent') ? 'searching' : 'planning'
             )
           }
         : undefined,
@@ -1999,9 +1999,9 @@ class AppStore {
         ? [{
             id: createId('step'),
             type: 'thinking',
-            label: activityLabel(activeComposerMode === 'ask' ? 'searching' : 'planning'),
+            label: activityLabel(activeComposerMode === 'instant' ? 'searching' : 'planning'),
             status: 'running',
-            detail: activeComposerMode === 'ask'
+            detail: activeComposerMode === 'instant'
               ? 'Checking sources'
               : activeComposerMode === 'agent'
                 ? 'Preparing tools and context'
@@ -2073,11 +2073,14 @@ class AppStore {
         startedAt: Date.now()
       });
       const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
-      // Reset modes on the target session (and store mirrors only if still viewing it)
+      // Reset modes on the target session (and store mirrors only if still viewing it).
+      // The tab is a persistent per-chat preference: Agent and Instant stick,
+      // only the one-shot search depth resets. Collapsing Instant to Chat here
+      // is exactly how the tab used to jump back on every send.
       const postSendSearch: 'chat' = 'chat';
-      const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : 'chat' as const;
+      const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : activeComposerMode === 'instant' ? 'instant' as const : 'chat' as const;
       targetChat.searchMode = postSendSearch;
-      if (activeComposerMode !== 'agent') targetChat.composerMode = postSendComposer;
+      targetChat.composerMode = postSendComposer;
       if (this.currentChatId === targetChatId) {
         this.searchMode = postSendSearch;
         this.composerMode = targetChat.composerMode || postSendComposer;
@@ -2164,30 +2167,30 @@ class AppStore {
             ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
             : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
       const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      // Ask fast path: tight enough that the loop cannot go on a journey.
-      const askBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
+      // Instant fast path: tight enough that the loop cannot go on a journey.
+      const instantBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
 
       if (useToolLoop) {
         const isCodeSpace = activeContextMode === 'code';
         const wantsAgent = isCodeSpace;
-        const isAsk = activeComposerMode === 'ask' && !wantsAgent;
+        const isInstant = activeComposerMode === 'instant' && !wantsAgent;
         const agentProfile =
           activeSearchMode !== 'chat' && !wantsAgent
             ? 'search' as const
             : wantsAgent
               ? (isCodeSpace ? 'work' as const : 'chat' as const)
               : 'chat' as const;
-        // Research search modes use search_chat; Ask uses the fast ask profile;
+        // Research search modes use search_chat; Instant uses the fast instant profile;
         // chat tools & agent use full tool lists.
         const toolMode =
-          isAsk
-            ? 'ask' as const
+          isInstant
+            ? 'instant' as const
             : activeSearchMode !== 'chat' && !wantsAgent
               ? 'search_chat' as const
               : 'agent' as const;
         const profileBudget =
-          isAsk
-            ? askBudget
+          isInstant
+            ? instantBudget
             : agentProfile === 'search' || activeSearchMode !== 'chat'
               ? searchToolBudget
               : agentProfile === 'chat'
@@ -2206,7 +2209,7 @@ class AppStore {
           agentProfile,
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
           reasoningLevel: activeReasoningLevel,
-          quietActivity: isAsk,
+          quietActivity: isInstant,
           onContent: (value) => {
             assistantMessage.content = value;
             syncMsg();
@@ -2216,7 +2219,7 @@ class AppStore {
           signal: controller.signal,
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
-            if (!isAsk) {
+            if (!isInstant) {
               const running = steps.find((step) => step.status === 'running');
               if (running) {
                 const mapped = activityFromProgress(running.label);
@@ -2227,7 +2230,7 @@ class AppStore {
             this.persist();
           },
           onProgress: (text) => {
-            if (isAsk) {
+            if (isInstant) {
               syncMsg();
               return;
             }
@@ -2613,7 +2616,7 @@ class AppStore {
     }
     const chat = this.findChat(chatId);
     if (chat) {
-      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || ((message.mode === 'agent' || message.mode === 'ask') && !message.done)));
+      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || ((message.mode === 'agent' || message.mode === 'instant') && !message.done)));
       if (streamingAssistant) {
         streamingAssistant.status = 'idle';
         streamingAssistant.done = true;
@@ -2727,23 +2730,23 @@ class AppStore {
     message.reasoning = '';
     message.done = false;
     message.status = 'streaming';
-    if (message.mode === 'agent' || message.mode === 'ask') {
-      const askRegen = message.mode === 'ask';
+    if (message.mode === 'agent' || message.mode === 'instant') {
+      const instantRegen = message.mode === 'instant';
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: activityLabel(askRegen ? 'searching' : 'planning'), status: 'running', detail: askRegen ? 'Checking sources' : 'Preparing tools and context' }
+        { id: createId('step'), type: 'thinking', label: activityLabel(instantRegen ? 'searching' : 'planning'), status: 'running', detail: instantRegen ? 'Checking sources' : 'Preparing tools and context' }
       ];
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
-        currentActivity: askRegen ? 'searching' : 'planning',
-        activityLabel: askRegen ? activityLabel('searching') : 'Working'
+        currentActivity: instantRegen ? 'searching' : 'planning',
+        activityLabel: instantRegen ? activityLabel('searching') : 'Working'
       };
       nextVersion.metadata = {
         ...(nextVersion.metadata || {}),
         ...executionMetadata(activeBackendMode),
-        currentActivity: message.mode === 'ask' ? 'searching' : 'planning',
-        activityLabel: message.mode === 'ask' ? activityLabel('searching') : 'Working'
+        currentActivity: message.mode === 'instant' ? 'searching' : 'planning',
+        activityLabel: message.mode === 'instant' ? activityLabel('searching') : 'Working'
       };
       message.artifact = null;
       message.artifacts = [];
@@ -2765,7 +2768,7 @@ class AppStore {
         controller,
         messageId: message.id,
         backendMode: activeBackendMode,
-        mode: (message.mode === 'ask' ? 'ask' : message.mode === 'agent' ? 'agent' : 'chat'),
+        mode: (message.mode === 'instant' ? 'instant' : message.mode === 'agent' ? 'agent' : 'chat'),
         startedAt: Date.now()
       });
       this.persist();
@@ -2774,14 +2777,14 @@ class AppStore {
         providerPrompt: activeProvider?.system_prompt
       });
       const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
-      if (message.mode === 'agent' || message.mode === 'ask') {
+      if (message.mode === 'agent' || message.mode === 'instant') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const ctxMode = normalizeContextMode(chat.contextMode);
         const regenProfile = ctxMode === 'code' ? 'work' as const : 'chat' as const;
-        // Regenerating an Ask answer stays on the Ask fast path (allowlist +
+        // Regenerating an Instant answer stays on the Instant fast path (allowlist +
         // tight budgets + quiet activity) instead of widening to full agent.
-        const isAskRegen = message.mode === 'ask' || (message.mode !== 'agent' && chat.composerMode === 'ask');
-        const askRegenBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
+        const isInstantRegen = message.mode === 'instant' || (message.mode !== 'agent' && chat.composerMode === 'instant');
+        const instantRegenBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
         /*
          * The original turn's search depth is carried over. Without it, regenerating a
          * Deep or Max research answer silently re-ran as a plain chat agent — same
@@ -2798,10 +2801,10 @@ class AppStore {
           executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
-          toolMode: isAskRegen ? ('ask' as const) : 'agent',
+          toolMode: isInstantRegen ? ('instant' as const) : 'agent',
           agentProfile: regenSearchMode ? 'search' as const : regenProfile,
           ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
-          quietActivity: isAskRegen,
+          quietActivity: isInstantRegen,
           conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
           reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
           onContent: (value) => {
@@ -2809,12 +2812,12 @@ class AppStore {
             message.content = value;
             this.touchChats();
           },
-          ...(regenProfile === 'chat' && !regenSearchMode && !isAskRegen ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
-          ...(isAskRegen ? askRegenBudget : {}),
+          ...(regenProfile === 'chat' && !regenSearchMode && !isInstantRegen ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
+          ...(isInstantRegen ? instantRegenBudget : {}),
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
-            if (isAskRegen) {
+            if (isInstantRegen) {
               this.touchChats();
               this.persist();
               return;
@@ -2833,7 +2836,7 @@ class AppStore {
             this.persist();
           },
           onProgress: (text) => {
-            if (isAskRegen) {
+            if (isInstantRegen) {
               this.touchChats();
               return;
             }

@@ -10,7 +10,7 @@
 -->
 
 <script lang="ts">
-  import { Bot, Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar } from 'lucide-svelte';
+  import { Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar } from 'lucide-svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
@@ -76,16 +76,6 @@
       </button>
     {/each}
   {/if}
-
-  {#if appStore.activeSpace === 'code'}
-  <button type="button" role="menuitemcheckbox" aria-checked={appStore.composerMode === 'agent'} class="row"
-    onclick={() => { appStore.setComposerMode(appStore.composerMode === 'agent' ? 'chat' : 'agent'); open = false; }}>
-    <Bot class="size-4 shrink-0" />
-    <span class="row-label">Agent</span>
-    {#if appStore.composerMode === 'agent'}<Check class="size-3.5 shrink-0" />{/if}
-  </button>
-  {/if}
-
 </Menu>
 
 <style>

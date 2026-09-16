@@ -40,9 +40,8 @@ describe('space isolation helpers', () => {
   it('defaults composer mode by space when unset', () => {
     expect(normalizeSessionComposerMode(undefined, 'home')).toBe('agent');
     expect(normalizeSessionComposerMode(undefined, 'code')).toBe('agent');
-    expect(normalizeSessionComposerMode('chat', 'code')).toBe('chat');
+    expect(normalizeSessionComposerMode('instant', 'home')).toBe('instant');
     expect(normalizeSessionComposerMode('agent', 'home')).toBe('agent');
-    expect(normalizeSessionComposerMode('ask', 'home')).toBe('ask');
   });
 
   it('normalizes search mode', () => {
@@ -75,7 +74,8 @@ describe('space isolation helpers', () => {
     ) as ChatSession;
 
     expect(chat.contextMode).toBe('code');
-    expect(chat.composerMode).toBe('chat');
+    // Code space runs the full loop unconditionally — stored modes converge.
+    expect(chat.composerMode).toBe('agent');
     expect(chat.searchMode).toBe('deep');
     expect(chat.reasoningLevel).toBe('high');
     expect(chat.codeAgent).toBeNull();
@@ -110,8 +110,8 @@ describe('space isolation helpers', () => {
     expect(plain.contextMode).toBe('home');
     expect(plain.codeAgent).toBeNull();
     expect(plain.projectId).toBeNull();
-    // New Home chats default to Agent (explicit product choice); stored modes
-    // — including 'chat' and 'ask' — are always preserved (see above).
+    // New Home chats default to Agent (explicit product choice); legacy
+    // stored modes ('chat', pre-merge 'ask') migrate to Instant (see above).
     expect(plain.composerMode).toBe('agent');
   });
 });
