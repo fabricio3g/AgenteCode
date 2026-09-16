@@ -26,10 +26,10 @@
     allowDownload?: boolean;
     onDownloadSlides?: () => void;
     /**
-     * Opens the artifact studio for this surface. Provided only when the
-     * surface is the artifact's sole card (single-document artifacts hide
-     * the ArtifactBlock header to avoid a duplicate file row) — otherwise
-     * the header already owns the studio action.
+     * Opens the artifact studio from the reader header. Provided only when
+     * the surface is the artifact's sole card (single-document artifacts hide
+     * the ArtifactBlock header) — otherwise the header already owns it.
+     * The tile itself offers exactly one open: the reader.
      */
     onOpenStudio?: () => void;
   }
@@ -246,17 +246,6 @@
                 <Download class="h-3.5 w-3.5" />
               </button>
             {/if}
-            {#if onOpenStudio}
-              <button
-                type="button"
-                class="attachment-download"
-                onclick={(event) => { event.stopPropagation(); onOpenStudio?.(); }}
-                title="Open in artifact studio"
-                aria-label="Open in artifact studio"
-              >
-                <Expand class="h-3.5 w-3.5" />
-              </button>
-            {/if}
           </div>
         {/each}
       </div>
@@ -282,11 +271,6 @@
           {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
             <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
               <Download class="h-3.5 w-3.5" />
-            </button>
-          {/if}
-          {#if onOpenStudio}
-            <button type="button" class="document-action" onclick={() => onOpenStudio?.()} title="Open in artifact studio" aria-label="Open in artifact studio">
-              <Expand class="h-3.5 w-3.5" />
             </button>
           {/if}
           <button type="button" class="document-action" onclick={openReader} title="Open reader">
@@ -332,6 +316,11 @@
                 {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
                   <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
                     <Download class="h-4 w-4" />
+                  </button>
+                {/if}
+                {#if onOpenStudio}
+                  <button type="button" class="reader-icon-btn" onclick={() => onOpenStudio?.()} aria-label="Open in artifact studio" title="Open in artifact studio">
+                    <Expand class="h-4 w-4" />
                   </button>
                 {/if}
                 <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label="Close" title="Close">

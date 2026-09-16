@@ -23,30 +23,47 @@ const archiveExts = new Set(['zip', 'tar', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar'
 const audioExts = new Set(['mp3', 'wav', 'ogg', 'oga', 'flac', 'm4a', 'aac']);
 const videoExts = new Set(['mp4', 'webm', 'mov', 'm4v', 'ogv']);
 const sheetExts = new Set(['xls', 'xlsx', 'csv', 'tsv', 'ods']);
-const docExts = new Set(['doc', 'docx', 'odt', 'rtf']);
+const docExts = new Set(['doc', 'docx', 'odt', 'rtf', 'pdf']);
 const slideExts = new Set(['ppt', 'pptx', 'odp']);
+const markupExts = new Set(['json', 'xml', 'html', 'htm']);
 
-export function getFileIcon(name: string, type = '') {
+type FileIcon = typeof FileText;
+
+/** Extension groups in priority order — first match wins. */
+const EXT_ICON_GROUPS: Array<[exts: Set<string>, icon: FileIcon]> = [
+  [sheetExts, FileSpreadsheet],
+  [slideExts, Presentation],
+  [docExts, FileText],
+  [archiveExts, FileArchive],
+  [audioExts, FileMusic],
+  [videoExts, FilePlay],
+  [imageExts, FileImage],
+  [codeExts, FileCode],
+  [markupExts, FileCode],
+  [textExts, FileText]
+];
+
+/** Viewer-kind fallback when the extension is unknown but the mime is known. */
+const KIND_ICONS: Record<ViewerKind, FileIcon> = {
+  pdf: FileText,
+  docx: FileText,
+  xlsx: FileSpreadsheet,
+  pptx: Presentation,
+  text: FileText,
+  image: Image,
+  unknown: File
+};
+
+export function getFileIcon(name: string, type = ''): FileIcon {
   const ext = name.split('.').pop()?.toLowerCase() || '';
-  if (sheetExts.has(ext)) return FileSpreadsheet;
-  if (slideExts.has(ext)) return Presentation;
-  if (docExts.has(ext) || ext === 'pdf') return FileText;
-  if (archiveExts.has(ext)) return FileArchive;
-  if (audioExts.has(ext) || type.startsWith('audio/')) return FileMusic;
-  if (videoExts.has(ext) || type.startsWith('video/')) return FilePlay;
-  if (imageExts.has(ext) || type.startsWith('image/')) return FileImage;
-  if (codeExts.has(ext) || ext === 'json' || ext === 'xml' || ext === 'html' || ext === 'htm') return FileCode;
-  if (textExts.has(ext) || type.startsWith('text/')) return FileText;
-  // Extension unknown: fall back to the viewer routing.
-  switch (getViewerKind(name, type)) {
-    case 'pdf':
-    case 'docx': return FileText;
-    case 'xlsx': return FileSpreadsheet;
-    case 'pptx': return Presentation;
-    case 'image': return Image;
-    case 'text': return FileText;
-    default: return File;
+  for (const [exts, icon] of EXT_ICON_GROUPS) {
+    if (exts.has(ext)) return icon;
   }
+  if (type.startsWith('audio/')) return FileMusic;
+  if (type.startsWith('video/')) return FilePlay;
+  if (type.startsWith('image/')) return FileImage;
+  if (type.startsWith('text/')) return FileText;
+  return KIND_ICONS[getViewerKind(name, type)];
 }
 
 export async function downloadFromSrc(src: string, name: string) {

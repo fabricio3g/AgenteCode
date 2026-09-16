@@ -102,9 +102,10 @@ describe('ArtifactBlock', () => {
     // The filename surfaces once, in the document tile — not twice.
     expect(view.queryAllByText('example_document.docx')).toHaveLength(1);
     expect(view.queryByRole('button', { name: 'Open artifact studio' })).toBeNull();
-    // …with the studio action moved onto the tile and still working.
-    const studio = view.getByRole('button', { name: 'Open in artifact studio' });
-    expect(studio).toBeTruthy();
+    // The tile offers exactly one open (the reader); studio lives in the
+    // reader header, so no second open button sits beside download.
+    expect(view.getByRole('button', { name: 'Download example_document.docx' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Open in artifact studio' })).toBeNull();
   });
 
   it('keeps the file-card header when several documents share one artifact', () => {
