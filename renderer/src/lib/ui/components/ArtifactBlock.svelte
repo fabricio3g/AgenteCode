@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { AgentArtifact, ArtifactKind } from '$lib/types/chat';
-  import { Download, ExternalLink, FolderOpen } from 'lucide-svelte';
+  import { Download, ExternalLink } from 'lucide-svelte';
   import { say } from '$lib/copy';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
   import { artifactFileBlob } from '$lib/utils/artifact-files';
+  import { getFileIcon } from '$lib/utils/doc-utils';
+  import { isDocumentSurfaceFile } from '$lib/features/chat/document-surface';
   import ArtifactRenderer from './ArtifactRenderer.svelte';
 
   interface Props {
@@ -23,6 +25,21 @@
   const inlineOnly = $derived(
     !!resolved && resolved.manifest.presentation === 'inline' && !!resolved.artifact.inline
   );
+  /*
+   * A single document file rendered through DocumentSurface already shows its
+   * own row (icon, name, kind, download, reader) — a file-card header above
+   * it repeats the filename and the download. These render as the surface
+   * alone; the studio stays reachable from multi-file headers.
+   */
+  const singleDocument = $derived.by(() => {
+    if (!resolved || resolved.manifest.presentation !== 'document' || resolved.visibleFiles.length !== 1) return false;
+    const first = resolved.visibleFiles[0]?.[0];
+    return first !== undefined && isDocumentSurfaceFile(first);
+  });
+  const HeaderIcon = $derived.by(() => {
+    const entryPath = resolved?.manifest?.entryPath || resolved?.visibleFiles[0]?.[0] || '';
+    return getFileIcon(entryPath);
+  });
 
   const kindLabels: Record<ArtifactKind, string> = {
     report: 'Report', work_product: 'Work product', document: 'Document', spreadsheet: 'Spreadsheet', presentation: 'Presentation', pdf: 'PDF',
@@ -45,10 +62,10 @@
 
 {#if artifact && resolved}
   <section class="artifact-shell" data-status={resolved.manifest.status}>
-    {#if !inlineOnly}
+    {#if !inlineOnly && !singleDocument}
     <header class="artifact-header">
       <div class="artifact-heading">
-        <span class="artifact-icon"><FolderOpen class="size-3.5" /></span>
+        <span class="artifact-icon"><HeaderIcon class="size-3.5" /></span>
         <span class="min-w-0">
           <span class="artifact-title">{artifact.title || 'Artifact'}</span>
           <span class="artifact-subtitle">

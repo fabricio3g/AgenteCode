@@ -671,15 +671,15 @@
 
   .document-workspace {
     position: fixed;
-    inset: 1.5vh 1.5vw;
+    inset: 1vh 1vw;
     z-index: 10001;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     border: 0;
-    /* Same white card and corner as the composer, so the viewer reads as part
-       of the same surface family rather than a tinted panel. */
-    border-radius: var(--composer-radius);
+    /* Tight card rather than a floating bubble: the viewer is a workspace,
+       not a dialog. */
+    border-radius: var(--radius-xl);
     background: var(--card);
     box-shadow:
       inset 0 0 0 1px var(--composer-ring),
@@ -692,7 +692,7 @@
     justify-content: space-between;
     gap: 1rem;
     border-bottom: 0;
-    padding: 0.7rem 0.85rem;
+    padding: 0.55rem 0.75rem;
     background: color-mix(in srgb, var(--artifact-surface) 70%, transparent);
   }
 
@@ -855,7 +855,7 @@
     min-width: 0;
     overflow: auto;
     background: var(--chat-bg);
-    padding: 0.85rem 1rem;
+    padding: 0.5rem 0.75rem;
   }
 
   .image-workspace {
