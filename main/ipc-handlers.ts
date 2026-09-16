@@ -80,7 +80,7 @@ import { registerModelManagementHandlers } from './ipc/model-handlers.ts';
 import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
-import { registerAgenteHandlers, disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
+import { registerAgenteHandlers, disposeAllSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 

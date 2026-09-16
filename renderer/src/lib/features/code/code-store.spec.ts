@@ -65,6 +65,7 @@ async function startRun(): Promise<void> {
 }
 
 beforeEach(() => {
+  codeStore.evictChat(CHAT_ID, { force: true });
   codeStore.runs = {};
   codeStore.projects = [{ id: PROJECT_ID, rootPath: '/tmp/proj', rootName: 'proj', createdAt: 1, updatedAt: 1 }];
   appStore.chats = [makeChat()];
@@ -137,6 +138,143 @@ describe('run finalization', () => {
     expect(message.status).toBe('error');
     expect(message.done).toBe(true);
     expect((message.metadata as Record<string, unknown>)?.errorMessage).toBe('provider unreachable');
+  });
+
+  it.each(['rejected', 'thrown'])('finalizes the streaming placeholder when the prompt IPC is %s', async (failure) => {
+    await startRun();
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    bridge.responses['agente_prompt'] = failure === 'thrown'
+      ? () => { throw new Error('prompt ipc down'); }
+      : { ok: false, error: 'prompt ipc down' };
+    await codeStore.send(CHAT_ID, 'second prompt while idle');
+
+    const run = codeStore.runFor(CHAT_ID)!;
+    expect(run.done).toBe(true);
+    expect(run.running).toBe(false);
+    expect(run.error).toBe('prompt ipc down');
+
+    const message = appStore.chats[0]!.messages.at(-1)!;
+    expect(message.status).toBe('error');
+    expect((message.metadata as Record<string, unknown>)?.errorMessage).toBe('prompt ipc down');
+  });
+});
+
+describe('streaming targets the last assistant message, not the transcript tail', () => {
+  it('steers land in the original assistant message, not the appended user turn', async () => {
+    await startRun();
+
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'first' });
+    await codeStore.steer(CHAT_ID, 'course correction');
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: ' after steer' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages).toHaveLength(3);
+    const userSteer = messages.at(-1)!;
+    expect(userSteer.role).toBe('user');
+    expect(userSteer.content).toBe('course correction');
+    expect(userSteer.status).toBeUndefined();
+
+    const assistant = messages[1]!;
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.status).toBe('streaming');
+    expect(assistant.content).toBe('first after steer');
+  });
+
+  it('a steer carrying reasoning deltas finalizes the original assistant message', async () => {
+    await startRun();
+
+    await codeStore.steer(CHAT_ID, 'steer after start');
+    emit({ type: 'thinking_delta', chatId: CHAT_ID, delta: 'thinking' });
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'answer' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const messages = appStore.chats[0]!.messages;
+    const userSteer = messages.at(-1)!;
+    expect(userSteer.role).toBe('user');
+    expect(userSteer.content).toBe('steer after start');
+
+    const assistant = messages[1]!;
+    expect(assistant.status).toBe('idle');
+    expect(assistant.done).toBe(true);
+    expect(assistant.content).toBe('answer');
+    expect(assistant.reasoning).toBe('thinking');
+  });
+
+  it('a follow-up lands in the transcript and finalization reaches the original assistant message', async () => {
+    await startRun();
+
+    await codeStore.followUp(CHAT_ID, 'queued follow-up');
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'queued' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages).toHaveLength(3);
+    const userFollowUp = messages.at(-1)!;
+    expect(userFollowUp.role).toBe('user');
+    expect(userFollowUp.content).toBe('queued follow-up');
+
+    const assistant = messages[1]!;
+    expect(assistant.role).toBe('assistant');
+    expect(assistant.status).toBe('idle');
+    expect(assistant.done).toBe(true);
+    expect(assistant.content).toBe('queued');
+  });
+
+  it('a failed steer keeps the transcript intact and streaming into the assistant message', async () => {
+    await startRun();
+    bridge.responses['agente_steer'] = { ok: false };
+    await codeStore.steer(CHAT_ID, 'lost steer');
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'kept' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages).toHaveLength(3);
+    expect(messages.at(-1)!.role).toBe('user');
+    const assistant = messages[1]!;
+    expect(assistant.status).toBe('streaming');
+    expect(assistant.content).toBe('kept');
+  });
+});
+
+describe('stable assistant targeting across run restarts', () => {
+  it('a run started after eviction binds to the fresh assistant message and finalizes it', async () => {
+    await startRun();
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    codeStore.evictChat(CHAT_ID); // project removal evicts idle runs
+    await codeStore.send(CHAT_ID, 'turn after eviction');
+
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'fresh' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages).toHaveLength(4);
+    const first = messages[1]!;
+    expect(first.status).toBe('idle');
+    const second = messages[3]!;
+    expect(second.role).toBe('assistant');
+    expect(second.status).toBe('idle');
+    expect(second.done).toBe(true);
+    expect(second.content).toBe('fresh');
+  });
+
+  it('a run re-materialized after reload binds to the latest streaming assistant message', async () => {
+    await startRun();
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    codeStore.runs = {}; // fresh renderer mid-conversation
+    await codeStore.send(CHAT_ID, 'turn after reload');
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'after reload' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+
+    const messages = appStore.chats[0]!.messages;
+    expect(messages).toHaveLength(4);
+    const first = messages[1]!;
+    expect(first.status).toBe('idle');
+    const second = messages[3]!;
+    expect(second.status).toBe('idle');
+    expect(second.done).toBe(true);
+    expect(second.content).toBe('after reload');
   });
 });
 

@@ -28,6 +28,8 @@ import { subscribeToCodeAgentEvents } from './code-events.svelte';
 interface AgenteRun extends CodeRunState {
   chatId: string;
   running: boolean;
+  /** Stable transcript target; queued user inputs can follow this message. */
+  assistantMessageId?: string;
   checkpoints: AgenteCheckpointSummary[];
   /**
    * Input handed to the engine but not yet consumed by a turn (steers and
@@ -219,7 +221,22 @@ class CodeStore {
 
   #requireRun(chatId: string): AgenteRun {
     if (!this.runs[chatId]) {
-      this.runs[chatId] = { chatId, running: false, checkpoints: [], queuedCount: 0, ...createCodeRunState() };
+      // Recover once from the persisted transcript, not from its tail: a steer
+      // or follow-up may be the last message when live state is lost on reload.
+      const chat = appStore.chats.find((c) => c.id === chatId);
+      const assistant = chat?.messages.slice().reverse().find((message) => message.role === 'assistant' && message.status === 'streaming');
+      this.runs[chatId] = {
+        chatId,
+        running: !!assistant,
+        assistantMessageId: assistant?.id,
+        checkpoints: [],
+        queuedCount: 0,
+        ...createCodeRunState(),
+        content: assistant?.content || '',
+        reasoning: assistant?.reasoning || '',
+        reasoningRaw: assistant?.reasoning || '',
+        steps: assistant?.agentSteps?.map((step) => ({ ...step })) || []
+      };
     }
     return this.runs[chatId]!;
   }
@@ -238,9 +255,15 @@ class CodeStore {
       if (!appStore.chats.some((chat) => chat.id === event.chatId)) return;
       run = this.#requireRun(event.chatId);
     }
+    const chat = appStore.chats.find((c) => c.id === event.chatId);
+    if (!chat) return;
 
     applyCodeAgentEvent(run, event);
     if (event.type === 'agent_start') {
+      // A follow-up's agent_start belongs to the same transcript turn — bind
+      // the run to the streaming assistant message even when the run state
+      // was re-created without one (post-reload recovery).
+      run.assistantMessageId ??= chat.messages.slice().reverse().find((message) => message.role === 'assistant' && message.status === 'streaming')?.id;
       run.running = true;
       run.queuedCount = 0;
     }
@@ -280,7 +303,7 @@ class CodeStore {
   #flushToMessage(chatId: string, run: AgenteRun): void {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat) return;
-    let message = chat.messages.at(-1);
+    const message = chat.messages.find((message) => message.id === run.assistantMessageId);
     if (!message || message.role !== 'assistant' || message.status !== 'streaming') return;
     message.content = run.content;
     message.reasoning = run.reasoning || undefined;
@@ -320,8 +343,10 @@ class CodeStore {
   /** Push the user turn plus the streaming assistant placeholder for a run. */
   #appendTurnPair(chat: ChatSession, text: string): void {
     this.#appendUserTurn(chat, text);
+    const assistantMessageId = createId('msg');
+    this.#requireRun(chat.id).assistantMessageId = assistantMessageId;
     chat.messages.push({
-      id: createId('msg'),
+      id: assistantMessageId,
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
@@ -330,19 +355,6 @@ class CodeStore {
       agentSteps: []
     });
     appStore.markChatDirty(chat.id);
-    appStore.persist();
-  }
-
-  /** Mark the streaming assistant message as failed with a visible reason. */
-  #failStreamingMessage(chatId: string, error: string): void {
-    const chat = appStore.chats.find((c) => c.id === chatId);
-    const message = chat?.messages.at(-1);
-    if (!chat || !message || message.role !== 'assistant' || message.status !== 'streaming') return;
-    message.status = 'error';
-    message.done = true;
-    message.metadata = { ...message.metadata, error: true, errorMessage: error };
-    if (!message.content) message.content = error;
-    appStore.markChatDirty(chatId);
     appStore.persist();
   }
 
@@ -366,7 +378,15 @@ class CodeStore {
     // Keep the last usage report visible between runs — the next turn
     // refreshes it; it should not blank while the first reply streams.
     const previousUsage = run.usage;
-    Object.assign(run, createCodeRunState(), { running: true, checkpoints: run.checkpoints, usage: previousUsage });
+    Object.assign(run, createCodeRunState(), {
+      running: true,
+      assistantMessageId: undefined,
+      error: undefined,
+      stopReason: undefined,
+      queuedCount: 0,
+      checkpoints: run.checkpoints,
+      usage: previousUsage
+    });
     this.#ensureEventSubscription();
 
     if (!this.#sessionIds.has(chatId)) {
@@ -398,21 +418,24 @@ class CodeStore {
         // A failed start is still a turn: show what was asked and why it
         // failed instead of swallowing both.
         this.#appendTurnPair(chat, text);
-        this.#failStreamingMessage(chatId, messageText);
+        this.#flushToMessage(chatId, run);
         return;
       }
     }
 
     this.#appendTurnPair(chat, text);
 
-    const result = await promptCodeAgent(chatId, text);
-    if (!result.ok) {
+    try {
+      const result = await promptCodeAgent(chatId, text);
+      if (result.ok) return;
       run.error = result.error || 'Failed to start the coding agent.';
-      run.running = false;
-      run.done = true;
-      this.#failStreamingMessage(chatId, run.error);
-      this.#flushToMessage(chatId, run);
+    } catch (err: unknown) {
+      run.error = err instanceof Error ? err.message : String(err);
     }
+    run.running = false;
+    run.done = true;
+    run.queuedCount = 0;
+    this.#flushToMessage(chatId, run);
   }
 
   /**

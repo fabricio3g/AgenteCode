@@ -106,7 +106,13 @@ interface RuntimeSession {
   extensions: ExtensionRunner;
   /** Context window of the active model, for the usage ring. */
   contextWindow: number;
-  /** 1-based index of the turn currently executing (0 between runs). */
+  /** Hooks have no signal argument; retain the signal supplied to the stream. */
+  runSignal: AbortSignal | null;
+  /** Invalidates prompts awaiting startup hooks before Agent owns a signal. */
+  abortVersion: number;
+  /** Session-global checkpoint numbering; core turn indices restart per prompt. */
+  lastCheckpointTurn: number;
+  /** Current checkpoint index (0 between turns). */
   currentTurn: number;
   /** Files captured for the current turn's checkpoint. */
   capturedThisTurn: Set<string>;
@@ -262,39 +268,49 @@ function requestApproval(
   toolName: string,
   args: Record<string, unknown>,
   diff: string | undefined,
-  kind: 'action' | 'plan'
+  kind: 'action' | 'plan',
+  signal: AbortSignal | null
 ): Promise<ApprovalDecision> {
+  if (session.disposed || signal?.aborted) return Promise.resolve('deny');
   const requestId = `apr-${kind === 'plan' ? 'plan' : 'act'}-${crypto.randomUUID().slice(0, 8)}`;
-  if (kind === 'plan') session.planRequests.add(requestId);
-  emit(session, {
-    type: 'approval_request',
-    chatId: session.chatId,
-    requestId,
-    toolName,
-    args,
-    diff,
-    kind
-  });
   return new Promise<ApprovalDecision>((resolve) => {
-    session.pendingApprovals.set(requestId, (decision) => {
+    let settled = false;
+    const onAbort = () => settle('deny');
+    const settle = (decision: ApprovalDecision) => {
+      if (settled) return;
+      settled = true;
+      if (session.disposed || signal?.aborted) decision = 'deny';
+      // Clean up before emitting: duplicate/reentrant replies must be ignored.
+      session.pendingApprovals.delete(requestId);
+      session.planRequests.delete(requestId);
+      signal?.removeEventListener('abort', onAbort);
       if (decision === 'allow' && kind === 'plan') session.planApproved = true;
       emit(session, { type: 'approval_resolved', chatId: session.chatId, requestId, decision });
       resolve(decision);
+    };
+    session.pendingApprovals.set(requestId, settle);
+    if (kind === 'plan') session.planRequests.add(requestId);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    // A synchronous event consumer may answer immediately.
+    emit(session, {
+      type: 'approval_request', chatId: session.chatId, requestId, toolName, args, diff, kind
     });
-  }).finally(() => {
-    session.pendingApprovals.delete(requestId);
-    session.planRequests.delete(requestId);
   });
 }
 
 function buildHooks(session: RuntimeSession): AgentLoopHooks {
   return {
     beforeToolCall: async (toolCallId, toolName, args) => {
+      const signal = session.runSignal;
+      const canceled = () => session.disposed || signal?.aborted;
+      const canceledGate = { block: 'The run was canceled.' };
+      if (canceled()) return canceledGate;
       const tool = session.registry.get(toolName);
       if (!tool) return;
 
       // 1. Extension policy hooks (cheap checks first).
       const extensionVerdict = await session.extensions.dispatch({ event: 'tool_call', toolName, args });
+      if (canceled()) return canceledGate;
       if (extensionVerdict.block) {
         return { block: extensionVerdict.block };
       }
@@ -302,10 +318,12 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
       // 2. Approval gates. Plan mode: the first mutating call of a run pauses
       //    for plan approval; approving it also executes that call. After the
       //    plan is approved, mutations go through the per-action gate.
-      if (tool.mutating && !session.disposed) {
+      if (tool.mutating) {
         const diff = await describeDiff(toolName, args);
+        if (canceled()) return canceledGate;
         if (session.runtimeMode === 'plan' && !session.planApproved) {
-          const decision = await requestApproval(session, toolName, args, diff, 'plan');
+          const decision = await requestApproval(session, toolName, args, diff, 'plan', signal);
+          if (canceled()) return canceledGate;
           if (decision === 'deny') {
             return {
               block:
@@ -315,7 +333,8 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
           session.planApproved = true;
           // The triggering call executes directly; later mutations are gated per action.
         } else if (session.runtimeMode === 'supervised' || (session.runtimeMode === 'plan' && session.planApproved)) {
-          const decision = await requestApproval(session, toolName, args, diff, 'action');
+          const decision = await requestApproval(session, toolName, args, diff, 'action', signal);
+          if (canceled()) return canceledGate;
           if (decision === 'deny') {
             return { block: 'The user denied this action. Ask how to proceed or choose a different approach.' };
           }
@@ -345,6 +364,7 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
           }
         }
       }
+      if (canceled()) return canceledGate;
       return;
     },
     afterToolCall: async (toolCallId, toolName, result) => {
@@ -373,7 +393,7 @@ function attachAgentListeners(session: RuntimeSession): void {
 
     // Session persistence — the JSONL tree is the durable transcript.
     if (event.type === 'turn_start') {
-      session.currentTurn = event.turnIndex;
+      session.currentTurn = ++session.lastCheckpointTurn;
       session.capturedThisTurn = new Set();
     } else if (event.type === 'message_end') {
       session.tree.append('assistant', {
@@ -397,14 +417,15 @@ function attachAgentListeners(session: RuntimeSession): void {
         isError: event.isError
       });
     } else if (event.type === 'turn_end') {
+      const checkpointTurn = session.currentTurn;
       if (session.checkpointsEnabled && session.checkpoints && session.capturedThisTurn.size) {
         void session.checkpoints
-          .finalizeTurn(session.projectRoot, event.turnIndex)
+          .finalizeTurn(session.projectRoot, checkpointTurn)
           .then((files) => {
             emit(session, {
               type: 'checkpoint_finalized',
               chatId: session.chatId,
-              turnIndex: event.turnIndex,
+              turnIndex: checkpointTurn,
               files: files.map((f) => ({ path: f.path, additions: f.additions, deletions: f.deletions, kind: f.kind }))
             });
           })
@@ -500,6 +521,9 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     todos,
     extensions: extensionRunner,
     contextWindow: FALLBACK_CONTEXT_WINDOW,
+    runSignal: null,
+    abortVersion: 0,
+    lastCheckpointTurn: 0,
     currentTurn: 0,
     capturedThisTurn: new Set(),
     pendingApprovals: new Map(),
@@ -508,6 +532,9 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
   };
   if (session.checkpointsEnabled) {
     session.checkpoints = new CheckpointStore(path.join(checkpointsDir, tree.header.id));
+    for (const checkpoint of await session.checkpoints.listTurns()) {
+      session.lastCheckpointTurn = Math.max(session.lastCheckpointTurn, checkpoint.turnIndex);
+    }
   }
 
   const restoredModel = tree.lastModelChange();
@@ -525,6 +552,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     tools: registry.asMap() as Map<string, AgentTool>,
     enabledTools: registry.enabledNames(),
     streamFn: async (request) => {
+      session.runSignal = request.signal;
       const messages = await extensionRunner.applyContextHooks(request.messages);
       return baseStreamFn({
         ...request,
@@ -589,8 +617,12 @@ export async function prompt(chatId: string, text: string, images?: Array<{ data
   }
   // Each task re-enters planning: a new prompt means a new plan to approve.
   session.planApproved = false;
+  const abortVersion = session.abortVersion;
   session.tree.append('user', { content: text, images });
   await session.extensions.dispatch({ event: 'before_agent_start' });
+  if (session.disposed || session.abortVersion !== abortVersion) {
+    return { ok: false, error: 'The run was canceled.' };
+  }
   // Fire-and-forget: events stream back over code_agent_event.
   void session.agent.prompt({ role: 'user', content: text, images, ts: Date.now() }).catch((err: unknown) => {
     emit(session, { type: 'error', chatId, message: err instanceof Error ? err.message : String(err) });
@@ -615,7 +647,9 @@ export function followUp(chatId: string, text: string): { ok: boolean } {
 export function abort(chatId: string): { ok: boolean } {
   const session = requireSession(chatId);
   if (!session) return { ok: false };
+  session.abortVersion += 1;
   session.agent.abort();
+  for (const resolve of session.pendingApprovals.values()) resolve('deny');
   return { ok: true };
 }
 
@@ -655,6 +689,7 @@ export function setModel(chatId: string, provider: string, model: string, thinki
   const baseStreamFn = createProviderStreamFn(session.transport);
   const todos = session.todos;
   (session.agent.options as { streamFn: unknown }).streamFn = async (request: Parameters<StreamFn>[0]) => {
+    session.runSignal = request.signal;
     const messages = await session.extensions.applyContextHooks(request.messages);
     return baseStreamFn({
       ...request,
