@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { defineTool } from './define-tool.ts';
-import type { TodoItem } from '../core/types.ts';
+import type { TodoItem } from '../../../shared/agent-core/types.ts';
 
 /** Per-session storage for the current list. */
 export interface TodoStore {

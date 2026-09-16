@@ -4,7 +4,7 @@
 // extension can neither kill the loop nor poison another extension's
 // result. Errors are collected and reported through onError.
 
-import type { AgentMessage, AgentTool, ToolResult } from '../core/types.ts';
+import type { AgentMessage, AgentTool, ToolResult } from '../../../shared/agent-core/types.ts';
 import type {
   AgenteExtensionAPI,
   AgenteExtensionCommand,

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-import { runAgentLoop } from '../../main/agente/core/agent-loop.ts';
-import { Agent } from '../../main/agente/core/agent.ts';
+import { runAgentLoop } from '../../shared/agent-core/agent-loop.ts';
+import { Agent } from '../../shared/agent-core/agent.ts';
 import { defineTool, resolveInRoot } from '../../main/agente/tools/define-tool.ts';
 import { z } from 'zod';
 

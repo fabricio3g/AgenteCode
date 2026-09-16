@@ -9,7 +9,7 @@ import fsp from 'node:fs/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import type { AgentMessage, AssistantMessage, ToolCall } from '../core/types.ts';
+import type { AgentMessage, AssistantMessage, ToolCall } from '../../../shared/agent-core/types.ts';
 
 export type SessionEntryKind =
   | 'user'

@@ -1,7 +1,7 @@
 // ── Agente system prompt ───────────────────────────────────────────────
 
 import os from 'node:os';
-import type { TodoItem } from './core/types.ts';
+import type { TodoItem } from '../../shared/agent-core/types.ts';
 
 /**
  * Render the model-visible todo state appended to the system prompt on every

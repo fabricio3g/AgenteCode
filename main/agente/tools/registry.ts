@@ -3,7 +3,7 @@
 // tools are indistinguishable here — nothing is privileged (pi's
 // dogfooding rule).
 
-import type { AgentTool, WireTool } from '../core/types.ts';
+import type { AgentTool, WireTool } from '../../../shared/agent-core/types.ts';
 
 export class ToolRegistry {
   private tools = new Map<string, AgentTool>();

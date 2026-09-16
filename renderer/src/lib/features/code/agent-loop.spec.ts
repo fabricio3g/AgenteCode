@@ -4,13 +4,13 @@ import {
   isTransientStreamError,
   type AgentLoopArgs,
   type AgentLoopResult
-} from '../../../../../main/agente/core/agent-loop';
+} from '$shared/agent-core/agent-loop';
 import type {
   AgentEvent,
   AgentMessage,
   AgentTool,
   AssistantMessage
-} from '../../../../../main/agente/core/types';
+} from '$shared/agent-core/types';
 import { normalizeTodos } from '../../../../../main/agente/tools/todo';
 
 function makeTool(name = 'echo'): AgentTool {

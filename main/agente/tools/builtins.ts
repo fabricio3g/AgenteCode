@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { Dirent } from 'node:fs';
 import { z } from 'zod';
 import { defineTool, resolveInRoot } from './define-tool.ts';
-import type { AgentTool } from '../core/types.ts';
+import type { AgentTool } from '../../../shared/agent-core/types.ts';
 
 const MAX_READ_BYTES = 256 * 1024;
 const MAX_READ_LINES = 2000;
