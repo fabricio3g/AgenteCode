@@ -1,6 +1,6 @@
 {
   "finding_counts": {
-    "main/agente/core/agent-loop.ts": {
+    "shared/agent-core/agent-loop.ts": {
       "complexity_critical": {
         "count": 1
       },
@@ -11,7 +11,7 @@
         "count": 1
       }
     },
-    "main/agente/core/agent.ts": {
+    "shared/agent-core/agent.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -1829,7 +1829,7 @@
     "renderer/src/lib/utils/chart-data.ts:complexity",
     "main/live-data/quotes.ts:untested risk",
     "renderer/src/lib/ui/parser.ts:complexity",
-    "main/agente/core/agent-loop.ts:complexity",
+    "shared/agent-core/agent-loop.ts:complexity",
     "main/chat-db.ts:complexity",
     "renderer/src/lib/services/ocr.ts:complexity"
   ]
