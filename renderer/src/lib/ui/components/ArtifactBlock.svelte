@@ -13,6 +13,16 @@
 
   let { artifact = null, onOpen }: Props = $props();
   const resolved = $derived(artifact ? resolveArtifactPresentation(artifact) : null);
+  /*
+   * Inline artifacts (info cards, charts, diagrams, …) are backed by a single
+   * JSON data file — `weather-card.json`, `chart.json` — that is only the
+   * preview's storage. Surfacing it as a file card exposes an internal detail
+   * the user never asked for, so these render as the preview alone with no
+   * filename, file count or raw-JSON download.
+   */
+  const inlineOnly = $derived(
+    !!resolved && resolved.manifest.presentation === 'inline' && !!resolved.artifact.inline
+  );
 
   const kindLabels: Record<ArtifactKind, string> = {
     report: 'Report', work_product: 'Work product', document: 'Document', spreadsheet: 'Spreadsheet', presentation: 'Presentation', pdf: 'PDF',
@@ -35,6 +45,7 @@
 
 {#if artifact && resolved}
   <section class="artifact-shell" data-status={resolved.manifest.status}>
+    {#if !inlineOnly}
     <header class="artifact-header">
       <div class="artifact-heading">
         <span class="artifact-icon"><FolderOpen class="size-3.5" /></span>
@@ -57,6 +68,7 @@
         </button>
       </div>
     </header>
+    {/if}
     <ArtifactRenderer {artifact} />
   </section>
 {/if}
