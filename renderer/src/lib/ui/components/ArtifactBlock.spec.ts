@@ -41,4 +41,40 @@ describe('ArtifactBlock', () => {
     });
     expect(view.getByText('Artifact could not be rendered')).toBeTruthy();
   });
+
+  it('hides the backing JSON file card for inline info cards', () => {
+    const view = render(ArtifactBlock, {
+      props: {
+        artifact: {
+          title: 'weather-card.json',
+          files: {
+            'weather-card.json': JSON.stringify({
+              kind: 'info_card',
+              title: 'Paris',
+              rows: [{ label: 'Temperature', value: '18°C' }]
+            })
+          },
+          inline: {
+            kind: 'info_card',
+            title: 'Paris',
+            rows: [{ label: 'Temperature', value: '18°C' }]
+          },
+          manifest: {
+            schemaVersion: 1,
+            kind: 'info_card',
+            presentation: 'inline',
+            entryPath: 'weather-card.json',
+            status: 'ready'
+          }
+        },
+        onOpen: vi.fn()
+      }
+    });
+    // The card preview itself still renders…
+    expect(view.getByText('Paris')).toBeTruthy();
+    // …but the storage file never surfaces: no filename, no file chrome.
+    expect(view.queryByText('weather-card.json')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Open artifact studio' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Download artifact' })).toBeNull();
+  });
 });
