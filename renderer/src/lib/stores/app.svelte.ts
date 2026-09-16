@@ -107,6 +107,7 @@ import {
   normalizeSessionComposerMode,
   normalizeSessionSearchMode,
   normalizeText,
+  optimisticAck,
   parseWriteFileBlocks,
   readBlobAsDataUrl,
   setAgentActivity,
@@ -1970,7 +1971,13 @@ class AppStore {
     const assistantMessage: ChatMessage = {
       id: createId('msg'),
       role: 'assistant',
-      content: '',
+      // Optimistic ack: intent confirmation with zero latency. The engine's
+      // first onContent replaces it wholesale — it never leaks into answers.
+      // Seeded only when tools will actually run; direct answers stream fast
+      // enough that dots suffice.
+      content: useToolLoop && (composerRoute === 'agent' || composerRoute === 'tools')
+        ? optimisticAck(content, composerRoute === 'agent' ? 'work' : 'lookup')
+        : '',
       createdAt: Date.now(),
       done: false,
       status: 'streaming',
@@ -2726,7 +2733,13 @@ class AppStore {
 
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
-    message.content = '';
+    // Same optimistic ack as a fresh send: intent confirmation now, replaced
+    // wholesale by the engine's first content. Instant regens were grounded
+    // before, so they read as lookups.
+    const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
+    message.content = (message.mode === 'agent' || message.mode === 'instant')
+      ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup')
+      : '';
     message.reasoning = '';
     message.done = false;
     message.status = 'streaming';

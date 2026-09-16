@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
-import { markAgentStopped, normalizeSessionComposerMode, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
+import { markAgentStopped, normalizeSessionComposerMode, optimisticAck, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
 
 describe('normalizeSessionComposerMode', () => {
   it('preserves instant alongside agent', () => {
@@ -17,6 +17,21 @@ describe('normalizeSessionComposerMode', () => {
     expect(normalizeSessionComposerMode(undefined, 'code')).toBe('agent');
     expect(normalizeSessionComposerMode('chat', 'code')).toBe('agent');
     expect(normalizeSessionComposerMode('instant', 'code')).toBe('agent');
+  });
+});
+
+describe('optimisticAck', () => {
+  it('echoes the request with a work verb for builds', () => {
+    expect(optimisticAck('Build me a doc file with a poem', 'work')).toBe('On it — Build me a doc file with a poem');
+  });
+
+  it('uses a lookup verb for grounded questions', () => {
+    expect(optimisticAck('Weather in Paris?', 'lookup')).toBe('Looking into it — Weather in Paris?');
+  });
+
+  it('truncates long prompts and stays silent on empty ones', () => {
+    expect(optimisticAck('x'.repeat(200), 'work')).toBe(`On it — ${'x'.repeat(87)}…`);
+    expect(optimisticAck('   ', 'work')).toBe('');
   });
 });
 
