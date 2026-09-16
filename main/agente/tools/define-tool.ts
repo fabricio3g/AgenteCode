@@ -5,7 +5,7 @@
 
 import path from 'node:path';
 import { z } from 'zod';
-import type { AgentTool, ToolExecContext, ToolResult } from '../core/types.ts';
+import type { AgentTool, ToolExecContext, ToolResult } from '../../../shared/agent-core/types.ts';
 
 export interface ToolDefinitionInput<T extends z.ZodType> {
   name: string;

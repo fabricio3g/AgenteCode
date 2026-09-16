@@ -9,7 +9,7 @@ import { accumulateToolCallDelta, finalizeToolCalls, resolveApiKey } from '../..
 import { resolveProvider } from '../../providers/registry.ts';
 import { LlmStreamError, classifyError, type FinishReason } from '../../providers/protocol.ts';
 import type { ReasoningRequest } from '../../providers/base.ts';
-import type { AgentMessage, AssistantMessage, StreamFn, StreamRequest, StopReason, ToolCall, CoreTokenUsage } from '../core/types.ts';
+import type { AgentMessage, AssistantMessage, StreamFn, StreamRequest, StopReason, ToolCall, CoreTokenUsage } from '../../../shared/agent-core/types.ts';
 
 export interface AgenteTransport {
   providerName: string;

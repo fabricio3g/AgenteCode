@@ -5,7 +5,7 @@
 // privileged code. When external loading (~/.flaxeo/agente/extensions)
 // lands, the same definitions load from disk unchanged.
 
-import type { AgentMessage, ToolResult } from '../core/types.ts';
+import type { AgentMessage, ToolResult } from '../../../shared/agent-core/types.ts';
 
 /** A tool contributed by an extension (JSON Schema in, ToolResult out). */
 export interface AgenteExtensionTool {
