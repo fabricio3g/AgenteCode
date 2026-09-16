@@ -159,7 +159,7 @@ class AppStore {
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
   reasoningLevel = $state<ReasoningLevel | null>(null);
   reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' });
-  composerMode = $state<'chat' | 'agent'>('chat');
+  composerMode = $state<'chat' | 'ask' | 'agent'>('chat');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
   ragDocumentsByChat = $state<Record<string, IndexedDocument[]>>({});
@@ -992,7 +992,7 @@ class AppStore {
     return isDefaultChatTitle(title) || title === this.defaultTitleForMode(normalizeContextMode(chat.contextMode));
   }
 
-  private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'agent' {
+  private defaultComposerModeFor(mode: ChatContextMode): 'chat' | 'ask' | 'agent' {
     return SPACES[mode].defaultComposerMode;
   }
 
@@ -1040,7 +1040,7 @@ class AppStore {
     }
   }
 
-  private writeComposerModeToCurrentChat(mode: 'chat' | 'agent') {
+  private writeComposerModeToCurrentChat(mode: 'chat' | 'ask' | 'agent') {
     this.composerMode = mode;
     if (this.currentChat) {
       this.currentChat.composerMode = mode;
@@ -1462,8 +1462,8 @@ class AppStore {
     this.searchSidebarOpen = true;
   }
 
-  setComposerMode(mode: 'chat' | 'agent') {
-    if (mode === 'agent') {
+  setComposerMode(mode: 'chat' | 'ask' | 'agent') {
+    if (mode === 'agent' || mode === 'ask') {
       this.writeSearchModeToCurrentChat('chat');
     }
     // Work/Code default to agent but user can still switch; value is per-chat.
@@ -1984,11 +1984,13 @@ class AppStore {
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
-            currentActivity: activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
+            currentActivity: activeComposerMode === 'ask'
               ? 'searching'
-              : 'planning',
+              : activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
+                ? 'searching'
+                : 'planning',
             activityLabel: activityLabel(
-              activeSearchMode !== 'chat' && activeComposerMode !== 'agent' ? 'searching' : 'planning'
+              activeComposerMode === 'ask' || (activeSearchMode !== 'chat' && activeComposerMode !== 'agent') ? 'searching' : 'planning'
             )
           }
         : undefined,
@@ -1997,11 +1999,13 @@ class AppStore {
         ? [{
             id: createId('step'),
             type: 'thinking',
-            label: activityLabel('planning'),
+            label: activityLabel(activeComposerMode === 'ask' ? 'searching' : 'planning'),
             status: 'running',
-            detail: activeComposerMode === 'agent'
-              ? 'Preparing tools and context'
-              : activeSearchMode !== 'chat'
+            detail: activeComposerMode === 'ask'
+              ? 'Checking sources'
+              : activeComposerMode === 'agent'
+                ? 'Preparing tools and context'
+                : activeSearchMode !== 'chat'
                 ? 'Preparing search tools and context'
                 : 'Checking if tools are needed'
           }]
@@ -2160,25 +2164,33 @@ class AppStore {
             ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
             : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
       const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
+      // Ask fast path: tight enough that the loop cannot go on a journey.
+      const askBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
 
       if (useToolLoop) {
         const isCodeSpace = activeContextMode === 'code';
         const wantsAgent = isCodeSpace;
+        const isAsk = activeComposerMode === 'ask' && !wantsAgent;
         const agentProfile =
           activeSearchMode !== 'chat' && !wantsAgent
             ? 'search' as const
             : wantsAgent
               ? (isCodeSpace ? 'work' as const : 'chat' as const)
               : 'chat' as const;
-        // Research search modes use search_chat; chat tools & agent use full tool lists.
+        // Research search modes use search_chat; Ask uses the fast ask profile;
+        // chat tools & agent use full tool lists.
         const toolMode =
-          activeSearchMode !== 'chat' && !wantsAgent
-            ? 'search_chat' as const
-            : 'agent' as const;
+          isAsk
+            ? 'ask' as const
+            : activeSearchMode !== 'chat' && !wantsAgent
+              ? 'search_chat' as const
+              : 'agent' as const;
         const profileBudget =
-          agentProfile === 'search' || activeSearchMode !== 'chat'
-            ? searchToolBudget
-            : agentProfile === 'chat'
+          isAsk
+            ? askBudget
+            : agentProfile === 'search' || activeSearchMode !== 'chat'
+              ? searchToolBudget
+              : agentProfile === 'chat'
                 ? chatAgentBudget
                 : {};
         const agentTaskArgs: RunAgentTaskArgs = {
@@ -2194,6 +2206,7 @@ class AppStore {
           agentProfile,
           searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
           reasoningLevel: activeReasoningLevel,
+          quietActivity: isAsk,
           onContent: (value) => {
             assistantMessage.content = value;
             syncMsg();
@@ -2203,15 +2216,21 @@ class AppStore {
           signal: controller.signal,
           onStep: (steps) => {
             assistantMessage.agentSteps = steps;
-            const running = steps.find((step) => step.status === 'running');
-            if (running) {
-              const mapped = activityFromProgress(running.label);
-              setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
+            if (!isAsk) {
+              const running = steps.find((step) => step.status === 'running');
+              if (running) {
+                const mapped = activityFromProgress(running.label);
+                setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
+              }
             }
             syncMsg(true);
             this.persist();
           },
           onProgress: (text) => {
+            if (isAsk) {
+              syncMsg();
+              return;
+            }
             const mapped = activityFromProgress(text);
             setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
             syncMsg();
@@ -2594,7 +2613,7 @@ class AppStore {
     }
     const chat = this.findChat(chatId);
     if (chat) {
-      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || (message.mode === 'agent' && !message.done)));
+      const streamingAssistant = [...chat.messages].reverse().find((message) => message.role === 'assistant' && (message.status === 'streaming' || ((message.mode === 'agent' || message.mode === 'ask') && !message.done)));
       if (streamingAssistant) {
         streamingAssistant.status = 'idle';
         streamingAssistant.done = true;
@@ -2708,22 +2727,23 @@ class AppStore {
     message.reasoning = '';
     message.done = false;
     message.status = 'streaming';
-    if (message.mode === 'agent') {
+    if (message.mode === 'agent' || message.mode === 'ask') {
+      const askRegen = message.mode === 'ask';
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: activityLabel('planning'), status: 'running', detail: 'Preparing tools and context' }
+        { id: createId('step'), type: 'thinking', label: activityLabel(askRegen ? 'searching' : 'planning'), status: 'running', detail: askRegen ? 'Checking sources' : 'Preparing tools and context' }
       ];
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
-        currentActivity: 'planning',
-        activityLabel: 'Working'
+        currentActivity: askRegen ? 'searching' : 'planning',
+        activityLabel: askRegen ? activityLabel('searching') : 'Working'
       };
       nextVersion.metadata = {
         ...(nextVersion.metadata || {}),
         ...executionMetadata(activeBackendMode),
-        currentActivity: 'planning',
-        activityLabel: 'Working'
+        currentActivity: message.mode === 'ask' ? 'searching' : 'planning',
+        activityLabel: message.mode === 'ask' ? activityLabel('searching') : 'Working'
       };
       message.artifact = null;
       message.artifacts = [];
@@ -2745,7 +2765,7 @@ class AppStore {
         controller,
         messageId: message.id,
         backendMode: activeBackendMode,
-        mode: (message.mode === 'agent' ? 'agent' : 'chat'),
+        mode: (message.mode === 'ask' ? 'ask' : message.mode === 'agent' ? 'agent' : 'chat'),
         startedAt: Date.now()
       });
       this.persist();
@@ -2754,10 +2774,14 @@ class AppStore {
         providerPrompt: activeProvider?.system_prompt
       });
       const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
-      if (message.mode === 'agent') {
+      if (message.mode === 'agent' || message.mode === 'ask') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const ctxMode = normalizeContextMode(chat.contextMode);
         const regenProfile = ctxMode === 'code' ? 'work' as const : 'chat' as const;
+        // Regenerating an Ask answer stays on the Ask fast path (allowlist +
+        // tight budgets + quiet activity) instead of widening to full agent.
+        const isAskRegen = message.mode === 'ask' || (message.mode !== 'agent' && chat.composerMode === 'ask');
+        const askRegenBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
         /*
          * The original turn's search depth is carried over. Without it, regenerating a
          * Deep or Max research answer silently re-ran as a plain chat agent — same
@@ -2774,9 +2798,10 @@ class AppStore {
           executionMode: 'sandbox',
           workspaceName: activeWorkspace?.rootName,
           workspaceFiles: activeWorkspace?.files,
-          toolMode: 'agent',
+          toolMode: isAskRegen ? ('ask' as const) : 'agent',
           agentProfile: regenSearchMode ? 'search' as const : regenProfile,
           ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
+          quietActivity: isAskRegen,
           conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
           reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
           onContent: (value) => {
@@ -2784,10 +2809,16 @@ class AppStore {
             message.content = value;
             this.touchChats();
           },
-          ...(regenProfile === 'chat' && !regenSearchMode ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
+          ...(regenProfile === 'chat' && !regenSearchMode && !isAskRegen ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
+          ...(isAskRegen ? askRegenBudget : {}),
           signal: controller.signal,
           onStep: (steps) => {
             message.agentSteps = steps;
+            if (isAskRegen) {
+              this.touchChats();
+              this.persist();
+              return;
+            }
             const running = steps.find((step) => step.status === 'running');
             if (running) {
               const mapped = activityFromProgress(running.label);
@@ -2802,6 +2833,10 @@ class AppStore {
             this.persist();
           },
           onProgress: (text) => {
+            if (isAskRegen) {
+              this.touchChats();
+              return;
+            }
             const mapped = activityFromProgress(text);
             setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
             nextVersion.metadata = {

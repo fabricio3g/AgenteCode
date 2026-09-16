@@ -148,10 +148,13 @@
   {:else if part.kind === 'warning'}
     <div class="mb-2 text-xs text-muted-foreground">{part.detail}</div>
   {:else if part.kind === 'pending'}
-    <div class="my-2 flex items-center gap-1">
+    <div class="my-2 flex items-center gap-1.5">
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
+      {#if part.status}
+        <span class="pending-label ml-1 text-xs text-muted-foreground">{part.status}</span>
+      {/if}
     </div>
   {:else if part.kind === 'content'}
     <RichContent

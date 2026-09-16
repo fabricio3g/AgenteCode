@@ -38,10 +38,11 @@ describe('space isolation helpers', () => {
   });
 
   it('defaults composer mode by space when unset', () => {
-    expect(normalizeSessionComposerMode(undefined, 'home')).toBe('chat');
+    expect(normalizeSessionComposerMode(undefined, 'home')).toBe('agent');
     expect(normalizeSessionComposerMode(undefined, 'code')).toBe('agent');
     expect(normalizeSessionComposerMode('chat', 'code')).toBe('chat');
     expect(normalizeSessionComposerMode('agent', 'home')).toBe('agent');
+    expect(normalizeSessionComposerMode('ask', 'home')).toBe('ask');
   });
 
   it('normalizes search mode', () => {
@@ -109,6 +110,8 @@ describe('space isolation helpers', () => {
     expect(plain.contextMode).toBe('home');
     expect(plain.codeAgent).toBeNull();
     expect(plain.projectId).toBeNull();
-    expect(plain.composerMode).toBe('chat');
+    // New Home chats default to Agent (explicit product choice); stored modes
+    // — including 'chat' and 'ask' — are always preserved (see above).
+    expect(plain.composerMode).toBe('agent');
   });
 });

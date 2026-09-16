@@ -23,7 +23,7 @@ export interface SpaceDefinition {
   /** One-line purpose statement, shown in tooltips / empty states. */
   description: string;
   /** Composer mode new sessions in this space start with. */
-  defaultComposerMode: 'chat' | 'agent';
+  defaultComposerMode: 'chat' | 'ask' | 'agent';
   /**
    * Agent profiles this space may run. The first entry is the default; the
    * agent tool loop only ever receives tools from these profiles.
@@ -38,7 +38,7 @@ export const SPACES: Record<SpaceId, SpaceDefinition> = {
     id: 'home',
     label: 'Home',
     description: 'Conversation, research and investigation — no code execution.',
-    defaultComposerMode: 'chat',
+    defaultComposerMode: 'agent',
     agentProfiles: ['chat', 'search'],
     searchModes: ['chat', 'search', 'deep', 'max']
   },

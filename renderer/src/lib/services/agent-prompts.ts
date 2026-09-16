@@ -87,7 +87,7 @@ export function getNativeSystemPrompt(
   extra: string | undefined,
   maxToolCalls: number,
   maxIterations: number,
-  toolMode: 'agent' | 'search_chat' = 'agent',
+  toolMode: 'agent' | 'ask' | 'search_chat' = 'agent',
   executionMode: 'workspace' | 'sandbox' = 'sandbox',
   searchMode: 'search' | 'deep' | 'max' = 'search'
 ): string {
@@ -107,6 +107,13 @@ export function getNativeSystemPrompt(
     '',
     'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
+  ].join('\n') : toolMode === 'ask' ? [
+    'You are a fast, accurate Q&A assistant with a few grounding tools. Answer directly whenever you know the answer.',
+    `You have up to ${maxIterations} reasoning steps and ${maxToolCalls} tool calls total — use as few as possible, then write the final answer in plain text.`,
+    'Call a tool only when the answer genuinely needs it: web_search/fetch_url for current information, query_knowledge for retrieved documents, get_weather/convert_currency/get_quote for live data, calculator for exact arithmetic.',
+    'Never invent current facts, prices, or weather — call the live tools. If evidence is thin, say what was verified and what remains uncertain.',
+    'You cannot create files or visuals: answer in prose, briefly, with sources where they matter.',
+    'For final answer, write plain text with no tool calls and cite only facts found in tool results or user-provided context.'
   ].join('\n') : isWorkspace ? [
     'You are an AI coding agent working on a real workspace folder. Use tools to read, write, and modify files, run shell commands, and complete the task.',
     `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Let the task decide how many tools are needed, then write your final answer in plain text.`,
@@ -149,7 +156,7 @@ export function getXmlSystemPrompt(
   maxToolCalls: number,
   maxIterations: number,
   toolDefs: ToolDefinition[],
-  toolMode: 'agent' | 'search_chat' = 'agent',
+  toolMode: 'agent' | 'ask' | 'search_chat' = 'agent',
   executionMode: 'workspace' | 'sandbox' = 'sandbox',
   searchMode: 'search' | 'deep' | 'max' = 'search'
 ): string {
@@ -177,6 +184,22 @@ export function getXmlSystemPrompt(
     '',
     'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
+  ].join('\n') : toolMode === 'ask' ? [
+    'You are a fast, accurate Q&A assistant. Answer directly; when a tool is needed, use this XML format (one per response):',
+    '',
+    '<tool_call>',
+    '{"name":"web_search","arguments":{"query":"your search"}}',
+    '</tool_call>',
+    '',
+    'Tools:',
+    summarizeTools(toolDefs),
+    '',
+    'RULES:',
+    `1. You have up to ${maxIterations} reasoning steps and ${maxToolCalls} tool calls total. Use as few as possible, then give final answer in plain text.`,
+    '2. Call a tool only when the answer genuinely needs grounding: web_search/fetch_url for current information, query_knowledge for retrieved documents, get_weather/convert_currency/get_quote for live data, calculator for exact arithmetic.',
+    '3. If a tool fails twice, stop retrying and use only evidence already gathered. Do not invent current facts.',
+    '4. You cannot create files or visuals: answer in prose, briefly, with sources where they matter.',
+    '5. For final answer, write plain text with NO tool_call tag. If evidence is thin, say what was verified and what remains uncertain.'
   ].join('\n') : [
     'You are a conversational assistant with tools. Answer ordinary questions directly; when a tool is needed, use this XML format (one per response):',
     '',
@@ -219,7 +242,7 @@ export function getXmlSystemPrompt(
 
 export function buildDirectSystemPrompt(
   extra: string | undefined,
-  options: { toolMode?: 'agent' | 'search_chat'; searchMode?: 'search' | 'deep' | 'max' } = {}
+  options: { toolMode?: 'agent' | 'ask' | 'search_chat'; searchMode?: 'search' | 'deep' | 'max' } = {}
 ): string {
   const isSearchChat = options.toolMode === 'search_chat';
   const searchMode = options.searchMode || 'search';

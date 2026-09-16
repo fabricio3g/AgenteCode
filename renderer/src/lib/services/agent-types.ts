@@ -106,7 +106,14 @@ export type RunAgentTaskArgs = {
   maxIterations?: number;
   maxToolCalls?: number;
   maxTimeMs?: number;
-  toolMode?: 'agent' | 'search_chat';
+  toolMode?: 'agent' | 'ask' | 'search_chat';
+  /**
+   * Ask fast path: collapse run activity to a single quiet status instead of
+   * per-step updates. The caller still records steps; only the activity
+   * surfacing is hushed. Port as part of the ask profile if Home moves to
+   * the core engine (#12).
+   */
+  quietActivity?: boolean;
   /** chat = simple research agent; code = Flaxeo Agent; work = full sandbox; search = search tools */
   agentProfile?: 'chat' | 'code' | 'search' | 'work';
   searchMode?: 'search' | 'deep' | 'max';

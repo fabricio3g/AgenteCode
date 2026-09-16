@@ -71,6 +71,24 @@ describe('shouldUseToolLoop', () => {
     })).toBe(true);
   });
 
+  it('ask loops only when the intent gate saw a grounding signal', () => {
+    expect(shouldUseToolLoop({
+      control: 'tabs',
+      composerMode: 'ask',
+      route: 'tools'
+    })).toBe(true);
+    expect(shouldUseToolLoop({
+      control: 'tabs',
+      composerMode: 'ask',
+      route: 'conversation'
+    })).toBe(false);
+    expect(shouldUseToolLoop({
+      control: 'auto',
+      composerMode: 'ask',
+      route: 'agent'
+    })).toBe(false);
+  });
+
   it('code space always loops, including legacy spellings', () => {
     expect(shouldUseToolLoop({
       control: 'auto',
