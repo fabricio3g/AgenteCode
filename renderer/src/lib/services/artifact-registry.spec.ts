@@ -21,6 +21,25 @@ describe('artifact registry', () => {
     }
   });
 
+  it.each(['blue', '#123456', 'unknown', 42, {}])('ignores unsupported decorative accent %j without losing content', (accent) => {
+    const content = { title: 'Facts', rows: [{ label: 'Country', value: 'Argentina' }] };
+    expect(parseArtifactToolArgs('create_info_card', { ...content, accent })).toEqual({
+      success: true, repaired: true, data: content
+    });
+  });
+
+  it.each(['sky', 'green', 'amber', 'red', 'violet'])('preserves supported accent %s and normalizes casing', (accent) => {
+    const content = { title: 'Facts', rows: [{ label: 'A', value: 'B' }], accent };
+    expect(parseArtifactToolArgs('create_info_card', content)).toEqual({ success: true, repaired: false, data: content });
+    expect(parseArtifactToolArgs('create_info_card', { ...content, accent: ` ${accent.toUpperCase()} ` })).toEqual({
+      success: true, repaired: true, data: content
+    });
+  });
+
+  it('still rejects missing content when the accent is invalid', () => {
+    expect(parseArtifactToolArgs('create_info_card', { accent: 'blue' }).success).toBe(false);
+  });
+
   it('repairs safe info-card variants before strict validation', () => {
     const parsed = parseArtifactToolArgs('create_info_card', {
       title: 'Facts',
