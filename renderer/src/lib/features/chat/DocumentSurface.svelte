@@ -372,6 +372,14 @@
                   <SlidesViewer slides={activeDoc.slides} onDownload={onDownloadSlides || (() => {})} />
                 {:else if viewerKind(activeDoc) === 'pdf' && docSource(activeDoc)}
                   <PdfViewer src={docSource(activeDoc)} filename={activeDoc.name} />
+                {:else if viewerKind(activeDoc) === 'docx' && docSource(activeDoc)}
+                  <!--
+                    Before the generic previewHtml branch on purpose: generated
+                    DOCX artifacts carry an HTML viewer in `__viewer__/…`, and
+                    rendering that instead of the document is exactly the plain
+                    text column the real page renderer replaces.
+                  -->
+                  <DocxViewer src={docSource(activeDoc)} filename={activeDoc.name} />
                 {:else if activeDoc.previewHtml}
                   <iframe class="reader-iframe" srcdoc={safePreviewHtml} sandbox="" referrerpolicy="no-referrer" title="{activeDoc.name} preview"></iframe>
                 {:else if isMarkdown(activeDoc)}
