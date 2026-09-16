@@ -172,17 +172,33 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
     case 'thinking_delta':
       return { type: 'thinking_delta', chatId, delta: event.delta };
     case 'tool_start':
-      return { type: 'tool_start', chatId, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
+      return { type: 'tool_start', chatId, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args, ...(event.label !== undefined ? { label: event.label } : {}), ...(event.detail !== undefined ? { detail: event.detail } : {}) };
     case 'tool_update':
       return { type: 'tool_update', chatId, toolCallId: event.toolCallId, partialResult: event.partial };
     case 'tool_end':
-      return { type: 'tool_end', chatId, toolCallId: event.toolCallId, result: event.result, isError: event.isError };
+      return { type: 'tool_end', chatId, toolCallId: event.toolCallId, result: event.result, isError: event.isError, ...(event.status !== undefined ? { status: event.status } : {}), ...(event.fileChanges !== undefined ? { fileChanges: event.fileChanges } : {}), ...(event.diffStats !== undefined ? { diffStats: event.diffStats } : {}) };
     case 'llm_retry':
       return { type: 'llm_retry', chatId, attempt: event.attempt, delayMs: event.delayMs };
     case 'length_continue':
       return { type: 'length_continue', chatId, turnIndex: event.turnIndex };
     case 'todo_update':
       return { type: 'todo_update', chatId, todos: event.todos };
+    case 'artifact_created':
+      return { type: 'artifact_created', chatId, artifact: event.artifact };
+    case 'artifact_list':
+      return { type: 'artifact_list', chatId, artifacts: event.artifacts };
+    case 'sources':
+      return { type: 'sources', chatId, sources: event.sources };
+    case 'sources_delta':
+      return { type: 'sources_delta', chatId, sources: event.sources };
+    case 'activity':
+      return { type: 'activity', chatId, activity: event.activity };
+    case 'run_summary':
+      return { type: 'run_summary', chatId, summary: event.summary };
+    case 'content_replace':
+      return { type: 'content_replace', chatId, content: event.content };
+    case 'steer_acknowledged':
+      return { type: 'steer_acknowledged', chatId, accepted: event.accepted, ...(event.queuedCount !== undefined ? { queuedCount: event.queuedCount } : {}) };
     case 'error':
       return { type: 'error', chatId, message: event.message };
     default:
@@ -366,6 +382,8 @@ function attachAgentListeners(session: RuntimeSession): void {
         toolCalls: event.message.toolCalls,
         stopReason: event.message.stopReason,
         errorMessage: event.message.errorMessage,
+        providerState: event.message.providerState,
+        reasoning_content: event.message.reasoning_content,
         usage: event.message.usage ?? undefined
       });
       if (event.message.usage) {

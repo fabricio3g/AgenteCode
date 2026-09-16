@@ -143,3 +143,109 @@ describe('agente run reducer', () => {
     expect(state.todos[1]).toEqual({ content: 'edit config', status: 'in_progress' });
   });
 });
+
+describe('agente run reducer (#9 Home-facing events)', () => {
+  it('collects artifact references without touching the transcript', () => {
+    const state = createCodeRunState();
+    const created = applyCodeAgentEvent(state, {
+      type: 'artifact_created',
+      chatId: 'c',
+      artifact: { kind: 'chart', entryPath: 'chart.json', title: 'Sales' }
+    });
+    expect(created).toBe(false);
+    expect(state.artifacts).toEqual([{ kind: 'chart', entryPath: 'chart.json', title: 'Sales' }]);
+    const listed = applyCodeAgentEvent(state, {
+      type: 'artifact_list',
+      chatId: 'c',
+      artifacts: [{ kind: 'report', entryPath: 'r.md' }]
+    });
+    expect(listed).toBe(false);
+    expect(state.artifacts).toEqual([{ kind: 'report', entryPath: 'r.md' }]);
+  });
+
+  it('replaces sources wholesale but dedupes deltas by url', () => {
+    const state = run([
+      { type: 'sources', chatId: 'c', sources: [{ title: 'A', url: 'https://a.test' }] },
+      {
+        type: 'sources_delta',
+        chatId: 'c',
+        sources: [
+          { title: 'A again', url: 'https://a.test' },
+          { title: 'B', url: 'https://b.test', snippet: 'hi' }
+        ]
+      }
+    ]);
+    expect(state.sources.map((s) => s.url)).toEqual(['https://a.test', 'https://b.test']);
+  });
+
+  it('tracks the canonical activity key', () => {
+    const state = run([{ type: 'activity', chatId: 'c', activity: 'searching' }]);
+    expect(state.activity).toBe('searching');
+  });
+
+  it('replaces streamed content on content_replace', () => {
+    const state = run([
+      { type: 'text_delta', chatId: 'c', delta: 'partial…' },
+      { type: 'content_replace', chatId: 'c', content: 'Final synthesized answer.' }
+    ]);
+    expect(state.content).toBe('Final synthesized answer.');
+  });
+
+  it('finalizes the run when run_summary carries an error, stores clean summaries', () => {
+    const failed = run([
+      {
+        type: 'run_summary',
+        chatId: 'c',
+        summary: { outcome: 'failed', homeStopReason: 'error', error: 'provider blew up' }
+      }
+    ]);
+    expect(failed.done).toBe(true);
+    expect(failed.stopReason).toBe('error');
+    expect(failed.error).toBe('provider blew up');
+    expect(failed.summary?.outcome).toBe('failed');
+
+    const clean = run([
+      {
+        type: 'run_summary',
+        chatId: 'c',
+        summary: {
+          outcome: 'completed',
+          homeStopReason: 'none',
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+        }
+      }
+    ]);
+    expect(clean.done).toBe(false);
+    expect(clean.summary?.usage?.totalTokens).toBe(15);
+  });
+
+  it('prefers engine-supplied step label/detail and tool_end file metadata', () => {
+    const state = run([
+      { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'write', args: { path: 'a.ts' }, label: 'Writing a.ts', detail: 'Create a.ts (12 bytes)' },
+      {
+        type: 'tool_end',
+        chatId: 'c',
+        toolCallId: 't1',
+        result: 'ok',
+        isError: false,
+        status: 'done',
+        fileChanges: [{ path: 'a.ts', kind: 'created' }],
+        diffStats: [{ path: 'a.ts', kind: 'created', additions: 12, deletions: 0 }]
+      }
+    ]);
+    const step = state.steps.find((s) => s.id === 't1');
+    expect(step?.label).toBe('Writing a.ts');
+    expect(step?.detail).toBe('Create a.ts (12 bytes)');
+    expect(step?.fileChanges).toEqual([{ path: 'a.ts', kind: 'created' }]);
+    expect(step?.diffStats).toEqual([{ path: 'a.ts', kind: 'created', additions: 12, deletions: 0 }]);
+  });
+
+  it('normalizes reasoning with the shared rule across chunk splits', () => {
+    const state = run([
+      { type: 'thinking_delta', chatId: 'c', delta: 'still ' },
+      { type: 'thinking_delta', chatId: 'c', delta: 'thinking' }
+    ]);
+    expect(state.reasoning).toBe('still thinking');
+    expect(state.reasoningRaw).toBe('still thinking');
+  });
+});

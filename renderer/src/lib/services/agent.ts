@@ -3,6 +3,7 @@ import type { SearchResult } from '$lib/types/bridge';
 import { say } from '$lib/copy';
 import type { CompletionResult, RequestMessage, NativeToolCall } from '$lib/services/chat-api';
 import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
+import { normalizeHomeRuntimeMode } from '$shared/agente-protocol';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
 import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupportsNativeTools } from '$lib/services/agent-llm';
 import { webSearch, fetchUrlContent } from '$lib/services/search';
@@ -710,7 +711,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
     workspaceRoot: args.workspaceRoot,
     workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
     executionMode,
-    runtimeMode: args.runtimeMode,
+    runtimeMode: normalizeHomeRuntimeMode(args.runtimeMode),
     debugLogs,
     signal: args.signal,
     artifactToggles,

@@ -1,4 +1,5 @@
 import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
+import type { AgentActivityKey, CodeStopReason, HomeStopReason } from '$shared/agente-protocol';
 
 export interface Attachment {
   id: string;
@@ -44,7 +45,7 @@ export interface MessageVersion {
     outcome?: AgentOutcome;
     stopReason?: AgentStopReason;
     /** Why a Code-space agent run ended (the agente loop's StopReason). */
-    codeStopReason?: 'stop' | 'toolUse' | 'length' | 'error' | 'aborted';
+    codeStopReason?: CodeStopReason;
     currentActivity?: AgentActivity;
     activityLabel?: string;
     publicFallback?: boolean;
@@ -55,8 +56,12 @@ export interface MessageVersion {
 }
 
 export type AgentOutcome = 'completed' | 'partial' | 'stopped' | 'failed';
-export type AgentStopReason = 'timeout' | 'loop' | 'tool_limit' | 'iteration_limit' | 'missing_artifacts' | 'error' | 'none';
-export type AgentActivity = 'planning' | 'searching' | 'reading' | 'creating_files' | 'writing' | 'stopped' | 'completed';
+/**
+ * Canonical definitions live in $shared/agente-protocol (single owner shared
+ * with the engine); aliased here so existing imports keep working.
+ */
+export type AgentStopReason = HomeStopReason;
+export type AgentActivity = AgentActivityKey;
 
 export interface SearchMeta {
   searchRequested: boolean;

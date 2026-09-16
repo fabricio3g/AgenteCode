@@ -88,7 +88,12 @@ export type RunAgentTaskArgs = {
   workspaceRoot?: string;
   workspaceName?: string;
   workspaceFiles?: WorkspaceFile[];
-  runtimeMode?: 'full' | 'supervised';
+  /**
+   * Accepts the engine's plan mode but executes it as supervised (see
+   * normalizeHomeRuntimeMode): the plan gate fires once, then every mutating
+   * action still asks individually.
+   */
+  runtimeMode?: 'full' | 'supervised' | 'plan';
   onStep: (steps: AgentStep[]) => void;
   onProgress?: (text: string) => void;
   onReasoning?: (value: string) => void;

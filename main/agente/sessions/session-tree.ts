@@ -179,6 +179,8 @@ function entryToMessage(entry: SessionEntry): AgentMessage | null {
       toolCalls: Array.isArray(data?.toolCalls) ? (data!.toolCalls as ToolCall[]) : undefined,
       stopReason: (data?.stopReason as AssistantMessage['stopReason']) ?? undefined,
       errorMessage: data?.errorMessage ? String(data.errorMessage) : undefined,
+      providerState: data?.providerState,
+      reasoning_content: data?.reasoning_content ? String(data.reasoning_content) : undefined,
       ts: entry.ts
     };
   }
