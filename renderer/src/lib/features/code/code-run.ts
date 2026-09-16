@@ -1,8 +1,9 @@
 // Agente run state: folds CodeAgentEvent pushes into AgentSteps + streamed
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
-import type { CodeAgentEvent, CodeStopReason, CodeTodoItem } from '$shared/agente-protocol';
+import type { CodeAgentEvent, CodeArtifactRef, CodeRunSummary, CodeSourceRef, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange } from '$lib/types/chat';
+import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
 
 export interface AgenteUsage {
   promptTokens: number;
@@ -14,6 +15,12 @@ export interface AgenteUsage {
 export interface CodeRunState {
   content: string;
   reasoning: string;
+  /**
+   * Raw reasoning accumulation. The display `reasoning` is re-sanitized from
+   * this on every delta — exactly Home's rule (agent.ts), since the strip
+   * patterns are multi-line and per-chunk sanitizing would miss splits.
+   */
+  reasoningRaw: string;
   steps: AgentStep[];
   diffStats: CodeAgentDiffStat[];
   fileChanges: CodeAgentFileChange[];
@@ -28,10 +35,18 @@ export interface CodeRunState {
   todos: CodeTodoItem[];
   /** A length-truncated turn was auto-continued at least once this run. */
   truncatedOnce: boolean;
+  /** Artifacts announced via artifact_created/list (references only). */
+  artifacts: CodeArtifactRef[];
+  /** Sources announced via sources/sources_delta. */
+  sources: CodeSourceRef[];
+  /** Canonical activity key from the activity event. */
+  activity?: AgentActivityKey;
+  /** End-of-run rollup from run_summary. */
+  summary?: CodeRunSummary;
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { content: '', reasoning: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false };
+  return { content: '', reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [] };
 }
 
 function upsertStep(state: CodeRunState, step: AgentStep): void {
@@ -55,9 +70,9 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
       return {
         id: event.toolCallId,
         type: 'tool',
-        label: event.toolName,
+        label: event.label || event.toolName,
         status: 'running',
-        detail: argsPreview(event.args)
+        detail: event.detail || argsPreview(event.args)
       };
     case 'turn_start':
       return { id: `turn-${event.turnIndex}`, type: 'planning', label: `Turn ${event.turnIndex}`, status: 'running' };
@@ -93,7 +108,12 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return true;
     }
     case 'thinking_delta': {
-      state.reasoning += event.delta;
+      // Same normalization rule as Home (agent.ts): one owner —
+      // sanitizeAgentVisibleText — applied to the whole accumulation, since
+      // the strip patterns are multi-line and per-chunk sanitizing would
+      // miss patterns split across chunks.
+      state.reasoningRaw += event.delta;
+      state.reasoning = sanitizeAgentVisibleText(state.reasoningRaw);
       state.retrying = null;
       return true;
     }
@@ -113,9 +133,20 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'tool_end': {
       const step = state.steps.find((s) => s.id === event.toolCallId);
       if (step) {
-        step.status = event.isError ? 'error' : 'done';
+        step.status = event.status || (event.isError ? 'error' : 'done');
         const output = event.result != null ? String(event.result) : '';
         if (output) step.output = output.slice(0, 6000);
+        if (event.fileChanges?.length) {
+          step.fileChanges = event.fileChanges.map((file) => ({ path: file.path, kind: file.kind as CodeAgentFileChange['kind'] }));
+        }
+        if (event.diffStats?.length) {
+          step.diffStats = event.diffStats.map((file) => ({
+            path: file.path,
+            kind: file.kind as CodeAgentDiffStat['kind'],
+            additions: file.additions,
+            deletions: file.deletions
+          }));
+        }
       }
       return true;
     }
@@ -201,6 +232,57 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'todo_update': {
       state.todos = event.todos.map((todo) => ({ ...todo }));
       return true;
+    }
+    case 'artifact_created': {
+      state.artifacts = [...state.artifacts, { ...event.artifact }];
+      return false; // ring data only — rendered on demand, not in the transcript
+    }
+    case 'artifact_list': {
+      state.artifacts = event.artifacts.map((artifact) => ({ ...artifact }));
+      return false;
+    }
+    case 'sources': {
+      state.sources = event.sources.map((source) => ({ ...source }));
+      return false;
+    }
+    case 'sources_delta': {
+      const seen = new Set(state.sources.map((source) => source.url));
+      for (const source of event.sources) {
+        if (!seen.has(source.url)) {
+          seen.add(source.url);
+          state.sources.push({ ...source });
+        }
+      }
+      return false;
+    }
+    case 'activity': {
+      state.activity = event.activity;
+      return false;
+    }
+    case 'run_summary': {
+      state.summary = event.summary;
+      // A summary carrying an error finalizes the run exactly like the
+      // error event; a clean summary is ring data for the end-of-run UI.
+      if (event.summary.error && !state.error) {
+        state.error = event.summary.error;
+        state.retrying = null;
+        state.done = true;
+        state.stopReason ??= 'error';
+        const broken = state.steps.find((s) => s.status === 'running');
+        if (broken) broken.status = 'error';
+        return true;
+      }
+      return false;
+    }
+    case 'content_replace': {
+      state.content = event.content;
+      state.retrying = null;
+      return true;
+    }
+    case 'steer_acknowledged': {
+      // Authoritative drain receipt; the store's queuedCount approximation
+      // (code.svelte.ts) reconciles against it. No transcript change.
+      return false;
     }
     case 'error': {
       state.error = event.message;

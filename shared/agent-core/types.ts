@@ -35,6 +35,15 @@ export interface AssistantMessage {
   errorMessage?: string;
   /** Stable classification from the provider protocol (AUTH, RATE_LIMIT, …). */
   errorCode?: string;
+  /**
+   * Opaque provider round-trip state (e.g. Gemini thought signatures).
+   * Persisted with the session and echoed back on resume — required by
+   * DeepSeek-class models that reject calls without it. Never serialized
+   * onto the CodeAgentEvent wire.
+   */
+  providerState?: unknown;
+  /** Provider-native reasoning channel, echoed for the same reason. */
+  reasoning_content?: string;
   ts: number;
 }
 
@@ -110,13 +119,76 @@ export type AgentEvent =
   | { type: 'text_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
   | { type: 'message_end'; message: AssistantMessage }
-  | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
+  | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown; label?: string; detail?: string }
   | { type: 'tool_update'; toolCallId: string; toolName: string; partial: unknown }
-  | { type: 'tool_end'; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | {
+      type: 'tool_end';
+      toolCallId: string;
+      toolName: string;
+      result: unknown;
+      isError: boolean;
+      status?: 'done' | 'error';
+      fileChanges?: Array<{ path: string; kind: string }>;
+      diffStats?: Array<{ path: string; kind: string; additions: number; deletions: number }>;
+    }
   | { type: 'llm_retry'; attempt: number; delayMs: number }
   | { type: 'length_continue'; turnIndex: number }
   | { type: 'todo_update'; todos: TodoItem[] }
+  | { type: 'artifact_created'; artifact: CoreArtifactRef }
+  | { type: 'artifact_list'; artifacts: CoreArtifactRef[] }
+  | { type: 'sources'; sources: CoreSourceRef[] }
+  | { type: 'sources_delta'; sources: CoreSourceRef[] }
+  | { type: 'activity'; activity: CoreActivityKey }
+  | { type: 'run_summary'; summary: CoreRunSummary }
+  | { type: 'content_replace'; content: string }
+  | { type: 'steer_acknowledged'; accepted: boolean; queuedCount?: number }
   | { type: 'error'; message: string };
+
+/**
+ * Core mirrors of the wire's Home-facing shapes. Defined locally (not
+ * imported from ../agente-protocol): shared/agent-core may only import
+ * itself — see tests/unit/agent-core-purity.test.js.
+ */
+export type CoreActivityKey =
+  | 'planning'
+  | 'searching'
+  | 'reading'
+  | 'creating_files'
+  | 'writing'
+  | 'stopped'
+  | 'completed';
+
+export interface CoreArtifactRef {
+  kind: string;
+  entryPath: string;
+  title?: string;
+  manifest?: unknown;
+  workProduct?: unknown;
+}
+
+export interface CoreSourceRef {
+  title: string;
+  url: string;
+  snippet?: string;
+  full_content?: string;
+  provider?: string;
+}
+
+export interface CoreRunSummary {
+  outcome: 'completed' | 'partial' | 'stopped' | 'failed';
+  homeStopReason: 'timeout' | 'loop' | 'tool_limit' | 'iteration_limit' | 'missing_artifacts' | 'error' | 'none';
+  warning?: string;
+  error?: string;
+  publicFallback?: boolean;
+  diagnosticsRedacted?: boolean;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    contextWindow?: number;
+    timings?: Record<string, number>;
+  };
+}
 
 export type AgentEventListener = (event: AgentEvent) => void | Promise<void>;
 

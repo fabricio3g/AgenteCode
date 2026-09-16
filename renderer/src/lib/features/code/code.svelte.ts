@@ -244,6 +244,11 @@ class CodeStore {
       run.running = true;
       run.queuedCount = 0;
     }
+    if (event.type === 'steer_acknowledged' && event.accepted) {
+      // Authoritative receipt replaces the local approximation: the engine
+      // tells us exactly how many steers are still queued.
+      run.queuedCount = event.queuedCount ?? Math.max(0, run.queuedCount - 1);
+    }
     if (run.done) run.running = false;
     if (event.type === 'agent_end') {
       run.queuedCount = 0;

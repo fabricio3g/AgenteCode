@@ -6,6 +6,7 @@
 // lands, the same definitions load from disk unchanged.
 
 import type { AgentMessage, ToolResult } from '../../../shared/agent-core/types.ts';
+import type { AgenteRuntimeMode } from '../../../shared/agente-protocol.ts';
 
 /** A tool contributed by an extension (JSON Schema in, ToolResult out). */
 export interface AgenteExtensionTool {
@@ -36,7 +37,7 @@ export interface AgenteExtensionContext {
   extensionId: string;
   projectRoot: string;
   sessionId: string;
-  runtimeMode: 'full' | 'supervised';
+  runtimeMode: AgenteRuntimeMode;
   /** Persist extension state into the session JSONL (not sent to the LLM). */
   appendEntry(type: string, data: unknown): void;
 }
