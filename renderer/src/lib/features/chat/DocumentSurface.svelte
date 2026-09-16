@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { AlertCircle, Download, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
+  import { AlertCircle, Download, Expand, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
@@ -25,6 +25,13 @@
     launcherMode?: 'tile' | 'strip';
     allowDownload?: boolean;
     onDownloadSlides?: () => void;
+    /**
+     * Opens the artifact studio for this surface. Provided only when the
+     * surface is the artifact's sole card (single-document artifacts hide
+     * the ArtifactBlock header to avoid a duplicate file row) — otherwise
+     * the header already owns the studio action.
+     */
+    onOpenStudio?: () => void;
   }
 
   let {
@@ -34,7 +41,8 @@
     className = '',
     launcherMode = 'tile',
     allowDownload = true,
-    onDownloadSlides
+    onDownloadSlides,
+    onOpenStudio
   }: Props = $props();
 
   let open = $state(false);
@@ -238,6 +246,17 @@
                 <Download class="h-3.5 w-3.5" />
               </button>
             {/if}
+            {#if onOpenStudio}
+              <button
+                type="button"
+                class="attachment-download"
+                onclick={(event) => { event.stopPropagation(); onOpenStudio?.(); }}
+                title="Open in artifact studio"
+                aria-label="Open in artifact studio"
+              >
+                <Expand class="h-3.5 w-3.5" />
+              </button>
+            {/if}
           </div>
         {/each}
       </div>
@@ -263,6 +282,11 @@
           {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
             <button type="button" class="document-action" onclick={(event) => downloadDoc(activeDoc, event)} title="Download {baseName(activeDoc.name)}">
               <Download class="h-3.5 w-3.5" />
+            </button>
+          {/if}
+          {#if onOpenStudio}
+            <button type="button" class="document-action" onclick={() => onOpenStudio?.()} title="Open in artifact studio" aria-label="Open in artifact studio">
+              <Expand class="h-3.5 w-3.5" />
             </button>
           {/if}
           <button type="button" class="document-action" onclick={openReader} title="Open reader">

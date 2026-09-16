@@ -14,8 +14,8 @@
   } from '$lib/features/chat/document-surface';
   import InlineArtifactPreview from './InlineArtifactPreview.svelte';
 
-  interface Props { artifact: AgentArtifact }
-  let { artifact }: Props = $props();
+  interface Props { artifact: AgentArtifact; onOpenStudio?: () => void }
+  let { artifact, onOpenStudio }: Props = $props();
 
   const resolved = $derived(resolveArtifactPresentation(artifact));
   const documentDocs = $derived.by((): DocumentSurfaceItem[] => resolved.visibleFiles
@@ -51,7 +51,7 @@
 {:else if resolved.manifest.presentation === 'inline' && resolved.artifact.inline}
   <InlineArtifactPreview artifact={resolved.artifact} />
 {:else if resolved.manifest.presentation === 'document' && documentDocs.length}
-  <DocumentSurface docs={documentDocs} title={resolved.artifact.workProduct?.title || resolved.artifact.title} />
+  <DocumentSurface docs={documentDocs} title={resolved.artifact.workProduct?.title || resolved.artifact.title} {onOpenStudio} />
 {:else if resolved.preview}
   <InlineArtifactPreview artifact={resolved.artifact} />
 {:else}

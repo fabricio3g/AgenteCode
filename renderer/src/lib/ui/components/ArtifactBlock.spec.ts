@@ -77,4 +77,57 @@ describe('ArtifactBlock', () => {
     expect(view.queryByRole('button', { name: 'Open artifact studio' })).toBeNull();
     expect(view.queryByRole('button', { name: 'Download artifact' })).toBeNull();
   });
+
+  it('renders a single document without a duplicate file-card header', () => {
+    const onOpen = vi.fn();
+    const view = render(ArtifactBlock, {
+      props: {
+        artifact: {
+          title: 'example_document.docx',
+          files: {
+            'example_document.docx':
+              'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAA'
+          },
+          manifest: {
+            schemaVersion: 1,
+            kind: 'document',
+            presentation: 'document',
+            entryPath: 'example_document.docx',
+            status: 'ready'
+          }
+        },
+        onOpen
+      }
+    });
+    // The filename surfaces once, in the document tile — not twice.
+    expect(view.queryAllByText('example_document.docx')).toHaveLength(1);
+    expect(view.queryByRole('button', { name: 'Open artifact studio' })).toBeNull();
+    // …with the studio action moved onto the tile and still working.
+    const studio = view.getByRole('button', { name: 'Open in artifact studio' });
+    expect(studio).toBeTruthy();
+  });
+
+  it('keeps the file-card header when several documents share one artifact', () => {
+    const view = render(ArtifactBlock, {
+      props: {
+        artifact: {
+          title: 'Two docs',
+          files: {
+            'a.docx': 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAA',
+            'b.docx': 'data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,AAA'
+          },
+          manifest: {
+            schemaVersion: 1,
+            kind: 'document',
+            presentation: 'document',
+            entryPath: 'a.docx',
+            status: 'ready'
+          }
+        },
+        onOpen: vi.fn()
+      }
+    });
+    expect(view.getByRole('button', { name: 'Open artifact studio' })).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Open in artifact studio' })).toBeNull();
+  });
 });

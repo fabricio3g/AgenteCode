@@ -1,7 +1,8 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, FileCode, Pencil, Plus, Trash2 } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from 'lucide-svelte';
+  import { getFileIcon } from '$lib/utils/doc-utils';
   import Button from '$lib/components/ui/Button.svelte';
   import Select from '$lib/components/ui/Select.svelte';
 
@@ -43,8 +44,9 @@
     </div>
     <div class="min-h-0 overflow-auto p-1.5">
       {#each files as [path] (path)}
+        {@const FileIcon = getFileIcon(path)}
         <button type="button" class:active={path === selectedPath} aria-current={path === selectedPath ? 'true' : undefined} class="file-row" onclick={() => onselect(path)} title={path}>
-          <FileCode class="size-3.5 shrink-0" /><span class="truncate">{path}</span>
+          <FileIcon class="size-3.5 shrink-0" /><span class="truncate">{path}</span>
         </button>
       {/each}
     </div>

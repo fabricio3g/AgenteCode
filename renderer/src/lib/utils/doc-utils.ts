@@ -1,4 +1,4 @@
-import { FileText, FileSpreadsheet, Image, File, Presentation } from 'lucide-svelte';
+import { FileText, FileSpreadsheet, FileCode, FileImage, FileArchive, FileMusic, FilePlay, Image, File, Presentation } from 'lucide-svelte';
 import { dataUrlMime, dataUrlToBytes } from './artifact-files';
 
 export type ViewerKind = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'image' | 'unknown';
@@ -19,10 +19,27 @@ export function getViewerKind(name: string, type = ''): ViewerKind {
   return 'unknown';
 }
 
+const archiveExts = new Set(['zip', 'tar', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar']);
+const audioExts = new Set(['mp3', 'wav', 'ogg', 'oga', 'flac', 'm4a', 'aac']);
+const videoExts = new Set(['mp4', 'webm', 'mov', 'm4v', 'ogv']);
+const sheetExts = new Set(['xls', 'xlsx', 'csv', 'tsv', 'ods']);
+const docExts = new Set(['doc', 'docx', 'odt', 'rtf']);
+const slideExts = new Set(['ppt', 'pptx', 'odp']);
+
 export function getFileIcon(name: string, type = '') {
-  const kind = getViewerKind(name, type);
-  switch (kind) {
-    case 'pdf': return FileText;
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  if (sheetExts.has(ext)) return FileSpreadsheet;
+  if (slideExts.has(ext)) return Presentation;
+  if (docExts.has(ext) || ext === 'pdf') return FileText;
+  if (archiveExts.has(ext)) return FileArchive;
+  if (audioExts.has(ext) || type.startsWith('audio/')) return FileMusic;
+  if (videoExts.has(ext) || type.startsWith('video/')) return FilePlay;
+  if (imageExts.has(ext) || type.startsWith('image/')) return FileImage;
+  if (codeExts.has(ext) || ext === 'json' || ext === 'xml' || ext === 'html' || ext === 'htm') return FileCode;
+  if (textExts.has(ext) || type.startsWith('text/')) return FileText;
+  // Extension unknown: fall back to the viewer routing.
+  switch (getViewerKind(name, type)) {
+    case 'pdf':
     case 'docx': return FileText;
     case 'xlsx': return FileSpreadsheet;
     case 'pptx': return Presentation;
