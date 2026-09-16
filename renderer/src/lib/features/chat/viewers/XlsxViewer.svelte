@@ -111,7 +111,7 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0.4rem;
   }
 
 

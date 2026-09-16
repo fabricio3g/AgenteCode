@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { AlertCircle, Download, Expand, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
+  import { AlertCircle, Download, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
   import { renderMarkdown } from '$lib/utils/markdown';
@@ -25,13 +25,6 @@
     launcherMode?: 'tile' | 'strip';
     allowDownload?: boolean;
     onDownloadSlides?: () => void;
-    /**
-     * Opens the artifact studio from the reader header. Provided only when
-     * the surface is the artifact's sole card (single-document artifacts hide
-     * the ArtifactBlock header) — otherwise the header already owns it.
-     * The tile itself offers exactly one open: the reader.
-     */
-    onOpenStudio?: () => void;
   }
 
   let {
@@ -41,8 +34,7 @@
     className = '',
     launcherMode = 'tile',
     allowDownload = true,
-    onDownloadSlides,
-    onOpenStudio
+    onDownloadSlides
   }: Props = $props();
 
   let open = $state(false);
@@ -316,11 +308,6 @@
                 {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
                   <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
                     <Download class="h-4 w-4" />
-                  </button>
-                {/if}
-                {#if onOpenStudio}
-                  <button type="button" class="reader-icon-btn" onclick={() => onOpenStudio?.()} aria-label="Open in artifact studio" title="Open in artifact studio">
-                    <Expand class="h-4 w-4" />
                   </button>
                 {/if}
                 <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label="Close" title="Close">
@@ -684,15 +671,15 @@
 
   .document-workspace {
     position: fixed;
-    inset: 1.5vh 1.5vw;
+    inset: 1vh 1vw;
     z-index: 10001;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     border: 0;
-    /* Same white card and corner as the composer, so the viewer reads as part
-       of the same surface family rather than a tinted panel. */
-    border-radius: var(--composer-radius);
+    /* Tight card rather than a floating bubble: the viewer is a workspace,
+       not a dialog. */
+    border-radius: var(--radius-xl);
     background: var(--card);
     box-shadow:
       inset 0 0 0 1px var(--composer-ring),
@@ -705,7 +692,7 @@
     justify-content: space-between;
     gap: 1rem;
     border-bottom: 0;
-    padding: 0.7rem 0.85rem;
+    padding: 0.55rem 0.75rem;
     background: color-mix(in srgb, var(--artifact-surface) 70%, transparent);
   }
 
@@ -868,7 +855,7 @@
     min-width: 0;
     overflow: auto;
     background: var(--chat-bg);
-    padding: 0.85rem 1rem;
+    padding: 0.5rem 0.75rem;
   }
 
   .image-workspace {

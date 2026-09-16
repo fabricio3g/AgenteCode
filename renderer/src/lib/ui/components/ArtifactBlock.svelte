@@ -29,7 +29,7 @@
    * A single document file rendered through DocumentSurface already shows its
    * own row (icon, name, kind, download, reader) — a file-card header above
    * it repeats the filename and the download. These render as the surface
-   * alone, with the studio action moved onto it.
+   * alone; the studio stays reachable from multi-file headers.
    */
   const singleDocument = $derived.by(() => {
     if (!resolved || resolved.manifest.presentation !== 'document' || resolved.visibleFiles.length !== 1) return false;
@@ -86,7 +86,7 @@
       </div>
     </header>
     {/if}
-    <ArtifactRenderer {artifact} onOpenStudio={singleDocument ? onOpen : undefined} />
+    <ArtifactRenderer {artifact} />
   </section>
 {/if}
 

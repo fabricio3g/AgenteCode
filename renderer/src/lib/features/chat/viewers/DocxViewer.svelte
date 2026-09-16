@@ -41,7 +41,8 @@
   function buildPreviewFrame(bodyHtml: string): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Inter,Segoe UI,system-ui,sans-serif;font-size:14px;line-height:1.68;color:#172033;background:#fff;padding:28px 36px;max-width:920px;margin:0 auto}
+      html{background:#e8ecf2}
+      body{font-family:Inter,Segoe UI,system-ui,sans-serif;font-size:14px;line-height:1.68;color:#172033;background:#fff;max-width:880px;margin:12px auto 28px;padding:30px 38px;border-radius:8px;box-shadow:0 1px 3px rgb(15 23 42 / 0.12)}
       h1{font-size:28px;margin:0 0 20px;color:#0f172a}
       h2{font-size:22px;margin:24px 0 12px;color:#1e293b}
       h3{font-size:18px;margin:20px 0 10px;color:#334155}
@@ -98,15 +99,15 @@
   .docx-frame {
     min-height: 100%;
     overflow: hidden;
-    border-radius: var(--radius-lg);
-    background: #fff;
-    box-shadow: var(--shadow-xs);
+    /* The sheet lives inside the document (paper on muted backdrop) — no
+       outer card, or whitespace stacks three deep. */
+    background: transparent;
   }
 
   .docx-iframe {
     width: 100%;
     height: calc(97vh - 6.5rem);
     border: 0;
-    background: #fff;
+    background: transparent;
   }
 </style>
