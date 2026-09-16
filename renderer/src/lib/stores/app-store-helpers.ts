@@ -497,6 +497,22 @@ export function normalizeSessionSearchMode(mode: unknown): 'chat' | 'search' | '
 }
 
 /**
+ * Instant local acknowledgement seeded into an assistant message the moment
+ * a tool-loop run starts — the user reads intent confirmation with zero
+ * token cost and zero latency instead of an empty "Planning" shell.
+ *
+ * The engine's first onContent replaces it wholesale (full-text replacement
+ * per turn), so it never merges with, duplicates, or leaks into the answer.
+ * 'work' (multi-step builds) vs 'lookup' (grounded Q&A) keeps the verb honest.
+ */
+export function optimisticAck(content: string, kind: 'work' | 'lookup'): string {
+  const text = String(content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const short = text.length > 90 ? `${text.slice(0, 87).trimEnd()}…` : text;
+  return kind === 'work' ? `On it — ${short}` : `Looking into it — ${short}`;
+}
+
+/**
  * Titles the app mints itself. A send over one of these replaces it with the
  * prompt; a user rename never matches and is always kept.
  */
