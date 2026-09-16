@@ -59,6 +59,7 @@ function defineArtifact<const T extends ArtifactDefinitionInput>(input: T): T & 
   } as T & Pick<ArtifactTypeEntry, 'toolDefinition'>;
 }
 
+const infoCardAccentSchema = z.enum(['sky', 'green', 'amber', 'red', 'violet']);
 const pathSchema = z.string().min(1).optional().describe('Output file path');
 const sectionSchema = z.object({
   title: z.string().optional(),
@@ -95,12 +96,14 @@ function repairInfoCardArgs(args: Record<string, unknown>): Record<string, unkno
    * no repair. Common aliases are accepted before giving up.
    */
   const title = String(args.title ?? args.heading ?? args.name ?? args.label ?? '').trim();
+  // Decoration must not reject usable facts; omit unknown colors for the viewer default.
+  const accent = infoCardAccentSchema.safeParse(typeof args.accent === 'string' ? args.accent.trim().toLowerCase() : undefined);
   return {
     ...(title ? { title } : {}),
     ...(args.subtitle ? { subtitle: String(args.subtitle) } : {}),
     rows,
     ...(args.footer ? { footer: String(args.footer) } : {}),
-    ...(args.accent ? { accent: String(args.accent) } : {}),
+    ...(accent.success ? { accent: accent.data } : {}),
     ...(args.path ? { path: String(args.path) } : {})
   };
 }
@@ -210,7 +213,7 @@ const builtinArtifacts = [
     argsSchema: z.object({
       title: z.string().min(1), subtitle: z.string().optional(),
       rows: z.array(z.object({ label: z.string().min(1), value: z.string().min(1), hint: z.string().optional() })).min(1),
-      footer: z.string().optional(), accent: z.enum(['sky', 'green', 'amber', 'red', 'violet']).optional(), path: pathSchema
+      footer: z.string().optional(), accent: infoCardAccentSchema.optional(), path: pathSchema
     })
   }),
   defineArtifact({
