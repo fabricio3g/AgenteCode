@@ -5,6 +5,7 @@ import { getIndexedModels, getLocalModels } from '$lib/services/models';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { normalizeStreamingContentDelta, normalizeStreamingReasoningDelta } from '$lib/services/streaming';
 import { invoke, listen, isElectron } from '$lib/services/bridge';
+import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/services/chat-stream-idle';
 import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 
@@ -549,8 +550,16 @@ async function streamLocalReply(args: {
     rejectStream = reject;
   });
 
+  const idle = createStreamIdleWatchdog({
+    onStall: () => {
+      void invoke('chat_stream_cancel', { streamId }).catch(() => {});
+      rejectStream?.(new Error(streamIdleTimeoutMessage()));
+    }
+  });
+
   const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
     if (!event || event.streamId !== streamId) return;
+    idle.arm();
 
     if (event.type === 'delta') {
       if (event.reasoning) args.onReasoning?.(normalizeStreamingReasoningDelta(String(event.reasoning)));
@@ -588,6 +597,7 @@ async function streamLocalReply(args: {
 
     streamId = started?.streamId || '';
     if (!streamId) throw new Error('Failed to start chat stream');
+    idle.arm();
 
     if (args.signal) {
       abortListener = () => {
@@ -599,6 +609,7 @@ async function streamLocalReply(args: {
     await streamPromise;
     return;
   } finally {
+    idle.clear();
     off();
     if (args.signal && abortListener) {
       args.signal.removeEventListener('abort', abortListener);
@@ -632,8 +643,16 @@ export async function streamAssistantReply(args: {
       rejectStream = reject;
     });
 
+    const idle = createStreamIdleWatchdog({
+      onStall: () => {
+        void invoke('chat_stream_cancel', { streamId }).catch(() => {});
+        rejectStream?.(new Error(streamIdleTimeoutMessage()));
+      }
+    });
+
     const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
       if (!event || event.streamId !== streamId) return;
+      idle.arm();
 
       if (event.type === 'delta') {
         if (event.reasoning) args.onReasoning?.(String(event.reasoning));
@@ -672,6 +691,7 @@ export async function streamAssistantReply(args: {
 
       streamId = started?.streamId || '';
       if (!streamId) throw new Error('Failed to start chat stream');
+      idle.arm();
 
       if (args.signal) {
         abortListener = () => {
@@ -683,6 +703,7 @@ export async function streamAssistantReply(args: {
       await streamPromise;
       return;
     } finally {
+      idle.clear();
       off();
       if (args.signal && abortListener) {
         args.signal.removeEventListener('abort', abortListener);

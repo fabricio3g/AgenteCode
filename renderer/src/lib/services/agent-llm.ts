@@ -1,4 +1,5 @@
 import { invoke, listen, isElectron } from '$lib/services/bridge';
+import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/services/chat-stream-idle';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { loadAppConfig } from '$lib/utils/storage';
@@ -195,8 +196,18 @@ export async function agentStreamComplete(options: {
     delayMs: 40
   });
 
+  // A stream that emits nothing at all (stalled connection, provider ignoring
+  // the abort signal) would otherwise leave this promise pending forever.
+  const idle = createStreamIdleWatchdog({
+    onStall: () => {
+      void invoke('chat_stream_cancel', { streamId }).catch(() => {});
+      rejectStream?.(new Error(streamIdleTimeoutMessage()));
+    }
+  });
+
   const off = await listen<Record<string, unknown>>('chat-stream-event', (event) => {
     if (!event || event.streamId !== streamId) return;
+    idle.arm();
 
     if (event.type !== 'delta') {
       debugLog(debugLogs, `[agent-llm] stream event | type=${event.type} | streamId=${streamId.slice(0, 8)}...`);
@@ -260,6 +271,7 @@ export async function agentStreamComplete(options: {
 
     streamId = started?.streamId || '';
     if (!streamId) throw new Error('Failed to start agent stream');
+    idle.arm();
 
     if (options.signal) {
       abortListener = () => {
@@ -284,6 +296,7 @@ export async function agentStreamComplete(options: {
     options.onError?.(errStr);
     return null;
   } finally {
+    idle.clear();
     dispatcher.dispose();
     off();
     if (options.signal && abortListener) {
