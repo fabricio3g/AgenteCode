@@ -11,7 +11,7 @@ import { liveGeocodePlace } from './live-data';
 import { loadAppConfig } from '$lib/utils/storage';
 import { buildMessageParts, isAssistantMessageEmpty } from '$lib/features/chat/thread/message-parts';
 import type { ChatMessage } from '$lib/types/chat';
-import { ASK_TOOL_NAMES, runAgentTask } from './agent';
+import { INSTANT_TOOL_NAMES, runAgentTask } from './agent';
 import { resolveArtifactPreview } from './artifact-model';
 import { shouldUseToolLoop } from './composer-route';
 
@@ -173,13 +173,13 @@ describe('Home agent tool round trip', () => {
   });
 });
 
-describe('Ask mode tool allowlist', () => {
+describe('Instant mode tool allowlist', () => {
   it('covers grounding and math, never files or artifacts', () => {
     for (const name of ['web_search', 'fetch_url', 'query_knowledge', 'calculator', 'get_weather', 'convert_currency', 'get_quote']) {
-      expect(ASK_TOOL_NAMES.has(name)).toBe(true);
+      expect(INSTANT_TOOL_NAMES.has(name)).toBe(true);
     }
     for (const name of ['create_chart', 'create_diagram', 'create_map', 'create_info_card', 'create_html_card', 'create_dashboard', 'create_report', 'create_work_product', 'create_document', 'write_file', 'edit_file', 'delete_file', 'read_file', 'list_files', 'search_files', 'preview_project', 'export_research_package']) {
-      expect(ASK_TOOL_NAMES.has(name)).toBe(false);
+      expect(INSTANT_TOOL_NAMES.has(name)).toBe(false);
     }
   });
 });

@@ -106,11 +106,11 @@ export type RunAgentTaskArgs = {
   maxIterations?: number;
   maxToolCalls?: number;
   maxTimeMs?: number;
-  toolMode?: 'agent' | 'ask' | 'search_chat';
+  toolMode?: 'agent' | 'instant' | 'search_chat';
   /**
-   * Ask fast path: collapse run activity to a single quiet status instead of
+   * Instant fast path: collapse run activity to a single quiet status instead of
    * per-step updates. The caller still records steps; only the activity
-   * surfacing is hushed. Port as part of the ask profile if Home moves to
+   * surfacing is hushed. Port as part of the instant profile if Home moves to
    * the core engine (#12).
    */
   quietActivity?: boolean;

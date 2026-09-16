@@ -55,7 +55,7 @@
   <!-- Keep the per-chat thinking override visible beside the send controls. -->
   <div class="chips" class:overflow-x-auto={compact}>
     {#if appStore.activeSpace === 'code' && (appStore.composerModeControl === 'tabs' || appStore.composerMode === 'agent')}
-      <ModeSelector />
+      <ModeSelector modes={['agent']} />
     {/if}
     <ReasoningLevelSelector />
   </div>

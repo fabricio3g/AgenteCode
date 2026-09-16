@@ -77,15 +77,15 @@ export function resolveComposerRoute(input: {
 
 export function shouldUseToolLoop(params: {
   control: ComposerModeControl;
-  composerMode: 'chat' | 'ask' | 'agent';
+  composerMode: 'chat' | 'instant' | 'agent';
   route: ComposerRoute;
   searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
   contextMode?: string | null;
 }): boolean {
-  // Ask is the fast path: the loop runs only when the heuristic intent gate
+  // Instant is the fast path: the loop runs only when the heuristic intent gate
   // saw a grounding signal (live data, search, math). Anything else streams
   // a direct completion with zero tool-loop overhead.
-  if (params.composerMode === 'ask') return params.route === 'tools';
+  if (params.composerMode === 'instant') return params.route === 'tools';
   // Home is one conversational agent: the model can answer directly or call
   // tools on any turn, including follow-ups with no routing keywords. Legacy
   // mode preferences no longer disconnect tools. Code uses its workspace loop.

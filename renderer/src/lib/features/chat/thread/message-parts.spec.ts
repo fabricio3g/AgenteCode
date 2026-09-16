@@ -196,10 +196,10 @@ describe('buildMessageParts', () => {
     ]);
   });
 
-  it('hushes ask runs: no reasoning trace, no tool-status line', () => {
+  it('hushes instant runs: no reasoning trace, no tool-status line', () => {
     const kinds = build({
       message: message({
-        mode: 'ask',
+        mode: 'instant',
         status: 'streaming',
         agentSteps: [{ id: 's1', type: 'tool', label: 'web_search', status: 'running' }]
       }),
@@ -210,9 +210,9 @@ describe('buildMessageParts', () => {
     expect(kinds).toEqual(['content']);
   });
 
-  it('carries the quiet status on the ask typing indicator', () => {
+  it('carries the quiet status on the instant typing indicator', () => {
     const parts = buildMessageParts({
-      message: message({ mode: 'ask', status: 'streaming' }),
+      message: message({ mode: 'instant', status: 'streaming' }),
       displayContent: '',
       displayReasoning: '',
       displayMetadata: { activityLabel: 'Searching' },
@@ -224,7 +224,7 @@ describe('buildMessageParts', () => {
     expect(parts).toEqual([{ kind: 'pending', status: 'Searching' }]);
   });
 
-  it('leaves plain pending dots status-free outside ask mode', () => {
+  it('leaves plain pending dots status-free outside instant mode', () => {
     const parts = buildMessageParts({
       message: message({ mode: 'chat', status: 'streaming' }),
       displayContent: '',

@@ -482,8 +482,13 @@ export function normalizeContextMode(mode: unknown): ChatContextMode {
 export function normalizeSessionComposerMode(
   mode: unknown,
   contextMode: ChatContextMode
-): 'chat' | 'ask' | 'agent' {
-  if (mode === 'chat' || mode === 'ask' || mode === 'agent') return mode;
+): 'chat' | 'instant' | 'agent' {
+  // Code space runs the full loop unconditionally — there is no fast path there.
+  if (contextMode === 'code') return 'agent';
+  if (mode === 'instant' || mode === 'agent') return mode;
+  // Legacy stored values converge on Instant: the old Chat tab is gone and
+  // Instant is its fast successor. (Pre-merge Ask builds: 'ask'.)
+  if (mode === 'chat' || mode === 'ask') return 'instant';
   return SPACES[contextMode].defaultComposerMode;
 }
 
@@ -624,7 +629,7 @@ export function buildContextualPrompt(args: {
   researchSummary?: string;
   ragContext?: string;
   workspaceContext?: string;
-  mode: 'chat' | 'ask' | 'agent';
+  mode: 'chat' | 'instant' | 'agent';
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
 }) {
   const extras: string[] = [];

@@ -87,7 +87,7 @@ export function getNativeSystemPrompt(
   extra: string | undefined,
   maxToolCalls: number,
   maxIterations: number,
-  toolMode: 'agent' | 'ask' | 'search_chat' = 'agent',
+  toolMode: 'agent' | 'instant' | 'search_chat' = 'agent',
   executionMode: 'workspace' | 'sandbox' = 'sandbox',
   searchMode: 'search' | 'deep' | 'max' = 'search'
 ): string {
@@ -107,7 +107,7 @@ export function getNativeSystemPrompt(
     '',
     'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
-  ].join('\n') : toolMode === 'ask' ? [
+  ].join('\n') : toolMode === 'instant' ? [
     'You are a fast, accurate Q&A assistant with a few grounding tools. Answer directly whenever you know the answer.',
     `You have up to ${maxIterations} reasoning steps and ${maxToolCalls} tool calls total — use as few as possible, then write the final answer in plain text.`,
     'Call a tool only when the answer genuinely needs it: web_search/fetch_url for current information, query_knowledge for retrieved documents, get_weather/convert_currency/get_quote for live data, calculator for exact arithmetic.',
@@ -129,6 +129,7 @@ export function getNativeSystemPrompt(
     'You are a conversational assistant with tools in a chat-scoped sandbox. Answer ordinary questions directly. Use tools when they help fulfill the request; use artifact tools for requested widgets and files.',
     `You have up to ${maxIterations} reasoning steps and a dynamic tool budget of ${maxToolCalls} tool uses. Let the task decide how many tools are needed, then write your final answer in plain text.`,
     'Stop after you have enough information. Do not over-search or over-verify.',
+    'Open with a one-line confirmation of what you understood and what you will do, then proceed — the user sees acknowledgement before tool output. Match effort to intent: act immediately on straightforward requests; state a brief plan first only when the task is genuinely multi-step.',
     'If a tool fails twice, stop using that tool and work only from evidence already gathered. Do not invent current facts.',
     'Do not repeat the same tool with similar arguments. After a web_search succeeds, use those results to answer or create the requested artifact instead of searching the same thing again.',
     'If stuck, summarize only the gathered tool results and clearly say what is missing.',
@@ -156,7 +157,7 @@ export function getXmlSystemPrompt(
   maxToolCalls: number,
   maxIterations: number,
   toolDefs: ToolDefinition[],
-  toolMode: 'agent' | 'ask' | 'search_chat' = 'agent',
+  toolMode: 'agent' | 'instant' | 'search_chat' = 'agent',
   executionMode: 'workspace' | 'sandbox' = 'sandbox',
   searchMode: 'search' | 'deep' | 'max' = 'search'
 ): string {
@@ -184,7 +185,7 @@ export function getXmlSystemPrompt(
     '',
     'FINAL ANSWER FORMAT:',
     buildResearchFinalAnswerContract(researchMode)
-  ].join('\n') : toolMode === 'ask' ? [
+  ].join('\n') : toolMode === 'instant' ? [
     'You are a fast, accurate Q&A assistant. Answer directly; when a tool is needed, use this XML format (one per response):',
     '',
     '<tool_call>',
@@ -236,13 +237,14 @@ export function getXmlSystemPrompt(
       : '12. Files live in the chat sandbox unless a tool explicitly reports a persistent workspace path.',
     '13. Artifacts must be self-contained and deterministic. Do not use CDN scripts, remote assets, network map tiles, or network-dependent rendering. Prefer native inline artifact tools for charts, maps, diagrams, and dashboards.',
     '14. If you cannot finish, final answer must say what was actually found and what could not be verified.',
+    '15. Open with a one-line confirmation of what you understood and what you will do, then proceed — the user sees acknowledgement before tool output. Match effort to intent: act immediately on straightforward requests; state a brief plan first only when the task is genuinely multi-step.',
   ].join('\n');
   return extra ? `${base}\n\n${extra}` : base;
 }
 
 export function buildDirectSystemPrompt(
   extra: string | undefined,
-  options: { toolMode?: 'agent' | 'ask' | 'search_chat'; searchMode?: 'search' | 'deep' | 'max' } = {}
+  options: { toolMode?: 'agent' | 'instant' | 'search_chat'; searchMode?: 'search' | 'deep' | 'max' } = {}
 ): string {
   const isSearchChat = options.toolMode === 'search_chat';
   const searchMode = options.searchMode || 'search';

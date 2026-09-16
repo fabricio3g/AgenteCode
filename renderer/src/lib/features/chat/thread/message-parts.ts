@@ -120,11 +120,11 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   const parts: MessagePart[] = [];
   const isStreaming = message.status === 'streaming';
   const hasContent = !!displayContent;
-  // Ask fast path renders a single quiet status, never the planning chrome:
+  // Instant fast path renders a single quiet status, never the planning chrome:
   // no reasoning trace, no tool-status line. Steps are still recorded on the
   // message (and approvals still render below) — only the surfacing is hushed.
-  const isQuietAsk = message.mode === 'ask';
-  const hasReasoning = enableThinking && !!displayReasoning && !isQuietAsk;
+  const isQuietInstant = message.mode === 'instant';
+  const hasReasoning = enableThinking && !!displayReasoning && !isQuietInstant;
   const hasSteps = !!message.agentSteps?.length;
 
   if (hasActiveDeepResearch) parts.push({ kind: 'deep-research' });
@@ -144,7 +144,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // vertical noise in an agent turn.
   const awaitingFirstAgentOutput =
     message.mode === 'agent' && isStreaming && !hasContent && !hasActiveDeepResearch;
-  if (!isQuietAsk && (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
+  if (!isQuietInstant && (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
 
   // Directly under the status line: the run is stopped until this is answered,
   // so it outranks everything else in the turn. Pushing it here also means the
@@ -171,7 +171,7 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
   // agent turn that had started but not yet recorded a step showed the dots
   // underneath its own "Planning…" line.
   if (isStreaming && !hasContent && parts.length === 0) {
-    parts.push(isQuietAsk && displayMetadata?.activityLabel ? { kind: 'pending', status: displayMetadata.activityLabel } : { kind: 'pending' });
+    parts.push(isQuietInstant && displayMetadata?.activityLabel ? { kind: 'pending', status: displayMetadata.activityLabel } : { kind: 'pending' });
   }
 
   if (hasContent) parts.push({ kind: 'content', content: displayContent });

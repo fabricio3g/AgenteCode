@@ -3,10 +3,20 @@ import type { ChatMessage } from '$lib/types/chat';
 import { markAgentStopped, normalizeSessionComposerMode, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
 
 describe('normalizeSessionComposerMode', () => {
-  it('preserves ask alongside chat and agent', () => {
-    expect(normalizeSessionComposerMode('ask', 'home')).toBe('ask');
+  it('preserves instant alongside agent', () => {
+    expect(normalizeSessionComposerMode('instant', 'home')).toBe('instant');
     expect(normalizeSessionComposerMode('agent', 'home')).toBe('agent');
-    expect(normalizeSessionComposerMode('chat', 'home')).toBe('chat');
+  });
+
+  it('migrates legacy chat (and pre-merge ask) to instant', () => {
+    expect(normalizeSessionComposerMode('chat', 'home')).toBe('instant');
+    expect(normalizeSessionComposerMode('ask', 'home')).toBe('instant');
+  });
+
+  it('forces the full loop on code space', () => {
+    expect(normalizeSessionComposerMode(undefined, 'code')).toBe('agent');
+    expect(normalizeSessionComposerMode('chat', 'code')).toBe('agent');
+    expect(normalizeSessionComposerMode('instant', 'code')).toBe('agent');
   });
 });
 

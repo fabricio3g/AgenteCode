@@ -76,8 +76,8 @@
       ? copy.composer.errorPlaceholder
       : generating && appStore.composerMode === 'agent'
         ? say.inProgress('Agent working')
-        : generating && appStore.composerMode === 'ask'
-          ? say.inProgress('Asking')
+        : generating && appStore.composerMode === 'instant'
+          ? say.inProgress('Answering')
           : copy.composer.placeholder
   );
 
@@ -341,9 +341,9 @@
     <ComposerModelNotice />
 
     {#if appStore.activeSpace === 'home'}
-      <!-- The mode tab lives above the input shell on Home: Ask for instant
-           grounded answers, Agent for the full tool loop. Code keeps its own
-           inline selector in the toolbar row. -->
+      <!-- The mode tab lives above the input shell on Home: Instant for fast
+           grounded answers, Agent for the full tool loop. Code space always
+           runs the full loop, so it offers no tab. -->
       <div class="mode-tab-row">
         <ModeSelector />
       </div>
@@ -453,7 +453,7 @@
     position: relative;
   }
 
-  /* Ask/Agent tab above the input shell: quiet, left-aligned, attached to
+  /* Instant/Agent tab above the input shell: quiet, left-aligned, attached to
      the shell rather than floating in the thread. The dock is
      pointer-events:none so the thread stays scrollable behind it — opt back
      in, or the tabs render but never receive clicks. */
