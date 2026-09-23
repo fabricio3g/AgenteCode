@@ -8,6 +8,7 @@ import { invoke, listen, isElectron } from '$lib/services/bridge';
 import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/services/chat-stream-idle';
 import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
+import type { RoleplaySampling } from '$lib/services/roleplay-prompts';
 
 const _openaiClients = new Map<string, OpenAI>();
 
@@ -522,6 +523,27 @@ export async function fetchModels(config?: AppConfig, apiKeyOverride?: string): 
   }
 }
 
+/**
+ * Sampling for one request body.
+ *
+ * A resolved per-turn override (roleplay: card → session → world) wins over the
+ * configured default. Whatever is unconfigured is left off the request entirely
+ * so the provider applies its own value rather than receiving a zero or a null.
+ */
+function mergeSampling(
+  overrides: RoleplaySampling | undefined,
+  defaults: { temperature?: number; maxTokens?: number; topP?: number }
+): Record<string, number> {
+  const temperature = overrides?.temperature ?? defaults.temperature;
+  const maxTokens = overrides?.maxTokens ?? defaults.maxTokens;
+  const topP = overrides?.topP ?? defaults.topP;
+  return {
+    ...(Number.isFinite(temperature) ? { temperature } : {}),
+    ...(maxTokens ? { max_tokens: maxTokens } : {}),
+    ...(Number.isFinite(topP) ? { top_p: topP } : {})
+  };
+}
+
 async function streamLocalReply(args: {
   messages: RequestMessage[];
   signal?: AbortSignal;
@@ -529,6 +551,8 @@ async function streamLocalReply(args: {
   onReasoning?: (value: string) => void;
   onUsage?: (usage: CompletionResult['usage']) => void;
   reasoning?: ReasoningRequest;
+  sampling?: RoleplaySampling;
+  stop?: string[];
 }): Promise<void> {
   const config = await loadChatConfig();
   // Proxied through the main process (chat_stream_start), not fetched from
@@ -590,8 +614,11 @@ async function streamLocalReply(args: {
         stream: true,
         messages: toRequestMessages(args.messages, model, hasVisionModel),
         ...(args.reasoning ? { reasoning: args.reasoning } : {}),
-        ...(Number.isFinite(config.llm?.local?.temperature) ? { temperature: config.llm!.local!.temperature } : {}),
-        ...(config.llm?.local?.max_tokens ? { max_tokens: config.llm.local.max_tokens } : {})
+        ...mergeSampling(args.sampling, {
+          temperature: config.llm?.local?.temperature,
+          maxTokens: config.llm?.local?.max_tokens
+        }),
+        ...(args.stop?.length ? { stop: args.stop } : {})
       }
     });
 
@@ -625,6 +652,8 @@ export async function streamAssistantReply(args: {
   onUsage?: (usage: CompletionResult['usage']) => void;
   apiKey?: string;
   reasoningLevel?: ReasoningLevel | null;
+  sampling?: RoleplaySampling;
+  stop?: string[];
 }): Promise<void> {
   const config = await loadChatConfig();
   const reasoning = buildReasoningRequest(args.reasoningLevel);
@@ -683,9 +712,12 @@ export async function streamAssistantReply(args: {
           stream: true,
           messages: toRequestMessages(args.messages, provider.model),
           ...(reasoning ? { reasoning } : {}),
-          ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-          ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-          ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
+          ...mergeSampling(args.sampling, {
+            temperature: provider.temperature,
+            maxTokens: provider.max_tokens,
+            topP: provider.top_p
+          }),
+          ...(args.stop?.length ? { stop: args.stop } : {})
         }
       });
 
@@ -718,9 +750,12 @@ export async function streamAssistantReply(args: {
     model: provider.model,
     stream: true,
     messages: toRequestMessages(args.messages, provider.model) as any,
-    ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
-    ...(provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
-    ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {}),
+    ...mergeSampling(args.sampling, {
+      temperature: provider.temperature,
+      maxTokens: provider.max_tokens,
+      topP: provider.top_p
+    }),
+    ...(args.stop?.length ? { stop: args.stop } : {}),
   });
 
   for await (const chunk of stream) {

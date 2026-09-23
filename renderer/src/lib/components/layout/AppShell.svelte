@@ -7,6 +7,10 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import CodeSurface from '$lib/features/code/CodeSurface.svelte';
+  import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
+  import { charactersStore } from '$lib/features/roleplay/characters.svelte';
+  import { worldsStore } from '$lib/features/roleplay/worlds.svelte';
+  import { ensureStarterKit, starterKitStore } from '$lib/features/roleplay/starter-kit';
   import { codeStore } from '$lib/features/code/code.svelte';
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
@@ -27,13 +31,15 @@
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
   import { isElectron } from '$lib/services/bridge';
+  import { copy } from '$lib/copy';
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
 
   let showShortcutsHelp = $state(false);
   const inCodeSpace = $derived(appStore.activeSpace === 'code');
+  const inRoleplaySpace = $derived(appStore.activeSpace === 'roleplay');
   const newSessionLabel = $derived(
-    inCodeSpace ? $t('code.addProject') : 'New chat'
+    inCodeSpace ? $t('code.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : 'New chat'
   );
 
   function startNewSession() {
@@ -92,6 +98,9 @@
   onMount(() => {
     document.addEventListener('keydown', handleKeydown);
     browserPanelStore.init();
+    // Roleplay library: one query at startup, independent of the space gate.
+    // The starter kit follows the loads so it can see what already exists.
+    void Promise.all([charactersStore.load(), worldsStore.load()]).then(() => ensureStarterKit(starterKitStore));
     if (isElectron()) {
       void hardwareStore.refresh();
       void capabilitiesStore.refresh();
@@ -163,11 +172,14 @@
     <Titlebar />
 
     <div class="flex min-h-0 flex-1 overflow-hidden">
-      <!-- The one branch point between the two spaces:
-           Code hosts the coding agent surface; Home keeps the chat panel. -->
+      <!-- The one branch point between the spaces:
+           Code hosts the coding agent surface; Roleplay the character surface;
+           Home keeps the general chat panel. -->
       <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {#if inCodeSpace}
           <CodeSurface />
+        {:else if inRoleplaySpace}
+          <RoleplaySurface />
         {:else}
           <HomeSurface />
         {/if}

@@ -21,6 +21,10 @@ export function resolveComposerRoute(input: {
   const searchMode = input.searchMode || 'chat';
   const contextMode = normalizeSpace(input.contextMode);
 
+  // Roleplay always streams directly: no tools, no intent routing.
+  if (contextMode === 'roleplay') {
+    return 'conversation';
+  }
   if (searchMode === 'search' || searchMode === 'deep' || searchMode === 'max') {
     return 'tools';
   }
@@ -82,6 +86,8 @@ export function shouldUseToolLoop(params: {
   searchMode?: 'chat' | 'search' | 'deep' | 'max' | null;
   contextMode?: string | null;
 }): boolean {
+  // Roleplay never runs the tool loop, regardless of mode or route.
+  if (normalizeSpace(params.contextMode) === 'roleplay') return false;
   // Instant is the fast path: the loop runs only when the heuristic intent gate
   // saw a grounding signal (live data, search, math). Anything else streams
   // a direct completion with zero tool-loop overhead.

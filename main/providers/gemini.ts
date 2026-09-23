@@ -164,6 +164,9 @@ function buildConfig(params: StreamParams) {
   if (params.max_tokens) config.maxOutputTokens = params.max_tokens;
   if (params.temperature != null) config.temperature = params.temperature;
   if (params.top_p != null) config.topP = params.top_p;
+  // Gemini rejects the request outright above five, so never send more than
+  // the caller's own cap here.
+  if (params.stop?.length) config.stopSequences = params.stop.slice(0, 5);
 
   const geminiTools = convertTools(params.tools);
   if (geminiTools?.length) config.tools = geminiTools;

@@ -117,6 +117,20 @@
         <div class="flex justify-end"><Switch bind:checked={enableThinking} label={$t('generalSettings.enableThinking')} /></div>
       </Field>
 
+      <Field
+        horizontal
+        class="py-4"
+        label={$t('generalSettings.roleplay')}
+        description={$t('generalSettings.roleplayDesc')}
+      >
+        <div class="flex justify-end">
+          <Switch
+            checked={appStore.roleplayEnabled}
+            label={$t('generalSettings.roleplay')}
+            onchange={(checked) => void appStore.setRoleplayEnabled(checked)}
+          />
+        </div>
+      </Field>
     </div>
   </section>
 

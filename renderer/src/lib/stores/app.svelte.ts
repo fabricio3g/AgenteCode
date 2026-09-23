@@ -1,14 +1,14 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
+import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
+import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
-import { humanizeAgentError } from '$lib/utils/errors';
-import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
-import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
+import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
@@ -24,7 +24,7 @@ import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningC
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
-import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
+import { buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
 import {
   applyLocalContextBudgetTruncation,
   buildOutboundMessages,
@@ -82,9 +82,6 @@ import {
   WEB_RAG_MIN_ANSWER_CHARS,
   WORKSPACE_MAX_FILES,
   WORKSPACE_MAX_FILE_SIZE_BYTES,
-  activityFromProgress,
-  agentOutcome,
-  agentStopReason,
   appendStreamingContent,
   appendStreamingReasoning,
   buildContextualPrompt as buildContextualPromptHelper,
@@ -96,7 +93,6 @@ import {
   finalizeAssistantMetadata,
   getElectronApi,
   getMessageRequestContent,
-  hasUsableAgentResult,
   isAbortLikeError,
   markAgentWriting,
   markAgentStopped,
@@ -108,11 +104,9 @@ import {
   normalizeSessionSearchMode,
   normalizeText,
   optimisticAck,
-  parseWriteFileBlocks,
   readBlobAsDataUrl,
-  setAgentActivity,
+  repairRoleplayChat,
   startReasoningTimer,
-  stripWriteFileBlocks,
   toInvoke,
   updateStreamingVersion,
   withTimeout,
@@ -130,7 +124,7 @@ class AppStore {
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
   activeSpace = $state<ChatContextMode>('home');
-  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null });
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null, roleplay: null });
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
@@ -383,6 +377,11 @@ class AppStore {
     return this.getSessionsForSpace('code');
   }
 
+  /** Roleplay sessions only. */
+  get visibleRoleplayChats() {
+    return this.getSessionsForSpace('roleplay');
+  }
+
   getSessionsForSpace(space: ChatContextMode) {
     return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === space);
   }
@@ -524,7 +523,8 @@ class AppStore {
     return this.buildSystemPromptForMode({
       backendMode: this.backendMode,
       providerPrompt: this.config.llm?.providers?.[this.activeProviderName]?.system_prompt,
-      includeChartHint: true
+      includeChartHint: true,
+      chat: this.currentChat
     });
   }
 
@@ -532,8 +532,14 @@ class AppStore {
     backendMode: GenerationBackendMode;
     providerPrompt?: string;
     includeChartHint?: boolean;
-    searchSystemPrefix?: string;
+    chat?: ChatSession | null;
+    /** Roleplay: the character whose reply is being generated. */
+    speakerId?: string | null;
   }): string {
+    const chat = args.chat ?? this.currentChat;
+    if (normalizeContextMode(chat?.contextMode) === 'roleplay') {
+      return roleplayStore.systemPrompt(chat, args.speakerId);
+    }
     const basePrompt = selectBaseSystemPrompt({
       backendMode: args.backendMode,
       localPrompt: this.config.llm?.local?.system_prompt,
@@ -543,7 +549,6 @@ class AppStore {
     return buildSystemPrompt({
       basePrompt,
       userName: this.userName,
-      searchSystemPrefix: args.searchSystemPrefix,
       includeChartHint: args.includeChartHint
     });
   }
@@ -883,7 +888,7 @@ class AppStore {
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
       }
 
-      this.chats = chats.map((chat, index) => normalizeChat(chat, index));
+      this.chats = chats.map((chat, index) => repairRoleplayChat(normalizeChat(chat, index)));
       this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
       this.currentChatId = currentChatId;
 
@@ -980,12 +985,14 @@ class AppStore {
       // Legacy keys: 'chat' was the old home id; 'work'/'code' both named the
       // code space at different times.
       home: typeof raw.home === 'string' ? raw.home : (typeof raw.chat === 'string' ? raw.chat : null),
-      code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null)
+      code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null),
+      roleplay: typeof raw.roleplay === 'string' ? raw.roleplay : null
     };
   }
 
   private defaultTitleForMode(mode: ChatContextMode) {
     if (mode === 'code') return 'New session';
+    if (mode === 'roleplay') return 'New roleplay';
     return 'New chat';
   }
 
@@ -1013,7 +1020,7 @@ class AppStore {
     }
     const mode = normalizeContextMode(chat.contextMode);
     this.composer = chat.draft || '';
-    this.searchMode = normalizeSessionSearchMode(chat.searchMode);
+    this.searchMode = mode === 'roleplay' ? 'chat' : normalizeSessionSearchMode(chat.searchMode);
     this.composerMode = normalizeSessionComposerMode(chat.composerMode, mode);
     this.reasoningLevel = chat.reasoningLevel ?? null;
     // Keep session fields canonical after hydrate
@@ -1059,7 +1066,7 @@ class AppStore {
   }
 
   private rebuildChatIdBySpace() {
-    const next: Record<ChatContextMode, string | null> = { home: null, code: null };
+    const next: Record<ChatContextMode, string | null> = { home: null, code: null, roleplay: null };
     for (const chat of this.chats) {
       const mode = normalizeContextMode(chat.contextMode);
       if (!next[mode]) next[mode] = chat.id;
@@ -1099,10 +1106,15 @@ class AppStore {
       contextMode,
       codeAgent: null,
       projectId: null,
-      workspace: contextMode === 'home' ? null : (options.workspace || null),
+      workspace: contextMode === 'code' ? (options.workspace || null) : null,
       reasoningLevel: null,
       composerMode,
       searchMode: 'chat',
+      characterId: null,
+      worldId: null,
+      personaId: null,
+      greetingIndex: 0,
+      roleplay: contextMode === 'roleplay' ? {} : null,
       messages: []
     };
     this.chats = [chat, ...this.chats];
@@ -1304,7 +1316,7 @@ class AppStore {
     return this.appendMessageToChat(this.currentChatId || '', message);
   }
 
-  private appendMessageToChat(chatId: string, message: ChatMessage) {
+  appendMessageToChat(chatId: string, message: ChatMessage) {
     const chat = this.findChat(chatId);
     if (!chat) return null;
     chat.messages = [...chat.messages, message];
@@ -1327,7 +1339,7 @@ class AppStore {
     this.chats = [...this.chats];
   }
 
-  private findChat(chatId: string | null | undefined) {
+  findChat(chatId: string | null | undefined) {
     if (!chatId) return null;
     return this.chats.find((chat) => chat.id === chatId) || null;
   }
@@ -1901,11 +1913,16 @@ class AppStore {
     });
   }
 
-  async sendCurrentMessage() {
-    const content = this.composer.trim();
+  /**
+   * Send the composer as a user turn, or — with `silent` — generate a
+   * character turn without one (group force-talk and auto mode).
+   */
+  async sendCurrentMessage(options: { silent?: boolean } = {}) {
+    const silent = !!options.silent;
+    const content = silent ? '' : this.composer.trim();
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
-    if ((!content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
+    if ((!silent && !content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
 
@@ -1916,7 +1933,6 @@ class AppStore {
     const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
     const activeComposerMode = normalizeSessionComposerMode(targetChat.composerMode ?? this.composerMode, activeContextMode);
     const activeReasoningLevel = targetChat.reasoningLevel ?? this.reasoningLevel;
-    const activeWorkspace = activeContextMode === 'code' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -1926,34 +1942,34 @@ class AppStore {
     })) return;
 
     this.error = null;
-    const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
-    const workContext = activeContextMode === 'code' && activeWorkspace
-      ? {
-          rootName: activeWorkspace.rootName,
-          fileCount: activeWorkspace.fileCount,
-          indexedCount: activeWorkspace.indexedCount
-        }
-      : null;
-    const userMessage: ChatMessage = {
-      id: createId('msg'),
-      role: 'user',
-      content,
-      createdAt: Date.now(),
-      done: true,
-      status: 'idle',
-      attachments: this.pendingAttachments,
-      mode: activeComposerMode,
-      searchMode: activeSearchMode,
-      workContext
-    };
+    const userMessage: ChatMessage | null = silent
+      ? null
+      : {
+          id: createId('msg'),
+          role: 'user',
+          content,
+          createdAt: Date.now(),
+          done: true,
+          status: 'idle',
+          attachments: this.pendingAttachments,
+          mode: activeComposerMode,
+          searchMode: activeSearchMode
+        };
 
-    this.appendMessageToChat(targetChatId, userMessage);
-    this.composer = '';
-    targetChat.draft = '';
-    const sentAttachments = [...this.pendingAttachments];
-    this.pendingAttachments = [];
+    // Scenes: a user turn resets the auto chain, and the reply is routed after
+    // the user's turn is in the history so mentions inside it are seen. A scene
+    // nobody can answer keeps the message in the composer instead of sending it.
+    if (!silent && activeContextMode === 'roleplay') roleplayStore.resetAuto(targetChatId);
+    if (!roleplayStore.routeTurn(targetChat, userMessage ? [...targetChat.messages, userMessage] : targetChat.messages)) return;
 
-    const modeControl = this.composerModeControl;
+    if (userMessage) {
+      this.appendMessageToChat(targetChatId, userMessage);
+      this.composer = '';
+      targetChat.draft = '';
+    }
+    const sentAttachments = silent ? [] : [...this.pendingAttachments];
+    if (!silent) this.pendingAttachments = [];
+
     const composerRoute = resolveComposerRoute({
       prompt: content,
       hasAttachments: sentAttachments.length > 0 || targetRagDocuments.length > 0,
@@ -1961,12 +1977,16 @@ class AppStore {
       contextMode: activeContextMode
     });
     const useToolLoop = shouldUseToolLoop({
-      control: modeControl,
+      control: this.composerModeControl,
       composerMode: activeComposerMode,
       route: composerRoute,
       searchMode: activeSearchMode,
       contextMode: activeContextMode
-    }) && !!targetChatId;
+    });
+    const plan = planHomeAgentRun({ composerMode: activeComposerMode, searchMode: activeSearchMode });
+    const initial = initialHomeActivity(plan, activeComposerMode);
+    // Spends the routed speaker and any queued story turn: one turn, one generation.
+    const turn = roleplayStore.prepareTurn(targetChat, { consumeRouting: true });
 
     const assistantMessage: ChatMessage = {
       id: createId('msg'),
@@ -1986,35 +2006,24 @@ class AppStore {
       activeVersion: 0,
       searchMode: activeSearchMode,
       mode: activeComposerMode,
+      // Roleplay turns belong to the character, so the thread can show who spoke.
+      speakerId: turn.speakerId,
       reasoning: '',
       metadata: useToolLoop
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
-            currentActivity: activeComposerMode === 'instant'
-              ? 'searching'
-              : activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
-                ? 'searching'
-                : 'planning',
-            activityLabel: activityLabel(
-              activeComposerMode === 'instant' || (activeSearchMode !== 'chat' && activeComposerMode !== 'agent') ? 'searching' : 'planning'
-            )
+            currentActivity: initial.activity,
+            activityLabel: activityLabel(initial.activity)
           }
         : undefined,
-      workContext,
       agentSteps: useToolLoop
         ? [{
             id: createId('step'),
             type: 'thinking',
-            label: activityLabel(activeComposerMode === 'instant' ? 'searching' : 'planning'),
+            label: activityLabel(initial.activity),
             status: 'running',
-            detail: activeComposerMode === 'instant'
-              ? 'Checking sources'
-              : activeComposerMode === 'agent'
-                ? 'Preparing tools and context'
-                : activeSearchMode !== 'chat'
-                ? 'Preparing search tools and context'
-                : 'Checking if tools are needed'
+            detail: initial.detail
           }]
         : [],
       artifact: null
@@ -2033,13 +2042,8 @@ class AppStore {
     const syncMsg = (force = false) => {
       const now = Date.now();
       if (!force && now - lastSyncTime < SYNC_INTERVAL_MS) {
-        /*
-         * Trailing edge. This throttle used to just set a `pendingSync` flag that
-         * only a `flushPendingSync` helper cleared — and that helper was never
-         * called anywhere, so the last chunk of a burst sat unrendered until either
-         * another chunk arrived or the run finished. Short answers visibly stalled
-         * mid-sentence. A timer means the tail always lands ~50ms later at worst.
-         */
+        // Trailing edge: the last chunk of a burst must land even when no
+        // further chunk arrives, or short answers stall mid-sentence.
         if (trailingSync === undefined) {
           trailingSync = setTimeout(() => {
             trailingSync = undefined;
@@ -2058,6 +2062,14 @@ class AppStore {
         chat.updatedAt = Date.now();
       }
     };
+    const snapshotVersion = () => {
+      assistantMessage.versions = [{
+        content: assistantMessage.content,
+        createdAt: assistantMessage.createdAt,
+        reasoning: assistantMessage.reasoning,
+        metadata: assistantMessage.metadata
+      }];
+    };
 
     const controller = new AbortController();
     const startTime = Date.now();
@@ -2066,10 +2078,9 @@ class AppStore {
 
     /*
      * The run begins inside the `try`, so the `finally` that ends it covers
-     * everything. It used to start several statements earlier, and anything that
-     * threw in the gap — context building, mode writes — left a run recorded with no
-     * matching end. The UI then showed "generating" forever and `canStartGeneration`
-     * blocked that chat permanently, with no way back short of a reload.
+     * everything. Anything that threw between starting and the `try` used to
+     * leave a run with no matching end: "generating" forever, and
+     * `canStartGeneration` blocking that chat until a reload.
      */
     try {
       this.beginGenerationRun(targetChatId, {
@@ -2079,25 +2090,21 @@ class AppStore {
         mode: activeComposerMode,
         startedAt: Date.now()
       });
-      const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
+      const searchConversationContext = userMessage
+        ? this.buildSearchConversationContext(userMessage.id, targetChatId)
+        : '';
       // Reset modes on the target session (and store mirrors only if still viewing it).
       // The tab is a persistent per-chat preference: Agent and Instant stick,
-      // only the one-shot search depth resets. Collapsing Instant to Chat here
-      // is exactly how the tab used to jump back on every send.
-      const postSendSearch: 'chat' = 'chat';
+      // only the one-shot search depth resets.
       const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : activeComposerMode === 'instant' ? 'instant' as const : 'chat' as const;
-      targetChat.searchMode = postSendSearch;
+      targetChat.searchMode = 'chat';
       targetChat.composerMode = postSendComposer;
       if (this.currentChatId === targetChatId) {
-        this.searchMode = postSendSearch;
+        this.searchMode = 'chat';
         this.composerMode = targetChat.composerMode || postSendComposer;
       }
-      let searchContext = '';
-      let sources: ChatMessage['sources'] = [];
-      let searchMeta: SearchMeta | null = null;
       let ragContext = '';
       let ragDocuments: IndexedDocument[] = [];
-      const workspaceContext = activeWorkspace ? buildWorkspacePrompt(activeWorkspace) : '';
 
       if (isElectron() && targetRagDocuments.length && activeSearchMode === 'chat') {
         // No tight retrieval budget when the user attached documents — pull more chunks.
@@ -2110,38 +2117,46 @@ class AppStore {
         const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
         ragDocuments = targetRagDocuments.filter((doc) => docIds.has(doc.id));
       }
+      const preserveDocuments = targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext;
 
-      assistantMessage.sources = sources;
-      assistantMessage.searchMeta = searchMeta;
+      assistantMessage.sources = [];
+      assistantMessage.searchMeta = null;
       assistantMessage.ragDocuments = ragDocuments;
-      syncMsg(true); // push initial metadata (sources, searchMeta) to the reactive array
+      syncMsg(true);
       this.persist();
 
-      const requestMessages = buildRequestMessagesWithPatchedUser({
-        messages: targetChat.messages,
-        assistantMessageId: assistantMessage.id,
-        userMessageId: userMessage.id,
-        userContent: content,
-        buildContextualPrompt: (userContent) => this.buildContextualPrompt({
-          content: userContent,
-          searchContext,
-          researchSummary: (searchMeta as SearchMeta | null)?.researchSummary || '',
-          ragContext,
-          workspaceContext,
-          mode: activeComposerMode,
-          searchMode: activeSearchMode
-        })
-      });
+      const requestMessages = userMessage
+        ? buildRequestMessagesWithPatchedUser({
+            messages: targetChat.messages,
+            assistantMessageId: assistantMessage.id,
+            userMessageId: userMessage.id,
+            userContent: content,
+            attribution: turn.attribution,
+            buildContextualPrompt: (userContent) => this.buildContextualPrompt({
+              content: userContent,
+              searchContext: '',
+              researchSummary: '',
+              ragContext,
+              workspaceContext: '',
+              mode: activeComposerMode,
+              searchMode: activeSearchMode
+            })
+          })
+        : buildRequestMessagesFromHistory(
+            targetChat.messages,
+            targetChat.messages.length - 1,
+            turn.attribution
+          );
 
-      const searchSystemPrefix = searchContext ? buildSearchSystemPrefix() : undefined;
       const systemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
-        searchSystemPrefix,
-        includeChartHint: activeComposerMode !== 'agent'
+        includeChartHint: activeComposerMode !== 'agent',
+        chat: targetChat,
+        speakerId: turn.speakerId
       });
 
-      const outboundMessages = buildOutboundMessages({ messages: requestMessages, systemPrompt });
+      const outboundMessages = turn.decorate(buildOutboundMessages({ messages: requestMessages, systemPrompt }));
       // Context window budget check (local mode only)
       if (activeBackendMode === 'local' && isElectron()) {
         try {
@@ -2154,7 +2169,7 @@ class AppStore {
               messages: outboundMessages,
               invoke: toInvoke(electronApi),
               // Uploaded / RAG document context must not be token-budget trimmed away.
-              preserveDocuments: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
+              preserveDocuments,
               onTruncated: (removed) => {
                 toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
               }
@@ -2165,272 +2180,64 @@ class AppStore {
         }
       }
 
-      // Home uses one conversational agent, with optional research depth.
-      const searchToolBudget = activeSearchMode === 'max'
-        ? { maxIterations: 48, maxToolCalls: 140, maxTimeMs: 22 * 60 * 1000 }
-        : activeSearchMode === 'deep'
-          ? { maxIterations: 28, maxToolCalls: 90, maxTimeMs: 14 * 60 * 1000 }
-          : activeSearchMode === 'search'
-            ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
-            : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      // Instant fast path: tight enough that the loop cannot go on a journey.
-      const instantBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
-
       if (useToolLoop) {
-        const isCodeSpace = activeContextMode === 'code';
-        const wantsAgent = isCodeSpace;
-        const isInstant = activeComposerMode === 'instant' && !wantsAgent;
-        const agentProfile =
-          activeSearchMode !== 'chat' && !wantsAgent
-            ? 'search' as const
-            : wantsAgent
-              ? (isCodeSpace ? 'work' as const : 'chat' as const)
-              : 'chat' as const;
-        // Research search modes use search_chat; Instant uses the fast instant profile;
-        // chat tools & agent use full tool lists.
-        const toolMode =
-          isInstant
-            ? 'instant' as const
-            : activeSearchMode !== 'chat' && !wantsAgent
-              ? 'search_chat' as const
-              : 'agent' as const;
-        const profileBudget =
-          isInstant
-            ? instantBudget
-            : agentProfile === 'search' || activeSearchMode !== 'chat'
-              ? searchToolBudget
-              : agentProfile === 'chat'
-                ? chatAgentBudget
-                : {};
-        const agentTaskArgs: RunAgentTaskArgs = {
+        const agentResult = await runAgentTask({
           chatId: targetChatId,
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
           conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
           executionMode: 'sandbox',
-          workspaceName: activeWorkspace?.rootName,
-          workspaceFiles: activeWorkspace?.files,
-          toolMode,
-          agentProfile,
-          searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
+          toolMode: plan.toolMode,
+          agentProfile: plan.agentProfile,
+          searchMode: plan.searchMode,
           reasoningLevel: activeReasoningLevel,
-          quietActivity: isInstant,
-          onContent: (value) => {
-            assistantMessage.content = value;
-            syncMsg();
-          },
-          preserveDocumentContext: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
-          ...profileBudget,
+          quietActivity: plan.instant,
+          preserveDocumentContext: preserveDocuments,
+          ...plan.budget,
           signal: controller.signal,
-          onStep: (steps) => {
-            assistantMessage.agentSteps = steps;
-            if (!isInstant) {
-              const running = steps.find((step) => step.status === 'running');
-              if (running) {
-                const mapped = activityFromProgress(running.label);
-                setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
-              }
-            }
-            syncMsg(true);
-            this.persist();
-          },
-          onProgress: (text) => {
-            if (isInstant) {
-              syncMsg();
-              return;
-            }
-            const mapped = activityFromProgress(text);
-            setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
-            syncMsg();
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            assistantMessage.reasoning = value;
-            syncMsg();
-          },
-          onArtifact: (artifacts) => {
-            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
-            assistantMessage.artifacts = artifacts;
-            assistantMessage.artifact = latest;
-            syncMsg(true);
-            this.persist();
-            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === assistantMessage.id)) {
-              this.setCurrentArtifact(latest, assistantMessage.id);
-            }
-          },
-          onSources: (liveSources) => {
-            const existingUrls = new Set((assistantMessage.sources || []).map((s) => s.url));
-            const newSources = liveSources.filter((s) => !existingUrls.has(s.url));
-            if (newSources.length) {
-              assistantMessage.sources = [...(assistantMessage.sources || []), ...newSources];
-              if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
-                assistantMessage.searchMode = 'search';
-              }
-              syncMsg(true);
-              this.persist();
-            }
-          }
-        };
-        const agentResult = await runAgentTask(agentTaskArgs);
+          ...homeAgentCallbacks({
+            message: assistantMessage,
+            quiet: plan.instant,
+            sync: syncMsg,
+            persist: () => this.persist(),
+            onReasoningStart: () => reasoningTimer.markStarted(),
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest)
+          })
+        });
         exactUsage = agentResult.usage || exactUsage;
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
-        // Handle agent result - check for errors or warnings
-        const outcome = agentOutcome(agentResult);
-        const stopReason = agentStopReason(agentResult);
-        const usableAgentResult = hasUsableAgentResult(agentResult);
-        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
-          // Fatal agent failure: no usable evidence/content was produced.
-          const friendly = humanizeAgentError(agentResult.error);
-          assistantMessage.content = agentResult.content?.trim()
-            ? agentResult.content
-            : friendly;
-          assistantMessage.status = 'error';
-          assistantMessage.done = true;
-          assistantMessage.metadata = {
-            ...finalizeAssistantMetadata({
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                error: true,
-                errorMessage: friendly,
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent failed',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
-          // Partial/stopped agents keep their evidence and render as a normal answer with a warning.
-          assistantMessage.content = agentResult.content;
-          assistantMessage.done = true;
-          assistantMessage.status = 'idle';
-          assistantMessage.metadata = {
-            ...finalizeAssistantMetadata({
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                warning: agentResult.warning
-                  || (agentResult.error ? humanizeAgentError(agentResult.error) : undefined)
-                  || 'Stopped before finishing. You can continue the conversation.',
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Stopped',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          if (agentResult.error && !usableAgentResult) {
-            if (this.config.ui?.agent_debug_logs) {
-              console.warn('[agent]', agentResult.warning || agentResult.error);
-            }
-          } else {
-            if (this.config.ui?.agent_debug_logs) {
-              console.info('[agent]', agentResult.warning || 'Agent stopped with usable gathered evidence.');
-            }
-          }
-        } else {
-          assistantMessage.content = agentResult.content;
-          assistantMessage.metadata = {
-            ...(assistantMessage.metadata || {}),
-            ...executionMetadata(activeBackendMode),
-            outcome,
-            stopReason,
-            currentActivity: 'completed',
-            activityLabel: 'Agent finished',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-          };
-        }
-        assistantMessage.reasoning = agentResult.reasoning;
-        const prevSteps = assistantMessage.agentSteps || [];
-        const diffSteps = prevSteps.filter((s) => s.diffStats?.length && !agentResult.steps.some((rs) => rs.id === s.id));
-        assistantMessage.agentSteps = [...agentResult.steps, ...diffSteps];
-        assistantMessage.artifact = agentResult.artifact;
-        if (agentResult.sources?.length) {
-          const existingUrls = new Set((assistantMessage.sources || []).map((s) => s.url));
-          const newSources = agentResult.sources.filter((s) => !existingUrls.has(s.url));
-          if (newSources.length) {
-            assistantMessage.sources = [...(assistantMessage.sources || []), ...newSources];
-          }
-          if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
-            assistantMessage.searchMode = 'search';
-          }
-          assistantMessage.searchMeta = {
-            ...(assistantMessage.searchMeta || {
-              searchRequested: true,
-              searchSucceeded: true,
-              contextAvailable: true,
-              sourceCount: 0
-            }),
-            searchRequested: true,
-            searchSucceeded: true,
-            contextAvailable: true,
-            sourceCount: assistantMessage.sources.length,
-            stopReason
-          };
-        } else if (activeSearchMode !== 'chat') {
-          assistantMessage.searchMeta = {
-            ...(assistantMessage.searchMeta || {}),
-            searchRequested: true,
-            searchSucceeded: !agentResult.error,
-            contextAvailable: false,
-            sourceCount: assistantMessage.sources?.length || 0,
-            requestedProvider: this.config.search?.provider || 'aggregator',
-            searchError: agentResult.error || agentResult.warning || '',
-            stopReason
-          };
+        applyHomeAgentResult(assistantMessage, agentResult, {
+          modelName: activeModelLabel,
+          backendMode: activeBackendMode,
+          searchMode: plan.searchMode,
+          requestedProvider: this.config.search?.provider || 'aggregator'
+        });
+        if (this.config.ui?.agent_debug_logs && (agentResult.warning || agentResult.error)) {
+          console.info('[agent]', agentResult.warning || agentResult.error);
         }
         syncMsg(true);
         this.persist();
-        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id)) {
-          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id);
-        }
-        // Agent artifacts are chat-sandboxed, so there is no host workspace write to rescan here.
+        this.focusArtifact(targetChatId, assistantMessage.id, agentResult.artifact);
       } else {
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: activeReasoningLevel,
+          sampling: turn.sampling,
+          stop: turn.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
+            turn.record(value);
             appendStreamingContent(
               assistantMessage,
               value,
               assistantMessage.reasoning || '',
-              assistantMessage.metadata
+              assistantMessage.metadata,
+              turn.sanitize
             );
             if (assistantMessage.agentSteps?.length) {
               assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
@@ -2460,6 +2267,7 @@ class AppStore {
       }
 
       assistantMessage.done = true;
+      turn.finalize(assistantMessage);
       // Only set status to 'idle' if it wasn't already set to 'error'
       if (assistantMessage.status !== 'error') {
         assistantMessage.status = 'idle';
@@ -2475,32 +2283,13 @@ class AppStore {
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
       assistantMessage.model = activeModelLabel;
-      assistantMessage.versions = [{
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        reasoning: assistantMessage.reasoning,
-        metadata: assistantMessage.metadata
-      }];
+      snapshotVersion();
       if (assistantMessage.agentSteps?.length) {
-        const hasError = assistantMessage.metadata?.error;
-        const hasWarning = assistantMessage.metadata?.warning;
-        assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
-          if (index === all.length - 1) {
-            if (hasError) {
-              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
-            } else if (hasWarning) {
-              return { ...step, status: 'done', detail: hasWarning };
-            }
-            return { ...step, status: 'done', detail: assistantMessage.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
-          }
-          return { ...step, status: step.status === 'running' ? 'done' : step.status };
-        });
+        assistantMessage.agentSteps = settleAgentSteps(assistantMessage.agentSteps, assistantMessage.metadata);
       }
 
-      const responseSources = ((assistantMessage.sources && assistantMessage.sources.length)
-        ? assistantMessage.sources
-        : sources) as SearchResult[];
-      if (targetChatId && responseSources.length > 0) {
+      const responseSources = (assistantMessage.sources || []) as SearchResult[];
+      if (responseSources.length > 0) {
         this.queueWebAnswerRagIngest({
           chatId: targetChatId,
           query: content,
@@ -2508,44 +2297,6 @@ class AppStore {
           sources: responseSources
         });
       }
-
-      // ── Work mode file writing ──────────────────────────────────────
-      // Code space only: home sandbox replies never touch host disk here.
-      // Fence blocks execute only for code-context agent turns with a
-      // workspace attached; main-side containment is second layer.
-      const activeWorkspaceRoot = activeWorkspace?.rootPath;
-      if (activeContextMode === 'code' && activeComposerMode !== 'agent' && activeWorkspaceRoot && isElectron() && assistantMessage.content) {
-        const blocks = parseWriteFileBlocks(assistantMessage.content);
-        if (blocks.length > 0) {
-          const created: import('$lib/types/chat').CreatedFile[] = [];
-          for (const block of blocks) {
-            try {
-              const fullPath = await writeWorkspaceFile(activeWorkspaceRoot, block.path, block.content);
-              created.push({ path: block.path, name: block.path.split('/').pop() || block.path, fullPath });
-            } catch (writeErr) {
-              toastStore.error(`Could not write ${block.path}: ${String((writeErr as Error)?.message || writeErr)}`);
-            }
-          }
-          if (created.length > 0) {
-            assistantMessage.filesCreated = created;
-            assistantMessage.content = stripWriteFileBlocks(assistantMessage.content, created);
-            assistantMessage.versions = [{
-              content: assistantMessage.content,
-              createdAt: assistantMessage.createdAt,
-              reasoning: assistantMessage.reasoning,
-              metadata: assistantMessage.metadata
-            }];
-            toastStore.success(
-              created.length === 1
-                ? `File created: ${created[0].name}`
-                : `${created.length} files created in workspace`
-            );
-            // Auto-refresh workspace so new files appear in sidebar
-            void this.refreshWorkspace(targetChatId);
-          }
-        }
-      }
-      // ───────────────────────────────────────────────────────────────
 
       syncMsg(true);
       this.persist();
@@ -2570,7 +2321,7 @@ class AppStore {
       assistantMessage.done = true;
       assistantMessage.status = aborted ? 'idle' : 'error';
       assistantMessage.content = aborted ? (assistantMessage.content || '') : (assistantMessage.content || errorMsg);
-      const timing = typeof startTime === 'number' ? (Date.now() - startTime) / 1000 : 0;
+      const timing = (Date.now() - startTime) / 1000;
       assistantMessage.metadata = finalizeAssistantMetadata({
         existing: assistantMessage.metadata,
         modelName: activeModelLabel,
@@ -2581,12 +2332,7 @@ class AppStore {
         overrides: aborted ? {} : { error: true, errorMessage: errorMsg }
       });
       assistantMessage.model = activeModelLabel;
-      assistantMessage.versions = [{
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        reasoning: assistantMessage.reasoning,
-        metadata: assistantMessage.metadata
-      }];
+      snapshotVersion();
       if (assistantMessage.agentSteps?.length) {
         if (aborted) {
           markAgentStopped(assistantMessage);
@@ -2598,7 +2344,10 @@ class AppStore {
         }
       }
       this.error = aborted ? null : assistantMessage.content;
-      userMessage.attachments = sentAttachments;
+      if (turn.sanitize) {
+        assistantMessage.content = turn.sanitize(assistantMessage.content);
+      }
+      if (userMessage) userMessage.attachments = sentAttachments;
       syncMsg(true);
       this.persist();
     } finally {
@@ -2606,6 +2355,16 @@ class AppStore {
       // the user may have already stopped.
       cancelTrailingSync();
       this.endGenerationRun(targetChatId, controller);
+      // Group auto mode: queue the next character turn once this one settles.
+      // A stopped or failed turn ends the chain instead of retrying.
+      roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+    }
+  }
+
+  /** Show a run's artifact when its chat is on screen and the studio follows this message. */
+  private focusArtifact(chatId: string, messageId: string, artifact: AgentArtifact | null | undefined) {
+    if (this.currentChatId === chatId && (artifact || this.currentArtifactMessageId === messageId)) {
+      this.setCurrentArtifact(artifact ?? null, messageId);
     }
   }
 
@@ -2700,7 +2459,11 @@ class AppStore {
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
 
-    const previousMessages = buildRequestMessagesFromHistory(chat.messages, index - 1);
+    const previousMessages = buildRequestMessagesFromHistory(
+      chat.messages,
+      index - 1,
+      roleplayStore.attribution(chat, message.speakerId)
+    );
     if (!previousMessages.length) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
@@ -2712,8 +2475,17 @@ class AppStore {
       activeProvider,
       localBusyActionText: 'retrying here'
     })) return;
-    const activeProviderApiKey = activeProvider?.api_key;
-    const activeWorkspace = chat.workspace || null;
+
+    // A regenerate answers as the same speaker and keeps a forced next speaker.
+    const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId });
+    const agentic = message.mode === 'agent' || message.mode === 'instant';
+    /*
+     * The original turn's plan is carried over: an Instant answer stays on the
+     * Instant fast path, and a Deep or Max research answer re-runs at the same
+     * depth instead of silently shrinking to a plain chat agent.
+     */
+    const plan = planHomeAgentRun({ composerMode: message.mode, searchMode: message.searchMode });
+    const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
 
     this.error = null;
     const controller = new AbortController();
@@ -2730,37 +2502,35 @@ class AppStore {
         ...executionMetadata(activeBackendMode)
       }
     };
+    /** Keep the new version in step with what the message shows. */
+    const mirrorVersion = () => {
+      nextVersion.content = message.content;
+      nextVersion.reasoning = message.reasoning;
+      const { currentActivity, activityLabel: label } = message.metadata || {};
+      if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label };
+    };
 
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
     // Same optimistic ack as a fresh send: intent confirmation now, replaced
-    // wholesale by the engine's first content. Instant regens were grounded
-    // before, so they read as lookups.
-    const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-    message.content = (message.mode === 'agent' || message.mode === 'instant')
-      ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup')
-      : '';
+    // wholesale by the engine's first content.
+    message.content = agentic ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup') : '';
     message.reasoning = '';
     message.done = false;
     message.status = 'streaming';
-    if (message.mode === 'agent' || message.mode === 'instant') {
-      const instantRegen = message.mode === 'instant';
+    if (agentic) {
+      const initial = initialHomeActivity(plan, message.mode);
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: activityLabel(instantRegen ? 'searching' : 'planning'), status: 'running', detail: instantRegen ? 'Checking sources' : 'Preparing tools and context' }
+        { id: createId('step'), type: 'thinking', label: activityLabel(initial.activity), status: 'running', detail: initial.detail }
       ];
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
-        currentActivity: instantRegen ? 'searching' : 'planning',
-        activityLabel: instantRegen ? activityLabel('searching') : 'Working'
+        currentActivity: initial.activity,
+        activityLabel: activityLabel(initial.activity)
       };
-      nextVersion.metadata = {
-        ...(nextVersion.metadata || {}),
-        ...executionMetadata(activeBackendMode),
-        currentActivity: message.mode === 'instant' ? 'searching' : 'planning',
-        activityLabel: message.mode === 'instant' ? activityLabel('searching') : 'Working'
-      };
+      mirrorVersion();
       message.artifact = null;
       message.artifacts = [];
       if (this.currentArtifactMessageId === message.id) {
@@ -2771,10 +2541,8 @@ class AppStore {
 
     /*
      * The run begins inside the `try` so the `finally` that ends it always runs.
-     * `persist()` used to sit between `beginGenerationRun` and this `try`, and it
-     * writes localStorage synchronously — a quota error there recorded a run that
-     * could never be ended, pinning the chat in "generating" for the rest of the
-     * session.
+     * `persist()` writes localStorage synchronously; a quota error before the
+     * `try` recorded a run that could never be ended.
      */
     try {
       this.beginGenerationRun(targetChatId, {
@@ -2785,245 +2553,70 @@ class AppStore {
         startedAt: Date.now()
       });
       this.persist();
-      const styledSystemPrompt = this.buildSystemPromptForMode({
+      const systemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
-        providerPrompt: activeProvider?.system_prompt
+        providerPrompt: activeProvider?.system_prompt,
+        chat,
+        speakerId: turn.speakerId
       });
-      const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
-      if (message.mode === 'agent' || message.mode === 'instant') {
-        const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-        const ctxMode = normalizeContextMode(chat.contextMode);
-        const regenProfile = ctxMode === 'code' ? 'work' as const : 'chat' as const;
-        // Regenerating an Instant answer stays on the Instant fast path (allowlist +
-        // tight budgets + quiet activity) instead of widening to full agent.
-        const isInstantRegen = message.mode === 'instant' || (message.mode !== 'agent' && chat.composerMode === 'instant');
-        const instantRegenBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
-        /*
-         * The original turn's search depth is carried over. Without it, regenerating a
-         * Deep or Max research answer silently re-ran as a plain chat agent — same
-         * question, far shallower answer, and no indication why.
-         */
-        const regenSearchMode = message.searchMode && message.searchMode !== 'chat'
-          ? message.searchMode
-          : undefined;
-        const regenArgs: RunAgentTaskArgs = {
+      const reasoningLevel = chat.reasoningLevel ?? this.reasoningLevel;
+      if (agentic) {
+        const agentResult = await runAgentTask({
           chatId: targetChatId,
-          systemPrompt: styledSystemPrompt,
+          systemPrompt,
           messages: previousMessages,
-          rawPrompt,
+          rawPrompt: regenPrompt,
           executionMode: 'sandbox',
-          workspaceName: activeWorkspace?.rootName,
-          workspaceFiles: activeWorkspace?.files,
-          toolMode: isInstantRegen ? ('instant' as const) : 'agent',
-          agentProfile: regenSearchMode ? 'search' as const : regenProfile,
-          ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
-          quietActivity: isInstantRegen,
+          toolMode: plan.toolMode,
+          agentProfile: plan.agentProfile,
+          searchMode: plan.searchMode,
+          quietActivity: plan.instant,
           conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
-          reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
-          onContent: (value) => {
-            nextVersion.content = value;
-            message.content = value;
-            this.touchChats();
-          },
-          ...(regenProfile === 'chat' && !regenSearchMode && !isInstantRegen ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
-          ...(isInstantRegen ? instantRegenBudget : {}),
+          reasoningLevel,
+          ...plan.budget,
           signal: controller.signal,
-          onStep: (steps) => {
-            message.agentSteps = steps;
-            if (isInstantRegen) {
+          ...homeAgentCallbacks({
+            message,
+            quiet: plan.instant,
+            sync: () => {
+              mirrorVersion();
               this.touchChats();
-              this.persist();
-              return;
-            }
-            const running = steps.find((step) => step.status === 'running');
-            if (running) {
-              const mapped = activityFromProgress(running.label);
-              setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
-              nextVersion.metadata = {
-                ...(nextVersion.metadata || {}),
-                currentActivity: mapped.currentActivity,
-                activityLabel: mapped.activityLabel
-              };
-            }
-            this.touchChats();
-            this.persist();
-          },
-          onProgress: (text) => {
-            if (isInstantRegen) {
-              this.touchChats();
-              return;
-            }
-            const mapped = activityFromProgress(text);
-            setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
-            nextVersion.metadata = {
-              ...(nextVersion.metadata || {}),
-              currentActivity: mapped.currentActivity,
-              activityLabel: mapped.activityLabel
-            };
-            this.touchChats();
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            nextVersion.reasoning = value;
-            message.reasoning = value;
-            this.touchChats();
-          },
-          onArtifact: (artifacts) => {
-            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
-            message.artifacts = artifacts;
-            message.artifact = latest;
-            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === message.id)) {
-              this.setCurrentArtifact(latest, message.id);
-            }
-            this.touchChats();
-            this.persist();
-          },
-          onSources: (liveSources) => {
-            const existingUrls = new Set((message.sources || []).map((s) => s.url));
-            const newSources = liveSources.filter((s) => !existingUrls.has(s.url));
-            if (newSources.length) {
-              message.sources = [...(message.sources || []), ...newSources];
-              if (!message.searchMode || message.searchMode === 'chat') {
-                message.searchMode = 'search';
-              }
-              this.touchChats();
-              this.persist();
-            }
-          }
-        };
-        const agentResult = await runAgentTask(regenArgs);
+            },
+            persist: () => this.persist(),
+            onReasoningStart: () => reasoningTimer.markStarted(),
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest)
+          })
+        });
+        exactUsage = agentResult.usage || exactUsage;
         markAgentWriting(message);
-        nextVersion.metadata = {
-          ...(nextVersion.metadata || {}),
-          currentActivity: 'writing',
-          activityLabel: activityLabel('writing')
-        };
+        mirrorVersion();
         this.touchChats();
         this.persist();
-        const outcome = agentOutcome(agentResult);
-        const stopReason = agentStopReason(agentResult);
-        const usableAgentResult = hasUsableAgentResult(agentResult);
-        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
-          nextVersion.content = agentResult.content || agentResult.error;
-          message.content = agentResult.content || agentResult.error;
-          message.status = 'error';
-          nextVersion.metadata = {
-            ...finalizeAssistantMetadata({
-              existing: nextVersion.metadata,
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                error: true,
-                errorMessage: agentResult.error,
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent failed',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          message.metadata = nextVersion.metadata;
-        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
-          nextVersion.content = agentResult.content;
-          message.content = agentResult.content;
-          message.status = 'idle';
-          nextVersion.metadata = {
-            ...finalizeAssistantMetadata({
-              existing: nextVersion.metadata,
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent stopped',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          message.metadata = nextVersion.metadata;
-        } else {
-          nextVersion.content = agentResult.content;
-          message.content = agentResult.content;
-          nextVersion.metadata = {
-            ...(nextVersion.metadata || {}),
-            ...executionMetadata(activeBackendMode),
-            outcome,
-            stopReason,
-            currentActivity: 'completed',
-            activityLabel: 'Agent finished',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-          };
-          message.metadata = nextVersion.metadata;
-        }
-        nextVersion.reasoning = agentResult.reasoning;
-        message.reasoning = agentResult.reasoning;
-        message.agentSteps = agentResult.steps;
-        message.artifact = agentResult.artifact;
-        if (agentResult.sources?.length) {
-          const existingUrls = new Set((message.sources || []).map((s) => s.url));
-          const newSources = agentResult.sources.filter((s) => !existingUrls.has(s.url));
-          message.sources = [...(message.sources || []), ...newSources];
-          if (!message.searchMode || message.searchMode === 'chat') {
-            message.searchMode = 'search';
-          }
-          message.searchMeta = {
-            ...(message.searchMeta || {
-              searchRequested: true,
-              searchSucceeded: true,
-              contextAvailable: true,
-              sourceCount: 0
-            }),
-            searchRequested: true,
-            searchSucceeded: true,
-            contextAvailable: true,
-            sourceCount: message.sources.length,
-            stopReason
-          };
-        }
-        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === message.id)) {
-          this.setCurrentArtifact(agentResult.artifact, message.id);
-        }
+        applyHomeAgentResult(message, agentResult, {
+          modelName: activeModelLabel,
+          backendMode: activeBackendMode,
+          searchMode: plan.searchMode,
+          requestedProvider: this.config.search?.provider || 'aggregator'
+        });
+        nextVersion.content = message.content;
+        nextVersion.reasoning = message.reasoning;
+        nextVersion.metadata = message.metadata;
+        this.focusArtifact(targetChatId, message.id, agentResult.artifact);
         this.touchChats();
         this.persist();
-        // Agent regeneration also stays inside the chat sandbox.
       } else {
         await streamAssistantReply({
-          messages: outboundMessages,
+          messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })),
           signal: controller.signal,
-          apiKey: activeProviderApiKey,
-          reasoningLevel: this.reasoningLevel,
+          apiKey: activeProvider?.api_key,
+          reasoningLevel,
+          sampling: turn.sampling,
+          stop: turn.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
-            nextVersion.content += value;
+            turn.record(value);
+            const nextContent = nextVersion.content + value;
+            nextVersion.content = turn.sanitize ? turn.sanitize(nextContent) : nextContent;
             message.content = nextVersion.content;
             nextVersion.reasoning = message.reasoning;
             this.touchChats();
@@ -3050,11 +2643,15 @@ class AppStore {
         totalElapsedSeconds: timing,
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
+      message.content = nextVersion.content;
+      turn.finalize(message);
+      nextVersion.content = message.content;
       message.metadata = nextVersion.metadata;
       message.model = activeModelLabel;
       message.done = true;
-      // Only set status to 'idle' if it wasn't already set to 'error'
-      if (message.status !== 'error') {
+      // Only set status to 'idle' if the agent result didn't already set 'error'
+      // (it mutates the message, so TS still sees the 'streaming' assignment).
+      if ((message.status as ChatMessage['status']) !== 'error') {
         message.status = 'idle';
       }
       if (message.mode === 'slides') {
@@ -3066,19 +2663,7 @@ class AppStore {
         }
       }
       if (message.agentSteps?.length) {
-        const hasError = message.metadata?.error;
-        const hasWarning = message.metadata?.warning;
-        message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
-          if (stepIndex === all.length - 1) {
-            if (hasError) {
-              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
-            } else if (hasWarning) {
-              return { ...step, status: 'done', detail: hasWarning };
-            }
-            return { ...step, status: 'done', detail: message.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
-          }
-          return { ...step, status: step.status === 'running' ? 'done' : step.status };
-        });
+        message.agentSteps = settleAgentSteps(message.agentSteps, message.metadata);
       }
       this.touchChats();
       this.persist();
@@ -3087,17 +2672,15 @@ class AppStore {
       const failure = toErrorMessage(error) || 'Request failed';
       const aborted = isAbortLikeError(failure);
       nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
-      nextVersion.metadata = {
-        ...finalizeAssistantMetadata({
-          existing: nextVersion.metadata,
-          modelName: activeModelLabel,
-          backendMode: activeBackendMode,
-          elapsedSeconds: timing,
-          totalElapsedSeconds: timing,
-          reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
-          overrides: aborted ? {} : { error: true, errorMessage: failure }
-        })
-      };
+      nextVersion.metadata = finalizeAssistantMetadata({
+        existing: nextVersion.metadata,
+        modelName: activeModelLabel,
+        backendMode: activeBackendMode,
+        elapsedSeconds: timing,
+        totalElapsedSeconds: timing,
+        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
+        overrides: aborted ? {} : { error: true, errorMessage: failure }
+      });
       message.content = nextVersion.content;
       message.reasoning = nextVersion.reasoning || '';
       message.metadata = nextVersion.metadata;
@@ -3326,12 +2909,26 @@ class AppStore {
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
     composer_mode_control?: 'tabs' | 'auto';
+    roleplay_enabled?: boolean;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
   }
 
   get composerModeControl(): 'tabs' | 'auto' {
     return this.config.ui?.composer_mode_control === 'tabs' ? 'tabs' : 'auto';
+  }
+
+  /** Whether the Roleplay space is enabled (Settings → General). */
+  get roleplayEnabled(): boolean {
+    return this.config.ui?.roleplay_enabled === true;
+  }
+
+  async setRoleplayEnabled(enabled: boolean) {
+    await this.updateUiSettings({ roleplay_enabled: enabled });
+    // Leaving the space while it is disabled must not strand the user in it.
+    if (!enabled && this.activeSpace === 'roleplay') {
+      this.setActiveSpace('home');
+    }
   }
 
   getArtifactToggles(): Record<string, boolean> {
@@ -3383,3 +2980,4 @@ class AppStore {
 }
 
 export const appStore = new AppStore();
+roleplayStore.bind(appStore);

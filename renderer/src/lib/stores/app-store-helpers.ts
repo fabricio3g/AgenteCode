@@ -302,10 +302,13 @@ export function appendStreamingContent(
   message: ChatMessage,
   chunk: string,
   reasoning: string,
-  metadata: MessageVersion['metadata']
+  metadata: MessageVersion['metadata'],
+  /** Roleplay: cleans the accumulated text before it is shown or versioned. */
+  sanitize?: (content: string) => string
 ) {
   if (!chunk) return;
-  message.content += chunk;
+  const next = message.content + chunk;
+  message.content = sanitize ? sanitize(next) : next;
   updateStreamingVersion(message, message.content, reasoning, metadata);
 }
 
@@ -366,37 +369,6 @@ export function isAbortLikeError(value: unknown): boolean {
   return text.includes('abort') || text.includes('cancel');
 }
 
-/**
- * Parse <write_file path="...">content</write_file> blocks from an LLM response.
- * Returns an array of {path, content} objects.
- */
-export function parseWriteFileBlocks(text: string): Array<{ path: string; content: string }> {
-  const results: Array<{ path: string; content: string }> = [];
-  // Match <write_file path="...">...</write_file> — allow newlines inside
-  const re = /<write_file\s+path="([^"]+)"\s*>([\s\S]*?)<\/write_file>/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const path = match[1].trim();
-    const content = match[2];
-    // Strip leading/trailing newline that the model typically adds
-    const cleanContent = content.replace(/^\n/, '').replace(/\n$/, '');
-    if (path) results.push({ path, content: cleanContent });
-  }
-  return results;
-}
-
-/**
- * Strip <write_file> blocks from the visible message content
- * and replace them with a brief inline note.
- */
-export function stripWriteFileBlocks(text: string, created: Array<{ path: string }>): string {
-  if (!created.length) return text;
-  let cleaned = text.replace(/<write_file\s+path="[^"]+"\s*>[\s\S]*?<\/write_file>/g, '').trim();
-  // Remove double blank lines left behind
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-  return cleaned;
-}
-
 function getAssistantActiveVersion(message: Partial<ChatMessage>): MessageVersion | null {
   if (!Array.isArray(message.versions) || !message.versions.length) return null;
   const index = typeof message.activeVersion === 'number'
@@ -418,7 +390,11 @@ export function getMessageRequestReasoning(message: Partial<ChatMessage>) {
     : undefined;
 }
 
-export function buildRequestMessagesFromHistory(messages: ChatMessage[], upToIndex = messages.length - 1): RequestMessage[] {
+export function buildRequestMessagesFromHistory(
+  messages: ChatMessage[],
+  upToIndex = messages.length - 1,
+  attribution?: RoleplayAttribution
+): RequestMessage[] {
   const endIndex = Math.max(-1, Math.min(upToIndex, messages.length - 1));
   const outbound: RequestMessage[] = [];
   for (let index = 0; index <= endIndex; index += 1) {
@@ -428,11 +404,45 @@ export function buildRequestMessagesFromHistory(messages: ChatMessage[], upToInd
     if (!content) continue;
     outbound.push({
       role: message.role,
-      content,
+      content: attributeRoleplayContent(message.role, message.speakerId, content, attribution),
       ...(getMessageRequestReasoning(message) ? { reasoning_content: getMessageRequestReasoning(message) } : {})
     });
   }
   return outbound;
+}
+
+/**
+ * Roleplay group attribution.
+ *
+ * A shared history of anonymous `assistant` turns is unreadable to the model in
+ * a multi-character scene: it cannot tell who said what. Group chats therefore
+ * prefix each turn with its speaker's name — request-only, never stored or
+ * displayed — and end with a nudge naming the character whose turn it is.
+ */
+export interface RoleplayAttribution {
+  /** Character id → display name for every cast member. */
+  names: Map<string, string>;
+  /** The user's persona name. */
+  userName?: string;
+  /** Only multi-character scenes need attribution. */
+  group: boolean;
+  /** The character whose reply is being generated. */
+  speakerName?: string;
+}
+
+/** Prefix a turn with its speaker's name in group scenes. */
+export function attributeRoleplayContent(
+  role: 'user' | 'assistant',
+  speakerId: string | null | undefined,
+  content: string,
+  attribution: RoleplayAttribution | undefined
+): string {
+  if (!attribution?.group) return content;
+  if (role === 'assistant') {
+    const name = speakerId ? attribution.names.get(speakerId) : undefined;
+    return name ? `${name}: ${content}` : content;
+  }
+  return attribution.userName ? `${attribution.userName}: ${content}` : content;
 }
 
 function resolveLegacySearchMode(message: Partial<ChatMessage>): ChatMessage['searchMode'] {
@@ -467,6 +477,10 @@ export function normalizeMessage(message: Partial<ChatMessage>, index: number): 
     searchMode: resolveLegacySearchMode(message),
     slides: Array.isArray(message.slides) ? message.slides : [],
     mode: message.mode || (((message as Partial<ChatMessage> & { agent?: boolean }).agent) ? 'agent' : 'chat'),
+    speakerId: typeof message.speakerId === 'string' ? message.speakerId : null,
+    choices: Array.isArray(message.choices) ? message.choices.map(String) : undefined,
+    props: Array.isArray(message.props) ? message.props : undefined,
+    storyTurn: message.storyTurn || undefined,
     agentSteps: Array.isArray(message.agentSteps) ? message.agentSteps : [],
     artifact: message.artifact || null,
     workContext: message.workContext || null
@@ -485,6 +499,8 @@ export function normalizeSessionComposerMode(
 ): 'chat' | 'instant' | 'agent' {
   // Code space runs the full loop unconditionally — there is no fast path there.
   if (contextMode === 'code') return 'agent';
+  // Roleplay streams directly; Instant/Agent tabs are Home-only.
+  if (contextMode === 'roleplay') return 'chat';
   if (mode === 'instant' || mode === 'agent') return mode;
   // Legacy stored values converge on Instant: the old Chat tab is gone and
   // Instant is its fast successor. (Pre-merge Ask builds: 'ask'.)
@@ -524,6 +540,7 @@ export function isDefaultChatTitle(title: string): boolean {
     || title === 'New code'
     || title === 'New conversation'
     || title === 'New Work'
+    || title === 'New roleplay'
     || title === 'Codebase overview'
   );
 }
@@ -533,6 +550,7 @@ export function resolveImmutableContextMode(chat: Partial<ChatSession>): ChatCon
   const mode = normalizeContextMode(chat.contextMode);
   if (mode === 'code') return 'code';
   if (chat.workspace) return 'code';
+  if (mode === 'roleplay') return 'roleplay';
   return 'home';
 }
 
@@ -544,7 +562,9 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
 
   // Clear space separation: home sessions carry no code identity.
   // Code sessions keep project + engine session identity for resume.
+  // Roleplay sessions keep their character/persona/roster identity.
   const isCode = contextMode === 'code';
+  const isRoleplay = contextMode === 'roleplay';
   return {
     id: String(chat.id || createId(`chat-${index}`)),
     title: String(chat.title || 'New chat'),
@@ -558,8 +578,46 @@ export function normalizeChat(chat: Partial<ChatSession>, index: number): ChatSe
     workspace: isCode ? chat.workspace || null : null,
     reasoningLevel: chat.reasoningLevel ?? null,
     composerMode: normalizeSessionComposerMode(chat.composerMode, contextMode),
-    searchMode: normalizeSessionSearchMode(chat.searchMode),
+    // Roleplay has no web-search modes; anything persisted collapses to chat.
+    searchMode: isRoleplay ? 'chat' : normalizeSessionSearchMode(chat.searchMode),
+    characterId: isRoleplay ? (typeof chat.characterId === 'string' ? chat.characterId : null) : null,
+    worldId: isRoleplay ? (typeof chat.worldId === 'string' ? chat.worldId : null) : null,
+    personaId: isRoleplay ? (typeof chat.personaId === 'string' ? chat.personaId : null) : null,
+    greetingIndex: isRoleplay && Number.isFinite(chat.greetingIndex) ? Number(chat.greetingIndex) : 0,
+    roleplay: isRoleplay ? (chat.roleplay ?? null) : null,
     messages
+  };
+}
+
+/**
+ * Heal a roleplay scene whose identity predates the current schema.
+ *
+ * Scenes created before character binding was persisted have no `characterId`,
+ * but their opening turn still carries `speakerId` — adopt it, and rebuild the
+ * roster from every attributed turn when it is missing. A scene that resolves
+ * nothing is left alone so the UI can ask the user to choose a character.
+ */
+export function repairRoleplayChat(chat: ChatSession): ChatSession {
+  if (normalizeContextMode(chat.contextMode) !== 'roleplay') return chat;
+
+  const attributed: string[] = [];
+  for (const message of chat.messages || []) {
+    if (message.role === 'assistant' && message.speakerId && !attributed.includes(message.speakerId)) {
+      attributed.push(message.speakerId);
+    }
+  }
+
+  const characterId = chat.characterId || attributed[0] || null;
+  const hasRoster = !!chat.roleplay?.characterIds?.length;
+  const roster = hasRoster
+    ? chat.roleplay!.characterIds!
+    : [...new Set([...(characterId ? [characterId] : []), ...attributed])];
+
+  if (chat.characterId === characterId && (hasRoster || !roster.length)) return chat;
+  return {
+    ...chat,
+    characterId,
+    roleplay: hasRoster ? chat.roleplay : { ...(chat.roleplay || {}), characterIds: roster }
   };
 }
 

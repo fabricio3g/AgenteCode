@@ -89,10 +89,25 @@ export const copy = {
     truncated: '… (truncated)'
   },
 
-  /** The two workspaces the sidebar switches between. Keys mirror SpaceId. */
+  /** The workspaces the sidebar switches between. Keys mirror SpaceId. */
   spaces: {
     home: 'Home',
-    code: 'Code'
+    code: 'Code',
+    roleplay: 'Roleplay'
+  },
+
+  /** Roleplay space: character library, personas, scenes. */
+  roleplay: {
+    newRoleplay: 'New roleplay',
+    characters: 'Characters',
+    library: 'Character library',
+    newCharacter: 'New character',
+    importCharacter: 'Import',
+    pickCharacter: 'Pick a character to start',
+    pickCharacterHint: 'Characters you create appear here.',
+    noRoleplays: 'No roleplay sessions yet',
+    noRoleplaysHint: 'Start a scene with a character and it will appear here.',
+    enableInSettings: 'Enable Roleplay in Settings → General.'
   },
 
   thread: {

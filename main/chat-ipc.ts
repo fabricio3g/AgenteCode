@@ -97,6 +97,7 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
       max_tokens: body.max_tokens,
       temperature: body.temperature,
       top_p: body.top_p,
+      stop: body.stop,
       tool_choice: body.tool_choice,
       response_format: body.response_format,
       ...body.extra_params
@@ -181,6 +182,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
             max_tokens: body.max_tokens,
             temperature: body.temperature,
             top_p: body.top_p,
+            stop: body.stop,
             ...body.extra_params
           }).filter(([, v]) => v !== undefined)
         )

@@ -47,6 +47,12 @@ describe('resolveComposerRoute', () => {
     expect(resolveComposerRoute({ prompt: 'hi', contextMode: 'work' })).toBe('agent');
     expect(resolveComposerRoute({ prompt: 'hi', contextMode: 'chat' })).not.toBe('agent');
   });
+
+  it('roleplay always streams directly, ignoring agent and search signals', () => {
+    expect(resolveComposerRoute({ prompt: 'Create a spreadsheet', contextMode: 'roleplay' })).toBe('conversation');
+    expect(resolveComposerRoute({ prompt: 'What is the weather in Madrid?', contextMode: 'roleplay' })).toBe('conversation');
+    expect(resolveComposerRoute({ prompt: 'hello', searchMode: 'deep', contextMode: 'roleplay' })).toBe('conversation');
+  });
 });
 
 describe('shouldUseToolLoop', () => {
@@ -108,5 +114,21 @@ describe('shouldUseToolLoop', () => {
       route: 'conversation',
       contextMode: 'home'
     })).toBe(true);
+  });
+
+  it('roleplay never loops, even with grounding signals', () => {
+    expect(shouldUseToolLoop({
+      control: 'tabs',
+      composerMode: 'agent',
+      route: 'agent',
+      contextMode: 'roleplay'
+    })).toBe(false);
+    expect(shouldUseToolLoop({
+      control: 'auto',
+      composerMode: 'chat',
+      route: 'tools',
+      searchMode: 'deep',
+      contextMode: 'roleplay'
+    })).toBe(false);
   });
 });

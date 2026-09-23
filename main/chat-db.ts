@@ -158,7 +158,34 @@ function migrate(database) {
 
     CREATE INDEX IF NOT EXISTS idx_rag_documents_chat_id ON rag_documents(chat_id);
 
+    CREATE TABLE IF NOT EXISTS characters (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      data TEXT
+    );
 
+    CREATE INDEX IF NOT EXISTS idx_characters_updated_at ON characters(updated_at);
+
+    CREATE TABLE IF NOT EXISTS personas (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      is_default INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      data TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS worlds (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      data TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_worlds_updated_at ON worlds(updated_at);
   `);
 
   // Migrations for older chat-history.db files.
@@ -181,13 +208,23 @@ function migrate(database) {
   addColumn(database, 'chats', 'reasoning_level', 'TEXT');
   addColumn(database, 'message_versions', 'metadata', 'TEXT');
   addColumn(database, 'attachments', 'data', 'TEXT');
+  // Roleplay identity
+  addColumn(database, 'chats', 'character_id', 'TEXT');
+  addColumn(database, 'chats', 'persona_id', 'TEXT');
+  addColumn(database, 'chats', 'world_id', 'TEXT');
+  addColumn(database, 'chats', 'greeting_index', 'INTEGER');
+  addColumn(database, 'chats', 'roleplay', 'TEXT');
+  addColumn(database, 'messages', 'speaker_id', 'TEXT');
+  addColumn(database, 'messages', 'choices', 'TEXT');
+  addColumn(database, 'messages', 'props', 'TEXT');
+  addColumn(database, 'messages', 'story_turn', 'TEXT');
 }
 
 export function saveChatSession(session) {
   const database = getDb();
   const upsertChat = database.prepare(`
-    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, workspace, composer_mode, search_mode, reasoning_level, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chats (id, title, folder_id, draft, context_mode, code_agent, project_id, workspace, composer_mode, search_mode, reasoning_level, character_id, world_id, persona_id, greeting_index, roleplay, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       title = excluded.title,
       folder_id = excluded.folder_id,
@@ -199,12 +236,17 @@ export function saveChatSession(session) {
       composer_mode = excluded.composer_mode,
       search_mode = excluded.search_mode,
       reasoning_level = excluded.reasoning_level,
+      character_id = excluded.character_id,
+      world_id = excluded.world_id,
+      persona_id = excluded.persona_id,
+      greeting_index = excluded.greeting_index,
+      roleplay = excluded.roleplay,
       updated_at = excluded.updated_at
   `);
 
   const upsertMessage = database.prepare(`
-    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, agent_task_id, active_version, tts_audio, artifact, metadata, sources, search_meta, agent_steps, rag_documents, slides, work_context, files_created)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, speaker_id, choices, props, story_turn, agent_task_id, active_version, tts_audio, artifact, metadata, sources, search_meta, agent_steps, rag_documents, slides, work_context, files_created)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       content = excluded.content,
       reasoning = excluded.reasoning,
@@ -213,6 +255,10 @@ export function saveChatSession(session) {
       status = excluded.status,
       search_mode = excluded.search_mode,
       mode = excluded.mode,
+      speaker_id = excluded.speaker_id,
+      choices = excluded.choices,
+      props = excluded.props,
+      story_turn = excluded.story_turn,
       agent_task_id = excluded.agent_task_id,
       active_version = excluded.active_version,
       tts_audio = excluded.tts_audio,
@@ -263,6 +309,11 @@ export function saveChatSession(session) {
       session.composerMode || null,
       session.searchMode || null,
       session.reasoningLevel || null,
+      session.characterId || null,
+      session.worldId || null,
+      session.personaId || null,
+      session.greetingIndex != null ? session.greetingIndex : null,
+      stringifyJson(session.roleplay),
       session.createdAt || Date.now(),
       session.updatedAt || Date.now()
     );
@@ -285,6 +336,10 @@ export function saveChatSession(session) {
         msg.status || 'idle',
         msg.searchMode || null,
         msg.mode || null,
+        msg.speakerId || null,
+        stringifyJson(msg.choices),
+        stringifyJson(msg.props),
+        stringifyJson(msg.storyTurn),
         null,
         msg.activeVersion != null ? msg.activeVersion : null,
         stringifyJson(msg.ttsAudio),
@@ -435,6 +490,13 @@ export function loadAllChats() {
       if (msg.model) result.model = msg.model;
       if (msg.search_mode) result.searchMode = msg.search_mode;
       if (msg.mode) result.mode = msg.mode;
+      if (msg.speaker_id) result.speakerId = msg.speaker_id;
+      const choices = parseJson(msg.choices, []);
+      if (Array.isArray(choices) && choices.length) result.choices = choices.map(String);
+      const props = parseJson(msg.props, []);
+      if (Array.isArray(props) && props.length) result.props = props;
+      const storyTurn = parseJson(msg.story_turn, null);
+      if (storyTurn) result.storyTurn = storyTurn;
       if (msg.active_version != null) result.activeVersion = msg.active_version;
       result.metadata = parseJson(msg.metadata, undefined);
       result.sources = parseJson(msg.sources, []);
@@ -465,6 +527,11 @@ export function loadAllChats() {
       composerMode: chat.composer_mode || null,
       searchMode: chat.search_mode || null,
       reasoningLevel: chat.reasoning_level || null,
+      characterId: chat.character_id || null,
+      worldId: chat.world_id || null,
+      personaId: chat.persona_id || null,
+      greetingIndex: chat.greeting_index != null ? chat.greeting_index : 0,
+      roleplay: parseJson(chat.roleplay, null),
       messages
     };
     return session;
@@ -531,6 +598,118 @@ export function deleteCodeProject(projectId) {
   const database = getDb();
   database.prepare('UPDATE chats SET project_id = NULL WHERE project_id = ?').run(projectId);
   database.prepare('DELETE FROM code_projects WHERE id = ?').run(projectId);
+}
+
+// --- Roleplay: characters & personas ---
+// The full card lives in `data` (JSON) so new spec fields never need a schema
+// change; the columns exist for listing and ordering.
+
+export function loadAllCharacters() {
+  const database = getDb();
+  return database.prepare('SELECT * FROM characters ORDER BY updated_at DESC').all().map(row => ({
+    ...(parseJson(row.data, {}) || {}),
+    id: row.id,
+    name: row.name || parseJson(row.data, {})?.name || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+}
+
+export function saveCharacter(character) {
+  if (!character?.id) return;
+  const database = getDb();
+  database.prepare(`
+    INSERT INTO characters (id, name, created_at, updated_at, data)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      updated_at = excluded.updated_at,
+      data = excluded.data
+  `).run(
+    character.id,
+    character.name || '',
+    character.createdAt || Date.now(),
+    character.updatedAt || Date.now(),
+    stringifyJson(character)
+  );
+}
+
+export function deleteCharacter(characterId) {
+  const database = getDb();
+  database.prepare('DELETE FROM characters WHERE id = ?').run(characterId);
+}
+
+export function loadAllPersonas() {
+  const database = getDb();
+  return database.prepare('SELECT * FROM personas ORDER BY updated_at DESC').all().map(row => ({
+    ...(parseJson(row.data, {}) || {}),
+    id: row.id,
+    name: row.name || parseJson(row.data, {})?.name || '',
+    isDefault: !!row.is_default,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+}
+
+export function savePersona(persona) {
+  if (!persona?.id) return;
+  const database = getDb();
+  database.prepare(`
+    INSERT INTO personas (id, name, is_default, created_at, updated_at, data)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      is_default = excluded.is_default,
+      updated_at = excluded.updated_at,
+      data = excluded.data
+  `).run(
+    persona.id,
+    persona.name || '',
+    persona.isDefault ? 1 : 0,
+    persona.createdAt || Date.now(),
+    persona.updatedAt || Date.now(),
+    stringifyJson(persona)
+  );
+}
+
+export function deletePersona(personaId) {
+  const database = getDb();
+  database.prepare('DELETE FROM personas WHERE id = ?').run(personaId);
+}
+
+export function loadAllWorlds() {
+  const database = getDb();
+  return database.prepare('SELECT * FROM worlds ORDER BY updated_at DESC').all().map(row => ({
+    ...(parseJson(row.data, {}) || {}),
+    id: row.id,
+    name: row.name || parseJson(row.data, {})?.name || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+}
+
+export function saveWorld(world) {
+  if (!world?.id) return;
+  const database = getDb();
+  database.prepare(`
+    INSERT INTO worlds (id, name, created_at, updated_at, data)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      updated_at = excluded.updated_at,
+      data = excluded.data
+  `).run(
+    world.id,
+    world.name || '',
+    world.createdAt || Date.now(),
+    world.updatedAt || Date.now(),
+    stringifyJson(world)
+  );
+}
+
+export function deleteWorld(worldId) {
+  const database = getDb();
+  database.prepare('DELETE FROM worlds WHERE id = ?').run(worldId);
 }
 
 export function deleteChat(chatId) {

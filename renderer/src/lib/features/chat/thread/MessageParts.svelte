@@ -30,6 +30,7 @@
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import SlidesBlock from '$lib/ui/components/SlidesBlock.svelte';
 
+  import WritingIndicator from './WritingIndicator.svelte';
   import { useMessage } from './message-context';
   import { buildMessageParts, resolveTotalElapsed } from './message-parts';
 
@@ -68,7 +69,10 @@
       hasActiveDeepResearch,
       hasDocumentArtifact,
       hasPendingApproval: pendingApprovals.length > 0
-    })
+      // Roleplay has its own artifacts — props — and they live on the reply.
+      // Agent work products (reports, spreadsheets) belong to the tool loop,
+      // which never runs in a scene, so they are never shown here.
+    }).filter((part) => ctx.contextMode !== 'roleplay' || part.kind !== 'artifact')
   );
 
   async function downloadSlides() {
@@ -148,12 +152,10 @@
   {:else if part.kind === 'warning'}
     <div class="mb-2 text-xs text-muted-foreground">{part.detail}</div>
   {:else if part.kind === 'pending'}
-    <div class="my-2 flex items-center gap-1.5">
-      <span class="typing-dot"></span>
-      <span class="typing-dot"></span>
-      <span class="typing-dot"></span>
+    <div class="my-2 flex items-center gap-2">
+      <WritingIndicator />
       {#if part.status}
-        <span class="pending-label ml-1 text-xs text-muted-foreground">{part.status}</span>
+        <span class="pending-label text-xs text-muted-foreground">{part.status}</span>
       {/if}
     </div>
   {:else if part.kind === 'content'}

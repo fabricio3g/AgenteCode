@@ -27,15 +27,6 @@ export function selectBaseSystemPrompt(params: {
   return params.providerPrompt?.trim() || params.globalPrompt?.trim() || '';
 }
 
-export function buildSearchSystemPrefix(now = new Date()): string {
-  return `${buildCurrentDateTimeContext(now)} ` +
-    'You are a helpful assistant with access to real-time web search results. ' +
-    'The user\'s message includes fresh web data retrieved moments ago. ' +
-    'Ground your response in the provided search results — present facts, figures, and details from the sources. ' +
-    'Always attribute information to its source when possible. ' +
-    'If the search results are insufficient to answer fully, state what you found and what is missing.';
-}
-
 export function buildSystemPrompt(params: {
   basePrompt: string;
   userName?: string | null;
