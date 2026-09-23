@@ -348,6 +348,14 @@ export interface ChatMessage {
   searchMode?: 'chat' | 'search' | 'deep' | 'max';
   slides?: SlideData[];
   mode?: 'chat' | 'slides' | 'instant' | 'agent';
+  /** Roleplay group chats: which character authored an assistant turn. */
+  speakerId?: string | null;
+  /** Roleplay adventure choices offered at the end of this turn. */
+  choices?: string[];
+  /** Roleplay props the turn put in the user's hands. */
+  props?: RoleplayProp[];
+  /** Set on a turn the user did not write: a thrown twist, a beat of silence. */
+  storyTurn?: RoleplayStoryTurn;
   agentSteps?: AgentStep[];
   /**
    * The last artifact the turn produced. Retained because chats persisted before
@@ -407,6 +415,225 @@ export interface ChatFolder {
   createdAt: number;
 }
 
+// ── Roleplay ───────────────────────────────────────────────────────────
+// Character Card V2/V3-compatible shapes. Field names mirror the community
+// spec so imported cards round-trip; the UI may only render a subset.
+
+export type CharacterAssetType = 'icon' | 'background' | 'user_icon' | 'emotion' | string;
+
+export interface CharacterAsset {
+  type: CharacterAssetType;
+  /** Data URL or `ccdefault:` for the card's own image. */
+  uri: string;
+  name?: string;
+  ext?: string;
+}
+
+export interface LorebookEntry {
+  id: string;
+  keys: string[];
+  /** Required in addition to `keys` when `selective` is set. */
+  secondaryKeys?: string[];
+  selective?: boolean;
+  /** How `secondaryKeys` combine: any (default), all, none, or not-all. */
+  secondaryLogic?: 'and_any' | 'and_all' | 'not_any' | 'not_all';
+  /** Always injected regardless of keys (within token budget). */
+  constant?: boolean;
+  content: string;
+  enabled: boolean;
+  insertionOrder: number;
+  caseSensitive?: boolean;
+  useRegex?: boolean;
+  priority?: number;
+  position?: 'before_char' | 'after_char';
+  comment?: string;
+}
+
+export interface CharacterBook {
+  name?: string;
+  description?: string;
+  scanDepth?: number;
+  tokenBudget?: number;
+  recursiveScanning?: boolean;
+  entries: LorebookEntry[];
+}
+
+export interface CharacterCard {
+  id: string;
+  name: string;
+  nickname?: string;
+  tagline?: string;
+  /** Data URL or local file path. */
+  avatar?: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  alternateGreetings: string[];
+  /** V3: greetings only offered inside group chats. */
+  groupOnlyGreetings: string[];
+  exampleDialogue: string;
+  systemPrompt: string;
+  postHistoryInstructions: string;
+  creatorNotes?: string;
+  tags: string[];
+  creator?: string;
+  characterVersion?: string;
+  spec?: 'chara_card_v2' | 'chara_card_v3' | 'flaxeo';
+  assets?: CharacterAsset[];
+  book?: CharacterBook | null;
+  /** Kokoro/engine voice id used for this character's replies. */
+  voiceId?: string | null;
+  /** Group chats: 0 (never speaks unless mentioned) … 100 (always replies). */
+  talkativeness?: number;
+  temperature?: number | null;
+  topP?: number | null;
+  maxTokens?: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** The user's own character in a roleplay — who the model is talking to. */
+export interface UserPersona {
+  id: string;
+  name: string;
+  description: string;
+  avatar?: string;
+  isDefault?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A thing the scene produced, or something the user pinned: a handout, a note,
+ * a lead being chased, a bond. Props arrive here from replies; notes are typed
+ * by hand. This is the scene's journal — the campaign book for one chat.
+ */
+export interface RoleplayJournalEntry {
+  id: string;
+  kind: 'prop' | 'note' | 'quest' | 'bond';
+  title: string;
+  body: string;
+  pinned?: boolean;
+  /** The turn that produced it, for props that came out of a reply. */
+  messageId?: string | null;
+  createdAt: number;
+}
+
+export const ROLEPLAY_PROP_KINDS = ['letter', 'note', 'map', 'document', 'object', 'photo'] as const;
+export type RoleplayPropKind = (typeof ROLEPLAY_PROP_KINDS)[number];
+
+/**
+ * A thing the scene put in the user's hands.
+ *
+ * A roleplay artifact: no manifest, no work product, no artifact studio. The
+ * kind says what it physically is so the card and the viewer can treat it as
+ * one.
+ */
+export interface RoleplayProp {
+  title: string;
+  kind: RoleplayPropKind;
+  body: string;
+}
+
+/** The mark left by a turn the user did not write. */
+export interface RoleplayStoryTurn {
+  label: string;
+  kind?: string;
+  intensity?: string;
+}
+
+/** How a group scene picks who speaks next. */
+export type RoleplayReplyOrder = 'list' | 'natural' | 'mention' | 'manual';
+
+/** Defaults a world applies to scenes started from it. */
+export interface WorldSettings {
+  replyOrder?: RoleplayReplyOrder;
+  /** Let characters keep talking without a user turn. */
+  autoMode?: boolean;
+  /** Consecutive character turns before auto-mode pauses. */
+  autoModeMaxTurns?: number;
+  /** Pause between auto-mode turns, in milliseconds. */
+  autoModeDelayMs?: number;
+  /** End replies with clickable suggested actions. */
+  adventureChoices?: boolean;
+  /** Seconds a choice panel waits before the moment passes. Absent = no timer. */
+  choiceTimerSeconds?: number | null;
+  /** Default: let a reply hand the user a prop. */
+  props?: boolean;
+  /** Keep `Name:` prefixes in replies instead of stripping them. */
+  showSpeakerLabels?: boolean;
+  /** Allow a single generation to voice several characters. */
+  allowMultiSpeaker?: boolean;
+  temperature?: number | null;
+  topP?: number | null;
+  maxTokens?: number | null;
+  authorNote?: string;
+  contentRating?: 'sfw' | 'unrestricted';
+}
+
+/**
+ * A reusable scene kit: setting, canon and cast.
+ *
+ * Chats are timelines and own their memory; the world is what carries over
+ * between them — lorebook, roster, openings and defaults.
+ */
+export interface RoleplayWorld {
+  id: string;
+  name: string;
+  tagline?: string;
+  /** Always-present setting and rules. */
+  overview: string;
+  /** Opening situation; used when no cast card defines a scenario. */
+  scenario?: string;
+  avatar?: string;
+  book?: CharacterBook | null;
+  /** Ordered cast. The first id is the primary speaker. */
+  castIds: string[];
+  /** World openings offered when a scene starts. */
+  starters: string[];
+  defaultPersonaId?: string | null;
+  settings?: WorldSettings;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Per-session roleplay state, persisted with the chat. */
+export interface RoleplaySettings {
+  /** Group-chat roster. The first id is the primary speaker. */
+  characterIds?: string[];
+  temperature?: number | null;
+  topP?: number | null;
+  maxTokens?: number | null;
+  /** NovelAI-style note injected near the end of context. */
+  authorNote?: string;
+  /** How many messages from the end the author note is injected at. */
+  authorNoteDepth?: number;
+  contentRating?: 'sfw' | 'unrestricted';
+  /** Let characters keep talking without a user turn. */
+  autoMode?: boolean;
+  /** Consecutive character turns before auto-mode pauses. */
+  autoModeMaxTurns?: number;
+  /** Pause between auto-mode turns, in milliseconds. */
+  autoModeDelayMs?: number;
+  /** Allow a single generation to voice several characters. */
+  allowMultiSpeaker?: boolean;
+  /** End replies with clickable suggested actions. */
+  adventureChoices?: boolean;
+  /** Seconds a choice panel waits before the moment passes. Absent = no timer. */
+  choiceTimerSeconds?: number | null;
+  /** Let a reply hand the user a prop — a letter, a map, a note. */
+  props?: boolean;
+  /** Handouts and notes kept beside the thread. */
+  journal?: RoleplayJournalEntry[];
+  /** Keep `Name:` prefixes in replies instead of stripping them. */
+  showSpeakerLabels?: boolean;
+  /** Speaker order for group chats. */
+  replyOrder?: RoleplayReplyOrder;
+  /** Group members muted for this scene. */
+  mutedIds?: string[];
+}
+
 /**
  * The space a session belongs to. Immutable after create.
  *
@@ -414,7 +641,7 @@ export interface ChatFolder {
  * `'work'`/`'code'` (old ids of code) — and are normalized on read via
  * `normalizeSpace()` in `$lib/spaces`.
  */
-export type ChatContextMode = 'home' | 'code';
+export type ChatContextMode = 'home' | 'code' | 'roleplay';
 
 export interface CodeProject {
   id: string;
@@ -445,6 +672,16 @@ export interface ChatSession {
   composerMode?: SessionComposerMode | null;
   /** Per-chat search depth mode; isolated across sessions. */
   searchMode?: SessionSearchMode | null;
+  /** Roleplay: the character this chat was started with (group chat primary). */
+  characterId?: string | null;
+  /** Roleplay: the world whose canon this scene runs in, when one is bound. */
+  worldId?: string | null;
+  /** Roleplay: the user persona active in this chat. */
+  personaId?: string | null;
+  /** Roleplay: which greeting seeded the opening message. */
+  greetingIndex?: number;
+  /** Roleplay: per-session settings (roster, sampling, author note). */
+  roleplay?: RoleplaySettings | null;
   messages: ChatMessage[];
 }
 
@@ -638,6 +875,10 @@ export interface AppConfig {
     enable_thinking?: boolean;
     agent_debug_logs?: boolean;
     artifact_toggles?: Record<string, boolean>;
+    /** Enables the Roleplay space (tab, surface and settings section). */
+    roleplay_enabled?: boolean;
+    /** Set once the starter kit has been offered, so deleting it stays deleted. */
+    roleplay_starter_kit?: boolean;
     /**
      * Map artifact basemap. Tiles are the default surface; when they cannot be
      * fetched the map falls back to the geometry bundled with the app, so a map

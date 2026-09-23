@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from '$lib/types/chat';
-import { markAgentStopped, normalizeSessionComposerMode, optimisticAck, reliableUsageMetadata } from '$lib/stores/app-store-helpers';
+import type { ChatMessage, ChatSession } from '$lib/types/chat';
+import { markAgentStopped, normalizeChat, normalizeSessionComposerMode, optimisticAck, reliableUsageMetadata, repairRoleplayChat } from '$lib/stores/app-store-helpers';
 
 describe('normalizeSessionComposerMode', () => {
   it('preserves instant alongside agent', () => {
@@ -17,6 +17,78 @@ describe('normalizeSessionComposerMode', () => {
     expect(normalizeSessionComposerMode(undefined, 'code')).toBe('agent');
     expect(normalizeSessionComposerMode('chat', 'code')).toBe('agent');
     expect(normalizeSessionComposerMode('instant', 'code')).toBe('agent');
+  });
+
+  it('keeps roleplay on the direct-stream chat mode', () => {
+    expect(normalizeSessionComposerMode('chat', 'roleplay')).toBe('chat');
+    expect(normalizeSessionComposerMode('instant', 'roleplay')).toBe('chat');
+    expect(normalizeSessionComposerMode('agent', 'roleplay')).toBe('chat');
+  });
+});
+
+describe('normalizeChat roleplay identity', () => {
+  it('keeps character, persona, world and roster inside roleplay', () => {
+    const chat = normalizeChat({
+      id: 'chat-roleplay',
+      contextMode: 'roleplay',
+      characterId: 'char-1',
+      worldId: 'world-1',
+      personaId: 'persona-1',
+      greetingIndex: 2,
+      searchMode: 'deep',
+      roleplay: { characterIds: ['char-1'] }
+    }, 0);
+
+    expect(chat.contextMode).toBe('roleplay');
+    expect(chat.characterId).toBe('char-1');
+    expect(chat.worldId).toBe('world-1');
+    expect(chat.personaId).toBe('persona-1');
+    expect(chat.greetingIndex).toBe(2);
+    expect(chat.roleplay?.characterIds).toEqual(['char-1']);
+    // Roleplay has no web search modes.
+    expect(chat.searchMode).toBe('chat');
+  });
+
+  it('strips roleplay fields from other spaces', () => {
+    const chat = normalizeChat({ id: 'chat-home', contextMode: 'home', characterId: 'char-1', worldId: 'world-1' }, 0);
+    expect(chat.characterId).toBeNull();
+    expect(chat.worldId).toBeNull();
+    expect(chat.roleplay).toBeNull();
+  });
+});
+
+describe('repairRoleplayChat', () => {
+  function roleplayChat(overrides: Partial<ChatSession> = {}): ChatSession {
+    return normalizeChat({ id: 'chat-1', contextMode: 'roleplay', messages: [], ...overrides }, 0);
+  }
+
+  it('adopts the character and roster from attributed turns', () => {
+    const chat = roleplayChat({
+      messages: [
+        { id: 'm1', role: 'assistant', content: 'Hi.', speakerId: 'char-aiko' },
+        { id: 'm2', role: 'user', content: 'Hello.' },
+        { id: 'm3', role: 'assistant', content: 'Ren here.', speakerId: 'char-ren' }
+      ] as ChatMessage[]
+    });
+
+    const repaired = repairRoleplayChat(chat);
+    expect(repaired.characterId).toBe('char-aiko');
+    expect(repaired.roleplay?.characterIds).toEqual(['char-aiko', 'char-ren']);
+  });
+
+  it('leaves narrator openings and complete scenes untouched', () => {
+    const narrator = roleplayChat({
+      messages: [{ id: 'm1', role: 'assistant', content: 'The lanterns rise.' }] as ChatMessage[]
+    });
+    expect(repairRoleplayChat(narrator)).toBe(narrator);
+
+    const complete = roleplayChat({ characterId: 'char-aiko', roleplay: { characterIds: ['char-aiko'] } });
+    expect(repairRoleplayChat(complete)).toBe(complete);
+  });
+
+  it('does not touch other spaces', () => {
+    const home = normalizeChat({ id: 'home-1', contextMode: 'home' }, 0);
+    expect(repairRoleplayChat(home)).toBe(home);
   });
 });
 

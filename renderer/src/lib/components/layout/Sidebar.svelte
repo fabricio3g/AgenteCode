@@ -12,7 +12,7 @@
   import { slide } from 'svelte/transition';
 import { flip } from 'svelte/animate';
 import { smoothEase } from '$lib/utils/transitions';
-  import { Boxes, Code2, FileDown, House, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
+  import { Boxes, Code2, Drama, FileDown, House, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import { downloadSessionMarkdown, sessionExportFilename } from '$lib/features/shared/export-session';
 
@@ -23,10 +23,19 @@ import { smoothEase } from '$lib/utils/transitions';
   let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([4]));
 
-  const spaceTabs: Array<{ id: ChatContextMode; label: string; icon: typeof House }> = [
+  // Roleplay is opt-in: the tab only exists once the setting is on.
+  const spaceTabs = $derived<Array<{ id: ChatContextMode; label: string; icon: typeof House }>>([
     { id: 'home', label: copy.spaces.home, icon: House },
-    { id: 'code', label: copy.spaces.code, icon: Code2 }
-  ];
+    { id: 'code', label: copy.spaces.code, icon: Code2 },
+    ...(appStore.roleplayEnabled
+      ? [{ id: 'roleplay' as ChatContextMode, label: copy.spaces.roleplay, icon: Drama }]
+      : [])
+  ]);
+
+  /** The session list for the active space (home and roleplay share a layout). */
+  const listChats = $derived(
+    appStore.activeSpace === 'roleplay' ? appStore.visibleRoleplayChats : appStore.visibleHomeChats
+  );
 
   function startOfDay(ts: number) {
     const d = new Date(ts);
@@ -45,12 +54,12 @@ import { smoothEase } from '$lib/utils/transitions';
   }
 
   const groupedChats = $derived.by(() => {
-    // Home sidebar shows home sessions only. Code uses CodeSidebar.
+    // Home and Roleplay share this date-grouped list; Code uses CodeSidebar.
     type ChatGroup = { key: number; label: string; chats: typeof appStore.visibleHomeChats };
     const groups: ChatGroup[] = [];
     const groupMap = new Map<number, ChatGroup>();
 
-    for (const chat of appStore.visibleHomeChats) {
+    for (const chat of listChats) {
       const now = startOfDay(Date.now());
       const day = startOfDay(chat.updatedAt || chat.createdAt);
       const diff = Math.floor((now - day) / 86400000);
@@ -69,7 +78,13 @@ import { smoothEase } from '$lib/utils/transitions';
   });
 
   const sidebarIconColor = $derived('currentColor');
-  const newButtonLabel = $derived(appStore.activeSpace === 'code' ? $t('code.addProject') : $t('sidebar.newChat'));
+  const newButtonLabel = $derived(
+    appStore.activeSpace === 'code'
+      ? $t('code.addProject')
+      : appStore.activeSpace === 'roleplay'
+        ? copy.roleplay.newRoleplay
+        : $t('sidebar.newChat')
+  );
 
   const activeModel = $derived(
     appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
@@ -176,10 +191,17 @@ import { smoothEase } from '$lib/utils/transitions';
             id={`space-tab-${tab.id}`}
             tabindex={appStore.activeSpace === tab.id ? 0 : -1}
             aria-selected={appStore.activeSpace === tab.id}
+            aria-label={tab.label}
+            title={tab.label}
             onclick={() => appStore.setActiveSpace(tab.id)}
           >
-            <Icon class="space-tab-icon size-3.5" />
-            <span class="space-tab-label">{tab.label}</span>
+            <Icon class="space-tab-icon size-4" />
+            <!-- The label stays in the DOM and animates open on the selected
+                 tab (0fr → 1fr grid); inactive tabs stay icon-only so three
+                 spaces fit the rail. aria-label keeps every tab named. -->
+            <span class="space-tab-label" aria-hidden="true">
+              <span class="space-tab-label-text">{tab.label}</span>
+            </span>
           </button>
         {/each}
       </div>
@@ -332,10 +354,19 @@ import { smoothEase } from '$lib/utils/transitions';
       {:else}
         <div class="empty-state flex flex-col items-center justify-center py-12 text-center">
           <div class="empty-icon mb-2 flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)]">
-            <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            {#if appStore.activeSpace === 'roleplay'}
+              <Drama class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            {:else}
+              <MessageSquare class="h-4 w-4" style={`color: ${sidebarIconColor};`} />
+            {/if}
           </div>
-          <p class="text-[14px] text-[var(--text-muted)]">{$t('sidebar.noConversations')}</p>
-          <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{$t('sidebar.emptyHint')}</p>
+          {#if appStore.activeSpace === 'roleplay'}
+            <p class="text-[14px] text-[var(--text-muted)]">{copy.roleplay.noRoleplays}</p>
+            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{copy.roleplay.noRoleplaysHint}</p>
+          {:else}
+            <p class="text-[14px] text-[var(--text-muted)]">{$t('sidebar.noConversations')}</p>
+            <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">{$t('sidebar.emptyHint')}</p>
+          {/if}
         </div>
       {/if}
     </div>
@@ -401,7 +432,9 @@ import { smoothEase } from '$lib/utils/transitions';
 
   .space-tab {
     min-width: 0;
-    flex: 1 1 0;
+    /* Icon-only tabs size to their icon; the selected tab takes the rest and
+       reveals its label. */
+    flex: 0 0 auto;
     height: 1.875rem;
     display: flex;
     align-items: center;
@@ -416,6 +449,8 @@ import { smoothEase } from '$lib/utils/transitions';
     line-height: 1;
     cursor: pointer;
     transition:
+      flex-grow var(--motion-smooth) var(--motion-ease-out),
+      padding-inline var(--motion-smooth) var(--motion-ease-out),
       background-color var(--motion-fast) var(--motion-ease),
       color var(--motion-fast) var(--motion-ease),
       box-shadow var(--motion-fast) var(--motion-ease);
@@ -425,10 +460,31 @@ import { smoothEase } from '$lib/utils/transitions';
     flex-shrink: 0;
   }
 
+  /* Icon-only tabs get a square-ish hit area around the glyph instead of
+     hugging it, so they are comfortable to click without a label. */
+  .space-tab:not(.active) {
+    min-width: 1.875rem;
+    padding-inline: 0.375rem;
+  }
+
+  /* Grid 0fr → 1fr is the one width animation that eases smoothly without
+     measuring text; the inner span owns the clipping. */
   .space-tab-label {
-    display: inline;
+    display: grid;
+    grid-template-columns: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-columns var(--motion-smooth) var(--motion-ease-out),
+      opacity var(--motion-fast) var(--motion-ease);
+  }
+
+  .space-tab.active .space-tab-label {
+    grid-template-columns: 1fr;
+    opacity: 1;
+  }
+
+  .space-tab-label-text {
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -440,6 +496,9 @@ import { smoothEase } from '$lib/utils/transitions';
   /* Raised pill on the track — same treatment as .aui-segmented-item.is-active,
      so tabs read the same wherever they appear. */
   .space-tab.active {
+    /* Animate flex-grow, not flex-basis: grow is interpolatable in Chromium. */
+    flex-grow: 1;
+    padding-inline: 0.625rem;
     background: var(--surface-active);
     color: var(--foreground);
   }
@@ -589,5 +648,12 @@ import { smoothEase } from '$lib/utils/transitions';
   .sidebar-btn:hover {
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .space-tab,
+    .space-tab-label {
+      transition: none;
+    }
   }
 </style>

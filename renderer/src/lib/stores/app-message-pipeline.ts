@@ -1,6 +1,13 @@
 import type { AppConfig, ChatMessage } from '$lib/types/chat';
 import type { RequestMessage } from '$lib/services/chat-api';
-import { getMessageRequestContent, getMessageRequestReasoning } from '$lib/stores/app-store-helpers';
+import {
+  attributeRoleplayContent,
+  getMessageRequestContent,
+  getMessageRequestReasoning,
+  type RoleplayAttribution
+} from '$lib/stores/app-store-helpers';
+
+export type { RoleplayAttribution };
 
 /**
  * Build clean LLM request messages from the chat transcript.
@@ -14,6 +21,7 @@ export function buildRequestMessagesWithPatchedUser(params: {
   userMessageId: string;
   userContent: string;
   buildContextualPrompt: (content: string) => string;
+  attribution?: RoleplayAttribution;
 }): RequestMessage[] {
   const outbound: RequestMessage[] = [];
 
@@ -23,7 +31,10 @@ export function buildRequestMessagesWithPatchedUser(params: {
     if (message.id === params.userMessageId) {
       const content = params.buildContextualPrompt(params.userContent).trim();
       if (!content) continue;
-      outbound.push({ role: 'user', content });
+      outbound.push({
+        role: 'user',
+        content: attributeRoleplayContent('user', null, content, params.attribution)
+      });
       continue;
     }
 
@@ -31,7 +42,11 @@ export function buildRequestMessagesWithPatchedUser(params: {
     const content = getMessageRequestContent(message).trim();
     if (!content) continue;
     const reasoning = getMessageRequestReasoning(message);
-    outbound.push({ role, content, ...(reasoning ? { reasoning_content: reasoning } : {}) });
+    outbound.push({
+      role,
+      content: attributeRoleplayContent(role, message.speakerId, content, params.attribution),
+      ...(reasoning ? { reasoning_content: reasoning } : {})
+    });
   }
 
   return outbound;
@@ -40,6 +55,43 @@ export function buildRequestMessagesWithPatchedUser(params: {
 /** Prepend system prompt when present. */
 export function prependSystemPrompt(messages: RequestMessage[], systemPrompt: string): RequestMessage[] {
   return systemPrompt ? [{ role: 'system', content: systemPrompt }, ...messages] : messages;
+}
+
+/**
+ * Group chats end with a nudge naming the character whose turn it is. The
+ * system prompt already says it; the nudge is the last thing the model reads
+ * before generating, which is what actually holds the turn.
+ */
+export function appendRoleplayNudge(
+  messages: RequestMessage[],
+  attribution: RoleplayAttribution | undefined
+): RequestMessage[] {
+  if (!attribution?.group || !attribution.speakerName) return messages;
+  const userName = attribution.userName || 'the user';
+  return [
+    ...messages,
+    {
+      role: 'system',
+      content: `Now write only ${attribution.speakerName}'s reply. Do not write for ${userName} or the other characters.`
+    }
+  ];
+}
+
+/**
+ * A story turn the user did not write: a thrown twist, or the silence of an
+ * expired choice.
+ *
+ * It lands just before the nudge so it is the freshest thing the model reads
+ * that is not "who speaks now" — and it stays out of the user's turns, because
+ * the user did not say it and it should not read as their dialogue.
+ */
+export function appendRoleplayStoryTurn(
+  messages: RequestMessage[],
+  instruction: string | undefined | null
+): RequestMessage[] {
+  const content = instruction?.trim();
+  if (!content) return messages;
+  return [...messages, { role: 'system', content }];
 }
 
 /** Build outbound request messages with optional system preface. */

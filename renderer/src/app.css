@@ -2211,31 +2211,6 @@ kbd {
   50% { opacity: 0.2; }
 }
 
-/* Typing dots (prompt-kit style) */
-@keyframes typing {
-  0%, 70%, 100% { transform: translateY(0) scale(0.85); opacity: 0.35; }
-  35% { transform: translateY(-2px) scale(1); opacity: 0.9; }
-}
-.typing-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-.typing-dot:nth-child(1) { animation: typing 1.4s ease-in-out infinite 0ms; }
-.typing-dot:nth-child(2) { animation: typing 1.4s ease-in-out infinite 160ms; }
-.typing-dot:nth-child(3) { animation: typing 1.4s ease-in-out infinite 320ms; }
-.typing-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-}
-
 /* Text shimmer for "Thinking" label */
 @keyframes textShimmer {
   0% { background-position: 200% center; }
@@ -2391,7 +2366,6 @@ input[type="range"]::-moz-range-thumb {
   .chateaui-message-loading { animation: none !important; }
   .loader-pulse { animation: none !important; }
   .scroll-animate { animation: none !important; opacity: 1; }
-  .typing-dot { animation: none !important; opacity: 0.5; }
   .work-composer-generating { animation: none !important; }
 
   /*

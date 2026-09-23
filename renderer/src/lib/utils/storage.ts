@@ -1,10 +1,13 @@
-import type { AppConfig, ChatSession, ChatFolder, CodeProject } from '$lib/types/chat';
+import type { AppConfig, ChatSession, ChatFolder, CharacterCard, CodeProject, RoleplayWorld, UserPersona } from '$lib/types/chat';
 import { isElectron } from '$lib/services/bridge';
 
 const APP_CONFIG_KEY = 'chatealm_app_config';
 const CHAT_STATE_KEY = 'chatealm_chat_state_v2';
 const THEME_KEY = 'chatealm_theme';
 const DB_MIGRATED_KEY = 'chatealm_db_migrated';
+const CHARACTERS_KEY = 'chatealm_characters_v1';
+const PERSONAS_KEY = 'chatealm_personas_v1';
+const WORLDS_KEY = 'chatealm_worlds_v1';
 
 export function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -216,6 +219,133 @@ export async function deleteCodeProjectFromDb(projectId: string): Promise<void> 
     await (window as any).electronAPI.invoke('chat_db_delete_code_project', { projectId });
   } catch (err) {
     console.error('[deleteCodeProjectFromDb] Failed:', err);
+  }
+}
+
+// --- Roleplay: characters & personas ---
+// Electron persists to SQLite; the browser dev fallback uses localStorage so
+// the gallery still works in `npm run dev:renderer`.
+
+export async function loadCharactersFromDb(): Promise<CharacterCard[]> {
+  if (!isElectronEnv()) {
+    return safeParse<CharacterCard[]>(localStorage.getItem(CHARACTERS_KEY), []);
+  }
+  try {
+    const characters = await (window as any).electronAPI.invoke('chat_db_load_characters') as CharacterCard[];
+    return Array.isArray(characters) ? characters : [];
+  } catch (err) {
+    console.error('[loadCharactersFromDb] Failed:', err);
+    return [];
+  }
+}
+
+export async function saveCharacterToDb(character: CharacterCard): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<CharacterCard[]>(localStorage.getItem(CHARACTERS_KEY), []);
+    const next = [character, ...current.filter((entry) => entry.id !== character.id)];
+    localStorage.setItem(CHARACTERS_KEY, JSON.stringify(next));
+    return;
+  }
+  try {
+    const plain = JSON.parse(JSON.stringify(character));
+    await (window as any).electronAPI.invoke('chat_db_save_character', { character: plain });
+  } catch (err) {
+    console.error('[saveCharacterToDb] Failed:', err);
+  }
+}
+
+export async function deleteCharacterFromDb(characterId: string): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<CharacterCard[]>(localStorage.getItem(CHARACTERS_KEY), []);
+    localStorage.setItem(CHARACTERS_KEY, JSON.stringify(current.filter((entry) => entry.id !== characterId)));
+    return;
+  }
+  try {
+    await (window as any).electronAPI.invoke('chat_db_delete_character', { characterId });
+  } catch (err) {
+    console.error('[deleteCharacterFromDb] Failed:', err);
+  }
+}
+
+export async function loadPersonasFromDb(): Promise<UserPersona[]> {
+  if (!isElectronEnv()) {
+    return safeParse<UserPersona[]>(localStorage.getItem(PERSONAS_KEY), []);
+  }
+  try {
+    const personas = await (window as any).electronAPI.invoke('chat_db_load_personas') as UserPersona[];
+    return Array.isArray(personas) ? personas : [];
+  } catch (err) {
+    console.error('[loadPersonasFromDb] Failed:', err);
+    return [];
+  }
+}
+
+export async function savePersonaToDb(persona: UserPersona): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<UserPersona[]>(localStorage.getItem(PERSONAS_KEY), []);
+    const next = [persona, ...current.filter((entry) => entry.id !== persona.id)];
+    localStorage.setItem(PERSONAS_KEY, JSON.stringify(next));
+    return;
+  }
+  try {
+    const plain = JSON.parse(JSON.stringify(persona));
+    await (window as any).electronAPI.invoke('chat_db_save_persona', { persona: plain });
+  } catch (err) {
+    console.error('[savePersonaToDb] Failed:', err);
+  }
+}
+
+export async function deletePersonaFromDb(personaId: string): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<UserPersona[]>(localStorage.getItem(PERSONAS_KEY), []);
+    localStorage.setItem(PERSONAS_KEY, JSON.stringify(current.filter((entry) => entry.id !== personaId)));
+    return;
+  }
+  try {
+    await (window as any).electronAPI.invoke('chat_db_delete_persona', { personaId });
+  } catch (err) {
+    console.error('[deletePersonaFromDb] Failed:', err);
+  }
+}
+
+export async function loadWorldsFromDb(): Promise<RoleplayWorld[]> {
+  if (!isElectronEnv()) {
+    return safeParse<RoleplayWorld[]>(localStorage.getItem(WORLDS_KEY), []);
+  }
+  try {
+    const worlds = await (window as any).electronAPI.invoke('chat_db_load_worlds') as RoleplayWorld[];
+    return Array.isArray(worlds) ? worlds : [];
+  } catch (err) {
+    console.error('[loadWorldsFromDb] Failed:', err);
+    return [];
+  }
+}
+
+export async function saveWorldToDb(world: RoleplayWorld): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<RoleplayWorld[]>(localStorage.getItem(WORLDS_KEY), []);
+    const next = [world, ...current.filter((entry) => entry.id !== world.id)];
+    localStorage.setItem(WORLDS_KEY, JSON.stringify(next));
+    return;
+  }
+  try {
+    const plain = JSON.parse(JSON.stringify(world));
+    await (window as any).electronAPI.invoke('chat_db_save_world', { world: plain });
+  } catch (err) {
+    console.error('[saveWorldToDb] Failed:', err);
+  }
+}
+
+export async function deleteWorldFromDb(worldId: string): Promise<void> {
+  if (!isElectronEnv()) {
+    const current = safeParse<RoleplayWorld[]>(localStorage.getItem(WORLDS_KEY), []);
+    localStorage.setItem(WORLDS_KEY, JSON.stringify(current.filter((entry) => entry.id !== worldId)));
+    return;
+  }
+  try {
+    await (window as any).electronAPI.invoke('chat_db_delete_world', { worldId });
+  } catch (err) {
+    console.error('[deleteWorldFromDb] Failed:', err);
   }
 }
 

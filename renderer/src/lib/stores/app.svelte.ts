@@ -1,4 +1,4 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, CharacterCard, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, LocalThinkingMode, LorebookEntry, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, RoleplayJournalEntry, RoleplaySettings, RoleplayWorld, SearchMeta, WorkspaceFile } from '$lib/types/chat';
 import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
@@ -25,10 +25,26 @@ import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadCha
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
+import { charactersStore, greetingsFor } from '$lib/features/roleplay/characters.svelte';
+import { worldsStore } from '$lib/features/roleplay/worlds.svelte';
+import { selectNextSpeaker } from '$lib/features/roleplay/group-turn';
+import { buildRoleplayStopStrings, stripSpeakerPrefix, stripTrailingPartialStop } from '$lib/features/roleplay/roleplay-output';
+import { extractRoleplayChoices, stripRoleplayChoiceBlock } from '$lib/features/roleplay/roleplay-choices';
+import { extractRoleplayProps, stripRoleplayPropBlock, type RoleplayProp } from '$lib/features/roleplay/roleplay-props';
+import { makeSilenceTurn, makeTwistTurn, pickTwist, type StoryTurn } from '$lib/features/roleplay/roleplay-twists';
+import {
+  buildRoleplaySystemPrompt as composeRoleplayPrompt,
+  resolveLorebooks,
+  resolveRoleplaySampling,
+  type RoleplaySampling
+} from '$lib/services/roleplay-prompts';
 import {
   applyLocalContextBudgetTruncation,
+  appendRoleplayNudge,
+  appendRoleplayStoryTurn,
   buildOutboundMessages,
-  buildRequestMessagesWithPatchedUser
+  buildRequestMessagesWithPatchedUser,
+  type RoleplayAttribution
 } from '$lib/stores/app-message-pipeline';
 import {
   buildApiModelMetadataCacheKey,
@@ -110,6 +126,7 @@ import {
   optimisticAck,
   parseWriteFileBlocks,
   readBlobAsDataUrl,
+  repairRoleplayChat,
   setAgentActivity,
   startReasoningTimer,
   stripWriteFileBlocks,
@@ -130,7 +147,7 @@ class AppStore {
   folders = $state<ChatFolder[]>([]);
   currentChatId = $state<string | null>(null);
   activeSpace = $state<ChatContextMode>('home');
-  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null });
+  currentChatIdBySpace = $state<Record<ChatContextMode, string | null>>({ home: null, code: null, roleplay: null });
   composer = $state('');
   models = $state<ModelOption[]>([]);
   modelsRefreshing = $state(false);
@@ -383,6 +400,11 @@ class AppStore {
     return this.getSessionsForSpace('code');
   }
 
+  /** Roleplay sessions only. */
+  get visibleRoleplayChats() {
+    return this.getSessionsForSpace('roleplay');
+  }
+
   getSessionsForSpace(space: ChatContextMode) {
     return this.chats.filter((chat) => normalizeContextMode(chat.contextMode) === space);
   }
@@ -524,8 +546,147 @@ class AppStore {
     return this.buildSystemPromptForMode({
       backendMode: this.backendMode,
       providerPrompt: this.config.llm?.providers?.[this.activeProviderName]?.system_prompt,
-      includeChartHint: true
+      includeChartHint: true,
+      chat: this.currentChat
     });
+  }
+
+  /**
+   * Roleplay sessions never receive the assistant system prompt: character
+   * card, persona, lorebook and author's note compose the whole instruction
+   * block (see services/roleplay-prompts).
+   */
+  private roleplayPromptParts(
+    chat: ChatSession | null,
+    speakerId?: string | null
+  ): {
+    systemPrompt: string;
+    loreEntries: LorebookEntry[];
+    speaker: CharacterCard | null;
+    sampling: RoleplaySampling;
+    stop: string[];
+  } {
+    const primary = charactersStore.getById(chat?.characterId);
+    const rosterIds = chat?.roleplay?.characterIds?.length
+      ? chat.roleplay.characterIds
+      : primary
+        ? [primary.id]
+        : [];
+    const characters = rosterIds
+      .map((id) => charactersStore.getById(id))
+      .filter((card): card is CharacterCard => !!card);
+    if (!characters.length && primary) characters.push(primary);
+
+    const persona = charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
+    const world = worldsStore.getById(chat?.worldId);
+
+    const scanDepth = Math.max(1, primary?.book?.scanDepth || 0, world?.book?.scanDepth || 0) || 4;
+    const scanText = (chat?.messages || [])
+      .slice(-scanDepth)
+      .map((message) => message.content || '')
+      .join('\n');
+    // World canon first, then each cast member's own book; one shared budget.
+    const loreEntries = resolveLorebooks(
+      [
+        { book: world?.book, source: 'world' },
+        ...characters.map((character) => ({
+          book: character.book,
+          source: 'character' as const,
+          characterId: character.id
+        }))
+      ],
+      scanText
+    );
+
+    const speaker = charactersStore.getById(speakerId ?? this.roleplaySpeakerId(chat)) || primary;
+    const systemPrompt = composeRoleplayPrompt({
+      characters,
+      speaker,
+      persona,
+      userName: this.userName,
+      loreEntries,
+      authorNote: chat?.roleplay?.authorNote,
+      group: characters.length > 1,
+      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker,
+      adventureChoices: !!chat?.roleplay?.adventureChoices,
+      props: !!chat?.roleplay?.props,
+      worldName: world?.name,
+      worldOverview: world?.overview,
+      worldScenario: world?.scenario,
+      contentRating: chat?.roleplay?.contentRating
+    });
+
+    const sampling = resolveRoleplaySampling({
+      speaker: speaker || null,
+      chatSettings: chat?.roleplay,
+      worldSettings: world?.settings
+    });
+
+    /*
+     * Stop strings end a reply at the first line that is not its own — the only
+     * real defence against the model writing the user's turn. The name has to
+     * match the one macro substitution put in the prompt, so the resolution
+     * below mirrors `buildRoleplaySystemPrompt` exactly.
+     */
+    const stop = buildRoleplayStopStrings({
+      userName: persona?.name?.trim() || this.userName?.trim() || 'User',
+      speakerName: speaker?.name,
+      castNames: characters.map((card) => card.name),
+      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker
+    });
+
+    return { systemPrompt, loreEntries, speaker: speaker || null, sampling, stop };
+  }
+
+  private buildRoleplaySystemPrompt(chat: ChatSession | null, speakerId?: string | null): string {
+    return this.roleplayPromptParts(chat, speakerId).systemPrompt;
+  }
+
+  /**
+   * Everything a roleplay turn carries besides its prompt: sampling overrides,
+   * the stop strings, and any story turn queued for it — a thrown twist, or the
+   * silence of a choice that ran out. Empty outside roleplay so callers can pass
+   * it along unconditionally.
+   *
+   * Reading this consumes the queued story turn. One turn, one generation.
+   */
+  private roleplayRequestOverrides(
+    chat: ChatSession | null,
+    speakerId?: string | null
+  ): { sampling: RoleplaySampling; stop: string[]; storyTurn?: StoryTurn } {
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return { sampling: {}, stop: [] };
+    const parts = this.roleplayPromptParts(chat, speakerId);
+    return {
+      sampling: parts.sampling,
+      stop: parts.stop,
+      storyTurn: this.takeRoleplayStoryTurn(chat.id)
+    };
+  }
+
+  /** The two names that macros and story turns resolve against. */
+  private roleplayNames(chat: ChatSession | null): { char: string; user: string } {
+    const speaker = charactersStore.getById(this.roleplaySpeakerId(chat))
+      || charactersStore.getById(chat?.characterId);
+    const persona = charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
+    return {
+      char: speaker?.name?.trim() || 'the character',
+      user: persona?.name?.trim() || this.userName?.trim() || 'User'
+    };
+  }
+
+  /**
+   * What a roleplay turn sends, for the prompt inspector: the composed system
+   * prompt, the lore entries that fired, and the speaker.
+   */
+  previewRoleplayPrompt(messageId?: string | null) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') {
+      return { systemPrompt: '', loreEntries: [] as LorebookEntry[], speaker: null as CharacterCard | null };
+    }
+    const messageSpeakerId = messageId
+      ? chat.messages.find((message) => message.id === messageId)?.speakerId || null
+      : null;
+    return this.roleplayPromptParts(chat, messageSpeakerId);
   }
 
   private buildSystemPromptForMode(args: {
@@ -533,7 +694,14 @@ class AppStore {
     providerPrompt?: string;
     includeChartHint?: boolean;
     searchSystemPrefix?: string;
+    chat?: ChatSession | null;
+    /** Roleplay: the character whose reply is being generated. */
+    speakerId?: string | null;
   }): string {
+    const chat = args.chat ?? this.currentChat;
+    if (normalizeContextMode(chat?.contextMode) === 'roleplay') {
+      return this.buildRoleplaySystemPrompt(chat, args.speakerId);
+    }
     const basePrompt = selectBaseSystemPrompt({
       backendMode: args.backendMode,
       localPrompt: this.config.llm?.local?.system_prompt,
@@ -883,7 +1051,7 @@ class AppStore {
         this.currentChatIdBySpace = this.normalizeChatIdBySpace(persisted.currentChatIdBySpace);
       }
 
-      this.chats = chats.map((chat, index) => normalizeChat(chat, index));
+      this.chats = chats.map((chat, index) => repairRoleplayChat(normalizeChat(chat, index)));
       this.folders = folders.map((folder, index) => normalizeFolder(folder, index));
       this.currentChatId = currentChatId;
 
@@ -980,12 +1148,14 @@ class AppStore {
       // Legacy keys: 'chat' was the old home id; 'work'/'code' both named the
       // code space at different times.
       home: typeof raw.home === 'string' ? raw.home : (typeof raw.chat === 'string' ? raw.chat : null),
-      code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null)
+      code: typeof raw.code === 'string' ? raw.code : (typeof raw.work === 'string' ? raw.work : null),
+      roleplay: typeof raw.roleplay === 'string' ? raw.roleplay : null
     };
   }
 
   private defaultTitleForMode(mode: ChatContextMode) {
     if (mode === 'code') return 'New session';
+    if (mode === 'roleplay') return 'New roleplay';
     return 'New chat';
   }
 
@@ -1013,7 +1183,7 @@ class AppStore {
     }
     const mode = normalizeContextMode(chat.contextMode);
     this.composer = chat.draft || '';
-    this.searchMode = normalizeSessionSearchMode(chat.searchMode);
+    this.searchMode = mode === 'roleplay' ? 'chat' : normalizeSessionSearchMode(chat.searchMode);
     this.composerMode = normalizeSessionComposerMode(chat.composerMode, mode);
     this.reasoningLevel = chat.reasoningLevel ?? null;
     // Keep session fields canonical after hydrate
@@ -1059,7 +1229,7 @@ class AppStore {
   }
 
   private rebuildChatIdBySpace() {
-    const next: Record<ChatContextMode, string | null> = { home: null, code: null };
+    const next: Record<ChatContextMode, string | null> = { home: null, code: null, roleplay: null };
     for (const chat of this.chats) {
       const mode = normalizeContextMode(chat.contextMode);
       if (!next[mode]) next[mode] = chat.id;
@@ -1099,10 +1269,15 @@ class AppStore {
       contextMode,
       codeAgent: null,
       projectId: null,
-      workspace: contextMode === 'home' ? null : (options.workspace || null),
+      workspace: contextMode === 'code' ? (options.workspace || null) : null,
       reasoningLevel: null,
       composerMode,
       searchMode: 'chat',
+      characterId: null,
+      worldId: null,
+      personaId: null,
+      greetingIndex: 0,
+      roleplay: contextMode === 'roleplay' ? {} : null,
       messages: []
     };
     this.chats = [chat, ...this.chats];
@@ -1117,6 +1292,526 @@ class AppStore {
     this.hydrateUiFromChat(chat);
     this.persist();
     return chat;
+  }
+
+  /**
+   * Group scenes: who speaks next. Transient (never persisted) and defaults to
+   * the primary character, so 1:1 chats are unaffected.
+   */
+  private roleplaySpeakerOverrides: Record<string, string> = {};
+
+  /** Auto mode: consecutive character turns and the pending continuation. */
+  private roleplayAutoTurns: Record<string, number> = {};
+  private roleplayAutoTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  /** Wall-clock deadline of the pending auto turn, for the header countdown. */
+  roleplayAutoDeadlines = $state<Record<string, number>>({});
+
+  /** The character whose turn it is in a scene. */
+  private roleplaySpeakerId(chat: ChatSession | null): string | null {
+    if (!chat) return null;
+    return this.roleplaySpeakerOverrides[chat.id] || chat.characterId || null;
+  }
+
+  /** Force the next speaker in a group scene (null resets to turn order). */
+  setRoleplaySpeaker(characterId: string | null) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    if (!characterId || characterId === chat.characterId) {
+      delete this.roleplaySpeakerOverrides[chat.id];
+    } else {
+      this.roleplaySpeakerOverrides[chat.id] = characterId;
+    }
+  }
+
+  /** The scene's cast in roster order. */
+  private roleplayCast(chat: ChatSession | null): CharacterCard[] {
+    if (!chat) return [];
+    const ids = chat.roleplay?.characterIds?.length
+      ? chat.roleplay.characterIds
+      : chat.characterId
+        ? [chat.characterId]
+        : [];
+    return ids
+      .map((id) => charactersStore.getById(id))
+      .filter((card): card is CharacterCard => !!card);
+  }
+
+  /**
+   * Who speaks next: a forced speaker wins, otherwise the scene's reply order
+   * decides. 1:1 scenes always answer as the character; manual order answers
+   * as the primary on a plain send (the user force-talks for anyone else).
+   */
+  private routeRoleplaySpeaker(chat: ChatSession, messages: ChatMessage[] = chat.messages): string | null {
+    const cast = this.roleplayCast(chat);
+    if (cast.length < 2) return chat.characterId || null;
+    const forced = this.roleplaySpeakerOverrides[chat.id];
+    if (forced) return forced;
+    const strategy = chat.roleplay?.replyOrder || 'list';
+    if (strategy === 'manual') return chat.characterId || null;
+    return selectNextSpeaker({
+      strategy,
+      cast,
+      messages,
+      mutedIds: chat.roleplay?.mutedIds || [],
+      allowSelfReplies: false
+    });
+  }
+
+  /** Replace the scene's cast mid-chat (add, remove, reorder). */
+  setRoleplayCast(characterIds: string[]) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    const cast = [...new Set(characterIds)].filter((id) => !!charactersStore.getById(id));
+    if (!cast.length) return;
+    const muted = (chat.roleplay?.mutedIds || []).filter((id) => cast.includes(id));
+    chat.roleplay = { ...(chat.roleplay || {}), characterIds: cast, mutedIds: muted };
+    // The primary must be a member; removing it promotes the new first member.
+    if (!chat.characterId || !cast.includes(chat.characterId)) {
+      chat.characterId = cast[0];
+    }
+    delete this.roleplaySpeakerOverrides[chat.id];
+    this.touchChats();
+    this.persist();
+  }
+
+  /** Who the roster should show as next, without forcing a turn. */
+  peekRoleplaySpeaker(): CharacterCard | null {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return null;
+    return charactersStore.getById(this.routeRoleplaySpeaker(chat));
+  }
+
+  /**
+   * Generate a character turn with no user message (force talk, auto mode).
+   */
+  async speakNow(characterId?: string | null) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    if (characterId) this.setRoleplaySpeaker(characterId);
+    await this.sendCurrentMessage({ silent: true });
+  }
+
+  /** Enable or pause auto mode for the current scene. */
+  setRoleplayAutoMode(enabled: boolean) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    if (enabled && (chat.roleplay?.replyOrder || 'list') === 'manual') {
+      toastStore.info('Auto mode needs a speaker order. Switch off Manual first.', 4000);
+      return;
+    }
+    chat.roleplay = { ...(chat.roleplay || {}), autoMode: enabled };
+    if (enabled) {
+      this.roleplayAutoTurns[chat.id] = 0;
+      this.touchChats();
+      this.persist();
+      void this.speakNow();
+    } else {
+      this.stopRoleplayAuto(chat.id);
+      this.touchChats();
+      this.persist();
+    }
+  }
+
+  /** Mute or unmute a group member for this scene. */
+  toggleRoleplayMute(characterId: string) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    const muted = new Set(chat.roleplay?.mutedIds || []);
+    if (muted.has(characterId)) muted.delete(characterId);
+    else muted.add(characterId);
+    chat.roleplay = { ...(chat.roleplay || {}), mutedIds: [...muted] };
+    this.touchChats();
+    this.persist();
+  }
+
+  /** Change the scene's speaker order. */
+  setRoleplayReplyOrder(order: RoleplaySettings['replyOrder']) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay' || !order) return;
+    chat.roleplay = { ...(chat.roleplay || {}), replyOrder: order };
+    this.touchChats();
+    this.persist();
+  }
+
+  /** Scene settings: one option at a time (order, delay, toggles). */
+  setRoleplayOption<K extends keyof RoleplaySettings>(key: K, value: RoleplaySettings[K]) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    chat.roleplay = { ...(chat.roleplay || {}), [key]: value } as RoleplaySettings;
+    this.touchChats();
+    this.persist();
+  }
+
+  /** Adventure choices: clicking one sends it as the user's turn. */
+  async sendAdventureChoice(choice: string) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    const text = String(choice || '').trim();
+    if (!text) return;
+    this.composer = text;
+    await this.sendCurrentMessage();
+  }
+
+  // ── Story turns and the scene journal ──────────────────────────────────
+
+  /**
+   * A turn the user did not write, queued for the next generation: a thrown
+   * twist, or the silence of a choice that ran out with nothing said.
+   */
+  private roleplayPendingStoryTurn: Record<string, StoryTurn> = {};
+
+  private queueRoleplayStoryTurn(chatId: string, turn: StoryTurn) {
+    this.roleplayPendingStoryTurn = { ...this.roleplayPendingStoryTurn, [chatId]: turn };
+  }
+
+  private takeRoleplayStoryTurn(chatId: string): StoryTurn | undefined {
+    const turn = this.roleplayPendingStoryTurn[chatId];
+    if (!turn) return undefined;
+    const next = { ...this.roleplayPendingStoryTurn };
+    delete next[chatId];
+    this.roleplayPendingStoryTurn = next;
+    return turn;
+  }
+
+  /** Throw a story twist at the scene: a GM move, never a user turn. */
+  async throwRoleplayTwist() {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    if (this.currentChatGenerating) return;
+    this.queueRoleplayStoryTurn(chat.id, makeTwistTurn(pickTwist(), this.roleplayNames(chat)));
+    await this.speakNow();
+  }
+
+  /**
+   * A clocked choice ran out with nothing said. Saying nothing is the turn —
+   * never a random pick from the panel.
+   */
+  async expireRoleplayChoice() {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    if (this.currentChatGenerating) return;
+    this.queueRoleplayStoryTurn(chat.id, makeSilenceTurn(this.roleplayNames(chat)));
+    await this.speakNow();
+  }
+
+  /** Scene journal: keep something — a prop, a note, a lead, a bond. */
+  addRoleplayJournalEntry(entry: {
+    kind: RoleplayJournalEntry['kind'];
+    title: string;
+    body: string;
+    messageId?: string | null;
+    pinned?: boolean;
+  }) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    const journal = [...(chat.roleplay?.journal || [])];
+    const messageId = entry.messageId ?? null;
+    // Re-keeping from the viewer must not duplicate the entry.
+    const duplicate = journal.some(
+      (item) => item.kind === entry.kind && item.title === entry.title && (item.messageId ?? null) === messageId
+    );
+    if (duplicate) return;
+
+    journal.push({
+      id: createId('journal'),
+      kind: entry.kind,
+      title: entry.title,
+      body: entry.body,
+      pinned: !!entry.pinned,
+      messageId,
+      createdAt: Date.now()
+    });
+    // The journal rides on the chat's roleplay JSON, so it stays bounded.
+    const MAX_ENTRIES = 200;
+    chat.roleplay = { ...(chat.roleplay || {}), journal: journal.slice(-MAX_ENTRIES) };
+    this.touchChats();
+    this.persist();
+  }
+
+  removeRoleplayJournalEntry(entryId: string) {
+    this.patchRoleplayJournal((journal) => journal.filter((entry) => entry.id !== entryId));
+  }
+
+  pinRoleplayJournalEntry(entryId: string, pinned: boolean) {
+    this.patchRoleplayJournal((journal) =>
+      journal.map((entry) => (entry.id === entryId ? { ...entry, pinned } : entry))
+    );
+  }
+
+  private patchRoleplayJournal(patch: (journal: RoleplayJournalEntry[]) => RoleplayJournalEntry[]) {
+    const chat = this.currentChat;
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    chat.roleplay = { ...(chat.roleplay || {}), journal: patch(chat.roleplay?.journal || []) };
+    this.touchChats();
+    this.persist();
+  }
+
+  private clearRoleplayAutoTimer(chatId: string) {
+    const timer = this.roleplayAutoTimers[chatId];
+    if (timer) {
+      clearTimeout(timer);
+      delete this.roleplayAutoTimers[chatId];
+    }
+    this.clearRoleplayAutoDeadline(chatId);
+  }
+
+  private clearRoleplayAutoDeadline(chatId: string) {
+    if (!(chatId in this.roleplayAutoDeadlines)) return;
+    const next = { ...this.roleplayAutoDeadlines };
+    delete next[chatId];
+    this.roleplayAutoDeadlines = next;
+  }
+
+  /** Typing pauses the auto chain without turning auto mode off. */
+  pauseRoleplayAuto() {
+    const chat = this.currentChat;
+    if (!chat) return;
+    this.clearRoleplayAutoTimer(chat.id);
+    this.roleplayAutoTurns[chat.id] = 0;
+  }
+
+  /** Stop auto mode for a scene and forget its turn count. */
+  private stopRoleplayAuto(chatId: string) {
+    this.clearRoleplayAutoTimer(chatId);
+    delete this.roleplayAutoTurns[chatId];
+  }
+
+  /** A user turn resets the chain; auto mode itself stays enabled. */
+  private resetRoleplayAuto(chatId: string) {
+    this.clearRoleplayAutoTimer(chatId);
+    this.roleplayAutoTurns[chatId] = 0;
+  }
+
+  /**
+   * After a completed turn: keep a group scene going while auto mode is on,
+   * the limit is not reached, and the user is not typing. A failed or aborted
+   * turn stops the chain instead of looping.
+   */
+  private maybeContinueRoleplayAuto(chatId: string, stopped = false) {
+    const chat = this.findChat(chatId);
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
+    const settings = chat.roleplay;
+    const castCount = settings?.characterIds?.length || 0;
+    if (
+      stopped
+      || !settings?.autoMode
+      || castCount < 2
+      || (settings.replyOrder || 'list') === 'manual'
+    ) {
+      this.stopRoleplayAuto(chatId);
+      return;
+    }
+    const turns = (this.roleplayAutoTurns[chatId] || 0) + 1;
+    const limit = settings.autoModeMaxTurns ?? 4;
+    if (turns > limit) {
+      this.roleplayAutoTurns[chatId] = 0;
+      toastStore.info(`Auto mode paused after ${limit} turns.`, 4000);
+      return;
+    }
+    this.roleplayAutoTurns[chatId] = turns;
+    this.clearRoleplayAutoTimer(chatId);
+    const delay = Math.min(20_000, Math.max(1_000, Number(settings.autoModeDelayMs) || 8000));
+    this.roleplayAutoDeadlines = { ...this.roleplayAutoDeadlines, [chatId]: Date.now() + delay };
+    this.roleplayAutoTimers[chatId] = setTimeout(() => {
+      delete this.roleplayAutoTimers[chatId];
+      this.clearRoleplayAutoDeadline(chatId);
+      // Typing interrupts the chain; so does another run taking the chat.
+      if (this.currentChatId !== chatId || this.composer.trim() || this.currentChatGenerating) return;
+      void this.speakNow();
+    }, delay);
+  }
+
+  /** Speaker attribution for the request pipeline (group scenes only). */
+  private buildRoleplayAttribution(chat: ChatSession | null, speakerId?: string | null): RoleplayAttribution | undefined {
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return undefined;
+    const ids = chat.roleplay?.characterIds?.length
+      ? chat.roleplay.characterIds
+      : chat.characterId
+        ? [chat.characterId]
+        : [];
+    const names = new Map<string, string>();
+    for (const id of ids) {
+      const card = charactersStore.getById(id);
+      if (card?.name) names.set(id, card.name);
+    }
+    const speaker = charactersStore.getById(speakerId ?? this.roleplaySpeakerId(chat));
+    return {
+      names,
+      userName: charactersStore.getPersonaById(chat.personaId)?.name || this.userName || 'User',
+      group: ids.length > 1,
+      speakerName: speaker?.name
+    };
+  }
+
+  /**
+   * Replies mimic the `Name:` attribution we send for group scenes. Strip it
+   * at ingest unless the scene explicitly wants speaker labels.
+   */
+  private buildRoleplayOutputSanitizer(chat: ChatSession | null): ((content: string) => string) | undefined {
+    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return undefined;
+    const labels = !!chat.roleplay?.showSpeakerLabels || !!chat.roleplay?.allowMultiSpeaker;
+    const hideChoices = !!chat.roleplay?.adventureChoices;
+
+    const names = new Set<string>();
+    if (!labels) {
+      for (const card of this.roleplayCast(chat)) {
+        if (card.name) names.add(card.name);
+        if (card.nickname) names.add(card.nickname);
+      }
+      const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
+      if (persona?.name) names.add(persona.name);
+    }
+    // Nothing to clean: no prefixes to strip and no choices block to lift.
+    if (!hideChoices && !names.size) return undefined;
+
+    return (content: string) => {
+      const visible = hideChoices ? stripRoleplayChoiceBlock(content) : content;
+      return names.size ? stripSpeakerPrefix(visible, names) : visible;
+    };
+  }
+
+  /**
+   * Start a roleplay scene.
+   *
+   * A scene is a roleplay chat bound to a cast (the first card is the primary
+   * speaker) and optionally to a world. It is seeded with an opening turn:
+   * either the world's chosen starter (narrator) or the primary's greeting.
+   */
+  startScene(options: {
+    characters: CharacterCard[];
+    world?: RoleplayWorld | null;
+    personaId?: string | null;
+    openingSource?: 'greeting' | 'starter' | 'none';
+    openingIndex?: number;
+    settings?: Partial<RoleplaySettings>;
+  }) {
+    const cast = options.characters.filter(Boolean);
+    const primary = cast[0];
+    if (!primary) return this.currentChat;
+
+    // Picking a scene from the library must not leave the empty "New roleplay"
+    // chat behind: bind the current empty roleplay chat instead.
+    const current = this.currentChat;
+    const reusable = !!current
+      && normalizeContextMode(current.contextMode) === 'roleplay'
+      && !current.characterId
+      && current.messages.length === 0;
+    const created = reusable ? current : this.createChat('roleplay');
+    // createChat returns the raw object; `$state` holds a proxy. Identity and
+    // greeting fields must be written through the state view or they never
+    // reach the send path (and never persist).
+    const chat = this.findChat(created.id) || created;
+    const world = options.world || null;
+    const group = cast.length > 1;
+    const openingSource = options.openingSource || 'greeting';
+    const openings = openingSource === 'starter'
+      ? (world?.starters || []).filter((entry) => entry.trim())
+      : openingSource === 'greeting'
+        ? greetingsFor(primary, { group })
+        : [];
+    const openingIndex = openings.length
+      ? Math.max(0, Math.min(options.openingIndex ?? 0, openings.length - 1))
+      : 0;
+    const worldSettings = world?.settings || {};
+
+    chat.characterId = primary.id;
+    chat.worldId = world?.id ?? null;
+    chat.personaId = options.personaId ?? null;
+    chat.greetingIndex = openingIndex;
+    chat.roleplay = {
+      characterIds: cast.map((card) => card.id),
+      replyOrder: worldSettings.replyOrder ?? 'list',
+      autoMode: worldSettings.autoMode ?? false,
+      autoModeMaxTurns: worldSettings.autoModeMaxTurns ?? 4,
+      autoModeDelayMs: worldSettings.autoModeDelayMs ?? 8000,
+      adventureChoices: worldSettings.adventureChoices ?? false,
+      showSpeakerLabels: worldSettings.showSpeakerLabels ?? false,
+      allowMultiSpeaker: worldSettings.allowMultiSpeaker ?? false,
+      temperature: worldSettings.temperature ?? null,
+      topP: worldSettings.topP ?? null,
+      maxTokens: worldSettings.maxTokens ?? null,
+      authorNote: worldSettings.authorNote ?? '',
+      contentRating: worldSettings.contentRating ?? 'sfw',
+      mutedIds: [],
+      ...(options.settings || {})
+    };
+    chat.title = world?.name || (group ? `${primary.name} +${cast.length - 1}` : primary.name) || chat.title;
+
+    const opening = openings[openingIndex];
+    if (opening) {
+      this.appendMessageToChat(chat.id, {
+        id: createId('msg'),
+        role: 'assistant',
+        content: opening,
+        createdAt: Date.now(),
+        done: true,
+        status: 'idle',
+        // A world starter is narration, not the primary's line.
+        model: openingSource === 'starter' ? undefined : primary.name || undefined,
+        speakerId: openingSource === 'starter' ? null : primary.id,
+        versions: [],
+        activeVersion: 0,
+        mode: 'chat'
+      });
+    }
+
+    this.touchChats();
+    this.persist();
+    return chat;
+  }
+
+  /**
+   * Start a 1:1 scene with one character: the quick path from the gallery.
+   */
+  startRoleplay(character: CharacterCard, options: { personaId?: string | null; greetingIndex?: number } = {}) {
+    return this.startScene({
+      characters: [character],
+      personaId: options.personaId ?? null,
+      openingSource: 'greeting',
+      openingIndex: options.greetingIndex ?? 0
+    }) as ChatSession;
+  }
+
+  /** Replace the opening turn with another greeting from the same character. */
+  setRoleplayGreeting(character: CharacterCard, index: number) {
+    const chat = this.currentChat;
+    if (!chat || chat.contextMode !== 'roleplay') return;
+    const group = (chat.roleplay?.characterIds?.length || 0) > 1;
+    const greetings = greetingsFor(character, { group });
+    const greeting = greetings[index];
+    if (!greeting) return;
+
+    chat.greetingIndex = index;
+    const first = chat.messages[0];
+    if (first && first.role === 'assistant') {
+      first.content = greeting;
+      first.speakerId = character.id;
+    } else {
+      chat.messages.unshift({
+        id: createId('msg'),
+        role: 'assistant',
+        content: greeting,
+        createdAt: Date.now(),
+        done: true,
+        status: 'idle',
+        model: character.name || undefined,
+        speakerId: character.id,
+        versions: [],
+        activeVersion: 0,
+        mode: 'chat'
+      });
+    }
+    this.touchChats();
+    this.persist();
+  }
+
+  /** Bind the current roleplay chat to a user persona (null = none). */
+  setRoleplayPersona(personaId: string | null) {
+    const chat = this.currentChat;
+    if (!chat || chat.contextMode !== 'roleplay') return;
+    chat.personaId = personaId;
+    this.touchChats();
+    this.persist();
   }
 
   selectChat(chatId: string) {
@@ -1901,11 +2596,16 @@ class AppStore {
     });
   }
 
-  async sendCurrentMessage() {
-    const content = this.composer.trim();
+  /**
+   * Send the composer as a user turn, or — with `silent` — generate a
+   * character turn without one (group force-talk and auto mode).
+   */
+  async sendCurrentMessage(options: { silent?: boolean } = {}) {
+    const silent = !!options.silent;
+    const content = silent ? '' : this.composer.trim();
     const targetChatId = this.currentChatId;
     const targetChat = this.findChat(targetChatId);
-    if ((!content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
+    if ((!silent && !content && this.pendingAttachments.length === 0) || !targetChat || !targetChatId) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
 
@@ -1926,6 +2626,13 @@ class AppStore {
     })) return;
 
     this.error = null;
+    // A scene without a character cannot be answered: the prompt would be empty
+    // and the model would reply as a generic assistant.
+    if (activeContextMode === 'roleplay' && !this.roleplayCast(targetChat).length) {
+      toastStore.info('This scene has no character. Choose one to continue.', 4000);
+      return;
+    }
+    if (!silent) this.resetRoleplayAuto(targetChatId);
     const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
     const workContext = activeContextMode === 'code' && activeWorkspace
       ? {
@@ -1934,24 +2641,42 @@ class AppStore {
           indexedCount: activeWorkspace.indexedCount
         }
       : null;
-    const userMessage: ChatMessage = {
-      id: createId('msg'),
-      role: 'user',
-      content,
-      createdAt: Date.now(),
-      done: true,
-      status: 'idle',
-      attachments: this.pendingAttachments,
-      mode: activeComposerMode,
-      searchMode: activeSearchMode,
-      workContext
-    };
+    const userMessage: ChatMessage | null = silent
+      ? null
+      : {
+          id: createId('msg'),
+          role: 'user',
+          content,
+          createdAt: Date.now(),
+          done: true,
+          status: 'idle',
+          attachments: this.pendingAttachments,
+          mode: activeComposerMode,
+          searchMode: activeSearchMode,
+          workContext
+        };
 
-    this.appendMessageToChat(targetChatId, userMessage);
-    this.composer = '';
-    targetChat.draft = '';
-    const sentAttachments = [...this.pendingAttachments];
-    this.pendingAttachments = [];
+    // Group scenes: route the reply after the user's turn is in the history, so
+    // mentions inside it are seen. A forced speaker wins; a dead end (everyone
+    // muted) keeps the message in the composer instead of sending it.
+    if (activeContextMode === 'roleplay') {
+      const routingMessages = userMessage ? [...targetChat.messages, userMessage] : targetChat.messages;
+      const speaker = this.routeRoleplaySpeaker(targetChat, routingMessages);
+      if (!speaker && this.roleplayCast(targetChat).length > 1) {
+        toastStore.info('Everyone is muted — unmute a character to continue.', 4000);
+        return;
+      }
+      if (speaker) this.roleplaySpeakerOverrides[targetChatId] = speaker;
+      else delete this.roleplaySpeakerOverrides[targetChatId];
+    }
+
+    if (userMessage) {
+      this.appendMessageToChat(targetChatId, userMessage);
+      this.composer = '';
+      targetChat.draft = '';
+    }
+    const sentAttachments = silent ? [] : [...this.pendingAttachments];
+    if (!silent) this.pendingAttachments = [];
 
     const modeControl = this.composerModeControl;
     const composerRoute = resolveComposerRoute({
@@ -1986,6 +2711,8 @@ class AppStore {
       activeVersion: 0,
       searchMode: activeSearchMode,
       mode: activeComposerMode,
+      // Roleplay turns belong to the character, so the thread can show who spoke.
+      speakerId: activeContextMode === 'roleplay' ? this.roleplaySpeakerId(targetChat) : null,
       reasoning: '',
       metadata: useToolLoop
         ? {
@@ -2063,6 +2790,12 @@ class AppStore {
     const startTime = Date.now();
     const reasoningTimer = startReasoningTimer();
     let exactUsage: CompletionResult['usage'] = null;
+    // Declared before the try so the error path can clean the reply too.
+    const roleplayAttribution = this.buildRoleplayAttribution(targetChat);
+    const roleplayOutputSanitizer = this.buildRoleplayOutputSanitizer(targetChat);
+    const roleplayChoicesEnabled = !!targetChat.roleplay?.adventureChoices;
+    const roleplayOverrides = this.roleplayRequestOverrides(targetChat);
+    let rawRoleplayContent = '';
 
     /*
      * The run begins inside the `try`, so the `finally` that ends it covers
@@ -2079,7 +2812,9 @@ class AppStore {
         mode: activeComposerMode,
         startedAt: Date.now()
       });
-      const searchConversationContext = this.buildSearchConversationContext(userMessage.id, targetChatId);
+      const searchConversationContext = userMessage
+        ? this.buildSearchConversationContext(userMessage.id, targetChatId)
+        : '';
       // Reset modes on the target session (and store mirrors only if still viewing it).
       // The tab is a persistent per-chat preference: Agent and Instant stick,
       // only the one-shot search depth resets. Collapsing Instant to Chat here
@@ -2117,31 +2852,48 @@ class AppStore {
       syncMsg(true); // push initial metadata (sources, searchMeta) to the reactive array
       this.persist();
 
-      const requestMessages = buildRequestMessagesWithPatchedUser({
-        messages: targetChat.messages,
-        assistantMessageId: assistantMessage.id,
-        userMessageId: userMessage.id,
-        userContent: content,
-        buildContextualPrompt: (userContent) => this.buildContextualPrompt({
-          content: userContent,
-          searchContext,
-          researchSummary: (searchMeta as SearchMeta | null)?.researchSummary || '',
-          ragContext,
-          workspaceContext,
-          mode: activeComposerMode,
-          searchMode: activeSearchMode
-        })
-      });
+      const requestMessages = userMessage
+        ? buildRequestMessagesWithPatchedUser({
+            messages: targetChat.messages,
+            assistantMessageId: assistantMessage.id,
+            userMessageId: userMessage.id,
+            userContent: content,
+            attribution: roleplayAttribution,
+            buildContextualPrompt: (userContent) => this.buildContextualPrompt({
+              content: userContent,
+              searchContext,
+              researchSummary: (searchMeta as SearchMeta | null)?.researchSummary || '',
+              ragContext,
+              workspaceContext,
+              mode: activeComposerMode,
+              searchMode: activeSearchMode
+            })
+          })
+        : buildRequestMessagesFromHistory(
+            targetChat.messages,
+            targetChat.messages.length - 1,
+            roleplayAttribution
+          );
 
       const searchSystemPrefix = searchContext ? buildSearchSystemPrefix() : undefined;
       const systemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
         searchSystemPrefix,
-        includeChartHint: activeComposerMode !== 'agent'
+        includeChartHint: activeComposerMode !== 'agent',
+        chat: targetChat,
+        speakerId: this.roleplaySpeakerId(targetChat)
       });
 
-      const outboundMessages = buildOutboundMessages({ messages: requestMessages, systemPrompt });
+      const outboundMessages = appendRoleplayNudge(
+        appendRoleplayStoryTurn(
+          buildOutboundMessages({ messages: requestMessages, systemPrompt }),
+          roleplayOverrides.storyTurn?.instruction
+        ),
+        roleplayAttribution
+      );
+      // The routed speaker applies to this turn only.
+      delete this.roleplaySpeakerOverrides[targetChatId];
       // Context window budget check (local mode only)
       if (activeBackendMode === 'local' && isElectron()) {
         try {
@@ -2424,13 +3176,19 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: activeReasoningLevel,
+          sampling: roleplayOverrides.sampling,
+          stop: roleplayOverrides.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
+            // Keep the raw accumulation: at finalize it is the only faithful
+            // source for the choices and prop blocks the sanitizer strips out.
+            if (roleplayOverrides.stop.length) rawRoleplayContent += value;
             appendStreamingContent(
               assistantMessage,
               value,
               assistantMessage.reasoning || '',
-              assistantMessage.metadata
+              assistantMessage.metadata,
+              roleplayOutputSanitizer
             );
             if (assistantMessage.agentSteps?.length) {
               assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
@@ -2460,6 +3218,28 @@ class AppStore {
       }
 
       assistantMessage.done = true;
+      // Roleplay: never store the `Name:` prefix the model echoed back, lift
+      // adventure choices into their own field, and trim whatever leaked past
+      // the stop strings (a stream that dies mid-`\nUser` leaves a fragment).
+      if (roleplayOutputSanitizer || roleplayOverrides.stop.length) {
+        const source = rawRoleplayContent || assistantMessage.content;
+        const parsed = roleplayChoicesEnabled
+          ? extractRoleplayChoices(source)
+          : { text: source, choices: [] as string[] };
+        if (parsed.choices.length) assistantMessage.choices = parsed.choices;
+        const handed = extractRoleplayProps(parsed.text);
+        if (handed.props.length) assistantMessage.props = handed.props;
+        const trimmed = stripTrailingPartialStop(handed.text, roleplayOverrides.stop);
+        assistantMessage.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(trimmed) : trimmed;
+        const storyTurn = roleplayOverrides.storyTurn;
+        if (storyTurn) {
+          assistantMessage.storyTurn = {
+            label: storyTurn.label,
+            ...(storyTurn.kind ? { kind: storyTurn.kind } : {}),
+            ...(storyTurn.intensity ? { intensity: storyTurn.intensity } : {})
+          };
+        }
+      }
       // Only set status to 'idle' if it wasn't already set to 'error'
       if (assistantMessage.status !== 'error') {
         assistantMessage.status = 'idle';
@@ -2598,7 +3378,10 @@ class AppStore {
         }
       }
       this.error = aborted ? null : assistantMessage.content;
-      userMessage.attachments = sentAttachments;
+      if (roleplayOutputSanitizer) {
+        assistantMessage.content = roleplayOutputSanitizer(assistantMessage.content);
+      }
+      if (userMessage) userMessage.attachments = sentAttachments;
       syncMsg(true);
       this.persist();
     } finally {
@@ -2606,6 +3389,9 @@ class AppStore {
       // the user may have already stopped.
       cancelTrailingSync();
       this.endGenerationRun(targetChatId, controller);
+      // Group auto mode: queue the next character turn once this one settles.
+      // A stopped or failed turn ends the chain instead of retrying.
+      this.maybeContinueRoleplayAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
     }
   }
 
@@ -2700,7 +3486,12 @@ class AppStore {
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
 
-    const previousMessages = buildRequestMessagesFromHistory(chat.messages, index - 1);
+    const roleplayAttribution = this.buildRoleplayAttribution(chat, message.speakerId);
+    const roleplayOutputSanitizer = this.buildRoleplayOutputSanitizer(chat);
+    const roleplayChoicesEnabled = !!chat.roleplay?.adventureChoices;
+    const roleplayOverrides = this.roleplayRequestOverrides(chat, message.speakerId);
+    let rawRoleplayContent = '';
+    const previousMessages = buildRequestMessagesFromHistory(chat.messages, index - 1, roleplayAttribution);
     if (!previousMessages.length) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
@@ -2787,9 +3578,17 @@ class AppStore {
       this.persist();
       const styledSystemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
-        providerPrompt: activeProvider?.system_prompt
+        providerPrompt: activeProvider?.system_prompt,
+        chat,
+        speakerId: message.speakerId
       });
-      const outboundMessages = buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt });
+      const outboundMessages = appendRoleplayNudge(
+        appendRoleplayStoryTurn(
+          buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt }),
+          roleplayOverrides.storyTurn?.instruction
+        ),
+        roleplayAttribution
+      );
       if (message.mode === 'agent' || message.mode === 'instant') {
         const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
         const ctxMode = normalizeContextMode(chat.contextMode);
@@ -3021,9 +3820,15 @@ class AppStore {
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: this.reasoningLevel,
+          sampling: roleplayOverrides.sampling,
+          stop: roleplayOverrides.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
-            nextVersion.content += value;
+            // Keep the raw accumulation: at finalize it is the only faithful
+            // source for the choices and prop blocks the sanitizer strips out.
+            if (roleplayOverrides.stop.length) rawRoleplayContent += value;
+            const nextContent = nextVersion.content + value;
+            nextVersion.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(nextContent) : nextContent;
             message.content = nextVersion.content;
             nextVersion.reasoning = message.reasoning;
             this.touchChats();
@@ -3050,6 +3855,26 @@ class AppStore {
         totalElapsedSeconds: timing,
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
+      if (roleplayOutputSanitizer || roleplayOverrides.stop.length) {
+        const source = rawRoleplayContent || nextVersion.content;
+        const parsed = roleplayChoicesEnabled
+          ? extractRoleplayChoices(source)
+          : { text: source, choices: [] as string[] };
+        if (parsed.choices.length) message.choices = parsed.choices;
+        const handed = extractRoleplayProps(parsed.text);
+        if (handed.props.length) message.props = handed.props;
+        const trimmed = stripTrailingPartialStop(handed.text, roleplayOverrides.stop);
+        nextVersion.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(trimmed) : trimmed;
+        message.content = nextVersion.content;
+        const storyTurn = roleplayOverrides.storyTurn;
+        if (storyTurn) {
+          message.storyTurn = {
+            label: storyTurn.label,
+            ...(storyTurn.kind ? { kind: storyTurn.kind } : {}),
+            ...(storyTurn.intensity ? { intensity: storyTurn.intensity } : {})
+          };
+        }
+      }
       message.metadata = nextVersion.metadata;
       message.model = activeModelLabel;
       message.done = true;
@@ -3326,12 +4151,26 @@ class AppStore {
     enable_thinking?: boolean;
     artifact_toggles?: Record<string, boolean>;
     composer_mode_control?: 'tabs' | 'auto';
+    roleplay_enabled?: boolean;
   }) {
     await this.commitConfig(mergeUiSettingsConfig(this.config, partial));
   }
 
   get composerModeControl(): 'tabs' | 'auto' {
     return this.config.ui?.composer_mode_control === 'tabs' ? 'tabs' : 'auto';
+  }
+
+  /** Whether the Roleplay space is enabled (Settings → General). */
+  get roleplayEnabled(): boolean {
+    return this.config.ui?.roleplay_enabled === true;
+  }
+
+  async setRoleplayEnabled(enabled: boolean) {
+    await this.updateUiSettings({ roleplay_enabled: enabled });
+    // Leaving the space while it is disabled must not strand the user in it.
+    if (!enabled && this.activeSpace === 'roleplay') {
+      this.setActiveSpace('home');
+    }
   }
 
   getArtifactToggles(): Record<string, boolean> {

@@ -198,6 +198,7 @@ async function* stream(params: StreamParams): AsyncGenerator<StreamChunk> {
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
       ...mapThinkingBody(params.reasoning, maxTokens, params.model),
+      ...(params.stop?.length ? { stop_sequences: params.stop } : {}),
       ...(!params.reasoning || ['off', 'disabled', 'none'].includes(params.reasoning.level) ? {
         ...(params.temperature != null ? { temperature: params.temperature } : {}),
         ...(params.top_p != null ? { top_p: params.top_p } : {})
@@ -279,6 +280,7 @@ async function complete(params: StreamParams): Promise<CompletionResult> {
       ...(system ? { system } : {}),
       ...(anthropicTools?.length ? { tools: anthropicTools } : {}),
       ...mapThinkingBody(params.reasoning, maxTokens, params.model),
+      ...(params.stop?.length ? { stop_sequences: params.stop } : {}),
       ...(!params.reasoning || ['off', 'disabled', 'none'].includes(params.reasoning.level) ? {
         ...(params.temperature != null ? { temperature: params.temperature } : {}),
         ...(params.top_p != null ? { top_p: params.top_p } : {})

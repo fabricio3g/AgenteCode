@@ -8,13 +8,16 @@
  *   investigation, documents, search. No filesystem access, no project tools.
  * - `code` — the coding agent surface: project folders, workspace tools,
  *   file edits, checkpoints. Coding work only.
+ * - `roleplay` — the character surface: character cards, user personas,
+ *   lorebooks and immersive scenes. Direct streaming, no tools. Gated behind
+ *   the `ui.roleplay_enabled` setting.
  *
  * This module is the single source of truth for that split. Components read
  * labels and defaults from here; services consult it instead of hard-coding
  * space checks.
  */
 
-export type SpaceId = 'home' | 'code';
+export type SpaceId = 'home' | 'code' | 'roleplay';
 
 export interface SpaceDefinition {
   id: SpaceId;
@@ -49,10 +52,19 @@ export const SPACES: Record<SpaceId, SpaceDefinition> = {
     defaultComposerMode: 'agent',
     agentProfiles: ['code'],
     searchModes: ['chat']
+  },
+  roleplay: {
+    id: 'roleplay',
+    label: 'Roleplay',
+    description: 'Character-driven roleplay: character cards, personas and immersive scenes.',
+    // Roleplay streams directly — no tool loop, no intent routing.
+    defaultComposerMode: 'chat',
+    agentProfiles: ['chat'],
+    searchModes: ['chat']
   }
 };
 
-export const SPACE_IDS: readonly SpaceId[] = ['home', 'code'];
+export const SPACE_IDS: readonly SpaceId[] = ['home', 'code', 'roleplay'];
 
 /**
  * Map any persisted or legacy value onto a valid SpaceId.
@@ -65,5 +77,6 @@ export const SPACE_IDS: readonly SpaceId[] = ['home', 'code'];
  */
 export function normalizeSpace(value: unknown): SpaceId {
   if (value === 'work' || value === 'code') return 'code';
+  if (value === 'roleplay') return 'roleplay';
   return 'home';
 }

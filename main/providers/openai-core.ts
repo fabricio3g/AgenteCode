@@ -22,7 +22,7 @@ import { numberOrNull, safeParseJson } from './helpers.ts';
 import { probeToolSupport, type ToolProbeArgs } from './tool-probe.ts';
 
 /** Known request extras passed through to the wire, in one place. */
-const PASSTHROUGH_PARAMS = ['temperature', 'max_tokens', 'top_p'] as const;
+const PASSTHROUGH_PARAMS = ['temperature', 'max_tokens', 'top_p', 'stop'] as const;
 
 const EFFORT_LEVELS = ['off', 'low', 'medium', 'high'] as const;
 const MISTRAL_PROBE_LEVELS = ['off', 'none', 'high'] as const;

@@ -37,17 +37,21 @@
   let host: HTMLDivElement | undefined = $state();
   let stage: HTMLDivElement | undefined = $state();
 
-  async function renderDocx(source: string, isCurrent: () => boolean) {
+  async function renderDocx(source: string, name: string, target: HTMLDivElement, isCurrent: () => boolean) {
     loading = true;
     error = null;
     pageCount = 0;
-    if (!source || !host) return;
+    target.replaceChildren();
     try {
-      const pages = await loadDocxInto(source, filename, host);
+      if (!source) throw new Error('No document source available. Download the file to open it.');
+      // Each load owns its target. A superseded async render cannot overwrite
+      // the current document, even if it finishes after the new load.
+      const pending = document.createElement('div');
+      const pages = await loadDocxInto(source, name, pending);
       if (!isCurrent()) return;
+      target.replaceChildren(...pending.childNodes);
       pageCount = pages;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (isCurrent()) recalcZoom();
+      recalcZoom();
     } catch (err) {
       console.error('[DocxViewer] Failed to render DOCX:', err);
       if (isCurrent()) {
@@ -65,15 +69,16 @@
   }
 
   $effect(() => {
+    if (!host) return;
     let current = true;
-    void renderDocx(src, () => current);
+    void renderDocx(src, filename, host, () => current);
     return () => {
       current = false;
     };
   });
 
   $effect(() => {
-    if (!stage) return;
+    if (!stage || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => recalcZoom());
     observer.observe(stage);
     return () => observer.disconnect();
@@ -89,8 +94,8 @@
       variant="card"
       errorTitle={copy.viewer.previewUnavailable}
     />
-  {:else}
-    <div class="docx-stage" bind:this={stage}>
+  {/if}
+    <div class="docx-stage" class:pending={loading || !!error} bind:this={stage}>
       <!--
         Pages render at their fixed A4 pixel width inside the host. The stage
         scales the whole stack to the column instead (origin top center), so a
@@ -100,10 +105,9 @@
         <div class="docx-host" bind:this={host}></div>
       </div>
     </div>
-    {#if pageCount}
+    {#if !loading && !error && pageCount}
       <div class="docx-meta">{pageCount === 1 ? '1 page' : `${pageCount} pages`}</div>
     {/if}
-  {/if}
 </div>
 
 <style>

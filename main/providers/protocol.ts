@@ -74,6 +74,12 @@ export interface StreamParams {
   tools?: Array<Record<string, unknown>>;
   tool_choice?: unknown;
   reasoning?: { level: string; budgetTokens?: number } | null;
+  /**
+   * Sequences that end generation early. Every adapter maps these to its own
+   * wire name (`stop`, `stop_sequences`, `stopSequences`); the count is capped
+   * upstream because the strictest provider accepts only four.
+   */
+  stop?: string[];
   signal?: AbortSignal;
   [param: string]: unknown;
 }

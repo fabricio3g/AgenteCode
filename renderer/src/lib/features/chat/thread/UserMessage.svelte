@@ -8,6 +8,7 @@
   import { renderMarkdown } from '$lib/utils/markdown';
   import { writeToClipboard } from '$lib/utils/clipboard';
   import AttachmentDocumentsBlock from '$lib/features/chat/AttachmentDocumentsBlock.svelte';
+  import { charactersStore } from '$lib/features/roleplay/characters.svelte';
   import MessageActionBar from './MessageActionBar.svelte';
   import { compactActions, type MessageAction } from './message-actions';
   import { useMessage } from './message-context';
@@ -55,6 +56,13 @@
   const bodyHtml = $derived(renderMarkdown(quoted?.question || ctx.message.content || ''));
   const quoteHtml = $derived(quoted ? renderMarkdown(quoted.selectedText) : '');
   const workContext = $derived(ctx.message.workContext);
+
+  /** Roleplay: the persona this turn speaks as, for chat-app identity. */
+  const roleplayPersona = $derived.by(() => {
+    const chat = appStore.currentChat;
+    if (chat?.contextMode !== 'roleplay') return null;
+    return charactersStore.getPersonaById(chat.personaId);
+  });
 
   function scrollToSelectedSource() {
     const sourceMessageId = quoted?.sourceMessageId;
@@ -112,6 +120,19 @@
 {/if}
 
 <div class="user-message-stack max-w-full space-y-3">
+  {#if roleplayPersona}
+    <div class="persona-chip">
+      <span class="persona-name">{roleplayPersona.name}</span>
+      <span class="persona-avatar">
+        {#if roleplayPersona.avatar}
+          <img src={roleplayPersona.avatar} alt={roleplayPersona.name} />
+        {:else}
+          <span>{roleplayPersona.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
+        {/if}
+      </span>
+    </div>
+  {/if}
+
   <div
     class="chateaui-user-bubble text-sm leading-relaxed"
     data-chat-message-content
@@ -137,6 +158,42 @@
 </div>
 
 <style>
+  /* Roleplay identity: mirrors the speaker line on assistant replies. */
+  .persona-chip {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.375rem;
+  }
+
+  .persona-name {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .persona-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    color: var(--text-muted);
+    font-size: 0.625rem;
+    font-weight: 600;
+  }
+
+  .persona-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
   .work-pill {
     display: inline-flex;
     align-items: center;

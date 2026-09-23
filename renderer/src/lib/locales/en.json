@@ -81,7 +81,9 @@
     "accessToken": "Access Token",
     "save": "Save",
     "language": "Language",
-    "languageDesc": "Choose the display language for the interface."
+    "languageDesc": "Choose the display language for the interface.",
+    "roleplay": "Roleplay",
+    "roleplayDesc": "Enable the Roleplay space: character cards, personas and immersive scenes."
   },
   "composer": {
     "modeChat": "Chat",
