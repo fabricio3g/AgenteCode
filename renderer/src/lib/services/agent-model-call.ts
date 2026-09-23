@@ -6,11 +6,13 @@
  *   early turns ──(content error)──▶ direct mode (no tools)
  *
  * Streams reasoning and visible text to the caller as they arrive. A failure
- * no rung can recover marks the turn's step as errored, records the reason
- * on the run, and returns null.
+ * no rung can recover marks the turn's step as errored and comes back as
+ * `{ error }` (the raw message, so the core can tell a transient failure from
+ * a fatal one and retry it).
  */
 
 import type { AgentStep } from '$lib/types/chat';
+import type { StreamCallbacks } from '$shared/agent-core/types';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
 import { agentStreamComplete } from '$lib/services/agent-llm';
@@ -21,10 +23,12 @@ import { toErrorMessage, isAbortError, humanizeAgentError } from '$lib/utils/err
 import { debugLog } from '$lib/services/agent-tool-dispatch';
 import { checkAbort, emitSteps, useSystemPrompt, type AgentRun } from '$lib/services/agent-run-context';
 
+export type ModelCallOutcome = { completion: CompletionResult } | { error: string };
+
 export async function callModel(
   run: AgentRun,
-  turn: { iter: number; step: AgentStep; nativeActive: boolean }
-): Promise<CompletionResult | null> {
+  turn: { iter: number; step: AgentStep; nativeActive: boolean; callbacks?: StreamCallbacks }
+): Promise<ModelCallOutcome> {
   const { args, plan, messages, transport, config } = run;
   const { step, nativeActive, iter } = turn;
   const reasoningBeforeTurn = run.finalReasoning;
@@ -47,11 +51,13 @@ export async function callModel(
       onError: (message) => { nativeStreamError = message; },
       onReasoning: (text) => {
         streamedReasoning += text;
+        turn.callbacks?.onThinkingDelta?.(text);
         run.finalReasoning = [reasoningBeforeTurn, sanitizeAgentVisibleText(streamedReasoning)].filter(Boolean).join('\n\n');
         args.onReasoning?.(run.finalReasoning);
       },
       onContent: (text) => {
         streamedContent += text;
+        turn.callbacks?.onTextDelta?.(text);
         const visible = sanitizeAgentVisibleText(streamedContent);
         args.onContent?.(visible);
         const preview = visible.slice(0, 120).trim();
@@ -76,22 +82,21 @@ export async function callModel(
       omitMaxTokens: plan.omitMaxTokens
     });
   };
-  /** Last rung: record the failure on the turn and the run. */
-  const fail = (err: unknown): null => {
+  /** Last rung: show the failure on the turn's step. */
+  const fail = (err: unknown): ModelCallOutcome => {
     step.status = 'error';
     step.label = 'Error';
     step.detail = humanizeAgentError(err);
     emitSteps(run);
-    run.errorReason = humanizeAgentError(err);
-    return null;
+    return { error: toErrorMessage(err) || 'The model request failed.' };
   };
-  const complete = async () => {
-    const result = await runComplete(messages);
+  const complete = async (): Promise<ModelCallOutcome> => {
+    const completion = await runComplete(messages);
     checkAbort(run);
-    return result;
+    return { completion };
   };
   /** Try once more; an abort always propagates, anything else fails the turn. */
-  const lastTry = async (): Promise<CompletionResult | null> => {
+  const lastTry = async (): Promise<ModelCallOutcome> => {
     try {
       return await complete();
     } catch (err) {
@@ -108,7 +113,8 @@ export async function callModel(
     if (nativeActive) {
       const streamResult = await runStream(messages, plan.toolDefs);
       checkAbort(run);
-      if (streamResult !== null) return streamResult;
+      // null (and a missing result) mean the native stream produced nothing usable.
+      if (streamResult) return { completion: streamResult };
       transport.nativeFailed = true;
       debugLog(plan.debugLogs, `[agent] native stream returned no result | reason="${nativeStreamError.slice(0, 200) || 'unreported'}"`);
       // Only poison the cache on a known tool rejection: null also covers clone,
@@ -159,7 +165,7 @@ export async function callModel(
       return lastTry();
     }
 
-    console.error('[agent] HARD FAIL (non-recoverable LLM error)', errMsg);
+    console.error('[agent] model call failed', errMsg);
     return fail(err);
   }
 }

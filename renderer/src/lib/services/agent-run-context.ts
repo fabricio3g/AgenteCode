@@ -12,8 +12,10 @@ import type { SearchResult } from '$lib/types/bridge';
 import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import type { RunAgentTaskArgs, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
 import { normalizeHomeRuntimeMode } from '$shared/agente-protocol';
+import type { AgentMessage, UserMessage } from '$shared/agent-core/types';
 import { normPath } from '$lib/services/agent-workspace';
 import { buildMarkdownReport } from '$lib/services/agent-content';
+import { sanitizeAgentVisibleText, stripToolCallArtifacts } from '$lib/services/agent-parsing';
 import { hasVisibleArtifact } from '$lib/services/agent-flow';
 import {
   compactText, sourceRows, evidenceSources, buildEvidenceText,
@@ -42,10 +44,24 @@ export interface AgentRun {
   sources: SearchResult[];
   seenUrls: Set<string>;
   observations: ToolObservation[];
-  /** Provider history; index 0 is always the active system prompt. */
+  /** The chat history the run was started with, in provider format. */
+  history: RequestMessage[];
+  /** The run's own turns in the shared agent-core message model. */
+  transcript: AgentMessage[];
+  /** Tool-call ids the provider issued natively; the rest came from a text dialect. */
+  nativeCallIds: Set<string>;
+  /**
+   * The last request built from history + transcript, in provider format.
+   * Index 0 is always the active system prompt.
+   */
   messages: RequestMessage[];
   /** Non-system history rows, which context trimming must never drop. */
   historyCount: number;
+  /** The core turn in progress (1-based) and its "thinking" step. */
+  turn: number;
+  currentStep: AgentStep | null;
+  /** The outcome is decided (answer, fallback or failure): no review, no more turns. */
+  settled: boolean;
   artifacts: AgentArtifact[];
   transport: {
     /** Native tool calling failed once; the run stays on the XML contract. */
@@ -90,8 +106,14 @@ export function createAgentRun(args: RunAgentTaskArgs, config: AppConfig, plan: 
     sources,
     seenUrls: new Set<string>(),
     observations: [],
+    history,
+    transcript: [],
+    nativeCallIds: new Set<string>(),
     messages: [{ role: 'system', content: plan.nativeTools ? plan.prompts.native : plan.prompts.xml }, ...history],
     historyCount: history.filter((message) => message.role !== 'system').length,
+    turn: 0,
+    currentStep: null,
+    settled: false,
     artifacts: [],
     transport: { nativeFailed: false, directMode: false },
     finalContent: '',
@@ -105,6 +127,67 @@ export function createAgentRun(args: RunAgentTaskArgs, config: AppConfig, plan: 
 }
 
 export const prompt = (run: AgentRun) => run.args.rawPrompt || '';
+
+/** Queue a user-role message (a nudge or instruction) for the next turn. */
+export function pushUser(run: AgentRun, content: string) {
+  run.transcript.push(userMessage(content));
+}
+
+export function userMessage(content: string): UserMessage {
+  return { role: 'user', content, ts: Date.now() };
+}
+
+/** Structured tool result the Home tools attach to a core ToolResult. */
+export interface HomeToolDetails {
+  payload: unknown;
+}
+
+const PREPARING = 'Preparing to use tools\u2026';
+
+/**
+ * Provider request for the next call: system prompt, the chat history, then
+ * the transcript. Native calls keep their `tool_calls`/`tool` pairing; calls
+ * parsed from a text dialect go back as plain text, because a text-dialect
+ * turn has no `tool_calls` block for a `tool` message to answer.
+ */
+export function buildWireMessages(run: AgentRun): RequestMessage[] {
+  const which = run.transport.directMode ? 'direct' : nativeActive(run) ? 'native' : 'xml';
+  const wire: RequestMessage[] = [{ role: 'system', content: run.plan.prompts[which] }, ...run.history];
+  for (const message of run.transcript) {
+    if (message.role === 'user') {
+      wire.push({ role: 'user', content: message.content });
+      continue;
+    }
+    if (message.role === 'assistant') {
+      // Failed or aborted calls never go back to the provider.
+      if (message.stopReason === 'error' || message.stopReason === 'aborted') continue;
+      const native = (message.toolCalls || []).filter((call) => run.nativeCallIds.has(call.id));
+      if (native.length) {
+        wire.push({
+          role: 'assistant',
+          content: message.content || null,
+          ...(message.providerState ? { providerState: message.providerState as RequestMessage['providerState'] } : {}),
+          ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+          tool_calls: native.map((call) => ({
+            id: call.id,
+            type: 'function' as const,
+            function: { name: call.name, arguments: JSON.stringify(call.arguments) }
+          }))
+        });
+      } else {
+        wire.push({ role: 'assistant', content: stripToolCallArtifacts(sanitizeAgentVisibleText(message.content)) || PREPARING });
+      }
+      continue;
+    }
+    if (run.nativeCallIds.has(message.toolCallId)) {
+      wire.push({ role: 'tool', content: message.content, tool_call_id: message.toolCallId, name: message.toolName });
+    } else {
+      const payload = (message.details as HomeToolDetails | undefined)?.payload ?? message.content;
+      wire.push({ role: 'user', content: `Tool result for ${message.toolName}:\n${JSON.stringify(payload, null, 2)}` });
+    }
+  }
+  return wire;
+}
 
 export function emitSteps(run: AgentRun) {
   run.args.onStep([...run.steps]);
@@ -126,11 +209,6 @@ export function useSystemPrompt(run: AgentRun, which: keyof AgentRunPlan['prompt
 
 export function checkAbort(run: AgentRun) {
   if (run.args.signal?.aborted) throw new DOMException('Agent task cancelled by user', 'AbortError');
-}
-
-export function throwIfAborted(run: AgentRun) {
-  checkAbort(run);
-  run.args.signal?.throwIfAborted?.();
 }
 
 /**

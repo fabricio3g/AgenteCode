@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSearchSystemPrefix, buildSystemPrompt } from '../../renderer/src/lib/stores/app-prompts.ts';
+import { buildSystemPrompt } from '../../renderer/src/lib/stores/app-prompts.ts';
 
 describe('time-aware prompts', () => {
   it('adds current clock and calendar context to the system prompt', () => {
@@ -10,14 +10,5 @@ describe('time-aware prompts', () => {
     assert.match(prompt, /Current date\/time:/);
     assert.match(prompt, /2026-06-04T12:34:56\.000Z/);
     assert.match(prompt, /calendar questions/);
-  });
-
-  it('marks search prompts as fresh and time-aware', () => {
-    const now = new Date('2026-06-04T12:34:56.000Z');
-    const prompt = buildSearchSystemPrefix(now);
-
-    assert.match(prompt, /Current date\/time:/);
-    assert.match(prompt, /real-time web search results/);
-    assert.match(prompt, /2026-06-04T12:34:56\.000Z/);
   });
 });

@@ -14,9 +14,7 @@ import {
   shouldUseToolLoop
 } from '$lib/services/composer-route';
 import { humanizeAgentError } from '$lib/utils/errors';
-import { appendToolResultMessage } from '$lib/services/agent-tool-result';
 import type { RequestMessage } from '$lib/services/chat-api';
-import type { ToolCall } from '$lib/services/agent-types';
 
 function bench(name: string, iterations: number, fn: () => void): { name: string; iterations: number; totalMs: number; perOpUs: number; opsPerSec: number } {
   // Warmup
@@ -127,27 +125,6 @@ describe('functional: tool_calls pair integrity', () => {
         expect(parent?.tool_calls?.some((c) => c.id === m.tool_call_id)).toBe(true);
       }
     }
-  });
-
-  it('appendToolResultMessage always emits role=tool with id', () => {
-    const messages: RequestMessage[] = [
-      {
-        role: 'assistant',
-        content: null,
-        tool_calls: [{ id: 'call_x', type: 'function', function: { name: 'get_weather', arguments: '{}' } }]
-      }
-    ];
-    const toolCall: ToolCall = { id: 'call_x', name: 'get_weather', arguments: { location: 'Madrid' } };
-    appendToolResultMessage({
-      toolCall,
-      result: { success: true, output: { ok: true } },
-      messages,
-      nativeActive: false, // even if "failed native", still tool role when pair expected
-      nativeFailed: true,
-      maxToolResultChars: 4000
-    });
-    expect(messages[1].role).toBe('tool');
-    expect(messages[1].tool_call_id).toBe('call_x');
   });
 });
 

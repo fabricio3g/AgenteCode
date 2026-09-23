@@ -1,5 +1,4 @@
 import type { AgentArtifact, AgentStep, CodeAgentFileChange, CodeAgentFileChangeKind } from '$lib/types/chat';
-import type { RequestMessage } from '$lib/services/chat-api';
 import { say } from '$lib/copy';
 import type { SearchResult } from '$lib/types/bridge';
 import type { ToolCall, ToolResult } from '$lib/services/agent-types';
@@ -297,63 +296,14 @@ function fileChangesFromResult(result: ToolResult): CodeAgentFileChange[] {
   return changes;
 }
 
-export function appendToolResultMessage(params: {
-  toolCall: ToolCall;
-  result: ToolResult;
-  messages: RequestMessage[];
-  nativeActive: boolean;
-  nativeFailed: boolean;
-  maxToolResultChars: number;
-}): void {
-  let resultPayload = params.result.success
-    ? (params.result.note ? { ...(params.result.output as object), _note: params.result.note } : params.result.output)
-    : { error: params.result.error, ...(params.result.note ? { note: params.result.note } : {}) };
-  const rawResultJson = JSON.stringify(resultPayload);
-  if (rawResultJson.length > params.maxToolResultChars) {
-    resultPayload = {
-      _truncated: true,
-      _summary: rawResultJson.slice(0, params.maxToolResultChars) + '…(truncated)',
-      _result: 'ok'
-    };
-  }
-
-  // Always prefer proper tool role when we have an id — required after assistant tool_calls.
-  // Generate id if missing so we never leave unpaired native tool_calls.
-  const toolCallId = params.toolCall.id || `call_${Math.random().toString(36).slice(2, 10)}`;
-  if (!params.toolCall.id) params.toolCall.id = toolCallId;
-
-  const lastAssistant = [...params.messages].reverse().find((m) => m.role === 'assistant');
-  const expectsToolRole =
-    (params.nativeActive && !params.nativeFailed)
-    || !!(lastAssistant?.tool_calls?.some((tc) => tc.id === toolCallId));
-
-  /*
-   * The condition is `expectsToolRole` alone. It used to be
-   * `expectsToolRole || params.toolCall.id`, and since the line above *always*
-   * assigns an id, that was unconditionally true and the `role: 'user'` branch below
-   * was unreachable.
-   *
-   * That mattered because XML and code-fence tool parses produce calls with no id and
-   * push assistant messages with no `tool_calls`. Their results were emitted as
-   * `role: 'tool'` with no parent block, and `ensureToolCallPairs` then deleted them
-   * as orphans on the next iteration. Every local model runs XML mode, so local
-   * models never saw the results of their own tool calls — they just re-called the
-   * same tool. The plain-text form below survives that pass.
-   */
-  if (expectsToolRole) {
-    params.messages.push({
-      role: 'tool',
-      content: JSON.stringify(resultPayload),
-      tool_call_id: toolCallId,
-      name: params.toolCall.name
-    });
-    return;
-  }
-
-  params.messages.push({
-    role: 'user',
-    content: `Tool result for ${params.toolCall.name}:\n${JSON.stringify(resultPayload, null, 2)}`
-  });
+/** What the model sees of a tool result: output (or error) plus any note, size-capped. */
+export function toolResultPayload(result: ToolResult, maxChars: number): unknown {
+  const payload = result.success
+    ? (result.note ? { ...(result.output as object), _note: result.note } : result.output)
+    : { error: result.error, ...(result.note ? { note: result.note } : {}) };
+  const json = JSON.stringify(payload);
+  if (json.length <= maxChars) return payload;
+  return { _truncated: true, _summary: json.slice(0, maxChars) + '…(truncated)', _result: 'ok' };
 }
 
 /**
