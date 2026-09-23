@@ -1,2185 +1,585 @@
-import type { AgentStep, AgentArtifact, AgentOutcome, AgentStopReason, WorkspaceFile } from '$lib/types/chat';
-import type { SearchResult } from '$lib/types/bridge';
-import { say } from '$lib/copy';
-import type { CompletionResult, RequestMessage, NativeToolCall } from '$lib/services/chat-api';
-import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolContext, ToolObservation, ToolResult } from '$lib/services/agent-types';
-import { normalizeHomeRuntimeMode } from '$shared/agente-protocol';
-import { completeAssistantReply, setToolSupportCache } from '$lib/services/chat-api';
-import { agentComplete, agentStreamComplete, supportsNativeTools as agentSupportsNativeTools } from '$lib/services/agent-llm';
-import { webSearch, fetchUrlContent } from '$lib/services/search';
-import { queryDocuments } from '$lib/services/rag';
+/**
+ * The Home agent run (runAgentTask): a tool loop over one model.
+ *
+ * This file is the driver. Each iteration asks the model for its next move,
+ * turns the reply into tool calls, applies the stop guards and runs the
+ * tools; the phases live in their own modules:
+ *
+ * - agent-run-plan       profile, budgets, tools and system prompts
+ * - agent-run-context    run state and shared helpers (evidence, fallbacks)
+ * - agent-research-bootstrap  the system-owned first search for research runs
+ * - agent-model-call     one model call and its transport fallback ladder
+ * - agent-tool-calls     parsing tool calls out of a reply
+ * - agent-loop-guard     loop / stagnation / explore-only guards
+ * - agent-tool-dispatch  tool name → handler, with timeouts
+ * - agent-run-finish     forced final answer, fallback and the result
+ */
+
+import type { AgentStep } from '$lib/types/chat';
+import type { AgentTaskResult, RunAgentTaskArgs, ToolCall, ToolResult } from '$lib/services/agent-types';
 import { loadAppConfig } from '$lib/utils/storage';
 import { isElectron, invoke } from '$lib/services/bridge';
-import {
-  createDocxArtifactFile, createPdfArtifactFile, createPptxArtifactFile, createXlsxArtifactFile,
-  createWorkProductArtifactFiles,
-  validateGeneratedDocumentArgs,
-  type GeneratedArtifactFile
-} from '$lib/services/generated-documents';
-import { viewerPathFor } from '$lib/utils/artifact-files';
-import {
-  readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile,
-} from '$lib/services/files';
-import {
-  isWorkspace, normPath, getWsFiles, upsertWsFile, readWsText, globToRegex
-} from '$lib/services/agent-workspace';
-import { toErrorMessage, isAbortError, humanizeAgentError } from '$lib/utils/errors';
-import {
-  parseXmlToolCall, parseToolCallCodeblocks, parseDegradedXmlToolCalls, hasToolIntent,
-  sanitizeAgentVisibleText,
-  isPublicFallbackContent, stripToolCallArtifacts, parseCodeblockWrites
-} from '$lib/services/agent-parsing';
-import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
+import { toErrorMessage } from '$lib/utils/errors';
+import { hasToolIntent, sanitizeAgentVisibleText, stripToolCallArtifacts } from '$lib/services/agent-parsing';
 import { activityLabel } from '$lib/utils/tool-ui';
-import {
-  getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
-  FINAL_ANSWER_CONTRACT_REMINDER, isMedicalResearchQuery, getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
-} from '$lib/services/agent-prompts';
-
-import {
-  classifyStopReason, stoppedWarning, hasVisibleArtifact, visibleFileCount,
-  hasProgressSince, isWebsiteBuildRequest, finalizeAgentSteps,
-  type ProgressSnapshot
-} from '$lib/services/agent-flow';
-import {
-  compactText, sourceRows, summarizeToolObservation, evidenceSources, buildEvidenceText,
-  requestedArtifactKinds, missingRequestedArtifactExtensions as missingRequestedArtifactExts, fallbackTitle,
-  requestedVisualArtifacts, VISUAL_ARTIFACT_TOOL, type VisualArtifactKind,
-  hasAllRequestedArtifacts as hasAllRequestedArtifactsForFiles,
-  hasGatheredEvidence as hasGatheredEvidenceForContext
-} from '$lib/services/agent-evidence';
-import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
-import {
-  buildScopedArtifact,
-  synthesizeArtifactCompletion as synthesizeArtifactCompletionText,
-  addGeneratedArtifactFile as addGeneratedArtifactFileEntry
-} from '$lib/services/agent-artifact';
-import { getToolDefinitions, STEP_TYPE } from '$lib/services/agent-tooling';
-import {
-  injectEvidenceSummary as injectEvidenceSummaryMessage,
-  trimContext as trimContextMessages,
-  ensureToolCallPairs
-} from '$lib/services/agent-message-context';
-import { injectResearchEvidencePack } from '$lib/services/agent-evidence-pack';
-import {
-  hasEnoughResearchEvidence,
-  isResearchProductPath,
-  researchEvidenceThreshold,
-  researchSynthesisUserNudge,
-  researchThinSourcesNotice,
-  resolveResearchMode,
-  shouldForceResearchSynthesis
-} from '$lib/services/research-pipeline';
-import {
-  handleReadFile, handleWriteFile, handleEditFile, handleDeleteFile, handleListFiles,
-  handleSearchFiles, handlePreviewProject
-} from '$lib/services/agent-tool-fileops';
-import { handleGetWeather, handleConvertCurrency, handleGetQuote } from '$lib/services/agent-tool-livedata';
-import { liveGeocodePlace } from '$lib/services/live-data';
-import { handleWebSearch, handleFetchUrl, handleQueryKnowledge, handleCalculator } from '$lib/services/agent-tool-core';
-import { handleGetDiagnostics } from '$lib/services/agent-tool-diagnostics';
-import { dispatchArtifactTool } from '$lib/services/agent-artifact-dispatch';
-import { enforceTokenBudget as enforceTokenBudgetMessages } from '$lib/services/agent-token-budget';
+import { FINAL_ANSWER_CONTRACT_REMINDER } from '$lib/services/agent-prompts';
+import { hasVisibleArtifact, visibleFileCount } from '$lib/services/agent-flow';
+import { summarizeToolObservation, VISUAL_ARTIFACT_TOOL } from '$lib/services/agent-evidence';
+import { synthesizeArtifactCompletion } from '$lib/services/agent-artifact';
+import { STEP_TYPE } from '$lib/services/agent-tooling';
+import { trimContext, ensureToolCallPairs } from '$lib/services/agent-message-context';
+import { enforceTokenBudget } from '$lib/services/agent-token-budget';
 import { groupParallelAndSequential } from '$lib/services/agent-tool-scheduler';
-import {
-  ensureRequestedArtifactsFromEvidence as ensureRequestedArtifactsFromEvidenceCore,
-  buildStrictFallbackContent as buildStrictFallbackContentCore
-} from '$lib/services/agent-strict-fallback';
-import { executeSingleTool as executeSingleToolCore } from '$lib/services/agent-tool-execution';
+import { executeSingleTool } from '$lib/services/agent-tool-execution';
+import { hasEnoughResearchEvidence, shouldForceResearchSynthesis } from '$lib/services/research-pipeline';
 import {
   appendToolResultMessage,
   createRunningToolStep,
   displayToolLabel,
   finalizeToolStep,
   mergeWebSearchSources,
-  publishArtifacts,
   recoverOptionalPresentationFailure
 } from '$lib/services/agent-tool-result';
+import { debugLog, executeToolWithTimeout, fail, uid } from '$lib/services/agent-tool-dispatch';
+import { resolveAgentRunPlan } from '$lib/services/agent-run-plan';
+import {
+  checkAbort,
+  createAgentRun,
+  emitSteps,
+  enforceRequestedArtifacts,
+  evidenceOnlyFallback,
+  injectLiveEvidence,
+  mergeCompletionUsage,
+  missingRequestedVisuals,
+  nativeActive as isNativeActive,
+  publishToolArtifact,
+  pushStep,
+  throwIfAborted,
+  useSystemPrompt,
+  type AgentRun
+} from '$lib/services/agent-run-context';
+import { runResearchBootstrap } from '$lib/services/agent-research-bootstrap';
+import { callModel } from '$lib/services/agent-model-call';
+import { extractToolCalls, normalizeMapCalls, websiteWritesFromCodeblocks } from '$lib/services/agent-tool-calls';
+import { createExploreGuard, createLoopGuard } from '$lib/services/agent-loop-guard';
+import { buildAgentResult, forceFinalAnswer, settleWithoutAnswer } from '$lib/services/agent-run-finish';
 
-function mergeCompletionUsage(
-  current: CompletionResult['usage'],
-  next: CompletionResult['usage']
-): CompletionResult['usage'] {
-  if (!next) return current || null;
-  if (!current) return next;
+export { INSTANT_TOOL_NAMES } from '$lib/services/agent-run-plan';
 
-  const sum = (left?: number, right?: number) => {
-    const total = (Number(left) || 0) + (Number(right) || 0);
-    return total > 0 ? total : undefined;
-  };
-  const leftTimings = current.timings || {};
-  const rightTimings = next.timings || {};
-  const timings = {
-    prompt_n: sum(leftTimings.prompt_n, rightTimings.prompt_n),
-    prompt_ms: sum(leftTimings.prompt_ms, rightTimings.prompt_ms),
-    predicted_n: sum(leftTimings.predicted_n, rightTimings.predicted_n),
-    predicted_ms: sum(leftTimings.predicted_ms, rightTimings.predicted_ms),
-    total_ms: sum(leftTimings.total_ms, rightTimings.total_ms)
-  };
-  const predictedMs = Number(timings.predicted_ms || 0);
-  const outputTokens = sum(
-    current.output_tokens ?? current.completion_tokens ?? current.eval_count,
-    next.output_tokens ?? next.completion_tokens ?? next.eval_count
-  );
-
-  return {
-    ...current,
-    ...next,
-    input_tokens: sum(
-      current.input_tokens ?? current.prompt_tokens ?? current.prompt_eval_count,
-      next.input_tokens ?? next.prompt_tokens ?? next.prompt_eval_count
-    ),
-    output_tokens: outputTokens,
-    total_tokens: sum(
-      current.total_tokens ?? ((current.input_tokens || current.prompt_tokens || current.prompt_eval_count || 0) + (current.output_tokens || current.completion_tokens || current.eval_count || 0)),
-      next.total_tokens ?? ((next.input_tokens || next.prompt_tokens || next.prompt_eval_count || 0) + (next.output_tokens || next.completion_tokens || next.eval_count || 0))
-    ),
-    timings: {
-      ...leftTimings,
-      ...rightTimings,
-      ...timings,
-      ...(predictedMs > 0 && outputTokens
-        ? { predicted_per_second: outputTokens / (predictedMs / 1000) }
-        : {})
-    }
-  };
-}
-
-const DEFAULT_MAX_ITERATIONS = 14;
-const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
-/** Flaxeo Agent (code) needs more room than chat sandbox agents. */
-const CODE_MAX_ITERATIONS = 28;
-const CODE_LOCAL_MAX_ITERATIONS = 18;
-const CODE_MAX_TIME_MS = 8 * 60 * 1000;
-/** Simple Chat Agent budgets (long-horizon lite). */
-const CHAT_MAX_ITERATIONS = 12;
-const CHAT_LOCAL_MAX_ITERATIONS = 8;
-const CHAT_MAX_TIME_MS = 5 * 60 * 1000;
-const MAX_TIME_MS = 2 * 60 * 1000;
-const SEARCH_TOOL_NAMES = new Set([
-  'web_search',
-  'fetch_url',
-  'calculator',
-  'get_weather',
-  'convert_currency',
-  'get_quote',
-  'create_chart',
-  'create_dashboard',
-  'create_info_card',
-  'create_html_card',
-  'create_diagram',
-  'create_map',
-  'export_research_package'
-]);
-/**
- * Instant fast-path allowlist: grounded answers and math only. No artifact
- * creators, no file writes, no workspace edits — those live on the Agent
- * tab. Port as one pack subset if Home moves to the core engine (#12).
- */
-export const INSTANT_TOOL_NAMES = new Set([
-  'web_search',
-  'fetch_url',
-  'query_knowledge',
-  'calculator',
-  'get_weather',
-  'convert_currency',
-  'get_quote'
-]);
-/** Max tool-loop messages after chat history (structural cap only; budget still applies). */
-const MAX_LOOP_MESSAGES_LOCAL = 12;
-const MAX_LOOP_MESSAGES_API = 16;
-const TOOL_CALLS_PER_STEP = 3;
-const LOCAL_TOOL_CALLS_PER_STEP = 2;
-const CODE_TOOL_CALLS_PER_STEP = 4;
 const MAX_TOOL_RESULT_CHARS = 12000;
-const TOOL_TIMEOUT_MS = 30000;
-/** Ceiling for a tool blocked on a human answer — see `executeToolWithTimeout`. */
-const APPROVAL_TOOL_TIMEOUT_MS = 30 * 60 * 1000;
-const MAX_TOOL_RETRIES = 1;
-const MAX_FORCED_FINAL_ANSWER_ATTEMPTS = 2;
-/** Deep/max research gets extra synthesis retries after tool budget ends. */
-const MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS = 3;
-const LOOP_STAGNATION_MIN_DRAFT_GROWTH = 120;
-const LOW_IMPACT_LOOP_TOOLS = new Set(['list_files', 'read_file', 'search_files', 'query_knowledge']);
-/** Stop exploring if this many consecutive steps are only browse tools with no write/bash. */
-const CODE_MAX_CONSECUTIVE_EXPLORE = 8;
 
-function shouldDebugAgentLogs(config: unknown): boolean {
-  return !!(config as { ui?: { agent_debug_logs?: boolean } })?.ui?.agent_debug_logs;
-}
+/** What an iteration phase tells the loop. */
+type Flow = 'next' | 'continue' | 'stop';
 
-function debugLog(enabled: boolean, message: string) {
-  if (enabled) console.log(message);
-}
-
-function getToolCallLimit(maxIterations: number, localMode = false): number {
-  return Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : TOOL_CALLS_PER_STEP));
-}
-
-function countBudgetedToolCalls(toolCalls: ToolCall[]): number {
-  return toolCalls.filter((toolCall) => toolCall.name !== 'preview_project').length;
-}
-
-function uid(prefix: string) {
-  return crypto?.randomUUID
-    ? `${prefix}-${crypto.randomUUID()}`
-    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function ok(output: unknown, extra?: Partial<ToolResult>): ToolResult {
-  return { success: true, output, ...extra };
-}
-
-function fail(error: string, note?: string): ToolResult {
-  return { success: false, error, ...(note ? { note } : {}) };
-}
-
-function failFromError(err: unknown, note?: string): ToolResult {
-  return fail(toErrorMessage(err), note);
-}
-
-/** Keep panel snapshots inside LLM context: full text rides the panel UI. */
-function summariseBrowserSnapshot(snapshot: unknown) {
-  if (!snapshot || typeof snapshot !== 'object') return snapshot;
-  const snap = snapshot as Record<string, unknown>;
-  const text = String(snap['text'] || '');
-  return {
-    ...snap,
-    text: text.length > 4000 ? text.slice(0, 4000) + '\n... (truncated)' : text,
-    links: Array.isArray(snap['links']) ? (snap['links'] as unknown[]).slice(0, 20) : snap['links'],
-    buttons: Array.isArray(snap['buttons']) ? (snap['buttons'] as unknown[]).slice(0, 20) : snap['buttons']
-  };
-}
-
-function addGeneratedArtifactFile(ctx: ToolContext, file: GeneratedArtifactFile): ToolResult {
-  return addGeneratedArtifactFileEntry({
-    executionMode: ctx.executionMode,
-    files: ctx.files,
-    file,
-    viewerPathFor,
-    ok,
-    fail
-  }) as ToolResult;
-}
-
-async function executeTool(
-  name: string,
-  args: Record<string, unknown>,
-  ctx: ToolContext
-): Promise<ToolResult> {
-  ctx.signal?.throwIfAborted?.();
-
-  const artifactResult = await dispatchArtifactTool(name, args, ctx, {
-    normPath,
-    isElectron,
-    isWorkspace,
-    uid,
-    viewerPathFor,
-    buildHtmlReport,
-    buildMarkdownReport,
-    writeWorkspaceFile,
-    validateGeneratedDocumentArgs,
-    createWorkProductArtifactFiles,
-    createDocxArtifactFile,
-    createXlsxArtifactFile,
-    createPptxArtifactFile,
-    createPdfArtifactFile,
-    addGeneratedArtifactFile,
-    geocodePlace: liveGeocodePlace,
-    ok,
-    fail,
-    failFromError
-  });
-  if (artifactResult) return artifactResult;
-
-  switch (name) {
-
-    case 'web_search': {
-      return handleWebSearch({
-        args,
-        ctx,
-        webSearch,
-        ok,
-        fail,
-        failFromError
-      }) as Promise<ToolResult>;
-    }
-
-    case 'fetch_url': {
-      return handleFetchUrl({
-        args,
-        webSearch: (searchArgs) => webSearch(searchArgs),
-        fetchUrlContent,
-        isElectron,
-        ok,
-        fail,
-        failFromError
-      }) as Promise<ToolResult>;
-    }
-
-    case 'read_file': {
-      return handleReadFile({
-        args,
-        ctx,
-        normPath,
-        isWorkspace,
-        readWsText: (path, workspaceCtx) => readWsText(path, workspaceCtx, readWorkspaceFile),
-        ok,
-        fail
-      }) as Promise<ToolResult>;
-    }
-
-    case 'write_file': {
-      return handleWriteFile({
-        args,
-        ctx,
-        normPath,
-        isWorkspace,
-        readWsText: (path, workspaceCtx) => readWsText(path, workspaceCtx, readWorkspaceFile),
-        writeWorkspaceFile,
-        getWsFiles,
-        upsertWsFile,
-        ok,
-        fail
-      }) as Promise<ToolResult>;
-    }
-
-    case 'delete_file': {
-      return handleDeleteFile({
-        args,
-        ctx,
-        normPath,
-        isWorkspace,
-        deleteWorkspaceFile,
-        ok,
-        fail
-      }) as Promise<ToolResult>;
-    }
-
-    case 'edit_file': {
-      return handleEditFile({
-        args,
-        ctx,
-        normPath,
-        isWorkspace,
-        readWsText: (path, workspaceCtx) => readWsText(path, workspaceCtx, readWorkspaceFile),
-        writeWorkspaceFile,
-        getWsFiles,
-        upsertWsFile,
-        ok,
-        fail
-      }) as Promise<ToolResult>;
-    }
-
-    case 'list_files': {
-      return handleListFiles({
-        args,
-        ctx,
-        isWorkspace,
-        getWsFiles,
-        globToRegex,
-        ok
-      }) as ToolResult;
-    }
-
-    case 'search_files': {
-      return handleSearchFiles({
-        args,
-        ctx,
-        isWorkspace,
-        getWsFiles,
-        readWsText: (path, workspaceCtx) => readWsText(path, workspaceCtx, readWorkspaceFile),
-        ok,
-        fail
-      }) as Promise<ToolResult>;
-    }
-
-    case 'get_diagnostics': {
-      return handleGetDiagnostics({ args, ctx, ok, fail }) as Promise<ToolResult>;
-    }
-
-    case 'bash': {
-      if (!isWorkspace(ctx)) return fail('bash is only available in workspace mode');
-      const command = String(args.command || '');
-      if (!command) return fail('Missing command');
-      const timeoutMs = Number(args.timeout_ms) || 30000;
-
-      // In supervised mode, request user approval before executing
-      if (ctx.runtimeMode === 'supervised') {
-        try {
-          const { approvalsStore } = await import('$lib/stores/approvals.svelte');
-          const approved = await approvalsStore.request({
-            id: `bash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            chatId: ctx.chatId,
-            command,
-            cwd: ctx.workspaceRoot || ''
-          });
-          if (!approved) {
-            return fail('Command blocked by user');
-          }
-        } catch (err: unknown) {
-          if (isAbortError(err)) throw err;
-          debugLog(!!ctx.debugLogs, `[agent] approval gate unavailable: ${toErrorMessage(err)}`);
-          return fail('Approval mechanism unavailable');
-        }
-      }
-
-      try {
-        const result = await invoke<{ stdout: string; stderr: string; exit_code: number }>('workspace_exec', {
-          workspace_root: ctx.workspaceRoot,
-          command,
-          args: [],
-          shell: true,
-          timeout_ms: timeoutMs
-        });
-        const output = (result.stdout || '') + (result.stderr ? `\n[stderr]\n${result.stderr}` : '');
-        const truncated = output.length > 8000 ? output.slice(0, 8000) + '\n... (truncated)' : output;
-        if (result.exit_code === 0) {
-          return ok({ exitCode: result.exit_code, output: truncated });
-        }
-        return fail(`Command failed (exit ${result.exit_code}): ${truncated.slice(0, 500)}`);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        return fail(message);
-      }
-    }
-
-    case 'preview_project': {
-      return handlePreviewProject({
-        args,
-        files: ctx.files,
-        buildPreviewHtml,
-        ok
-      }) as ToolResult;
-    }
-
-    case 'query_knowledge': {
-      return handleQueryKnowledge({
-        args,
-        ctx,
-        queryDocuments,
-        ok,
-        failFromError
-      }) as Promise<ToolResult>;
-    }
-
-    case 'calculator': {
-      return handleCalculator({
-        args,
-        ok,
-        fail,
-        failFromError
-      }) as ToolResult;
-    }
-
-    case 'get_weather': {
-      return handleGetWeather({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
-    }
-
-    case 'convert_currency': {
-      return handleConvertCurrency({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
-    }
-
-    case 'get_quote': {
-      return handleGetQuote({ args, ctx, ok, fail, failFromError }) as Promise<ToolResult>;
-    }
-
-    case 'browser_open':
-    case 'browser_navigate':
-    case 'browser_snapshot':
-    case 'browser_click':
-    case 'browser_type':
-    case 'browser_screenshot': {
-      if (!isElectron()) return fail('Agent browser requires the desktop app');
-      try {
-        const { browserPanelStore } = await import('$lib/stores/browser-panel.svelte');
-        browserPanelStore.agentDriving = true;
-        browserPanelStore.userTakeover = false;
-        browserPanelStore.init();
-      } catch { /* store unavailable in tests */ }
-      try {
-        if (name === 'browser_open') {
-          const url = String(args.url || '');
-          if (!url) return fail('Missing url');
-          const snapshot = await invoke<unknown>('browser_navigate', { url });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_navigate') {
-          const url = String(args.url || '');
-          if (!url) return fail('Missing url');
-          const snapshot = await invoke<unknown>('browser_navigate', { url });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_snapshot') {
-          const snapshot = await invoke<unknown>('browser_snapshot', {});
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_click') {
-          const text = String(args.text || '');
-          if (!text) return fail('Missing text');
-          const snapshot = await invoke<unknown>('browser_click', { text });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_type') {
-          const selector = String(args.selector || '');
-          const text = String(args.text || '');
-          if (!selector || !text) return fail('Missing selector or text');
-          await invoke('browser_type_text', { selector, text });
-          return ok({ typed: true, selector });
-        }
-        const shot = await invoke<string>('browser_screenshot', {});
-        return ok({ screenshot: String(shot).slice(0, 200000) });
-      } catch (err: unknown) {
-        return failFromError(err, 'Agent browser action failed');
-      }
-    }
-
-    default:
-      return fail(`Unknown tool: ${name}`);
-  }
-}
-
-async function executeToolWithTimeout(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
-  /*
-   * A supervised `bash` call blocks on a human pressing Allow, so the ordinary 30s
-   * tool timeout is wrong for it: the timeout fired while the approval card was
-   * still on screen, turning the call into a timeout failure and stranding the
-   * approval with a resolver nobody awaited — then the retry raised a *second* card
-   * for the same command. Approval waits get a long ceiling and no retry. Aborting
-   * still cuts it short, because abort now rejects the race.
-   */
-  const awaitsApproval = name === 'bash' && ctx.runtimeMode === 'supervised';
-  return executeWithTimeoutAndRetries<ToolResult>({
-    name,
-    args,
-    signal: ctx.signal,
-    timeoutMs: awaitsApproval ? APPROVAL_TOOL_TIMEOUT_MS : TOOL_TIMEOUT_MS,
-    maxRetries: awaitsApproval ? 0 : MAX_TOOL_RETRIES,
-    debug: !!ctx.debugLogs,
-    onDebug: debugLog,
-    runTool: () => executeTool(name, args, ctx),
-    makeFailure: (message) => fail(message),
-    toErrorMessage
-  });
-}
-
-/**
- * Accumulates one artifact per artifact-producing tool call and republishes the
- * whole list, so every visual a turn creates reaches the screen.
- *
- * Re-running the same tool replaces that tool's entry rather than appending a
- * duplicate — keyed on `entryPath`, which the dispatcher sets from the tool's first
- * created file.
- */
-function createArtifactCollector(
-  ctx: ToolContext,
-  artifacts: AgentArtifact[],
-  onArtifact: (artifacts: AgentArtifact[]) => void,
-  enabled: boolean
-) {
-  return (result: ToolResult) => {
-    if (!enabled) return;
-    const built = buildScopedArtifact({
-      files: ctx.files,
-      workProduct: ctx.workProduct,
-      artifactManifest: result.artifactManifest ?? null
-    }, result);
-    if (!built) return;
-    const key = built.manifest?.entryPath || '';
-    const index = key ? artifacts.findIndex((entry) => entry.manifest?.entryPath === key) : -1;
-    if (index >= 0) artifacts[index] = built;
-    else artifacts.push(built);
-    publishArtifacts(onArtifact, artifacts);
-  };
-}
-
-function synthesizeArtifactCompletion(ctx: ToolContext): string {
-  return synthesizeArtifactCompletionText(ctx.files);
-}
-
-
-function hasAllRequestedArtifacts(ctx: ToolContext, prompt: string): boolean {
-  return hasAllRequestedArtifactsForFiles(ctx.files, prompt);
-}
-
-function hasGatheredEvidence(ctx: ToolContext, observations: ToolObservation[], sources: SearchResult[], content = ''): boolean {
-  return hasGatheredEvidenceForContext({
-    files: ctx.files,
-    observations,
-    sources,
-    content,
-    hasVisibleArtifact
-  });
-}
-
-async function ensureRequestedArtifactsFromEvidence(params: {
-  prompt: string;
-  reason: string;
-  ctx: ToolContext;
-  observations: ToolObservation[];
-  sources: SearchResult[];
-  publishToolArtifact: (result: ToolResult) => void;
-}): Promise<string[]> {
-  return ensureRequestedArtifactsFromEvidenceCore({
-    ...params,
-    requestedArtifactKinds,
-    missingRequestedArtifactExtensions: missingRequestedArtifactExts,
-    buildEvidenceText,
-    fallbackTitle,
-    evidenceSources,
-    sourceRows,
-    compactText,
-    executeTool,
-    publishToolArtifact: params.publishToolArtifact,
-    normPath,
-    buildMarkdownReport
-  });
-}
-
-async function buildStrictFallbackContent(params: {
-  prompt: string;
-  reason: string;
-  ctx: ToolContext;
-  observations: ToolObservation[];
-  sources: SearchResult[];
-  mode?: 'research' | 'chat';
-  notice?: string | null;
-  publishToolArtifact: (result: ToolResult) => void;
-}): Promise<string> {
-  return buildStrictFallbackContentCore({
-    ...params,
-    mode: params.mode || 'research',
-    notice: params.notice,
-    ensureRequestedArtifactsFromEvidence: (args) => ensureRequestedArtifactsFromEvidence({
-      ...args,
-      publishToolArtifact: params.publishToolArtifact
-    }),
-    evidenceSources,
-    missingRequestedArtifactExtensions: missingRequestedArtifactExts
-  });
-}
-
-function pushMissingRequestedFilesStep(steps: AgentStep[], ctx: ToolContext, rawPrompt?: string): void {
-  steps.push({
-    id: uid('step'),
-    type: 'error',
-    label: 'Missing requested files',
-    status: 'error',
-    detail: `Could not create: ${missingRequestedArtifactExts(ctx.files, rawPrompt || '').map((ext) => `.${ext}`).join(', ')}`
-  });
-}
-
-function summarizeCodeObservations(observations: ToolObservation[]): string {
-  const writes = observations.filter((o) => o.success && (o.name === 'write_file' || o.name === 'edit_file' || o.name === 'delete_file'));
-  const bash = observations.filter((o) => o.success && o.name === 'bash');
-  const reads = observations.filter((o) => o.success && (o.name === 'read_file' || o.name === 'list_files' || o.name === 'search_files'));
-  const paths = new Set<string>();
-  for (const o of writes) {
-    const p = o.args?.path || o.createdFiles?.[0];
-    if (typeof p === 'string' && p) paths.add(p);
-  }
-  const lines: string[] = [];
-  if (paths.size) {
-    lines.push('Files touched:');
-    for (const p of [...paths].slice(0, 20)) lines.push(`- ${p}`);
-  }
-  if (bash.length) lines.push(`Shell commands run: ${bash.length}`);
-  if (reads.length && !paths.size) lines.push(`Explored the codebase (${reads.length} read/list/search actions) but did not finish applying changes.`);
-  if (!lines.length) lines.push('No successful file changes were recorded before the limit.');
-  return lines.join('\n');
-}
-
-function buildWorkspaceStoppedContent(reason: string, observations: ToolObservation[]): string {
-  const latest = [...observations].reverse().find((observation) => observation.name);
-  const target = latest?.args?.path || latest?.args?.command || latest?.args?.query || latest?.args?.url;
-  const lastAction = latest
-    ? ` Last completed action: ${latest.name.replace(/_/g, ' ')}${target ? ` (${compactText(target, 120)})` : ''}.`
-    : '';
-  const summary = summarizeCodeObservations(observations);
-  return [
-    `I stopped before finishing because ${reason}.${lastAction}`,
-    '',
-    summary,
-    '',
-    'You can ask me to continue from here, or open the workspace panel for step details.'
-  ].join('\n');
+/** Per-run loop state that is not part of the result. */
+interface LoopState {
+  researchBootstrapped: boolean;
+  researchForceWrite: boolean;
+  consecutiveEmptyReplies: number;
+  /** The model talked about tools without a parseable call: remind it of the format once. */
+  toolFormatRetryDone: boolean;
+  /** The model answered a visual request in prose: name the exact tool once. */
+  visualNudgeDone: boolean;
+  loopGuard: ReturnType<typeof createLoopGuard>;
+  exploreGuard: ReturnType<typeof createExploreGuard>;
 }
 
 export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskResult> {
-
   const config = await loadAppConfig();
-  const debugLogs = shouldDebugAgentLogs(config);
-  const steps: AgentStep[] = [];
-  const sources: SearchResult[] = [];
-  const toolObservations: ToolObservation[] = [];
-  const seenUrls = new Set<string>();
-  const executionMode = args.executionMode || 'sandbox';
-  const artifactToggles = config.ui?.artifact_toggles || {};
-  const ctx: ToolContext = {
-    chatId: args.chatId,
-    files: {},
-    conversationContext: args.conversationContext,
-    searchMode: args.searchMode,
-    sources,
-    rawPrompt: args.rawPrompt,
-    workspaceRoot: args.workspaceRoot,
-    workspaceFiles: args.workspaceFiles ? [...args.workspaceFiles] : undefined,
-    executionMode,
-    runtimeMode: normalizeHomeRuntimeMode(args.runtimeMode),
-    debugLogs,
-    signal: args.signal,
-    artifactToggles,
+  const plan = resolveAgentRunPlan(args, config, { isElectron: isElectron() });
+  const run = createAgentRun(args, config, plan);
+  debugLog(plan.debugLogs, `[agent] START | profile=${plan.agentProfile} | backend=${plan.backendMode} | provider=${plan.localMode ? 'local' : plan.providerName} | model=${plan.activeModel} | isElectron=${isElectron()} | useNativeTools=${plan.nativeTools} | maxIterations=${plan.maxIterations} | maxToolCalls=${plan.maxToolCalls} | maxTimeMs=${plan.maxTimeMs}`);
+
+  const researchBootstrapped = await runResearchBootstrap(run);
+  const state: LoopState = {
+    researchBootstrapped,
+    researchForceWrite: plan.isResearchChat && researchBootstrapped && hasEnoughResearchEvidence(plan.researchMode, run.sources),
+    consecutiveEmptyReplies: 0,
+    toolFormatRetryDone: false,
+    visualNudgeDone: false,
+    loopGuard: createLoopGuard({ localMode: plan.localMode, isResearchChat: plan.isResearchChat }),
+    exploreGuard: createExploreGuard()
   };
 
-  const backendMode = config.llm?.backend_mode || (isElectron() ? 'local' : 'api');
-  // Workspace runs write real files on disk; there is no sandbox artifact to show.
-  const artifactsEnabled = executionMode !== 'workspace';
-  const artifacts: AgentArtifact[] = [];
-  const publishToolArtifact = createArtifactCollector(ctx, artifacts, args.onArtifact, artifactsEnabled);
-  /**
-   * Inline visuals the prompt asked for that no tool has created yet. Compared
-   * against created artifact manifests (not file extensions — inline visuals
-   * leave no extension to match). Website builds are excluded: they are
-   * enforced separately through write_file/preview_project.
-   */
-  const missingRequestedVisuals = (prompt: string): VisualArtifactKind[] => {
-    if (wantsWebsiteArtifact) return [];
-    const requested = requestedVisualArtifacts(prompt);
-    if (!requested.length) return [];
-    const createdKinds = new Set(artifacts.map((entry) => entry.manifest?.kind));
-    return requested.filter((kind) => toolDefs.some((tool) => tool.function.name === VISUAL_ARTIFACT_TOOL[kind]) && !createdKinds.has(kind));
-  };
-  const localMode = backendMode === 'local';
-  const toolMode = args.toolMode || 'agent';
-  // Instant: intent-gated fast path — answer directly, tools only when needed,
-  // tight budgets (set by the caller), no artifact/file machinery.
-  const isInstant = toolMode === 'instant';
-  const agentProfile = args.agentProfile
-    || (toolMode === 'search_chat' ? 'search' : (executionMode === 'workspace' ? 'code' : 'work'));
-  const isCodeProfile = agentProfile === 'code';
-  const isChatProfile = agentProfile === 'chat';
-  const defaultMaxIterations = isCodeProfile
-    ? (localMode ? CODE_LOCAL_MAX_ITERATIONS : CODE_MAX_ITERATIONS)
-    : isChatProfile
-      ? (localMode ? CHAT_LOCAL_MAX_ITERATIONS : CHAT_MAX_ITERATIONS)
-      : (localMode ? LOCAL_DEFAULT_MAX_ITERATIONS : DEFAULT_MAX_ITERATIONS);
-  const maxIterations = Math.max(1, Math.floor(args.maxIterations ?? defaultMaxIterations));
-  const defaultToolLimit = isCodeProfile
-    ? Math.max(maxIterations, maxIterations * (localMode ? LOCAL_TOOL_CALLS_PER_STEP : CODE_TOOL_CALLS_PER_STEP))
-    : isChatProfile
-      ? Math.max(maxIterations, maxIterations * 2)
-      : getToolCallLimit(maxIterations, localMode);
-  const maxToolCalls = Math.max(maxIterations, Math.floor(args.maxToolCalls ?? defaultToolLimit));
-  const maxTimeMs = Math.max(
-    30_000,
-    Math.floor(args.maxTimeMs ?? (isCodeProfile ? CODE_MAX_TIME_MS : isChatProfile ? CHAT_MAX_TIME_MS : MAX_TIME_MS))
-  );
-  const providerName = config.llm?.provider || 'openai';
-  const providers = config.llm?.providers || {};
-  const provider = providers[providerName] || {};
-  const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');
-  let useNativeTools = isElectron() && agentSupportsNativeTools(config as any);
-  debugLog(debugLogs, `[agent] START | profile=${agentProfile} | backend=${backendMode} | provider=${localMode ? 'local' : providerName} | model=${activeModel} | isElectron=${isElectron()} | useNativeTools=${useNativeTools} | maxIterations=${maxIterations} | maxToolCalls=${maxToolCalls} | maxTimeMs=${maxTimeMs}`);
-  debugLog(debugLogs, `[agent] supportsNativeTools check: providerName=${localMode ? 'local' : providerName} modelId=${activeModel} result=${agentSupportsNativeTools(config as any)}`);
-  let nativeFailed = false;
-  let directMode = false;
-  let consecutiveEmptyResponses = 0;
-  let consecutiveExploreOnly = 0;
-  // The model talked about tools without emitting a parseable call — remind
-  // it of the exact format once, then accept whatever comes back.
-  let toolFormatRetryDone = false;
-  // The model answered a visual-deliverable request in prose without calling
-  // the tool — nudge it once with the exact tool name, then accept the answer.
-  let visualNudgeDone = false;
-  const wantsWebsiteArtifact = !isInstant && isWebsiteBuildRequest(
-    args.rawPrompt || [...args.messages].reverse().find((message) => message.role === 'user')?.content?.toString?.() || ''
-  );
-  const toolDefs = toolMode === 'search_chat'
-    ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => SEARCH_TOOL_NAMES.has(tool.function.name))
-    : isInstant
-      ? getToolDefinitions(executionMode, artifactToggles, 'search').filter((tool) => INSTANT_TOOL_NAMES.has(tool.function.name))
-      : getToolDefinitions(executionMode, artifactToggles, agentProfile);
-  const modeNote = isCodeProfile || (executionMode === 'workspace' && !isChatProfile)
-    ? [
-      isCodeProfile ? getFlaxeoCodeSystemPrompt() : '',
-      `You are attached to a real workspace folder at ${args.workspaceRoot || 'the project root'}.`,
-      'Files and bash commands run on the host filesystem, confined to the workspace root.',
-      '',
-      'Available tools:',
-      '- read_file (path, offset?, limit?): Read a file. Use offset/limit for large files.',
-      '- write_file (path, content, mode?): Create or overwrite a file.',
-      '- edit_file (path, edits[]): Make precise text replacements. Each edit has {oldText, newText}. Prefer this over write_file for modifying existing files.',
-      '- delete_file (path): Delete a file.',
-      '- list_files (pattern?): List files in the workspace.',
-      '- search_files (query, caseSensitive?, path?, maxResults?): Search file contents.',
-      '- bash (command, timeout?): Run any shell command with full shell access. Output is streamed back.',
-      '',
-      'Use bash for running tests, installing dependencies, git operations, building, and other CLI tasks.',
-      'Use edit_file for precise changes to existing files instead of rewriting the whole file with write_file.',
-      'For reading large files, use read_file with offset to paginate.',
-      'Diffs and file changes auto-render in the chat as a changed-files overview.',
-    ].filter(Boolean).join('\n')
-    : isChatProfile
-      ? [
-        getFlaxeoChatSystemPrompt(),
-        'You are in chat sandbox mode. Files exist only inside this conversation unless the user exports them.',
-      ].join('\n')
-      : 'You are in chat sandbox mode. Files exist only inside this conversation artifact unless the user exports them.';
-  const requestReminder = buildCurrentRequestReminder(args.rawPrompt, compactText);
-  const searchModeNote = toolMode === 'search_chat'
-    ? [
-      `Selected search depth: ${args.searchMode || 'search'}.`,
-      args.searchMode === 'max'
-        ? 'Max search means keep broadening and deepening with additional searches/source reads until the answer is strongly supported or the tool/time budget is exhausted.'
-        : args.searchMode === 'deep'
-          ? 'Deep search means use multiple high-signal searches and source reads to improve accuracy before answering.'
-          : 'Search mode means use web search for current information and follow up if the first search is insufficient.'
-    ].join(' ')
-    : '';
-  const instantModeNote = isInstant
-    ? [
-      'Fast-answer mode: respond directly and briefly whenever you already know the answer.',
-      'Reach for a tool only when the answer genuinely needs grounding — current information (web_search/fetch_url), retrieved documents (query_knowledge), live data (get_weather/convert_currency/get_quote), or exact arithmetic (calculator).',
-      'Never more than a couple of tool calls per question; do not go on research journeys.',
-      'You cannot create files, artifacts, or visuals in this mode — answer in prose, with sources where they matter.'
-    ].join(' ')
-    : '';
-  const agentExtra = (isCodeProfile || isChatProfile)
-    ? [modeNote, searchModeNote, instantModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n')
-    : [modeNote, searchModeNote, instantModeNote, args.systemPrompt, requestReminder].filter(Boolean).join('\n\n');
-  const promptSearchMode = args.searchMode === 'max' || args.searchMode === 'deep' || args.searchMode === 'search'
-    ? args.searchMode
-    : 'search';
-  const nativeSys = getNativeSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolMode, executionMode, promptSearchMode);
-  const xmlSys = getXmlSystemPrompt(agentExtra, maxToolCalls, maxIterations, toolDefs, toolMode, executionMode, promptSearchMode);
-  const directSys = buildDirectSystemPrompt(agentExtra, { toolMode, searchMode: promptSearchMode });
-
-  // Normalize history to pure role/content rows so trim can protect them.
-  // Preserve reasoning_content when present (DeepSeek tool+thinking echo).
-  const historyMessages: RequestMessage[] = (args.messages || [])
-    .map((message) => {
-      const row: RequestMessage = {
-        role: message.role,
-        content: typeof message.content === 'string' ? message.content : (message.content ? JSON.stringify(message.content) : ''),
-        ...(message.name ? { name: message.name } : {}),
-        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
-        ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
-        ...(message.providerState ? { providerState: message.providerState } : {})
-      };
-      const rc = (message as RequestMessage).reasoning_content;
-      if (typeof rc === 'string' && rc.trim()) {
-        row.reasoning_content = rc;
-      }
-      return row;
-    })
-    .filter((message) => message.role === 'system' || String(message.content || '').trim() || message.tool_calls?.length || message.reasoning_content);
-
-  const historyCount = historyMessages.filter((message) => message.role !== 'system').length;
-
-  const messages: RequestMessage[] = [
-    { role: 'system', content: useNativeTools ? nativeSys : xmlSys },
-    ...historyMessages
-  ];
-
-  let finalContent = '';
-  let finalReasoning = '';
-  let errorReason: string | undefined;
-  let warningReason: string | undefined;
-  let stopReason: AgentStopReason = 'none';
-  const startTime = Date.now();
-  const recentSigs: string[] = [];
-  const recentProgress: ProgressSnapshot[] = [];
-  let totalToolCalls = 0;
-  let maxObservedDraftChars = 0;
-  let aggregateUsage: CompletionResult['usage'] = null;
-
-  const checkAbort = () => {
-    if (args.signal?.aborted) {
-      throw new DOMException('Agent task cancelled by user', 'AbortError');
-    }
-  };
-
-  const throwIfAborted = () => {
-    args.signal?.throwIfAborted?.();
-  };
-
-  // Search / Deep / Max product path (composer search modes + search_chat) — not Code profile.
-  const isResearchChat = isResearchProductPath({
-    isCodeProfile,
-    toolMode,
-    searchMode: args.searchMode
-  });
-  /** Search / Deep / Max: no completion max_tokens budget (long professional reports). */
-  const omitResearchMaxTokens =
-    toolMode === 'search_chat'
-    || args.searchMode === 'search'
-    || args.searchMode === 'deep'
-    || args.searchMode === 'max';
-  const researchMode = resolveResearchMode(args.searchMode);
-  const researchEvidenceOptions = isResearchChat ? {
-    // No tight char budgets — research needs full usable evidence for professional reports.
-    observationLimit: researchMode === 'max' ? 80 : 50,
-    observationChars: researchMode === 'max' ? 4000 : 3000,
-    sourceLimit: researchMode === 'max' ? 48 : 36,
-    sourceChars: researchMode === 'max' ? 3500 : 2500,
-    instruction: 'The following evidence was gathered during Search/Deep/Max research. Use these source-specific facts, URLs, and excerpts as the primary source of truth for the final answer. Do not answer generically when evidence is present. Write a polished APA 7 synthesized report — never dump raw evidence or title a section "Gathered Evidence". Never mention tools or step limits.'
-  } : undefined;
-  const injectLiveEvidence = () => {
-    if (isResearchChat || (toolMode === 'search_chat' && (args.searchMode === 'search' || args.searchMode === 'deep' || args.searchMode === 'max'))) {
-      // Dense pack with query-relevant excerpts — primary synthesis fuel for search/deep/max.
-      // No token-budget truncation of the pack itself.
-      injectResearchEvidencePack(messages, toolObservations, sources, {
-        query: args.rawPrompt || '',
-        mode: researchMode,
-        // Explicitly unbounded relative to old char budgets — pack builder uses high research defaults.
-        maxSources: researchMode === 'max' ? 40 : researchMode === 'deep' ? 28 : 16,
-        maxExcerptChars: researchMode === 'max' ? 4000 : researchMode === 'deep' ? 3000 : 1800,
-        maxTotalChars: researchMode === 'max' ? 120_000 : researchMode === 'deep' ? 80_000 : 40_000,
-        maxFacts: researchMode === 'max' ? 60 : researchMode === 'deep' ? 40 : 24
-      });
-      return;
-    }
-    injectEvidenceSummaryMessage(messages, toolObservations, sources, compactText, researchEvidenceOptions);
-  };
-  const fallbackMode: 'research' | 'chat' =
-    isResearchChat
-    || toolMode === 'search_chat'
-    || args.searchMode === 'search'
-    || args.searchMode === 'deep'
-    || args.searchMode === 'max'
-      ? 'research'
-      : 'chat';
-  const buildEvidenceOnlyFallback = async (reason: string): Promise<string> => executionMode === 'workspace'
-    ? buildWorkspaceStoppedContent(reason, toolObservations)
-    : buildStrictFallbackContent({
-      prompt: args.rawPrompt || '',
-      reason,
-      ctx,
-      observations: toolObservations,
-      sources,
-      mode: fallbackMode,
-      publishToolArtifact
-    });
-
-  // --- Research product: system-owned first gather (competitor pipeline: search → read → write) ---
-  let researchBootstrapDone = false;
-  if (isResearchChat && String(args.rawPrompt || '').trim()) {
-    const budget = researchEvidenceThreshold(researchMode);
-    const gatherStep: AgentStep = {
-      id: uid('step'),
-      type: 'searching',
-      label: 'Searching',
-      status: 'running',
-      detail: String(args.rawPrompt || '').slice(0, 160)
-    };
-    steps.push(gatherStep);
-    args.onStep([...steps]);
-    args.onProgress?.('Searching…');
-    try {
-      const searchResponse = await webSearch({
-        query: String(args.rawPrompt || ''),
-        context: args.conversationContext,
-        deep: researchMode !== 'search',
-        mode: researchMode,
-        options: { max_results: budget.resultBudget }
-      });
-      if (!searchResponse.error && Array.isArray(searchResponse.results) && searchResponse.results.length) {
-        for (const entry of searchResponse.results) {
-          if (!entry?.url) continue;
-          if (seenUrls.has(entry.url)) {
-            const existing = sources.find((s) => s.url === entry.url);
-            if (existing && ((entry.full_content || '').length > (existing.full_content || '').length)) {
-              Object.assign(existing, entry);
-            }
-            continue;
-          }
-          seenUrls.add(entry.url);
-          sources.push({
-            ...entry,
-            title: entry.title || entry.url,
-            url: entry.url,
-            snippet: entry.snippet || ''
-          });
-        }
-        toolObservations.push({
-          name: 'web_search',
-          args: { query: args.rawPrompt, mode: researchMode },
-          success: true,
-          summary: [
-            `Search query: ${compactText(args.rawPrompt, 180)}`,
-            ...sources.slice(0, 12).map((s, i) =>
-              `${i + 1}. ${s.title} - ${s.url}${s.snippet ? ` - ${compactText(s.snippet, 280)}` : ''}`
-            )
-          ].join('\n'),
-          sources: [...sources]
-        });
-        researchBootstrapDone = true;
-        gatherStep.status = 'done';
-        gatherStep.detail = say.sources(sources.length);
-        injectLiveEvidence();
-        messages.push({
-          role: 'user',
-          content: [
-            `System already ran an initial ${researchMode} web search for the user query and collected ${sources.length} sources (with page text when available).`,
-            hasEnoughResearchEvidence(researchMode, sources)
-              ? 'Evidence is sufficient. Write the final APA 7 research report now. Do NOT call tools unless a critical source is clearly missing full text — then fetch_url once.'
-              : 'If sources look thin or off-topic, you may run at most one more focused web_search, then write the final APA 7 research report. Prefer fetch_url only for the most important thin URLs.',
-            'Never mention tools, step limits, or agent status in the report.'
-          ].join('\n')
-        });
-        args.onSources?.([...sources]);
-      } else {
-        gatherStep.status = 'done';
-        gatherStep.detail = searchResponse.error ? 'Search unavailable — will retry' : 'No results — will refine';
-      }
-    } catch (err) {
-      if (isAbortError(err)) throw err;
-      // `error`, not `done`: this step did not succeed, and showing it as done made a
-      // failed bootstrap search look like a completed one in the step list.
-      gatherStep.status = 'error';
-      gatherStep.detail = 'Search failed — agent will retry';
-      debugLog(debugLogs, `[agent] research bootstrap search failed: ${toErrorMessage(err)}`);
-    }
-    args.onStep([...steps]);
+  for (let iter = 0; iter < plan.maxIterations; iter++) {
+    if (await runIteration(run, state, iter) === 'stop') break;
   }
 
-  let researchForceWrite = isResearchChat && researchBootstrapDone && hasEnoughResearchEvidence(researchMode, sources);
-
-  for (let iter = 0; iter < maxIterations; iter++) {
-    debugLog(debugLogs, `[agent] iter=${iter} | nativeActive=${useNativeTools && !nativeFailed && !directMode} | nativeFailed=${nativeFailed} | directMode=${directMode} | messageCount=${messages.length}`);
-    checkAbort();
-    throwIfAborted();
-    if (Date.now() - startTime > maxTimeMs) {
-      if (isResearchChat && sources.length) {
-        // Deliver report from sources rather than hard-failing research.
-        stopReason = 'timeout';
-        warningReason = undefined;
-      } else {
-        errorReason = errorReason || 'Agent timed out before completing the requested depth.';
-        stopReason = 'timeout';
-      }
-      break;
-    }
-
-    const thinkStep: AgentStep = {
-      id: uid('step'),
-      type: isResearchChat ? (researchForceWrite ? 'writing' : 'thinking') : 'thinking',
-      label: isResearchChat
-        ? researchForceWrite
-          ? activityLabel('writing')
-          : iter === 0 && !researchBootstrapDone
-            ? activityLabel('searching')
-            : activityLabel(null)
-        : activityLabel(iter === 0 ? 'planning' : null),
-      status: 'running',
-      detail: isResearchChat
-        ? (researchForceWrite ? 'Synthesizing research report' : (sources.length ? `${sources.length} sources` : 'Gathering sources'))
-        : `Step ${iter + 1} of ${maxIterations}`
-    };
-    steps.push(thinkStep);
-    args.onStep([...steps]);
-    if (iter === 0) {
-      args.onProgress?.(isResearchChat
-        ? (researchForceWrite ? 'Writing research report…' : 'Searching…')
-        : `Planning how to approach this\u2026`);
-    }
-
-    // Never drop chat history — only cap tool-loop growth after the transcript.
-    // Research + attached docs: no token budgets that discard evidence / uploads.
-    const preserveDocs =
-      isResearchChat
-      || toolMode === 'search_chat'
-      || !!args.preserveDocumentContext
-      || (typeof args.conversationContext === 'string' && args.conversationContext.includes('<documents>'));
-    if (!preserveDocs) {
-      trimContextMessages(messages, {
-        historyCount,
-        maxLoopMessages: localMode ? MAX_LOOP_MESSAGES_LOCAL : MAX_LOOP_MESSAGES_API
-      });
-      await enforceTokenBudgetMessages({
-        messages,
-        config,
-        isElectron,
-        invoke,
-        debugLog
-      });
-    } else if (!isResearchChat) {
-      // Soft loop-only trim for search/doc chats (never token-budget truncate).
-      trimContextMessages(messages, {
-        historyCount,
-        maxLoopMessages: Math.max(MAX_LOOP_MESSAGES_API * 3, 48)
-      });
-    }
-
-    injectLiveEvidence();
-    // Never send unpaired tool_calls to the provider (fixes 400 tool_call_id errors).
-    ensureToolCallPairs(messages, 'fill');
-
-    const sysCount = messages.filter(m => m.role === 'system').length;
-    const userCount = messages.filter(m => m.role === 'user').length;
-    const otherCount = messages.filter(m => m.role !== 'system' && m.role !== 'user').length;
-    debugLog(debugLogs, `[agent] after trim: messageCount=${messages.length} | sysCount=${sysCount} | userCount=${userCount} | otherCount=${otherCount}`);
-
-    const nativeActive = useNativeTools && !nativeFailed && !directMode;
-    messages[0] = { role: 'system', content: directMode ? directSys : nativeActive ? nativeSys : xmlSys };
-    const callMode = directMode ? 'direct' : nativeActive ? 'native' : 'xml';
-    debugLog(debugLogs, `[agent] calling LLM via: ${callMode} | toolDefs=${nativeActive ? toolDefs.length : 0} | messages=${messages.length}`);
-    let completion;
-
-    const reasoningBeforeTurn = finalReasoning;
-    let streamedReasoning = '';
-    let streamedContent = '';
-    args.onContent?.('');
-    // Captured so the fallback below can report *why* native tools failed.
-    let nativeStreamError = '';
-
-    const runStream = async (msgs: typeof messages, tools?: typeof toolDefs) => {
-      streamedReasoning = '';
-      streamedContent = '';
-      return agentStreamComplete({
-        messages: msgs,
-        tools,
-        signal: args.signal,
-        config,
-        reasoningLevel: args.reasoningLevel,
-        omitMaxTokens: omitResearchMaxTokens,
-        onError: (message) => { nativeStreamError = message; },
-        onReasoning: (text) => {
-          streamedReasoning += text;
-          finalReasoning = [reasoningBeforeTurn, sanitizeAgentVisibleText(streamedReasoning)].filter(Boolean).join('\n\n');
-          args.onReasoning?.(finalReasoning);
-        },
-        onContent: (text) => {
-          streamedContent += text;
-          const visible = sanitizeAgentVisibleText(streamedContent);
-          args.onContent?.(visible);
-          const preview = visible.slice(0, 120).trim();
-          if (preview) {
-            thinkStep.detail = preview.length < visible.length ? `${preview}\u2026` : preview;
-            args.onStep([...steps]);
-          }
-        }
-      });
-    };
-    const runComplete = async (msgs: typeof messages) => {
-      ensureToolCallPairs(msgs, 'fill');
-      if (isElectron()) {
-        const result = await runStream(msgs);
-        if (!result) throw new Error(nativeStreamError || 'The model did not return a response.');
-        return result;
-      }
-      return completeAssistantReply({
-        messages: msgs,
-        signal: args.signal,
-        reasoningLevel: args.reasoningLevel,
-        omitMaxTokens: omitResearchMaxTokens
-      });
-    };
-
-    try {
-      if (directMode) {
-        messages[0] = { role: 'system', content: directSys };
-        completion = await runComplete(messages);
-        checkAbort();
-      } else if (nativeActive) {
-        const streamResult = await runStream(messages, toolDefs);
-        checkAbort();
-        if (streamResult === null) {
-          nativeFailed = true;
-          debugLog(debugLogs, `[agent] native stream returned no result | reason="${nativeStreamError.slice(0, 200) || 'unreported'}"`);
-          // Only poison the cache when we know it's a tool rejection —
-          // null here can also mean clone errors, network errors, no base_url, etc.
-          // The error catch block below handles tool rejections with proper pattern matching.
-          // Bare "invalid"/400s are excluded: those also cover auth failures and
-          // context overflows, which say nothing about tool support.
-          if (/tool/i.test(nativeStreamError) && /unsupport|not support|400|422|requires.*jinja/i.test(nativeStreamError)) {
-            setToolSupportCache(config as any, false);
-          }
-          messages[0] = { role: 'system', content: xmlSys };
-          completion = await runComplete(messages);
-          checkAbort();
-        } else {
-          completion = streamResult;
-        }
-      } else {
-        completion = await runComplete(messages);
-        checkAbort();
-      }
-    } catch (e: unknown) {
-      if (isAbortError(e)) throw e;
-      const errMsg = toErrorMessage(e);
-      debugLog(debugLogs, `[agent] LLM ERROR | msg="${errMsg.slice(0, 200)}" | nativeActive=${nativeActive} | iter=${iter}`);
-      // Repair unpaired tool_calls and retry once
-      if (/tool_calls|tool_call_id|insufficient tool messages/i.test(errMsg)) {
-        ensureToolCallPairs(messages, 'fill');
-        try {
-          messages[0] = { role: 'system', content: nativeActive ? nativeSys : xmlSys };
-          completion = await runComplete(messages);
-          checkAbort();
-        } catch (eRepair: unknown) {
-          if (isAbortError(eRepair)) throw eRepair;
-          // Last resort: strip incomplete tool_calls and continue as plain chat
-          ensureToolCallPairs(messages, 'strip');
-          try {
-            completion = await runComplete(messages);
-            checkAbort();
-          } catch (e3: unknown) {
-            if (isAbortError(e3)) throw e3;
-            thinkStep.status = 'error';
-            thinkStep.label = 'Error';
-            thinkStep.detail = humanizeAgentError(e3);
-            args.onStep([...steps]);
-            errorReason = humanizeAgentError(e3);
-            break;
-          }
-        }
-      } else if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
-        debugLog(debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
-        nativeFailed = true;
-        // Only poison the cache when the error names tools — a bare 400 also
-        // covers context overflows and malformed params, which must not
-        // disable native tools for the rest of the session.
-        if (/tool/i.test(errMsg)) {
-          setToolSupportCache(config as any, false);
-        }
-        // Keep tool role results; fill any gaps so XML path still has valid history
-        ensureToolCallPairs(messages, 'fill');
-        messages[0] = { role: 'system', content: xmlSys };
-        try {
-          completion = await runComplete(messages);
-          checkAbort();
-        } catch (e2: unknown) {
-          if (isAbortError(e2)) throw e2;
-          thinkStep.status = 'error';
-          thinkStep.label = 'Error';
-          thinkStep.detail = humanizeAgentError(e2);
-          args.onStep([...steps]);
-          errorReason = humanizeAgentError(e2);
-          break;
-        }
-      } else if (iter < 2 && errMsg.includes('content')) {
-        debugLog(debugLogs, '[agent] -> switching to direct mode (content error, iter < 2)');
-        directMode = true;
-        messages[0] = { role: 'system', content: directSys };
-        try {
-          completion = await runComplete(messages);
-          checkAbort();
-        } catch (e3: unknown) {
-          if (isAbortError(e3)) throw e3;
-          thinkStep.status = 'error';
-          thinkStep.label = 'Error';
-          thinkStep.detail = humanizeAgentError(e3);
-          args.onStep([...steps]);
-          errorReason = humanizeAgentError(e3);
-          break;
-        }
-      } else {
-        console.error('[agent] HARD FAIL (non-recoverable LLM error)', errMsg);
-        thinkStep.status = 'error';
-        thinkStep.label = 'Error';
-        thinkStep.detail = humanizeAgentError(e);
-        args.onStep([...steps]);
-        errorReason = humanizeAgentError(e);
-        break;
-      }
-    }
-
-    aggregateUsage = mergeCompletionUsage(aggregateUsage, completion.usage);
-    // Parse the protocol before sanitizing display text. Sanitizing here erased
-    // XML calls (including llama.cpp fallbacks) before any executor saw them.
-    const rawContent = String(completion.content || '');
-    const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
-    const resultMode = directMode ? 'direct' : (useNativeTools && !nativeFailed) ? 'native' : 'xml';
-    maxObservedDraftChars = Math.max(maxObservedDraftChars, rawContent.length);
-    debugLog(debugLogs, `[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0} | mode=${resultMode}`);
-    if (reasoning) {
-      finalReasoning = [reasoningBeforeTurn, reasoning].filter(Boolean).join('\n\n');
-      args.onReasoning?.(finalReasoning);
-    }
-
-    if (!rawContent && !completion.toolCalls?.length && !directMode) {
-      consecutiveEmptyResponses++;
-      debugLog(debugLogs, `[agent] EMPTY RESPONSE | consecutiveEmpty=${consecutiveEmptyResponses} | nativeFailed=${nativeFailed} | nativeActive=${useNativeTools && !nativeFailed} | directMode=${directMode} | totalToolCalls=${totalToolCalls} | completionToolCalls=${completion.toolCalls?.length ?? 0}`);
-      const synthesized = synthesizeArtifactCompletion(ctx);
-      if (synthesized && totalToolCalls > 0) {
-        debugLog(debugLogs, '[agent] -> synthesizing artifact from file outputs');
-        finalContent = synthesized;
-        break;
-      }
-      if (consecutiveEmptyResponses >= 2) {
-        debugLog(debugLogs, '[agent] -> switching to directMode (2 consecutive empty responses)');
-        directMode = true;
-        messages[0] = { role: 'system', content: directSys };
-        thinkStep.detail = 'Switching to direct mode (tools unavailable)';
-        args.onStep([...steps]);
-        continue;
-      }
-      if (!nativeFailed && nativeActive) {
-        debugLog(debugLogs, '[agent] -> falling back to XML mode (native returned empty)');
-        nativeFailed = true;
-        messages[0] = { role: 'system', content: xmlSys };
-        thinkStep.detail = 'Falling back to XML mode';
-        args.onStep([...steps]);
-        continue;
-      }
-      console.error('[agent] HARD FAIL: Empty response - model may not support tool calling');
-      steps.push({
-        id: uid('step'), type: 'error', label: 'Empty response',
-        status: 'error', detail: 'The model returned an empty response. The model may not support tool calling.'
-      });
-      args.onStep([...steps]);
-      errorReason = 'The model returned an empty response.';
-      break;
-    }
-    consecutiveEmptyResponses = 0;
-
-    let toolCalls: ToolCall[] = [];
-    let cleanContent = rawContent;
-
-    if (directMode) {
-      const codeblockFiles = wantsWebsiteArtifact ? parseCodeblockWrites(rawContent) : [];
-      if (codeblockFiles.length) {
-        toolCalls = codeblockFiles.map((f, i) => ({
-          id: `auto-write-${i}`,
-          name: 'write_file',
-          arguments: { path: f.path, content: f.code }
-        }));
-        const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
-        if (hasHtml) {
-          toolCalls.push({
-            id: 'auto-preview',
-            name: 'preview_project',
-            arguments: { entryPoint: 'index.html' }
-          });
-        }
-        cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
-        messages.push({ role: 'assistant', content: cleanContent || 'Files generated.' });
-      } else {
-        if (wantsWebsiteArtifact && !hasVisibleArtifact(ctx.files)) {
-          steps.push({
-            id: uid('step'),
-            type: 'error',
-            label: 'Missing website files',
-            status: 'error',
-            detail: 'The model described the website but did not provide code blocks or files.'
-          });
-          args.onStep([...steps]);
-          errorReason = 'The model did not produce website files.';
-          break;
-        }
-        if (!isInstant && (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '') || missingRequestedVisuals(args.rawPrompt || '').length > 0)) {
-          const finalObservation: ToolObservation = {
-            name: 'assistant_draft',
-            args: {},
-            success: true,
-            summary: `Assistant draft before artifact enforcement: ${compactText(rawContent, 1400)}`
-          };
-          const created = await ensureRequestedArtifactsFromEvidence({
-            prompt: args.rawPrompt || '',
-            reason: 'direct mode tried to finish without creating the requested files',
-            ctx,
-            observations: [...toolObservations, finalObservation],
-            sources,
-            publishToolArtifact
-          });
-          const stillMissingFiles = !hasAllRequestedArtifacts(ctx, args.rawPrompt || '');
-          const stillMissingVisuals = missingRequestedVisuals(args.rawPrompt || '');
-          if (stillMissingFiles || stillMissingVisuals.length > 0) {
-            if (stillMissingFiles) pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
-            if (stillMissingVisuals.length > 0) {
-              steps.push({
-                id: uid('step'),
-                type: 'error',
-                label: 'Missing requested visual',
-                status: 'error',
-                detail: `Could not create: ${stillMissingVisuals.map((kind) => VISUAL_ARTIFACT_TOOL[kind]).join(', ')}`
-              });
-            }
-            args.onStep([...steps]);
-            finalContent = await buildStrictFallbackContent({
-              prompt: args.rawPrompt || '',
-              reason: 'direct mode tried to finish without creating the requested files',
-              ctx,
-              observations: [...toolObservations, finalObservation],
-              sources,
-              mode: fallbackMode,
-              publishToolArtifact
-            });
-            stopReason = 'missing_artifacts';
-            errorReason = 'The agent answered without creating the requested files.';
-            break;
-          }
-          if (created.length) {
-            steps.push({
-              id: uid('step'),
-              type: 'writing',
-              label: 'Created requested files',
-              status: 'done',
-              detail: created.join(', '),
-              fileChanges: created.map((path) => ({ path, kind: 'created' as const }))
-            });
-            args.onStep([...steps]);
-          }
-        }
-        messages.push({ role: 'assistant', content: rawContent });
-        finalContent = stripToolCallArtifacts(rawContent);
-        break;
-      }
-    } else if (nativeActive && !nativeFailed && completion.toolCalls?.length) {
-      toolCalls = completion.toolCalls.map((tc: NativeToolCall, index: number) => ({
-        id: tc.id || `call_${iter}_${index}_${Math.random().toString(36).slice(2, 8)}`,
-        name: tc.name,
-        arguments: tc.arguments
-      }));
-      // DeepSeek (and similar) require reasoning_content on tool-using assistant turns
-      // to be echoed on all subsequent requests — omitting it yields HTTP 400.
-      const assistantToolMsg: RequestMessage = {
-        role: 'assistant',
-        content: rawContent || null,
-        ...(completion.providerState ? { providerState: completion.providerState } : {}),
-        tool_calls: toolCalls.map(tc => ({
-          id: tc.id!,
-          type: 'function' as const,
-          function: { name: tc.name, arguments: JSON.stringify(tc.arguments) }
-        }))
-      };
-      if (completion.reasoning) {
-        assistantToolMsg.reasoning_content = completion.reasoning;
-      }
-      messages.push(assistantToolMsg);
-    } else {
-      const xmlResult = parseXmlToolCall(rawContent);
-      if (xmlResult.toolCall) {
-        toolCalls = [xmlResult.toolCall];
-        cleanContent = stripToolCallArtifacts(xmlResult.cleanContent);
-        messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
-        if (nativeActive && !nativeFailed) nativeFailed = true;
-      } else {
-        const cbResult = parseToolCallCodeblocks(rawContent);
-        if (cbResult.toolCalls.length) {
-          toolCalls = cbResult.toolCalls;
-          cleanContent = stripToolCallArtifacts(cbResult.cleanContent);
-          messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
-          if (nativeActive && !nativeFailed) nativeFailed = true;
-        } else {
-          // Small models often emit the tagless shape
-          // (`name="web_search"> name="query">…`) when the XML contract
-          // does not stick — recover it instead of finalizing the draft.
-          const degradedResult = parseDegradedXmlToolCalls(rawContent);
-          if (degradedResult.toolCalls.length) {
-            toolCalls = degradedResult.toolCalls.map((toolCall, index) => ({
-              id: `degraded-${iter}-${index}`,
-              name: toolCall.name,
-              arguments: toolCall.arguments
-            }));
-            cleanContent = stripToolCallArtifacts(degradedResult.cleanContent);
-            messages.push({ role: 'assistant', content: cleanContent || 'Preparing to use tools\u2026' });
-            if (nativeActive && !nativeFailed) nativeFailed = true;
-          } else {
-            const codeblockFiles = wantsWebsiteArtifact ? parseCodeblockWrites(rawContent) : [];
-            if (codeblockFiles.length) {
-              toolCalls = codeblockFiles.map((f, i) => ({
-                id: `auto-write-${i}`,
-                name: 'write_file',
-                arguments: { path: f.path, content: f.code }
-              }));
-              const hasHtml = codeblockFiles.some(f => f.path === 'index.html' || f.path.endsWith('.html'));
-              if (hasHtml) {
-                toolCalls.push({
-                  id: `auto-preview`,
-                  name: 'preview_project',
-                  arguments: { entryPoint: 'index.html' }
-                });
-              }
-              cleanContent = stripToolCallArtifacts(rawContent.replace(/```[\s\S]*?```/g, '').trim());
-              messages.push({ role: 'assistant', content: cleanContent || 'Files have been written and are ready for preview.' });
-              if (nativeActive && !nativeFailed) nativeFailed = true;
-            }
-          }
-        }
-      }
-    }
-
-    // Recover the known map-widget dialect without changing the provider's
-    // original call IDs or signed history. Execution still validates the schema
-    // and honors the artifact toggle.
-    toolCalls = toolCalls.map((call) => {
-      if (call.name !== 'create_map' && !(call.name === 'maps' && (!nativeActive || nativeFailed))) return call;
-      const { center, ...parameters } = call.arguments;
-      return {
-        ...call,
-        name: 'create_map',
-        arguments: {
-          ...parameters,
-          ...(typeof center === 'string' && !parameters.place ? { place: center } : {})
-        }
-      };
-    });
-    cleanContent = sanitizeAgentVisibleText(cleanContent);
-    const parseMode = directMode ? 'codeblocks' : (nativeActive && !nativeFailed) ? 'native' : 'xml/codeblocks';
-    debugLog(debugLogs, `[agent] parsed ${toolCalls.length} toolCalls from ${parseMode} mode${toolCalls.length ? ': ' + toolCalls.map(t => t.name).join(', ') : ''}`);
-    thinkStep.status = 'done';
-    thinkStep.detail = toolCalls.length
-      ? (isResearchChat
-        ? toolCalls.map((toolCall) => displayToolLabel(toolCall.name)).join(', ')
-        : `Next: ${toolCalls.map((toolCall) => displayToolLabel(toolCall.name)).join(', ')}`)
-      : (isResearchChat ? 'Writing report' : 'Preparing the answer');
-
-    if (toolCalls.length && cleanContent && cleanContent.length > 10 && !directMode) {
-      const trimmed = cleanContent.slice(0, 240).replace(/\|+$/g, '').trim();
-      if (trimmed) {
-        steps.push({
-          id: uid('step'), type: 'thinking', label: 'Reasoning',
-          status: 'done',
-          detail: trimmed.length < cleanContent.length ? trimmed + '\u2026' : trimmed
-        });
-      }
-    }
-
-    args.onStep([...steps]);
-
-    if (!toolCalls.length) {
-      if (rawContent) {
-        if (wantsWebsiteArtifact && !hasVisibleArtifact(ctx.files)) {
-          if (!directMode) {
-            directMode = true;
-            messages[0] = { role: 'system', content: directSys };
-            messages.push({
-              role: 'user',
-              content: 'You must actually create the website files now. Output complete code blocks for index.html and any needed style.css or script.js. Do not say the work is done unless you provide the file contents.'
-            });
-            thinkStep.detail = 'Switching to direct website build mode';
-            args.onStep([...steps]);
-            continue;
-          }
-          steps.push({
-            id: uid('step'),
-            type: 'error',
-            label: 'Missing website files',
-            status: 'error',
-            detail: 'The model answered without creating previewable website files.'
-          });
-          args.onStep([...steps]);
-          errorReason = 'The model answered without creating website files.';
-          break;
-        }
-        // The model described tool use instead of emitting a call (and even
-        // the degraded-shape recovery found nothing). Show it the exact
-        // format once rather than finalizing its draft as the answer.
-        if (!toolFormatRetryDone && !directMode && totalToolCalls === 0 && hasToolIntent(rawContent)) {
-          toolFormatRetryDone = true;
-          debugLog(debugLogs, '[agent] -> tool-format retry (draft talked about tools, retrying with exact format)');
-          messages.push({ role: 'assistant', content: stripToolCallArtifacts(sanitizeAgentVisibleText(rawContent)) || 'Preparing to use tools\u2026' });
-          messages.push({
-            role: 'user',
-            content: `The tool call could not be read. Use an available tool name and its real arguments: <tool_call>{"name":"TOOL_NAME","arguments":{}}</tool_call>. Available tools: ${toolDefs.map((tool) => tool.function.name).join(', ')}. For a map, use create_map with {"place":"City, Country","zoom":12}. Do not use label or parameters attributes.`
-          });
-          thinkStep.detail = 'Clarifying the tool format and retrying';
-          args.onStep([...steps]);
-          continue;
-        }
-        // The prompt asked for a visual deliverable (chart, diagram, map,
-        // dashboard, card) but the model answered in prose without calling the
-        // tool. Name the exact tool once and make it retry — a description is
-        // not the deliverable. One shot only; a second miss finalizes as text.
-        if (!visualNudgeDone && !directMode) {
-          const missingVisuals = missingRequestedVisuals(args.rawPrompt || '');
-          if (missingVisuals.length) {
-            visualNudgeDone = true;
-            const toolList = missingVisuals.map((kind) => VISUAL_ARTIFACT_TOOL[kind]).join(', ');
-            debugLog(debugLogs, `[agent] -> visual-artifact nudge (missing: ${missingVisuals.join(', ')})`);
-            messages.push({ role: 'assistant', content: stripToolCallArtifacts(sanitizeAgentVisibleText(rawContent)) || 'Preparing to use tools…' });
-            messages.push({
-              role: 'user',
-              content: `You answered in prose, but the user asked for a visual deliverable. Call the matching tool now with real arguments (${toolList}) — do not describe it, create it. If no visual was actually requested, answer normally without tools.`
-            });
-            thinkStep.detail = 'Requesting the missing visual artifact';
-            args.onStep([...steps]);
-            continue;
-          }
-        }
-        const missingVisuals = missingRequestedVisuals(args.rawPrompt || '');
-        if (missingVisuals.length || hasToolIntent(rawContent) && !sanitizeAgentVisibleText(rawContent)) {
-          errorReason = missingVisuals.length
-            ? `The model did not create the requested ${missingVisuals.join(', ')} widget.`
-            : 'The model returned a tool call that could not be executed.';
-          stopReason = missingVisuals.length ? 'missing_artifacts' : 'error';
-          finalContent = `${errorReason} Please try again.`;
-          steps.push({ id: uid('step'), type: 'error', label: 'Could not complete request', status: 'error', detail: errorReason });
-          args.onStep([...steps]);
-          break;
-        }
-        if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
-          const finalObservation: ToolObservation = {
-            name: 'assistant_draft',
-            args: {},
-            success: true,
-            summary: `Assistant draft before artifact enforcement: ${compactText(rawContent, 1400)}`
-          };
-          const created = await ensureRequestedArtifactsFromEvidence({
-            prompt: args.rawPrompt || '',
-            reason: 'the model tried to finish without creating the requested files',
-            ctx,
-            observations: [...toolObservations, finalObservation],
-            sources,
-            publishToolArtifact
-          });
-          if (!hasAllRequestedArtifacts(ctx, args.rawPrompt || '')) {
-            pushMissingRequestedFilesStep(steps, ctx, args.rawPrompt);
-            args.onStep([...steps]);
-            finalContent = await buildStrictFallbackContent({
-              prompt: args.rawPrompt || '',
-              reason: 'the model tried to finish without creating the requested files',
-              ctx,
-              observations: [...toolObservations, finalObservation],
-              sources,
-              mode: fallbackMode,
-              publishToolArtifact
-            });
-            stopReason = 'missing_artifacts';
-            errorReason = 'The agent answered without creating the requested files.';
-            break;
-          }
-          if (created.length) {
-            steps.push({
-              id: uid('step'),
-              type: 'writing',
-              label: 'Created requested files',
-              status: 'done',
-              detail: created.join(', '),
-              fileChanges: created.map((path) => ({ path, kind: 'created' as const }))
-            });
-            args.onStep([...steps]);
-          }
-        }
-        args.onProgress?.('Producing final answer\u2026');
-        finalContent = stripToolCallArtifacts(rawContent);
-        break;
-      }
-      const synthesized = synthesizeArtifactCompletion(ctx);
-      if (synthesized && totalToolCalls > 0) {
-        finalContent = synthesized;
-        break;
-      }
-      steps.push({
-        id: uid('step'), type: 'error', label: 'Empty response',
-        status: 'error', detail: 'The model returned an empty response. The model may be temporarily unavailable or the prompt may exceed context capacity.'
-      });
-      args.onStep([...steps]);
-      errorReason = 'The model returned an empty response.';
-      break;
-    }
-
-    const budgetedToolCalls = countBudgetedToolCalls(toolCalls);
-
-    if (totalToolCalls >= maxToolCalls) {
-      steps.push({
-        id: uid('step'),
-        type: isResearchChat ? 'writing' : 'error',
-        label: isResearchChat ? 'Writing report' : 'Tool limit reached',
-        status: isResearchChat ? 'running' : 'error',
-        detail: isResearchChat
-          ? 'Synthesizing final research report from gathered sources'
-          : `Used ${totalToolCalls} tools across ${maxIterations} steps. Returning gathered evidence only.`
-      });
-      args.onStep([...steps]);
-      // Research: leave finalContent empty so forced synthesis can write a real report.
-      if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`the tool budget was reached (${totalToolCalls}/${maxToolCalls})`);
-      if (!isResearchChat) {
-        warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
-      }
-      stopReason = 'tool_limit';
-      break;
-    }
-
-    // Research: force write once evidence is good enough (don't thrash on more searches).
-    if (isResearchChat && shouldForceResearchSynthesis({ mode: researchMode, sources, observations: toolObservations })) {
-      researchForceWrite = true;
-    }
-
-    if (researchForceWrite || iter >= Math.max(0, maxIterations - 2)) {
-      messages.push({
-        role: 'user',
-        content: isCodeProfile
-          ? 'You are almost out of steps. STOP exploring. Apply any remaining critical edits now (edit_file/write_file), or if done, respond with a plain-text summary of files changed and how to verify. Do NOT call list_files/read_file unless required for one final fix.'
-          : isResearchChat
-            ? [
-              researchForceWrite
-                ? 'Enough sources have been gathered. Do NOT call more tools.'
-                : 'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
-              'Write the final answer now using the RESEARCH EVIDENCE PACK. Never title a section "Gathered Evidence". Never mention tools or step limits.',
-              FINAL_ANSWER_CONTRACT_REMINDER
-            ].join('\n\n')
-            : 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.'
-      });
-    }
-
-    // Code: stop endless explore-only loops (read/list/search without write/bash)
-    if (isCodeProfile && toolCalls.length) {
-      const onlyExplore = toolCalls.every((tc) => LOW_IMPACT_LOOP_TOOLS.has(tc.name) || tc.name === 'web_search' || tc.name === 'fetch_url' || tc.name === 'get_diagnostics');
-      const hasMutation = toolCalls.some((tc) => tc.name === 'write_file' || tc.name === 'edit_file' || tc.name === 'delete_file' || tc.name === 'bash');
-      if (hasMutation) consecutiveExploreOnly = 0;
-      else if (onlyExplore) consecutiveExploreOnly += toolCalls.length;
-      if (consecutiveExploreOnly >= CODE_MAX_CONSECUTIVE_EXPLORE) {
-        messages.push({
-          role: 'user',
-          content: 'You have explored enough. Stop calling read/list/search tools. Either make the code change now with edit_file/write_file, or finish with a clear summary of findings. No more exploratory tool calls.'
-        });
-      }
-      if (consecutiveExploreOnly >= CODE_MAX_CONSECUTIVE_EXPLORE + 4) {
-        steps.push({
-          id: uid('step'),
-          type: 'error',
-          label: 'Explore limit — finishing',
-          status: 'error',
-          detail: `Stopped after ${consecutiveExploreOnly} explore-only tool calls without file changes`
-        });
-        args.onStep([...steps]);
-        finalContent = await buildEvidenceOnlyFallback('too many explore-only tool calls without applying changes');
-        warningReason = 'Agent explored the codebase extensively without finishing changes; returned a partial summary.';
-        stopReason = 'loop';
-        break;
-      }
-    }
-
-    const sig = toolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
-    recentSigs.push(sig);
-    if (recentSigs.length > 10) recentSigs.shift();
-    recentProgress.push({
-      sourceCount: sources.length,
-      visibleFileCount: visibleFileCount(ctx.files),
-      draftChars: maxObservedDraftChars,
-      observationCount: toolObservations.filter((o) => o.success).length
-    });
-    if (recentProgress.length > 10) recentProgress.shift();
-
-    // Extract full individual calls (name + args) for exact-match detection
-    const recentFullCalls = recentSigs.flatMap(s => s.split('|')).filter(Boolean);
-    // Extract just names for name-only counting and cycle detection
-    const recentNames = recentFullCalls.map(c => c.split(':')[0]);
-    const recentWindow = Math.min(recentSigs.length, 6);
-    const progressWindow = recentProgress.slice(-Math.max(2, recentWindow));
-    const isStagnating = !hasProgressSince(progressWindow, LOOP_STAGNATION_MIN_DRAFT_GROWTH);
-
-    let stuckTool: string | null = null;
-
-    // 1. Exact same call (name + identical args) repeated 3+ times = real loop
-    const exactCounts = new Map<string, number>();
-    for (const call of recentFullCalls) {
-      exactCounts.set(call, (exactCounts.get(call) || 0) + 1);
-    }
-    for (const [call, count] of exactCounts) {
-      if (count >= 3) {
-        const toolName = call.split(':')[0];
-        if (!LOW_IMPACT_LOOP_TOOLS.has(toolName) || isStagnating) {
-          stuckTool = toolName;
-          break;
-        }
-      }
-    }
-
-    // Only trigger loop stops when repeated calls coincide with stagnation.
-    if (!isStagnating) {
-      if (stuckTool) {
-        debugLog(debugLogs, `[agent] loop guard suppressed for ${stuckTool} because progress is still being made.`);
-      }
-      stuckTool = null;
-    }
-
-    // 2. Same tool name only (different args) repeated enough times = likely stuck.
-    // Local models get a tighter guard because each extra loop is much more expensive.
-    if (!stuckTool && isStagnating) {
-      const repeatedNameLimit = localMode ? 4 : 6;
-      const nameCounts = new Map<string, number>();
-      for (const name of recentNames) {
-        if (name === 'fetch_url' || LOW_IMPACT_LOOP_TOOLS.has(name)) continue;
-        if (isResearchChat && name === 'web_search') continue;
-        nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
-      }
-      for (const [name, count] of nameCounts) {
-        if (count >= repeatedNameLimit) {
-          stuckTool = name;
-          break;
-        }
-      }
-    }
-
-    // 3. Two-tool alternating cycle (A-B-A-B-A-B)
-    if (!stuckTool && isStagnating && recentNames.length >= 6) {
-      const last6 = recentNames.slice(-6);
-      const isTwoToolCycle = last6.length === 6 && new Set(last6).size === 2 &&
-        last6[0] === last6[2] && last6[2] === last6[4] &&
-        last6[1] === last6[3] && last6[3] === last6[5];
-      if (isTwoToolCycle) {
-        const cycleTools = new Set(last6);
-        const onlyLowImpact = [...cycleTools].every((name) => LOW_IMPACT_LOOP_TOOLS.has(name));
-        if (!onlyLowImpact) {
-          stuckTool = `${last6[0]} \u2194 ${last6[1]}`;
-        }
-      }
-    }
-    if (stuckTool) {
-      steps.push({
-        id: uid('step'),
-        type: isResearchChat ? 'writing' : 'error',
-        label: isResearchChat ? 'Writing report' : 'Loop detected \u2014 stopping',
-        status: isResearchChat ? 'running' : 'error',
-        detail: isResearchChat
-          ? 'Synthesizing research report from gathered sources'
-          : `Repeated calls to ${stuckTool}`
-      });
-      args.onStep([...steps]);
-      // Research: leave finalContent empty for forced report synthesis from the pack.
-      if (!isResearchChat) finalContent = await buildEvidenceOnlyFallback(`it detected repeated calls to ${stuckTool}`);
-      if (!isResearchChat) {
-        warningReason = 'Agent encountered a loop and returned only gathered evidence.';
-      }
-      stopReason = 'loop';
-      break;
-    }
-
-    // Research: drop extra web_search once evidence is enough (prefer write path).
-    if (isResearchChat && researchForceWrite && toolCalls.length) {
-      const filtered = toolCalls.filter((tc) => tc.name !== 'web_search');
-      if (filtered.length !== toolCalls.length) {
-        toolCalls = filtered;
-        if (!toolCalls.length) {
-          // Model only wanted another search — exit loop and force APA synthesis.
-          injectLiveEvidence();
-          break;
-        }
-      }
-    }
-
-    // Execute tool calls with parallel grouping
-    const groups = groupParallelAndSequential(toolCalls);
-    for (const group of groups) {
-      checkAbort();
-      if (group.length === 1) {
-        // Single tool — execute directly
-        const tc = group[0];
-        nativeFailed = await executeSingleTool(tc, steps, ctx, args, messages, sources, seenUrls, toolObservations, nativeActive, nativeFailed, publishToolArtifact);
-      } else {
-        // Multiple independent tools — execute in parallel
-        args.onProgress?.(`Running ${group.length} tools in parallel\u2026`);
-        checkAbort();
-
-        /*
-         * Steps are created and pushed *before* the work starts. They used to be
-         * created inside the promise and pushed only once every tool had settled, so
-         * a multi-tool turn showed one frozen "thinking" row for its whole duration
-         * while the single-tool path streamed each step correctly.
-         */
-        const running = group.map((tc) => {
-          const toolStep = createRunningToolStep(tc, STEP_TYPE, uid);
-          steps.push(toolStep);
-          return { tc, toolStep };
-        });
-        args.onStep([...steps]);
-
-        const results = await Promise.allSettled(
-          running.map(({ tc }) => executeToolWithTimeout(tc.name, tc.arguments, ctx))
-        );
-
-        // Process all results
-        for (const [index, entry] of results.entries()) {
-          const { tc, toolStep } = running[index];
-          /*
-           * A rejection still has to produce a tool_result. Skipping it (the old
-           * `if (entry.status === 'rejected') continue;`) left the assistant's
-           * `tool_calls` block unpaired — recovered only by luck via
-           * `ensureToolCallPairs` at the next loop head, and not at all if the loop
-           * broke first, in which case the provider got a 400.
-           */
-          const settled: ToolResult = entry.status === 'fulfilled'
-            ? entry.value
-            : fail(toErrorMessage(entry.reason) || 'Tool execution failed');
-          const result = recoverOptionalPresentationFailure(tc, settled);
-
-          toolObservations.push(summarizeToolObservation(tc.name, tc.arguments, result));
-          mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
-          finalizeToolStep(toolStep, result, tc.name);
-          publishToolArtifact(result);
-          appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed, maxToolResultChars: MAX_TOOL_RESULT_CHARS });
-        }
-        args.onStep([...steps]);
-      }
-    }
-
-    totalToolCalls += budgetedToolCalls;
-
-    if (isResearchChat && shouldForceResearchSynthesis({ mode: researchMode, sources, observations: toolObservations })) {
-      researchForceWrite = true;
-      injectLiveEvidence();
-    }
-
-    if (directMode && hasVisibleArtifact(ctx.files)) {
-      finalContent = synthesizeArtifactCompletion(ctx) || 'Website files created and preview is ready.';
-      break;
-    }
-
-    if (totalToolCalls >= maxToolCalls) {
-      if (!isResearchChat) {
-        finalContent = await buildEvidenceOnlyFallback(`the available tool budget was reached (${totalToolCalls}/${maxToolCalls})`);
-        warningReason = warningReason || `Agent reached the dynamic tool call limit (${maxToolCalls}) and returned only gathered evidence.`;
-      }
-      stopReason = 'tool_limit';
-      break;
-    }
-  }
-
-  if (!finalContent) {
-    // Instant gets one synthesis shot, not two: the strict template fallback
-    // below already produces an honest answer from gathered evidence, and
-    // every extra model call costs the immediacy Instant exists for.
-    const forcedAttempts = isInstant
-      ? 1
-      : isResearchChat
-        ? MAX_RESEARCH_FORCED_SYNTHESIS_ATTEMPTS
-        : MAX_FORCED_FINAL_ANSWER_ATTEMPTS;
-    const medicalResearch = isResearchChat && isMedicalResearchQuery(args.rawPrompt || '');
-    for (let attempt = 1; attempt <= forcedAttempts; attempt++) {
-      try {
-        injectLiveEvidence();
-        messages[0] = { role: 'system', content: directSys };
-        const researchNudge = isResearchChat
-          ? [
-            researchSynthesisUserNudge(researchMode, medicalResearch, attempt, forcedAttempts),
-            FINAL_ANSWER_CONTRACT_REMINDER
-          ].join('\n\n')
-          : null;
-        const codeNudge = isCodeProfile
-          ? [
-            'You have reached the coding step limit. Do NOT call tools.',
-            'Write a concise plain-text summary of: (1) what you changed or found, (2) file paths touched, (3) how to verify, (4) what remains unfinished.',
-            summarizeCodeObservations(toolObservations)
-          ].join('\n\n')
-          : null;
-        // The previous attempt produced nothing usable, so this genuinely does
-        // need to restate the target — but only the shape, and only at the depth
-        // the user asked for. Search mode gets an answer, not a report.
-        const researchRetryNudge = isResearchChat
-          ? [
-            researchMode === 'search'
-              ? 'The previous answer was empty or unusable. Answer the question directly in markdown now, at whatever length it needs, citing the sources you used.'
-              : 'The previous synthesis was empty or unusable. Write the complete professional research report in markdown now — spaced topical sections, then Limitations and References.',
-            FINAL_ANSWER_CONTRACT_REMINDER
-          ].join('\n\n')
-          : null;
-        messages.push({
-          role: 'user',
-          content: attempt === 1
-            ? (researchNudge || codeNudge || 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.')
-            : (isCodeProfile
-              ? 'Final attempt: no tools. Summarize file changes and next steps in plain text only.'
-              : (researchRetryNudge || 'Final attempt: no tools, no extra reasoning. Return the final answer now in plain text using only gathered evidence.'))
-        });
-        args.onProgress?.(isResearchChat
-          ? `Writing research report (attempt ${attempt}/${forcedAttempts})\u2026`
-          : 'Producing final answer\u2026');
-        /*
-         * `ensureToolCallPairs` is mandatory here, and its absence was fatal.
-         *
-         * Every break that ends the loop early — the tool budget at
-         * `totalToolCalls >= maxToolCalls`, the explore-only cap, the stagnation
-         * guard, the research force-write — fires *after* the assistant message
-         * carrying `tool_calls` was pushed and *before* any tool ran. History
-         * therefore ends with unpaired `tool_calls`, and providers reject that with
-         * a 400. This call used `completeAssistantReply` directly, which (unlike the
-         * loop head and `runComplete`) never repaired pairs, so all 2-3 attempts
-         * failed and the bare `catch` below swallowed every one of them. The visible
-         * symptom was that hitting any limit silently degraded to generic fallback
-         * text instead of the answer the model was ready to give.
-         */
-        ensureToolCallPairs(messages, 'fill');
-        const forced = await completeAssistantReply({
-          messages,
-          signal: args.signal,
-          omitMaxTokens: omitResearchMaxTokens
-        });
-        aggregateUsage = mergeCompletionUsage(aggregateUsage, forced.usage);
-        const forcedContent = stripToolCallArtifacts(String(forced?.content || '')).trim();
-        if (!forcedContent) continue;
-        // Reject pure evidence-dump outputs for research; retry synthesis.
-        // Reject pure evidence dumps that never open as a real topical report.
-        if (
-          isResearchChat
-          && /#{0,6}\s*Gathered Evidence\b/i.test(forcedContent)
-          && !/^#\s+(?!Gathered Evidence\b).+/im.test(forcedContent)
-        ) {
-          continue;
-        }
-        finalContent = forcedContent;
-        if (forced.reasoning) finalReasoning = finalReasoning || String(forced.reasoning);
-        if (isResearchChat) {
-          stopReason = 'none';
-          warningReason = undefined;
-        } else if (isCodeProfile) {
-          if (stopReason === 'none') stopReason = 'iteration_limit';
-          warningReason = warningReason || 'Agent reached the step limit and returned a partial coding summary.';
-        } else {
-          if (stopReason === 'none') stopReason = 'iteration_limit';
-          warningReason = warningReason || 'Agent reached the iteration limit and produced a final answer from gathered evidence.';
-        }
-        break;
-      } catch (err: unknown) {
-        // Abort is the user's decision, not a failed attempt — stop retrying.
-        if (isAbortError(err)) throw err;
-        // Otherwise try again, then fall through to the strict fallback. Logged
-        // rather than discarded: silence here hid the 400s described above.
-        debugLog(debugLogs, `[agent] forced synthesis attempt ${attempt}/${forcedAttempts} failed: ${toErrorMessage(err)}`);
-      }
-    }
-  }
-
-  if (!finalContent) {
-    const reason = stopReason !== 'none' && errorReason
-      ? errorReason
-      : 'it reached the iteration limit before producing a final answer';
-    const richCount = sources.filter((s) => String(s.full_content || s.snippet || '').length >= 120).length;
-    finalContent = executionMode === 'workspace'
-      ? buildWorkspaceStoppedContent(reason, toolObservations)
-      : await buildStrictFallbackContent({
-        prompt: args.rawPrompt || '',
-        reason,
-        ctx,
-        observations: toolObservations,
-        sources,
-        mode: fallbackMode,
-        publishToolArtifact,
-        // Research: product-facing report without "step limit" language
-        ...(isResearchChat
-          ? { notice: researchThinSourcesNotice(sources.length, richCount) }
-          : {})
-      });
-    if (stopReason === 'none') stopReason = 'iteration_limit';
-    if (isResearchChat && hasGatheredEvidence(ctx, toolObservations, sources, finalContent)) {
-      // Sourced research report is a completed product deliverable.
-      warningReason = undefined;
-      errorReason = undefined;
-      stopReason = 'none';
-    } else if (!isResearchChat) {
-      errorReason = errorReason || 'Agent reached iteration limit without producing a final answer.';
-    } else {
-      errorReason = undefined;
-      warningReason = researchThinSourcesNotice(sources.length, richCount);
-      stopReason = sources.length ? 'none' : stopReason;
-    }
-  }
-
-  /*
-   * Safety net for website builds: preview_project publishes the artifact, but a
-   * native-tool model can write index.html and never call it. In that case the
-   * sandbox files are only in `ctx.files`, so publish the entry here or the site
-   * is gone when the run ends.
-   */
-  if (artifactsEnabled && wantsWebsiteArtifact && !artifacts.some((entry) => entry.manifest?.kind === 'web')) {
-    const entryPath = ctx.files['index.html'] !== undefined
-      ? 'index.html'
-      : Object.keys(ctx.files).find((path) => !path.startsWith('__') && /\.html?$/i.test(path));
-    if (entryPath) {
-      publishToolArtifact({
-        success: true,
-        createdFiles: Object.keys(ctx.files).filter((path) => !path.startsWith('__')),
-        artifactManifest: {
-          schemaVersion: 1,
-          kind: 'web',
-          presentation: 'web',
-          entryPath,
-          status: 'ready'
-        }
-      });
-    }
-  }
-
-  finalContent = sanitizeAgentVisibleText(finalContent);
-  finalReasoning = sanitizeAgentVisibleText(finalReasoning);
-  const artifact = artifacts.length ? artifacts[artifacts.length - 1] : null;
-  const finalSources = evidenceSources(toolObservations, sources);
-
-  // Research product rule: sources + body → completed report (never step-limit Error UI).
-  if (isResearchChat && finalContent?.trim() && finalSources.length > 0) {
-    stopReason = 'none';
-    warningReason = undefined;
-    errorReason = undefined;
-  }
-
-  const usefulResult = hasGatheredEvidence(ctx, toolObservations, finalSources, finalContent);
-  const effectiveStopReason = stopReason !== 'none' ? stopReason : classifyStopReason(errorReason || warningReason);
-  const outcome: AgentOutcome = errorReason
-    ? (usefulResult ? 'stopped' : 'failed')
-    : warningReason
-      ? 'partial'
-      : 'completed';
-  const fatalError = outcome === 'failed';
-  const rawWarning = !fatalError && (
-    warningReason
-    || (effectiveStopReason !== 'none'
-      ? stoppedWarning(effectiveStopReason, errorReason || '', {
-        workspace: executionMode === 'workspace' || isCodeProfile,
-        research: isResearchChat
-      })
-      : undefined)
-  );
-  const effectiveWarning = rawWarning ? String(rawWarning).trim() || undefined : undefined;
-
-  finalizeAgentSteps(steps, fatalError && !isResearchChat);
-
-  try {
-    const { browserPanelStore } = await import('$lib/stores/browser-panel.svelte');
-    browserPanelStore.agentDriving = false;
-  } catch { /* store unavailable in tests */ }
-
-  const exitNotice = effectiveWarning && !fatalError ? effectiveWarning : 'none';
-  console.log(`[agent] EXIT | contentLen=${finalContent.length} | steps=${steps.length} | outcome=${outcome} | stopReason=${effectiveStopReason} | error=${fatalError ? (errorReason || 'unknown') : 'none'} | notice=${exitNotice}`);
-  const publicFallback = isPublicFallbackContent(finalContent);
-
-  return {
-    content: finalContent,
-    reasoning: finalReasoning,
-    steps,
-    artifact,
-    artifacts,
-    sources: finalSources,
-    outcome,
-    stopReason: effectiveStopReason,
-    publicFallback,
-    diagnosticsRedacted: publicFallback,
-    ...(aggregateUsage ? { usage: aggregateUsage } : {}),
-    ...(fatalError && errorReason ? { error: errorReason } : {}),
-    ...(effectiveWarning ? { warning: effectiveWarning } : {})
-  };
+  await forceFinalAnswer(run);
+  await settleWithoutAnswer(run);
+  return buildAgentResult(run);
 }
 
-async function executeSingleTool(
-  tc: ToolCall,
-  steps: AgentStep[],
-  ctx: ToolContext,
-  args: RunAgentTaskArgs,
-  messages: RequestMessage[],
-  sources: SearchResult[],
-  seenUrls: Set<string>,
-  observations: ToolObservation[],
-  nativeActive: boolean,
-  nativeFailed: boolean,
-  publishToolArtifact: (result: ToolResult) => void
-): Promise<boolean> {
-  return executeSingleToolCore({
-    tc,
-    steps,
-    ctx,
-    args,
-    messages,
-    sources,
-    seenUrls,
-    observations,
-    nativeActive,
-    nativeFailed,
-    stepTypeMap: STEP_TYPE,
-    uid,
-    executeToolWithTimeout: (name, toolArgs) => executeToolWithTimeout(name, toolArgs, ctx),
-    summarizeToolObservation,
-    publishToolArtifact,
-    maxToolResultChars: MAX_TOOL_RESULT_CHARS
+async function runIteration(run: AgentRun, state: LoopState, iter: number): Promise<Flow> {
+  const { plan, args, transport } = run;
+  debugLog(plan.debugLogs, `[agent] iter=${iter} | nativeActive=${isNativeActive(run)} | nativeFailed=${transport.nativeFailed} | directMode=${transport.directMode} | messageCount=${run.messages.length}`);
+  throwIfAborted(run);
+  if (Date.now() - run.startTime > plan.maxTimeMs) {
+    run.stopReason = 'timeout';
+    if (plan.isResearchChat && run.sources.length) {
+      // Deliver the report from sources rather than hard-failing research.
+      run.warningReason = undefined;
+    } else {
+      run.errorReason = run.errorReason || 'Agent timed out before completing the requested depth.';
+    }
+    return 'stop';
+  }
+
+  const step = startThinkStep(run, state, iter);
+  await prepareContext(run);
+
+  const nativeActive = isNativeActive(run);
+  useSystemPrompt(run, transport.directMode ? 'direct' : nativeActive ? 'native' : 'xml');
+  debugLog(plan.debugLogs, `[agent] calling LLM via: ${transport.directMode ? 'direct' : nativeActive ? 'native' : 'xml'} | toolDefs=${nativeActive ? plan.toolDefs.length : 0} | messages=${run.messages.length}`);
+  const reasoningBeforeTurn = run.finalReasoning;
+  const completion = await callModel(run, { iter, step, nativeActive });
+  if (!completion) return 'stop';
+
+  run.usage = mergeCompletionUsage(run.usage, completion.usage);
+  // Parse the protocol before sanitizing display text: sanitizing first erased
+  // XML calls (including llama.cpp fallbacks) before any executor saw them.
+  const rawContent = String(completion.content || '');
+  const reasoning = sanitizeAgentVisibleText(String(completion.reasoning || ''));
+  run.maxDraftChars = Math.max(run.maxDraftChars, rawContent.length);
+  debugLog(plan.debugLogs, `[agent] LLM result | contentLen=${rawContent.length} | reasoningLen=${reasoning.length} | toolCalls=${completion.toolCalls?.length ?? 0}`);
+  if (reasoning) {
+    run.finalReasoning = [reasoningBeforeTurn, reasoning].filter(Boolean).join('\n\n');
+    args.onReasoning?.(run.finalReasoning);
+  }
+
+  if (!rawContent && !completion.toolCalls?.length && !transport.directMode) {
+    return handleEmptyReply(run, state, step, nativeActive);
+  }
+  state.consecutiveEmptyReplies = 0;
+
+  // ── Parse the reply into tool calls ──
+  let toolCalls: ToolCall[] = [];
+  let cleanContent = rawContent;
+  if (transport.directMode) {
+    const site = plan.wantsWebsiteArtifact ? websiteWritesFromCodeblocks(rawContent) : null;
+    if (!site) return finishDirectReply(run, rawContent);
+    toolCalls = site.toolCalls;
+    cleanContent = site.cleanContent;
+    run.messages.push({ role: 'assistant', content: cleanContent || 'Files generated.' });
+  } else {
+    const extracted = extractToolCalls({
+      rawContent,
+      completion,
+      iter,
+      nativeInUse: nativeActive && !transport.nativeFailed,
+      wantsWebsiteArtifact: plan.wantsWebsiteArtifact
+    });
+    toolCalls = extracted.toolCalls;
+    cleanContent = extracted.cleanContent;
+    if (extracted.assistantMessage) run.messages.push(extracted.assistantMessage);
+    if (extracted.textDialect && nativeActive) transport.nativeFailed = true;
+  }
+  toolCalls = normalizeMapCalls(toolCalls, nativeActive && !transport.nativeFailed);
+  cleanContent = sanitizeAgentVisibleText(cleanContent);
+  debugLog(plan.debugLogs, `[agent] parsed ${toolCalls.length} toolCalls${toolCalls.length ? ': ' + toolCalls.map((t) => t.name).join(', ') : ''}`);
+  closeThinkStep(run, step, toolCalls, cleanContent);
+
+  if (!toolCalls.length) return finishDraft(run, state, step, rawContent);
+
+  // ── Stop guards and nudges ──
+  if (run.totalToolCalls >= plan.maxToolCalls) {
+    pushStep(run, {
+      type: plan.isResearchChat ? 'writing' : 'error',
+      label: plan.isResearchChat ? 'Writing report' : 'Tool limit reached',
+      status: plan.isResearchChat ? 'running' : 'error',
+      detail: plan.isResearchChat
+        ? 'Synthesizing final research report from gathered sources'
+        : `Used ${run.totalToolCalls} tools across ${plan.maxIterations} steps. Returning gathered evidence only.`
+    });
+    return stopAtToolBudget(run, 'the tool budget was reached');
+  }
+
+  // Research: force the write once evidence is good enough (don't thrash on more searches).
+  if (plan.isResearchChat && shouldForceResearchSynthesis({ mode: plan.researchMode, sources: run.sources, observations: run.observations })) {
+    state.researchForceWrite = true;
+  }
+  if (state.researchForceWrite || iter >= Math.max(0, plan.maxIterations - 2)) {
+    run.messages.push({ role: 'user', content: nearEndNudge(run, state) });
+  }
+
+  if (plan.isCodeProfile && await guardExploreOnly(run, state, toolCalls) === 'stop') return 'stop';
+  if (await guardLoops(run, state, toolCalls) === 'stop') return 'stop';
+
+  // Research: drop extra web_search once evidence is enough (prefer the write path).
+  if (plan.isResearchChat && state.researchForceWrite) {
+    const withoutSearch = toolCalls.filter((tc) => tc.name !== 'web_search');
+    if (withoutSearch.length !== toolCalls.length) {
+      toolCalls = withoutSearch;
+      if (!toolCalls.length) {
+        // The model only wanted another search: exit and force the report.
+        injectLiveEvidence(run);
+        return 'stop';
+      }
+    }
+  }
+
+  // ── Run the tools ──
+  const budgeted = toolCalls.filter((toolCall) => toolCall.name !== 'preview_project').length;
+  await executeToolCalls(run, toolCalls, nativeActive);
+  run.totalToolCalls += budgeted;
+
+  if (plan.isResearchChat && shouldForceResearchSynthesis({ mode: plan.researchMode, sources: run.sources, observations: run.observations })) {
+    state.researchForceWrite = true;
+    injectLiveEvidence(run);
+  }
+  if (transport.directMode && hasVisibleArtifact(run.ctx.files)) {
+    run.finalContent = synthesizeArtifactCompletion(run.ctx.files) || 'Website files created and preview is ready.';
+    return 'stop';
+  }
+  if (run.totalToolCalls >= plan.maxToolCalls) return stopAtToolBudget(run, 'the available tool budget was reached');
+  return 'next';
+}
+
+/** The tool budget ran out. Research leaves the answer to forced synthesis. */
+async function stopAtToolBudget(run: AgentRun, reason: string): Promise<Flow> {
+  const { plan } = run;
+  if (!plan.isResearchChat) {
+    run.finalContent = await evidenceOnlyFallback(run, `${reason} (${run.totalToolCalls}/${plan.maxToolCalls})`);
+    run.warningReason = run.warningReason || `Agent reached the dynamic tool call limit (${plan.maxToolCalls}) and returned only gathered evidence.`;
+  }
+  run.stopReason = 'tool_limit';
+  return 'stop';
+}
+
+function startThinkStep(run: AgentRun, state: LoopState, iter: number): AgentStep {
+  const { plan, args } = run;
+  const research = plan.isResearchChat;
+  const step: AgentStep = {
+    id: uid('step'),
+    type: research ? (state.researchForceWrite ? 'writing' : 'thinking') : 'thinking',
+    label: research
+      ? state.researchForceWrite
+        ? activityLabel('writing')
+        : iter === 0 && !state.researchBootstrapped
+          ? activityLabel('searching')
+          : activityLabel(null)
+      : activityLabel(iter === 0 ? 'planning' : null),
+    status: 'running',
+    detail: research
+      ? (state.researchForceWrite ? 'Synthesizing research report' : (run.sources.length ? `${run.sources.length} sources` : 'Gathering sources'))
+      : `Step ${iter + 1} of ${plan.maxIterations}`
+  };
+  run.steps.push(step);
+  emitSteps(run);
+  if (iter === 0) {
+    args.onProgress?.(research
+      ? (state.researchForceWrite ? 'Writing research report…' : 'Searching…')
+      : 'Planning how to approach this…');
+  }
+  return step;
+}
+
+/**
+ * Keep the request inside budget without ever dropping chat history — only
+ * tool-loop growth after the transcript is capped. Research and attached
+ * documents are never token-budget trimmed. Then refresh the evidence and
+ * repair any unpaired tool calls (providers reject them).
+ */
+async function prepareContext(run: AgentRun) {
+  const { plan, messages } = run;
+  if (!plan.preserveDocs) {
+    trimContext(messages, { historyCount: run.historyCount, maxLoopMessages: plan.maxLoopMessages });
+    await enforceTokenBudget({ messages, config: run.config, isElectron, invoke, debugLog });
+  } else if (!plan.isResearchChat) {
+    // Soft loop-only trim for search/doc chats.
+    trimContext(messages, { historyCount: run.historyCount, maxLoopMessages: 48 });
+  }
+  injectLiveEvidence(run);
+  ensureToolCallPairs(messages, 'fill');
+}
+
+function handleEmptyReply(run: AgentRun, state: LoopState, step: AgentStep, nativeActive: boolean): Flow {
+  const { plan, transport } = run;
+  state.consecutiveEmptyReplies++;
+  debugLog(plan.debugLogs, `[agent] EMPTY RESPONSE | consecutiveEmpty=${state.consecutiveEmptyReplies} | nativeFailed=${transport.nativeFailed} | totalToolCalls=${run.totalToolCalls}`);
+  const synthesized = synthesizeArtifactCompletion(run.ctx.files);
+  if (synthesized && run.totalToolCalls > 0) {
+    run.finalContent = synthesized;
+    return 'stop';
+  }
+  if (state.consecutiveEmptyReplies >= 2) {
+    transport.directMode = true;
+    useSystemPrompt(run, 'direct');
+    step.detail = 'Switching to direct mode (tools unavailable)';
+    emitSteps(run);
+    return 'continue';
+  }
+  if (!transport.nativeFailed && nativeActive) {
+    transport.nativeFailed = true;
+    useSystemPrompt(run, 'xml');
+    step.detail = 'Falling back to XML mode';
+    emitSteps(run);
+    return 'continue';
+  }
+  console.error('[agent] HARD FAIL: Empty response - model may not support tool calling');
+  pushStep(run, {
+    type: 'error', label: 'Empty response', status: 'error',
+    detail: 'The model returned an empty response. The model may not support tool calling.'
   });
+  run.errorReason = 'The model returned an empty response.';
+  return 'stop';
+}
+
+/** Direct mode answered in prose: enforce requested deliverables, then finish. */
+async function finishDirectReply(run: AgentRun, rawContent: string): Promise<Flow> {
+  const { plan } = run;
+  if (plan.wantsWebsiteArtifact && !hasVisibleArtifact(run.ctx.files)) {
+    pushStep(run, {
+      type: 'error', label: 'Missing website files', status: 'error',
+      detail: 'The model described the website but did not provide code blocks or files.'
+    });
+    run.errorReason = 'The model did not produce website files.';
+    return 'stop';
+  }
+  if (!plan.isInstant) {
+    const finished = await enforceRequestedArtifacts(run, {
+      draft: rawContent,
+      reason: 'direct mode tried to finish without creating the requested files',
+      includeVisuals: true
+    });
+    if (!finished) return 'stop';
+  }
+  run.messages.push({ role: 'assistant', content: rawContent });
+  run.finalContent = stripToolCallArtifacts(rawContent);
+  return 'stop';
+}
+
+function closeThinkStep(run: AgentRun, step: AgentStep, toolCalls: ToolCall[], cleanContent: string) {
+  const research = run.plan.isResearchChat;
+  const labels = toolCalls.map((toolCall) => displayToolLabel(toolCall.name)).join(', ');
+  step.status = 'done';
+  step.detail = toolCalls.length
+    ? (research ? labels : `Next: ${labels}`)
+    : (research ? 'Writing report' : 'Preparing the answer');
+  if (toolCalls.length && cleanContent && cleanContent.length > 10 && !run.transport.directMode) {
+    const trimmed = cleanContent.slice(0, 240).replace(/\|+$/g, '').trim();
+    if (trimmed) {
+      run.steps.push({
+        id: uid('step'), type: 'thinking', label: 'Reasoning', status: 'done',
+        detail: trimmed.length < cleanContent.length ? trimmed + '…' : trimmed
+      });
+    }
+  }
+  emitSteps(run);
+}
+
+/**
+ * The model replied without tool calls: this is the answer — unless it is
+ * missing the website, the tool call it talked about, or the visual it was
+ * asked for, in which case it gets one targeted retry.
+ */
+async function finishDraft(run: AgentRun, state: LoopState, step: AgentStep, rawContent: string): Promise<Flow> {
+  const { plan, transport, messages, args } = run;
+  if (!rawContent) {
+    const synthesized = synthesizeArtifactCompletion(run.ctx.files);
+    if (synthesized && run.totalToolCalls > 0) {
+      run.finalContent = synthesized;
+      return 'stop';
+    }
+    pushStep(run, {
+      type: 'error', label: 'Empty response', status: 'error',
+      detail: 'The model returned an empty response. The model may be temporarily unavailable or the prompt may exceed context capacity.'
+    });
+    run.errorReason = 'The model returned an empty response.';
+    return 'stop';
+  }
+
+  if (plan.wantsWebsiteArtifact && !hasVisibleArtifact(run.ctx.files)) {
+    if (!transport.directMode) {
+      transport.directMode = true;
+      useSystemPrompt(run, 'direct');
+      messages.push({
+        role: 'user',
+        content: 'You must actually create the website files now. Output complete code blocks for index.html and any needed style.css or script.js. Do not say the work is done unless you provide the file contents.'
+      });
+      step.detail = 'Switching to direct website build mode';
+      emitSteps(run);
+      return 'continue';
+    }
+    pushStep(run, {
+      type: 'error', label: 'Missing website files', status: 'error',
+      detail: 'The model answered without creating previewable website files.'
+    });
+    run.errorReason = 'The model answered without creating website files.';
+    return 'stop';
+  }
+
+  const retryDraft = () => stripToolCallArtifacts(sanitizeAgentVisibleText(rawContent)) || 'Preparing to use tools…';
+  // The model described tool use instead of emitting a call: show it the exact format once.
+  if (!state.toolFormatRetryDone && !transport.directMode && run.totalToolCalls === 0 && hasToolIntent(rawContent)) {
+    state.toolFormatRetryDone = true;
+    debugLog(plan.debugLogs, '[agent] -> tool-format retry (draft talked about tools, retrying with exact format)');
+    messages.push({ role: 'assistant', content: retryDraft() });
+    messages.push({
+      role: 'user',
+      content: `The tool call could not be read. Use an available tool name and its real arguments: <tool_call>{"name":"TOOL_NAME","arguments":{}}</tool_call>. Available tools: ${plan.toolDefs.map((tool) => tool.function.name).join(', ')}. For a map, use create_map with {"place":"City, Country","zoom":12}. Do not use label or parameters attributes.`
+    });
+    step.detail = 'Clarifying the tool format and retrying';
+    emitSteps(run);
+    return 'continue';
+  }
+  // A visual deliverable answered in prose: name the exact tool once. A second miss fails visibly.
+  if (!state.visualNudgeDone && !transport.directMode) {
+    const missing = missingRequestedVisuals(run);
+    if (missing.length) {
+      state.visualNudgeDone = true;
+      const toolList = missing.map((kind) => VISUAL_ARTIFACT_TOOL[kind]).join(', ');
+      debugLog(plan.debugLogs, `[agent] -> visual-artifact nudge (missing: ${missing.join(', ')})`);
+      messages.push({ role: 'assistant', content: retryDraft() });
+      messages.push({
+        role: 'user',
+        content: `You answered in prose, but the user asked for a visual deliverable. Call the matching tool now with real arguments (${toolList}) — do not describe it, create it. If no visual was actually requested, answer normally without tools.`
+      });
+      step.detail = 'Requesting the missing visual artifact';
+      emitSteps(run);
+      return 'continue';
+    }
+  }
+
+  const missingVisuals = missingRequestedVisuals(run);
+  if (missingVisuals.length || (hasToolIntent(rawContent) && !sanitizeAgentVisibleText(rawContent))) {
+    run.errorReason = missingVisuals.length
+      ? `The model did not create the requested ${missingVisuals.join(', ')} widget.`
+      : 'The model returned a tool call that could not be executed.';
+    run.stopReason = missingVisuals.length ? 'missing_artifacts' : 'error';
+    run.finalContent = `${run.errorReason} Please try again.`;
+    pushStep(run, { type: 'error', label: 'Could not complete request', status: 'error', detail: run.errorReason });
+    return 'stop';
+  }
+
+  const finished = await enforceRequestedArtifacts(run, {
+    draft: rawContent,
+    reason: 'the model tried to finish without creating the requested files',
+    includeVisuals: false
+  });
+  if (!finished) return 'stop';
+  args.onProgress?.('Producing final answer…');
+  run.finalContent = stripToolCallArtifacts(rawContent);
+  return 'stop';
+}
+
+function nearEndNudge(run: AgentRun, state: LoopState): string {
+  const { plan } = run;
+  if (plan.isCodeProfile) {
+    return 'You are almost out of steps. STOP exploring. Apply any remaining critical edits now (edit_file/write_file), or if done, respond with a plain-text summary of files changed and how to verify. Do NOT call list_files/read_file unless required for one final fix.';
+  }
+  if (plan.isResearchChat) {
+    return [
+      state.researchForceWrite
+        ? 'Enough sources have been gathered. Do NOT call more tools.'
+        : 'You are almost out of research steps. Do NOT call more tools unless one critical source is missing.',
+      'Write the final answer now using the RESEARCH EVIDENCE PACK. Never title a section "Gathered Evidence". Never mention tools or step limits.',
+      FINAL_ANSWER_CONTRACT_REMINDER
+    ].join('\n\n');
+  }
+  return 'You are running out of steps. If you need to create a spreadsheet, document, or other artifact, create it NOW using the data from your search results. Otherwise provide your final answer.';
+}
+
+/** Code profile: stop endless read/list/search streaks that never write anything. */
+async function guardExploreOnly(run: AgentRun, state: LoopState, toolCalls: ToolCall[]): Promise<Flow> {
+  const verdict = state.exploreGuard.observe(toolCalls);
+  if (verdict === 'ok') return 'next';
+  run.messages.push({
+    role: 'user',
+    content: 'You have explored enough. Stop calling read/list/search tools. Either make the code change now with edit_file/write_file, or finish with a clear summary of findings. No more exploratory tool calls.'
+  });
+  if (verdict === 'nudge') return 'next';
+  pushStep(run, {
+    type: 'error',
+    label: 'Explore limit — finishing',
+    status: 'error',
+    detail: `Stopped after ${state.exploreGuard.streak} explore-only tool calls without file changes`
+  });
+  run.finalContent = await evidenceOnlyFallback(run, 'too many explore-only tool calls without applying changes');
+  run.warningReason = 'Agent explored the codebase extensively without finishing changes; returned a partial summary.';
+  run.stopReason = 'loop';
+  return 'stop';
+}
+
+async function guardLoops(run: AgentRun, state: LoopState, toolCalls: ToolCall[]): Promise<Flow> {
+  const { plan } = run;
+  const verdict = state.loopGuard.observe(toolCalls, {
+    sourceCount: run.sources.length,
+    visibleFileCount: visibleFileCount(run.ctx.files),
+    draftChars: run.maxDraftChars,
+    observationCount: run.observations.filter((o) => o.success).length
+  });
+  if (verdict.suppressed) {
+    debugLog(plan.debugLogs, `[agent] loop guard suppressed for ${verdict.suppressed} because progress is still being made.`);
+  }
+  if (!verdict.stuckTool) return 'next';
+  pushStep(run, {
+    type: plan.isResearchChat ? 'writing' : 'error',
+    label: plan.isResearchChat ? 'Writing report' : 'Loop detected — stopping',
+    status: plan.isResearchChat ? 'running' : 'error',
+    detail: plan.isResearchChat ? 'Synthesizing research report from gathered sources' : `Repeated calls to ${verdict.stuckTool}`
+  });
+  // Research: leave finalContent empty for forced report synthesis from the pack.
+  if (!plan.isResearchChat) {
+    run.finalContent = await evidenceOnlyFallback(run, `it detected repeated calls to ${verdict.stuckTool}`);
+    run.warningReason = 'Agent encountered a loop and returned only gathered evidence.';
+  }
+  run.stopReason = 'loop';
+  return 'stop';
+}
+
+/** Run the turn's calls: independent ones in parallel, the rest in order. */
+async function executeToolCalls(run: AgentRun, toolCalls: ToolCall[], nativeActive: boolean) {
+  const { args, ctx, steps, messages, sources, seenUrls, observations } = run;
+  const publish = (result: ToolResult) => publishToolArtifact(run, result);
+  for (const group of groupParallelAndSequential(toolCalls)) {
+    checkAbort(run);
+    if (group.length === 1) {
+      run.transport.nativeFailed = await executeSingleTool({
+        tc: group[0],
+        steps,
+        ctx,
+        args,
+        messages,
+        sources,
+        seenUrls,
+        observations,
+        nativeActive,
+        nativeFailed: run.transport.nativeFailed,
+        stepTypeMap: STEP_TYPE,
+        uid,
+        executeToolWithTimeout: (name, toolArgs) => executeToolWithTimeout(name, toolArgs, ctx),
+        summarizeToolObservation,
+        publishToolArtifact: publish,
+        maxToolResultChars: MAX_TOOL_RESULT_CHARS
+      });
+      continue;
+    }
+
+    args.onProgress?.(`Running ${group.length} tools in parallel…`);
+    checkAbort(run);
+    // Steps go up before the work starts, so a multi-tool turn streams its rows.
+    const running = group.map((tc) => {
+      const toolStep = createRunningToolStep(tc, STEP_TYPE, uid);
+      steps.push(toolStep);
+      return { tc, toolStep };
+    });
+    emitSteps(run);
+
+    const results = await Promise.allSettled(running.map(({ tc }) => executeToolWithTimeout(tc.name, tc.arguments, ctx)));
+    for (const [index, entry] of results.entries()) {
+      const { tc, toolStep } = running[index];
+      // A rejection still needs a tool_result, or the assistant's tool_calls stay unpaired.
+      const settled: ToolResult = entry.status === 'fulfilled'
+        ? entry.value
+        : fail(toErrorMessage(entry.reason) || 'Tool execution failed');
+      const result = recoverOptionalPresentationFailure(tc, settled);
+      observations.push(summarizeToolObservation(tc.name, tc.arguments, result));
+      mergeWebSearchSources({ toolCall: tc, result, sources, seenUrls, onSources: args.onSources });
+      finalizeToolStep(toolStep, result, tc.name);
+      publish(result);
+      appendToolResultMessage({ toolCall: tc, result, messages, nativeActive, nativeFailed: run.transport.nativeFailed, maxToolResultChars: MAX_TOOL_RESULT_CHARS });
+    }
+    emitSteps(run);
+  }
 }
