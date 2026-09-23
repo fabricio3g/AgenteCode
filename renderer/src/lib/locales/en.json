@@ -21,9 +21,7 @@
     "enterNamePlaceholder": "Enter a name...",
     "noMessages": "No messages yet",
     "thinking": "Thinking...",
-    "streaming": "Streaming...",
-    "placeholders": "How can I help you today?|Ask me anything...|What would you like to know?|Tell me a story...|Help me debug some code...|Explain a concept...|Write something creative...|Translate some text...|Summarize an article...|Plan a trip...|Brainstorm ideas...|Analyze this data...|Write a poem...|Help me learn something new...|Create a recipe...|Recommend a book...|Debug this error...|Impress me...|Let's think this through...|Solve a problem...",
-    "errorPlaceholder": "Something went wrong. Try again."
+    "streaming": "Streaming..."
   },
   "sidebar": {
     "newChat": "New Chat",

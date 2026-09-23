@@ -1,6 +1,8 @@
 type ConfirmOptions = {
   title: string;
   message: string;
+  /** Optional list shown under the message (files a restore touches, …). */
+  details?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
@@ -13,18 +15,29 @@ class ConfirmStore {
   options = $state<ConfirmOptions | null>(null);
 
   show(opts: ConfirmOptions) {
+    // A second request replaces the first; the first counts as cancelled.
+    if (this.options) this.options.onCancel?.();
     this.options = opts;
     this.open = true;
   }
 
+  /** Promise form for guards: resolves true on confirm, false otherwise. */
+  ask(opts: Omit<ConfirmOptions, 'onConfirm' | 'onCancel'>): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.show({ ...opts, onConfirm: () => resolve(true), onCancel: () => resolve(false) });
+    });
+  }
+
   confirm() {
-    this.options?.onConfirm();
+    const options = this.options;
     this.close();
+    options?.onConfirm();
   }
 
   cancel() {
-    this.options?.onCancel?.();
+    const options = this.options;
     this.close();
+    options?.onCancel?.();
   }
 
   close() {

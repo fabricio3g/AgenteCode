@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
   import Titlebar from '$lib/components/layout/Titlebar.svelte';
@@ -92,7 +93,6 @@
     if (event.key === '?' && ctrl) {
       event.preventDefault(); showShortcutsHelp = !showShortcutsHelp; return;
     }
-    if (event.key === 'Escape' && showShortcutsHelp) showShortcutsHelp = false;
   }
 
   onMount(() => {
@@ -227,12 +227,11 @@
 {#if showShortcutsHelp}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="aui-dialog-backdrop fixed inset-0 z-[300] flex items-center justify-center px-4" onclick={() => (showShortcutsHelp = false)}>
+  <div class="aui-modal-backdrop" use:modalLayer={{ onclose: () => (showShortcutsHelp = false) }} onclick={() => (showShortcutsHelp = false)}>
     <div
       class="w-full max-w-sm rounded-lg border border-border bg-popover p-6 shadow-lg"
       role="dialog" aria-modal="true" tabindex="-1"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => { if (e.key === 'Escape') showShortcutsHelp = false; }}
     >
       <h2 class="mb-4 text-base font-semibold text-foreground">Keyboard shortcuts</h2>
       <dl class="space-y-3 text-sm">

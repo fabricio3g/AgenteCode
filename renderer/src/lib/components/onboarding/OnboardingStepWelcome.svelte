@@ -1,40 +1,18 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { SUPPORTED_UI_LANGUAGES, normalizeLocaleCode, setUiLocale } from '$lib/i18n';
   import { Sparkles, ArrowRight } from 'lucide-svelte';
   import { t, locale } from 'svelte-i18n';
   import { APP_NAME } from '$lib/app-meta';
   import { Select } from '$lib/components/ui';
 
-  const languages = [
-    { code: 'en', label: 'English' },
-    { code: 'es', label: 'Español' },
-    { code: 'pt-BR', label: 'Português (Brasil)' },
-    { code: 'zh', label: '中文' },
-    { code: 'fr', label: 'Français' },
-    { code: 'de', label: 'Deutsch' },
-    { code: 'ja', label: '日本語' }
-  ];
-
-  function normalizeLocaleCode(value: string | null | undefined): string {
-    const raw = String(value || '').trim().toLowerCase();
-    if (!raw) return 'en';
-    if (raw === 'pt-br' || raw.startsWith('pt')) return 'pt-BR';
-    if (raw.startsWith('es')) return 'es';
-    if (raw.startsWith('zh')) return 'zh';
-    if (raw.startsWith('fr')) return 'fr';
-    if (raw.startsWith('de')) return 'de';
-    if (raw.startsWith('ja')) return 'ja';
-    if (raw.startsWith('en')) return 'en';
-    return 'en';
-  }
+  const languages = SUPPORTED_UI_LANGUAGES;
 
   let { onNext } = $props<{ onNext: () => void }>();
 
   function setLocale(code: string) {
-    const resolved = normalizeLocaleCode(code);
-    locale.set(resolved);
-    localStorage.setItem('chatealm_locale', resolved);
+    setUiLocale(code);
   }
 </script>
 

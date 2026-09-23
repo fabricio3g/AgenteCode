@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
   import { AlertTriangle, BrainCircuit, ChevronDown, ChevronRight, Cpu, Gauge, HardDrive, Layers3, LoaderCircle, MemoryStick, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-svelte';
@@ -357,7 +358,7 @@
 </script>
 
 {#if target}
-  <div class="aui-modal-backdrop z-[64]" role="dialog" aria-modal="true" transition:motionFade={{ duration: 150}}>
+  <div class="aui-modal-backdrop" role="dialog" aria-modal="true" use:modalLayer={{ onclose: () => appStore.closeLocalModelLoadDialog() }} transition:motionFade={{ duration: 150}}>
   <div class="aui-modal-surface load-modal-surface max-h-[92vh] max-w-4xl overflow-y-auto p-6" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
  <div class="mb-5 flex items-start justify-between gap-4">
  <div class="min-w-0 space-y-2">

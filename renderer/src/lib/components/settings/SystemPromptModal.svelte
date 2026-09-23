@@ -2,6 +2,8 @@
 
 <script lang="ts">
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { Brain, Cpu, MessageSquareText, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { APP_SYSTEM_PROMPT_DEFAULT } from '$lib/app-meta';
@@ -10,6 +12,8 @@
   let localSystemPrompt = $state(appStore.config.llm?.local?.system_prompt || appStore.config.llm?.system_prompt || '');
   let userPrompt = $state(appStore.config.llm?.user_prompt || '');
   let saving = $state(false);
+  const guard = dirtyGuard(() => [systemPrompt, localSystemPrompt, userPrompt]);
+  const requestClose = () => guard.close(() => (appStore.promptConfigOpen = false));
 
   const isLocal = $derived(appStore.backendMode === 'local');
 
@@ -17,7 +21,7 @@
     saving = true;
     try {
       await appStore.updatePromptSettings({
-        system_prompt: isLocal ? systemPrompt : systemPrompt,
+        system_prompt: systemPrompt,
         user_prompt: isLocal ? undefined : userPrompt,
         local_system_prompt: localSystemPrompt
       });
@@ -29,11 +33,12 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: () => requestClose() }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
-    if (e.target === e.currentTarget) appStore.promptConfigOpen = false;
+    if (e.target === e.currentTarget) requestClose();
   }}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -62,7 +67,7 @@
       <button
         type="button"
         class="aui-icon-button size-8"
-        onclick={() => (appStore.promptConfigOpen = false)}
+        onclick={() => requestClose()}
         aria-label="Close prompt settings"
       >
         <X class="size-4" />
@@ -107,7 +112,7 @@
     </div>
 
     <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (appStore.promptConfigOpen = false)}>
+      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => requestClose()}>
         Cancel
       </button>
       <button type="button" class="aui-btn aui-btn-primary" onclick={save} disabled={saving}>

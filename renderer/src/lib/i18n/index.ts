@@ -10,7 +10,9 @@ register('ja', () => import('../locales/ja.json'));
 
 const SUPPORTED_LOCALES = ['en', 'es', 'pt-BR', 'zh', 'fr', 'de', 'ja'] as const;
 
-function normalizeLocaleCode(value: string | null | undefined): (typeof SUPPORTED_LOCALES)[number] {
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+export function normalizeLocaleCode(value: string | null | undefined): (typeof SUPPORTED_LOCALES)[number] {
   const raw = String(value || '').trim();
   if (!raw) return 'en';
   const lower = raw.toLowerCase();
@@ -20,12 +22,13 @@ function normalizeLocaleCode(value: string | null | undefined): (typeof SUPPORTE
   if (lower.startsWith('zh')) return 'zh';
   if (lower.startsWith('fr')) return 'fr';
   if (lower.startsWith('de')) return 'de';
+  if (lower.startsWith('ja')) return 'ja';
   if (lower.startsWith('en')) return 'en';
 
   return 'en';
 }
 
-const SUPPORTED_UI_LANGUAGES = [
+export const SUPPORTED_UI_LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'es', label: 'Español' },
   { code: 'pt-BR', label: 'Português (Brasil)' },
@@ -51,3 +54,15 @@ init({
 
 export const i18nReady = waitLocale();
 
+
+/** Switch the UI language and remember it for the next launch. */
+export function setUiLocale(code: string): SupportedLocale {
+  const resolved = normalizeLocaleCode(code);
+  locale.set(resolved);
+  try {
+    localStorage.setItem('chatealm_locale', resolved);
+  } catch {
+    // Private mode / blocked storage: the choice lasts for this session.
+  }
+  return resolved;
+}

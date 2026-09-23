@@ -11,6 +11,7 @@
 <script lang="ts">
   import { BookMarked, Pin, Plus, Trash2, X } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -68,8 +69,9 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
     if (e.target === e.currentTarget) onclose();

@@ -15,6 +15,8 @@
 -->
 
 <script lang="ts">
+  import { confirmStore } from '$lib/stores/confirm.svelte';
+  import { copy } from '$lib/copy';
   import { untrack } from 'svelte';
   import { Check, LoaderCircle, Plus, RefreshCw, Trash2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -222,12 +224,14 @@
   }
 
   // ── Custom-endpoint removal ──────────────────────────────────────────
-  let confirmRemove = $state(false);
   async function removeEndpoint() {
-    if (!confirmRemove) {
-      confirmRemove = true;
-      return;
-    }
+    const accepted = await confirmStore.ask({
+      title: `Remove ${label}?`,
+      message: 'Its saved API key and model list are deleted from Flaxeo.',
+      confirmLabel: copy.actions.remove,
+      danger: true
+    });
+    if (!accepted) return;
     try {
       await appStore.removeCustomProvider(providerId);
       toastStore.success('Endpoint removed');
@@ -459,13 +463,11 @@
           </div>
           <button
             type="button"
-            class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition {confirmRemove
-              ? 'bg-[var(--error)] text-white'
-              : 'border border-destructive/40 text-[var(--error)] hover:bg-destructive/10'}"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-[var(--error)] transition hover:bg-destructive/10"
             onclick={() => void removeEndpoint()}
           >
             <Trash2 class="size-3" />
-            {confirmRemove ? 'Confirm remove' : 'Remove'}
+            {copy.actions.remove}
           </button>
         </section>
       {/if}

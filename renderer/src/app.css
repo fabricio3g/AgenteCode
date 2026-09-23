@@ -209,13 +209,16 @@
   /* Stacking order — one ladder instead of ad-hoc z-[40] … z-[500] literals */
   --z-base: 0;
   --z-sticky: 10;
-  --z-drawer: 40;
   --z-float: 60;
-  --z-menu: 100;
+  /* Side drawers (LLM settings, search) sit over the page, under dialogs. */
+  --z-drawer: 200;
+  /* Dialogs: modal-layer.ts adds the stack depth, so nested ones sit on top. */
   --z-modal: 300;
-  --z-tooltip: 400;
-  --z-toast: 500;
   --z-confirm: 600;
+  /* Anything anchored to a control must float above the layer it opened from. */
+  --z-menu: 700;
+  --z-tooltip: 800;
+  --z-toast: 900;
 
   /* Code */
   --code-terminal-bg: #0a0a0a;
@@ -719,7 +722,7 @@ textarea {
 .aui-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;

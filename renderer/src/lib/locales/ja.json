@@ -79,7 +79,9 @@
     "accessToken": "アクセストークン",
     "save": "保存",
     "language": "言語",
-    "languageDesc": "インターフェースの表示言語を選択してください。"
+    "languageDesc": "インターフェースの表示言語を選択してください。",
+    "roleplay": "ロールプレイ",
+    "roleplayDesc": "キャラクター、世界観、シーンを扱うロールプレイスペースを表示します。"
   },
   "composer": {
     "modeChat": "チャット",

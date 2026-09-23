@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount } from 'svelte';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { t } from 'svelte-i18n';
@@ -60,7 +61,8 @@
   });
 </script>
 
-<div class="aui-modal-backdrop z-[200]" transition:motionFade={{ duration: 150 }}>
+<!-- First-run setup: no Escape — the wizard owns its own Skip/Next. -->
+<div class="aui-modal-backdrop" use:modalLayer={{}} transition:motionFade={{ duration: 150 }}>
   <div
     class="aui-modal-surface h-full max-h-[580px] max-w-lg"
     transition:motionFly={{ y: 20, duration: 200 }}
