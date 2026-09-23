@@ -35,12 +35,25 @@
   import { copy } from '$lib/copy';
   import { legacyFlagToModelHubSection, resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
+  import { formatShortcut, isMacPlatform } from '$lib/utils/shortcuts';
 
   let showShortcutsHelp = $state(false);
   const inCodeSpace = $derived(appStore.activeSpace === 'code');
   const inRoleplaySpace = $derived(appStore.activeSpace === 'roleplay');
+  /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
+  const shortcutRows = $derived<Array<[string, string]>>([
+    ['mod+k', inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')],
+    ['mod+shift+k', $t('shortcuts.search')],
+    ['mod+,', $t('shortcuts.settings')],
+    ['mod+b', $t('shortcuts.sidebar')],
+    ...(inCodeSpace ? [] : ([['mod+`', $t('shortcuts.artifactStudio')]] as Array<[string, string]>)),
+    ['mod+e', $t('shortcuts.export')],
+    ['F2', $t('shortcuts.rename')],
+    ['mod+?', $t('shortcuts.help')],
+    ['escape', $t('shortcuts.escape')]
+  ]);
   const newSessionLabel = $derived(
-    inCodeSpace ? $t('code.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : 'New chat'
+    inCodeSpace ? $t('code.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')
   );
 
   function startNewSession() {
@@ -58,8 +71,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    const isMac = navigator.platform.toUpperCase().includes('MAC');
-    const ctrl = isMac ? event.metaKey : event.ctrlKey;
+    const ctrl = isMacPlatform() ? event.metaKey : event.ctrlKey;
     const target = event.target as HTMLElement;
     const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
@@ -146,20 +158,20 @@
 
       <div class="flex-1"></div>
 
-      <Tooltip label="Models">
+      <Tooltip label={$t('sidebar.models')}>
         <button
           class="aui-icon-button size-8"
           onclick={() => openModelHub('models')}
-          aria-label="Models"
+          aria-label={$t('sidebar.models')}
         >
           <Boxes class="size-4" />
         </button>
       </Tooltip>
-      <Tooltip label="Settings">
+      <Tooltip label={$t('sidebar.settings')}>
         <button
           class="aui-icon-button size-8 mb-1"
           onclick={() => openModelHub('general')}
-          aria-label="Settings"
+          aria-label={$t('sidebar.settings')}
         >
           <Settings class="size-4" />
         </button>
@@ -233,25 +245,15 @@
       role="dialog" aria-modal="true" tabindex="-1"
       onclick={(e) => e.stopPropagation()}
     >
-      <h2 class="mb-4 text-base font-semibold text-foreground">Keyboard shortcuts</h2>
+      <h2 class="mb-4 text-base font-semibold text-foreground">{$t('shortcuts.title')}</h2>
       <dl class="space-y-3 text-sm">
-        {#each [
-          ['Ctrl+K', 'New chat'],
-          ['Ctrl+Shift+K', 'Search chats'],
-          ['Ctrl+,', 'Open Settings'],
-          ['Ctrl+B', 'Show or hide sidebar'],
-          ['Ctrl+`', 'Toggle artifact studio'],
-          ['Ctrl+E', 'Export chat'],
-          ['Ctrl+?', 'This help'],
-          ['Escape', 'Close dialog / Stop stream'],
-        ] as [key, label]}
+        {#each shortcutRows as [combo, label] (combo)}
           <div class="flex items-center justify-between gap-4">
             <span class="text-muted-foreground">{label}</span>
-            <kbd class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">{key}</kbd>
+            <kbd class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">{formatShortcut(combo)}</kbd>
           </div>
         {/each}
       </dl>
-      <p class="mt-4 text-xs text-muted-foreground">On macOS, Ctrl = ⌘ Cmd</p>
     </div>
   </div>
 {/if}
@@ -261,8 +263,9 @@
     width: 3.5rem; /* w-14 */
     transition: width var(--motion-smooth) var(--motion-ease-out);
   }
+  /* 15rem: room for a project tree with row actions and status dots. */
   .sidebar-outer.expanded {
-    width: 13rem; /* w-52 */
+    width: 15rem; /* w-60 */
   }
 
   .sidebar-view-full {

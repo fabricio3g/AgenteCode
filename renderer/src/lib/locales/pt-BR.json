@@ -49,7 +49,10 @@
     "exportFailed": "Falha na exportação — tente copiar o chat manualmente.",
     "previous7Days": "Últimos 7 dias",
     "previous30Days": "Últimos 30 dias",
-    "emptyHint": "As conversas iniciadas aparecerão aqui."
+    "emptyHint": "As conversas iniciadas aparecerão aqui.",
+    "chatOptions": "Opções do chat",
+    "artifacts": "Artefatos",
+    "models": "Modelos"
   },
   "settings": {
     "title": "Configurações",
@@ -190,12 +193,8 @@
     "newConversation": "Nova conversa",
     "noProjects": "Nenhum projeto ainda",
     "noProjectsHint": "Adicione uma pasta de projeto e o Agente vai programar com você.",
-    "removeProject": "Remover",
-    "removeProjectTitle": "Remover projeto?",
-    "removeProjectMessage": "As conversas de {name} permanecem no histórico, mas o projeto sai da lista.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Escolha uma pasta de projeto para começar uma conversa.",
-    "enginePending": "O motor do agente está sendo conectado a esta superfície. Volte em breve.",
     "composerPlaceholder": "Descreva uma tarefa para o Agente…",
     "steerPlaceholder": "Redirecione a tarefa em execução…",
     "send": "Enviar",
@@ -222,10 +221,50 @@
     "statusStopped": "Parado",
     "statusLength": "Limite de saída atingido — parte da execução foi cortada",
     "retrying": "Falha de conexão — tentando novamente (tentativa {n})…",
-    "todosTitle": "Tarefas"
+    "todosTitle": "Tarefas",
+    "deleteProject": "Excluir projeto",
+    "deleteProjectTitle": "Excluir “{name}”?",
+    "deleteProjectMessage": "Remove o projeto e suas {conversations} do Flaxeo. Os arquivos da pasta não são alterados.",
+    "projectOptions": "Opções do projeto",
+    "conversationOptions": "Opções da conversa",
+    "folderMissing": "Pasta não encontrada",
+    "locateFolder": "Localizar pasta…",
+    "unlinked": "Conversas sem projeto",
+    "unlinkedHint": "O projeto delas foi removido, então não podem mais ser executadas.",
+    "deleteAll": "Excluir todas",
+    "deleteUnlinkedTitle": "Excluir {conversations}?",
+    "awaitingApproval": "Aguardando sua aprovação",
+    "pathCopied": "Caminho copiado",
+    "searchConversations": "Pesquisar conversas"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
     "noContentMatches": "Nada nas mensagens"
+  },
+  "shortcuts": {
+    "title": "Atalhos de teclado",
+    "newChat": "Novo chat",
+    "addProject": "Adicionar projeto",
+    "search": "Pesquisar conversas",
+    "settings": "Abrir configurações",
+    "sidebar": "Mostrar ou ocultar a barra lateral",
+    "artifactStudio": "Abrir ou fechar o estúdio de artefatos",
+    "export": "Exportar conversa",
+    "help": "Esta ajuda",
+    "escape": "Fechar diálogo · parar uma execução",
+    "rename": "Renomear a conversa selecionada"
+  },
+  "search": {
+    "placeholderChats": "Pesquisar chats…",
+    "placeholderCode": "Pesquisar conversas…",
+    "noMatches": "Nenhuma conversa corresponde",
+    "noMatchesHint": "Tente outro título ou frase.",
+    "empty": "Nenhuma conversa ainda",
+    "emptyHint": "Suas conversas aparecerão aqui.",
+    "previewEmpty": "Esta conversa está vazia.",
+    "previewPick": "Selecione uma conversa para visualizar",
+    "previewHint": "Passe o mouse sobre um resultado ou use as setas.",
+    "clear": "Limpar",
+    "daysAgo": "há {n} d"
   }
 }

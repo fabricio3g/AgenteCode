@@ -109,6 +109,13 @@ export const COPY_EN = {
     truncated: '… (truncated)'
   },
 
+  /** Shown for a conversation that still has its placeholder title. */
+  untitled: {
+    home: 'New chat',
+    code: 'New conversation',
+    roleplay: 'New roleplay'
+  },
+
   /** The workspaces the sidebar switches between. Keys mirror SpaceId. */
   spaces: {
     home: 'Home',

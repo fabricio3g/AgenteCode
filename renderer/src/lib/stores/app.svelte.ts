@@ -893,11 +893,11 @@ class AppStore {
       this.currentChatId = currentChatId;
 
       if (!this.chats.length) {
-        this.createChat(this.activeSpace);
+        this.ensureChatForSpace(this.activeSpace);
       } else if (!this.currentChat) {
         // Stay in active space. Never fallback to chats[0] cross-space.
         this.currentChatId = this.resolveChatIdForSpace(this.activeSpace);
-        if (!this.currentChatId) this.createChat(this.activeSpace);
+        if (!this.currentChatId) this.ensureChatForSpace(this.activeSpace);
       }
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
@@ -905,7 +905,7 @@ class AppStore {
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
-        this.createChat(this.activeSpace);
+        this.ensureChatForSpace(this.activeSpace);
       }
       console.error('[appStore.init] failed', error);
     } finally {
@@ -1057,12 +1057,30 @@ class AppStore {
   }
 
   private resolveChatIdForSpace(mode: ChatContextMode) {
+    // A Code conversation only exists inside a project; one without a
+    // project cannot run, so it is never picked as the space's current chat.
+    const eligible = (chat: ChatSession) =>
+      normalizeContextMode(chat.contextMode) === mode && (mode !== 'code' || !!chat.projectId);
     const remembered = this.currentChatIdBySpace[mode];
     if (remembered) {
       const chat = this.findChat(remembered);
-      if (chat && normalizeContextMode(chat.contextMode) === mode) return remembered;
+      if (chat && eligible(chat)) return remembered;
     }
-    return this.chats.find((chat) => normalizeContextMode(chat.contextMode) === mode)?.id || null;
+    return this.chats.find(eligible)?.id || null;
+  }
+
+  /**
+   * Give a space something to show. Home and Roleplay get a fresh chat; Code
+   * does not — its conversations are created inside a project, so an empty
+   * Code space shows the project picker instead of an invisible stray chat.
+   */
+  private ensureChatForSpace(mode: ChatContextMode) {
+    if (normalizeContextMode(mode) !== 'code') {
+      this.createChat(mode);
+      return;
+    }
+    this.currentChatId = null;
+    this.hydrateUiFromChat(null);
   }
 
   private rebuildChatIdBySpace() {
@@ -1089,7 +1107,7 @@ class AppStore {
       this.selectChat(targetId);
       return;
     }
-    this.createChat(nextMode);
+    this.ensureChatForSpace(nextMode);
   }
 
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
@@ -1174,24 +1192,30 @@ class AppStore {
    * deletion choke point without AppStore importing feature stores, which
    * would create an import cycle through the stores they depend on.
    */
-  readonly chatDeletedHooks = new Set<(chatId: string) => void>();
+  readonly chatDeletedHooks = new Set<(chatId: string, chat: ChatSession | undefined) => void>();
 
-  /** Register per-chat cache teardown. Returns an unregister function. */
-  onChatDeleted(hook: (chatId: string) => void): () => void {
+  /**
+   * Register per-chat cache teardown. The hook gets the deleted chat too, since
+   * it is already gone from `chats` by the time hooks run. Returns an unregister
+   * function.
+   */
+  onChatDeleted(hook: (chatId: string, chat: ChatSession | undefined) => void): () => void {
     this.chatDeletedHooks.add(hook);
     return () => this.chatDeletedHooks.delete(hook);
   }
 
-  deleteChat(chatId: string) {
+  /** `silent` skips the toast (bulk deletes, e.g. a whole Code project). */
+  deleteChat(chatId: string, options: { silent?: boolean } = {}) {
     if (this.isChatGenerating(chatId)) {
       this.stopStreaming(chatId);
     }
-    const title = this.chats.find((c) => c.id === chatId)?.title;
-    const deletedMode = normalizeContextMode(this.chats.find((c) => c.id === chatId)?.contextMode || this.activeSpace);
+    const deleted = this.chats.find((c) => c.id === chatId);
+    const title = deleted?.title;
+    const deletedMode = normalizeContextMode(deleted?.contextMode || this.activeSpace);
     this.chats = this.chats.filter((chat) => chat.id !== chatId);
     for (const hook of this.chatDeletedHooks) {
       // A feature cache failing to tear down must never block the deletion.
-      try { hook(chatId); } catch { /* ignore */ }
+      try { hook(chatId, deleted); } catch { /* ignore */ }
     }
     const activeRuns = { ...this.activeRunsByChat };
     delete activeRuns[chatId];
@@ -1216,15 +1240,15 @@ class AppStore {
     this.rebuildChatIdBySpace();
     if (!this.currentChatId || !this.currentChat) {
       this.activeSpace = this.currentChat ? normalizeContextMode(this.currentChat.contextMode) : deletedMode;
-      if (!this.currentChat) this.createChat(this.activeSpace);
+      if (!this.currentChat) this.ensureChatForSpace(this.activeSpace);
     }
-    if (!this.chats.length) this.createChat(this.activeSpace);
+    if (!this.chats.length && this.activeSpace !== 'code') this.createChat(this.activeSpace);
     this.persist();
     if (isElectron()) {
       clearRagDocuments(chatId).catch(() => {});
     }
     deleteChatFromDb(chatId).catch(() => {});
-    toastStore.info(`Chat deleted${title ? `: ${title}` : ''}`, 2500);
+    if (!options.silent) toastStore.info(`Chat deleted${title ? `: ${title}` : ''}`, 2500);
   }
 
   renameChat(chatId: string, title: string) {

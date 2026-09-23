@@ -20,6 +20,7 @@
   import CodeComposer from './CodeComposer.svelte';
   import CodeExtensionsPanel from './CodeExtensionsPanel.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
+  import { displayChatTitle } from '$lib/features/shared/session-title';
 
   onMount(() => {
     void codeStore.load();
@@ -33,13 +34,14 @@
    */
   const chat = $derived.by(() => {
     const current = appStore.currentChat;
-    if (current?.projectId && isCodeSession(current)) return current;
-    return null;
+    // Until projects load, a chat without one cannot be judged yet.
+    const judgeable = !!current?.projectId || codeStore.loaded;
+    return current && judgeable && isCodeSession(current) ? current : null;
   });
-  const activeProject = $derived(
-    codeStore.projectById(chat?.projectId ?? null) ??
-      codeStore.projectById(codeStore.activeProjectId)
-  );
+  const chatProject = $derived(codeStore.projectById(chat?.projectId ?? null));
+  /** Its project was deleted (older builds orphaned conversations): read-only. */
+  const unlinked = $derived(!!chat && codeStore.loaded && !chatProject);
+  const activeProject = $derived(chatProject ?? codeStore.projectById(codeStore.activeProjectId));
   const run = $derived(codeStore.runFor(chat?.id));
 
   let historyOpen = $state(false);
@@ -79,7 +81,7 @@
         class="min-w-0 truncate text-xs font-medium text-foreground"
         title={activeProject?.rootPath || chat.title}
       >
-        {activeProject?.rootName ?? chat.title}
+        {activeProject?.rootName ?? displayChatTitle(chat)}
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
@@ -128,7 +130,13 @@
     </div>
 
     <CodeTranscript messages={chat.messages} chatId={chat.id} />
-    <CodeComposer {chat} />
+    {#if unlinked}
+      <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-center text-xs text-muted-foreground">
+        {$t('code.unlinkedHint')}
+      </p>
+    {:else}
+      <CodeComposer {chat} />
+    {/if}
   {:else}
     <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">
       {#if activeProject}

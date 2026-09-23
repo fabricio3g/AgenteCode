@@ -1,6 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { displayChatTitle } from '$lib/features/shared/session-title';
+  import { copy } from '$lib/copy';
+  import { codeStore } from '$lib/features/code/code.svelte';
+  import { t } from 'svelte-i18n';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { Search, X, MessageSquare, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
   import Message from '$lib/features/chat/thread/Message.svelte';
@@ -52,9 +56,9 @@
 
   function relativeDate(ts: number): string {
     const diff = Math.floor((startOfDay(Date.now()) - startOfDay(ts)) / 86400000);
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    if (diff <= 6) return `${diff}d ago`;
+    if (diff === 0) return $t('sidebar.today');
+    if (diff === 1) return $t('sidebar.yesterday');
+    if (diff <= 6) return $t('search.daysAgo', { values: { n: diff } });
     return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
@@ -121,15 +125,36 @@
     }, 450);
   }
 
+  // In Code a conversation lives in a project: start one in the active
+  // project, or fall back to adding a project when there is none.
+  const codeProject = $derived(
+    appStore.activeSpace === 'code'
+      ? codeStore.projectById(codeStore.activeProjectId) ?? codeStore.projects[0] ?? null
+      : null
+  );
+  const newRowLabel = $derived(
+    appStore.activeSpace !== 'code'
+      ? $t('shortcuts.newChat')
+      : codeProject
+        ? `${$t('code.newConversation')} · ${codeProject.rootName}`
+        : $t('code.addProject')
+  );
+
   function createChat() {
-    appStore.createChat(appStore.activeSpace);
+    if (appStore.activeSpace === 'code') {
+      if (codeProject) codeStore.newConversation(codeProject);
+      else void codeStore.addProject();
+    } else {
+      appStore.createChat(appStore.activeSpace);
+    }
     close();
   }
 
   function deleteChat(chat: ChatSession) {
     confirmStore.show({
-      title: 'Delete Chat?',
-      message: `Delete “${chat.title || 'New chat'}”? This cannot be undone.`,
+      title: copy.confirm.deleteChat.title,
+      message: `“${displayChatTitle(chat)}” — ${copy.confirm.deleteChat.message}`,
+      confirmLabel: copy.actions.delete,
       danger: true,
       onConfirm: () => appStore.deleteChat(chat.id)
     });
@@ -191,7 +216,7 @@
     class="chat-search-dialog aui-menu flex w-full max-w-5xl flex-col overflow-hidden !p-0"
     role="dialog"
     aria-modal="true"
-    aria-label="Search conversations"
+    aria-label={$t('shortcuts.search')}
     tabindex="-1"
     onclick={(e) => e.stopPropagation()}
   >
@@ -202,8 +227,8 @@
         bind:value={query}
         class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         placeholder={appStore.activeSpace === 'code'
-          ? 'Search work sessions...'
-          : 'Search chats...'}
+          ? $t('search.placeholderCode')
+          : $t('search.placeholderChats')}
         type="text"
       />
       {#if query}
@@ -211,7 +236,7 @@
           type="button"
           class="aui-icon-button size-7"
           onclick={() => (query = '')}
-          aria-label="Clear"
+          aria-label={$t('search.clear')}
         >
           <X class="size-3.5" />
         </button>
@@ -226,7 +251,7 @@
         <div class="shrink-0 p-2">
           <button type="button" class="new-chat-row" onclick={createChat}>
             <Plus class="size-3.5" />
-            <span>New chat</span>
+            <span class="truncate">{newRowLabel}</span>
           </button>
         </div>
         <div bind:this={resultsContainer} class="min-h-0 flex-1 overflow-y-auto p-2">
@@ -236,10 +261,10 @@
                 <MessageSquare class="size-5 text-muted-foreground" />
               </div>
               <p class="text-sm font-medium text-foreground">
-                {query ? 'No matching conversations' : 'No conversations yet'}
+                {query ? $t('search.noMatches') : $t('search.empty')}
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
-                {query ? 'Try a different title or phrase.' : 'Your conversations will appear here.'}
+                {query ? $t('search.noMatchesHint') : $t('search.emptyHint')}
               </p>
             </div>
           {:else}
@@ -273,7 +298,7 @@
                     />
                   {:else}
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-foreground">{hit.chat.title || 'New chat'}</p>
+                      <p class="truncate text-sm font-medium text-foreground">{displayChatTitle(hit.chat)}</p>
                       {#if hit.snippet}
                         <p class="result-snippet mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{hit.snippet}</p>
                       {/if}
@@ -282,13 +307,13 @@
                   <div class="result-trailing">
                     <span class="result-date text-[11px] text-muted-foreground">{relativeDate(hit.chat.updatedAt || hit.chat.createdAt)}</span>
                     <div class="result-actions flex items-center gap-0.5">
-                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); selectChat(hit.chat.id, hit.matchMessageId); }} aria-label={`Open ${hit.chat.title || 'chat'}`} title="Open">
+                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); selectChat(hit.chat.id, hit.matchMessageId); }} aria-label={`${copy.actions.open}: ${displayChatTitle(hit.chat)}`} title={copy.actions.open}>
                         <ExternalLink class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); startRename(hit.chat); }} aria-label={`Rename ${hit.chat.title || 'chat'}`} title="Rename">
+                      <button type="button" class="result-action" onclick={(e) => { e.stopPropagation(); startRename(hit.chat); }} aria-label={`${copy.actions.rename}: ${displayChatTitle(hit.chat)}`} title={copy.actions.rename}>
                         <Pencil class="size-3.5" />
                       </button>
-                      <button type="button" class="result-action danger" onclick={(e) => { e.stopPropagation(); deleteChat(hit.chat); }} aria-label={`Delete ${hit.chat.title || 'chat'}`} title="Delete">
+                      <button type="button" class="result-action danger" onclick={(e) => { e.stopPropagation(); deleteChat(hit.chat); }} aria-label={`${copy.actions.delete}: ${displayChatTitle(hit.chat)}`} title={copy.actions.delete}>
                         <Trash2 class="size-3.5" />
                       </button>
                     </div>
@@ -304,7 +329,7 @@
         {#if previewChat}
           <div bind:this={previewContainer} class="preview-transcript min-h-0 flex-1 overflow-y-auto px-5 pb-20 pt-5">
             {#if previewChat.messages.length === 0}
-              <div class="flex h-full items-center justify-center text-sm text-muted-foreground">This conversation is empty.</div>
+              <div class="flex h-full items-center justify-center text-sm text-muted-foreground">{$t('search.previewEmpty')}</div>
             {:else}
               <div class="preview-conversation mx-auto flex max-w-[55rem] flex-col gap-7">
                 {#each previewChat.messages as message (message.id)}
@@ -327,8 +352,8 @@
             <div class="mb-3 flex size-11 items-center justify-center rounded-lg bg-muted">
               <MessageSquare class="size-5 text-muted-foreground" />
             </div>
-            <p class="text-sm font-medium text-foreground">Select a conversation to preview</p>
-            <p class="mt-1 text-xs text-muted-foreground">Hover over a result or use the arrow keys.</p>
+            <p class="text-sm font-medium text-foreground">{$t('search.previewPick')}</p>
+            <p class="mt-1 text-xs text-muted-foreground">{$t('search.previewHint')}</p>
           </div>
         {/if}
       </section>

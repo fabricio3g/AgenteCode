@@ -20,6 +20,7 @@ import { createBuiltinTools } from './tools/builtins.ts';
 import { createTodoTool, type TodoStore } from './tools/todo.ts';
 import { CheckpointStore } from './tools/checkpoint.ts';
 import { SessionTree, newSessionId, projectSlug } from './sessions/session-tree.ts';
+import { deleteSessionFiles } from './sessions/session-data.ts';
 import { buildAgenteSystemPrompt, renderTodosSection } from './prompts.ts';
 import { ExtensionRunner } from './extensions/extension-runner.ts';
 import { createBuiltinExtensions } from './extensions/builtin.ts';
@@ -601,6 +602,21 @@ function closeSessionInternal(chatId: string): void {
   for (const resolve of session.pendingApprovals.values()) resolve('deny');
   session.pendingApprovals.clear();
   sessions.delete(chatId);
+}
+
+/**
+ * Forget conversations entirely: close their live sessions, then delete their
+ * session logs and checkpoints from app data. Project folders are untouched.
+ */
+export async function deleteSessionData(args: { chatIds?: string[]; sessionIds?: string[] }): Promise<{ ok: boolean; removed: number }> {
+  const sessionIds = new Set(args.sessionIds ?? []);
+  for (const chatId of args.chatIds ?? []) {
+    const live = sessions.get(chatId);
+    if (live) sessionIds.add(live.sessionId);
+    closeSessionInternal(chatId);
+  }
+  const removed = await deleteSessionFiles(agentePaths(), [...sessionIds]);
+  return { ok: true, removed };
 }
 
 export function disposeAllSessions(): void {

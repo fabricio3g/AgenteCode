@@ -594,9 +594,11 @@ export function saveCodeProject(project) {
   );
 }
 
+// The renderer deletes a project's conversations explicitly (codeStore
+// .deleteProject); this only drops the row. Nulling project_id here used to
+// orphan every conversation into an unreachable, unsendable state.
 export function deleteCodeProject(projectId) {
   const database = getDb();
-  database.prepare('UPDATE chats SET project_id = NULL WHERE project_id = ?').run(projectId);
   database.prepare('DELETE FROM code_projects WHERE id = ?').run(projectId);
 }
 

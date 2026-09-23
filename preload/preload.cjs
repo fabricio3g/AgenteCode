@@ -49,12 +49,11 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'generate_docx', 'generate_xlsx', 'generate_pdf',
   'artifact_preview_open',
   'fetch_url_content', 'crawl_web',
-  'agente_detect', 'agente_start_session', 'agente_prompt',
+  'agente_start_session', 'agente_prompt',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
-  'agente_close', 'agente_new_session', 'agente_cycle_model',
-  'agente_list_sessions', 'agente_list_extensions', 'agente_set_extension_enabled'
+  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

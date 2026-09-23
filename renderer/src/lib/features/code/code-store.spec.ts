@@ -306,15 +306,22 @@ describe('run eviction', () => {
     expect(codeStore.hasSession(CHAT_ID)).toBe(false);
   });
 
-  it('evicts finished runs but keeps live ones for chats of a removed project', async () => {
+  it('deleting a project aborts its runs and deletes its conversations and engine data', async () => {
     await startRun();
+    bridge.responses['agente_delete_session_data'] = { ok: true, removed: 1 };
 
-    // A live run is still streaming into its transcript — leave it alone.
-    await codeStore.removeProject(PROJECT_ID);
-    expect(codeStore.runFor(CHAT_ID)).not.toBeNull();
+    await codeStore.deleteProject(PROJECT_ID);
 
-    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
-    await codeStore.removeProject(PROJECT_ID);
+    expect(bridge.invokes.some((call) => call.command === 'agente_abort' && call.args?.chatId === CHAT_ID)).toBe(true);
+    expect(appStore.chats.some((chat) => chat.id === CHAT_ID)).toBe(false);
     expect(codeStore.runFor(CHAT_ID)).toBeNull();
+    const cleanup = bridge.invokes.find((call) => call.command === 'agente_delete_session_data');
+    expect(cleanup?.args).toEqual({ chatIds: [CHAT_ID], sessionIds: ['session-1'] });
+  });
+
+  it('lists conversations whose project is gone as unlinked', () => {
+    codeStore.loaded = true;
+    codeStore.projects = [];
+    expect(codeStore.unlinkedConversations.map((chat) => chat.id)).toEqual([CHAT_ID]);
   });
 });

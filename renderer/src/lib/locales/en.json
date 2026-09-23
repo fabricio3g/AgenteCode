@@ -49,7 +49,10 @@
     "exportFailed": "Export failed — try copying the chat manually.",
     "previous7Days": "Previous 7 days",
     "previous30Days": "Previous 30 days",
-    "emptyHint": "Conversations you start will appear here."
+    "emptyHint": "Conversations you start will appear here.",
+    "chatOptions": "Chat options",
+    "artifacts": "Artifacts",
+    "models": "Models"
   },
   "settings": {
     "title": "Settings",
@@ -190,12 +193,8 @@
     "newConversation": "New conversation",
     "noProjects": "No projects yet",
     "noProjectsHint": "Add a project folder and Agente will code on it with you.",
-    "removeProject": "Remove",
-    "removeProjectTitle": "Remove project?",
-    "removeProjectMessage": "Conversations from {name} stay in history, but the project leaves the list.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Pick a project folder to start a conversation.",
-    "enginePending": "The agent engine is being wired into this surface. Check back soon.",
     "composerPlaceholder": "Describe a task for Agente…",
     "steerPlaceholder": "Steer the running task…",
     "send": "Send",
@@ -222,10 +221,50 @@
     "statusStopped": "Stopped",
     "statusLength": "Hit the output limit — part of the run was cut off",
     "retrying": "Connection hiccup — retrying (attempt {n})…",
-    "todosTitle": "Tasks"
+    "todosTitle": "Tasks",
+    "deleteProject": "Delete project",
+    "deleteProjectTitle": "Delete “{name}”?",
+    "deleteProjectMessage": "Removes the project and its {conversations} from Flaxeo. The files in its folder are not touched.",
+    "projectOptions": "Project options",
+    "conversationOptions": "Conversation options",
+    "folderMissing": "Folder not found",
+    "locateFolder": "Locate folder…",
+    "unlinked": "Unlinked conversations",
+    "unlinkedHint": "Their project was removed, so they can’t run anymore.",
+    "deleteAll": "Delete all",
+    "deleteUnlinkedTitle": "Delete {conversations}?",
+    "awaitingApproval": "Waiting for your approval",
+    "pathCopied": "Path copied",
+    "searchConversations": "Search conversations"
   },
   "searchModal": {
     "inMessages": "In messages",
     "noContentMatches": "No message matches"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "newChat": "New chat",
+    "addProject": "Add project",
+    "search": "Search conversations",
+    "settings": "Open settings",
+    "sidebar": "Show or hide sidebar",
+    "artifactStudio": "Toggle artifact studio",
+    "export": "Export conversation",
+    "help": "This help",
+    "escape": "Close dialog · stop a run",
+    "rename": "Rename the selected conversation"
+  },
+  "search": {
+    "placeholderChats": "Search chats…",
+    "placeholderCode": "Search conversations…",
+    "noMatches": "No matching conversations",
+    "noMatchesHint": "Try a different title or phrase.",
+    "empty": "No conversations yet",
+    "emptyHint": "Your conversations will appear here.",
+    "previewEmpty": "This conversation is empty.",
+    "previewPick": "Select a conversation to preview",
+    "previewHint": "Hover over a result or use the arrow keys.",
+    "clear": "Clear",
+    "daysAgo": "{n}d ago"
   }
 }

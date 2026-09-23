@@ -63,3 +63,8 @@ export function listAgenteExtensions(): Promise<AgenteExtensionInfo[]> {
 export function setAgenteExtensionEnabled(extensionId: string, enabled: boolean): Promise<{ ok: boolean }> {
   return invoke('agente_set_extension_enabled', { extensionId, enabled });
 }
+
+/** Close live sessions and delete their logs + checkpoints (never project files). */
+export function deleteCodeAgentSessionData(args: { chatIds?: string[]; sessionIds?: string[] }): Promise<{ ok: boolean; removed: number }> {
+  return invoke('agente_delete_session_data', args);
+}
