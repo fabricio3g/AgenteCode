@@ -12,6 +12,7 @@
   import { BookMarked, Pin, Plus, Trash2, X } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { copy as copyText } from '$lib/copy';
   import type { RoleplayJournalEntry } from '$lib/types/chat';
@@ -49,7 +50,7 @@
     const title = draftTitle.trim();
     const body = draftBody.trim();
     if (!title && !body) return;
-    appStore.addRoleplayJournalEntry({ kind: draftKind, title: title || 'Untitled', body });
+    roleplayStore.addJournalEntry({ kind: draftKind, title: title || 'Untitled', body });
     draftTitle = '';
     draftBody = '';
     adding = false;
@@ -61,7 +62,7 @@
       message: `"${entry.title}" will be gone from this scene.`,
       confirmLabel: 'Remove',
       danger: true,
-      onConfirm: () => appStore.removeRoleplayJournalEntry(entry.id)
+      onConfirm: () => roleplayStore.removeJournalEntry(entry.id)
     });
   }
 </script>
@@ -116,7 +117,7 @@
                       type="button"
                       class="tool"
                       aria-label={entry.pinned ? 'Unpin' : 'Pin to the top'}
-                      onclick={() => appStore.pinRoleplayJournalEntry(entry.id, !entry.pinned)}
+                      onclick={() => roleplayStore.pinJournalEntry(entry.id, !entry.pinned)}
                     >
                       <Pin class="size-3" />
                     </button>

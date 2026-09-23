@@ -14,6 +14,7 @@
   import { BookMarked } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy as copyText } from '$lib/copy';
   import { writeToClipboard } from '$lib/utils/clipboard';
@@ -37,7 +38,7 @@
   }
 
   function keep() {
-    appStore.addRoleplayJournalEntry({
+    roleplayStore.addJournalEntry({
       kind: 'prop',
       title: prop.title,
       body: prop.body,

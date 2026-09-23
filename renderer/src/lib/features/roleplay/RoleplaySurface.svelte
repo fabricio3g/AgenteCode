@@ -15,6 +15,7 @@
   import Thread from '$lib/features/chat/thread/Thread.svelte';
   import Composer from '$lib/features/chat/Composer.svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { copy } from '$lib/copy';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';
@@ -42,7 +43,7 @@
       .map((id) => charactersStore.getById(id))
       .filter((card): card is CharacterCard => !!card);
   });
-  const nextSpeaker = $derived(appStore.peekRoleplaySpeaker());
+  const nextSpeaker = $derived(roleplayStore.peekSpeaker());
   const persona = $derived(charactersStore.getPersonaById(currentChat?.personaId));
   const castNames = $derived(cast.map((card) => card.name).join(', '));
 
@@ -70,7 +71,7 @@
   let sceneSetup = $state<{ world: RoleplayWorld | null } | null>(null);
 
   function startWith(card: CharacterCard, greetingIndex: number) {
-    appStore.startRoleplay(card, {
+    roleplayStore.startSolo(card, {
       personaId: charactersStore.defaultPersona?.id ?? null,
       greetingIndex
     });
@@ -111,13 +112,13 @@
     worldEditorOpen = true;
   }
 
-  function startScene(config: Parameters<typeof appStore.startScene>[0]) {
-    appStore.startScene(config);
+  function startScene(config: Parameters<typeof roleplayStore.startScene>[0]) {
+    roleplayStore.startScene(config);
     sceneSetup = null;
   }
 
   function onPersona(personaId: string | null) {
-    appStore.setRoleplayPersona(personaId);
+    roleplayStore.setPersona(personaId);
   }
 
   function confirmDeleteScene() {
@@ -167,16 +168,16 @@
           personaEditorOpen = true;
         }}
         oncastedit={() => (castEditorOpen = true)}
-        onspeak={(id) => void appStore.speakNow(id)}
-        onmute={(id) => appStore.toggleRoleplayMute(id)}
-        onauto={(enabled) => appStore.setRoleplayAutoMode(enabled)}
-        onorder={(order) => appStore.setRoleplayReplyOrder(order)}
-        ondelay={(delayMs) => appStore.setRoleplayOption('autoModeDelayMs', delayMs)}
-        onchoices={(enabled) => appStore.setRoleplayOption('adventureChoices', enabled)}
-        ontimer={(seconds) => appStore.setRoleplayOption('choiceTimerSeconds', seconds)}
-        onprops={(enabled) => appStore.setRoleplayOption('props', enabled)}
-        onlabels={(enabled) => appStore.setRoleplayOption('showSpeakerLabels', enabled)}
-        ontwist={() => void appStore.throwRoleplayTwist()}
+        onspeak={(id) => void roleplayStore.speakNow(id)}
+        onmute={(id) => roleplayStore.toggleMute(id)}
+        onauto={(enabled) => roleplayStore.setAutoMode(enabled)}
+        onorder={(order) => roleplayStore.setReplyOrder(order)}
+        ondelay={(delayMs) => roleplayStore.setOption('autoModeDelayMs', delayMs)}
+        onchoices={(enabled) => roleplayStore.setOption('adventureChoices', enabled)}
+        ontimer={(seconds) => roleplayStore.setOption('choiceTimerSeconds', seconds)}
+        onprops={(enabled) => roleplayStore.setOption('props', enabled)}
+        onlabels={(enabled) => roleplayStore.setOption('showSpeakerLabels', enabled)}
+        ontwist={() => void roleplayStore.throwTwist()}
         onjournal={() => (journalOpen = true)}
       />
       <Thread />
@@ -240,7 +241,7 @@
 {#if castEditorOpen}
   <CastEditorModal
     characterIds={cast.map((card) => card.id)}
-    onchange={(ids) => appStore.setRoleplayCast(ids)}
+    onchange={(ids) => roleplayStore.setCast(ids)}
     onclose={() => (castEditorOpen = false)}
   />
 {/if}

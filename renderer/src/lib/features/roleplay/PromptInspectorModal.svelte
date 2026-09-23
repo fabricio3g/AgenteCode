@@ -13,6 +13,7 @@
   import { X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { copy } from '$lib/copy';
 
   interface Props {
@@ -23,7 +24,7 @@
   let { messageId, onclose }: Props = $props();
 
   // Snapshot on open: the prompt is a record, not a live form.
-  const parts = untrack(() => appStore.previewRoleplayPrompt(messageId));
+  const parts = untrack(() => roleplayStore.previewPrompt(messageId));
   const estimatedTokens = $derived(Math.ceil((parts.systemPrompt.length || 0) / 4));
 </script>
 

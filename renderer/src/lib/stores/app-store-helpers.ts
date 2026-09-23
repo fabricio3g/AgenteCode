@@ -369,37 +369,6 @@ export function isAbortLikeError(value: unknown): boolean {
   return text.includes('abort') || text.includes('cancel');
 }
 
-/**
- * Parse <write_file path="...">content</write_file> blocks from an LLM response.
- * Returns an array of {path, content} objects.
- */
-export function parseWriteFileBlocks(text: string): Array<{ path: string; content: string }> {
-  const results: Array<{ path: string; content: string }> = [];
-  // Match <write_file path="...">...</write_file> — allow newlines inside
-  const re = /<write_file\s+path="([^"]+)"\s*>([\s\S]*?)<\/write_file>/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const path = match[1].trim();
-    const content = match[2];
-    // Strip leading/trailing newline that the model typically adds
-    const cleanContent = content.replace(/^\n/, '').replace(/\n$/, '');
-    if (path) results.push({ path, content: cleanContent });
-  }
-  return results;
-}
-
-/**
- * Strip <write_file> blocks from the visible message content
- * and replace them with a brief inline note.
- */
-export function stripWriteFileBlocks(text: string, created: Array<{ path: string }>): string {
-  if (!created.length) return text;
-  let cleaned = text.replace(/<write_file\s+path="[^"]+"\s*>[\s\S]*?<\/write_file>/g, '').trim();
-  // Remove double blank lines left behind
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-  return cleaned;
-}
-
 function getAssistantActiveVersion(message: Partial<ChatMessage>): MessageVersion | null {
   if (!Array.isArray(message.versions) || !message.versions.length) return null;
   const index = typeof message.activeVersion === 'number'

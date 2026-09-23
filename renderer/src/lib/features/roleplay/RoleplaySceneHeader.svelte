@@ -13,6 +13,7 @@
   import { Ban, BookOpen, Dices, ListOrdered, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
   import { Menu, MenuItem, Select } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import type { CharacterCard, RoleplayReplyOrder, UserPersona } from '$lib/types/chat';
 
   interface Props {
@@ -107,7 +108,7 @@
 
   /** Live countdown for the pending auto turn. */
   let now = $state(Date.now());
-  const deadline = $derived(appStore.roleplayAutoDeadlines[appStore.currentChatId || ''] || 0);
+  const deadline = $derived(roleplayStore.autoDeadlines[appStore.currentChatId || ''] || 0);
   const remainingSeconds = $derived(deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : 0);
 
   $effect(() => {
@@ -119,7 +120,7 @@
   // Typing pauses the chain instead of waiting for the fire-time check.
   $effect(() => {
     if (!appStore.composer.trim() || !deadline) return;
-    appStore.pauseRoleplayAuto();
+    roleplayStore.pauseAuto();
   });
 
   function isMuted(id: string): boolean {
@@ -134,7 +135,7 @@
     // While a continuation is pending the pill stops the chain; otherwise it
     // turns auto mode on or off.
     if (deadline) {
-      appStore.pauseRoleplayAuto();
+      roleplayStore.pauseAuto();
       return;
     }
     onauto?.(!autoMode);

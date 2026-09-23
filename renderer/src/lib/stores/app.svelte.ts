@@ -1,14 +1,14 @@
-import type { AgentActivity, AgentArtifact, AgentOutcome, AgentStep, AgentStopReason, AppConfig, Attachment, CharacterCard, ChatContextMode, ChatFolder, ChatMessage, ChatSession, CreatedFile, LocalThinkingMode, LorebookEntry, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, RoleplayJournalEntry, RoleplaySettings, RoleplayWorld, SearchMeta, WorkspaceFile } from '$lib/types/chat';
+import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
 import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
 import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
+import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
+import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
-import { humanizeAgentError } from '$lib/utils/errors';
-import type { RunAgentTaskArgs } from '$lib/services/agent-types';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
-import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, writeWorkspaceFile, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
+import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
@@ -24,27 +24,11 @@ import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningC
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
-import { buildSearchSystemPrefix, buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
-import { charactersStore, greetingsFor } from '$lib/features/roleplay/characters.svelte';
-import { worldsStore } from '$lib/features/roleplay/worlds.svelte';
-import { selectNextSpeaker } from '$lib/features/roleplay/group-turn';
-import { buildRoleplayStopStrings, stripSpeakerPrefix, stripTrailingPartialStop } from '$lib/features/roleplay/roleplay-output';
-import { extractRoleplayChoices, stripRoleplayChoiceBlock } from '$lib/features/roleplay/roleplay-choices';
-import { extractRoleplayProps, stripRoleplayPropBlock, type RoleplayProp } from '$lib/features/roleplay/roleplay-props';
-import { makeSilenceTurn, makeTwistTurn, pickTwist, type StoryTurn } from '$lib/features/roleplay/roleplay-twists';
-import {
-  buildRoleplaySystemPrompt as composeRoleplayPrompt,
-  resolveLorebooks,
-  resolveRoleplaySampling,
-  type RoleplaySampling
-} from '$lib/services/roleplay-prompts';
+import { buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
 import {
   applyLocalContextBudgetTruncation,
-  appendRoleplayNudge,
-  appendRoleplayStoryTurn,
   buildOutboundMessages,
-  buildRequestMessagesWithPatchedUser,
-  type RoleplayAttribution
+  buildRequestMessagesWithPatchedUser
 } from '$lib/stores/app-message-pipeline';
 import {
   buildApiModelMetadataCacheKey,
@@ -98,9 +82,6 @@ import {
   WEB_RAG_MIN_ANSWER_CHARS,
   WORKSPACE_MAX_FILES,
   WORKSPACE_MAX_FILE_SIZE_BYTES,
-  activityFromProgress,
-  agentOutcome,
-  agentStopReason,
   appendStreamingContent,
   appendStreamingReasoning,
   buildContextualPrompt as buildContextualPromptHelper,
@@ -112,7 +93,6 @@ import {
   finalizeAssistantMetadata,
   getElectronApi,
   getMessageRequestContent,
-  hasUsableAgentResult,
   isAbortLikeError,
   markAgentWriting,
   markAgentStopped,
@@ -124,12 +104,9 @@ import {
   normalizeSessionSearchMode,
   normalizeText,
   optimisticAck,
-  parseWriteFileBlocks,
   readBlobAsDataUrl,
   repairRoleplayChat,
-  setAgentActivity,
   startReasoningTimer,
-  stripWriteFileBlocks,
   toInvoke,
   updateStreamingVersion,
   withTimeout,
@@ -551,156 +528,17 @@ class AppStore {
     });
   }
 
-  /**
-   * Roleplay sessions never receive the assistant system prompt: character
-   * card, persona, lorebook and author's note compose the whole instruction
-   * block (see services/roleplay-prompts).
-   */
-  private roleplayPromptParts(
-    chat: ChatSession | null,
-    speakerId?: string | null
-  ): {
-    systemPrompt: string;
-    loreEntries: LorebookEntry[];
-    speaker: CharacterCard | null;
-    sampling: RoleplaySampling;
-    stop: string[];
-  } {
-    const primary = charactersStore.getById(chat?.characterId);
-    const rosterIds = chat?.roleplay?.characterIds?.length
-      ? chat.roleplay.characterIds
-      : primary
-        ? [primary.id]
-        : [];
-    const characters = rosterIds
-      .map((id) => charactersStore.getById(id))
-      .filter((card): card is CharacterCard => !!card);
-    if (!characters.length && primary) characters.push(primary);
-
-    const persona = charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
-    const world = worldsStore.getById(chat?.worldId);
-
-    const scanDepth = Math.max(1, primary?.book?.scanDepth || 0, world?.book?.scanDepth || 0) || 4;
-    const scanText = (chat?.messages || [])
-      .slice(-scanDepth)
-      .map((message) => message.content || '')
-      .join('\n');
-    // World canon first, then each cast member's own book; one shared budget.
-    const loreEntries = resolveLorebooks(
-      [
-        { book: world?.book, source: 'world' },
-        ...characters.map((character) => ({
-          book: character.book,
-          source: 'character' as const,
-          characterId: character.id
-        }))
-      ],
-      scanText
-    );
-
-    const speaker = charactersStore.getById(speakerId ?? this.roleplaySpeakerId(chat)) || primary;
-    const systemPrompt = composeRoleplayPrompt({
-      characters,
-      speaker,
-      persona,
-      userName: this.userName,
-      loreEntries,
-      authorNote: chat?.roleplay?.authorNote,
-      group: characters.length > 1,
-      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker,
-      adventureChoices: !!chat?.roleplay?.adventureChoices,
-      props: !!chat?.roleplay?.props,
-      worldName: world?.name,
-      worldOverview: world?.overview,
-      worldScenario: world?.scenario,
-      contentRating: chat?.roleplay?.contentRating
-    });
-
-    const sampling = resolveRoleplaySampling({
-      speaker: speaker || null,
-      chatSettings: chat?.roleplay,
-      worldSettings: world?.settings
-    });
-
-    /*
-     * Stop strings end a reply at the first line that is not its own — the only
-     * real defence against the model writing the user's turn. The name has to
-     * match the one macro substitution put in the prompt, so the resolution
-     * below mirrors `buildRoleplaySystemPrompt` exactly.
-     */
-    const stop = buildRoleplayStopStrings({
-      userName: persona?.name?.trim() || this.userName?.trim() || 'User',
-      speakerName: speaker?.name,
-      castNames: characters.map((card) => card.name),
-      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker
-    });
-
-    return { systemPrompt, loreEntries, speaker: speaker || null, sampling, stop };
-  }
-
-  private buildRoleplaySystemPrompt(chat: ChatSession | null, speakerId?: string | null): string {
-    return this.roleplayPromptParts(chat, speakerId).systemPrompt;
-  }
-
-  /**
-   * Everything a roleplay turn carries besides its prompt: sampling overrides,
-   * the stop strings, and any story turn queued for it — a thrown twist, or the
-   * silence of a choice that ran out. Empty outside roleplay so callers can pass
-   * it along unconditionally.
-   *
-   * Reading this consumes the queued story turn. One turn, one generation.
-   */
-  private roleplayRequestOverrides(
-    chat: ChatSession | null,
-    speakerId?: string | null
-  ): { sampling: RoleplaySampling; stop: string[]; storyTurn?: StoryTurn } {
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return { sampling: {}, stop: [] };
-    const parts = this.roleplayPromptParts(chat, speakerId);
-    return {
-      sampling: parts.sampling,
-      stop: parts.stop,
-      storyTurn: this.takeRoleplayStoryTurn(chat.id)
-    };
-  }
-
-  /** The two names that macros and story turns resolve against. */
-  private roleplayNames(chat: ChatSession | null): { char: string; user: string } {
-    const speaker = charactersStore.getById(this.roleplaySpeakerId(chat))
-      || charactersStore.getById(chat?.characterId);
-    const persona = charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
-    return {
-      char: speaker?.name?.trim() || 'the character',
-      user: persona?.name?.trim() || this.userName?.trim() || 'User'
-    };
-  }
-
-  /**
-   * What a roleplay turn sends, for the prompt inspector: the composed system
-   * prompt, the lore entries that fired, and the speaker.
-   */
-  previewRoleplayPrompt(messageId?: string | null) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') {
-      return { systemPrompt: '', loreEntries: [] as LorebookEntry[], speaker: null as CharacterCard | null };
-    }
-    const messageSpeakerId = messageId
-      ? chat.messages.find((message) => message.id === messageId)?.speakerId || null
-      : null;
-    return this.roleplayPromptParts(chat, messageSpeakerId);
-  }
-
   private buildSystemPromptForMode(args: {
     backendMode: GenerationBackendMode;
     providerPrompt?: string;
     includeChartHint?: boolean;
-    searchSystemPrefix?: string;
     chat?: ChatSession | null;
     /** Roleplay: the character whose reply is being generated. */
     speakerId?: string | null;
   }): string {
     const chat = args.chat ?? this.currentChat;
     if (normalizeContextMode(chat?.contextMode) === 'roleplay') {
-      return this.buildRoleplaySystemPrompt(chat, args.speakerId);
+      return roleplayStore.systemPrompt(chat, args.speakerId);
     }
     const basePrompt = selectBaseSystemPrompt({
       backendMode: args.backendMode,
@@ -711,7 +549,6 @@ class AppStore {
     return buildSystemPrompt({
       basePrompt,
       userName: this.userName,
-      searchSystemPrefix: args.searchSystemPrefix,
       includeChartHint: args.includeChartHint
     });
   }
@@ -1294,526 +1131,6 @@ class AppStore {
     return chat;
   }
 
-  /**
-   * Group scenes: who speaks next. Transient (never persisted) and defaults to
-   * the primary character, so 1:1 chats are unaffected.
-   */
-  private roleplaySpeakerOverrides: Record<string, string> = {};
-
-  /** Auto mode: consecutive character turns and the pending continuation. */
-  private roleplayAutoTurns: Record<string, number> = {};
-  private roleplayAutoTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-  /** Wall-clock deadline of the pending auto turn, for the header countdown. */
-  roleplayAutoDeadlines = $state<Record<string, number>>({});
-
-  /** The character whose turn it is in a scene. */
-  private roleplaySpeakerId(chat: ChatSession | null): string | null {
-    if (!chat) return null;
-    return this.roleplaySpeakerOverrides[chat.id] || chat.characterId || null;
-  }
-
-  /** Force the next speaker in a group scene (null resets to turn order). */
-  setRoleplaySpeaker(characterId: string | null) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    if (!characterId || characterId === chat.characterId) {
-      delete this.roleplaySpeakerOverrides[chat.id];
-    } else {
-      this.roleplaySpeakerOverrides[chat.id] = characterId;
-    }
-  }
-
-  /** The scene's cast in roster order. */
-  private roleplayCast(chat: ChatSession | null): CharacterCard[] {
-    if (!chat) return [];
-    const ids = chat.roleplay?.characterIds?.length
-      ? chat.roleplay.characterIds
-      : chat.characterId
-        ? [chat.characterId]
-        : [];
-    return ids
-      .map((id) => charactersStore.getById(id))
-      .filter((card): card is CharacterCard => !!card);
-  }
-
-  /**
-   * Who speaks next: a forced speaker wins, otherwise the scene's reply order
-   * decides. 1:1 scenes always answer as the character; manual order answers
-   * as the primary on a plain send (the user force-talks for anyone else).
-   */
-  private routeRoleplaySpeaker(chat: ChatSession, messages: ChatMessage[] = chat.messages): string | null {
-    const cast = this.roleplayCast(chat);
-    if (cast.length < 2) return chat.characterId || null;
-    const forced = this.roleplaySpeakerOverrides[chat.id];
-    if (forced) return forced;
-    const strategy = chat.roleplay?.replyOrder || 'list';
-    if (strategy === 'manual') return chat.characterId || null;
-    return selectNextSpeaker({
-      strategy,
-      cast,
-      messages,
-      mutedIds: chat.roleplay?.mutedIds || [],
-      allowSelfReplies: false
-    });
-  }
-
-  /** Replace the scene's cast mid-chat (add, remove, reorder). */
-  setRoleplayCast(characterIds: string[]) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    const cast = [...new Set(characterIds)].filter((id) => !!charactersStore.getById(id));
-    if (!cast.length) return;
-    const muted = (chat.roleplay?.mutedIds || []).filter((id) => cast.includes(id));
-    chat.roleplay = { ...(chat.roleplay || {}), characterIds: cast, mutedIds: muted };
-    // The primary must be a member; removing it promotes the new first member.
-    if (!chat.characterId || !cast.includes(chat.characterId)) {
-      chat.characterId = cast[0];
-    }
-    delete this.roleplaySpeakerOverrides[chat.id];
-    this.touchChats();
-    this.persist();
-  }
-
-  /** Who the roster should show as next, without forcing a turn. */
-  peekRoleplaySpeaker(): CharacterCard | null {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return null;
-    return charactersStore.getById(this.routeRoleplaySpeaker(chat));
-  }
-
-  /**
-   * Generate a character turn with no user message (force talk, auto mode).
-   */
-  async speakNow(characterId?: string | null) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    if (characterId) this.setRoleplaySpeaker(characterId);
-    await this.sendCurrentMessage({ silent: true });
-  }
-
-  /** Enable or pause auto mode for the current scene. */
-  setRoleplayAutoMode(enabled: boolean) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    if (enabled && (chat.roleplay?.replyOrder || 'list') === 'manual') {
-      toastStore.info('Auto mode needs a speaker order. Switch off Manual first.', 4000);
-      return;
-    }
-    chat.roleplay = { ...(chat.roleplay || {}), autoMode: enabled };
-    if (enabled) {
-      this.roleplayAutoTurns[chat.id] = 0;
-      this.touchChats();
-      this.persist();
-      void this.speakNow();
-    } else {
-      this.stopRoleplayAuto(chat.id);
-      this.touchChats();
-      this.persist();
-    }
-  }
-
-  /** Mute or unmute a group member for this scene. */
-  toggleRoleplayMute(characterId: string) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    const muted = new Set(chat.roleplay?.mutedIds || []);
-    if (muted.has(characterId)) muted.delete(characterId);
-    else muted.add(characterId);
-    chat.roleplay = { ...(chat.roleplay || {}), mutedIds: [...muted] };
-    this.touchChats();
-    this.persist();
-  }
-
-  /** Change the scene's speaker order. */
-  setRoleplayReplyOrder(order: RoleplaySettings['replyOrder']) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay' || !order) return;
-    chat.roleplay = { ...(chat.roleplay || {}), replyOrder: order };
-    this.touchChats();
-    this.persist();
-  }
-
-  /** Scene settings: one option at a time (order, delay, toggles). */
-  setRoleplayOption<K extends keyof RoleplaySettings>(key: K, value: RoleplaySettings[K]) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    chat.roleplay = { ...(chat.roleplay || {}), [key]: value } as RoleplaySettings;
-    this.touchChats();
-    this.persist();
-  }
-
-  /** Adventure choices: clicking one sends it as the user's turn. */
-  async sendAdventureChoice(choice: string) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    const text = String(choice || '').trim();
-    if (!text) return;
-    this.composer = text;
-    await this.sendCurrentMessage();
-  }
-
-  // ── Story turns and the scene journal ──────────────────────────────────
-
-  /**
-   * A turn the user did not write, queued for the next generation: a thrown
-   * twist, or the silence of a choice that ran out with nothing said.
-   */
-  private roleplayPendingStoryTurn: Record<string, StoryTurn> = {};
-
-  private queueRoleplayStoryTurn(chatId: string, turn: StoryTurn) {
-    this.roleplayPendingStoryTurn = { ...this.roleplayPendingStoryTurn, [chatId]: turn };
-  }
-
-  private takeRoleplayStoryTurn(chatId: string): StoryTurn | undefined {
-    const turn = this.roleplayPendingStoryTurn[chatId];
-    if (!turn) return undefined;
-    const next = { ...this.roleplayPendingStoryTurn };
-    delete next[chatId];
-    this.roleplayPendingStoryTurn = next;
-    return turn;
-  }
-
-  /** Throw a story twist at the scene: a GM move, never a user turn. */
-  async throwRoleplayTwist() {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    if (this.currentChatGenerating) return;
-    this.queueRoleplayStoryTurn(chat.id, makeTwistTurn(pickTwist(), this.roleplayNames(chat)));
-    await this.speakNow();
-  }
-
-  /**
-   * A clocked choice ran out with nothing said. Saying nothing is the turn —
-   * never a random pick from the panel.
-   */
-  async expireRoleplayChoice() {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    if (this.currentChatGenerating) return;
-    this.queueRoleplayStoryTurn(chat.id, makeSilenceTurn(this.roleplayNames(chat)));
-    await this.speakNow();
-  }
-
-  /** Scene journal: keep something — a prop, a note, a lead, a bond. */
-  addRoleplayJournalEntry(entry: {
-    kind: RoleplayJournalEntry['kind'];
-    title: string;
-    body: string;
-    messageId?: string | null;
-    pinned?: boolean;
-  }) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    const journal = [...(chat.roleplay?.journal || [])];
-    const messageId = entry.messageId ?? null;
-    // Re-keeping from the viewer must not duplicate the entry.
-    const duplicate = journal.some(
-      (item) => item.kind === entry.kind && item.title === entry.title && (item.messageId ?? null) === messageId
-    );
-    if (duplicate) return;
-
-    journal.push({
-      id: createId('journal'),
-      kind: entry.kind,
-      title: entry.title,
-      body: entry.body,
-      pinned: !!entry.pinned,
-      messageId,
-      createdAt: Date.now()
-    });
-    // The journal rides on the chat's roleplay JSON, so it stays bounded.
-    const MAX_ENTRIES = 200;
-    chat.roleplay = { ...(chat.roleplay || {}), journal: journal.slice(-MAX_ENTRIES) };
-    this.touchChats();
-    this.persist();
-  }
-
-  removeRoleplayJournalEntry(entryId: string) {
-    this.patchRoleplayJournal((journal) => journal.filter((entry) => entry.id !== entryId));
-  }
-
-  pinRoleplayJournalEntry(entryId: string, pinned: boolean) {
-    this.patchRoleplayJournal((journal) =>
-      journal.map((entry) => (entry.id === entryId ? { ...entry, pinned } : entry))
-    );
-  }
-
-  private patchRoleplayJournal(patch: (journal: RoleplayJournalEntry[]) => RoleplayJournalEntry[]) {
-    const chat = this.currentChat;
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    chat.roleplay = { ...(chat.roleplay || {}), journal: patch(chat.roleplay?.journal || []) };
-    this.touchChats();
-    this.persist();
-  }
-
-  private clearRoleplayAutoTimer(chatId: string) {
-    const timer = this.roleplayAutoTimers[chatId];
-    if (timer) {
-      clearTimeout(timer);
-      delete this.roleplayAutoTimers[chatId];
-    }
-    this.clearRoleplayAutoDeadline(chatId);
-  }
-
-  private clearRoleplayAutoDeadline(chatId: string) {
-    if (!(chatId in this.roleplayAutoDeadlines)) return;
-    const next = { ...this.roleplayAutoDeadlines };
-    delete next[chatId];
-    this.roleplayAutoDeadlines = next;
-  }
-
-  /** Typing pauses the auto chain without turning auto mode off. */
-  pauseRoleplayAuto() {
-    const chat = this.currentChat;
-    if (!chat) return;
-    this.clearRoleplayAutoTimer(chat.id);
-    this.roleplayAutoTurns[chat.id] = 0;
-  }
-
-  /** Stop auto mode for a scene and forget its turn count. */
-  private stopRoleplayAuto(chatId: string) {
-    this.clearRoleplayAutoTimer(chatId);
-    delete this.roleplayAutoTurns[chatId];
-  }
-
-  /** A user turn resets the chain; auto mode itself stays enabled. */
-  private resetRoleplayAuto(chatId: string) {
-    this.clearRoleplayAutoTimer(chatId);
-    this.roleplayAutoTurns[chatId] = 0;
-  }
-
-  /**
-   * After a completed turn: keep a group scene going while auto mode is on,
-   * the limit is not reached, and the user is not typing. A failed or aborted
-   * turn stops the chain instead of looping.
-   */
-  private maybeContinueRoleplayAuto(chatId: string, stopped = false) {
-    const chat = this.findChat(chatId);
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return;
-    const settings = chat.roleplay;
-    const castCount = settings?.characterIds?.length || 0;
-    if (
-      stopped
-      || !settings?.autoMode
-      || castCount < 2
-      || (settings.replyOrder || 'list') === 'manual'
-    ) {
-      this.stopRoleplayAuto(chatId);
-      return;
-    }
-    const turns = (this.roleplayAutoTurns[chatId] || 0) + 1;
-    const limit = settings.autoModeMaxTurns ?? 4;
-    if (turns > limit) {
-      this.roleplayAutoTurns[chatId] = 0;
-      toastStore.info(`Auto mode paused after ${limit} turns.`, 4000);
-      return;
-    }
-    this.roleplayAutoTurns[chatId] = turns;
-    this.clearRoleplayAutoTimer(chatId);
-    const delay = Math.min(20_000, Math.max(1_000, Number(settings.autoModeDelayMs) || 8000));
-    this.roleplayAutoDeadlines = { ...this.roleplayAutoDeadlines, [chatId]: Date.now() + delay };
-    this.roleplayAutoTimers[chatId] = setTimeout(() => {
-      delete this.roleplayAutoTimers[chatId];
-      this.clearRoleplayAutoDeadline(chatId);
-      // Typing interrupts the chain; so does another run taking the chat.
-      if (this.currentChatId !== chatId || this.composer.trim() || this.currentChatGenerating) return;
-      void this.speakNow();
-    }, delay);
-  }
-
-  /** Speaker attribution for the request pipeline (group scenes only). */
-  private buildRoleplayAttribution(chat: ChatSession | null, speakerId?: string | null): RoleplayAttribution | undefined {
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return undefined;
-    const ids = chat.roleplay?.characterIds?.length
-      ? chat.roleplay.characterIds
-      : chat.characterId
-        ? [chat.characterId]
-        : [];
-    const names = new Map<string, string>();
-    for (const id of ids) {
-      const card = charactersStore.getById(id);
-      if (card?.name) names.set(id, card.name);
-    }
-    const speaker = charactersStore.getById(speakerId ?? this.roleplaySpeakerId(chat));
-    return {
-      names,
-      userName: charactersStore.getPersonaById(chat.personaId)?.name || this.userName || 'User',
-      group: ids.length > 1,
-      speakerName: speaker?.name
-    };
-  }
-
-  /**
-   * Replies mimic the `Name:` attribution we send for group scenes. Strip it
-   * at ingest unless the scene explicitly wants speaker labels.
-   */
-  private buildRoleplayOutputSanitizer(chat: ChatSession | null): ((content: string) => string) | undefined {
-    if (!chat || normalizeContextMode(chat.contextMode) !== 'roleplay') return undefined;
-    const labels = !!chat.roleplay?.showSpeakerLabels || !!chat.roleplay?.allowMultiSpeaker;
-    const hideChoices = !!chat.roleplay?.adventureChoices;
-
-    const names = new Set<string>();
-    if (!labels) {
-      for (const card of this.roleplayCast(chat)) {
-        if (card.name) names.add(card.name);
-        if (card.nickname) names.add(card.nickname);
-      }
-      const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
-      if (persona?.name) names.add(persona.name);
-    }
-    // Nothing to clean: no prefixes to strip and no choices block to lift.
-    if (!hideChoices && !names.size) return undefined;
-
-    return (content: string) => {
-      const visible = hideChoices ? stripRoleplayChoiceBlock(content) : content;
-      return names.size ? stripSpeakerPrefix(visible, names) : visible;
-    };
-  }
-
-  /**
-   * Start a roleplay scene.
-   *
-   * A scene is a roleplay chat bound to a cast (the first card is the primary
-   * speaker) and optionally to a world. It is seeded with an opening turn:
-   * either the world's chosen starter (narrator) or the primary's greeting.
-   */
-  startScene(options: {
-    characters: CharacterCard[];
-    world?: RoleplayWorld | null;
-    personaId?: string | null;
-    openingSource?: 'greeting' | 'starter' | 'none';
-    openingIndex?: number;
-    settings?: Partial<RoleplaySettings>;
-  }) {
-    const cast = options.characters.filter(Boolean);
-    const primary = cast[0];
-    if (!primary) return this.currentChat;
-
-    // Picking a scene from the library must not leave the empty "New roleplay"
-    // chat behind: bind the current empty roleplay chat instead.
-    const current = this.currentChat;
-    const reusable = !!current
-      && normalizeContextMode(current.contextMode) === 'roleplay'
-      && !current.characterId
-      && current.messages.length === 0;
-    const created = reusable ? current : this.createChat('roleplay');
-    // createChat returns the raw object; `$state` holds a proxy. Identity and
-    // greeting fields must be written through the state view or they never
-    // reach the send path (and never persist).
-    const chat = this.findChat(created.id) || created;
-    const world = options.world || null;
-    const group = cast.length > 1;
-    const openingSource = options.openingSource || 'greeting';
-    const openings = openingSource === 'starter'
-      ? (world?.starters || []).filter((entry) => entry.trim())
-      : openingSource === 'greeting'
-        ? greetingsFor(primary, { group })
-        : [];
-    const openingIndex = openings.length
-      ? Math.max(0, Math.min(options.openingIndex ?? 0, openings.length - 1))
-      : 0;
-    const worldSettings = world?.settings || {};
-
-    chat.characterId = primary.id;
-    chat.worldId = world?.id ?? null;
-    chat.personaId = options.personaId ?? null;
-    chat.greetingIndex = openingIndex;
-    chat.roleplay = {
-      characterIds: cast.map((card) => card.id),
-      replyOrder: worldSettings.replyOrder ?? 'list',
-      autoMode: worldSettings.autoMode ?? false,
-      autoModeMaxTurns: worldSettings.autoModeMaxTurns ?? 4,
-      autoModeDelayMs: worldSettings.autoModeDelayMs ?? 8000,
-      adventureChoices: worldSettings.adventureChoices ?? false,
-      showSpeakerLabels: worldSettings.showSpeakerLabels ?? false,
-      allowMultiSpeaker: worldSettings.allowMultiSpeaker ?? false,
-      temperature: worldSettings.temperature ?? null,
-      topP: worldSettings.topP ?? null,
-      maxTokens: worldSettings.maxTokens ?? null,
-      authorNote: worldSettings.authorNote ?? '',
-      contentRating: worldSettings.contentRating ?? 'sfw',
-      mutedIds: [],
-      ...(options.settings || {})
-    };
-    chat.title = world?.name || (group ? `${primary.name} +${cast.length - 1}` : primary.name) || chat.title;
-
-    const opening = openings[openingIndex];
-    if (opening) {
-      this.appendMessageToChat(chat.id, {
-        id: createId('msg'),
-        role: 'assistant',
-        content: opening,
-        createdAt: Date.now(),
-        done: true,
-        status: 'idle',
-        // A world starter is narration, not the primary's line.
-        model: openingSource === 'starter' ? undefined : primary.name || undefined,
-        speakerId: openingSource === 'starter' ? null : primary.id,
-        versions: [],
-        activeVersion: 0,
-        mode: 'chat'
-      });
-    }
-
-    this.touchChats();
-    this.persist();
-    return chat;
-  }
-
-  /**
-   * Start a 1:1 scene with one character: the quick path from the gallery.
-   */
-  startRoleplay(character: CharacterCard, options: { personaId?: string | null; greetingIndex?: number } = {}) {
-    return this.startScene({
-      characters: [character],
-      personaId: options.personaId ?? null,
-      openingSource: 'greeting',
-      openingIndex: options.greetingIndex ?? 0
-    }) as ChatSession;
-  }
-
-  /** Replace the opening turn with another greeting from the same character. */
-  setRoleplayGreeting(character: CharacterCard, index: number) {
-    const chat = this.currentChat;
-    if (!chat || chat.contextMode !== 'roleplay') return;
-    const group = (chat.roleplay?.characterIds?.length || 0) > 1;
-    const greetings = greetingsFor(character, { group });
-    const greeting = greetings[index];
-    if (!greeting) return;
-
-    chat.greetingIndex = index;
-    const first = chat.messages[0];
-    if (first && first.role === 'assistant') {
-      first.content = greeting;
-      first.speakerId = character.id;
-    } else {
-      chat.messages.unshift({
-        id: createId('msg'),
-        role: 'assistant',
-        content: greeting,
-        createdAt: Date.now(),
-        done: true,
-        status: 'idle',
-        model: character.name || undefined,
-        speakerId: character.id,
-        versions: [],
-        activeVersion: 0,
-        mode: 'chat'
-      });
-    }
-    this.touchChats();
-    this.persist();
-  }
-
-  /** Bind the current roleplay chat to a user persona (null = none). */
-  setRoleplayPersona(personaId: string | null) {
-    const chat = this.currentChat;
-    if (!chat || chat.contextMode !== 'roleplay') return;
-    chat.personaId = personaId;
-    this.touchChats();
-    this.persist();
-  }
-
   selectChat(chatId: string) {
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
@@ -1999,7 +1316,7 @@ class AppStore {
     return this.appendMessageToChat(this.currentChatId || '', message);
   }
 
-  private appendMessageToChat(chatId: string, message: ChatMessage) {
+  appendMessageToChat(chatId: string, message: ChatMessage) {
     const chat = this.findChat(chatId);
     if (!chat) return null;
     chat.messages = [...chat.messages, message];
@@ -2022,7 +1339,7 @@ class AppStore {
     this.chats = [...this.chats];
   }
 
-  private findChat(chatId: string | null | undefined) {
+  findChat(chatId: string | null | undefined) {
     if (!chatId) return null;
     return this.chats.find((chat) => chat.id === chatId) || null;
   }
@@ -2616,7 +1933,6 @@ class AppStore {
     const activeSearchMode = normalizeSessionSearchMode(targetChat.searchMode ?? this.searchMode);
     const activeComposerMode = normalizeSessionComposerMode(targetChat.composerMode ?? this.composerMode, activeContextMode);
     const activeReasoningLevel = targetChat.reasoningLevel ?? this.reasoningLevel;
-    const activeWorkspace = activeContextMode === 'code' ? targetChat.workspace : null;
     const targetRagDocuments = this.ragDocumentsByChat[targetChatId] || [];
 
     if (!this.canStartGeneration({
@@ -2626,21 +1942,6 @@ class AppStore {
     })) return;
 
     this.error = null;
-    // A scene without a character cannot be answered: the prompt would be empty
-    // and the model would reply as a generic assistant.
-    if (activeContextMode === 'roleplay' && !this.roleplayCast(targetChat).length) {
-      toastStore.info('This scene has no character. Choose one to continue.', 4000);
-      return;
-    }
-    if (!silent) this.resetRoleplayAuto(targetChatId);
-    const targetChatTitle = targetChat?.title || this.defaultTitleForMode(normalizeContextMode(targetChat?.contextMode));
-    const workContext = activeContextMode === 'code' && activeWorkspace
-      ? {
-          rootName: activeWorkspace.rootName,
-          fileCount: activeWorkspace.fileCount,
-          indexedCount: activeWorkspace.indexedCount
-        }
-      : null;
     const userMessage: ChatMessage | null = silent
       ? null
       : {
@@ -2652,23 +1953,14 @@ class AppStore {
           status: 'idle',
           attachments: this.pendingAttachments,
           mode: activeComposerMode,
-          searchMode: activeSearchMode,
-          workContext
+          searchMode: activeSearchMode
         };
 
-    // Group scenes: route the reply after the user's turn is in the history, so
-    // mentions inside it are seen. A forced speaker wins; a dead end (everyone
-    // muted) keeps the message in the composer instead of sending it.
-    if (activeContextMode === 'roleplay') {
-      const routingMessages = userMessage ? [...targetChat.messages, userMessage] : targetChat.messages;
-      const speaker = this.routeRoleplaySpeaker(targetChat, routingMessages);
-      if (!speaker && this.roleplayCast(targetChat).length > 1) {
-        toastStore.info('Everyone is muted — unmute a character to continue.', 4000);
-        return;
-      }
-      if (speaker) this.roleplaySpeakerOverrides[targetChatId] = speaker;
-      else delete this.roleplaySpeakerOverrides[targetChatId];
-    }
+    // Scenes: a user turn resets the auto chain, and the reply is routed after
+    // the user's turn is in the history so mentions inside it are seen. A scene
+    // nobody can answer keeps the message in the composer instead of sending it.
+    if (!silent && activeContextMode === 'roleplay') roleplayStore.resetAuto(targetChatId);
+    if (!roleplayStore.routeTurn(targetChat, userMessage ? [...targetChat.messages, userMessage] : targetChat.messages)) return;
 
     if (userMessage) {
       this.appendMessageToChat(targetChatId, userMessage);
@@ -2678,7 +1970,6 @@ class AppStore {
     const sentAttachments = silent ? [] : [...this.pendingAttachments];
     if (!silent) this.pendingAttachments = [];
 
-    const modeControl = this.composerModeControl;
     const composerRoute = resolveComposerRoute({
       prompt: content,
       hasAttachments: sentAttachments.length > 0 || targetRagDocuments.length > 0,
@@ -2686,12 +1977,16 @@ class AppStore {
       contextMode: activeContextMode
     });
     const useToolLoop = shouldUseToolLoop({
-      control: modeControl,
+      control: this.composerModeControl,
       composerMode: activeComposerMode,
       route: composerRoute,
       searchMode: activeSearchMode,
       contextMode: activeContextMode
-    }) && !!targetChatId;
+    });
+    const plan = planHomeAgentRun({ composerMode: activeComposerMode, searchMode: activeSearchMode });
+    const initial = initialHomeActivity(plan, activeComposerMode);
+    // Spends the routed speaker and any queued story turn: one turn, one generation.
+    const turn = roleplayStore.prepareTurn(targetChat, { consumeRouting: true });
 
     const assistantMessage: ChatMessage = {
       id: createId('msg'),
@@ -2712,36 +2007,23 @@ class AppStore {
       searchMode: activeSearchMode,
       mode: activeComposerMode,
       // Roleplay turns belong to the character, so the thread can show who spoke.
-      speakerId: activeContextMode === 'roleplay' ? this.roleplaySpeakerId(targetChat) : null,
+      speakerId: turn.speakerId,
       reasoning: '',
       metadata: useToolLoop
         ? {
             modelName: activeModelLabel,
             ...executionMetadata(activeBackendMode),
-            currentActivity: activeComposerMode === 'instant'
-              ? 'searching'
-              : activeSearchMode !== 'chat' && activeComposerMode !== 'agent'
-                ? 'searching'
-                : 'planning',
-            activityLabel: activityLabel(
-              activeComposerMode === 'instant' || (activeSearchMode !== 'chat' && activeComposerMode !== 'agent') ? 'searching' : 'planning'
-            )
+            currentActivity: initial.activity,
+            activityLabel: activityLabel(initial.activity)
           }
         : undefined,
-      workContext,
       agentSteps: useToolLoop
         ? [{
             id: createId('step'),
             type: 'thinking',
-            label: activityLabel(activeComposerMode === 'instant' ? 'searching' : 'planning'),
+            label: activityLabel(initial.activity),
             status: 'running',
-            detail: activeComposerMode === 'instant'
-              ? 'Checking sources'
-              : activeComposerMode === 'agent'
-                ? 'Preparing tools and context'
-                : activeSearchMode !== 'chat'
-                ? 'Preparing search tools and context'
-                : 'Checking if tools are needed'
+            detail: initial.detail
           }]
         : [],
       artifact: null
@@ -2760,13 +2042,8 @@ class AppStore {
     const syncMsg = (force = false) => {
       const now = Date.now();
       if (!force && now - lastSyncTime < SYNC_INTERVAL_MS) {
-        /*
-         * Trailing edge. This throttle used to just set a `pendingSync` flag that
-         * only a `flushPendingSync` helper cleared — and that helper was never
-         * called anywhere, so the last chunk of a burst sat unrendered until either
-         * another chunk arrived or the run finished. Short answers visibly stalled
-         * mid-sentence. A timer means the tail always lands ~50ms later at worst.
-         */
+        // Trailing edge: the last chunk of a burst must land even when no
+        // further chunk arrives, or short answers stall mid-sentence.
         if (trailingSync === undefined) {
           trailingSync = setTimeout(() => {
             trailingSync = undefined;
@@ -2785,24 +2062,25 @@ class AppStore {
         chat.updatedAt = Date.now();
       }
     };
+    const snapshotVersion = () => {
+      assistantMessage.versions = [{
+        content: assistantMessage.content,
+        createdAt: assistantMessage.createdAt,
+        reasoning: assistantMessage.reasoning,
+        metadata: assistantMessage.metadata
+      }];
+    };
 
     const controller = new AbortController();
     const startTime = Date.now();
     const reasoningTimer = startReasoningTimer();
     let exactUsage: CompletionResult['usage'] = null;
-    // Declared before the try so the error path can clean the reply too.
-    const roleplayAttribution = this.buildRoleplayAttribution(targetChat);
-    const roleplayOutputSanitizer = this.buildRoleplayOutputSanitizer(targetChat);
-    const roleplayChoicesEnabled = !!targetChat.roleplay?.adventureChoices;
-    const roleplayOverrides = this.roleplayRequestOverrides(targetChat);
-    let rawRoleplayContent = '';
 
     /*
      * The run begins inside the `try`, so the `finally` that ends it covers
-     * everything. It used to start several statements earlier, and anything that
-     * threw in the gap — context building, mode writes — left a run recorded with no
-     * matching end. The UI then showed "generating" forever and `canStartGeneration`
-     * blocked that chat permanently, with no way back short of a reload.
+     * everything. Anything that threw between starting and the `try` used to
+     * leave a run with no matching end: "generating" forever, and
+     * `canStartGeneration` blocking that chat until a reload.
      */
     try {
       this.beginGenerationRun(targetChatId, {
@@ -2817,22 +2095,16 @@ class AppStore {
         : '';
       // Reset modes on the target session (and store mirrors only if still viewing it).
       // The tab is a persistent per-chat preference: Agent and Instant stick,
-      // only the one-shot search depth resets. Collapsing Instant to Chat here
-      // is exactly how the tab used to jump back on every send.
-      const postSendSearch: 'chat' = 'chat';
+      // only the one-shot search depth resets.
       const postSendComposer = activeComposerMode === 'agent' ? 'agent' as const : activeComposerMode === 'instant' ? 'instant' as const : 'chat' as const;
-      targetChat.searchMode = postSendSearch;
+      targetChat.searchMode = 'chat';
       targetChat.composerMode = postSendComposer;
       if (this.currentChatId === targetChatId) {
-        this.searchMode = postSendSearch;
+        this.searchMode = 'chat';
         this.composerMode = targetChat.composerMode || postSendComposer;
       }
-      let searchContext = '';
-      let sources: ChatMessage['sources'] = [];
-      let searchMeta: SearchMeta | null = null;
       let ragContext = '';
       let ragDocuments: IndexedDocument[] = [];
-      const workspaceContext = activeWorkspace ? buildWorkspacePrompt(activeWorkspace) : '';
 
       if (isElectron() && targetRagDocuments.length && activeSearchMode === 'chat') {
         // No tight retrieval budget when the user attached documents — pull more chunks.
@@ -2845,11 +2117,12 @@ class AppStore {
         const docIds = new Set(ragResponse.results.map((result) => result.chunk.doc_id));
         ragDocuments = targetRagDocuments.filter((doc) => docIds.has(doc.id));
       }
+      const preserveDocuments = targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext;
 
-      assistantMessage.sources = sources;
-      assistantMessage.searchMeta = searchMeta;
+      assistantMessage.sources = [];
+      assistantMessage.searchMeta = null;
       assistantMessage.ragDocuments = ragDocuments;
-      syncMsg(true); // push initial metadata (sources, searchMeta) to the reactive array
+      syncMsg(true);
       this.persist();
 
       const requestMessages = userMessage
@@ -2858,13 +2131,13 @@ class AppStore {
             assistantMessageId: assistantMessage.id,
             userMessageId: userMessage.id,
             userContent: content,
-            attribution: roleplayAttribution,
+            attribution: turn.attribution,
             buildContextualPrompt: (userContent) => this.buildContextualPrompt({
               content: userContent,
-              searchContext,
-              researchSummary: (searchMeta as SearchMeta | null)?.researchSummary || '',
+              searchContext: '',
+              researchSummary: '',
               ragContext,
-              workspaceContext,
+              workspaceContext: '',
               mode: activeComposerMode,
               searchMode: activeSearchMode
             })
@@ -2872,28 +2145,18 @@ class AppStore {
         : buildRequestMessagesFromHistory(
             targetChat.messages,
             targetChat.messages.length - 1,
-            roleplayAttribution
+            turn.attribution
           );
 
-      const searchSystemPrefix = searchContext ? buildSearchSystemPrefix() : undefined;
       const systemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
-        searchSystemPrefix,
         includeChartHint: activeComposerMode !== 'agent',
         chat: targetChat,
-        speakerId: this.roleplaySpeakerId(targetChat)
+        speakerId: turn.speakerId
       });
 
-      const outboundMessages = appendRoleplayNudge(
-        appendRoleplayStoryTurn(
-          buildOutboundMessages({ messages: requestMessages, systemPrompt }),
-          roleplayOverrides.storyTurn?.instruction
-        ),
-        roleplayAttribution
-      );
-      // The routed speaker applies to this turn only.
-      delete this.roleplaySpeakerOverrides[targetChatId];
+      const outboundMessages = turn.decorate(buildOutboundMessages({ messages: requestMessages, systemPrompt }));
       // Context window budget check (local mode only)
       if (activeBackendMode === 'local' && isElectron()) {
         try {
@@ -2906,7 +2169,7 @@ class AppStore {
               messages: outboundMessages,
               invoke: toInvoke(electronApi),
               // Uploaded / RAG document context must not be token-budget trimmed away.
-              preserveDocuments: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
+              preserveDocuments,
               onTruncated: (removed) => {
                 toastStore.info(`Context window full. ${removed} older message(s) truncated to fit.`, 4000);
               }
@@ -2917,278 +2180,64 @@ class AppStore {
         }
       }
 
-      // Home uses one conversational agent, with optional research depth.
-      const searchToolBudget = activeSearchMode === 'max'
-        ? { maxIterations: 48, maxToolCalls: 140, maxTimeMs: 22 * 60 * 1000 }
-        : activeSearchMode === 'deep'
-          ? { maxIterations: 28, maxToolCalls: 90, maxTimeMs: 14 * 60 * 1000 }
-          : activeSearchMode === 'search'
-            ? { maxIterations: 10, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 }
-            : { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      const chatAgentBudget = { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 };
-      // Instant fast path: tight enough that the loop cannot go on a journey.
-      const instantBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
-
       if (useToolLoop) {
-        const isCodeSpace = activeContextMode === 'code';
-        const wantsAgent = isCodeSpace;
-        const isInstant = activeComposerMode === 'instant' && !wantsAgent;
-        const agentProfile =
-          activeSearchMode !== 'chat' && !wantsAgent
-            ? 'search' as const
-            : wantsAgent
-              ? (isCodeSpace ? 'work' as const : 'chat' as const)
-              : 'chat' as const;
-        // Research search modes use search_chat; Instant uses the fast instant profile;
-        // chat tools & agent use full tool lists.
-        const toolMode =
-          isInstant
-            ? 'instant' as const
-            : activeSearchMode !== 'chat' && !wantsAgent
-              ? 'search_chat' as const
-              : 'agent' as const;
-        const profileBudget =
-          isInstant
-            ? instantBudget
-            : agentProfile === 'search' || activeSearchMode !== 'chat'
-              ? searchToolBudget
-              : agentProfile === 'chat'
-                ? chatAgentBudget
-                : {};
-        const agentTaskArgs: RunAgentTaskArgs = {
+        const agentResult = await runAgentTask({
           chatId: targetChatId,
           systemPrompt,
           messages: requestMessages,
           rawPrompt: content,
           conversationContext: searchConversationContext || (ragContext ? `<documents>\n${ragContext}\n</documents>` : undefined),
           executionMode: 'sandbox',
-          workspaceName: activeWorkspace?.rootName,
-          workspaceFiles: activeWorkspace?.files,
-          toolMode,
-          agentProfile,
-          searchMode: activeSearchMode === 'chat' ? undefined : activeSearchMode,
+          toolMode: plan.toolMode,
+          agentProfile: plan.agentProfile,
+          searchMode: plan.searchMode,
           reasoningLevel: activeReasoningLevel,
-          quietActivity: isInstant,
-          onContent: (value) => {
-            assistantMessage.content = value;
-            syncMsg();
-          },
-          preserveDocumentContext: targetRagDocuments.length > 0 || sentAttachments.length > 0 || !!ragContext,
-          ...profileBudget,
+          quietActivity: plan.instant,
+          preserveDocumentContext: preserveDocuments,
+          ...plan.budget,
           signal: controller.signal,
-          onStep: (steps) => {
-            assistantMessage.agentSteps = steps;
-            if (!isInstant) {
-              const running = steps.find((step) => step.status === 'running');
-              if (running) {
-                const mapped = activityFromProgress(running.label);
-                setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
-              }
-            }
-            syncMsg(true);
-            this.persist();
-          },
-          onProgress: (text) => {
-            if (isInstant) {
-              syncMsg();
-              return;
-            }
-            const mapped = activityFromProgress(text);
-            setAgentActivity(assistantMessage, mapped.currentActivity, mapped.activityLabel);
-            syncMsg();
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            assistantMessage.reasoning = value;
-            syncMsg();
-          },
-          onArtifact: (artifacts) => {
-            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
-            assistantMessage.artifacts = artifacts;
-            assistantMessage.artifact = latest;
-            syncMsg(true);
-            this.persist();
-            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === assistantMessage.id)) {
-              this.setCurrentArtifact(latest, assistantMessage.id);
-            }
-          },
-          onSources: (liveSources) => {
-            const existingUrls = new Set((assistantMessage.sources || []).map((s) => s.url));
-            const newSources = liveSources.filter((s) => !existingUrls.has(s.url));
-            if (newSources.length) {
-              assistantMessage.sources = [...(assistantMessage.sources || []), ...newSources];
-              if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
-                assistantMessage.searchMode = 'search';
-              }
-              syncMsg(true);
-              this.persist();
-            }
-          }
-        };
-        const agentResult = await runAgentTask(agentTaskArgs);
+          ...homeAgentCallbacks({
+            message: assistantMessage,
+            quiet: plan.instant,
+            sync: syncMsg,
+            persist: () => this.persist(),
+            onReasoningStart: () => reasoningTimer.markStarted(),
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, assistantMessage.id, latest)
+          })
+        });
         exactUsage = agentResult.usage || exactUsage;
         markAgentWriting(assistantMessage);
         syncMsg(true);
         this.persist();
-        // Handle agent result - check for errors or warnings
-        const outcome = agentOutcome(agentResult);
-        const stopReason = agentStopReason(agentResult);
-        const usableAgentResult = hasUsableAgentResult(agentResult);
-        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
-          // Fatal agent failure: no usable evidence/content was produced.
-          const friendly = humanizeAgentError(agentResult.error);
-          assistantMessage.content = agentResult.content?.trim()
-            ? agentResult.content
-            : friendly;
-          assistantMessage.status = 'error';
-          assistantMessage.done = true;
-          assistantMessage.metadata = {
-            ...finalizeAssistantMetadata({
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                error: true,
-                errorMessage: friendly,
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent failed',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
-          // Partial/stopped agents keep their evidence and render as a normal answer with a warning.
-          assistantMessage.content = agentResult.content;
-          assistantMessage.done = true;
-          assistantMessage.status = 'idle';
-          assistantMessage.metadata = {
-            ...finalizeAssistantMetadata({
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                warning: agentResult.warning
-                  || (agentResult.error ? humanizeAgentError(agentResult.error) : undefined)
-                  || 'Stopped before finishing. You can continue the conversation.',
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Stopped',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          if (agentResult.error && !usableAgentResult) {
-            if (this.config.ui?.agent_debug_logs) {
-              console.warn('[agent]', agentResult.warning || agentResult.error);
-            }
-          } else {
-            if (this.config.ui?.agent_debug_logs) {
-              console.info('[agent]', agentResult.warning || 'Agent stopped with usable gathered evidence.');
-            }
-          }
-        } else {
-          assistantMessage.content = agentResult.content;
-          assistantMessage.metadata = {
-            ...(assistantMessage.metadata || {}),
-            ...executionMetadata(activeBackendMode),
-            outcome,
-            stopReason,
-            currentActivity: 'completed',
-            activityLabel: 'Agent finished',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-          };
-        }
-        assistantMessage.reasoning = agentResult.reasoning;
-        const prevSteps = assistantMessage.agentSteps || [];
-        const diffSteps = prevSteps.filter((s) => s.diffStats?.length && !agentResult.steps.some((rs) => rs.id === s.id));
-        assistantMessage.agentSteps = [...agentResult.steps, ...diffSteps];
-        assistantMessage.artifact = agentResult.artifact;
-        if (agentResult.sources?.length) {
-          const existingUrls = new Set((assistantMessage.sources || []).map((s) => s.url));
-          const newSources = agentResult.sources.filter((s) => !existingUrls.has(s.url));
-          if (newSources.length) {
-            assistantMessage.sources = [...(assistantMessage.sources || []), ...newSources];
-          }
-          if (!assistantMessage.searchMode || assistantMessage.searchMode === 'chat') {
-            assistantMessage.searchMode = 'search';
-          }
-          assistantMessage.searchMeta = {
-            ...(assistantMessage.searchMeta || {
-              searchRequested: true,
-              searchSucceeded: true,
-              contextAvailable: true,
-              sourceCount: 0
-            }),
-            searchRequested: true,
-            searchSucceeded: true,
-            contextAvailable: true,
-            sourceCount: assistantMessage.sources.length,
-            stopReason
-          };
-        } else if (activeSearchMode !== 'chat') {
-          assistantMessage.searchMeta = {
-            ...(assistantMessage.searchMeta || {}),
-            searchRequested: true,
-            searchSucceeded: !agentResult.error,
-            contextAvailable: false,
-            sourceCount: assistantMessage.sources?.length || 0,
-            requestedProvider: this.config.search?.provider || 'aggregator',
-            searchError: agentResult.error || agentResult.warning || '',
-            stopReason
-          };
+        applyHomeAgentResult(assistantMessage, agentResult, {
+          modelName: activeModelLabel,
+          backendMode: activeBackendMode,
+          searchMode: plan.searchMode,
+          requestedProvider: this.config.search?.provider || 'aggregator'
+        });
+        if (this.config.ui?.agent_debug_logs && (agentResult.warning || agentResult.error)) {
+          console.info('[agent]', agentResult.warning || agentResult.error);
         }
         syncMsg(true);
         this.persist();
-        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === assistantMessage.id)) {
-          this.setCurrentArtifact(agentResult.artifact, assistantMessage.id);
-        }
-        // Agent artifacts are chat-sandboxed, so there is no host workspace write to rescan here.
+        this.focusArtifact(targetChatId, assistantMessage.id, agentResult.artifact);
       } else {
         await streamAssistantReply({
           messages: outboundMessages,
           signal: controller.signal,
           apiKey: activeProviderApiKey,
           reasoningLevel: activeReasoningLevel,
-          sampling: roleplayOverrides.sampling,
-          stop: roleplayOverrides.stop,
+          sampling: turn.sampling,
+          stop: turn.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
-            // Keep the raw accumulation: at finalize it is the only faithful
-            // source for the choices and prop blocks the sanitizer strips out.
-            if (roleplayOverrides.stop.length) rawRoleplayContent += value;
+            turn.record(value);
             appendStreamingContent(
               assistantMessage,
               value,
               assistantMessage.reasoning || '',
               assistantMessage.metadata,
-              roleplayOutputSanitizer
+              turn.sanitize
             );
             if (assistantMessage.agentSteps?.length) {
               assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
@@ -3218,28 +2267,7 @@ class AppStore {
       }
 
       assistantMessage.done = true;
-      // Roleplay: never store the `Name:` prefix the model echoed back, lift
-      // adventure choices into their own field, and trim whatever leaked past
-      // the stop strings (a stream that dies mid-`\nUser` leaves a fragment).
-      if (roleplayOutputSanitizer || roleplayOverrides.stop.length) {
-        const source = rawRoleplayContent || assistantMessage.content;
-        const parsed = roleplayChoicesEnabled
-          ? extractRoleplayChoices(source)
-          : { text: source, choices: [] as string[] };
-        if (parsed.choices.length) assistantMessage.choices = parsed.choices;
-        const handed = extractRoleplayProps(parsed.text);
-        if (handed.props.length) assistantMessage.props = handed.props;
-        const trimmed = stripTrailingPartialStop(handed.text, roleplayOverrides.stop);
-        assistantMessage.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(trimmed) : trimmed;
-        const storyTurn = roleplayOverrides.storyTurn;
-        if (storyTurn) {
-          assistantMessage.storyTurn = {
-            label: storyTurn.label,
-            ...(storyTurn.kind ? { kind: storyTurn.kind } : {}),
-            ...(storyTurn.intensity ? { intensity: storyTurn.intensity } : {})
-          };
-        }
-      }
+      turn.finalize(assistantMessage);
       // Only set status to 'idle' if it wasn't already set to 'error'
       if (assistantMessage.status !== 'error') {
         assistantMessage.status = 'idle';
@@ -3255,32 +2283,13 @@ class AppStore {
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
       assistantMessage.model = activeModelLabel;
-      assistantMessage.versions = [{
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        reasoning: assistantMessage.reasoning,
-        metadata: assistantMessage.metadata
-      }];
+      snapshotVersion();
       if (assistantMessage.agentSteps?.length) {
-        const hasError = assistantMessage.metadata?.error;
-        const hasWarning = assistantMessage.metadata?.warning;
-        assistantMessage.agentSteps = assistantMessage.agentSteps.map((step, index, all) => {
-          if (index === all.length - 1) {
-            if (hasError) {
-              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
-            } else if (hasWarning) {
-              return { ...step, status: 'done', detail: hasWarning };
-            }
-            return { ...step, status: 'done', detail: assistantMessage.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
-          }
-          return { ...step, status: step.status === 'running' ? 'done' : step.status };
-        });
+        assistantMessage.agentSteps = settleAgentSteps(assistantMessage.agentSteps, assistantMessage.metadata);
       }
 
-      const responseSources = ((assistantMessage.sources && assistantMessage.sources.length)
-        ? assistantMessage.sources
-        : sources) as SearchResult[];
-      if (targetChatId && responseSources.length > 0) {
+      const responseSources = (assistantMessage.sources || []) as SearchResult[];
+      if (responseSources.length > 0) {
         this.queueWebAnswerRagIngest({
           chatId: targetChatId,
           query: content,
@@ -3288,44 +2297,6 @@ class AppStore {
           sources: responseSources
         });
       }
-
-      // ── Work mode file writing ──────────────────────────────────────
-      // Code space only: home sandbox replies never touch host disk here.
-      // Fence blocks execute only for code-context agent turns with a
-      // workspace attached; main-side containment is second layer.
-      const activeWorkspaceRoot = activeWorkspace?.rootPath;
-      if (activeContextMode === 'code' && activeComposerMode !== 'agent' && activeWorkspaceRoot && isElectron() && assistantMessage.content) {
-        const blocks = parseWriteFileBlocks(assistantMessage.content);
-        if (blocks.length > 0) {
-          const created: import('$lib/types/chat').CreatedFile[] = [];
-          for (const block of blocks) {
-            try {
-              const fullPath = await writeWorkspaceFile(activeWorkspaceRoot, block.path, block.content);
-              created.push({ path: block.path, name: block.path.split('/').pop() || block.path, fullPath });
-            } catch (writeErr) {
-              toastStore.error(`Could not write ${block.path}: ${String((writeErr as Error)?.message || writeErr)}`);
-            }
-          }
-          if (created.length > 0) {
-            assistantMessage.filesCreated = created;
-            assistantMessage.content = stripWriteFileBlocks(assistantMessage.content, created);
-            assistantMessage.versions = [{
-              content: assistantMessage.content,
-              createdAt: assistantMessage.createdAt,
-              reasoning: assistantMessage.reasoning,
-              metadata: assistantMessage.metadata
-            }];
-            toastStore.success(
-              created.length === 1
-                ? `File created: ${created[0].name}`
-                : `${created.length} files created in workspace`
-            );
-            // Auto-refresh workspace so new files appear in sidebar
-            void this.refreshWorkspace(targetChatId);
-          }
-        }
-      }
-      // ───────────────────────────────────────────────────────────────
 
       syncMsg(true);
       this.persist();
@@ -3350,7 +2321,7 @@ class AppStore {
       assistantMessage.done = true;
       assistantMessage.status = aborted ? 'idle' : 'error';
       assistantMessage.content = aborted ? (assistantMessage.content || '') : (assistantMessage.content || errorMsg);
-      const timing = typeof startTime === 'number' ? (Date.now() - startTime) / 1000 : 0;
+      const timing = (Date.now() - startTime) / 1000;
       assistantMessage.metadata = finalizeAssistantMetadata({
         existing: assistantMessage.metadata,
         modelName: activeModelLabel,
@@ -3361,12 +2332,7 @@ class AppStore {
         overrides: aborted ? {} : { error: true, errorMessage: errorMsg }
       });
       assistantMessage.model = activeModelLabel;
-      assistantMessage.versions = [{
-        content: assistantMessage.content,
-        createdAt: assistantMessage.createdAt,
-        reasoning: assistantMessage.reasoning,
-        metadata: assistantMessage.metadata
-      }];
+      snapshotVersion();
       if (assistantMessage.agentSteps?.length) {
         if (aborted) {
           markAgentStopped(assistantMessage);
@@ -3378,8 +2344,8 @@ class AppStore {
         }
       }
       this.error = aborted ? null : assistantMessage.content;
-      if (roleplayOutputSanitizer) {
-        assistantMessage.content = roleplayOutputSanitizer(assistantMessage.content);
+      if (turn.sanitize) {
+        assistantMessage.content = turn.sanitize(assistantMessage.content);
       }
       if (userMessage) userMessage.attachments = sentAttachments;
       syncMsg(true);
@@ -3391,7 +2357,14 @@ class AppStore {
       this.endGenerationRun(targetChatId, controller);
       // Group auto mode: queue the next character turn once this one settles.
       // A stopped or failed turn ends the chain instead of retrying.
-      this.maybeContinueRoleplayAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+      roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+    }
+  }
+
+  /** Show a run's artifact when its chat is on screen and the studio follows this message. */
+  private focusArtifact(chatId: string, messageId: string, artifact: AgentArtifact | null | undefined) {
+    if (this.currentChatId === chatId && (artifact || this.currentArtifactMessageId === messageId)) {
+      this.setCurrentArtifact(artifact ?? null, messageId);
     }
   }
 
@@ -3486,12 +2459,11 @@ class AppStore {
     const message = index >= 0 ? chat.messages[index] : null;
     if (!message || message.role !== 'assistant') return;
 
-    const roleplayAttribution = this.buildRoleplayAttribution(chat, message.speakerId);
-    const roleplayOutputSanitizer = this.buildRoleplayOutputSanitizer(chat);
-    const roleplayChoicesEnabled = !!chat.roleplay?.adventureChoices;
-    const roleplayOverrides = this.roleplayRequestOverrides(chat, message.speakerId);
-    let rawRoleplayContent = '';
-    const previousMessages = buildRequestMessagesFromHistory(chat.messages, index - 1, roleplayAttribution);
+    const previousMessages = buildRequestMessagesFromHistory(
+      chat.messages,
+      index - 1,
+      roleplayStore.attribution(chat, message.speakerId)
+    );
     if (!previousMessages.length) return;
 
     const activeBackendMode = this.backendMode as GenerationBackendMode;
@@ -3503,8 +2475,17 @@ class AppStore {
       activeProvider,
       localBusyActionText: 'retrying here'
     })) return;
-    const activeProviderApiKey = activeProvider?.api_key;
-    const activeWorkspace = chat.workspace || null;
+
+    // A regenerate answers as the same speaker and keeps a forced next speaker.
+    const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId });
+    const agentic = message.mode === 'agent' || message.mode === 'instant';
+    /*
+     * The original turn's plan is carried over: an Instant answer stays on the
+     * Instant fast path, and a Deep or Max research answer re-runs at the same
+     * depth instead of silently shrinking to a plain chat agent.
+     */
+    const plan = planHomeAgentRun({ composerMode: message.mode, searchMode: message.searchMode });
+    const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
 
     this.error = null;
     const controller = new AbortController();
@@ -3521,37 +2502,35 @@ class AppStore {
         ...executionMetadata(activeBackendMode)
       }
     };
+    /** Keep the new version in step with what the message shows. */
+    const mirrorVersion = () => {
+      nextVersion.content = message.content;
+      nextVersion.reasoning = message.reasoning;
+      const { currentActivity, activityLabel: label } = message.metadata || {};
+      if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label };
+    };
 
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
     // Same optimistic ack as a fresh send: intent confirmation now, replaced
-    // wholesale by the engine's first content. Instant regens were grounded
-    // before, so they read as lookups.
-    const regenPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-    message.content = (message.mode === 'agent' || message.mode === 'instant')
-      ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup')
-      : '';
+    // wholesale by the engine's first content.
+    message.content = agentic ? optimisticAck(regenPrompt, message.mode === 'agent' ? 'work' : 'lookup') : '';
     message.reasoning = '';
     message.done = false;
     message.status = 'streaming';
-    if (message.mode === 'agent' || message.mode === 'instant') {
-      const instantRegen = message.mode === 'instant';
+    if (agentic) {
+      const initial = initialHomeActivity(plan, message.mode);
       message.agentSteps = [
-        { id: createId('step'), type: 'thinking', label: activityLabel(instantRegen ? 'searching' : 'planning'), status: 'running', detail: instantRegen ? 'Checking sources' : 'Preparing tools and context' }
+        { id: createId('step'), type: 'thinking', label: activityLabel(initial.activity), status: 'running', detail: initial.detail }
       ];
       message.metadata = {
         ...(message.metadata || {}),
         modelName: activeModelLabel,
         ...executionMetadata(activeBackendMode),
-        currentActivity: instantRegen ? 'searching' : 'planning',
-        activityLabel: instantRegen ? activityLabel('searching') : 'Working'
+        currentActivity: initial.activity,
+        activityLabel: activityLabel(initial.activity)
       };
-      nextVersion.metadata = {
-        ...(nextVersion.metadata || {}),
-        ...executionMetadata(activeBackendMode),
-        currentActivity: message.mode === 'instant' ? 'searching' : 'planning',
-        activityLabel: message.mode === 'instant' ? activityLabel('searching') : 'Working'
-      };
+      mirrorVersion();
       message.artifact = null;
       message.artifacts = [];
       if (this.currentArtifactMessageId === message.id) {
@@ -3562,10 +2541,8 @@ class AppStore {
 
     /*
      * The run begins inside the `try` so the `finally` that ends it always runs.
-     * `persist()` used to sit between `beginGenerationRun` and this `try`, and it
-     * writes localStorage synchronously — a quota error there recorded a run that
-     * could never be ended, pinning the chat in "generating" for the rest of the
-     * session.
+     * `persist()` writes localStorage synchronously; a quota error before the
+     * `try` recorded a run that could never be ended.
      */
     try {
       this.beginGenerationRun(targetChatId, {
@@ -3576,259 +2553,70 @@ class AppStore {
         startedAt: Date.now()
       });
       this.persist();
-      const styledSystemPrompt = this.buildSystemPromptForMode({
+      const systemPrompt = this.buildSystemPromptForMode({
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
         chat,
-        speakerId: message.speakerId
+        speakerId: turn.speakerId
       });
-      const outboundMessages = appendRoleplayNudge(
-        appendRoleplayStoryTurn(
-          buildOutboundMessages({ messages: previousMessages, systemPrompt: styledSystemPrompt }),
-          roleplayOverrides.storyTurn?.instruction
-        ),
-        roleplayAttribution
-      );
-      if (message.mode === 'agent' || message.mode === 'instant') {
-        const rawPrompt = [...chat.messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '';
-        const ctxMode = normalizeContextMode(chat.contextMode);
-        const regenProfile = ctxMode === 'code' ? 'work' as const : 'chat' as const;
-        // Regenerating an Instant answer stays on the Instant fast path (allowlist +
-        // tight budgets + quiet activity) instead of widening to full agent.
-        const isInstantRegen = message.mode === 'instant' || (message.mode !== 'agent' && chat.composerMode === 'instant');
-        const instantRegenBudget = { maxIterations: 4, maxToolCalls: 8, maxTimeMs: 90 * 1000 };
-        /*
-         * The original turn's search depth is carried over. Without it, regenerating a
-         * Deep or Max research answer silently re-ran as a plain chat agent — same
-         * question, far shallower answer, and no indication why.
-         */
-        const regenSearchMode = message.searchMode && message.searchMode !== 'chat'
-          ? message.searchMode
-          : undefined;
-        const regenArgs: RunAgentTaskArgs = {
+      const reasoningLevel = chat.reasoningLevel ?? this.reasoningLevel;
+      if (agentic) {
+        const agentResult = await runAgentTask({
           chatId: targetChatId,
-          systemPrompt: styledSystemPrompt,
+          systemPrompt,
           messages: previousMessages,
-          rawPrompt,
+          rawPrompt: regenPrompt,
           executionMode: 'sandbox',
-          workspaceName: activeWorkspace?.rootName,
-          workspaceFiles: activeWorkspace?.files,
-          toolMode: isInstantRegen ? ('instant' as const) : 'agent',
-          agentProfile: regenSearchMode ? 'search' as const : regenProfile,
-          ...(regenSearchMode ? { searchMode: regenSearchMode } : {}),
-          quietActivity: isInstantRegen,
+          toolMode: plan.toolMode,
+          agentProfile: plan.agentProfile,
+          searchMode: plan.searchMode,
+          quietActivity: plan.instant,
           conversationContext: this.buildSearchConversationContext(message.id, targetChatId),
-          reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
-          onContent: (value) => {
-            nextVersion.content = value;
-            message.content = value;
-            this.touchChats();
-          },
-          ...(regenProfile === 'chat' && !regenSearchMode && !isInstantRegen ? { maxIterations: 12, maxToolCalls: 24, maxTimeMs: 5 * 60 * 1000 } : {}),
-          ...(isInstantRegen ? instantRegenBudget : {}),
+          reasoningLevel,
+          ...plan.budget,
           signal: controller.signal,
-          onStep: (steps) => {
-            message.agentSteps = steps;
-            if (isInstantRegen) {
+          ...homeAgentCallbacks({
+            message,
+            quiet: plan.instant,
+            sync: () => {
+              mirrorVersion();
               this.touchChats();
-              this.persist();
-              return;
-            }
-            const running = steps.find((step) => step.status === 'running');
-            if (running) {
-              const mapped = activityFromProgress(running.label);
-              setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
-              nextVersion.metadata = {
-                ...(nextVersion.metadata || {}),
-                currentActivity: mapped.currentActivity,
-                activityLabel: mapped.activityLabel
-              };
-            }
-            this.touchChats();
-            this.persist();
-          },
-          onProgress: (text) => {
-            if (isInstantRegen) {
-              this.touchChats();
-              return;
-            }
-            const mapped = activityFromProgress(text);
-            setAgentActivity(message, mapped.currentActivity, mapped.activityLabel);
-            nextVersion.metadata = {
-              ...(nextVersion.metadata || {}),
-              currentActivity: mapped.currentActivity,
-              activityLabel: mapped.activityLabel
-            };
-            this.touchChats();
-          },
-          onReasoning: (value) => {
-            reasoningTimer.markStarted();
-            nextVersion.reasoning = value;
-            message.reasoning = value;
-            this.touchChats();
-          },
-          onArtifact: (artifacts) => {
-            const latest = artifacts.length ? artifacts[artifacts.length - 1] : null;
-            message.artifacts = artifacts;
-            message.artifact = latest;
-            if (this.currentChatId === targetChatId && (latest || this.currentArtifactMessageId === message.id)) {
-              this.setCurrentArtifact(latest, message.id);
-            }
-            this.touchChats();
-            this.persist();
-          },
-          onSources: (liveSources) => {
-            const existingUrls = new Set((message.sources || []).map((s) => s.url));
-            const newSources = liveSources.filter((s) => !existingUrls.has(s.url));
-            if (newSources.length) {
-              message.sources = [...(message.sources || []), ...newSources];
-              if (!message.searchMode || message.searchMode === 'chat') {
-                message.searchMode = 'search';
-              }
-              this.touchChats();
-              this.persist();
-            }
-          }
-        };
-        const agentResult = await runAgentTask(regenArgs);
+            },
+            persist: () => this.persist(),
+            onReasoningStart: () => reasoningTimer.markStarted(),
+            onArtifacts: (latest) => this.focusArtifact(targetChatId, message.id, latest)
+          })
+        });
+        exactUsage = agentResult.usage || exactUsage;
         markAgentWriting(message);
-        nextVersion.metadata = {
-          ...(nextVersion.metadata || {}),
-          currentActivity: 'writing',
-          activityLabel: activityLabel('writing')
-        };
+        mirrorVersion();
         this.touchChats();
         this.persist();
-        const outcome = agentOutcome(agentResult);
-        const stopReason = agentStopReason(agentResult);
-        const usableAgentResult = hasUsableAgentResult(agentResult);
-        if (outcome === 'failed' && agentResult.error && !usableAgentResult) {
-          nextVersion.content = agentResult.content || agentResult.error;
-          message.content = agentResult.content || agentResult.error;
-          message.status = 'error';
-          nextVersion.metadata = {
-            ...finalizeAssistantMetadata({
-              existing: nextVersion.metadata,
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                error: true,
-                errorMessage: agentResult.error,
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent failed',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          message.metadata = nextVersion.metadata;
-        } else if (agentResult.warning || outcome === 'partial' || outcome === 'stopped') {
-          nextVersion.content = agentResult.content;
-          message.content = agentResult.content;
-          message.status = 'idle';
-          nextVersion.metadata = {
-            ...finalizeAssistantMetadata({
-              existing: nextVersion.metadata,
-              modelName: activeModelLabel,
-              backendMode: activeBackendMode,
-              noUsageTimingScope: 'agent_wall',
-              overrides: {
-                warning: agentResult.warning || agentResult.error || 'Agent stopped before normal completion.',
-                outcome,
-                stopReason,
-                currentActivity: 'stopped',
-                activityLabel: 'Agent stopped',
-                workProduct: agentResult.artifact?.workProduct ? {
-                  id: agentResult.artifact.workProduct.id,
-                  kind: agentResult.artifact.workProduct.kind,
-                  title: agentResult.artifact.workProduct.title,
-                  primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-                  status: agentResult.artifact.workProduct.status
-                } : undefined,
-                publicFallback: !!agentResult.publicFallback,
-                diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-              }
-            })
-          };
-          message.metadata = nextVersion.metadata;
-        } else {
-          nextVersion.content = agentResult.content;
-          message.content = agentResult.content;
-          nextVersion.metadata = {
-            ...(nextVersion.metadata || {}),
-            ...executionMetadata(activeBackendMode),
-            outcome,
-            stopReason,
-            currentActivity: 'completed',
-            activityLabel: 'Agent finished',
-            workProduct: agentResult.artifact?.workProduct ? {
-              id: agentResult.artifact.workProduct.id,
-              kind: agentResult.artifact.workProduct.kind,
-              title: agentResult.artifact.workProduct.title,
-              primaryFile: agentResult.artifact.workProduct.files[0]?.path,
-              status: agentResult.artifact.workProduct.status
-            } : undefined,
-            publicFallback: !!agentResult.publicFallback,
-            diagnosticsRedacted: !!agentResult.diagnosticsRedacted
-          };
-          message.metadata = nextVersion.metadata;
-        }
-        nextVersion.reasoning = agentResult.reasoning;
-        message.reasoning = agentResult.reasoning;
-        message.agentSteps = agentResult.steps;
-        message.artifact = agentResult.artifact;
-        if (agentResult.sources?.length) {
-          const existingUrls = new Set((message.sources || []).map((s) => s.url));
-          const newSources = agentResult.sources.filter((s) => !existingUrls.has(s.url));
-          message.sources = [...(message.sources || []), ...newSources];
-          if (!message.searchMode || message.searchMode === 'chat') {
-            message.searchMode = 'search';
-          }
-          message.searchMeta = {
-            ...(message.searchMeta || {
-              searchRequested: true,
-              searchSucceeded: true,
-              contextAvailable: true,
-              sourceCount: 0
-            }),
-            searchRequested: true,
-            searchSucceeded: true,
-            contextAvailable: true,
-            sourceCount: message.sources.length,
-            stopReason
-          };
-        }
-        if (this.currentChatId === targetChatId && (agentResult.artifact || this.currentArtifactMessageId === message.id)) {
-          this.setCurrentArtifact(agentResult.artifact, message.id);
-        }
+        applyHomeAgentResult(message, agentResult, {
+          modelName: activeModelLabel,
+          backendMode: activeBackendMode,
+          searchMode: plan.searchMode,
+          requestedProvider: this.config.search?.provider || 'aggregator'
+        });
+        nextVersion.content = message.content;
+        nextVersion.reasoning = message.reasoning;
+        nextVersion.metadata = message.metadata;
+        this.focusArtifact(targetChatId, message.id, agentResult.artifact);
         this.touchChats();
         this.persist();
-        // Agent regeneration also stays inside the chat sandbox.
       } else {
         await streamAssistantReply({
-          messages: outboundMessages,
+          messages: turn.decorate(buildOutboundMessages({ messages: previousMessages, systemPrompt })),
           signal: controller.signal,
-          apiKey: activeProviderApiKey,
-          reasoningLevel: this.reasoningLevel,
-          sampling: roleplayOverrides.sampling,
-          stop: roleplayOverrides.stop,
+          apiKey: activeProvider?.api_key,
+          reasoningLevel,
+          sampling: turn.sampling,
+          stop: turn.stop,
           onChunk: (value) => {
             reasoningTimer.markStopped();
-            // Keep the raw accumulation: at finalize it is the only faithful
-            // source for the choices and prop blocks the sanitizer strips out.
-            if (roleplayOverrides.stop.length) rawRoleplayContent += value;
+            turn.record(value);
             const nextContent = nextVersion.content + value;
-            nextVersion.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(nextContent) : nextContent;
+            nextVersion.content = turn.sanitize ? turn.sanitize(nextContent) : nextContent;
             message.content = nextVersion.content;
             nextVersion.reasoning = message.reasoning;
             this.touchChats();
@@ -3855,31 +2643,15 @@ class AppStore {
         totalElapsedSeconds: timing,
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
-      if (roleplayOutputSanitizer || roleplayOverrides.stop.length) {
-        const source = rawRoleplayContent || nextVersion.content;
-        const parsed = roleplayChoicesEnabled
-          ? extractRoleplayChoices(source)
-          : { text: source, choices: [] as string[] };
-        if (parsed.choices.length) message.choices = parsed.choices;
-        const handed = extractRoleplayProps(parsed.text);
-        if (handed.props.length) message.props = handed.props;
-        const trimmed = stripTrailingPartialStop(handed.text, roleplayOverrides.stop);
-        nextVersion.content = roleplayOutputSanitizer ? roleplayOutputSanitizer(trimmed) : trimmed;
-        message.content = nextVersion.content;
-        const storyTurn = roleplayOverrides.storyTurn;
-        if (storyTurn) {
-          message.storyTurn = {
-            label: storyTurn.label,
-            ...(storyTurn.kind ? { kind: storyTurn.kind } : {}),
-            ...(storyTurn.intensity ? { intensity: storyTurn.intensity } : {})
-          };
-        }
-      }
+      message.content = nextVersion.content;
+      turn.finalize(message);
+      nextVersion.content = message.content;
       message.metadata = nextVersion.metadata;
       message.model = activeModelLabel;
       message.done = true;
-      // Only set status to 'idle' if it wasn't already set to 'error'
-      if (message.status !== 'error') {
+      // Only set status to 'idle' if the agent result didn't already set 'error'
+      // (it mutates the message, so TS still sees the 'streaming' assignment).
+      if ((message.status as ChatMessage['status']) !== 'error') {
         message.status = 'idle';
       }
       if (message.mode === 'slides') {
@@ -3891,19 +2663,7 @@ class AppStore {
         }
       }
       if (message.agentSteps?.length) {
-        const hasError = message.metadata?.error;
-        const hasWarning = message.metadata?.warning;
-        message.agentSteps = message.agentSteps.map((step, stepIndex, all) => {
-          if (stepIndex === all.length - 1) {
-            if (hasError) {
-              return { ...step, status: 'error', detail: step.detail || 'Agent encountered an error' };
-            } else if (hasWarning) {
-              return { ...step, status: 'done', detail: hasWarning };
-            }
-            return { ...step, status: 'done', detail: message.metadata?.outcome === 'completed' ? 'Response ready' : step.detail };
-          }
-          return { ...step, status: step.status === 'running' ? 'done' : step.status };
-        });
+        message.agentSteps = settleAgentSteps(message.agentSteps, message.metadata);
       }
       this.touchChats();
       this.persist();
@@ -3912,17 +2672,15 @@ class AppStore {
       const failure = toErrorMessage(error) || 'Request failed';
       const aborted = isAbortLikeError(failure);
       nextVersion.content = aborted ? (nextVersion.content || '') : (nextVersion.content || failure);
-      nextVersion.metadata = {
-        ...finalizeAssistantMetadata({
-          existing: nextVersion.metadata,
-          modelName: activeModelLabel,
-          backendMode: activeBackendMode,
-          elapsedSeconds: timing,
-          totalElapsedSeconds: timing,
-          reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
-          overrides: aborted ? {} : { error: true, errorMessage: failure }
-        })
-      };
+      nextVersion.metadata = finalizeAssistantMetadata({
+        existing: nextVersion.metadata,
+        modelName: activeModelLabel,
+        backendMode: activeBackendMode,
+        elapsedSeconds: timing,
+        totalElapsedSeconds: timing,
+        reasoningElapsedSeconds: reasoningTimer.elapsedSeconds(),
+        overrides: aborted ? {} : { error: true, errorMessage: failure }
+      });
       message.content = nextVersion.content;
       message.reasoning = nextVersion.reasoning || '';
       message.metadata = nextVersion.metadata;
@@ -4222,3 +2980,4 @@ class AppStore {
 }
 
 export const appStore = new AppStore();
+roleplayStore.bind(appStore);

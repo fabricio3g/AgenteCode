@@ -3,6 +3,7 @@
 <script lang="ts">
   import { Copy, FileSearch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
   import { deepResearchStore } from '$lib/stores/deep-research.svelte';
@@ -203,7 +204,7 @@
       <GreetingPager
         count={greetingCount}
         index={chat?.greetingIndex ?? 0}
-        onchange={(index) => appStore.setRoleplayGreeting(greetingCharacter, index)}
+        onchange={(index) => roleplayStore.setGreeting(greetingCharacter, index)}
       />
     {/if}
 
@@ -212,8 +213,8 @@
         choices={adventureChoices}
         disabled={appStore.currentChatGenerating}
         timerSeconds={chat?.roleplay?.choiceTimerSeconds ?? null}
-        onpick={(choice) => void appStore.sendAdventureChoice(choice)}
-        onexpire={() => void appStore.expireRoleplayChoice()}
+        onpick={(choice) => void roleplayStore.sendChoice(choice)}
+        onexpire={() => void roleplayStore.expireChoice()}
         ondismiss={() => (choicesDismissed = true)}
       />
     {/if}

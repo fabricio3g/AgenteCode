@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { appStore } from '$lib/stores/app.svelte';
+import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { charactersStore } from '$lib/features/roleplay/characters.svelte';
 import { worldsStore, emptyWorld } from '$lib/features/roleplay/worlds.svelte';
 import { emptyCharacter } from '$lib/services/character-card';
@@ -27,7 +28,7 @@ describe('roleplay prompt wiring', () => {
     });
     await charactersStore.save(card);
 
-    const chat = appStore.startRoleplay(card);
+    const chat = roleplayStore.startSolo(card);
 
     expect(chat.contextMode).toBe('roleplay');
     expect(chat.characterId).toBe(card.id);
@@ -44,12 +45,9 @@ describe('roleplay prompt wiring', () => {
       firstMessage: 'Hello.'
     });
     await charactersStore.save(card);
-    const chat = appStore.startRoleplay(card);
+    const chat = roleplayStore.startSolo(card);
 
-    const buildPrompt = (appStore as unknown as {
-      buildRoleplaySystemPrompt: (chat: unknown) => string;
-    }).buildRoleplaySystemPrompt.bind(appStore);
-    const prompt = buildPrompt(chat);
+    const prompt = roleplayStore.systemPrompt(chat);
 
     expect(prompt).toContain('Aiko is a barista who works nights.');
     expect(prompt).toContain('Sarcastic but kind.');
@@ -65,7 +63,7 @@ describe('roleplay prompt wiring', () => {
     const empty = appStore.createChat('roleplay');
     const before = appStore.visibleRoleplayChats.length;
 
-    const chat = appStore.startRoleplay(card);
+    const chat = roleplayStore.startSolo(card);
 
     expect(chat.id).toBe(empty.id);
     expect(appStore.visibleRoleplayChats.length).toBe(before);
@@ -75,8 +73,8 @@ describe('roleplay prompt wiring', () => {
     const card = emptyCharacter({ name: 'Ren', firstMessage: 'Hello.' });
     await charactersStore.save(card);
 
-    const first = appStore.startRoleplay(card);
-    const second = appStore.startRoleplay(card);
+    const first = roleplayStore.startSolo(card);
+    const second = roleplayStore.startSolo(card);
 
     expect(second.id).not.toBe(first.id);
   });
@@ -89,7 +87,7 @@ describe('roleplay prompt wiring', () => {
     });
     await charactersStore.save(card);
 
-    const chat = appStore.startRoleplay(card, { greetingIndex: 1 });
+    const chat = roleplayStore.startSolo(card, { greetingIndex: 1 });
 
     expect(chat.greetingIndex).toBe(1);
     expect(chat.messages[0]?.content).toBe('Second.');
@@ -115,7 +113,7 @@ describe('world scene wiring', () => {
       starters: ['The lanterns rise over the harbor.']
     });
 
-    const chat = appStore.startScene({
+    const chat = roleplayStore.startScene({
       characters: [ren, aiko],
       world,
       openingSource: 'starter',
@@ -155,12 +153,9 @@ describe('world scene wiring', () => {
       }
     });
     await worldsStore.save(world);
-    const chat = appStore.startScene({ characters: [aiko], world, openingSource: 'greeting', openingIndex: 0 });
+    const chat = roleplayStore.startScene({ characters: [aiko], world, openingSource: 'greeting', openingIndex: 0 });
 
-    const buildPrompt = (appStore as unknown as {
-      buildRoleplaySystemPrompt: (chat: unknown) => string;
-    }).buildRoleplaySystemPrompt.bind(appStore);
-    const prompt = buildPrompt(chat);
+    const prompt = roleplayStore.systemPrompt(chat);
 
     expect(prompt).toContain('## Eldoria\nA floating city above a drowned world.');
     expect(prompt).toContain('The festival begins tonight.');
@@ -172,12 +167,9 @@ describe('world scene wiring', () => {
     await charactersStore.save(aiko);
     const world = emptyWorld({ name: 'Eldoria', scenario: 'The festival begins tonight.' });
     await worldsStore.save(world);
-    const chat = appStore.startScene({ characters: [aiko], world });
+    const chat = roleplayStore.startScene({ characters: [aiko], world });
 
-    const buildPrompt = (appStore as unknown as {
-      buildRoleplaySystemPrompt: (chat: unknown) => string;
-    }).buildRoleplaySystemPrompt.bind(appStore);
-    const prompt = buildPrompt(chat);
+    const prompt = roleplayStore.systemPrompt(chat);
 
     expect(prompt).toContain('Aiko is closing the cafe.');
     expect(prompt).not.toContain('The festival begins tonight.');
@@ -189,7 +181,7 @@ describe('world scene wiring', () => {
     await charactersStore.save(aiko);
     await charactersStore.save(ren);
 
-    const chat = appStore.startScene({
+    const chat = roleplayStore.startScene({
       characters: [aiko, ren],
       openingSource: 'greeting',
       openingIndex: 0
@@ -205,7 +197,7 @@ describe('world scene wiring', () => {
     const aiko = emptyCharacter({ name: 'Aiko' });
     await charactersStore.save(aiko);
 
-    const chat = appStore.startScene({ characters: [aiko] });
+    const chat = roleplayStore.startScene({ characters: [aiko] });
 
     expect(chat?.messages.length).toBe(0);
   });
@@ -214,7 +206,7 @@ describe('world scene wiring', () => {
     const aiko = emptyCharacter({ name: 'Aiko', firstMessage: 'Hello.' });
     await charactersStore.save(aiko);
 
-    const chat = appStore.startScene({ characters: [aiko], openingSource: 'none' });
+    const chat = roleplayStore.startScene({ characters: [aiko], openingSource: 'none' });
 
     expect(chat?.messages.length).toBe(0);
   });
@@ -229,7 +221,7 @@ describe('world scene wiring', () => {
       settings: { autoMode: true, replyOrder: 'natural', autoModeMaxTurns: 6, autoModeDelayMs: 12000, adventureChoices: true }
     });
 
-    const chat = appStore.startScene({ characters: [aiko, ren], world, openingSource: 'none' });
+    const chat = roleplayStore.startScene({ characters: [aiko, ren], world, openingSource: 'none' });
 
     expect(chat?.roleplay?.autoMode).toBe(true);
     expect(chat?.roleplay?.replyOrder).toBe('natural');
@@ -242,7 +234,7 @@ describe('world scene wiring', () => {
     const aiko = emptyCharacter({ name: 'Aiko' });
     await charactersStore.save(aiko);
 
-    const chat = appStore.startScene({ characters: [aiko], openingSource: 'none' });
+    const chat = roleplayStore.startScene({ characters: [aiko], openingSource: 'none' });
 
     expect(chat?.roleplay?.autoModeDelayMs).toBe(8000);
     expect(chat?.roleplay?.adventureChoices).toBe(false);
@@ -265,9 +257,9 @@ describe('mid-scene cast editing', () => {
     await charactersStore.save(ren);
     await charactersStore.save(yuki);
 
-    const chat = appStore.startScene({ characters: [aiko, ren], openingSource: 'none' });
-    appStore.toggleRoleplayMute(ren.id);
-    appStore.setRoleplayCast([ren.id, yuki.id]);
+    const chat = roleplayStore.startScene({ characters: [aiko, ren], openingSource: 'none' });
+    roleplayStore.toggleMute(ren.id);
+    roleplayStore.setCast([ren.id, yuki.id]);
 
     expect(chat?.characterId).toBe(ren.id);
     expect(chat?.roleplay?.characterIds).toEqual([ren.id, yuki.id]);
@@ -280,9 +272,9 @@ describe('mid-scene cast editing', () => {
     await charactersStore.save(aiko);
     await charactersStore.save(ren);
 
-    const chat = appStore.startScene({ characters: [aiko, ren], openingSource: 'none' });
-    appStore.toggleRoleplayMute(ren.id);
-    appStore.setRoleplayCast([aiko.id, 'char-missing']);
+    const chat = roleplayStore.startScene({ characters: [aiko, ren], openingSource: 'none' });
+    roleplayStore.toggleMute(ren.id);
+    roleplayStore.setCast([aiko.id, 'char-missing']);
 
     expect(chat?.roleplay?.characterIds).toEqual([aiko.id]);
     expect(chat?.roleplay?.mutedIds).toEqual([]);
@@ -291,9 +283,9 @@ describe('mid-scene cast editing', () => {
   it('refuses an empty cast', async () => {
     const aiko = emptyCharacter({ name: 'Aiko' });
     await charactersStore.save(aiko);
-    const chat = appStore.startScene({ characters: [aiko], openingSource: 'none' });
+    const chat = roleplayStore.startScene({ characters: [aiko], openingSource: 'none' });
 
-    appStore.setRoleplayCast([]);
+    roleplayStore.setCast([]);
 
     expect(chat?.roleplay?.characterIds).toEqual([aiko.id]);
   });
