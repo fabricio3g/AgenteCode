@@ -276,6 +276,7 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
       const queued = [...args.drainSteered(), ...args.drainFollowUps()];
       if (queued.length && !signal.aborted) {
         messages.push(...queued);
+        emit({ type: 'input_injected', messages: queued });
         emit({ type: 'turn_end', turnIndex: turns });
         continue;
       }
@@ -396,7 +397,10 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
 
     // Steering: course-correct after the tools landed, before the next stream.
     const steered = args.drainSteered();
-    if (steered.length) messages.push(...steered);
+    if (steered.length) {
+      messages.push(...steered);
+      emit({ type: 'input_injected', messages: steered });
+    }
 
     const prepared = await hooks?.prepareNextTurn?.(turns);
     if (prepared?.stop) {
@@ -407,9 +411,11 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
 
   // The loop can also fall out of the while without any break — that is the
   // turn budget expiring mid-flight.
+  let hitTurnLimit = false;
   if (stopReason === null) {
     stopReason = 'stop';
     if (turns >= maxTurns) {
+      hitTurnLimit = true;
       messages.push({
         role: 'assistant',
         content: `Reached the turn limit (${maxTurns}). Ask me to continue if there is more to do.`,
@@ -419,6 +425,6 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
     }
   }
 
-  emit({ type: 'agent_end', stopReason });
+  emit({ type: 'agent_end', stopReason, ...(hitTurnLimit ? { hitTurnLimit } : {}) });
   return { messages, stopReason, turns };
 }

@@ -113,7 +113,8 @@ export interface AgentTool {
 
 export type AgentEvent =
   | { type: 'agent_start' }
-  | { type: 'agent_end'; stopReason: StopReason }
+  /** `hitTurnLimit`: the turn budget ran out; the run stopped, it did not finish. */
+  | { type: 'agent_end'; stopReason: StopReason; hitTurnLimit?: boolean }
   | { type: 'turn_start'; turnIndex: number }
   | { type: 'turn_end'; turnIndex: number }
   | { type: 'text_delta'; delta: string }
@@ -142,6 +143,8 @@ export type AgentEvent =
   | { type: 'run_summary'; summary: CoreRunSummary }
   | { type: 'content_replace'; content: string }
   | { type: 'steer_acknowledged'; accepted: boolean; queuedCount?: number }
+  /** Queued user input (steers, follow-ups) entered the conversation here. */
+  | { type: 'input_injected'; messages: UserMessage[] }
   | { type: 'error'; message: string };
 
 /**

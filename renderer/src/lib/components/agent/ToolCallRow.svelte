@@ -111,7 +111,7 @@
   }
 </script>
 
-<div class="aui-tool-row" class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
+<div class="aui-tool-row" data-awaiting-approval={isApproval} class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
   <button
     type="button"
     class="aui-tool-fallback-trigger w-full max-w-none"

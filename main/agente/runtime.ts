@@ -169,7 +169,7 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
     case 'agent_start':
       return { type: 'agent_start', chatId };
     case 'agent_end':
-      return { type: 'agent_end', chatId, stopReason: event.stopReason };
+      return { type: 'agent_end', chatId, stopReason: event.stopReason, ...(event.hitTurnLimit ? { hitTurnLimit: true } : {}) };
     case 'turn_start':
       return { type: 'turn_start', chatId, turnIndex: event.turnIndex };
     case 'turn_end':
@@ -410,6 +410,10 @@ function attachAgentListeners(session: RuntimeSession): void {
       if (event.message.usage) {
         emitUsage(session, event.message.usage);
       }
+    } else if (event.type === 'input_injected') {
+      // Steers and follow-ups are logged where the engine actually used them,
+      // so a resumed session rebuilds the same conversation the user saw.
+      for (const message of event.messages) session.tree.append('user', { content: message.content, images: message.images });
     } else if (event.type === 'tool_end') {
       session.tree.append('tool_result', {
         toolCallId: event.toolCallId,
@@ -538,8 +542,11 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     }
   }
 
+  // The model the caller asked for wins over the one recorded in a resumed
+  // log: the picker is what the user sees, and it may have changed since.
+  // The log's model only fills in when the caller did not name one.
   const restoredModel = tree.lastModelChange();
-  if (restoredModel) {
+  if (restoredModel && !args.model) {
     session.transport = resolveTransport(restoredModel.provider, restoredModel.model, restoredModel.thinkingLevel);
   }
 
@@ -617,6 +624,11 @@ export async function deleteSessionData(args: { chatIds?: string[]; sessionIds?:
   }
   const removed = await deleteSessionFiles(agentePaths(), [...sessionIds]);
   return { ok: true, removed };
+}
+
+/** Chats whose engine is mid-run right now (survives a renderer reload). */
+export function liveChatIds(): string[] {
+  return [...sessions.values()].filter((session) => !session.disposed && session.agent.isStreaming).map((session) => session.chatId);
 }
 
 export function disposeAllSessions(): void {
@@ -756,18 +768,35 @@ export async function compact(chatId: string, customInstructions?: string): Prom
   }
 }
 
-export async function listCheckpoints(chatId: string): Promise<AgenteCheckpointSummary[]> {
+/**
+ * The checkpoint store of a conversation: the live session's, or — after a
+ * restart, before anything was sent — one opened from disk by session id.
+ */
+function checkpointStoreFor(chatId: string, sessionId?: string): CheckpointStore | null {
   const session = requireSession(chatId);
-  if (!session?.checkpoints) return [];
-  return session.checkpoints.listTurns();
+  if (session) return session.checkpoints;
+  if (!sessionId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(sessionId)) return null;
+  return new CheckpointStore(path.join(agentePaths().checkpointsDir, sessionId));
 }
 
-export async function rollback(chatId: string, turnIndex: number): Promise<{ ok: boolean; restored?: number; error?: string }> {
+export async function listCheckpoints(chatId: string, sessionId?: string): Promise<AgenteCheckpointSummary[]> {
+  return (await checkpointStoreFor(chatId, sessionId)?.listTurns()) ?? [];
+}
+
+/** Put the project back to how it was before `turnIndex` (see CheckpointStore.restoreTo). */
+export async function rollback(
+  chatId: string,
+  turnIndex: number,
+  options: { sessionId?: string; projectRoot?: string } = {}
+): Promise<{ ok: boolean; restored?: number; files?: string[]; error?: string }> {
   const session = requireSession(chatId);
-  if (!session?.checkpoints) return { ok: false, error: 'Checkpoints are disabled for this session' };
+  const store = checkpointStoreFor(chatId, options.sessionId);
+  const projectRoot = session?.projectRoot ?? options.projectRoot;
+  if (!store || !projectRoot) return { ok: false, error: 'No checkpoints for this conversation' };
   try {
-    const restored = await session.checkpoints.restore(session.projectRoot, turnIndex);
-    return { ok: true, restored };
+    const files = await store.restoreTo(projectRoot, turnIndex);
+    if (session) session.lastCheckpointTurn = Math.min(session.lastCheckpointTurn, turnIndex - 1);
+    return { ok: true, restored: files.length, files };
   } catch (err: unknown) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

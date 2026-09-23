@@ -58,6 +58,7 @@ const es: CopyOverride = {
     allow: 'Permitir', deny: 'Denegar', failed: 'Falló', cancelled: 'Cancelado', stopped: 'Detenido',
     done: 'Hecho', error: 'Error', result: 'Resultado', truncated: '… (recortado)'
   },
+  codeRun: { read: 'Leer', write: 'Escribir', edit: 'Editar', bash: 'Ejecutar', grep: 'Buscar', ls: 'Listar', todo_write: 'Actualizar tareas', git_status: 'Estado de Git', git_diff: 'Diff de Git', approvePlan: 'Aprobar plan', approval: 'Aprobación', approved: 'Aprobado', denied: 'Denegado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Límite de salida alcanzado — continuando', planNote: 'Al aprobar, el agente empieza a editar; cada edición sigue pidiendo permiso.', turnLimit: 'Detenido por el límite de turnos', interrupted: 'Interrumpido — la app se cerró durante esta ejecución', plan: 'Plan' },
   untitled: { home: 'Nuevo chat', code: 'Nueva conversación', roleplay: 'Nuevo rol' },
   spaces: { home: 'Inicio', code: 'Código', roleplay: 'Rol' },
   roleplay: {
@@ -133,6 +134,7 @@ const ptBR: CopyOverride = {
     allow: 'Permitir', deny: 'Negar', failed: 'Falhou', cancelled: 'Cancelado', stopped: 'Parado',
     done: 'Concluído', error: 'Erro', result: 'Resultado', truncated: '… (truncado)'
   },
+  codeRun: { read: 'Ler', write: 'Escrever', edit: 'Editar', bash: 'Executar', grep: 'Pesquisar', ls: 'Listar', todo_write: 'Atualizar tarefas', git_status: 'Status do Git', git_diff: 'Diff do Git', approvePlan: 'Aprovar plano', approval: 'Aprovação', approved: 'Aprovado', denied: 'Negado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Limite de saída atingido — continuando', planNote: 'Ao aprovar, o agente começa a editar; cada edição ainda pede permissão.', turnLimit: 'Parado no limite de turnos', interrupted: 'Interrompido — o app fechou durante esta execução', plan: 'Plano' },
   untitled: { home: 'Novo chat', code: 'Nova conversa', roleplay: 'Novo roleplay' },
   spaces: { home: 'Início', code: 'Código', roleplay: 'Roleplay' },
   roleplay: {
@@ -208,6 +210,7 @@ const fr: CopyOverride = {
     allow: 'Autoriser', deny: 'Refuser', failed: 'Échec', cancelled: 'Annulé', stopped: 'Arrêté',
     done: 'Terminé', error: 'Erreur', result: 'Résultat', truncated: '… (tronqué)'
   },
+  codeRun: { read: 'Lire', write: 'Écrire', edit: 'Modifier', bash: 'Exécuter', grep: 'Rechercher', ls: 'Lister', todo_write: 'Mettre à jour les tâches', git_status: 'État Git', git_diff: 'Diff Git', approvePlan: 'Approuver le plan', approval: 'Approbation', approved: 'Approuvé', denied: 'Refusé', compacting: 'Compactage du contexte', compacted: 'Contexte compacté', continuing: 'Limite de sortie atteinte — poursuite', planNote: 'Approuver permet à l’agent de commencer à modifier ; chaque modification demande encore votre accord.', turnLimit: 'Arrêté à la limite de tours', interrupted: 'Interrompu — l’application s’est fermée pendant l’exécution', plan: 'Plan' },
   untitled: { home: 'Nouvelle conversation', code: 'Nouvelle conversation', roleplay: 'Nouveau jeu de rôle' },
   spaces: { home: 'Accueil', code: 'Code', roleplay: 'Jeu de rôle' },
   roleplay: {
@@ -283,6 +286,7 @@ const de: CopyOverride = {
     allow: 'Erlauben', deny: 'Ablehnen', failed: 'Fehlgeschlagen', cancelled: 'Abgebrochen', stopped: 'Gestoppt',
     done: 'Fertig', error: 'Fehler', result: 'Ergebnis', truncated: '… (gekürzt)'
   },
+  codeRun: { read: 'Lesen', write: 'Schreiben', edit: 'Bearbeiten', bash: 'Ausführen', grep: 'Suchen', ls: 'Auflisten', todo_write: 'Aufgaben aktualisieren', git_status: 'Git-Status', git_diff: 'Git-Diff', approvePlan: 'Plan freigeben', approval: 'Freigabe', approved: 'Freigegeben', denied: 'Abgelehnt', compacting: 'Kontext wird verdichtet', compacted: 'Kontext verdichtet', continuing: 'Ausgabelimit erreicht — geht weiter', planNote: 'Mit der Freigabe beginnt der Agent zu bearbeiten; jede Änderung fragt weiterhin einzeln.', turnLimit: 'Am Rundenlimit gestoppt', interrupted: 'Unterbrochen — die App wurde während des Laufs geschlossen', plan: 'Plan' },
   untitled: { home: 'Neuer Chat', code: 'Neue Unterhaltung', roleplay: 'Neues Rollenspiel' },
   spaces: { home: 'Start', code: 'Code', roleplay: 'Rollenspiel' },
   roleplay: {
@@ -358,6 +362,7 @@ const ja: CopyOverride = {
     allow: '許可', deny: '拒否', failed: '失敗', cancelled: 'キャンセル済み', stopped: '停止済み',
     done: '完了', error: 'エラー', result: '結果', truncated: '…（省略）'
   },
+  codeRun: { read: '読み取り', write: '書き込み', edit: '編集', bash: '実行', grep: '検索', ls: '一覧', todo_write: 'タスクを更新', git_status: 'Git ステータス', git_diff: 'Git 差分', approvePlan: 'プランを承認', approval: '承認', approved: '承認済み', denied: '拒否', compacting: 'コンテキストを圧縮中', compacted: 'コンテキストを圧縮しました', continuing: '出力上限に達しました — 続行中', planNote: '承認するとエージェントが編集を始めます。各編集は引き続き個別に確認します。', turnLimit: 'ターン上限で停止しました', interrupted: '中断 — 実行中にアプリが終了しました', plan: 'プラン' },
   untitled: { home: '新しいチャット', code: '新しい会話', roleplay: '新しいロールプレイ' },
   spaces: { home: 'ホーム', code: 'コード', roleplay: 'ロールプレイ' },
   roleplay: {
@@ -433,6 +438,7 @@ const zh: CopyOverride = {
     allow: '允许', deny: '拒绝', failed: '失败', cancelled: '已取消', stopped: '已停止',
     done: '完成', error: '错误', result: '结果', truncated: '…（已截断）'
   },
+  codeRun: { read: '读取', write: '写入', edit: '编辑', bash: '运行', grep: '搜索', ls: '列出', todo_write: '更新任务', git_status: 'Git 状态', git_diff: 'Git 差异', approvePlan: '批准计划', approval: '批准', approved: '已批准', denied: '已拒绝', compacting: '正在压缩上下文', compacted: '上下文已压缩', continuing: '达到输出上限 — 继续中', planNote: '批准后代理开始编辑；每次编辑仍会单独询问。', turnLimit: '已在轮次上限处停止', interrupted: '已中断 — 运行期间应用已关闭', plan: '计划' },
   untitled: { home: '新对话', code: '新会话', roleplay: '新角色扮演' },
   spaces: { home: '主页', code: '代码', roleplay: '角色扮演' },
   roleplay: {

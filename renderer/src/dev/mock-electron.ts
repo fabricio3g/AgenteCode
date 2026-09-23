@@ -139,7 +139,7 @@ async function finishApprovedRun(chatId: string, decision: 'allow' | 'deny'): Pr
   await wait(150);
   send({ type: 'turn_end', turnIndex: 1 });
   send({ type: 'usage', promptTokens: 4120, completionTokens: 96, totalTokens: 4216, contextWindow: 200_000 });
-  send({ type: 'agent_end' });
+  send({ type: 'agent_end', stopReason: 'stop' });
 }
 
 const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
@@ -153,10 +153,21 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
 
   chat_db_load_all: () => savedSessions,
   chat_db_save_session: (args) => {
-    savedSessions.unshift((args as { session: unknown } | undefined)?.session ?? null);
+    // Upsert like the real table (id is the primary key).
+    const session = (args as { session?: { id?: string } } | undefined)?.session;
+    if (!session) return { ok: true };
+    const index = savedSessions.findIndex((entry) => (entry as { id?: string } | null)?.id === session.id);
+    if (index >= 0) savedSessions[index] = session;
+    else savedSessions.unshift(session);
     return { ok: true };
   },
-  chat_db_delete: () => ({ ok: true }),
+  chat_db_delete: (args) => {
+    const id = (args as { chatId?: string; id?: string } | undefined);
+    const target = id?.chatId ?? id?.id;
+    const index = savedSessions.findIndex((entry) => (entry as { id?: string } | null)?.id === target);
+    if (index >= 0) savedSessions.splice(index, 1);
+    return { ok: true };
+  },
   chat_db_migrate: () => ({ migrated: 0 }),
   chat_db_load_folders: () => [],
   chat_db_save_folder: () => ({ ok: true }),
@@ -181,6 +192,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   path_exists: (args) => !String((args as { path?: string } | undefined)?.path ?? '').includes('missing'),
   open_workspace_file: () => undefined,
   agente_delete_session_data: () => ({ ok: true, removed: 1 }),
+  agente_live_chats: () => [],
 
   // Models / runtime: one small local model and one installed runtime, so the
   // Model hub, the load dialog and the ModelSwitcher all have something to show.
@@ -230,8 +242,8 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     void finishApprovedRun(String(chatId ?? ''), decision === 'deny' ? 'deny' : 'allow');
     return { ok: true };
   },
-  'agente_list_checkpoints': () => [{ turnIndex: 1, createdAt: Date.now(), fileCount: 1, additions: 1, deletions: 1 }],
-  'agente_rollback': () => ({ ok: true, restored: 1 }),
+  'agente_list_checkpoints': () => [{ turnIndex: 1, createdAt: Date.now(), fileCount: 1, additions: 1, deletions: 1, files: ['src/index.ts'] }],
+  'agente_rollback': () => ({ ok: true, restored: 1, files: ['src/index.ts'] }),
   'agente_list_extensions': () => [
     { id: 'git-tools', name: 'Git Tools', description: 'Adds git_status and git_diff tools (read-only).', enabled: true, defaultEnabled: true },
     { id: 'safety-rails', name: 'Safety Rails', description: 'Blocks destructive commands before execution.', enabled: true, defaultEnabled: true }

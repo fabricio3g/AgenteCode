@@ -203,11 +203,11 @@ describe('runtime checkpoint numbering (real disk stores)', () => {
     expect(events.filter((event) => event.type === 'checkpoint_captured').map((event) => event.turnIndex)).toEqual([1, 2, 8]);
     expect(events.filter((event) => event.type === 'checkpoint_finalized').map((event) => event.turnIndex)).toEqual([1, 2, 8]);
     expect((await listCheckpoints(chatId)).map((turn) => turn.turnIndex)).toEqual([1, 2, 7, 8]);
-    expect(await rollback(chatId, 8)).toEqual({ ok: true, restored: 1 });
+    expect(await rollback(chatId, 8)).toMatchObject({ ok: true, restored: 1, files: ['sample.txt'] });
     expect(await fsp.readFile(path.join(root, 'sample.txt'), 'utf8')).toBe('second');
-    expect(await rollback(chatId, 2)).toEqual({ ok: true, restored: 1 });
+    expect(await rollback(chatId, 2)).toMatchObject({ ok: true, restored: 1, files: ['sample.txt'] });
     expect(await fsp.readFile(path.join(root, 'sample.txt'), 'utf8')).toBe('first');
-    expect(await rollback(chatId, 1)).toEqual({ ok: true, restored: 1 });
+    expect(await rollback(chatId, 1)).toMatchObject({ ok: true, restored: 1, files: ['sample.txt'] });
     expect(await fsp.readFile(path.join(root, 'sample.txt'), 'utf8')).toBe('original');
   });
 });

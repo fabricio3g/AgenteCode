@@ -1,5 +1,8 @@
 import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
-import type { AgentActivityKey, CodeStopReason, HomeStopReason } from '$shared/agente-protocol';
+import type { AgentActivityKey, CodeStopReason, CodeTodoItem, HomeStopReason } from '$shared/agente-protocol';
+
+/** One entry of a Code run's transcript, in arrival order. */
+export type CodeTimelineEntry = { kind: 'text'; text: string } | { kind: 'step'; id: string };
 
 export interface Attachment {
   id: string;
@@ -46,6 +49,16 @@ export interface MessageVersion {
     stopReason?: AgentStopReason;
     /** Why a Code-space agent run ended (the agente loop's StopReason). */
     codeStopReason?: CodeStopReason;
+    /** The Code run stopped because its turn budget ran out, not because it finished. */
+    codeHitTurnLimit?: boolean;
+    /** Text and tool steps of a Code run in the order they happened. */
+    codeTimeline?: CodeTimelineEntry[];
+    /** The model's task list as it stood when the run ended. */
+    codeTodos?: CodeTodoItem[];
+    /** Wall time of the Code run. */
+    codeElapsedMs?: number;
+    /** A system note in the transcript (e.g. "Restored files to before turn 3"). */
+    codeNote?: string;
     currentActivity?: AgentActivity;
     activityLabel?: string;
     publicFallback?: boolean;
@@ -117,6 +130,8 @@ export interface AgentStep {
   id: string;
   type: 'thinking' | 'planning' | 'searching' | 'reading' | 'coding' | 'writing' | 'executing' | 'preview' | 'tool' | 'approval' | 'done' | 'error';
   label: string;
+  /** The tool behind a tool step (labels are translated; logic keys on this). */
+  toolName?: string;
   status: 'pending' | 'running' | 'awaiting_approval' | 'done' | 'error';
   detail?: string;
   output?: string;

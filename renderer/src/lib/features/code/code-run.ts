@@ -2,8 +2,9 @@
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
 import type { CodeAgentEvent, CodeArtifactRef, CodeRunSummary, CodeSourceRef, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
-import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange } from '$lib/types/chat';
+import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
 import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
+import { copy } from '$lib/copy';
 
 export interface AgenteUsage {
   promptTokens: number;
@@ -14,6 +15,13 @@ export interface AgenteUsage {
 
 export interface CodeRunState {
   content: string;
+  /** Text segments and steps in arrival order — what the transcript renders. */
+  timeline: CodeTimelineEntry[];
+  /** Wall-clock bounds of the run (agent_start → agent_end). */
+  startedAt?: number;
+  endedAt?: number;
+  /** The turn budget ran out: the run stopped without finishing. */
+  hitTurnLimit?: boolean;
   reasoning: string;
   /**
    * Raw reasoning accumulation. The display `reasoning` is re-sanitized from
@@ -46,22 +54,129 @@ export interface CodeRunState {
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { content: '', reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [] };
+  return { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [] };
 }
 
+/** Add or update a step; a new step also takes its place in the timeline. */
 function upsertStep(state: CodeRunState, step: AgentStep): void {
   const index = state.steps.findIndex((s) => s.id === step.id);
-  if (index >= 0) state.steps[index] = { ...state.steps[index], ...step };
-  else state.steps.push(step);
+  if (index >= 0) {
+    state.steps[index] = { ...state.steps[index], ...step };
+    return;
+  }
+  state.steps.push(step);
+  state.timeline.push({ kind: 'step', id: step.id });
 }
 
-function argsPreview(args: unknown): string {
-  if (typeof args === 'string') return args.slice(0, 200);
-  try {
-    return JSON.stringify(args ?? {}).slice(0, 200);
-  } catch {
-    return '';
+/**
+ * Streamed text joins the open text segment, or opens a new one after a
+ * step. Segments are separated by a blank line in `content`, so the text of
+ * consecutive turns never runs together ("…first.Done —").
+ */
+function appendText(state: CodeRunState, delta: string): void {
+  const last = state.timeline[state.timeline.length - 1];
+  if (last?.kind === 'text') {
+    last.text += delta;
+  } else {
+    if (state.content && !state.content.endsWith('\n\n')) state.content += '\n\n';
+    state.timeline.push({ kind: 'text', text: delta });
   }
+  state.content += delta;
+}
+
+const TOOL_TYPES: Record<string, AgentStep['type']> = {
+  read: 'reading',
+  grep: 'reading',
+  ls: 'reading',
+  git_status: 'reading',
+  git_diff: 'reading',
+  write: 'writing',
+  edit: 'writing',
+  bash: 'executing'
+};
+
+/** The translated verb for a tool row ("Read", "Run"…), or its tidied name. */
+function toolLabel(toolName: string): string {
+  const verbs = copy.codeRun as Record<string, string>;
+  if (Object.hasOwn(verbs, toolName)) return verbs[toolName]!;
+  const words = toolName.replace(/[_-]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function firstLine(text: string, max = 160): string {
+  const line = text.split('\n')[0] ?? '';
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/**
+ * What a tool call is about, in one short line: a path, a command, a search.
+ * Replaces the raw JSON the rows used to show.
+ */
+function describeToolArgs(toolName: string, args: unknown): string {
+  if (typeof args === 'string') return firstLine(args);
+  const record = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+  const text = (key: string) => (typeof record[key] === 'string' ? (record[key] as string) : '');
+  switch (toolName) {
+    case 'read': {
+      const offset = Number(record.offset) || 0;
+      const limit = Number(record.limit) || 0;
+      return offset || limit ? `${text('path')} · ${offset || 1}–${(offset || 1) + Math.max(limit, 1) - 1}` : text('path');
+    }
+    case 'write':
+    case 'edit':
+      return text('path');
+    case 'bash':
+      return firstLine(text('command'));
+    case 'grep':
+      return `“${text('pattern')}”${text('path') ? ` · ${text('path')}` : ''}`;
+    case 'ls':
+      return text('path') || '.';
+    default: {
+      for (const key of ['url', 'path', 'command', 'query', 'pattern', 'text', 'ref']) {
+        if (text(key)) return firstLine(text(key));
+      }
+      try {
+        const json = JSON.stringify(record);
+        return json === '{}' ? '' : firstLine(json);
+      } catch {
+        return '';
+      }
+    }
+  }
+}
+
+/** Close a run as failed: record why and mark the step that was mid-flight. */
+function failRun(state: CodeRunState, message: string): void {
+  state.error = message;
+  state.retrying = null;
+  state.done = true;
+  state.stopReason ??= 'error';
+  const broken = state.steps.find((s) => s.status === 'running');
+  if (broken) broken.status = 'error';
+}
+
+/**
+ * A message's text and steps in render order. A live run passes its own
+ * timeline; saved runs carry theirs; older messages fall back to steps, then
+ * text. Steps whose row is gone and blank text segments are skipped.
+ */
+export function orderedEntries(
+  message: { agentSteps?: AgentStep[]; content: string; metadata?: { codeTimeline?: CodeTimelineEntry[] } },
+  liveTimeline?: CodeTimelineEntry[]
+): Array<{ key: string; step?: AgentStep; text?: string }> {
+  const steps = new Map((message.agentSteps ?? []).map((step) => [step.id, step]));
+  let entries = liveTimeline ?? message.metadata?.codeTimeline ?? [];
+  if (!entries.length) {
+    entries = [...steps.keys()].map((id) => ({ kind: 'step' as const, id }));
+    if (message.content) entries.push({ kind: 'text', text: message.content });
+  }
+  const out: Array<{ key: string; step?: AgentStep; text?: string }> = [];
+  entries.forEach((entry, index) => {
+    const step = entry.kind === 'step' ? steps.get(entry.id) : undefined;
+    if (step) out.push({ key: `s-${step.id}`, step });
+    else if (entry.kind === 'text' && entry.text.trim()) out.push({ key: `t-${index}`, text: entry.text });
+  });
+  return out;
 }
 
 export function eventToStep(event: CodeAgentEvent): AgentStep | null {
@@ -69,27 +184,28 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
     case 'tool_start':
       return {
         id: event.toolCallId,
-        type: 'tool',
-        label: event.label || event.toolName,
+        type: TOOL_TYPES[event.toolName] ?? 'tool',
+        label: event.label || toolLabel(event.toolName),
+        toolName: event.toolName,
         status: 'running',
-        detail: event.detail || argsPreview(event.args)
+        detail: event.detail || describeToolArgs(event.toolName, event.args)
       };
-    case 'turn_start':
-      return { id: `turn-${event.turnIndex}`, type: 'planning', label: `Turn ${event.turnIndex}`, status: 'running' };
-    case 'turn_end':
-      return { id: `turn-${event.turnIndex}`, type: 'done', label: `Turn ${event.turnIndex} complete`, status: 'done' };
     case 'approval_request':
       return {
         id: event.requestId,
         type: 'approval',
-        label: `Approval: ${event.toolName}`,
+        // The row's status already says "Needs approval": name the action itself.
+        label: event.kind === 'plan'
+          ? copy.codeRun.approvePlan
+          : [toolLabel(event.toolName), describeToolArgs(event.toolName, event.args)].filter(Boolean).join(' '),
+        toolName: event.toolName,
         status: 'awaiting_approval',
-        detail: event.diff
+        detail: event.kind === 'plan' ? `${event.diff ?? ''}\n\n${copy.codeRun.planNote}` : event.diff
       };
     case 'compaction_start':
-      return { id: `compaction-${event.chatId}`, type: 'planning', label: 'Compacting context', status: 'running' };
+      return { id: `compaction-${event.chatId}`, type: 'planning', label: copy.codeRun.compacting, status: 'running' };
     case 'compaction_end':
-      return { id: `compaction-${event.chatId}`, type: 'done', label: 'Context compacted', status: 'done' };
+      return { id: `compaction-${event.chatId}`, type: 'done', label: copy.codeRun.compacted, status: 'done' };
     default:
       return null;
   }
@@ -102,8 +218,14 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
  */
 export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent): boolean {
   switch (event.type) {
+    case 'agent_start': {
+      // A follow-up restarts the engine loop inside the same run: keep the
+      // original start so "worked for" covers the whole piece of work.
+      state.startedAt ??= Date.now();
+      return false;
+    }
     case 'text_delta': {
-      state.content += event.delta;
+      appendText(state, event.delta);
       state.retrying = null;
       return true;
     }
@@ -124,10 +246,12 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return true;
     }
     case 'tool_update': {
+      // Only text is output; status objects ({ status: 'running' }) are not
+      // (they used to render as "[object Object]").
       const step = state.steps.find((s) => s.id === event.toolCallId);
-      if (step && event.partialResult != null) {
-        step.output = String(event.partialResult).slice(0, 6000);
-      }
+      const partial = event.partialResult;
+      const text = typeof partial === 'string' ? partial : (partial as { output?: unknown } | null)?.output;
+      if (step && typeof text === 'string') step.output = text.slice(-6000);
       return true;
     }
     case 'tool_end': {
@@ -150,8 +274,11 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       }
       return true;
     }
+    // Turns are an engine detail: one run reads as one piece of work, with a
+    // single "worked for" footer instead of a row per model call.
     case 'turn_start':
     case 'turn_end':
+      return false;
     case 'compaction_start':
     case 'compaction_end': {
       const step = eventToStep(event);
@@ -159,31 +286,20 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return true;
     }
     case 'approval_request': {
-      const step: AgentStep = {
-        id: event.requestId,
-        type: 'approval',
-        label: event.kind === 'plan' ? 'Approve plan' : `Approval: ${event.toolName}`,
-        status: 'awaiting_approval',
-        detail: event.kind === 'plan'
-          ? `${event.diff ?? ''}\n\nApproving lets Agente start editing; every edit still asks individually.`
-          : event.diff
-      };
-      upsertStep(state, step);
+      const step = eventToStep(event);
+      if (step) upsertStep(state, step);
       return true;
     }
     case 'approval_resolved': {
       const step = state.steps.find((s) => s.id === event.requestId);
       if (step) {
         step.status = event.decision === 'allow' ? 'done' : 'error';
-        step.detail = event.decision === 'allow' ? 'Approved' : 'Denied';
+        step.detail = event.decision === 'allow' ? copy.codeRun.approved : copy.codeRun.denied;
       }
       return true;
     }
-    case 'checkpoint_captured': {
-      const step = state.steps.find((s) => s.id === `turn-${event.turnIndex}`);
-      if (step) step.output = `checkpoint: ${event.fileCount} file(s) captured`;
-      return true;
-    }
+    case 'checkpoint_captured':
+      return false;
     case 'checkpoint_finalized': {
       for (const file of event.files) {
         state.diffStats.push({
@@ -197,8 +313,8 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
           kind: file.kind as 'created' | 'modified' | 'deleted'
         });
       }
-      // Attach the cumulative diff to the most recent mutating step, if any.
-      const writing = [...state.steps].reverse().find((s) => /write|edit/i.test(s.label));
+      // Attach the cumulative diff to the most recent file-writing step.
+      const writing = [...state.steps].reverse().find((s) => s.toolName === 'write' || s.toolName === 'edit');
       if (writing) {
         writing.diffStats = [...state.diffStats];
         writing.fileChanges = [...state.fileChanges];
@@ -221,9 +337,9 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     case 'length_continue': {
       state.truncatedOnce = true;
       const step: AgentStep = {
-        id: `turn-${event.turnIndex}`,
+        id: `length-${event.turnIndex}`,
         type: 'planning',
-        label: `Turn ${event.turnIndex} hit the output cap — continuing`,
+        label: copy.codeRun.continuing,
         status: 'done'
       };
       upsertStep(state, step);
@@ -264,18 +380,16 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       // A summary carrying an error finalizes the run exactly like the
       // error event; a clean summary is ring data for the end-of-run UI.
       if (event.summary.error && !state.error) {
-        state.error = event.summary.error;
-        state.retrying = null;
-        state.done = true;
-        state.stopReason ??= 'error';
-        const broken = state.steps.find((s) => s.status === 'running');
-        if (broken) broken.status = 'error';
+        failRun(state, event.summary.error);
         return true;
       }
       return false;
     }
     case 'content_replace': {
+      // The engine rewrote the whole answer: keep the steps where they were
+      // and put the new text after them.
       state.content = event.content;
+      state.timeline = [...state.timeline.filter((entry) => entry.kind === 'step'), { kind: 'text', text: event.content }];
       state.retrying = null;
       return true;
     }
@@ -285,21 +399,18 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       return false;
     }
     case 'error': {
-      state.error = event.message;
-      state.retrying = null;
       // An error can be the last event of a run: the engine's prompt()
       // rejection path emits `error` without a following `agent_end`, which
       // left the assistant placeholder streaming forever. Close the run here
       // defensively; a later agent_end still refines the stop reason.
-      state.done = true;
-      state.stopReason ??= 'error';
-      const broken = state.steps.find((s) => s.status === 'running');
-      if (broken) broken.status = 'error';
+      failRun(state, event.message);
       return true;
     }
     case 'agent_end': {
       state.done = true;
       state.stopReason = event.stopReason;
+      state.hitTurnLimit = !!event.hitTurnLimit;
+      state.endedAt = Date.now();
       state.retrying = null;
       // A still-running step at the end of a run only means failure if the
       // run itself failed; on success it was simply never closed out.

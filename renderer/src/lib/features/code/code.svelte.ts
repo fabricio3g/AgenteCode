@@ -10,7 +10,7 @@ import { invoke } from '$lib/services/bridge';
 import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
-import type { ChatSession, CodeProject } from '$lib/types/chat';
+import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
 import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
 import { applyCodeAgentEvent, createCodeRunState, type CodeRunState } from './code-run';
 import {
@@ -23,7 +23,10 @@ import {
   setCodeAgentRuntimeMode,
   respondToCodeAgentApproval,
   listCodeAgentCheckpoints,
-  deleteCodeAgentSessionData
+  rollbackCodeAgent,
+  deleteCodeAgentSessionData,
+  listLiveCodeAgentChats,
+  setAgenteModel
 } from './code-ipc';
 import { subscribeToCodeAgentEvents } from './code-events.svelte';
 
@@ -68,6 +71,9 @@ class CodeStore {
   runs = $state<Record<string, AgenteRun>>({});
   /** engine session id per chat (also mirrored into chat.codeAgent.sessionId) */
   #sessionIds = new Map<string, string>();
+  /** Approvals the engine settled itself (abort, shutdown) — do not answer them again. */
+  #engineSettled = new Set<string>();
+  #repairedInterrupted = false;
   #unsubEvents: (() => void) | null = null;
 
   constructor() {
@@ -98,6 +104,35 @@ class CodeStore {
       this.loading = false;
     }
     void this.checkFolders();
+    void this.#repairInterrupted();
+  }
+
+  /**
+   * A run the app was closed in the middle of is saved as "streaming" and
+   * would otherwise look live forever (and turn the next message into a
+   * steer to a session that no longer exists). Runs the engine still has —
+   * a renderer reload keeps them going — are left alone.
+   */
+  async #repairInterrupted(): Promise<void> {
+    if (this.#repairedInterrupted) return;
+    this.#repairedInterrupted = true;
+    const live = new Set(await listLiveCodeAgentChats().catch(() => [] as string[]));
+    for (const chat of appStore.visibleCodeChats) {
+      if (live.has(chat.id)) continue;
+      const stuck = chat.messages.filter((message) => message.role === 'assistant' && message.status === 'streaming');
+      if (!stuck.length) continue;
+      for (const message of stuck) {
+        message.status = 'idle';
+        message.done = true;
+        message.metadata = { ...message.metadata, codeStopReason: 'aborted', codeNote: 'interrupted' };
+        for (const step of message.agentSteps ?? []) {
+          if (step.status === 'running' || step.status === 'awaiting_approval') step.status = 'error';
+        }
+      }
+      this.evictChat(chat.id, { force: true });
+      appStore.markChatDirty(chat.id);
+    }
+    appStore.persist();
   }
 
   /** Flag projects whose folder moved or was deleted outside the app. */
@@ -308,6 +343,8 @@ class CodeStore {
         queuedCount: 0,
         ...createCodeRunState(),
         content: assistant?.content || '',
+        timeline: restoreTimeline(assistant),
+        todos: assistant?.metadata?.codeTodos?.map((todo) => ({ ...todo })) ?? [],
         reasoning: assistant?.reasoning || '',
         reasoningRaw: assistant?.reasoning || '',
         steps: assistant?.agentSteps?.map((step) => ({ ...step })) || []
@@ -352,6 +389,18 @@ class CodeStore {
       run.queuedCount = 0;
       void this.refreshCheckpoints(event.chatId);
     }
+    if (event.type === 'approval_resolved') {
+      // Settled by the engine (Stop, shutdown) or echoing our own answer: in
+      // both cases the buttons must go and nothing must be sent back.
+      if (approvalsStore.items.some((item) => item.id === event.requestId)) {
+        this.#engineSettled.add(event.requestId);
+        approvalsStore.resolve(event.requestId, event.decision === 'allow');
+      }
+    }
+    if (event.type === 'agent_end' || event.type === 'error') {
+      for (const pending of approvalsStore.forChat(event.chatId)) this.#engineSettled.add(pending.id);
+      approvalsStore.clearForChat(event.chatId);
+    }
     this.#flushToMessage(event.chatId, run);
 
     if (event.type === 'approval_request') {
@@ -369,6 +418,7 @@ class CodeStore {
             : `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
           cwd: project?.rootPath || 'project'
         });
+        if (this.#engineSettled.delete(event.requestId)) return;
         await respondToCodeAgentApproval(event.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
       })();
     }
@@ -383,9 +433,17 @@ class CodeStore {
     message.content = run.content;
     message.reasoning = run.reasoning || undefined;
     message.agentSteps = run.steps.map((step) => ({ ...step }));
+    message.metadata = { ...message.metadata, codeTimeline: run.timeline.map((entry) => ({ ...entry })) };
     if (run.done) {
       message.status = run.error ? 'error' : 'idle';
       message.done = true;
+      const elapsed = run.startedAt ? (run.endedAt ?? Date.now()) - run.startedAt : undefined;
+      message.metadata = {
+        ...message.metadata,
+        ...(run.todos.length ? { codeTodos: run.todos.map((todo) => ({ ...todo })) } : {}),
+        ...(elapsed ? { codeElapsedMs: elapsed } : {}),
+        ...(run.hitTurnLimit ? { codeHitTurnLimit: true } : {})
+      };
       // The reason belongs on the message — the transcript renders it, not
       // just a generic "failed" card.
       if (run.error) {
@@ -464,7 +522,12 @@ class CodeStore {
     });
     this.#ensureEventSubscription();
 
-    if (!this.#sessionIds.has(chatId)) {
+    if (this.#sessionIds.has(chatId)) {
+      // The picker may have changed since the session started (possibly while
+      // another conversation was on screen): run with what it shows now.
+      const { provider, model } = await this.#resolveProviderModel();
+      if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
+    } else {
       try {
         const { provider, model } = await this.#resolveProviderModel();
         if (!model) {
@@ -478,7 +541,8 @@ class CodeStore {
           provider,
           model,
           runtimeMode,
-          resumeSessionId
+          resumeSessionId,
+          ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
         });
         this.#sessionIds.set(chatId, sessionId);
         if (chat.codeAgent) {
@@ -574,8 +638,39 @@ class CodeStore {
   }
 
   async refreshCheckpoints(chatId: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
     const run = this.#requireRun(chatId);
-    run.checkpoints = await listCodeAgentCheckpoints(chatId).catch(() => []);
+    run.checkpoints = await listCodeAgentCheckpoints(chatId, chat?.codeAgent?.sessionId).catch(() => []);
+  }
+
+  /**
+   * Put the project's files back to how they were before `turnIndex`, after
+   * the user confirmed. The transcript keeps a note so the conversation shows
+   * what happened; the result says which files changed.
+   */
+  async restoreCheckpoint(chatId: string, turnIndex: number): Promise<{ ok: boolean; files: string[]; error?: string }> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project) return { ok: false, files: [], error: 'No project for this conversation' };
+    const result = await rollbackCodeAgent(chatId, turnIndex, {
+      sessionId: chat.codeAgent?.sessionId,
+      projectRoot: project.rootPath
+    }).catch((err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err), files: [] }));
+    if (result.ok) {
+      chat.messages.push({
+        id: createId('msg'),
+        role: 'assistant',
+        content: '',
+        createdAt: Date.now(),
+        done: true,
+        status: 'idle',
+        metadata: { codeNote: `restore:${result.files?.length ?? 0}` }
+      });
+      appStore.markChatDirty(chatId);
+      appStore.persist();
+    }
+    await this.refreshCheckpoints(chatId);
+    return { ok: !!result.ok, files: result.files ?? [], error: result.error };
   }
 }
 
@@ -611,6 +706,16 @@ function folderName(rootPath: string): string {
 function samePath(a: string, b: string): boolean {
   const norm = (value: string) => value.replace(/[\\/]+$/, '').replace(/\\/g, '/');
   return norm(a) === norm(b);
+}
+
+/** A saved run's order of text and steps; older messages get steps, then text. */
+function restoreTimeline(message: ChatSession['messages'][number] | undefined): CodeTimelineEntry[] {
+  if (!message) return [];
+  const saved = message.metadata?.codeTimeline;
+  if (Array.isArray(saved) && saved.length) return saved.map((entry) => ({ ...entry }));
+  const entries: CodeTimelineEntry[] = (message.agentSteps ?? []).map((step) => ({ kind: 'step', id: step.id }));
+  if (message.content) entries.push({ kind: 'text', text: message.content });
+  return entries;
 }
 
 function summarizeArgs(args: unknown): string {
