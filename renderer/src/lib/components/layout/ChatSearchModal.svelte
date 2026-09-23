@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { Search, X, MessageSquare, Plus, ExternalLink, Pencil, Trash2 } from 'lucide-svelte';
   import Message from '$lib/features/chat/thread/Message.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -146,10 +147,6 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      close();
-      return;
-    }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       if (results.length > 0) {
@@ -185,7 +182,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="chat-search-backdrop aui-modal-backdrop z-[250] items-start px-4 pt-[8vh]"
+  class="chat-search-backdrop aui-modal-backdrop items-start px-4 pt-[8vh]"
+  use:modalLayer={{ onclose: close }}
   onclick={close}
   onkeydown={handleKeydown}
 >

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { LoaderCircle, Search as SearchIcon, X } from 'lucide-svelte';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
@@ -28,7 +29,7 @@
   });
 </script>
 
-<div class="fixed inset-0 z-[260]">
+<div class="fixed inset-0" use:modalLayer={{ onclose: closeSidebar, zToken: '--z-drawer' }}>
   <button
     type="button"
     class="absolute inset-0 h-full w-full bg-overlay"

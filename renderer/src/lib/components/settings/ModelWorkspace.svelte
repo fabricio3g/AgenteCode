@@ -15,6 +15,8 @@
 -->
 
 <script lang="ts">
+  import { copy } from '$lib/copy';
+  import { confirmStore } from '$lib/stores/confirm.svelte';
   import { onMount } from 'svelte';
   import {
     AlertCircle, BadgeCheck, Ban, Cpu, Download, HardDrive,
@@ -336,7 +338,11 @@
       return;
     }
     if (['constrained', 'unlikely'].includes(fit.status)) {
-      const accepted = window.confirm(`${fit.reason}\n\nDownload ${filename} anyway?`);
+      const accepted = await confirmStore.ask({
+        title: 'Download anyway?',
+        message: `${fit.reason} ${filename} may not run well on this machine.`,
+        confirmLabel: copy.actions.download
+      });
       if (!accepted) return;
     }
     try {
@@ -359,7 +365,14 @@
   }
 
   async function removeModel(model: { name: string; path: string }) {
-    if (!window.confirm(`Delete ${model.name} from disk? This cannot be undone.`)) return;
+    const accepted = await confirmStore.ask({
+      title: `Delete ${model.name}?`,
+      message: 'The model file is removed from disk. This cannot be undone.',
+      details: [model.path],
+      confirmLabel: copy.actions.delete,
+      danger: true
+    });
+    if (!accepted) return;
     try {
       await deleteLocalModel(model.path);
       await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);

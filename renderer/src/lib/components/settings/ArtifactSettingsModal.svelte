@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import {
     BarChart3,
     Briefcase,
@@ -93,11 +94,10 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && close()} />
-
 <div
   role="presentation"
-  class="fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-2 sm:p-4"
+  class="aui-modal-backdrop !p-2 sm:!p-4"
+  use:modalLayer={{ onclose: close }}
   transition:motionFade={{ duration: 220 }}
   onclick={(e) => { if (e.target === e.currentTarget) close(); }}
 >

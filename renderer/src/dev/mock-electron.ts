@@ -19,6 +19,22 @@ const savedProjects: Record<string, unknown>[] = [
   }
 ];
 
+const mockLocalModel = {
+  id: 'qwen3-4b-q4',
+  name: 'Qwen3-4B-Instruct-Q4_K_M.gguf',
+  path: '/home/work/models/Qwen3-4B-Instruct-Q4_K_M.gguf',
+  size_gb: 2.5,
+  modified_time: Date.now() - 86_400_000,
+  architecture: 'qwen3',
+  context_length: 40_960,
+  parameter_count: 4_000_000_000,
+  quantization_name: 'Q4_K_M',
+  block_count: 36,
+  chat_template_uses_tools: true,
+  indexed_at: Date.now(),
+  cache_key: 'mock'
+};
+
 const config = {
   llm: {
     backend_mode: 'api',
@@ -134,6 +150,24 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
 
   pick_workspace_folder: () => '/home/work/Code/another-demo',
 
+  // Models / runtime: one small local model and one installed runtime, so the
+  // Model hub, the load dialog and the ModelSwitcher all have something to show.
+  get_indexed_models: () => [mockLocalModel],
+  refresh_model_index: () => 1,
+  get_installed_runtimes: () => ({ runtimes: [{ id: 'llama-b6000-vulkan', name: 'llama.cpp b6000 (Vulkan)', path: '/mock/bin/llama-server', size_gb: 0.05, modified: Date.now() }] }),
+  get_supervisor_status: () => ({ state: 'Stopped', active_model: null, sessions_count: 0 }),
+  get_download_jobs: () => [],
+  search_hf_models: () => ({ models: [], nextCursor: null }),
+  get_api_model_context: () => ({ context_window: 200_000, source: 'mock' }),
+  list_rag_documents: () => [],
+  preload_tts: () => ({ ok: true }),
+  list_tts_voices: () => [],
+  chat_db_load_characters: () => [],
+  chat_db_load_personas: () => [],
+  chat_db_load_worlds: () => [],
+  chat_db_save_character: () => ({ ok: true }),
+  chat_db_save_persona: () => ({ ok: true }),
+  chat_db_save_world: () => ({ ok: true }),
   fetch_provider_models: () => [],
   detect_tool_support: () => ({ supportsTools: true, source: 'mock' }),
   get_reasoning_capabilities: () => ({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'mock' }),

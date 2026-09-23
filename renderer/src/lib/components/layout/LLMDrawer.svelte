@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { Settings, X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -94,7 +95,8 @@
 <!-- Backdrop -->
 {#if appStore.llmDrawerOpen}
   <div
-    class="fixed inset-0 z-[55]"
+    class="fixed inset-0"
+    style="z-index: var(--z-drawer);"
     role="presentation"
     onclick={() => (appStore.llmDrawerOpen = false)}
     transition:motionFade={{ duration: 150 }}
@@ -106,7 +108,8 @@
 <!-- Floats clear of the window edges like the activity panel, rather than
      anchoring flush to the right as a full-height drawer. -->
 <aside
-  class="fixed bottom-3 right-3 top-12 z-[56] flex w-80 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--panel-border)] bg-popover shadow-[shadow:var(--shadow-xl)]"
+  use:modalLayer={{ onclose: () => (appStore.llmDrawerOpen = false), zToken: '--z-drawer' }}
+  class="fixed bottom-3 right-3 top-12 flex w-80 flex-col overflow-hidden rounded-[var(--radius-2xl)] border border-[var(--panel-border)] bg-popover shadow-[shadow:var(--shadow-xl)]"
   aria-label="Generation settings"
   transition:motionFly={{ x: 24, duration: 260, opacity: 0 }}
 >

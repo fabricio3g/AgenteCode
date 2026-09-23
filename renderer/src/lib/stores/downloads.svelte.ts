@@ -60,7 +60,8 @@ class DownloadsStore {
     this.loading = true;
     this.error = null;
     try {
-      this.jobs = await getDownloadJobs();
+      const jobs = await getDownloadJobs();
+      this.jobs = Array.isArray(jobs) ? jobs : [];
     } catch (error) {
       this.jobs = [];
       this.error = String((error as Error)?.message || error || 'Failed to load downloads');
@@ -87,7 +88,8 @@ class DownloadsStore {
   private async _pollTick() {
     if (!isElectron()) return;
     try {
-      this.jobs = await getDownloadJobs();
+      const jobs = await getDownloadJobs();
+      this.jobs = Array.isArray(jobs) ? jobs : [];
     } catch {
       // ignore transient poll errors
       return;

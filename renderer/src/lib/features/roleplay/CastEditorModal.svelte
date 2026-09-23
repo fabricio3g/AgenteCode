@@ -11,6 +11,8 @@
   import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { Button } from '$lib/components/ui';
   import CastPicker from './CastPicker.svelte';
   import { copy } from '$lib/copy';
@@ -24,6 +26,8 @@
   let { characterIds, onchange, onclose }: Props = $props();
 
   let castIds = $state<string[]>(untrack(() => [...characterIds]));
+  // Backdrop, Escape, X and Cancel all ask before throwing edits away.
+  const guard = dirtyGuard(() => castIds);
 
   function save() {
     if (!castIds.length) return;
@@ -33,11 +37,12 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: () => guard.close(onclose) }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
-    if (e.target === e.currentTarget) onclose();
+    if (e.target === e.currentTarget) guard.close(onclose);
   }}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -57,7 +62,7 @@
           · the first member speaks first
         </div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -70,7 +75,7 @@
     </div>
 
     <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
+      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={save} disabled={!castIds.length}>Save cast</Button>
     </div>
   </div>

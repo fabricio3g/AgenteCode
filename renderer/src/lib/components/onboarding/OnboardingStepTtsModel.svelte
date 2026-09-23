@@ -3,10 +3,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle, Check, ChevronDown } from 'lucide-svelte';
+  import { Volume2, ArrowRight, ArrowLeft, Download, LoaderCircle, CheckCircle2, AlertTriangle } from 'lucide-svelte';
   import { startDownloadHf, cancelDownloadJob } from '$lib/services/downloads';
   import { listen } from '$lib/services/bridge';
   import { KOKORO_LANGUAGES, getVoiceInfo } from '$lib/services/kokoro-tts';
+  import VoiceLanguageSelector from '$lib/components/settings/VoiceLanguageSelector.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { loadAppConfig, saveAppConfig } from '$lib/utils/storage';
 
@@ -40,18 +41,6 @@
 
   // Voice selection state
   let selectedVoice = $state(appStore.config.tts?.voice || 'af_heart');
-  let voiceOpen = $state(false);
-  let langOpen = $state(false);
-
-  let selectedLang = $derived.by(() => {
-    const info = getVoiceInfo(selectedVoice);
-    return info?.langCode ?? 'en-US';
-  });
-  let currentLangVoices = $derived(
-    KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.voices ?? []
-  );
-  let femaleVoices = $derived(currentLangVoices.filter(v => v.gender === 'female'));
-  let maleVoices = $derived(currentLangVoices.filter(v => v.gender === 'male'));
 
   const totalSize = TTS_FILES.reduce((sum, f) => sum + f.size_mb, 0);
   const downloadedSize = $derived(
@@ -74,21 +63,10 @@
 
   async function selectVoice(voiceId: string) {
     selectedVoice = voiceId;
-    voiceOpen = false;
     try {
       const current = await loadAppConfig();
       await saveAppConfig({ ...current, tts: { ...current.tts, voice: voiceId } });
     } catch { /* ignore — saved on finish */ }
-  }
-
-  async function selectLang(code: string) {
-    const lang = KOKORO_LANGUAGES.find(l => l.code === code);
-    if (!lang?.voices.length) return;
-    const currentInLang = lang.voices.some(v => v.id === selectedVoice);
-    if (!currentInLang) {
-      await selectVoice(lang.voices[0].id);
-    }
-    langOpen = false;
   }
 
   async function downloadFile(df: DownloadFile) {
@@ -243,102 +221,7 @@
       <span class="text-[10px] text-muted-foreground">{KOKORO_LANGUAGES.length} languages · {voiceCount} voices</span>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Language picker -->
-      <div class="relative">
-        <button
-          type="button"
-          class="aui-select-trigger h-8 gap-1.5 px-3 text-xs"
-          onclick={() => { langOpen = !langOpen; voiceOpen = false; }}
-          aria-haspopup="listbox"
-          aria-expanded={langOpen}
-        >
-          <span>{KOKORO_LANGUAGES.find(l => l.code === selectedLang)?.label ?? 'Language'}</span>
-          <ChevronDown class="size-3 text-muted-foreground" />
-        </button>
-        {#if langOpen}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="fixed inset-0 z-40" onclick={() => langOpen = false} onkeydown={() => {}}></div>
-          <div class="aui-menu absolute left-0 top-full z-50 mt-1 min-w-[10rem] max-h-[240px] overflow-y-auto py-1" role="listbox">
-            {#each KOKORO_LANGUAGES as lang}
-              <button
-                type="button"
-                class="aui-menu-item text-xs {lang.code === selectedLang ? 'is-active' : ''}"
-                onclick={() => selectLang(lang.code)}
-                role="option"
-                aria-selected={lang.code === selectedLang}
-              >
-                <span class="min-w-0 flex-1 truncate">{lang.label}</span>
-                <span class="text-[10px] opacity-70">{lang.voices.length}</span>
-                {#if lang.code === selectedLang}
-                  <Check class="size-3 shrink-0" />
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Voice picker -->
-      <div class="relative">
-        <button
-          type="button"
-          class="aui-select-trigger h-8 gap-1.5 px-3 text-xs"
-          onclick={() => { voiceOpen = !voiceOpen; langOpen = false; }}
-          aria-haspopup="listbox"
-          aria-expanded={voiceOpen}
-        >
-          <Volume2 class="size-3 text-muted-foreground" />
-          <span>{getVoiceLabel(selectedVoice)}</span>
-          <span class="text-[10px] text-muted-foreground">{selectedVoice.charAt(1) === 'f' ? 'F' : 'M'}</span>
-          <ChevronDown class="size-3 text-muted-foreground" />
-        </button>
-        {#if voiceOpen}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="fixed inset-0 z-40" onclick={() => voiceOpen = false} onkeydown={() => {}}></div>
-          <div class="aui-menu absolute left-0 top-full z-50 mt-1 min-w-[11rem] max-h-[300px] overflow-y-auto py-1" role="listbox">
-            {#if femaleVoices.length > 0}
-              <div class="px-3 py-1 text-[10px] font-semibold text-muted-foreground">Female</div>
-              {#each femaleVoices as voice (voice.id)}
-                <button
-                  type="button"
-                  class="aui-menu-item text-xs {voice.id === selectedVoice ? 'is-active' : ''}"
-                  onclick={() => selectVoice(voice.id)}
-                  role="option"
-                  aria-selected={voice.id === selectedVoice}
-                >
-                  <Volume2 class="size-3 shrink-0 opacity-70" />
-                  <span class="min-w-0 flex-1 truncate">{voice.name}</span>
-                  {#if voice.id === selectedVoice}
-                    <Check class="size-3 shrink-0" />
-                  {/if}
-                </button>
-              {/each}
-            {/if}
-            {#if maleVoices.length > 0}
-              <div class="mt-1 px-3 py-1 text-[10px] font-semibold text-muted-foreground">Male</div>
-              {#each maleVoices as voice (voice.id)}
-                <button
-                  type="button"
-                  class="aui-menu-item text-xs {voice.id === selectedVoice ? 'is-active' : ''}"
-                  onclick={() => selectVoice(voice.id)}
-                  role="option"
-                  aria-selected={voice.id === selectedVoice}
-                >
-                  <Volume2 class="size-3 shrink-0 opacity-70" />
-                  <span class="min-w-0 flex-1 truncate">{voice.name}</span>
-                  {#if voice.id === selectedVoice}
-                    <Check class="size-3 shrink-0" />
-                  {/if}
-                </button>
-              {/each}
-            {/if}
-          </div>
-        {/if}
-      </div>
-    </div>
+    <VoiceLanguageSelector {selectedVoice} onSelect={(voice) => void selectVoice(voice)} showVolume={false} />
   </div>
 
   <div class="mt-auto flex items-center justify-between pt-4">

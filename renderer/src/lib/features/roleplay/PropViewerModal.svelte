@@ -13,6 +13,7 @@
   import { Copy, X } from 'lucide-svelte';
   import { BookMarked } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -48,8 +49,9 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
     if (e.target === e.currentTarget) onclose();

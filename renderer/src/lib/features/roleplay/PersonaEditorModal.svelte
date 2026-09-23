@@ -11,6 +11,8 @@
   import { untrack } from 'svelte';
   import { X, Upload } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { Button } from '$lib/components/ui';
   import type { UserPersona } from '$lib/types/chat';
   import { charactersStore, emptyPersona } from './characters.svelte';
@@ -28,6 +30,8 @@
 
   // Snapshot once: the modal edits a local copy and only writes on Save.
   let draft = $state<UserPersona>(untrack(() => (persona ? { ...persona } : emptyPersona())));
+  // Backdrop, Escape, X and Cancel all ask before throwing edits away.
+  const guard = dirtyGuard(() => draft);
   let saving = $state(false);
 
   const isNew = $derived(!persona);
@@ -67,11 +71,12 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: () => guard.close(onclose) }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
-    if (e.target === e.currentTarget) onclose();
+    if (e.target === e.currentTarget) guard.close(onclose);
   }}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -88,7 +93,7 @@
         <div class="aui-modal-title">{isNew ? 'New persona' : draft.name || 'Edit persona'}</div>
         <div class="text-xs text-muted-foreground">Who you are inside the story.</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -142,7 +147,7 @@
     </div>
 
     <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
+      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

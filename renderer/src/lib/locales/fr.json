@@ -79,7 +79,9 @@
     "accessToken": "Jeton d'accès",
     "save": "Enregistrer",
     "language": "Langue",
-    "languageDesc": "Choisir la langue d'affichage de l'interface."
+    "languageDesc": "Choisir la langue d'affichage de l'interface.",
+    "roleplay": "Jeu de rôle",
+    "roleplayDesc": "Affiche l’espace Jeu de rôle avec personnages, mondes et scènes."
   },
   "composer": {
     "modeChat": "Chat",

@@ -23,7 +23,7 @@
   import type { Snippet } from 'svelte';
   import { cn } from '$lib/utils/cn';
   import { flyAndScale } from '$lib/utils/transitions';
-  import type { MenuPlacement } from './menu';
+  import { placePanel, pointRect, type MenuPlacement } from './menu';
   import Portal from './Portal.svelte';
 
   interface TriggerProps {
@@ -43,6 +43,11 @@
     trigger: Snippet<[TriggerProps]>;
     children: Snippet;
     onclose?: () => void;
+    /**
+     * Open at a point instead of under the trigger (right-click menus). Set it
+     * together with `open = true`; it is cleared when the menu closes.
+     */
+    anchorPoint?: { x: number; y: number } | null;
   }
 
   let {
@@ -53,10 +58,9 @@
     label = 'Menu',
     trigger,
     children,
-    onclose
+    onclose,
+    anchorPoint = $bindable(null)
   }: Props = $props();
-
-  const GAP = 6;
 
   let anchorEl = $state<HTMLElement | undefined>(undefined);
   let panelEl = $state<HTMLElement | undefined>(undefined);
@@ -67,6 +71,7 @@
   function close() {
     if (!open) return;
     open = false;
+    anchorPoint = null;
     onclose?.();
   }
 
@@ -74,24 +79,10 @@
     if (!anchorEl || !panelEl) return;
     const anchor = anchorEl.getBoundingClientRect();
     const panel = panelEl.getBoundingClientRect();
-    anchorWidth = anchor.width;
-
-    const wantsTop = placement.startsWith('top');
-    const wantsEnd = placement.endsWith('end');
-
-    let nextTop = wantsTop ? anchor.top - panel.height - GAP : anchor.bottom + GAP;
-    let nextLeft = wantsEnd ? anchor.right - panel.width : anchor.left;
-
-    // Flip rather than overflow the viewport.
-    if (nextTop < GAP) nextTop = anchor.bottom + GAP;
-    if (nextTop + panel.height > window.innerHeight - GAP) {
-      const flipped = anchor.top - panel.height - GAP;
-      if (flipped >= GAP) nextTop = flipped;
-    }
-    nextLeft = Math.max(GAP, Math.min(nextLeft, window.innerWidth - panel.width - GAP));
-
-    top = nextTop;
-    left = nextLeft;
+    anchorWidth = anchorPoint ? 0 : anchor.width;
+    const placed = placePanel(anchorPoint ? pointRect(anchorPoint.x, anchorPoint.y) : anchor, panel, placement);
+    top = placed.top;
+    left = placed.left;
   }
 
   function focusItem(delta: number) {
@@ -109,6 +100,7 @@
 
   function handleTrigger(event: MouseEvent) {
     event.stopPropagation();
+    anchorPoint = null;
     open = !open;
     if (!open) onclose?.();
   }
@@ -170,6 +162,7 @@
 
 {#if open}
   <Portal>
+    <!-- svelte-ignore a11y_click_events_have_key_events (items are buttons; Enter/Space activate them) -->
     <div
       bind:this={panelEl}
       class={cn('aui-menu aui-menu-panel py-1', className)}
@@ -177,6 +170,11 @@
       aria-label={label}
       tabindex="-1"
       style={`top:${top}px; left:${left}px; min-width:max(${minWidth}, ${anchorWidth}px);`}
+      onclick={(event) => {
+        // Choosing an item closes the menu; callers no longer each have to.
+        const item = (event.target as HTMLElement).closest('[role="menuitem"]');
+        if (item && !item.hasAttribute('disabled')) queueMicrotask(close);
+      }}
       transition:flyAndScale={{ y: placement.startsWith('top') ? 4 : -4, start: 0.97, duration: 130 }}
     >
       {@render children()}

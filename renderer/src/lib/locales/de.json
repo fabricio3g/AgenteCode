@@ -79,7 +79,9 @@
     "accessToken": "Zugriffstoken",
     "save": "Speichern",
     "language": "Sprache",
-    "languageDesc": "Wählen Sie die Anzeigesprache für die Oberfläche."
+    "languageDesc": "Wählen Sie die Anzeigesprache für die Oberfläche.",
+    "roleplay": "Rollenspiel",
+    "roleplayDesc": "Zeigt den Rollenspiel-Bereich mit Figuren, Welten und Szenen."
   },
   "composer": {
     "modeChat": "Chat",

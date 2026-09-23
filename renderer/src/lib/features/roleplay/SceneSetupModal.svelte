@@ -12,6 +12,7 @@
   import { untrack } from 'svelte';
   import { Globe2, X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { Button, Select } from '$lib/components/ui';
   import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
   import { charactersStore, greetingsFor } from './characters.svelte';
@@ -89,8 +90,9 @@
   }</script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
     if (e.target === e.currentTarget) onclose();

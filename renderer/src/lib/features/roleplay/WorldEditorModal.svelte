@@ -11,6 +11,8 @@
   import { untrack } from 'svelte';
   import { ArrowDown, ArrowUp, Plus, Trash2, Upload, X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { dirtyGuard } from '$lib/components/ui/dirty-guard';
   import { Button, Select, Switch } from '$lib/components/ui';
   import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
   import { emptyWorld, normalizeWorld, worldsStore } from './worlds.svelte';
@@ -29,6 +31,8 @@
   let { world = null, onclose, onsaved }: Props = $props();
 
   let draft = $state<RoleplayWorld>(untrack(() => (world ? normalizeWorld(world) : emptyWorld())));
+  // Backdrop, Escape, X and Cancel all ask before throwing edits away.
+  const guard = dirtyGuard(() => draft);
   let saving = $state(false);
   let section = $state<'overview' | 'lore' | 'cast' | 'openings' | 'defaults'>('overview');
 
@@ -141,11 +145,12 @@
 </script>
 
 <div
-  class="aui-modal-backdrop z-[61]"
+  class="aui-modal-backdrop"
   role="presentation"
+  use:modalLayer={{ onclose: () => guard.close(onclose) }}
   transition:motionFade={{ duration: 150 }}
   onclick={(e) => {
-    if (e.target === e.currentTarget) onclose();
+    if (e.target === e.currentTarget) guard.close(onclose);
   }}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -162,7 +167,7 @@
         <div class="aui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
         <div class="text-xs text-muted-foreground">Setting, canon and cast shared by every scene started here.</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -431,7 +436,7 @@
     </div>
 
     <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
+      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

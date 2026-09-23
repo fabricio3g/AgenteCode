@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount, untrack } from 'svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import {
@@ -204,19 +205,10 @@
   });
 </script>
 
-<svelte:window onkeydown={(e) => {
-  if (e.key !== 'Escape') return;
-  if (addModalOpen) {
-    e.stopPropagation();
-    closeAddModal();
-    return;
-  }
-  close();
-}} />
-
 <div
   role="presentation"
-  class="fixed inset-0 z-[63] flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-2 sm:p-4"
+  class="aui-modal-backdrop !p-2 sm:!p-4"
+  use:modalLayer={{ onclose: close }}
   transition:motionFade={{ duration: 220 }}
   onclick={(e) => { if (e.target === e.currentTarget) close(); }}
 >
@@ -365,9 +357,9 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         role="presentation"
-        class="absolute inset-0 z-10 flex items-center justify-center rounded-[inherit] bg-[var(--overlay)] p-4"
+        class="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[var(--overlay)] p-4"
+        use:modalLayer={{ onclose: closeAddModal }}
         onclick={(e) => { if (e.target === e.currentTarget) closeAddModal(); }}
-        onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeAddModal(); } }}
       >
         <div
           role="dialog"
