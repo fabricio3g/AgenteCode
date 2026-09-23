@@ -49,7 +49,10 @@
     "exportFailed": "Échec de l'exportation — essayez de copier le chat manuellement.",
     "previous7Days": "7 derniers jours",
     "previous30Days": "30 derniers jours",
-    "emptyHint": "Les conversations démarrées apparaîtront ici."
+    "emptyHint": "Les conversations démarrées apparaîtront ici.",
+    "chatOptions": "Options de la conversation",
+    "artifacts": "Artefacts",
+    "models": "Modèles"
   },
   "settings": {
     "title": "Paramètres",
@@ -190,12 +193,8 @@
     "newConversation": "Nouvelle conversation",
     "noProjects": "Aucun projet pour l'instant",
     "noProjectsHint": "Ajoutez un dossier de projet et Agente codera avec vous.",
-    "removeProject": "Retirer",
-    "removeProjectTitle": "Retirer le projet ?",
-    "removeProjectMessage": "Les conversations de {name} restent dans l'historique, mais le projet quitte la liste.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Choisissez un dossier de projet pour démarrer une conversation.",
-    "enginePending": "Le moteur de l'agent est en cours de raccordement à cette surface. Revenez bientôt.",
     "composerPlaceholder": "Décrivez une tâche pour Agente…",
     "steerPlaceholder": "Réorienter la tâche en cours…",
     "send": "Envoyer",
@@ -222,10 +221,50 @@
     "statusStopped": "Arrêté",
     "statusLength": "Limite de sortie atteinte — une partie de l'exécution a été tronquée",
     "retrying": "Problème de connexion — nouvelle tentative ({n})…",
-    "todosTitle": "Tâches"
+    "todosTitle": "Tâches",
+    "deleteProject": "Supprimer le projet",
+    "deleteProjectTitle": "Supprimer « {name} » ?",
+    "deleteProjectMessage": "Retire le projet et ses {conversations} de Flaxeo. Les fichiers de son dossier ne sont pas touchés.",
+    "projectOptions": "Options du projet",
+    "conversationOptions": "Options de la conversation",
+    "folderMissing": "Dossier introuvable",
+    "locateFolder": "Localiser le dossier…",
+    "unlinked": "Conversations sans projet",
+    "unlinkedHint": "Leur projet a été retiré : elles ne peuvent plus s’exécuter.",
+    "deleteAll": "Tout supprimer",
+    "deleteUnlinkedTitle": "Supprimer {conversations} ?",
+    "awaitingApproval": "En attente de votre approbation",
+    "pathCopied": "Chemin copié",
+    "searchConversations": "Rechercher des conversations"
   },
   "searchModal": {
     "inMessages": "Dans les messages",
     "noContentMatches": "Aucun résultat dans les messages"
+  },
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "newChat": "Nouvelle conversation",
+    "addProject": "Ajouter un projet",
+    "search": "Rechercher des conversations",
+    "settings": "Ouvrir les réglages",
+    "sidebar": "Afficher ou masquer la barre latérale",
+    "artifactStudio": "Afficher le studio d’artefacts",
+    "export": "Exporter la conversation",
+    "help": "Cette aide",
+    "escape": "Fermer la fenêtre · arrêter une exécution",
+    "rename": "Renommer la conversation sélectionnée"
+  },
+  "search": {
+    "placeholderChats": "Rechercher des conversations…",
+    "placeholderCode": "Rechercher des conversations…",
+    "noMatches": "Aucune conversation correspondante",
+    "noMatchesHint": "Essayez un autre titre ou une autre phrase.",
+    "empty": "Aucune conversation pour l’instant",
+    "emptyHint": "Vos conversations apparaîtront ici.",
+    "previewEmpty": "Cette conversation est vide.",
+    "previewPick": "Sélectionnez une conversation à prévisualiser",
+    "previewHint": "Survolez un résultat ou utilisez les flèches.",
+    "clear": "Effacer",
+    "daysAgo": "il y a {n} j"
   }
 }

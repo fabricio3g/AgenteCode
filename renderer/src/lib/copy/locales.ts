@@ -58,6 +58,7 @@ const es: CopyOverride = {
     allow: 'Permitir', deny: 'Denegar', failed: 'Falló', cancelled: 'Cancelado', stopped: 'Detenido',
     done: 'Hecho', error: 'Error', result: 'Resultado', truncated: '… (recortado)'
   },
+  untitled: { home: 'Nuevo chat', code: 'Nueva conversación', roleplay: 'Nuevo rol' },
   spaces: { home: 'Inicio', code: 'Código', roleplay: 'Rol' },
   roleplay: {
     newRoleplay: 'Nuevo rol', characters: 'Personajes', library: 'Biblioteca de personajes', newCharacter: 'Nuevo personaje',
@@ -132,6 +133,7 @@ const ptBR: CopyOverride = {
     allow: 'Permitir', deny: 'Negar', failed: 'Falhou', cancelled: 'Cancelado', stopped: 'Parado',
     done: 'Concluído', error: 'Erro', result: 'Resultado', truncated: '… (truncado)'
   },
+  untitled: { home: 'Novo chat', code: 'Nova conversa', roleplay: 'Novo roleplay' },
   spaces: { home: 'Início', code: 'Código', roleplay: 'Roleplay' },
   roleplay: {
     newRoleplay: 'Novo roleplay', characters: 'Personagens', library: 'Biblioteca de personagens', newCharacter: 'Novo personagem',
@@ -206,6 +208,7 @@ const fr: CopyOverride = {
     allow: 'Autoriser', deny: 'Refuser', failed: 'Échec', cancelled: 'Annulé', stopped: 'Arrêté',
     done: 'Terminé', error: 'Erreur', result: 'Résultat', truncated: '… (tronqué)'
   },
+  untitled: { home: 'Nouvelle conversation', code: 'Nouvelle conversation', roleplay: 'Nouveau jeu de rôle' },
   spaces: { home: 'Accueil', code: 'Code', roleplay: 'Jeu de rôle' },
   roleplay: {
     newRoleplay: 'Nouveau jeu de rôle', characters: 'Personnages', library: 'Bibliothèque de personnages', newCharacter: 'Nouveau personnage',
@@ -280,6 +283,7 @@ const de: CopyOverride = {
     allow: 'Erlauben', deny: 'Ablehnen', failed: 'Fehlgeschlagen', cancelled: 'Abgebrochen', stopped: 'Gestoppt',
     done: 'Fertig', error: 'Fehler', result: 'Ergebnis', truncated: '… (gekürzt)'
   },
+  untitled: { home: 'Neuer Chat', code: 'Neue Unterhaltung', roleplay: 'Neues Rollenspiel' },
   spaces: { home: 'Start', code: 'Code', roleplay: 'Rollenspiel' },
   roleplay: {
     newRoleplay: 'Neues Rollenspiel', characters: 'Figuren', library: 'Figurenbibliothek', newCharacter: 'Neue Figur',
@@ -354,6 +358,7 @@ const ja: CopyOverride = {
     allow: '許可', deny: '拒否', failed: '失敗', cancelled: 'キャンセル済み', stopped: '停止済み',
     done: '完了', error: 'エラー', result: '結果', truncated: '…（省略）'
   },
+  untitled: { home: '新しいチャット', code: '新しい会話', roleplay: '新しいロールプレイ' },
   spaces: { home: 'ホーム', code: 'コード', roleplay: 'ロールプレイ' },
   roleplay: {
     newRoleplay: '新しいロールプレイ', characters: 'キャラクター', library: 'キャラクターライブラリ', newCharacter: '新しいキャラクター',
@@ -428,6 +433,7 @@ const zh: CopyOverride = {
     allow: '允许', deny: '拒绝', failed: '失败', cancelled: '已取消', stopped: '已停止',
     done: '完成', error: '错误', result: '结果', truncated: '…（已截断）'
   },
+  untitled: { home: '新对话', code: '新会话', roleplay: '新角色扮演' },
   spaces: { home: '主页', code: '代码', roleplay: '角色扮演' },
   roleplay: {
     newRoleplay: '新角色扮演', characters: '角色', library: '角色库', newCharacter: '新角色',

@@ -49,7 +49,10 @@
     "exportFailed": "エクスポートに失敗しました — チャットを手動でコピーしてください。",
     "previous7Days": "過去7日間",
     "previous30Days": "過去30日間",
-    "emptyHint": "開始した会話はここに表示されます。"
+    "emptyHint": "開始した会話はここに表示されます。",
+    "chatOptions": "チャットのオプション",
+    "artifacts": "アーティファクト",
+    "models": "モデル"
   },
   "settings": {
     "title": "設定",
@@ -190,12 +193,8 @@
     "newConversation": "新しい会話",
     "noProjects": "プロジェクトはまだありません",
     "noProjectsHint": "プロジェクトフォルダを追加すると、Agente が一緒にコードを書きます。",
-    "removeProject": "削除",
-    "removeProjectTitle": "プロジェクトを削除しますか？",
-    "removeProjectMessage": "{name} の会話は履歴に残りますが、プロジェクトは一覧から削除されます。",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "プロジェクトフォルダを選んで会話を始めましょう。",
-    "enginePending": "エージェントエンジンをこの画面に接続中です。もうしばらくお待ちください。",
     "composerPlaceholder": "Agente へのタスクを説明…",
     "steerPlaceholder": "実行中のタスクを修正…",
     "send": "送信",
@@ -222,10 +221,50 @@
     "statusStopped": "停止しました",
     "statusLength": "出力上限に達しました — 実行の一部が切断されました",
     "retrying": "接続エラー — 再試行中（{n} 回目）…",
-    "todosTitle": "タスク"
+    "todosTitle": "タスク",
+    "deleteProject": "プロジェクトを削除",
+    "deleteProjectTitle": "「{name}」を削除しますか？",
+    "deleteProjectMessage": "プロジェクトとその{conversations}を Flaxeo から削除します。フォルダー内のファイルには触れません。",
+    "projectOptions": "プロジェクトのオプション",
+    "conversationOptions": "会話のオプション",
+    "folderMissing": "フォルダーが見つかりません",
+    "locateFolder": "フォルダーを指定…",
+    "unlinked": "プロジェクトのない会話",
+    "unlinkedHint": "プロジェクトが削除されたため、もう実行できません。",
+    "deleteAll": "すべて削除",
+    "deleteUnlinkedTitle": "{conversations}を削除しますか？",
+    "awaitingApproval": "承認待ち",
+    "pathCopied": "パスをコピーしました",
+    "searchConversations": "会話を検索"
   },
   "searchModal": {
     "inMessages": "メッセージ内",
     "noContentMatches": "メッセージ内に一致なし"
+  },
+  "shortcuts": {
+    "title": "キーボードショートカット",
+    "newChat": "新しいチャット",
+    "addProject": "プロジェクトを追加",
+    "search": "会話を検索",
+    "settings": "設定を開く",
+    "sidebar": "サイドバーの表示/非表示",
+    "artifactStudio": "アーティファクトスタジオを切り替え",
+    "export": "会話をエクスポート",
+    "help": "このヘルプ",
+    "escape": "ダイアログを閉じる · 実行を停止",
+    "rename": "選択した会話の名前を変更"
+  },
+  "search": {
+    "placeholderChats": "チャットを検索…",
+    "placeholderCode": "会話を検索…",
+    "noMatches": "一致する会話はありません",
+    "noMatchesHint": "別のタイトルや語句を試してください。",
+    "empty": "まだ会話はありません",
+    "emptyHint": "会話はここに表示されます。",
+    "previewEmpty": "この会話は空です。",
+    "previewPick": "プレビューする会話を選択",
+    "previewHint": "結果にカーソルを合わせるか、矢印キーを使います。",
+    "clear": "クリア",
+    "daysAgo": "{n}日前"
   }
 }

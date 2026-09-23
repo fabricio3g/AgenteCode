@@ -7,6 +7,7 @@ import {
   loadAppConfig
 } from '$lib/utils/storage';
 import { invoke } from '$lib/services/bridge';
+import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
 import type { ChatSession, CodeProject } from '$lib/types/chat';
@@ -21,7 +22,8 @@ import {
   compactCodeAgent,
   setCodeAgentRuntimeMode,
   respondToCodeAgentApproval,
-  listCodeAgentCheckpoints
+  listCodeAgentCheckpoints,
+  deleteCodeAgentSessionData
 } from './code-ipc';
 import { subscribeToCodeAgentEvents } from './code-events.svelte';
 
@@ -56,8 +58,10 @@ class CodeStore {
   projects = $state<CodeProject[]>([]);
   loading = $state(false);
   loaded = $state(false);
-  /** Project folders expanded in the sidebar tree. */
-  expandedProjects = $state<Record<string, boolean>>({});
+  /** Project folders expanded in the sidebar tree (remembered across launches). */
+  expandedProjects = $state<Record<string, boolean>>(readExpanded());
+  /** Projects whose folder was not found on disk at the last check. */
+  missingProjects = $state<Record<string, boolean>>({});
   activeProjectId = $state<string | null>(null);
 
   /** Live runs keyed by chatId. */
@@ -69,9 +73,18 @@ class CodeStore {
   constructor() {
     // Deleted conversations must not leave run state behind (unbounded growth)
     // nor a live engine session pointing at a chat that no longer exists.
-    appStore.onChatDeleted((chatId) => {
+    appStore.onChatDeleted((chatId, chat) => {
       if (this.runs[chatId]?.running) void abortCodeAgent(chatId).catch(() => {});
       this.evictChat(chatId, { force: true });
+      // The engine's log and checkpoints belong to the conversation: they go
+      // with it. Project files are never touched.
+      if (chat?.codeAgent || chat?.projectId) {
+        const sessionId = chat.codeAgent?.sessionId;
+        void deleteCodeAgentSessionData({ chatIds: [chatId], sessionIds: sessionId ? [sessionId] : [] }).catch(() => {});
+      }
+    });
+    $effect.root(() => {
+      $effect(() => writeExpanded(this.expandedProjects));
     });
   }
 
@@ -79,21 +92,36 @@ class CodeStore {
     if (this.loading) return;
     this.loading = true;
     try {
-      this.projects = await loadCodeProjectsFromDb();
+      this.projects = sortByActivity(await loadCodeProjectsFromDb());
       this.loaded = true;
     } finally {
       this.loading = false;
     }
+    void this.checkFolders();
+  }
+
+  /** Flag projects whose folder moved or was deleted outside the app. */
+  async checkFolders(): Promise<void> {
+    const entries = await Promise.all(
+      this.projects.map(async (project) => [project.id, !(await pathExists(project.rootPath).catch(() => true))] as const)
+    );
+    this.missingProjects = Object.fromEntries(entries.filter(([, missing]) => missing));
   }
 
   async addProject(): Promise<CodeProject | null> {
-    const rootPath = (await invoke<string | null>('pick_workspace_folder')) || null;
+    const rootPath = (await pickWorkspaceFolder()) || null;
     if (!rootPath) return null;
-    const segments = rootPath.split(/[\\/]/).filter(Boolean);
+    // The same folder twice is one project: select the one that exists.
+    const existing = this.projects.find((project) => samePath(project.rootPath, rootPath));
+    if (existing) {
+      this.activeProjectId = existing.id;
+      this.expandedProjects[existing.id] = true;
+      return existing;
+    }
     const project: CodeProject = {
       id: createId('proj'),
       rootPath,
-      rootName: segments[segments.length - 1] || rootPath,
+      rootName: folderName(rootPath),
       icon: null,
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -105,15 +133,62 @@ class CodeStore {
     return project;
   }
 
-  async removeProject(projectId: string): Promise<void> {
-    await deleteCodeProjectFromDb(projectId);
-    await this.load();
-    if (this.activeProjectId === projectId) this.activeProjectId = null;
-    // Conversations of a removed project leave the Code tree, so their cached
-    // runs are unreachable — drop the idle ones (live runs finish streaming).
-    for (const chat of appStore.chats) {
-      if (chat.projectId === projectId) this.evictChat(chat.id);
+  /**
+   * Delete a project from Flaxeo: every conversation in it (and the engine's
+   * logs and checkpoints for them), then the project itself. The folder on
+   * disk is never touched.
+   */
+  async deleteProject(projectId: string): Promise<void> {
+    const conversations = appStore.chats.filter((chat) => chat.projectId === projectId);
+    for (const chat of conversations) {
+      if (this.runs[chat.id]?.running) await abortCodeAgent(chat.id).catch(() => {});
+      appStore.deleteChat(chat.id, { silent: true });
     }
+    await deleteCodeProjectFromDb(projectId);
+    if (this.activeProjectId === projectId) this.activeProjectId = null;
+    delete this.expandedProjects[projectId];
+    await this.load();
+  }
+
+  /** Display name only; the folder keeps its name. */
+  async renameProject(projectId: string, name: string): Promise<void> {
+    const project = this.projectById(projectId);
+    const trimmed = name.trim();
+    if (!project || !trimmed || trimmed === project.rootName) return;
+    await saveCodeProjectToDb({ ...project, rootName: trimmed, updatedAt: project.updatedAt });
+    await this.load();
+  }
+
+  /** Point a project whose folder moved at its new location. */
+  async locateProject(projectId: string): Promise<void> {
+    const project = this.projectById(projectId);
+    if (!project) return;
+    const rootPath = await pickWorkspaceFolder();
+    if (!rootPath) return;
+    await saveCodeProjectToDb({ ...project, rootPath, updatedAt: Date.now() });
+    await this.load();
+  }
+
+  /** Open the project folder in the system file manager. */
+  async revealProject(projectId: string): Promise<void> {
+    const project = this.projectById(projectId);
+    if (project) await invoke('open_workspace_file', { absolutePath: project.rootPath });
+  }
+
+  /** Conversations whose project no longer exists (older builds orphaned them). */
+  get unlinkedConversations(): ChatSession[] {
+    if (!this.loaded) return [];
+    const known = new Set(this.projects.map((project) => project.id));
+    return appStore.visibleCodeChats.filter((chat) => !chat.projectId || !known.has(chat.projectId));
+  }
+
+  /** Move a project to the top of the list when something happens in it. */
+  #touchProject(projectId: string | null | undefined): void {
+    const project = this.projectById(projectId ?? null);
+    if (!project) return;
+    project.updatedAt = Date.now();
+    this.projects = sortByActivity(this.projects);
+    void saveCodeProjectToDb({ ...project });
   }
 
   toggleExpanded(projectId: string): void {
@@ -424,6 +499,7 @@ class CodeStore {
     }
 
     this.#appendTurnPair(chat, text);
+    this.#touchProject(project.id);
 
     try {
       const result = await promptCodeAgent(chatId, text);
@@ -501,6 +577,40 @@ class CodeStore {
     const run = this.#requireRun(chatId);
     run.checkpoints = await listCodeAgentCheckpoints(chatId).catch(() => []);
   }
+}
+
+const EXPANDED_KEY = 'flaxeo.code.expandedProjects';
+
+function readExpanded(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeExpanded(value: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify(value));
+  } catch {
+    // Blocked storage: expansion lasts for this session only.
+  }
+}
+
+function sortByActivity(projects: CodeProject[]): CodeProject[] {
+  return [...projects].sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+}
+
+function folderName(rootPath: string): string {
+  const segments = rootPath.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || rootPath;
+}
+
+function samePath(a: string, b: string): boolean {
+  const norm = (value: string) => value.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+  return norm(a) === norm(b);
 }
 
 function summarizeArgs(args: unknown): string {

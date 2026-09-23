@@ -42,9 +42,10 @@ describe('manager routing', () => {
 describe('models and settings shell integration', () => {
   it('renders separate expanded sidebar Models and Settings entries and no separate Runtime entry', () => {
     const sidebar = readFileSync('renderer/src/lib/components/layout/Sidebar.svelte', 'utf8');
-    assert.equal((sidebar.match(/<span class="btn-label">Models<\/span>/g) || []).length, 1);
-    assert.equal((sidebar.match(/<span class="btn-label">Settings<\/span>/g) || []).length, 1);
-    assert.equal((sidebar.match(/<span class="btn-label">Runtime<\/span>/g) || []).length, 0);
+    // Labels are translated: match the message keys the buttons render.
+    assert.equal((sidebar.match(/<span class="btn-label">\{\$t\('sidebar\.models'\)\}<\/span>/g) || []).length, 1);
+    assert.equal((sidebar.match(/<span class="btn-label">\{\$t\('sidebar\.settings'\)\}<\/span>/g) || []).length, 1);
+    assert.equal((sidebar.match(/sidebar\.runtime|>Runtime</g) || []).length, 0);
   });
 
   it('does not render legacy SettingsModal or LocalRuntimeModal from AppShell', () => {

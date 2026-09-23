@@ -31,7 +31,7 @@
 <button
   type="button"
   role="menuitem"
-  class={cn('aui-menu-item text-xs', danger && 'text-error', active && 'is-active', className)}
+  class={cn('aui-menu-item text-xs', danger && 'is-danger', active && 'is-active', className)}
   {disabled}
   onclick={onselect}
 >

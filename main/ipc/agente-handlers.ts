@@ -17,6 +17,7 @@ import {
   listCheckpoints,
   rollback,
   listExtensions,
+  deleteSessionData,
   setExtensionEnabled
 } from '../agente/runtime.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
@@ -55,6 +56,9 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
 
   ipcMain.handle('agente_list_checkpoints', (_e, args: { chatId: string }) => listCheckpoints(args.chatId));
   ipcMain.handle('agente_rollback', (_e, args: { chatId: string; turnIndex: number }) => rollback(args.chatId, args.turnIndex));
+  ipcMain.handle('agente_delete_session_data', (_e, args: { chatIds?: string[]; sessionIds?: string[] }) =>
+    deleteSessionData(args ?? {})
+  );
   ipcMain.handle('agente_list_extensions', () => listExtensions());
   ipcMain.handle('agente_set_extension_enabled', (_e, args: { extensionId: string; enabled: boolean }) =>
     setExtensionEnabled(args.extensionId, args.enabled)

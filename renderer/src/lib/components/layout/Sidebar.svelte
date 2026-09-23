@@ -2,25 +2,18 @@
 
 <script lang="ts">
   import { appStore } from '$lib/stores/app.svelte';
-  import { modelsStore } from '$lib/stores/models.svelte';
-  import { confirmStore } from '$lib/stores/confirm.svelte';
-  import { toastStore } from '$lib/stores/toast.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
-import { flip } from 'svelte/animate';
-import { smoothEase } from '$lib/utils/transitions';
-  import { Boxes, Code2, Drama, FileDown, House, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, Trash2 } from 'lucide-svelte';
+  import { flip } from 'svelte/animate';
+  import { smoothEase } from '$lib/utils/transitions';
+  import { formatShortcut } from '$lib/utils/shortcuts';
+  import { Boxes, Code2, Drama, House, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
   import { copy } from '$lib/copy';
-  import { downloadSessionMarkdown, sessionExportFilename } from '$lib/features/shared/export-session';
+  import SessionRow from '$lib/features/shared/SessionRow.svelte';
 
-  let renamingChatId = $state<string | null>(null);
-  let renamingChatTitle = $state('');
-  let renameValue = $state('');
-  let openMenuChatId = $state<string | null>(null);
-  let renameInputEl = $state<HTMLInputElement | undefined>(undefined);
   let collapsedGroups = $state<Set<number>>(new Set([4]));
 
   // Roleplay is opt-in: the tab only exists once the setting is on.
@@ -86,33 +79,9 @@ import { smoothEase } from '$lib/utils/transitions';
         : $t('sidebar.newChat')
   );
 
-  const activeModel = $derived(
-    appStore.backendMode === 'local' ? modelsStore.status?.active_model : null
+  const searchLabel = $derived(
+    appStore.activeSpace === 'code' ? $t('code.searchConversations') : $t('sidebar.searchChats')
   );
-
-  function startRename(chatId: string, title: string) {
-    renamingChatId = chatId;
-    renamingChatTitle = title;
-    renameValue = title;
-    setTimeout(() => {
-      renameInputEl?.focus();
-      renameInputEl?.select();
-    }, 0);
-  }
-
-  function closeRename() {
-    renamingChatId = null;
-    renamingChatTitle = '';
-    renameValue = '';
-  }
-
-  function commitRename(chatId: string) {
-    const trimmed = renameValue.trim();
-    if (trimmed && trimmed !== renamingChatTitle) {
-      appStore.renameChat(chatId, trimmed);
-    }
-    closeRename();
-  }
 
   function toggleGroup(key: number) {
     const next = new Set(collapsedGroups);
@@ -147,28 +116,6 @@ import { smoothEase } from '$lib/utils/transitions';
     });
   }
 
-  function exportChat(chat: (typeof appStore.chats)[0]) {
-    try {
-      downloadSessionMarkdown(chat);
-      toastStore.success(`Chat exported as ${sessionExportFilename(chat.title, new Date().toISOString().slice(0, 10))}`, 2500);
-    } catch {
-      toastStore.error('Export failed — try copying the chat manually.');
-    }
-  }
-
-  $effect(() => {
-    if (!openMenuChatId) return;
-    const close = () => {
-      openMenuChatId = null;
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener('click', close, { once: true });
-    }, 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', close);
-    };
-  });
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
@@ -213,28 +160,29 @@ import { smoothEase } from '$lib/utils/transitions';
         <span class="btn-label">{newButtonLabel}</span>
       </button>
 
-      <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
-        onclick={() => { appStore.artifactSettingsOpen = true; }}
-        title="Artifacts"
-      >
-        <Puzzle class="size-4 shrink-0" />
-        <span class="btn-label">Artifacts</span>
-      </button>
+      <!-- The Code agent does not produce artifacts; the toggle list only
+           concerns Home and Roleplay. -->
+      {#if appStore.activeSpace !== 'code'}
+        <button
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+          onclick={() => { appStore.artifactSettingsOpen = true; }}
+          title={$t('sidebar.artifacts')}
+        >
+          <Puzzle class="size-4 shrink-0" />
+          <span class="btn-label">{$t('sidebar.artifacts')}</span>
+        </button>
+      {/if}
     </div>
 
-    {#if appStore.activeSpace !== 'code'}
-      <button
-        type="button"
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
-        onclick={() => { appStore.chatSearchOpen = true; }}
-        title={$t('sidebar.searchChats')}
-      >
-        <Search class="size-4 shrink-0" />
-        <span class="btn-label btn-label-truncate">{$t('sidebar.searchChats')}</span>
-        <kbd class="btn-kbd shrink-0">⌘K</kbd>
-      </button>
-    {/if}
+    <button
+      type="button"
+      class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+      onclick={() => { appStore.chatSearchOpen = true; }}
+      title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
+    >
+      <Search class="size-4 shrink-0" />
+      <span class="btn-label btn-label-truncate">{searchLabel}</span>
+    </button>
 
     <div class="chat-list flex-1 overflow-y-auto">
       <!-- Code tab: the sidebar is a project-folder tree; each folder holds
@@ -256,95 +204,13 @@ import { smoothEase } from '$lib/utils/transitions';
             {#if !isCollapsed}
             <div class="space-y-0.5" transition:slide={{ duration: 140 }}>
               {#each group.chats as chat (chat.id)}
-                <div
-                  animate:flip={{ duration: 220, easing: smoothEase }}
-                  class={`chat-item group relative flex w-full cursor-pointer items-center justify-between px-2.5 py-[5px] text-left transition ${appStore.currentChatId === chat.id ? 'is-active' : ''}`}
-                  role="button"
-                  tabindex="0"
-                  onclick={() => appStore.selectChat(chat.id)}
-                  ondblclick={() => startRename(chat.id, chat.title)}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      appStore.selectChat(chat.id);
-                    }
-                  }}
-                >
-                  <div class="min-w-0 flex-1 pr-1">
-                    {#if renamingChatId === chat.id}
-                      <input
-                        bind:this={renameInputEl}
-                        class="chat-rename-input w-full"
-                        bind:value={renameValue}
-                        onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-                        onclick={(e) => e.stopPropagation()}
-                        onkeydown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            commitRename(chat.id);
-                          }
-                          if (event.key === 'Escape') {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            closeRename();
-                          }
-                        }}
-                        onblur={() => closeRename()}
-                        maxlength="120"
-                      />
-                    {:else}
-                      <div class="chat-title truncate text-[14px]">{chat.title}</div>
-                    {/if}
-                  </div>
-                  {#if renamingChatId !== chat.id}
-                    <button
-                      type="button"
-                      class="menu-btn ml-0.5 rounded-[var(--radius-sm)] p-1 opacity-0 transition group-hover:opacity-100"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        openMenuChatId = openMenuChatId === chat.id ? null : chat.id;
-                      }}
-                      aria-label="Chat options"
-                    >
-                      <MoreHorizontal class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                    </button>
-                  {/if}
-
-                  {#if openMenuChatId === chat.id}
-                    <div
-                      class="chat-menu absolute right-0 top-9 z-30 w-40 rounded-[var(--radius-md)]"
-                      role="menu"
-                      tabindex="-1"
-                      onclick={(e) => e.stopPropagation()}
-                      onkeydown={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                        onclick={(e) => { e.stopPropagation(); startRename(chat.id, chat.title); openMenuChatId = null; }}
-                      >
-                        <Pencil class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        class="menu-item flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                        onclick={(e) => { e.stopPropagation(); exportChat(chat); openMenuChatId = null; }}
-                      >
-                        <FileDown class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                        Export
-                      </button>
-                      <button
-                        type="button"
-                        class="menu-item danger flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[14px] transition"
-                        onclick={(e) => { e.stopPropagation(); confirmStore.show({ title: 'Delete Chat?', message: 'This cannot be undone.', danger: true, onConfirm: () => appStore.deleteChat(chat.id) }); openMenuChatId = null; }}
-                      >
-                        <Trash2 class="h-3.5 w-3.5" style={`color: ${sidebarIconColor};`} />
-                        Delete
-                      </button>
-                    </div>
-                  {/if}
+                <div animate:flip={{ duration: 220, easing: smoothEase }}>
+                  <SessionRow
+                    {chat}
+                    active={appStore.currentChatId === chat.id}
+                    onselect={() => appStore.selectChat(chat.id)}
+                    menuLabel={$t('sidebar.chatOptions')}
+                  />
                 </div>
               {/each}
             </div>
@@ -375,23 +241,22 @@ import { smoothEase } from '$lib/utils/transitions';
       <button
         class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
-        title="Models"
+        title={$t('sidebar.models')}
       >
         <Boxes class="size-4 shrink-0" />
-        <span class="btn-label">Models</span>
+        <span class="btn-label">{$t('sidebar.models')}</span>
       </button>
       <button
         class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
-        title="Settings"
+        title={$t('sidebar.settings')}
       >
         <Settings class="size-4 shrink-0" />
-        <span class="btn-label">Settings</span>
+        <span class="btn-label">{$t('sidebar.settings')}</span>
       </button>
     </div>
   </div>
 </aside>
-
 
 <style>
   .btn-label-truncate {
@@ -401,18 +266,6 @@ import { smoothEase } from '$lib/utils/transitions';
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
-  }
-
-  .btn-kbd {
-    margin-left: auto;
-    font-size: 10px;
-    font-weight: 500;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 0 0.3rem;
-    line-height: 1.4;
-    opacity: 0.75;
   }
 
   .new-chat-btn {
@@ -456,7 +309,7 @@ import { smoothEase } from '$lib/utils/transitions';
       box-shadow var(--motion-fast) var(--motion-ease);
   }
 
-  .space-tab-icon {
+  .space-tab :global(.space-tab-icon) {
     flex-shrink: 0;
   }
 
@@ -517,33 +370,6 @@ import { smoothEase } from '$lib/utils/transitions';
     color: inherit;
   }
 
-  .search-input {
-    background: var(--sidebar-accent);
-    border: 1px solid var(--sidebar-border);
-    color: var(--sidebar-foreground);
-  }
-
-  .search-input.focused {
-    border-color: var(--sidebar-ring);
-    background: var(--background);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--sidebar-ring) 25%, transparent);
-  }
-
-  .search-input::placeholder {
-    color: var(--muted-foreground);
-  }
-
-  .clear-btn {
-    color: var(--muted-foreground);
-    background: transparent;
-    border: none;
-  }
-
-  .clear-btn:hover {
-    color: var(--sidebar-foreground);
-    background: var(--sidebar-accent);
-  }
-
   .group-label {
     appearance: none;
     border: 0;
@@ -557,74 +383,8 @@ import { smoothEase } from '$lib/utils/transitions';
     color: var(--sidebar-foreground);
   }
 
-  .chat-item {
-    color: var(--muted-foreground);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-full);
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease);
-  }
-
-  .chat-item:hover {
-    background: var(--sidebar-accent);
-    color: var(--sidebar-accent-foreground);
-  }
-
   /* A quiet raised fill, not an inverted slab. A white pill in a dark sidebar
      pulls more attention than the conversation itself. */
-  .chat-item.is-active {
-    background: var(--sidebar-accent);
-    color: var(--foreground);
-  }
-
-  .chat-item.is-active .chat-title,
-  .chat-item.is-active .menu-btn {
-    color: inherit;
-  }
-
-
-
-
-  .menu-btn {
-    color: inherit;
-    opacity: 0.7;
-    background: transparent;
-    border: none;
-  }
-
-  .menu-btn:hover {
-    opacity: 1;
-    background: color-mix(in srgb, var(--sidebar-foreground) 10%, transparent);
-  }
-
-  .chat-menu {
-    background: var(--popover);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-lg);
-    padding: 4px;
-    border-radius: var(--radius-lg);
-  }
-
-  .menu-item {
-    color: var(--foreground);
-    border-radius: var(--radius-sm);
-    border: none;
-  }
-
-  .menu-item:hover {
-    background: var(--muted);
-  }
-
-  .menu-item.danger {
-    color: var(--error);
-  }
-
-  .menu-item.danger:hover {
-    background: var(--error-bg);
-  }
-
   .empty-icon {
     background: var(--sidebar-accent);
     border: 1px solid var(--sidebar-border);

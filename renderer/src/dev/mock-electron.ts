@@ -5,7 +5,20 @@
 type Listener = (payload: unknown) => void;
 
 const eventListeners = new Map<string, Set<Listener>>();
-const savedSessions: unknown[] = [];
+// One conversation whose project was removed by an older build (orphan).
+const savedSessions: unknown[] = [
+  {
+    id: 'chat-orphan',
+    title: 'Refactor the auth flow',
+    createdAt: Date.now() - 172_800_000,
+    updatedAt: Date.now() - 172_800_000,
+    folderId: null,
+    draft: '',
+    contextMode: 'code',
+    projectId: null,
+    messages: [{ id: 'm1', role: 'user', content: 'Refactor the auth flow', createdAt: Date.now() - 172_800_000 }]
+  }
+];
 /** Last runtime mode set via agente_set_runtime_mode — steers the script. */
 let runtimeMode: 'full' | 'supervised' | 'plan' = 'supervised';
 const savedProjects: Record<string, unknown>[] = [
@@ -16,6 +29,14 @@ const savedProjects: Record<string, unknown>[] = [
     icon: null,
     createdAt: Date.now() - 86_400_000,
     updatedAt: Date.now() - 3_600_000
+  },
+  {
+    id: 'proj-2',
+    rootPath: '/home/work/Code/missing-app',
+    rootName: 'missing-app',
+    icon: null,
+    createdAt: Date.now() - 186_400_000,
+    updatedAt: Date.now() - 186_400_000
   }
 ];
 
@@ -143,12 +164,23 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
   chat_db_load_code_projects: () => savedProjects,
   chat_db_save_code_project: (args) => {
     const project = (args as { project?: Record<string, unknown> } | undefined)?.project;
-    if (project && !savedProjects.some((p) => p.id === project.id)) savedProjects.unshift(project);
+    if (!project) return { ok: true };
+    const index = savedProjects.findIndex((p) => p.id === project.id);
+    if (index >= 0) savedProjects[index] = project;
+    else savedProjects.unshift(project);
     return { ok: true };
   },
-  chat_db_delete_code_project: () => ({ ok: true }),
+  chat_db_delete_code_project: (args) => {
+    const id = (args as { projectId?: string } | undefined)?.projectId;
+    const index = savedProjects.findIndex((project) => project.id === id);
+    if (index >= 0) savedProjects.splice(index, 1);
+    return { ok: true };
+  },
 
   pick_workspace_folder: () => '/home/work/Code/another-demo',
+  path_exists: (args) => !String((args as { path?: string } | undefined)?.path ?? '').includes('missing'),
+  open_workspace_file: () => undefined,
+  agente_delete_session_data: () => ({ ok: true, removed: 1 }),
 
   // Models / runtime: one small local model and one installed runtime, so the
   // Model hub, the load dialog and the ModelSwitcher all have something to show.

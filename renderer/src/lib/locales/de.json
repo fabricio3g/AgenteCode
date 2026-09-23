@@ -49,7 +49,10 @@
     "exportFailed": "Export fehlgeschlagen - versuchen Sie, den Chat manuell zu kopieren.",
     "previous7Days": "Letzte 7 Tage",
     "previous30Days": "Letzte 30 Tage",
-    "emptyHint": "Gestartete Unterhaltungen erscheinen hier."
+    "emptyHint": "Gestartete Unterhaltungen erscheinen hier.",
+    "chatOptions": "Chat-Optionen",
+    "artifacts": "Artefakte",
+    "models": "Modelle"
   },
   "settings": {
     "title": "Einstellungen",
@@ -190,12 +193,8 @@
     "newConversation": "Neue Unterhaltung",
     "noProjects": "Noch keine Projekte",
     "noProjectsHint": "Füge einen Projektordner hinzu und Agente codet mit dir.",
-    "removeProject": "Entfernen",
-    "removeProjectTitle": "Projekt entfernen?",
-    "removeProjectMessage": "Unterhaltungen aus {name} bleiben im Verlauf, aber das Projekt verschwindet aus der Liste.",
     "surfaceTitle": "Agente Coding",
     "surfacePickProject": "Wähle einen Projektordner, um eine Unterhaltung zu starten.",
-    "enginePending": "Die Agent-Engine wird gerade mit dieser Oberfläche verbunden. Bald verfügbar.",
     "composerPlaceholder": "Beschreibe eine Aufgabe für Agente…",
     "steerPlaceholder": "Laufende Aufgabe umlenken…",
     "send": "Senden",
@@ -222,10 +221,50 @@
     "statusStopped": "Gestoppt",
     "statusLength": "Ausgabelimit erreicht — ein Teil der Ausführung wurde abgeschnitten",
     "retrying": "Verbindungsproblem — neuer Versuch ({n})…",
-    "todosTitle": "Aufgaben"
+    "todosTitle": "Aufgaben",
+    "deleteProject": "Projekt löschen",
+    "deleteProjectTitle": "„{name}“ löschen?",
+    "deleteProjectMessage": "Entfernt das Projekt und seine {conversations} aus Flaxeo. Die Dateien im Ordner bleiben unberührt.",
+    "projectOptions": "Projektoptionen",
+    "conversationOptions": "Unterhaltungsoptionen",
+    "folderMissing": "Ordner nicht gefunden",
+    "locateFolder": "Ordner suchen…",
+    "unlinked": "Unterhaltungen ohne Projekt",
+    "unlinkedHint": "Ihr Projekt wurde entfernt, daher können sie nicht mehr laufen.",
+    "deleteAll": "Alle löschen",
+    "deleteUnlinkedTitle": "{conversations} löschen?",
+    "awaitingApproval": "Wartet auf deine Freigabe",
+    "pathCopied": "Pfad kopiert",
+    "searchConversations": "Unterhaltungen durchsuchen"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",
     "noContentMatches": "Keine Treffer in Nachrichten"
+  },
+  "shortcuts": {
+    "title": "Tastenkürzel",
+    "newChat": "Neuer Chat",
+    "addProject": "Projekt hinzufügen",
+    "search": "Unterhaltungen durchsuchen",
+    "settings": "Einstellungen öffnen",
+    "sidebar": "Seitenleiste ein-/ausblenden",
+    "artifactStudio": "Artefakt-Studio umschalten",
+    "export": "Unterhaltung exportieren",
+    "help": "Diese Hilfe",
+    "escape": "Dialog schließen · Lauf stoppen",
+    "rename": "Ausgewählte Unterhaltung umbenennen"
+  },
+  "search": {
+    "placeholderChats": "Chats durchsuchen…",
+    "placeholderCode": "Unterhaltungen durchsuchen…",
+    "noMatches": "Keine passenden Unterhaltungen",
+    "noMatchesHint": "Versuche einen anderen Titel oder Satz.",
+    "empty": "Noch keine Unterhaltungen",
+    "emptyHint": "Deine Unterhaltungen erscheinen hier.",
+    "previewEmpty": "Diese Unterhaltung ist leer.",
+    "previewPick": "Wähle eine Unterhaltung für die Vorschau",
+    "previewHint": "Fahre über ein Ergebnis oder nutze die Pfeiltasten.",
+    "clear": "Leeren",
+    "daysAgo": "vor {n} T."
   }
 }
