@@ -171,7 +171,10 @@ export async function buildAgentResult(run: AgentRun): Promise<AgentTaskResult> 
   }
   const { errorReason, warningReason } = run;
 
-  const useful = hasGatheredEvidence(run, sources, content);
+  const publicFallback = isPublicFallbackContent(content);
+  // Generic fallback text is not evidence: a run that gathered nothing and has
+  // only that to show failed, even though it has something to display.
+  const useful = hasGatheredEvidence(run, sources, publicFallback ? '' : content);
   const stopReason = run.stopReason !== 'none' ? run.stopReason : classifyStopReason(errorReason || warningReason);
   const outcome: AgentOutcome = errorReason ? (useful ? 'stopped' : 'failed') : warningReason ? 'partial' : 'completed';
   const fatal = outcome === 'failed';
@@ -194,8 +197,6 @@ export async function buildAgentResult(run: AgentRun): Promise<AgentTaskResult> 
   } catch { /* store unavailable in tests */ }
 
   console.log(`[agent] EXIT | contentLen=${content.length} | steps=${steps.length} | outcome=${outcome} | stopReason=${stopReason} | error=${fatal ? (errorReason || 'unknown') : 'none'} | notice=${warning && !fatal ? warning : 'none'}`);
-  const publicFallback = isPublicFallbackContent(content);
-
   return {
     content,
     reasoning,

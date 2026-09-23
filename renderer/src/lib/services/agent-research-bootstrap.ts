@@ -11,7 +11,7 @@ import { compactText } from '$lib/services/agent-evidence';
 import { toErrorMessage, isAbortError } from '$lib/utils/errors';
 import { hasEnoughResearchEvidence, researchEvidenceThreshold } from '$lib/services/research-pipeline';
 import { debugLog, uid } from '$lib/services/agent-tool-dispatch';
-import { emitSteps, injectLiveEvidence, prompt, type AgentRun } from '$lib/services/agent-run-context';
+import { emitSteps, prompt, pushUser, type AgentRun } from '$lib/services/agent-run-context';
 
 /** Run the first search; true when it gathered sources the model can write from. */
 export async function runResearchBootstrap(run: AgentRun): Promise<boolean> {
@@ -59,17 +59,14 @@ export async function runResearchBootstrap(run: AgentRun): Promise<boolean> {
       gathered = true;
       step.status = 'done';
       step.detail = say.sources(sources.length);
-      injectLiveEvidence(run);
-      run.messages.push({
-        role: 'user',
-        content: [
-          `System already ran an initial ${mode} web search for the user query and collected ${sources.length} sources (with page text when available).`,
-          hasEnoughResearchEvidence(mode, sources)
-            ? 'Evidence is sufficient. Write the final APA 7 research report now. Do NOT call tools unless a critical source is clearly missing full text — then fetch_url once.'
-            : 'If sources look thin or off-topic, you may run at most one more focused web_search, then write the final APA 7 research report. Prefer fetch_url only for the most important thin URLs.',
-          'Never mention tools, step limits, or agent status in the report.'
-        ].join('\n')
-      });
+      // Evidence reaches the model through the per-call evidence pack.
+      pushUser(run, [
+        `System already ran an initial ${mode} web search for the user query and collected ${sources.length} sources (with page text when available).`,
+        hasEnoughResearchEvidence(mode, sources)
+          ? 'Evidence is sufficient. Write the final APA 7 research report now. Do NOT call tools unless a critical source is clearly missing full text — then fetch_url once.'
+          : 'If sources look thin or off-topic, you may run at most one more focused web_search, then write the final APA 7 research report. Prefer fetch_url only for the most important thin URLs.',
+        'Never mention tools, step limits, or agent status in the report.'
+      ].join('\n'));
       args.onSources?.([...sources]);
     } else {
       step.status = 'done';

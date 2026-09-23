@@ -178,6 +178,45 @@ describe('agente agent loop', () => {
     assert.match(last.content, /turn limit/);
   });
 
+  it('ends the run before executing when beforeToolBatch says stop', async () => {
+    let ran = 0;
+    const echo = { name: 'echo', description: 'e', parameters: { type: 'object' }, execute: async () => { ran += 1; return { content: 'x' }; } };
+    const streamFn = fakeStreamFn([
+      { content: '', stopReason: 'toolUse', toolCalls: [{ id: 'c1', name: 'echo', arguments: {} }] }
+    ]);
+    const seen = [];
+    const result = await runAgentLoop(baseArgs({
+      streamFn,
+      tools: new Map([['echo', echo]]),
+      enabledTools: new Set(['echo']),
+      hooks: { beforeToolBatch: async (calls, turn) => { seen.push([calls.map((c) => c.name), turn]); return { stop: true }; } }
+    }));
+    assert.strictEqual(result.stopReason, 'stop');
+    assert.strictEqual(ran, 0);
+    assert.deepStrictEqual(seen, [[['echo'], 1]]);
+  });
+
+  it('gives the model another turn when reviewFinalReply rejects a reply', async () => {
+    const streamFn = fakeStreamFn([
+      { content: 'draft', stopReason: 'stop' },
+      { content: 'final', stopReason: 'stop' }
+    ]);
+    let reviews = 0;
+    const result = await runAgentLoop(baseArgs({
+      streamFn,
+      hooks: {
+        reviewFinalReply: async (message) => {
+          reviews += 1;
+          return message.content === 'draft' ? { retry: [{ role: 'user', content: 'try again', ts: 2 }] } : undefined;
+        }
+      }
+    }));
+    assert.strictEqual(result.turns, 2);
+    assert.strictEqual(reviews, 2);
+    assert.strictEqual(result.messages.at(-1).content, 'final');
+    assert.ok(streamFn.calls()[1].some((m) => m.role === 'user' && m.content === 'try again'));
+  });
+
   it('propagates abort through stopReason', async () => {
     const controller = new AbortController();
     controller.abort();

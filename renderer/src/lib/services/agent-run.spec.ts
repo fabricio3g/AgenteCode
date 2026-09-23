@@ -68,14 +68,23 @@ describe('runAgentTask', () => {
     expect(tools[1]).toBeUndefined();
   });
 
-  it('stops the run on a non-recoverable model error', async () => {
-    stream.mockRejectedValueOnce(new Error('socket hang up'));
+  it('retries a transient provider failure and finishes normally', async () => {
+    stream
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce({ content: 'Recovered answer.', reasoning: '' });
     const result = await run('Hello there');
-    // The strict fallback text counts as a usable result, so this reports as
-    // stopped-with-warning rather than failed.
-    expect(result.outcome).toBe('stopped');
-    expect(result.warning).toBeTruthy();
+    expect(result.content).toBe('Recovered answer.');
+    expect(result.outcome).toBe('completed');
+    expect(stream).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a fatal provider failure', async () => {
+    stream.mockRejectedValue(new Error('Invalid API key provided'));
+    const result = await run('Hello there');
     expect(stream).toHaveBeenCalledTimes(1);
+    // Nothing was gathered, so the fallback text is not a usable answer.
+    expect(result.outcome).toBe('failed');
+    expect(result.error).toBeTruthy();
   });
 
   it('switches to direct mode after two empty replies', async () => {
