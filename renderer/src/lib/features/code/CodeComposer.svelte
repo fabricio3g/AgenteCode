@@ -19,7 +19,10 @@
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
   import { setAgenteModel } from './code-ipc';
-  import { flyAndScale } from '$lib/utils/transitions';
+  import Menu from '$lib/components/ui/Menu.svelte';
+  import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import { approvalsStore } from '$lib/stores/approvals.svelte';
+  import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
 
   let { chat }: { chat: ChatSession } = $props();
@@ -48,9 +51,14 @@
    * The last run ended on its own terms — offer one-click continuation
    * (dsh's turn-tail action) instead of making the user retype.
    */
-  const canContinue = $derived(
-    !running && modelReady && chat.messages.at(-1)?.metadata?.codeStopReason === 'stop'
-  );
+  const canContinue = $derived.by(() => {
+    // Only when the run was cut short (output cap or turn budget) — a run
+    // that finished its task has nothing to continue.
+    const last = chat.messages.at(-1)?.metadata;
+    return !running && modelReady && (last?.codeStopReason === 'length' || !!last?.codeHitTurnLimit);
+  });
+  /** A paused run waiting on the user: point at the row that needs an answer. */
+  const awaitingApproval = $derived(approvalsStore.forChat(chat.id).length > 0);
 
   const modes = $derived([
     { id: 'plan' as const, icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint') },
@@ -75,13 +83,13 @@
     running
       ? $t('code.steerPlaceholder')
       : !modelReady
-        ? 'Select a model to start coding'
+        ? $t('code.selectModel')
         : $t('code.composerPlaceholder')
   );
 
   const hint = $derived(
     running
-      ? 'Enter steers · Alt+Enter queues · click ■ to stop'
+      ? $t('code.steerHint')
       : !modelReady
         ? ''
         : $t('code.composerHint')
@@ -123,13 +131,24 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Enter') return;
+    // Escape stops a live run (the shortcut help promises it).
+    if (event.key === 'Escape' && running) {
+      event.preventDefault();
+      void codeStore.stop(chat.id);
+      return;
+    }
+    // Shift+Enter is a newline, as the hint says; never submit mid-IME.
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();
     if (event.altKey) {
       void queueFollowUp();
       return;
     }
     void submit();
+  }
+
+  function scrollToApproval() {
+    document.querySelector('[data-awaiting-approval="true"]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
   function onInput(event: Event) {
@@ -163,8 +182,17 @@
 
   $effect(() => {
     const onFocusComposer = () => focusComposer();
+    // Starter prompts fill the composer; they never send on their own.
+    const onDraft = (event: Event) => {
+      text = String((event as CustomEvent<string>).detail ?? '');
+      void Promise.resolve().then(focusComposer);
+    };
     window.addEventListener('focus-composer', onFocusComposer);
-    return () => window.removeEventListener('focus-composer', onFocusComposer);
+    window.addEventListener('code-composer-draft', onDraft);
+    return () => {
+      window.removeEventListener('focus-composer', onFocusComposer);
+      window.removeEventListener('code-composer-draft', onDraft);
+    };
   });
 
   $effect(() => {
@@ -176,6 +204,12 @@
 
 <div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}>
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
+    {#if awaitingApproval}
+      <button type="button" class="approval-pill mx-auto mb-2 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium" onclick={scrollToApproval}>
+        <ShieldCheck class="size-3.5" />
+        {$t('code.awaitingApproval')}
+      </button>
+    {/if}
     <div class="composer-shell aui-composer pointer-events-auto transition">
       <div class="composer-body">
         <textarea
@@ -191,51 +225,37 @@
         <div class="composer-actions">
           <!-- Runtime mode gate — plan / supervised / full-auto. Scope lives on
                the left of the bar; the model picker answers on the right. -->
-          <div class="relative">
-            <button
-              type="button"
-              class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
-              class:is-open={modeMenuOpen}
-              onclick={() => (modeMenuOpen = !modeMenuOpen)}
-              aria-label={$t('code.modeSelector')}
-              title={activeMode.hint}
-              aria-expanded={modeMenuOpen}
-            >
-              <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-              <span class="trigger-label truncate">{activeMode.label}</span>
-              <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
-            </button>
-
-            {#if modeMenuOpen}
-              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-              <div class="fixed inset-0 z-40" onclick={() => (modeMenuOpen = false)}></div>
-              <div
-                class="absolute bottom-10 left-0 z-50 flex w-64 flex-col gap-1 rounded-xl border border-border bg-popover p-1.5 shadow-lg"
-                transition:flyAndScale={{ y: 8, start: 0.96, duration: 180 }}
+          <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="16rem" label={$t('code.modeSelector')} class="p-1.5">
+            {#snippet trigger(props)}
+              <button
+                type="button"
+                class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
+                class:is-open={modeMenuOpen}
+                aria-label={$t('code.modeSelector')}
+                title={activeMode.hint}
+                {...props}
               >
-                {#each modes as mode (mode.id)}
-                  <button
-                    type="button"
-                    class="mode-option flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition"
-                    class:is-selected={mode.id === runtimeMode}
-                    onclick={() => selectMode(mode.id)}
-                  >
-                    <span class="mode-icon mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                      {#if mode.id === runtimeMode}
-                        <Check class="size-3.5 text-foreground" />
-                      {:else}
-                        <mode.icon class="size-3.5" />
-                      {/if}
-                    </span>
-                    <span class="option-body min-w-0 flex-1">
-                      <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
-                      <span class="block text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
-                    </span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
+                <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                <span class="trigger-label truncate">{activeMode.label}</span>
+                <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
+              </button>
+            {/snippet}
+            {#each modes as mode (mode.id)}
+              <MenuItem active={false} class="!items-start !py-2" onselect={() => selectMode(mode.id)}>
+                <span class="mode-icon mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                  {#if mode.id === runtimeMode}
+                    <Check class="size-3.5 text-foreground" />
+                  {:else}
+                    <mode.icon class="size-3.5" />
+                  {/if}
+                </span>
+                <span class="option-body min-w-0 flex-1">
+                  <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
+                  <span class="block text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
+                </span>
+              </MenuItem>
+            {/each}
+          </Menu>
 
           <ModelSwitcher />
 
@@ -288,10 +308,10 @@
                 type="button"
                 class="model-cta flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"
                 onclick={openModelHub}
-                title="Open the Model Hub"
+                title={$t('code.selectModel')}
               >
                 <ArrowDownToLine class="size-3.5" />
-                Choose model
+                {copy.model.browseAll}
               </button>
             {:else if canContinue && !text.trim()}
               <!-- The run finished on its own: one click picks the work back up. -->
@@ -319,6 +339,12 @@
 </div>
 
 <style>
+  .approval-pill {
+    border: 1px solid color-mix(in srgb, var(--warning, #d97706) 45%, transparent);
+    background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--background));
+    color: var(--foreground);
+  }
+
   .composer-dock {
     background: var(--chat-bg);
   }

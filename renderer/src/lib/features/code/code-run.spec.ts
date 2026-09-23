@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyCodeAgentEvent, createCodeRunState } from './code-run';
+import { applyCodeAgentEvent, createCodeRunState, orderedEntries } from './code-run';
 import type { CodeAgentEvent } from '$shared/agente-protocol';
 
 function run(events: CodeAgentEvent[]) {
@@ -124,7 +124,57 @@ describe('agente run reducer', () => {
       { type: 'length_continue', chatId: 'c', turnIndex: 2 }
     ]);
     expect(state.truncatedOnce).toBe(true);
-    expect(state.steps.find((s) => s.id === 'turn-2')?.label).toContain('output cap');
+    expect(state.steps.find((s) => s.id === 'length-2')?.label).toContain('output cap');
+  });
+
+  it('keeps text and tool steps in the order they happened', () => {
+    const state = run([
+      { type: 'agent_start', chatId: 'c' },
+      { type: 'turn_start', chatId: 'c', turnIndex: 1 },
+      { type: 'text_delta', chatId: 'c', delta: 'Let me look ' },
+      { type: 'text_delta', chatId: 'c', delta: 'first.' },
+      { type: 'tool_start', chatId: 'c', toolCallId: 't1', toolName: 'read', args: { path: 'src/index.ts' } },
+      { type: 'tool_end', chatId: 'c', toolCallId: 't1', result: 'ok', isError: false },
+      { type: 'turn_end', chatId: 'c', turnIndex: 1 },
+      { type: 'text_delta', chatId: 'c', delta: 'Done.' }
+    ]);
+    expect(state.timeline).toEqual([
+      { kind: 'text', text: 'Let me look first.' },
+      { kind: 'step', id: 't1' },
+      { kind: 'text', text: 'Done.' }
+    ]);
+    // Consecutive turns no longer run together in the joined text.
+    expect(state.content).toBe('Let me look first.\n\nDone.');
+    // Turns are not rows.
+    expect(state.steps.map((step) => step.id)).toEqual(['t1']);
+    expect(state.startedAt).toBeTypeOf('number');
+  });
+
+  it('describes tool calls instead of dumping JSON', () => {
+    const state = run([
+      { type: 'tool_start', chatId: 'c', toolCallId: 'r', toolName: 'read', args: { path: 'a.ts' } },
+      { type: 'tool_start', chatId: 'c', toolCallId: 'b', toolName: 'bash', args: { command: 'npm test\necho done' } },
+      { type: 'tool_start', chatId: 'c', toolCallId: 'g', toolName: 'grep', args: { pattern: 'TODO', path: 'src' } }
+    ]);
+    expect(state.steps.map((step) => [step.label, step.detail, step.toolName])).toEqual([
+      ['Read', 'a.ts', 'read'],
+      ['Run', 'npm test', 'bash'],
+      ['Search', '“TODO” · src', 'grep']
+    ]);
+  });
+
+  it('ignores non-text progress updates instead of printing [object Object]', () => {
+    const state = run([
+      { type: 'tool_start', chatId: 'c', toolCallId: 'b', toolName: 'bash', args: { command: 'ls' } },
+      { type: 'tool_update', chatId: 'c', toolCallId: 'b', partialResult: { status: 'running' } },
+      { type: 'tool_update', chatId: 'c', toolCallId: 'b', partialResult: { output: 'file.txt' } }
+    ]);
+    expect(state.steps[0]?.output).toBe('file.txt');
+  });
+
+  it('flags a run that ran out of turns', () => {
+    const state = run([{ type: 'agent_end', chatId: 'c', stopReason: 'stop', hitTurnLimit: true }]);
+    expect(state.hitTurnLimit).toBe(true);
   });
 
   it('replaces the todo list on todo_update', () => {
@@ -247,5 +297,23 @@ describe('agente run reducer (#9 Home-facing events)', () => {
     ]);
     expect(state.reasoning).toBe('still thinking');
     expect(state.reasoningRaw).toBe('still thinking');
+  });
+});
+
+describe('orderedEntries', () => {
+  const read = { id: 'r', type: 'reading' as const, label: 'Read', status: 'done' as const };
+
+  it('renders a saved timeline in order and skips blank text', () => {
+    const entries = orderedEntries({
+      agentSteps: [read],
+      content: 'a\n\nb',
+      metadata: { codeTimeline: [{ kind: 'text', text: 'a' }, { kind: 'step', id: 'r' }, { kind: 'text', text: '  ' }, { kind: 'text', text: 'b' }] }
+    });
+    expect(entries.map((entry) => entry.text ?? entry.step?.id)).toEqual(['a', 'r', 'b']);
+  });
+
+  it('falls back to steps then text for messages saved before timelines', () => {
+    const entries = orderedEntries({ agentSteps: [read], content: 'answer' });
+    expect(entries.map((entry) => entry.text ?? entry.step?.id)).toEqual(['r', 'answer']);
   });
 });

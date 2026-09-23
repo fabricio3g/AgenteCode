@@ -26,6 +26,9 @@
       "complexity_critical": {
         "count": 2
       },
+      "complexity_high": {
+        "count": 1
+      },
       "complexity_moderate": {
         "count": 1
       },
@@ -634,7 +637,7 @@
     },
     "renderer/src/dev/mock-electron.ts": {
       "crap_moderate": {
-        "count": 3
+        "count": 4
       }
     },
     "renderer/src/lib/components/agent/ActivityDrawer.svelte": {
@@ -1017,7 +1020,7 @@
     },
     "renderer/src/lib/features/code/CodeComposer.svelte": {
       "crap_high": {
-        "count": 1
+        "count": 3
       },
       "crap_moderate": {
         "count": 2
@@ -1030,14 +1033,17 @@
     },
     "renderer/src/lib/features/code/CodeSurface.svelte": {
       "crap_moderate": {
-        "count": 1
+        "count": 3
       }
     },
     "renderer/src/lib/features/code/code-run.ts": {
       "complexity_critical": {
-        "count": 1
+        "count": 2
       },
       "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -1045,8 +1051,17 @@
       "complexity_critical": {
         "count": 1
       },
+      "complexity_high": {
+        "count": 2
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
       "crap_critical": {
         "count": 1
+      },
+      "crap_high": {
+        "count": 2
       },
       "crap_moderate": {
         "count": 4
@@ -1828,14 +1843,13 @@
     "renderer/src/lib/ui/components/Select.svelte:untested risk",
     "renderer/src/lib/services/agent-llm.ts:high impact",
     "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
-    "renderer/src/lib/utils/tool-ui.ts:high impact",
     "renderer/src/lib/services/agent-run-context.ts:high impact",
     "renderer/src/lib/services/agent-artifact.ts:high impact",
-    "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/utils/preview-builder.ts:high impact",
+    "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/services/runtime.ts:high impact",
-    "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "main/agente/llm/stream-fn.ts:dead code",
+    "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "main/agente/tools/builtins.ts:dead code",
     "main/providers/helpers.ts:high impact",
     "renderer/src/lib/stores/app.svelte.ts:complexity",
@@ -1851,34 +1865,35 @@
     "main/providers/anthropic.ts:high impact",
     "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
     "renderer/src/lib/services/artifact-model.ts:high impact",
-    "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:complexity",
     "main/search-providers/shared.ts:high impact",
+    "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:complexity",
     "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
     "renderer/src/lib/services/research-pipeline.ts:high impact",
     "main/runtime-resolver.ts:complexity",
+    "renderer/src/lib/features/code/code-run.ts:high impact",
+    "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "main/whisper-resolver.ts:complexity",
     "renderer/src/lib/stores/app-context-budget.ts:high impact",
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "main/chat-ipc.ts:high impact",
     "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "main/agente/extensions/builtin.ts:dead code",
-    "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
-    "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
+    "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
     "renderer/src/lib/services/agent-run-finish.ts:complexity",
     "renderer/src/lib/services/llama-releases.ts:dead code",
+    "renderer/src/lib/utils/tool-ui.ts:high impact",
     "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
-    "renderer/src/lib/features/code/code-run.ts:complexity",
     "renderer/src/lib/services/generated-documents.ts:high impact",
     "main/search-providers/aggregator/engines.ts:untested risk",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
     "renderer/src/lib/utils/storage.ts:high impact",
     "renderer/src/lib/services/agent-run-plan.ts:complexity",
     "renderer/src/lib/services/agent-home-stream.ts:complexity",
-    "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/sandbox.ts:dead code",
+    "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/document-markdown.ts:untested risk",
     "renderer/src/lib/utils/code-copy.ts:dead code",
     "renderer/src/lib/services/kokoro-tts.ts:dead code",
@@ -1887,18 +1902,18 @@
     "renderer/src/lib/ui/context.ts:high impact",
     "main/artifact-preview.ts:high impact",
     "renderer/src/lib/ui/prompt.ts:untested risk",
-    "renderer/src/lib/stores/models.svelte.ts:high impact",
     "main/llama-runtime.ts:high impact",
+    "main/agente/runtime.ts:complexity",
+    "renderer/src/lib/stores/models.svelte.ts:high impact",
     "main/providers/openai-core.ts:high impact",
     "renderer/src/lib/i18n/index.ts:high impact",
-    "main/agente/runtime.ts:complexity",
-    "main/process-manager.ts:complexity",
     "renderer/src/lib/services/agent-content.ts:high impact",
+    "main/process-manager.ts:complexity",
     "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "renderer/src/lib/utils/id.ts:high impact",
+    "renderer/src/lib/services/agent-model-call.ts:complexity",
     "main/search-providers/providers.ts:high impact",
     "main/web-scraper.ts:high impact",
-    "renderer/src/lib/services/agent-model-call.ts:complexity",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
     "renderer/src/lib/utils/errors.ts:high impact",
     "main/content-summarizer.ts:untested risk",
@@ -1909,11 +1924,11 @@
     "renderer/src/lib/components/ui/Select.svelte:complexity",
     "main/search-engine.ts:complexity",
     "renderer/src/lib/utils/artifact-files.ts:high impact",
-    "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
+    "renderer/src/dev/mock-electron.ts:untested risk",
     "main/rag-engine.ts:high impact",
+    "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
     "main/link-scorer.ts:untested risk",
     "main/stt-engine.ts:untested risk",
-    "renderer/src/dev/mock-electron.ts:untested risk",
     "main/runtime-config-resolver.ts:high impact",
     "main/web-crawler.ts:complexity",
     "scripts/smoke-search-scrape.mjs:untested risk",

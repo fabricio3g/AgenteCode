@@ -136,7 +136,6 @@
     "renderer/src/lib/utils/providers.ts:PROVIDER_URLS",
     "renderer/src/lib/utils/providers.ts:PROVIDER_LABELS",
     "renderer/src/lib/utils/providers.ts:PROVIDER_COLORS",
-    "renderer/src/lib/utils/tool-ui.ts:ACTIVITY_LABELS",
     "renderer/src/lib/utils/tool-ui.ts:isCodeToolName"
   ],
   "unused_types": [

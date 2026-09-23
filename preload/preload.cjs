@@ -53,7 +53,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
-  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data'
+  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data', 'agente_live_chats'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([

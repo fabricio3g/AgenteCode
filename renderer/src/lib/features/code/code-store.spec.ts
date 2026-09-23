@@ -29,6 +29,7 @@ vi.mock('$lib/services/bridge', () => ({
 
 import { appStore } from '$lib/stores/app.svelte';
 import { codeStore } from './code.svelte';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
 
 const CHAT_ID = 'chat-1';
 const PROJECT_ID = 'proj-1';
@@ -323,5 +324,27 @@ describe('run eviction', () => {
     codeStore.loaded = true;
     codeStore.projects = [];
     expect(codeStore.unlinkedConversations.map((chat) => chat.id)).toEqual([CHAT_ID]);
+  });
+});
+
+describe('approvals and interrupted runs', () => {
+  it('drops approval buttons the engine settled itself (Stop) without answering again', async () => {
+    await startRun();
+    emit({ type: 'approval_request', chatId: CHAT_ID, requestId: 'apr-9', toolName: 'edit', args: { path: 'a.ts' } });
+    expect(approvalsStore.forChat(CHAT_ID)).toHaveLength(1);
+
+    emit({ type: 'approval_resolved', chatId: CHAT_ID, requestId: 'apr-9', decision: 'deny' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(approvalsStore.forChat(CHAT_ID)).toHaveLength(0);
+    expect(bridge.invokes.some((call) => call.command === 'agente_respond_approval')).toBe(false);
+  });
+
+  it('clears pending approvals when the run ends', async () => {
+    await startRun();
+    emit({ type: 'approval_request', chatId: CHAT_ID, requestId: 'apr-10', toolName: 'bash', args: { command: 'ls' } });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'aborted' });
+    expect(approvalsStore.forChat(CHAT_ID)).toHaveLength(0);
   });
 });

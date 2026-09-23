@@ -122,7 +122,7 @@ export interface CodeRunSummary {
 
 export type CodeAgentEvent =
   | { type: 'agent_start'; chatId: string }
-  | { type: 'agent_end'; chatId: string; stopReason: CodeStopReason }
+  | { type: 'agent_end'; chatId: string; stopReason: CodeStopReason; hitTurnLimit?: boolean }
   | { type: 'turn_start'; chatId: string; turnIndex: number }
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
@@ -191,6 +191,8 @@ export interface AgenteCheckpointSummary {
   fileCount: number;
   additions: number;
   deletions: number;
+  /** Paths the turn changed (relative to the project root). */
+  files?: string[];
 }
 
 /** Alias kept for renderer code that imports CodeCheckpointSummary. */

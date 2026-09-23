@@ -88,7 +88,7 @@
   function focusItem(delta: number) {
     if (!panelEl) return;
     const items = Array.from(
-      panelEl.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
+      panelEl.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])')
     );
     if (!items.length) return;
     const current = items.findIndex((item) => item === document.activeElement);

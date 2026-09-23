@@ -46,6 +46,33 @@ export class CheckpointStore {
     return path.join(this.turnDir(turnIndex), 'before');
   }
 
+  /**
+   * Visit every file captured for a turn: its path relative to the project,
+   * the snapshot's absolute path, and whether it marks a file that did not
+   * exist before the turn (`.absent`).
+   */
+  private async eachCaptured(
+    turnIndex: number,
+    visit: (rel: string, snapshot: string, absent: boolean) => Promise<void>
+  ): Promise<void> {
+    const walk = async (dir: string, relPrefix: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await fsp.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+        const abs = path.join(dir, entry.name);
+        if (entry.isDirectory()) await walk(abs, rel);
+        else if (entry.name.endsWith('.absent')) await visit(rel.slice(0, -'.absent'.length), abs, true);
+        else await visit(rel, abs, false);
+      }
+    };
+    await walk(this.beforeDir(turnIndex), '');
+  }
+
   /** Copy the file's current (pre-change) state for this turn. Idempotent per turn+file. */
   async capture(absPath: string, projectRoot: string, turnIndex: number): Promise<void> {
     const rel = path.relative(projectRoot, absPath);
@@ -64,42 +91,21 @@ export class CheckpointStore {
 
   /** Diff every captured file against its current state. */
   async finalizeTurn(projectRoot: string, turnIndex: number): Promise<FileDiffStat[]> {
-    const beforeDir = this.beforeDir(turnIndex);
     const stats: FileDiffStat[] = [];
-    const walk = async (dir: string, relPrefix: string) => {
-      let entries;
-      try {
-        entries = await fsp.readdir(dir, { withFileTypes: true });
-      } catch {
+    await this.eachCaptured(turnIndex, async (rel, snapshot, absent) => {
+      const current = await fsp.readFile(path.join(projectRoot, rel), 'utf8').catch(() => null);
+      if (absent) {
+        stats.push({ path: rel, kind: 'created', additions: current ? current.split('\n').length : 0, deletions: 0 });
         return;
       }
-      for (const entry of entries) {
-        const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
-        const abs = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(abs, rel);
-        } else if (entry.name.endsWith('.absent')) {
-          const fileRel = rel.slice(0, -'.absent'.length);
-          const current = await fsp.readFile(path.join(projectRoot, fileRel), 'utf8').catch(() => null);
-          stats.push({
-            path: fileRel,
-            kind: 'created',
-            additions: current ? current.split('\n').length : 0,
-            deletions: 0
-          });
-        } else {
-          const before = await fsp.readFile(abs, 'utf8').catch(() => '');
-          const current = await fsp.readFile(path.join(projectRoot, rel), 'utf8').catch(() => null);
-          if (current === null) {
-            stats.push({ path: rel, kind: 'deleted', additions: 0, deletions: before.split('\n').length });
-          } else if (before !== current) {
-            const { additions, deletions } = diffLineStats(before, current);
-            stats.push({ path: rel, kind: 'modified', additions, deletions });
-          }
-        }
+      const before = await fsp.readFile(snapshot, 'utf8').catch(() => '');
+      if (current === null) {
+        stats.push({ path: rel, kind: 'deleted', additions: 0, deletions: before.split('\n').length });
+      } else if (before !== current) {
+        const { additions, deletions } = diffLineStats(before, current);
+        stats.push({ path: rel, kind: 'modified', additions, deletions });
       }
-    };
-    await walk(beforeDir, '');
+    });
     if (stats.length) {
       await fsp.mkdir(this.turnDir(turnIndex), { recursive: true });
       await fsp.writeFile(path.join(this.turnDir(turnIndex), 'stats.json'), JSON.stringify(stats), 'utf8');
@@ -130,39 +136,57 @@ export class CheckpointStore {
         createdAt: (await fsp.stat(this.turnDir(turnIndex)).then((s) => s.mtimeMs)).valueOf(),
         fileCount: stats.length,
         additions: stats.reduce((sum, s) => sum + s.additions, 0),
-        deletions: stats.reduce((sum, s) => sum + s.deletions, 0)
+        deletions: stats.reduce((sum, s) => sum + s.deletions, 0),
+        files: stats.map((stat) => stat.path)
       });
     }
     return summaries.sort((a, b) => a.turnIndex - b.turnIndex);
   }
 
+  /**
+   * Put the project back to how it was before `turnIndex`: undo that turn and
+   * every later one, newest first (so a file touched in several turns ends at
+   * its oldest snapshot), then forget those checkpoints — they describe
+   * changes that no longer exist. Returns the paths that were restored.
+   */
+  async restoreTo(projectRoot: string, turnIndex: number): Promise<string[]> {
+    const turns = (await this.listTurns())
+      .map((turn) => turn.turnIndex)
+      .filter((index) => index >= turnIndex)
+      .sort((a, b) => b - a);
+    const paths = new Set<string>();
+    for (const index of turns) {
+      for (const rel of await this.capturedPaths(index)) paths.add(rel);
+      await this.restore(projectRoot, index);
+    }
+    for (const index of turns) {
+      await fsp.rm(this.turnDir(index), { recursive: true, force: true });
+    }
+    return [...paths].sort();
+  }
+
+  /** Relative paths captured in a turn (created files included). */
+  private async capturedPaths(turnIndex: number): Promise<string[]> {
+    const out: string[] = [];
+    await this.eachCaptured(turnIndex, async (rel) => {
+      out.push(rel);
+    });
+    return out;
+  }
+
   /** Restore every file captured in `turnIndex` to its pre-turn state. */
   async restore(projectRoot: string, turnIndex: number): Promise<number> {
-    const beforeDir = this.beforeDir(turnIndex);
     let restored = 0;
-    const walk = async (dir: string, relPrefix: string) => {
-      let entries;
-      try {
-        entries = await fsp.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
+    await this.eachCaptured(turnIndex, async (rel, snapshot, absent) => {
+      const target = path.join(projectRoot, rel);
+      if (absent) {
+        await fsp.rm(target, { force: true });
+      } else {
+        await fsp.mkdir(path.dirname(target), { recursive: true });
+        await fsp.copyFile(snapshot, target);
       }
-      for (const entry of entries) {
-        const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
-        const abs = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(abs, rel);
-        } else if (entry.name.endsWith('.absent')) {
-          await fsp.rm(path.join(projectRoot, rel.slice(0, -'.absent'.length)), { force: true });
-          restored += 1;
-        } else {
-          await fsp.mkdir(path.dirname(path.join(projectRoot, rel)), { recursive: true });
-          await fsp.copyFile(abs, path.join(projectRoot, rel));
-          restored += 1;
-        }
-      }
-    };
-    await walk(beforeDir, '');
+      restored += 1;
+    });
     return restored;
   }
 }

@@ -13,24 +13,27 @@ export type ToolUiStatus = 'done' | 'running' | 'error' | 'pending' | 'awaiting_
  * `DeepResearchWidget.svelte` and others — which is how the app ended up with
  * "Thinking", "Thinking...", and "Planning" all describing the same state.
  */
-export const ACTIVITY_LABELS: Record<AgentActivity, string> = {
-  planning: copy.status.planning,
-  searching: copy.status.searching,
-  reading: copy.status.reading,
-  creating_files: copy.status.writing,
-  writing: copy.status.writing,
-  stopped: copy.tool.stopped,
-  completed: copy.tool.done
+// Read on every call, not captured at import: `copy` follows the UI language.
+const ACTIVITY_LABELS: Record<AgentActivity, () => string> = {
+  planning: () => copy.status.planning,
+  searching: () => copy.status.searching,
+  reading: () => copy.status.reading,
+  creating_files: () => copy.status.writing,
+  writing: () => copy.status.writing,
+  stopped: () => copy.tool.stopped,
+  completed: () => copy.tool.done
 };
 
 export function activityLabel(activity: AgentActivity | undefined | null): string {
-  return (activity && ACTIVITY_LABELS[activity]) || copy.status.working;
+  return (activity && ACTIVITY_LABELS[activity]?.()) || copy.status.working;
 }
 
 export function titleCaseToolName(name: string): string {
-  return String(name || '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const text = String(name || '');
+  // Only raw tool ids (`web_search`) are prettified; a label that is already
+  // prose ("Edit src/index.ts") keeps its paths and casing.
+  if (!/^[a-z0-9_]+$/.test(text)) return text;
+  return text.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Format elapsed tool duration (ms) like assistant-ui ToolFallback. */

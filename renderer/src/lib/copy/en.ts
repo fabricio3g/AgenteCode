@@ -109,6 +109,30 @@ export const COPY_EN = {
     truncated: '… (truncated)'
   },
 
+  /** Code agent tool rows: the verb for each tool, plus run-level notes. */
+  codeRun: {
+    read: 'Read',
+    write: 'Write',
+    edit: 'Edit',
+    bash: 'Run',
+    grep: 'Search',
+    ls: 'List',
+    todo_write: 'Update tasks',
+    git_status: 'Git status',
+    git_diff: 'Git diff',
+    approvePlan: 'Approve plan',
+    approval: 'Approval',
+    approved: 'Approved',
+    denied: 'Denied',
+    compacting: 'Compacting context',
+    compacted: 'Context compacted',
+    continuing: 'Hit the output cap — continuing',
+    planNote: 'Approving lets the agent start editing; every edit still asks individually.',
+    turnLimit: 'Stopped at the turn limit',
+    interrupted: 'Interrupted — the app closed during this run',
+    plan: 'Plan'
+  },
+
   /** Shown for a conversation that still has its placeholder title. */
   untitled: {
     home: 'New chat',

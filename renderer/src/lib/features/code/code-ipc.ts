@@ -39,12 +39,17 @@ export function respondToCodeAgentApproval(chatId: string, requestId: string, de
   return invoke('agente_respond_approval', { chatId, requestId, decision });
 }
 
-export function listCodeAgentCheckpoints(chatId: string): Promise<CodeCheckpointSummary[]> {
-  return invoke('agente_list_checkpoints', { chatId });
+export function listCodeAgentCheckpoints(chatId: string, sessionId?: string): Promise<CodeCheckpointSummary[]> {
+  return invoke('agente_list_checkpoints', { chatId, sessionId });
 }
 
-export function rollbackCodeAgent(chatId: string, turnIndex: number): Promise<{ ok: boolean; restored?: number; error?: string }> {
-  return invoke('agente_rollback', { chatId, turnIndex });
+/** Restore the project to before `turnIndex`; works without a live session. */
+export function rollbackCodeAgent(
+  chatId: string,
+  turnIndex: number,
+  options: { sessionId?: string; projectRoot?: string } = {}
+): Promise<{ ok: boolean; restored?: number; files?: string[]; error?: string }> {
+  return invoke('agente_rollback', { chatId, turnIndex, ...options });
 }
 
 export interface AgenteExtensionInfo {
@@ -62,6 +67,11 @@ export function listAgenteExtensions(): Promise<AgenteExtensionInfo[]> {
 
 export function setAgenteExtensionEnabled(extensionId: string, enabled: boolean): Promise<{ ok: boolean }> {
   return invoke('agente_set_extension_enabled', { extensionId, enabled });
+}
+
+/** Chats whose engine run is still going (a renderer reload does not stop it). */
+export function listLiveCodeAgentChats(): Promise<string[]> {
+  return invoke('agente_live_chats', {});
 }
 
 /** Close live sessions and delete their logs + checkpoints (never project files). */
