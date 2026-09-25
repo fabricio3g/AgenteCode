@@ -97,16 +97,70 @@ impl SubagentRegistry {
             .count()
     }
 
-    /// Admit a spawn to the FIFO queue. The caller must have inserted a
-    /// `Pending` snapshot (plus its completion channel) first, so
-    /// `task_output` and the `/subagents` UI observe it immediately.
-    pub fn enqueue(&self, item: QueuedSpawn) {
-        self.inner.write().unwrap().queue.push_back(item);
+    /// Reserve a running slot or enqueue under one lock. Independent hosts
+    /// sharing this registry cannot over-admit or lose a queued wakeup.
+    pub(crate) fn admit(
+        &self,
+        mut snapshot: SubagentSnapshot,
+        item: QueuedSpawn,
+        max_concurrent: usize,
+    ) -> Result<SpawnAdmission, String> {
+        let mut inner = self.inner.write().unwrap();
+        let id = snapshot.id.clone();
+        if inner.subagents.contains_key(&id) {
+            return Err(format!("Subagent id '{id}' already exists"));
+        }
+        let running = inner
+            .subagents
+            .values()
+            .filter(|s| s.status == SubagentStatus::Running)
+            .count();
+        let queued = running >= max_concurrent || !inner.queue.is_empty();
+        snapshot.status = if queued {
+            SubagentStatus::Pending
+        } else {
+            SubagentStatus::Running
+        };
+        // A queued task already returns its handle, even if originally inline.
+        snapshot.background |= queued;
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        inner.subagents.insert(id.clone(), snapshot);
+        inner.completions.insert(id.clone(), tx);
+        inner.cancels.insert(id, item.controller.clone());
+        if queued {
+            inner.queue.push_back(item);
+            Ok(SpawnAdmission::Queued {
+                position: inner.queue.len(),
+                running,
+            })
+        } else {
+            Ok(SpawnAdmission::Running(rx))
+        }
     }
 
-    /// Pop the longest-waiting queued spawn.
-    pub fn dequeue_next(&self) -> Option<QueuedSpawn> {
-        self.inner.write().unwrap().queue.pop_front()
+    /// Claim the next eligible queued child and its slot atomically.
+    pub(crate) fn start_next_queued(&self, max_concurrent: usize) -> Option<(QueuedSpawn, String)> {
+        let mut inner = self.inner.write().unwrap();
+        let running = inner
+            .subagents
+            .values()
+            .filter(|s| s.status == SubagentStatus::Running)
+            .count();
+        if running >= max_concurrent {
+            return None;
+        }
+        while let Some(item) = inner.queue.pop_front() {
+            let Some(snapshot) = inner.subagents.get_mut(&item.id) else {
+                continue;
+            };
+            if snapshot.status != SubagentStatus::Pending {
+                continue;
+            }
+            snapshot.status = SubagentStatus::Running;
+            snapshot.background = true;
+            return Some((item, snapshot.model.clone()));
+        }
+        None
     }
 
     /// Take a queued spawn by id (kill-before-start). Returns the payload so
@@ -152,7 +206,9 @@ impl SubagentRegistry {
             snapshot.finished_at = Some(chrono::Utc::now());
         }
         if let Some(tx) = inner.completions.get(id) {
-            let _ = tx.send(true);
+            // send() discards the value when no receiver exists. Background
+            // children must still look completed to a later subscriber.
+            tx.send_replace(true);
         }
         inner.cancels.remove(id);
     }
@@ -195,7 +251,12 @@ impl SubagentRegistry {
         let mut inner = self.inner.write().unwrap();
         inner.subagents.remove(id);
         inner.completions.remove(id);
-        inner.cancels.remove(id);
+        if let Some(controller) = inner.cancels.remove(id) {
+            controller.abort();
+        }
+        inner.queue.retain(|item| item.id != id);
+        inner.observed.remove(id);
+        inner.timed_out.remove(id);
     }
 
     /// Completion watcher for `task_output` polling.
@@ -247,6 +308,11 @@ impl SubagentRegistry {
     }
 }
 
+pub(crate) enum SpawnAdmission {
+    Running(tokio::sync::watch::Receiver<bool>),
+    Queued { position: usize, running: usize },
+}
+
 /// A spawn admitted but not yet started: all inputs needed to launch the
 /// child thread once a concurrency slot frees, without re-resolving.
 #[derive(Clone)]
@@ -254,7 +320,6 @@ pub struct QueuedSpawn {
     pub id: String,
     pub request: SubagentSpawnRequest,
     pub cfg: EffectiveRuntimeConfig,
-    pub parent_messages: Vec<Message>,
     pub controller: AbortController,
     pub depth: u32,
     /// Whether Plan-mode admission coerced this child to read-only (kept so
@@ -289,6 +354,7 @@ mod tests {
             id: id.to_string(),
             subagent_type: "explore".to_string(),
             description: "test".to_string(),
+            prompt: "Explicit handoff".to_string(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),
@@ -300,6 +366,106 @@ mod tests {
             cwd: None,
             worktree: None,
         }
+    }
+
+    fn queued_item(id: &str) -> QueuedSpawn {
+        let request = serde_json::from_value(serde_json::json!({
+            "prompt": "do it", "description": "d", "subagent_type": "explore",
+            "isolation": "none"
+        }))
+        .unwrap();
+        let parent = super::super::definition::SubagentParentDefaults {
+            model: "m".into(),
+            project_dir: ".".into(),
+            depth: 0,
+        };
+        let cfg =
+            super::super::definition::resolve_effective_config(&request, &parent, &[]).unwrap();
+        QueuedSpawn {
+            id: id.into(),
+            request,
+            cfg,
+            controller: AbortController::new(),
+            depth: 0,
+            coerced_to_read_only: false,
+        }
+    }
+
+    #[test]
+    fn concurrent_admission_and_dequeue_respect_the_slot_limit() {
+        let registry = SubagentRegistry::new();
+        let barrier = std::sync::Barrier::new(16);
+        std::thread::scope(|scope| {
+            for n in 0..16 {
+                let registry = &registry;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    let id = format!("child-{n}");
+                    barrier.wait();
+                    registry.admit(snapshot(&id), queued_item(&id), 3).unwrap();
+                });
+            }
+        });
+        assert_eq!(registry.started_count(), 3);
+        assert_eq!(registry.queued_count(), 13);
+        for child in registry
+            .list()
+            .into_iter()
+            .filter(|s| s.status == SubagentStatus::Running)
+        {
+            registry.finish(&child.id, SubagentStatus::Completed, "done".into(), vec![]);
+        }
+        std::thread::scope(|scope| {
+            for _ in 0..16 {
+                let registry = &registry;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    registry.start_next_queued(3);
+                });
+            }
+        });
+        assert_eq!(registry.started_count(), 3);
+        assert_eq!(registry.queued_count(), 10);
+    }
+
+    #[test]
+    fn background_completion_is_retained_without_a_waiter() {
+        let registry = SubagentRegistry::new();
+        drop(registry.insert(snapshot("bg")));
+        registry.finish("bg", SubagentStatus::Completed, "done".into(), vec![]);
+        assert!(*registry.completion_receiver("bg").unwrap().borrow());
+    }
+
+    #[test]
+    fn duplicate_admission_does_not_replace_live_state() {
+        let registry = SubagentRegistry::new();
+        let item = queued_item("child");
+        let signal = item.controller.signal();
+        registry.admit(snapshot("child"), item, 1).unwrap();
+        assert!(registry
+            .admit(snapshot("child"), queued_item("child"), 1)
+            .is_err());
+        assert_eq!(registry.started_count(), 1);
+        assert_eq!(registry.queued_count(), 0);
+        registry.cancel("child");
+        assert!(signal.is_aborted());
+    }
+
+    #[test]
+    fn removal_clears_queue_and_lifecycle_metadata() {
+        let registry = SubagentRegistry::new();
+        let item = queued_item("child");
+        let signal = item.controller.signal();
+        registry.admit(snapshot("child"), item, 0).unwrap();
+        registry.mark_observed("child");
+        registry.mark_timed_out("child", 100);
+        registry.remove("child");
+        assert!(signal.is_aborted());
+        assert_eq!(registry.queued_count(), 0);
+        assert!(!registry.was_observed("child"));
+        assert_eq!(registry.take_timed_out("child"), None);
+        assert!(registry.completion_receiver("child").is_none());
     }
 
     #[test]
@@ -344,42 +510,13 @@ mod tests {
 
     #[test]
     fn queue_is_fifo_with_positions_and_started_count() {
-        use crate::subagent::definition::resolve_effective_config;
-        use crate::subagent::definition::SubagentParentDefaults;
-        use crate::subagent::types::SubagentSpawnRequest;
         let registry = SubagentRegistry::new();
-        let parent = SubagentParentDefaults {
-            model: "m".into(),
-            project_dir: ".".into(),
-            depth: 0,
-        };
-        let item = |id: &str| {
-            let request = SubagentSpawnRequest {
-                prompt: "do it".into(),
-                description: "d".into(),
-                subagent_type: "explore".into(),
-                run_in_background: Some(true),
-                capability_mode: None,
-                cwd: None,
-                isolation: Default::default(),
-                max_iterations: None,
-                timeout_ms: None,
-                resume_from: None,
-                task_id: None,
-            };
-            let cfg = resolve_effective_config(&request, &parent, &[]).unwrap();
-            QueuedSpawn {
-                id: id.into(),
-                request,
-                cfg,
-                parent_messages: Vec::new(),
-                controller: AbortController::new(),
-                depth: 0,
-                coerced_to_read_only: false,
-            }
-        };
-        registry.enqueue(item("q1"));
-        registry.enqueue(item("q2"));
+        registry
+            .admit(snapshot("q1"), queued_item("q1"), 0)
+            .unwrap();
+        registry
+            .admit(snapshot("q2"), queued_item("q2"), 0)
+            .unwrap();
         assert_eq!(registry.queued_count(), 2);
         assert_eq!(registry.queued_position("q1"), Some(1));
         assert_eq!(registry.queued_position("q2"), Some(2));
@@ -387,7 +524,9 @@ mod tests {
         // Queued entries never occupy a concurrency slot.
         assert_eq!(registry.started_count(), 0);
 
-        assert_eq!(registry.dequeue_next().unwrap().id, "q1");
+        assert_eq!(registry.start_next_queued(1).unwrap().0.id, "q1");
+        assert!(registry.start_next_queued(1).is_none());
+        assert_eq!(registry.started_count(), 1);
         assert_eq!(registry.queued_position("q2"), Some(1));
         let taken = registry.take_queued("q2").expect("queued item taken");
         assert_eq!(taken.id, "q2");

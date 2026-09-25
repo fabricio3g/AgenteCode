@@ -1,5 +1,5 @@
 //! Shared HTTP and option handling for provider transports.
-use super::{ApiFormat, ModelInfo, ProviderInfo};
+use super::{ApiFormat, ModelInfo, ProviderInfo, RequestContext};
 use crate::llm::LlmError;
 use crate::types::{Message, Role};
 use serde_json::{json, Value};
@@ -62,16 +62,30 @@ pub(super) async fn send_request(
     model: &ModelInfo,
     path: &str,
     body: &Value,
+    context: RequestContext,
 ) -> Result<reqwest::Response, LlmError> {
-    let base_url = model
-        .api
-        .base_url
-        .clone()
-        .unwrap_or_else(|| info.resolve_base_url());
+    let base_url = if crate::config::provider_is_supported(&info.id, &Default::default()) {
+        info.resolve_base_url()
+    } else {
+        model
+            .api
+            .base_url
+            .clone()
+            .unwrap_or_else(|| info.resolve_base_url())
+    };
+    if info.id == "opencode-go" && base_url.trim_end_matches('/') != "https://opencode.ai/zen/go/v1"
+    {
+        return Err(LlmError::HttpError(
+            "OpenCode Go requires its official Go endpoint".into(),
+        ));
+    }
     let url = super::join_url(&crate::util::expand_env_templates(&base_url), path);
     let mut request = crate::util::http_client()
         .post(url)
         .header("Content-Type", "application/json");
+    if info.id == "opencode-go" {
+        request = request.header("x-opencode-session", context.session_id.to_string());
+    }
     let format = model.api.format.unwrap_or(info.api_format);
     if let Some(key) = info.resolve_api_key() {
         request = match format {
@@ -90,6 +104,17 @@ pub(super) async fn send_request(
     }
     let mut headers = reqwest::header::HeaderMap::new();
     for (key, value) in info.headers.iter().chain(model.headers.iter()) {
+        if crate::config::provider_is_supported(&info.id, &Default::default())
+            && (key.eq_ignore_ascii_case("authorization")
+                || key.eq_ignore_ascii_case("x-api-key")
+                || key.eq_ignore_ascii_case("x-opencode-session")
+                || key.eq_ignore_ascii_case("host"))
+        {
+            return Err(LlmError::HttpError(format!(
+                "{}: authentication and session headers cannot be overridden",
+                info.name
+            )));
+        }
         let name = reqwest::header::HeaderName::from_bytes(key.as_bytes())
             .map_err(|_| LlmError::HttpError("Invalid configured header name".into()))?;
         let value = reqwest::header::HeaderValue::from_str(value)

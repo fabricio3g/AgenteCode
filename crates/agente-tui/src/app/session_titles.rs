@@ -46,15 +46,19 @@ impl App {
         let Some(provider) = self.state.config.provider_registry.get(&provider_id) else {
             return;
         };
+        let Some(model) = self.state.config.resolve_model(&provider_id, &model_id) else {
+            return;
+        };
 
         self.title_requests_started.insert(session_id);
         let sender = self.session_title_tx.clone();
         self.runtime.spawn(async move {
             let result = agente_core::providers::generate_session_title(
                 provider,
-                &model_id,
+                model,
                 &user_text,
                 &assistant_text,
+                agente_core::providers::RequestContext::new(session_id),
             )
             .await
             .map_err(|error| error.to_string());

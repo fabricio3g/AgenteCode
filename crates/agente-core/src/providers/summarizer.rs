@@ -10,21 +10,23 @@ use std::sync::Arc;
 
 use crate::context::compaction::{build_summarization_messages, SummarizeError, Summarizer};
 use crate::llm::{LlmError, StreamEvent};
-use crate::providers::Provider;
+use crate::providers::{ModelInfo, Provider, RequestContext};
 use crate::types::Message;
 
 /// A summarizer that uses a provider's streaming completion for summarization.
 pub struct ProviderSummarizer {
     provider: Arc<dyn Provider>,
-    model_id: String,
+    model: ModelInfo,
+    context: RequestContext,
 }
 
 impl ProviderSummarizer {
-    /// Create a summarizer that uses `provider` with `model_id` for summaries.
-    pub fn new(provider: Arc<dyn Provider>, model_id: impl Into<String>) -> Self {
+    /// Create a summarizer using the selected model, including live metadata.
+    pub fn new(provider: Arc<dyn Provider>, model: ModelInfo, context: RequestContext) -> Self {
         Self {
             provider,
-            model_id: model_id.into(),
+            model,
+            context,
         }
     }
 }
@@ -48,24 +50,20 @@ impl Drop for AbortBackground {
 /// harden.
 pub async fn complete_text(
     provider: Arc<dyn Provider>,
-    model_id: &str,
+    model: ModelInfo,
     messages: &[Message],
+    context: RequestContext,
 ) -> Result<String, LlmError> {
-    complete_text_with_budget(provider, model_id, messages, None).await
+    complete_text_with_budget(provider, model, messages, None, context).await
 }
 
 async fn complete_text_with_budget(
     provider: Arc<dyn Provider>,
-    model_id: &str,
+    mut model: ModelInfo,
     messages: &[Message],
     budget_tokens: Option<usize>,
+    context: RequestContext,
 ) -> Result<String, LlmError> {
-    let mut model = provider.get_model(model_id).cloned().ok_or_else(|| {
-        LlmError::HttpError(format!(
-            "Model not found for background completion: {model_id}"
-        ))
-    })?;
-
     if let Some(budget) = budget_tokens {
         model.limits.output = model
             .limits
@@ -81,7 +79,7 @@ async fn complete_text_with_budget(
     let messages = messages.to_vec();
     let handle = tokio::spawn(async move {
         provider
-            .stream_completion(&messages, None, &model, tx)
+            .stream_completion(&messages, None, &model, tx, context)
             .await
     });
     // Cancelling compaction or timing out a title must also stop its provider
@@ -129,9 +127,10 @@ impl Summarizer for ProviderSummarizer {
         let llm_messages = build_summarization_messages(messages, previous_summary);
         complete_text_with_budget(
             self.provider.clone(),
-            &self.model_id,
+            self.model.clone(),
             &llm_messages,
             Some(budget_tokens),
+            self.context,
         )
         .await
         .map_err(|e| SummarizeError::Llm(e.to_string()))
@@ -174,6 +173,7 @@ mod tests {
             _: Option<&[ToolDefinition]>,
             model: &ModelInfo,
             sender: Sender<StreamEvent>,
+            _context: RequestContext,
         ) -> Result<Usage, LlmError> {
             let _stop = StopSignal(self.stopped.clone());
             self.started.notify_one();
@@ -226,10 +226,14 @@ mod tests {
     #[tokio::test]
     async fn summary_budget_reaches_provider_without_mutating_catalog() {
         let provider = probe(false);
-        let text = ProviderSummarizer::new(provider.clone(), "probe")
-            .summarize(&[], 1800, None)
-            .await
-            .unwrap();
+        let text = ProviderSummarizer::new(
+            provider.clone(),
+            provider.info.models[0].clone(),
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .summarize(&[], 1800, None)
+        .await
+        .unwrap();
         assert_eq!(text, "summary");
         assert_eq!(provider.info.models[0].limits.output, 4096);
     }
@@ -238,7 +242,10 @@ mod tests {
     async fn cancelling_collector_aborts_provider_request() {
         let provider = probe(true);
         let copy = provider.clone();
-        let task = tokio::spawn(async move { complete_text(copy, "probe", &[]).await });
+        let model = provider.info.models[0].clone();
+        let task = tokio::spawn(async move {
+            complete_text(copy, model, &[], RequestContext::new(uuid::Uuid::new_v4())).await
+        });
         provider.started.notified().await;
         task.abort();
         let _ = task.await;

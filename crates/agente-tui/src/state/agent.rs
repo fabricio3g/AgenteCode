@@ -75,8 +75,10 @@ pub struct SubagentToolRow {
     pub call_id: String,
     pub name: String,
     pub args: String,
+    /// Retained output, including chunks received before completion.
     pub result: Option<String>,
     pub is_error: bool,
+    pub finished: bool,
 }
 
 /// Bounded live output for one in-flight tool call. Chat history currently
@@ -112,7 +114,6 @@ pub struct SubagentUiState {
     /// Live streamed text from the child (kept out of the persisted entry).
     pub streaming_text: String,
     pub tool_rows: Vec<SubagentToolRow>,
-    pub generated_output_bytes: usize,
     pub preparing_tool: Option<String>,
     pub summary: Option<String>,
     /// Child model slug, for the detail header.
@@ -157,11 +158,9 @@ pub struct AgentRuntimeState {
     pub streaming_text: String,
     /// Agent reasoning/thinking text
     pub reasoning_text: String,
-    /// Cumulative generation telemetry, independent of per-response buffers.
-    pub generated_output_bytes: usize,
+    /// Tool whose arguments are currently being generated.
     pub preparing_tool: Option<String>,
     pub turn_started_at: Option<std::time::Instant>,
-    pub(crate) subagent_output_baseline: usize,
     /// Current thinking level string from catalog (`off`, `high`, `max`, …).
     pub thinking_level: String,
     /// Queued tool-approval requests in publish order. The front entry is the
@@ -233,10 +232,8 @@ impl Default for AgentRuntimeState {
             state: AgentState::Idle,
             streaming_text: String::new(),
             reasoning_text: String::new(),
-            generated_output_bytes: 0,
             preparing_tool: None,
             turn_started_at: None,
-            subagent_output_baseline: 0,
             thinking_level: THINKING_OFF.to_string(),
             approval_queue: ApprovalQueue::default(),
             auto_approve_persistent: false,
@@ -265,32 +262,8 @@ impl Default for AgentRuntimeState {
 
 impl AgentRuntimeState {
     pub fn begin_turn_progress(&mut self) {
-        self.generated_output_bytes = 0;
         self.preparing_tool = None;
         self.turn_started_at = Some(std::time::Instant::now());
-        self.subagent_output_baseline = self.subagent_output_bytes();
-    }
-
-    fn subagent_output_bytes(&self) -> usize {
-        self.subagents.values().fold(0usize, |total, child| {
-            total.saturating_add(child.generated_output_bytes)
-        })
-    }
-
-    /// Byte-based estimate, not billed tokens. Includes child work performed
-    /// during this turn without counting old completed subagents again.
-    pub fn live_output_tokens(&self) -> usize {
-        let parent_bytes = self.generated_output_bytes.max(
-            self.streaming_text
-                .len()
-                .saturating_add(self.reasoning_text.len()),
-        );
-        parent_bytes
-            .saturating_add(
-                self.subagent_output_bytes()
-                    .saturating_sub(self.subagent_output_baseline),
-            )
-            .div_ceil(4)
     }
 
     /// Toggle between Plan and Build mode
@@ -314,7 +287,6 @@ impl AgentRuntimeState {
         self.reasoning_text.clear();
     }
 
-    /// Check if agent is idle
     /// True while the chat transcript is drawing its own live thinking block.
     ///
     /// The activity strip and the chat block both used to render the word
@@ -334,6 +306,7 @@ impl AgentRuntimeState {
                 && self.streaming_text.is_empty())
     }
 
+    /// Check if agent is idle.
     pub fn is_idle(&self) -> bool {
         matches!(self.state, AgentState::Idle)
     }
@@ -445,7 +418,6 @@ impl AgentRuntimeState {
     /// force-reset. Does **not** change `state` — callers set Idle themselves.
     pub fn clear_stream_buffers(&mut self) {
         self.abort_task();
-        self.generated_output_bytes = 0;
         self.preparing_tool = None;
         self.turn_started_at = None;
         self.streaming_text.clear();
@@ -490,11 +462,10 @@ impl AgentRuntimeState {
         if remaining == 0 {
             return;
         }
-        let mut end = chunk.len().min(remaining);
-        while end > 0 && !chunk.is_char_boundary(end) {
-            end -= 1;
-        }
-        call.output.push_str(&chunk[..end]);
+        call.output
+            .push_str(agente_core::util::truncate_at_char_boundary(
+                chunk, remaining,
+            ));
     }
 
     pub fn finish_live_tool(&mut self, id: &str) -> Option<LiveToolCall> {
@@ -609,6 +580,22 @@ mod tests {
             new_content: None,
             file_path: None,
         }
+    }
+
+    #[test]
+    fn live_tool_output_preserves_utf8_and_respects_byte_cap() {
+        let mut agent = AgentRuntimeState::default();
+        agent.start_live_tool("call".into(), "shell".into(), "{}".into(), false);
+        let prefix = "a".repeat(MAX_LIVE_TOOL_OUTPUT_BYTES - 1);
+        agent.append_live_tool_output("call", &prefix);
+        agent.append_live_tool_output("call", "🎉tail");
+        assert_eq!(agent.live_tool_calls["call"].output, prefix);
+
+        agent.append_live_tool_output("call", "x");
+        agent.append_live_tool_output("call", "ignored");
+        assert_eq!(agent.live_tool_calls["call"].output, format!("{prefix}x"));
+        agent.append_live_tool_output("unknown", "ignored");
+        assert_eq!(agent.live_tool_calls.len(), 1);
     }
 
     #[test]

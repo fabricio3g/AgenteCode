@@ -177,7 +177,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     if let Some(ref api_key) = cli.api_key {
-        let provider = config.default_provider.as_deref().unwrap_or("openai");
+        let provider = config.default_provider.as_deref().unwrap_or("deepseek");
         config.auth_store.set_key(provider, api_key.clone());
     }
 

@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use tokio::sync::mpsc::Sender;
 
-use super::{ModelInfo, Provider, ProviderInfo};
+use super::{ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
 use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
 
@@ -367,9 +367,10 @@ impl Provider for ResponsesProvider {
         tools: Option<&[ToolDefinition]>,
         model: &ModelInfo,
         sender: Sender<StreamEvent>,
+        context: RequestContext,
     ) -> Result<Usage, LlmError> {
         let body = self.request_body(messages, tools, model);
-        let response = super::send_request(&self.info, model, "responses", &body).await?;
+        let response = super::send_request(&self.info, model, "responses", &body, context).await?;
         let mut stream = super::sse::EventStream::new(response.bytes_stream());
         let mut state = ResponseState::default();
         let _ = sender.send(StreamEvent::TextStart).await;

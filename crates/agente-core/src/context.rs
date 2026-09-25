@@ -177,13 +177,9 @@ pub fn agents_md_reminder(project_dir: &str) -> Option<String> {
         return None;
     }
     let truncated = if content.len() > AGENTS_MD_BUDGET_BYTES {
-        let mut cut = AGENTS_MD_BUDGET_BYTES;
-        while !content.is_char_boundary(cut) {
-            cut -= 1;
-        }
         format!(
             "{}\n\n[AGENTS.md truncated at {} bytes]",
-            &content[..cut],
+            crate::util::truncate_at_char_boundary(content, AGENTS_MD_BUDGET_BYTES),
             AGENTS_MD_BUDGET_BYTES
         )
     } else {

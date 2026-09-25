@@ -6,6 +6,7 @@ use std::time::Duration;
 use crate::llm::LlmError;
 use crate::providers::summarizer::complete_text;
 use crate::providers::Provider;
+use crate::providers::{ModelInfo, RequestContext};
 use crate::types::{Message, Role};
 
 const TITLE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -17,9 +18,10 @@ const MAX_TITLE_CHARS: usize = 60;
 /// transcript or activity state.
 pub async fn generate_session_title(
     provider: Arc<dyn Provider>,
-    model_id: &str,
+    model: ModelInfo,
     user_text: &str,
     assistant_text: &str,
+    context: RequestContext,
 ) -> Result<String, LlmError> {
     let user_text = truncate_chars(user_text.trim(), MAX_CONTEXT_CHARS);
     let assistant_text = truncate_chars(assistant_text.trim(), MAX_CONTEXT_CHARS);
@@ -46,9 +48,12 @@ pub async fn generate_session_title(
         },
     ];
 
-    let raw = tokio::time::timeout(TITLE_TIMEOUT, complete_text(provider, model_id, &messages))
-        .await
-        .map_err(|_| LlmError::StreamError("Session title generation timed out".to_string()))??;
+    let raw = tokio::time::timeout(
+        TITLE_TIMEOUT,
+        complete_text(provider, model, &messages, context),
+    )
+    .await
+    .map_err(|_| LlmError::StreamError("Session title generation timed out".to_string()))??;
 
     normalize_session_title(&raw).ok_or(LlmError::MissingContent)
 }

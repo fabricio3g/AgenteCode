@@ -313,6 +313,25 @@ impl StreamMarkdownCache {
     }
 }
 
+/// Read-only child-session views; the main agent authors the handoff.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SubagentDetailTab {
+    #[default]
+    Activity,
+    Handoff,
+    Result,
+}
+
+impl SubagentDetailTab {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Activity => Self::Handoff,
+            Self::Handoff => Self::Result,
+            Self::Result => Self::Activity,
+        }
+    }
+}
+
 /// UI state for layout and rendering
 pub struct UiState {
     /// When set, show a full-width diff peek for this modified file (Esc closes).
@@ -326,6 +345,10 @@ pub struct UiState {
     pub subagent_detail_id: Option<String>,
     /// Scroll offset inside the subagent detail modal body.
     pub subagent_detail_scroll: usize,
+    pub subagent_detail_tab: SubagentDetailTab,
+    pub subagent_detail_follow: bool,
+    pub subagent_detail_show_output: bool,
+    pub subagent_detail_max_scroll: usize,
     /// Worktree review loaded by `d` in the subagent detail modal. The outer
     /// `Some` means the diff view is toggled on; the inner `None` means the
     /// child's checkout has no changes (or no worktree at all).
@@ -473,6 +496,10 @@ impl Default for UiState {
             subagent_detail_area: None,
             subagent_detail_id: None,
             subagent_detail_scroll: 0,
+            subagent_detail_tab: SubagentDetailTab::Activity,
+            subagent_detail_follow: false,
+            subagent_detail_show_output: false,
+            subagent_detail_max_scroll: 0,
             subagent_diff: None,
             chat_scroll: 0,
             chat_auto_scroll: true,
@@ -534,6 +561,45 @@ impl Default for UiState {
 }
 
 impl UiState {
+    pub fn open_subagent_detail(&mut self, id: String) {
+        self.subagent_detail_id = Some(id);
+        self.subagent_detail_show_output = false;
+        self.subagent_detail_area = None;
+        self.subagent_detail_max_scroll = 0;
+        self.select_subagent_tab(SubagentDetailTab::Activity);
+    }
+
+    pub fn close_subagent_detail(&mut self) {
+        self.subagent_detail_id = None;
+        self.subagent_detail_area = None;
+        self.subagent_diff = None;
+        self.subagent_detail_scroll = 0;
+        self.subagent_detail_max_scroll = 0;
+        self.subagent_detail_follow = false;
+        self.needs_render = true;
+    }
+
+    pub fn select_subagent_tab(&mut self, tab: SubagentDetailTab) {
+        self.subagent_detail_tab = tab;
+        self.subagent_detail_scroll = 0;
+        self.subagent_detail_follow = false;
+        self.subagent_diff = None;
+        self.needs_render = true;
+    }
+
+    pub fn scroll_subagent_detail(&mut self, delta: i32) {
+        self.subagent_detail_follow = false;
+        self.subagent_detail_scroll = if delta < 0 {
+            self.subagent_detail_scroll
+                .saturating_sub(delta.unsigned_abs() as usize)
+        } else {
+            self.subagent_detail_scroll
+                .saturating_add(delta as usize)
+                .min(self.subagent_detail_max_scroll)
+        };
+        self.needs_render = true;
+    }
+
     /// Scroll chat up by amount
     pub fn scroll_up(&mut self, amount: usize) {
         self.chat_auto_scroll = false;

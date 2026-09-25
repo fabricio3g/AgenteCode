@@ -36,7 +36,7 @@ pub use session::SessionState;
 pub use todo::TodoState;
 pub use ui::{
     ChatCacheKey, ChatFrameSnapshot, ChatPlainLine, ChatSelection, Fold, RenderedChatBlock,
-    StreamMarkdownCache, UiState,
+    StreamMarkdownCache, SubagentDetailTab, UiState,
 };
 
 use agente_core::cancellation::AbortController;

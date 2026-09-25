@@ -11,10 +11,8 @@ async fn test_minimax_connection() {
         return;
     }
 
-    std::env::set_var("MINIMAX_API_KEY", &api_key);
-
-    let registry = ProviderRegistry::default();
-    let provider = registry.get("minimax-coding-plan");
+    let registry = ProviderRegistry::from_config(&agente_core::config::AppConfig::default());
+    let provider = registry.get("minimax");
     assert!(provider.is_some(), "MiniMax provider not found in registry");
 
     let provider = provider.unwrap();
@@ -25,7 +23,7 @@ async fn test_minimax_connection() {
 
     let resolved_key = info.resolve_api_key();
     assert!(resolved_key.is_some(), "API key not resolved");
-    eprintln!("API key resolved: {}...", &resolved_key.unwrap()[..8]);
+    assert_eq!(resolved_key.as_deref(), Some(api_key.as_str()));
 
     // List models
     match provider.list_models().await {
@@ -50,18 +48,15 @@ async fn test_minimax_streaming() {
         return;
     }
 
-    std::env::set_var("MINIMAX_API_KEY", &api_key);
-
-    let registry = ProviderRegistry::default();
-    let provider = registry.get("minimax-coding-plan").unwrap();
+    let registry = ProviderRegistry::from_config(&agente_core::config::AppConfig::default());
+    let provider = registry.get("minimax").unwrap();
 
     let models = provider.list_models().await.expect("list_models failed");
     // Try different models — some API keys don't have access to all models
     let model = models
         .iter()
-        .find(|m| m.id == "MiniMax-M2")
-        .or_else(|| models.iter().find(|m| m.id == "MiniMax-M2.5"))
-        .or_else(|| models.iter().find(|m| m.id == "MiniMax-Text-01"))
+        .find(|m| m.id == "MiniMax-M3")
+        .or_else(|| models.iter().find(|m| m.id == "MiniMax-M2.7"))
         .or_else(|| models.first())
         .expect("no models")
         .clone();
@@ -114,7 +109,13 @@ async fn test_minimax_streaming() {
     });
 
     let result = provider
-        .stream_completion(&messages, Some(&tools), &model, tx)
+        .stream_completion(
+            &messages,
+            Some(&tools),
+            &model,
+            tx,
+            agente_core::providers::RequestContext::new(uuid::Uuid::new_v4()),
+        )
         .await;
     if let Err(e) = result {
         let err_str = format!("{e:?}");

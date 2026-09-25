@@ -223,52 +223,12 @@ impl InputState {
         self.thinking_selector_levels.clear();
     }
 
-    /// Open slash command picker
-    pub fn open_slash_picker(&mut self) {
-        self.show_slash_picker = true;
-        self.slash_picker_selected = 0;
-    }
-
-    /// Close slash command picker
-    pub fn close_slash_picker(&mut self) {
-        self.show_slash_picker = false;
-        self.slash_picker_selected = 0;
-    }
-
     /// Close @ file picker
     pub fn close_at_picker(&mut self) {
         self.show_at_picker = false;
         self.at_picker_selected = 0;
         self.at_picker_query.clear();
         self.at_picker_anchor = 0;
-    }
-
-    /// Open command palette
-    pub fn open_command_palette(&mut self) {
-        self.show_command_palette = true;
-        self.command_palette_query.clear();
-        self.command_palette_selected = 0;
-    }
-
-    /// Close command palette
-    pub fn close_command_palette(&mut self) {
-        self.show_command_palette = false;
-        self.command_palette_query.clear();
-        self.command_palette_selected = 0;
-    }
-
-    /// Open model selector
-    pub fn open_model_selector(&mut self) {
-        self.show_model_selector = true;
-        self.model_selector_query.clear();
-        self.model_selector_selected = 0;
-    }
-
-    /// Close model selector
-    pub fn close_model_selector(&mut self) {
-        self.show_model_selector = false;
-        self.model_selector_query.clear();
-        self.model_selector_selected = 0;
     }
 
     /// Open the `/subagents` popup

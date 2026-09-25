@@ -100,17 +100,13 @@ impl App {
                 }
                 AgentEvent::GenerationProgress {
                     subagent_id,
-                    output_bytes,
                     tool_name,
+                    ..
                 } => {
                     if let Some(id) = subagent_id {
                         let child = self.subagent_card_or_placeholder(&id);
-                        child.generated_output_bytes =
-                            child.generated_output_bytes.max(output_bytes);
                         child.preparing_tool = tool_name;
                     } else {
-                        self.state.agent.generated_output_bytes =
-                            self.state.agent.generated_output_bytes.max(output_bytes);
                         self.state.agent.preparing_tool = tool_name;
                         self.state.agent.retry_status = None;
                     }
@@ -569,6 +565,7 @@ impl App {
                         args,
                         result: None,
                         is_error: false,
+                        finished: false,
                     });
                 }
                 AgentEvent::SubagentToolCallProgress { id, call_id, chunk } => {
@@ -608,6 +605,7 @@ impl App {
                     {
                         row.result = Some(result);
                         row.is_error = is_error;
+                        row.finished = true;
                     }
                 }
                 AgentEvent::SubagentDone {
@@ -822,6 +820,7 @@ mod tests {
                 args: "{}".into(),
                 result: None,
                 is_error: false,
+                finished: false,
             })
             .collect();
         app.state.agent.subagents.insert(
@@ -1283,6 +1282,40 @@ mod tests {
         assert!(matches!(app.state.agent.state, AgentState::Idle));
     }
 
+    #[test]
+    fn generation_progress_keeps_parent_and_child_tool_activity_separate() {
+        let mut app = notice_test_app("/tmp/generation-progress");
+        app.inject_agent_event(AgentEvent::GenerationProgress {
+            subagent_id: None,
+            output_bytes: 100,
+            tool_name: Some("shell".into()),
+        });
+        app.inject_agent_event(AgentEvent::GenerationProgress {
+            subagent_id: Some("child".into()),
+            output_bytes: 200,
+            tool_name: Some("read".into()),
+        });
+        app.process_agent_events();
+
+        assert_eq!(app.state.agent.preparing_tool.as_deref(), Some("shell"));
+        assert_eq!(
+            app.state.agent.subagents["child"].preparing_tool.as_deref(),
+            Some("read")
+        );
+
+        app.inject_agent_event(AgentEvent::GenerationProgress {
+            subagent_id: None,
+            output_bytes: 300,
+            tool_name: None,
+        });
+        app.process_agent_events();
+        assert!(app.state.agent.preparing_tool.is_none());
+        assert_eq!(
+            app.state.agent.subagents["child"].preparing_tool.as_deref(),
+            Some("read")
+        );
+    }
+
     /// The provider's per-request prompt count is the true context size: each
     /// TurnUsage must move the header readout, not just feed cost accounting.
     #[test]
@@ -1460,6 +1493,7 @@ mod tests {
             id: "q-1".into(),
             subagent_type: "explore".into(),
             description: "queued work".into(),
+            prompt: "Inspect retry logic. Return file paths and findings.".into(),
             status: SubagentStatus::Pending,
             summary: None,
             conversation: Vec::new(),

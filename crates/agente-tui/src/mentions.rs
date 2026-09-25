@@ -20,15 +20,6 @@ pub fn path_token_at(after_at: &str) -> &str {
     &after_at[..end]
 }
 
-/// Whether this token looks like a file path (not `@user` social handle).
-fn looks_like_path(token: &str) -> bool {
-    if token.is_empty() || token.contains('@') {
-        return false;
-    }
-    // Path-ish if it has separators/extension, or is a simple filename we can resolve.
-    token.contains('/') || token.contains('\\') || token.contains('.') || !token.is_empty()
-}
-
 /// Resolve `@token` against the project directory.
 pub fn resolve_mention_path(project_dir: &str, token: &str) -> Option<PathBuf> {
     let token = token.trim();
@@ -71,13 +62,9 @@ fn read_capped(path: &Path) -> Option<String> {
     if content.len() <= MAX_BYTES {
         return Some(content);
     }
-    let mut end = MAX_BYTES;
-    while end > 0 && !content.is_char_boundary(end) {
-        end -= 1;
-    }
     Some(format!(
         "{}...\n[truncated {} bytes]",
-        &content[..end],
+        agente_core::util::truncate_at_char_boundary(&content, MAX_BYTES),
         content.len()
     ))
 }
@@ -95,7 +82,9 @@ pub fn expand_at_file_mentions(text: &str, project_dir: &str) -> String {
         let after = &rest[at + 1..];
         let token = path_token_at(after);
 
-        if token.is_empty() || !looks_like_path(token) {
+        // Extensionless files are valid too; resolution below distinguishes
+        // file mentions from social handles. Reject embedded @ (e.g. email).
+        if token.is_empty() || token.contains('@') {
             out.push('@');
             rest = after;
             continue;
@@ -201,6 +190,36 @@ mod tests {
         let abs_s = abs.to_string_lossy();
         let out = expand_at_file_mentions(&format!("file @{abs_s}"), &root);
         assert!(out.contains("fn main()"), "{out}");
+    }
+
+    #[test]
+    fn expands_extensionless_files() {
+        let (_g, root) = temp_project();
+        std::fs::write(Path::new(&root).join("LICENSE"), "license text").unwrap();
+        let out = expand_at_file_mentions("see @LICENSE", &root);
+        assert!(out.contains("Attached file `@LICENSE`"), "{out}");
+        assert!(out.contains("license text"), "{out}");
+    }
+
+    #[test]
+    fn embedded_at_is_not_a_file_mention() {
+        let (_g, root) = temp_project();
+        std::fs::write(Path::new(&root).join("alice@example.com"), "not attached").unwrap();
+        let prompt = "contact @alice@example.com";
+        assert_eq!(expand_at_file_mentions(prompt, &root), prompt);
+    }
+
+    #[test]
+    fn capped_attachment_preserves_utf8() {
+        let (_g, root) = temp_project();
+        let path = Path::new(&root).join("large.txt");
+        let prefix = "a".repeat(MAX_BYTES - 1);
+        let content = format!("{prefix}🎉tail");
+        std::fs::write(&path, &content).unwrap();
+        assert_eq!(
+            read_capped(&path).unwrap(),
+            format!("{prefix}...\n[truncated {} bytes]", content.len())
+        );
     }
 
     #[test]

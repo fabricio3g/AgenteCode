@@ -218,10 +218,7 @@ pub fn diff_sync(info: &WorktreeInfo) -> Option<String> {
     let mut text = String::from_utf8_lossy(&out.stdout).to_string();
     const CAP: usize = 512 * 1024;
     if text.len() > CAP {
-        let mut end = CAP;
-        while end > 0 && !text.is_char_boundary(end) {
-            end -= 1;
-        }
+        let end = crate::util::truncate_at_char_boundary(&text, CAP).len();
         text.truncate(end);
         text.push_str("\n… diff truncated …\n");
     }

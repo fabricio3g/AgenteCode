@@ -110,6 +110,7 @@ impl App {
         tracing::info!(provider = %provider_id, model = %model, mode = ?mode, "Sending message to chat task");
 
         let task_handle = spawn_chat_task(
+            self.state.session.session_id,
             self.current_task_id,
             self.agent_tx.clone(),
             conversation,

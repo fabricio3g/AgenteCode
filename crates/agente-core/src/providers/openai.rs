@@ -5,7 +5,7 @@ use tokio::sync::mpsc::Sender;
 
 use super::{
     inferred_service_model_capabilities, join_url, ApiFormat, ModelInfo, Provider,
-    ProviderCapabilities, ProviderInfo,
+    ProviderCapabilities, ProviderInfo, RequestContext,
 };
 use crate::catalog::{ModelCost, ModelLimits, ModelStatus};
 use crate::llm::{
@@ -69,6 +69,7 @@ impl Provider for OpenAIProvider {
         tools: Option<&[ToolDefinition]>,
         model: &ModelInfo,
         sender: Sender<StreamEvent>,
+        context: RequestContext,
     ) -> Result<Usage, LlmError> {
         // Transform messages to OpenAI format
         let mut messages_json: Vec<serde_json::Value> = messages
@@ -242,7 +243,8 @@ impl Provider for OpenAIProvider {
             }
         }
 
-        let response = super::send_request(&self.info, model, "chat/completions", &body).await?;
+        let response =
+            super::send_request(&self.info, model, "chat/completions", &body, context).await?;
 
         let mut stream = super::sse::EventStream::new(response.bytes_stream());
         let mut usage = Usage::default();
@@ -452,64 +454,83 @@ impl Provider for OpenAIProvider {
         }
 
         let base_url = self.resolve_base_url();
-        let url = join_url(&base_url, "models");
-
-        let mut request = self.client.get(&url);
-        for (key, value) in &self.info.headers {
-            request = request.header(key.as_str(), value.as_str());
+        if self.info.id == "opencode-go"
+            && base_url.trim_end_matches('/') != "https://opencode.ai/zen/go/v1"
+        {
+            return Err(LlmError::HttpError(
+                "OpenCode Go requires its official Go endpoint".into(),
+            ));
         }
-        if let Some(api_key) = api_key {
-            request = request.header("Authorization", format!("Bearer {api_key}"));
-        }
-
-        let response = request.send().await.map_err(|e| {
-            LlmError::HttpError(format!("{}: failed to list models: {}", self.info.name, e))
+        let mut url = reqwest::Url::parse(&join_url(&base_url, "models")).map_err(|e| {
+            LlmError::HttpError(format!("{}: invalid models URL: {e}", self.info.name))
         })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(LlmError::HttpError(format!(
-                "{}: model discovery failed with HTTP {}{}",
-                self.info.name,
-                status,
-                if text.is_empty() {
-                    String::new()
+        let mut models = Vec::new();
+        let mut after_id = None::<String>;
+        for _ in 0..100 {
+            url.query_pairs_mut().clear();
+            if let Some(cursor) = &after_id {
+                url.query_pairs_mut().append_pair("after_id", cursor);
+            }
+            let mut request = self.client.get(url.clone());
+            for (key, value) in &self.info.headers {
+                request = request.header(key.as_str(), value.as_str());
+            }
+            if let Some(api_key) = &api_key {
+                request = if self.info.api_format == ApiFormat::Anthropic {
+                    request.header("x-api-key", api_key)
                 } else {
-                    format!(": {}", truncate_error_body(&text))
-                }
-            )));
-        }
-
-        let json: serde_json::Value = response.json().await.map_err(|e| {
-            LlmError::HttpError(format!(
-                "{}: invalid models response: {}",
-                self.info.name, e
-            ))
-        })?;
-
-        let data = json
-            .get("data")
-            .and_then(|data| data.as_array())
-            .ok_or_else(|| {
-                LlmError::HttpError(format!(
-                    "{}: invalid model list (expected a data array)",
-                    self.info.name
-                ))
+                    request.bearer_auth(api_key)
+                };
+            }
+            let response = request.send().await.map_err(|e| {
+                LlmError::HttpError(format!("{}: failed to list models: {e}", self.info.name))
             })?;
-        let models = {
-            data.iter()
-                .filter_map(|m| {
-                    let id = m["id"].as_str()?;
-                    if id.starts_with("ft:") || id.starts_with("system:") {
-                        return None;
-                    }
-                    Some(self.model_info_from_service_id(id, m))
-                })
-                .collect()
-        };
-
-        Ok(models)
+            if !response.status().is_success() {
+                let status = response.status();
+                let text = crate::util::redact_secrets(&response.text().await.unwrap_or_default());
+                return Err(LlmError::HttpError(format!(
+                    "{}: model discovery failed with HTTP {status}: {}",
+                    self.info.name,
+                    truncate_error_body(&text)
+                )));
+            }
+            let json: serde_json::Value = response.json().await.map_err(|e| {
+                LlmError::HttpError(format!("{}: invalid models response: {e}", self.info.name))
+            })?;
+            let data = json
+                .get("data")
+                .and_then(|value| value.as_array())
+                .ok_or_else(|| {
+                    LlmError::HttpError(format!(
+                        "{}: invalid model list (expected a data array)",
+                        self.info.name
+                    ))
+                })?;
+            models.extend(data.iter().filter_map(|raw| {
+                let id = raw["id"].as_str()?;
+                if id.starts_with("ft:") || id.starts_with("system:") {
+                    return None;
+                }
+                Some(self.model_info_from_service_id(id, raw))
+            }));
+            if self.info.api_format != ApiFormat::Anthropic || json["has_more"] != true {
+                return Ok(models);
+            }
+            let next = json["last_id"]
+                .as_str()
+                .filter(|id| Some(*id) != after_id.as_deref())
+                .ok_or_else(|| {
+                    LlmError::HttpError(format!(
+                        "{}: invalid model pagination cursor",
+                        self.info.name
+                    ))
+                })?;
+            after_id = Some(next.into());
+        }
+        return Err(LlmError::HttpError(format!(
+            "{}: model list exceeded 100 pages",
+            self.info.name
+        )));
     }
 }
 
@@ -579,7 +600,8 @@ impl OpenAIProvider {
             api: super::ModelApi::default(),
             id: id.to_string(),
             name: raw
-                .get("name")
+                .get("display_name")
+                .or_else(|| raw.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or(id)
                 .to_string(),

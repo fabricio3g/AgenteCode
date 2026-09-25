@@ -70,38 +70,4 @@ impl SessionPickerState {
         self.session_picker_browse_selected = 0;
         self.session_picker_project_select = false;
     }
-
-    /// Start browsing for folder
-    pub fn start_browsing(&mut self, path: String) {
-        self.session_picker_browsing = true;
-        self.session_picker_browse_path = path;
-        self.session_picker_browse_selected = 0;
-    }
-
-    /// Stop browsing
-    pub fn stop_browsing(&mut self) {
-        self.session_picker_browsing = false;
-        self.session_picker_browse_path.clear();
-        self.session_picker_browse_selected = 0;
-    }
-
-    /// Activate folder input
-    pub fn activate_folder_input(&mut self) {
-        self.session_picker_folder_active = true;
-    }
-
-    /// Deactivate folder input
-    pub fn deactivate_folder_input(&mut self) {
-        self.session_picker_folder_active = false;
-    }
-
-    /// Set confirm delete state
-    pub fn set_confirm_delete(&mut self, confirm: bool) {
-        self.session_picker_confirm_delete = confirm;
-    }
-
-    /// Toggle confirm delete state
-    pub fn toggle_confirm_delete(&mut self) {
-        self.session_picker_confirm_delete = !self.session_picker_confirm_delete;
-    }
 }

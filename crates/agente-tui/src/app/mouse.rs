@@ -72,12 +72,9 @@ impl App {
         if !(x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height) {
             return false;
         }
-        let ui = &mut self.state.ui;
-        if delta < 0 {
-            ui.subagent_detail_scroll = ui.subagent_detail_scroll.saturating_sub(3);
-        } else {
-            ui.subagent_detail_scroll = ui.subagent_detail_scroll.saturating_add(3);
-        }
+        self.state
+            .ui
+            .scroll_subagent_detail(if delta < 0 { -3 } else { 3 });
         true
     }
 }
@@ -468,8 +465,7 @@ impl App {
                 .find(|e| e.id == region.entry_id)
             {
                 if let Some(sub_id) = entry.subagent_id.clone() {
-                    self.state.ui.subagent_detail_id = Some(sub_id);
-                    self.state.ui.subagent_detail_scroll = 0;
+                    self.state.ui.open_subagent_detail(sub_id);
                     self.state.ui.hovered_entry_id = None;
                     self.state.ui.suppress_hover_until_move = true;
                     self.state.ui.needs_render = true;

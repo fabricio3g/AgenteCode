@@ -66,6 +66,7 @@ impl ToolCallOutcome {
 /// that a forwarder re-emits as `Subagent*` events, so the loop itself never
 /// needs to know whether it is the parent or a child.
 pub(crate) struct AgentRunConfig {
+    pub session_id: uuid::Uuid,
     pub task_id: u64,
     pub sender: Sender<AgentTaskEvent>,
     pub messages: Vec<Message>,

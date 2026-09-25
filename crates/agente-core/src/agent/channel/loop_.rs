@@ -35,6 +35,7 @@ const COMPACTION_HEARTBEAT_MS: u64 = 15_000;
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_chat_task(
+    session_id: uuid::Uuid,
     task_id: u64,
     sender: Sender<AgentTaskEvent>,
     conversation: Vec<Message>,
@@ -81,6 +82,7 @@ pub fn spawn_chat_task(
             DEFAULT_MAX_CONCURRENT_SUBAGENTS,
         );
         let config = AgentRunConfig {
+            session_id,
             task_id,
             sender: sender.clone(),
             messages: conversation,
@@ -176,6 +178,7 @@ impl From<String> for AgentLoopFailure {
 /// events), so the loop itself does not need to know parent vs child.
 pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopFailure> {
     let AgentRunConfig {
+        session_id,
         task_id,
         sender,
         messages: conversation,
@@ -385,6 +388,9 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             }
         }
         let api_format = provider.request_api_format(&model_info);
+        if crate::config::provider_is_supported(&provider_id, &Default::default()) {
+            model_info.api.format = Some(api_format);
+        }
         model_info.options = provider.get_request_options(&model_info);
         apply_thinking_level(&mut model_info, api_format, &thinking_level);
 
@@ -406,7 +412,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             // Prefer an LLM-generated structured summary (pi-style), falling
             // back to heuristic truncation if summarization is unavailable or
             // fails, so the request always goes through.
-            let summarizer = ProviderSummarizer::new(provider.clone(), model_clone.clone());
+            let summarizer = ProviderSummarizer::new(
+                provider.clone(),
+                model_info.clone(),
+                crate::providers::RequestContext::new(session_id),
+            );
             let compactor =
                 ContextCompactor::new(strategy.clone()).with_summarizer(Arc::new(summarizer));
             // The summarizer's own LLM round-trip can take a while; heartbeat
@@ -483,6 +493,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
 
         let messages_clone = messages.clone();
+        let request_context = crate::providers::RequestContext::new(session_id);
 
         let tool_defs = if provider.info().capabilities.tools && model_info.capabilities.toolcall {
             tool_registry.definitions_for_mode(mode)
@@ -499,7 +510,13 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 Some(tool_defs.as_slice())
             };
             match provider_clone
-                .stream_completion(&messages_clone, tools_for_request, &model_info, tx)
+                .stream_completion(
+                    &messages_clone,
+                    tools_for_request,
+                    &model_info,
+                    tx,
+                    request_context,
+                )
                 .await
             {
                 Ok(usage) => Ok(usage),
@@ -931,7 +948,6 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             &approval_broker,
             &cancel_signal,
             &project_dir,
-            &messages,
             depth,
             subagent_host.as_ref(),
         )
@@ -1198,6 +1214,7 @@ mod tests {
             _tools: Option<&[crate::types::ToolDefinition]>,
             _model: &crate::providers::ModelInfo,
             sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
+            _context: crate::providers::RequestContext,
         ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
             let first_call = {
                 let mut calls = self.calls.lock().unwrap();
@@ -1334,6 +1351,7 @@ mod tests {
 
         let (tx, rx) = std::sync::mpsc::channel();
         let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
             task_id: 1,
             sender: tx,
             messages,
@@ -1411,6 +1429,7 @@ mod tests {
             _tools: Option<&[crate::types::ToolDefinition]>,
             _model: &crate::providers::ModelInfo,
             sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
+            _context: crate::providers::RequestContext,
         ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
             use crate::llm::StreamEvent;
             let call = {
@@ -1513,6 +1532,7 @@ mod tests {
 
         let (tx, rx) = std::sync::mpsc::channel();
         let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
             task_id: 1,
             sender: tx,
             messages: vec![Message {

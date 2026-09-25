@@ -9,7 +9,7 @@ use crate::cancellation::AbortSignal;
 use crate::permissions::{ApprovalBroker, SharedPermissionEngine};
 use crate::subagent::SubagentHost;
 use crate::tools::{ToolExecutionContext, ToolOutputStream, ToolRegistry};
-use crate::types::{ApprovalAction, Message, ToolCall};
+use crate::types::{ApprovalAction, ToolCall};
 
 use super::approval::{build_approval_request, check_missing_args};
 use super::args::{normalize_tool_args, parse_tool_args};
@@ -211,7 +211,6 @@ async fn execute_hosted_tool(
     cancel_signal: &AbortSignal,
     sender: &Sender<AgentTaskEvent>,
     task_id: u64,
-    parent_messages: &[Message],
     depth: u32,
 ) -> ToolCallOutcome {
     let tool_call_id = prepared.tool_call.id.clone();
@@ -224,14 +223,8 @@ async fn execute_hosted_tool(
         );
     };
     let context = build_tool_context(cancel_signal, sender, task_id, &tool_call_id);
-    h.execute_hosted_tool_call(
-        &prepared.tool_call,
-        prepared.args,
-        parent_messages,
-        context,
-        depth,
-    )
-    .await
+    h.execute_hosted_tool_call(&prepared.tool_call, prepared.args, context, depth)
+        .await
 }
 
 /// Build the execution context for one tool call: incremental output progress
@@ -452,7 +445,6 @@ async fn execute_tool_calls_sequential(
     broker: &ApprovalBroker,
     cancel_signal: AbortSignal,
     project_dir: &str,
-    parent_messages: &[Message],
     depth: u32,
     host: Option<&SubagentHost>,
 ) -> Vec<ToolCallOutcome> {
@@ -476,16 +468,8 @@ async fn execute_tool_calls_sequential(
         {
             Ok(prepared) => {
                 if is_hosted_tool(prepared.tool_call.function.name.as_str()) {
-                    execute_hosted_tool(
-                        host,
-                        prepared,
-                        &cancel_signal,
-                        &sender,
-                        task_id,
-                        parent_messages,
-                        depth,
-                    )
-                    .await
+                    execute_hosted_tool(host, prepared, &cancel_signal, &sender, task_id, depth)
+                        .await
                 } else {
                     execute_prepared_tool(
                         prepared,
@@ -550,7 +534,6 @@ async fn execute_tool_calls_parallel(
     broker: &ApprovalBroker,
     cancel_signal: AbortSignal,
     project_dir: &str,
-    parent_messages: &[Message],
     depth: u32,
     host: Option<&SubagentHost>,
 ) -> Vec<ToolCallOutcome> {
@@ -590,16 +573,8 @@ async fn execute_tool_calls_parallel(
         // Hosted subagent tools route through the SubagentHost here too, so
         // the routing never depends on which batch path a call lands in.
         if is_hosted_tool(p.tool_call.function.name.as_str()) {
-            let outcome = execute_hosted_tool(
-                host,
-                p,
-                &cancel_signal,
-                &sender,
-                task_id,
-                parent_messages,
-                depth,
-            )
-            .await;
+            let outcome =
+                execute_hosted_tool(host, p, &cancel_signal, &sender, task_id, depth).await;
             results.push((i, outcome));
             continue;
         }
@@ -679,7 +654,6 @@ pub(crate) async fn execute_tool_calls_batched(
     broker: &ApprovalBroker,
     cancel_signal: &AbortSignal,
     project_dir: &str,
-    parent_messages: &[Message],
     depth: u32,
     host: Option<&SubagentHost>,
 ) -> Vec<ToolCallOutcome> {
@@ -704,7 +678,6 @@ pub(crate) async fn execute_tool_calls_batched(
                         broker,
                         cancel_signal.clone(),
                         project_dir,
-                        parent_messages,
                         depth,
                         host,
                     )
@@ -724,7 +697,6 @@ pub(crate) async fn execute_tool_calls_batched(
                 broker,
                 cancel_signal.clone(),
                 project_dir,
-                parent_messages,
                 depth,
                 host,
             )
@@ -753,7 +725,6 @@ pub(crate) async fn execute_tool_calls_batched(
                 broker,
                 cancel_signal.clone(),
                 project_dir,
-                parent_messages,
                 depth,
                 host,
             )

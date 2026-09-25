@@ -1,5 +1,5 @@
 //! Connect screen - provider connection dialog
-//! - Providers grouped by category (Popular / Local / Other)
+//! - Connected providers first
 //! - Gutter icons, descriptions, connected checkmarks
 //! - Search/filter at top, clean no-border design
 
@@ -18,196 +18,43 @@ use agente_core::config::ProviderEntry;
 
 // ── Provider metadata ──────────────────────────────────────────────────
 
-/// Provider categories for grouping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Category {
-    Popular,
-    Local,
-    Other,
-}
-
 /// Static metadata for known providers.
 struct ProviderMeta {
     description: &'static str,
     help_url: &'static str,
-    category: Category,
     sort_priority: usize,
 }
 
 fn provider_meta(id: &str) -> ProviderMeta {
     match id {
-        "openai" => ProviderMeta {
-            description: "GPT-4o, GPT-4.5, o1, o3 and more",
-            help_url: "https://platform.openai.com/api-keys",
-            category: Category::Popular,
-            sort_priority: 1,
-        },
-        "openrouter" => ProviderMeta {
-            description: "100+ models via single API",
-            help_url: "https://openrouter.ai/settings/keys",
-            category: Category::Popular,
-            sort_priority: 4,
-        },
-        "opencode" => ProviderMeta {
-            description: "OpenCode Zen tested coding models",
+        "opencode-go" => ProviderMeta {
+            description: "OpenCode Go coding models",
             help_url: "https://opencode.ai/auth",
-            category: Category::Popular,
-            sort_priority: 3,
+            sort_priority: 0,
         },
         "deepseek" => ProviderMeta {
-            description: "DeepSeek V3, R1 reasoning",
+            description: "DeepSeek Flash and V4 Pro",
             help_url: "https://platform.deepseek.com/api_keys",
-            category: Category::Popular,
-            sort_priority: 5,
-        },
-        "groq" => ProviderMeta {
-            description: "Ultra-fast inference",
-            help_url: "https://console.groq.com/keys",
-            category: Category::Popular,
-            sort_priority: 6,
-        },
-        "github-copilot" => ProviderMeta {
-            description: "GitHub Copilot models",
-            help_url: "",
-            category: Category::Popular,
-            sort_priority: 7,
-        },
-        "ollama" => ProviderMeta {
-            description: "Run models locally",
-            help_url: "",
-            category: Category::Local,
-            sort_priority: 50,
-        },
-        "lmstudio" => ProviderMeta {
-            description: "Run models locally",
-            help_url: "",
-            category: Category::Local,
-            sort_priority: 51,
+            sort_priority: 1,
         },
         "minimax" => ProviderMeta {
-            description: "MiniMax M2.7, M1, Text-01",
-            help_url: "https://platform.minimax.io",
-            category: Category::Other,
-            sort_priority: 90,
+            description: "MiniMax M3 and M2.7",
+            help_url: "https://platform.minimax.io/user-center/basic-information/interface-key",
+            sort_priority: 2,
         },
-        "together" => ProviderMeta {
-            description: "Open-source and licensed models",
-            help_url: "https://api.together.ai",
-            category: Category::Other,
-            sort_priority: 91,
+        "glm" => ProviderMeta {
+            description: "GLM on the standard Z.AI API",
+            help_url: "https://z.ai/manage-apikey/apikey-list",
+            sort_priority: 3,
         },
-        "fireworks" => ProviderMeta {
-            description: "Fast open-weight inference",
-            help_url: "https://fireworks.ai",
-            category: Category::Other,
-            sort_priority: 92,
-        },
-        "kimi-coding" => ProviderMeta {
-            description: "Kimi For Coding",
-            help_url: "https://platform.moonshot.cn",
-            category: Category::Other,
-            sort_priority: 93,
-        },
-        "xiaomi" => ProviderMeta {
-            description: "MiMo models",
-            help_url: "https://api.xiaomimimo.com",
-            category: Category::Other,
-            sort_priority: 94,
-        },
-        // Everything below had no entry at all and rendered as a bare id with
-        // no description and nowhere to get a key. Descriptions are left thin
-        // on purpose -- `provider_description` fills them from the live
-        // models.dev catalog, so they cannot go stale.
-        "xai" => ProviderMeta {
-            description: "Grok models",
-            help_url: "https://console.x.ai",
-            category: Category::Popular,
-            sort_priority: 8,
-        },
-        "mistral" => ProviderMeta {
-            description: "Mistral Large, Codestral",
-            help_url: "https://console.mistral.ai/api-keys",
-            category: Category::Other,
-            sort_priority: 80,
-        },
-        "cerebras" => ProviderMeta {
-            description: "Wafer-scale fast inference",
-            help_url: "https://cloud.cerebras.ai",
-            category: Category::Other,
-            sort_priority: 81,
-        },
-        "perplexity" => ProviderMeta {
-            description: "Search-grounded models",
-            help_url: "https://www.perplexity.ai/settings/api",
-            category: Category::Other,
-            sort_priority: 82,
-        },
-        "azure" => ProviderMeta {
-            description: "Azure OpenAI deployments",
-            help_url: "https://portal.azure.com",
-            category: Category::Other,
-            sort_priority: 83,
-        },
-        "amazon-bedrock" => ProviderMeta {
-            description: "Bedrock-hosted models",
-            help_url: "https://console.aws.amazon.com/bedrock",
-            category: Category::Other,
-            sort_priority: 84,
-        },
-        "nvidia" => ProviderMeta {
-            description: "NIM-hosted open models",
-            help_url: "https://build.nvidia.com",
-            category: Category::Other,
-            sort_priority: 85,
-        },
-        "moonshotai" | "moonshotai-cn" => ProviderMeta {
-            description: "Kimi models",
-            help_url: "https://platform.moonshot.ai/console/api-keys",
-            category: Category::Other,
-            sort_priority: 86,
-        },
-        "zai" | "zai-coding-plan" | "zai-coding-cn" => ProviderMeta {
-            description: "GLM models",
-            help_url: "https://z.ai",
-            category: Category::Other,
-            sort_priority: 87,
-        },
-        "alibaba" | "alibaba-cn" | "alibaba-coding-plan" | "alibaba-coding-plan-cn" => {
-            ProviderMeta {
-                description: "Qwen models",
-                help_url: "https://dashscope.console.aliyun.com",
-                category: Category::Other,
-                sort_priority: 88,
-            }
-        }
-        "siliconflow" => ProviderMeta {
-            description: "Open-model inference",
-            help_url: "https://cloud.siliconflow.cn",
-            category: Category::Other,
-            sort_priority: 95,
-        },
-        "baseten" => ProviderMeta {
-            description: "Dedicated model endpoints",
-            help_url: "https://app.baseten.co/settings/api_keys",
-            category: Category::Other,
-            sort_priority: 96,
-        },
-        "huggingface" => ProviderMeta {
-            description: "Inference providers router",
-            help_url: "https://huggingface.co/settings/tokens",
-            category: Category::Other,
-            sort_priority: 97,
-        },
-        "vercel-ai-gateway" => ProviderMeta {
-            description: "Vercel AI Gateway",
-            help_url: "https://vercel.com/dashboard/ai-gateway",
-            category: Category::Other,
-            sort_priority: 98,
+        "openrouter" => ProviderMeta {
+            description: "Models through OpenRouter",
+            help_url: "https://openrouter.ai/settings/keys",
+            sort_priority: 4,
         },
         _ => ProviderMeta {
             description: "",
             help_url: "",
-            category: Category::Other,
             sort_priority: 99,
         },
     }
@@ -327,35 +174,17 @@ fn render_provider_list(
         })
         .collect();
 
-    // Connected first, then remaining by category (exclude connected from later groups).
+    // Connected first, then the remaining supported providers.
     let connected: Vec<_> = filtered
         .iter()
         .filter(|e| state.is_provider_connected(&e.id))
         .collect();
-    let popular: Vec<_> = filtered
+    let available: Vec<_> = filtered
         .iter()
-        .filter(|e| {
-            !state.is_provider_connected(&e.id)
-                && provider_meta(&e.id).category == Category::Popular
-        })
-        .collect();
-    let local: Vec<_> = filtered
-        .iter()
-        .filter(|e| {
-            !state.is_provider_connected(&e.id) && provider_meta(&e.id).category == Category::Local
-        })
-        .collect();
-    let other: Vec<_> = filtered
-        .iter()
-        .filter(|e| {
-            !state.is_provider_connected(&e.id) && provider_meta(&e.id).category == Category::Other
-        })
+        .filter(|e| !state.is_provider_connected(&e.id))
         .collect();
 
-    let header_count = (usize::from(!connected.is_empty()))
-        + usize::from(!popular.is_empty())
-        + usize::from(!local.is_empty())
-        + usize::from(!other.is_empty());
+    let header_count = (usize::from(!connected.is_empty())) + usize::from(!available.is_empty());
     let total_rows = filtered.len() + header_count;
     // Keep enough body height for the explicit empty-search message. With a
     // zero-row result the old minimum produced a clipped list rect, so the
@@ -408,48 +237,22 @@ fn render_provider_list(
             logical_idx += 1;
         }
     }
-    if !popular.is_empty() {
+    if !available.is_empty() {
         items.push(ListItem::new(Line::from(vec![
             s(" ", Style::default()),
             s(
-                "Popular",
+                "Available",
                 Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
             ),
         ])));
-        for entry in &popular {
-            items.push(provider_row(entry, logical_idx == selected, state));
-            logical_idx += 1;
-        }
-    }
-    if !local.is_empty() {
-        items.push(ListItem::new(Line::from(vec![
-            s(" ", Style::default()),
-            s(
-                "Local",
-                Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
-            ),
-        ])));
-        for entry in &local {
-            items.push(provider_row(entry, logical_idx == selected, state));
-            logical_idx += 1;
-        }
-    }
-    if !other.is_empty() {
-        items.push(ListItem::new(Line::from(vec![
-            s(" ", Style::default()),
-            s(
-                "Other",
-                Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
-            ),
-        ])));
-        for entry in &other {
+        for entry in &available {
             items.push(provider_row(entry, logical_idx == selected, state));
             logical_idx += 1;
         }
     }
 
     let mut list_state = ListState::default();
-    let visual_selected = logical_index_to_visual(&connected, &popular, &local, &other, selected);
+    let visual_selected = logical_index_to_visual(&connected, &available, selected);
     if !items.is_empty() {
         list_state.select(Some(visual_selected.min(items.len() - 1)));
     }
@@ -695,15 +498,13 @@ fn render_key_input(
 /// row index in the flat items list (headers included).
 fn logical_index_to_visual(
     connected: &[&&ProviderEntry],
-    popular: &[&&ProviderEntry],
-    local: &[&&ProviderEntry],
-    other: &[&&ProviderEntry],
+    available: &[&&ProviderEntry],
     logical: usize,
 ) -> usize {
     let mut visual = 0usize;
     let mut remaining = logical;
 
-    for section in [connected, popular, local, other] {
+    for section in [connected, available] {
         if !section.is_empty() {
             visual += 1; // header
         }
@@ -744,22 +545,10 @@ mod provider_meta_tests {
         assert!(blank.is_empty(), "providers with no description: {blank:?}");
     }
 
-    /// The notable providers are curated: they carry a key URL and are not
-    /// dumped in the unsorted tail.
+    /// Supported providers carry a key URL and are not dumped in the unsorted tail.
     #[test]
     fn notable_providers_are_curated() {
-        for id in [
-            "xai",
-            "mistral",
-            "cerebras",
-            "perplexity",
-            "azure",
-            "amazon-bedrock",
-            "nvidia",
-            "moonshotai",
-            "zai",
-            "alibaba",
-        ] {
+        for id in ["deepseek", "minimax", "glm", "opencode-go", "openrouter"] {
             let meta = provider_meta(id);
             assert!(
                 !meta.help_url.is_empty(),

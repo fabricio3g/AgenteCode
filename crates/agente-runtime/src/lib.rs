@@ -72,12 +72,12 @@ impl RuntimeConfig {
         let default_provider = app_config
             .default_provider
             .clone()
-            .unwrap_or_else(|| "openai".to_string());
+            .unwrap_or_else(|| "deepseek".to_string());
         let default_model = app_config
             .executor_model
             .clone()
             .or_else(|| app_config.default_model.clone())
-            .unwrap_or_else(|| "gpt-4o-mini".to_string());
+            .unwrap_or_else(|| "deepseek-flash".to_string());
         Self {
             project_dir: project_dir.clone(),
             mode,
@@ -467,6 +467,7 @@ impl RuntimeHandle {
         let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
 
         let _legacy_task = agente_core::agent::spawn_chat_task(
+            session_id.as_uuid(),
             task_id,
             legacy_tx,
             compat::conversation_to_core(conversation),
@@ -686,6 +687,7 @@ mod tests {
             id: id.into(),
             subagent_type: "explore".into(),
             description: String::new(),
+            prompt: String::new(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),

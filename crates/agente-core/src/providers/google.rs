@@ -1,5 +1,5 @@
 //! Native generateContent transport for model-routed gateways.
-use super::{ModelInfo, Provider, ProviderInfo};
+use super::{ModelInfo, Provider, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
 use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
 use async_trait::async_trait;
@@ -186,6 +186,7 @@ impl Provider for GoogleProvider {
         tools: Option<&[ToolDefinition]>,
         model: &ModelInfo,
         sender: Sender<StreamEvent>,
+        context: RequestContext,
     ) -> Result<Usage, LlmError> {
         let model_id = model
             .api_id
@@ -202,6 +203,7 @@ impl Provider for GoogleProvider {
             model,
             &format!("models/{model_id}:streamGenerateContent?alt=sse"),
             &body,
+            context,
         )
         .await?;
         let mut stream = super::sse::EventStream::new(response.bytes_stream());

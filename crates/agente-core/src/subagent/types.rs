@@ -180,6 +180,9 @@ pub struct SubagentSnapshot {
     pub id: String,
     pub subagent_type: String,
     pub description: String,
+    /// Exact task/context supplied by the delegating agent, not an inferred
+    /// summary or a copy of its conversation. Displayed in the handoff view.
+    pub prompt: String,
     pub status: SubagentStatus,
     /// Final writeup / error text (capped).
     pub summary: Option<String>,

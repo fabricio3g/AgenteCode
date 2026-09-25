@@ -58,18 +58,22 @@ pub fn truncate_at_char_boundary(text: &str, max_bytes: usize) -> &str {
     &text[..end]
 }
 
-/// Clean a path for tool-facing use: strip verbatim prefixes and normalize
-/// separators to `/`.
 /// Shared reqwest client for LLM providers: connect timeout only.
 /// No overall request timeout — streaming responses can run for minutes.
 /// Idle-body stalls are handled by per-chunk timeouts in the stream loops.
 pub fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .pool_idle_timeout(std::time::Duration::from_secs(90))
-        .user_agent("agente/0.1")
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .pool_idle_timeout(std::time::Duration::from_secs(90))
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent(format!("agente/{}", env!("CARGO_PKG_VERSION")))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new())
+        })
+        .clone()
 }
 
 /// Max silence on an SSE/byte stream before we abort (seconds).
@@ -83,6 +87,8 @@ pub fn stream_idle_timeout() -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// Clean a path for tool-facing use: strip verbatim prefixes and normalize
+/// separators to `/`.
 pub fn clean_path(path: &str) -> String {
     // UNC needs owned rewrite before separator normalize.
     let owned;
@@ -274,5 +280,14 @@ mod tests {
             assert!(text.is_char_boundary(cut.len()));
         }
         assert_eq!(truncate_at_char_boundary(text, 2), "a");
+        assert_eq!(truncate_at_char_boundary(text, 0), "");
+        assert_eq!(truncate_at_char_boundary("", usize::MAX), "");
+        assert_eq!(truncate_at_char_boundary(text, usize::MAX), text);
+        for budget in 0..=4 {
+            assert_eq!(
+                truncate_at_char_boundary("🎉tail", budget),
+                if budget < 4 { "" } else { "🎉" }
+            );
+        }
     }
 }

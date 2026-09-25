@@ -2425,9 +2425,11 @@ fn render_subagent(
     _expanded: bool,
 ) -> Vec<Line<'static>> {
     let bg = BG_ELEMENT();
-    let status =
-        ui.map(|u| u.status.as_str())
-            .unwrap_or(if entry.is_error { "failed" } else { "saved" });
+    let status = ui.map(|u| u.status.as_str()).unwrap_or(if entry.is_error {
+        "failed"
+    } else {
+        "completed"
+    });
     let kind = crate::widgets::SubagentStatusKind::from_status(status);
     let type_label = capitalize_label(entry.subagent_type.as_deref().unwrap_or("subagent"));
     let description = ui.map(|u| u.description.as_str()).unwrap_or(&entry.content);
@@ -2470,7 +2472,11 @@ fn render_subagent(
         Some(ui) if !ui.tool_rows.is_empty() => {
             let count = ui.tool_rows.len();
             detail.push(Span::styled(
-                format!("{count} tool call{}", if count == 1 { "" } else { "s" }),
+                format!(
+                    "{count} tool call{} · {}",
+                    if count == 1 { "" } else { "s" },
+                    kind.label()
+                ),
                 Style::default().fg(FG()).bg(bg),
             ));
             if let Some(ms) = ui.elapsed_ms() {
@@ -2489,7 +2495,7 @@ fn render_subagent(
             }
         }
         _ => detail.push(Span::styled(
-            subagent_activity(ui, width.saturating_sub(5)),
+            format!("{} · explicit handoff", kind.label()),
             Style::default().fg(FG_MUTED()).bg(bg),
         )),
     }
@@ -2500,7 +2506,7 @@ fn render_subagent(
             Span::styled(" ", Style::default().bg(BG())),
             Span::styled("ctrl+x", Style::default().fg(FG_MUTED()).bg(BG())),
             Span::styled("  ", Style::default().bg(BG())),
-            Span::styled("view subagents", Style::default().fg(FG_DIM()).bg(BG())),
+            Span::styled("open child session", Style::default().fg(FG_DIM()).bg(BG())),
         ],
         width,
         BG(),
@@ -2509,7 +2515,17 @@ fn render_subagent(
     vec![
         Line::from(fill_row(header, width, bg)),
         Line::from(fill_row(detail, width, bg)),
-        themed_blank_row(width),
+        Line::from(fill_row(
+            vec![
+                Span::styled("   ", Style::default().bg(bg)),
+                Span::styled(
+                    subagent_activity(ui, width.saturating_sub(3)),
+                    Style::default().fg(FG_MUTED()).bg(bg),
+                ),
+            ],
+            width,
+            bg,
+        )),
         hint,
         themed_blank_row(width),
     ]
@@ -2631,11 +2647,12 @@ mod tests {
                 args: format!(r#"{{"path":"src/file{i}.rs"}}"#),
                 result: Some("large output\n".repeat(10)),
                 is_error: false,
+                finished: true,
             })
             .collect();
         for width in [1, 3, 20, 60, 100] {
             let lines = render_subagent(&entry, width, Some(&ui), true);
-            assert_eq!(lines.len(), 5, "header + detail + gap + hint + gap");
+            assert_eq!(lines.len(), 5, "header + metadata + activity + hint + gap");
             assert!(lines.iter().all(|line| line.width() <= width));
             assert!(lines[..2]
                 .iter()

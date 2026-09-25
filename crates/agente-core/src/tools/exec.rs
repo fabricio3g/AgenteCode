@@ -285,7 +285,8 @@ impl ProgressBuffer {
         // Keep pending data bounded even if the callback budget has already
         // been exhausted or a child writes a single enormous read chunk.
         if pending.len() > PROGRESS_BATCH_BYTES * 2 {
-            let end = char_boundary_at_or_before(pending, PROGRESS_BATCH_BYTES * 2);
+            let end =
+                crate::util::truncate_at_char_boundary(pending, PROGRESS_BATCH_BYTES * 2).len();
             pending.truncate(end);
         }
 
@@ -325,7 +326,7 @@ impl ProgressBuffer {
             OutputKind::Stderr => &mut self.stderr,
         };
         let room = MAX_PROGRESS_BYTES.saturating_sub(self.emitted_bytes);
-        let end = char_boundary_at_or_before(pending, max.min(room));
+        let end = crate::util::truncate_at_char_boundary(pending, max.min(room)).len();
         if end == 0 {
             pending.clear();
             return;
@@ -338,14 +339,6 @@ impl ProgressBuffer {
             content,
         });
     }
-}
-
-fn char_boundary_at_or_before(text: &str, requested: usize) -> usize {
-    let mut end = requested.min(text.len());
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    end
 }
 
 async fn run_shell(
@@ -606,6 +599,26 @@ mod tests {
         assert_eq!(sanitizer.push(b"tle\x07 \xe7\x95"), " ");
         assert_eq!(sanitizer.push(b"\x8c\r\nnext\trow"), "界\nnext    row");
         assert_eq!(sanitizer.finish(), "");
+    }
+
+    #[test]
+    fn progress_buffer_preserves_utf8_across_batches() {
+        let events = Arc::new(Mutex::new(Vec::<ToolProgress>::new()));
+        let captured = Arc::clone(&events);
+        let context = ToolExecutionContext::new(AbortController::new().signal())
+            .with_progress(move |progress| captured.lock().unwrap().push(progress));
+        let mut buffer = ProgressBuffer::new();
+        let content = format!("{}🎉tail", "a".repeat(PROGRESS_BATCH_BYTES - 1));
+        buffer.append(OutputKind::Stdout, &content, &context);
+        buffer.flush_all(&context);
+
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events
+            .iter()
+            .all(|event| event.content.len() <= PROGRESS_BATCH_BYTES));
+        let reconstructed: String = events.iter().map(|event| event.content.as_str()).collect();
+        assert_eq!(reconstructed, content);
     }
 
     #[tokio::test]

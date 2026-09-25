@@ -12,6 +12,7 @@ use crate::catalog::{
 use crate::llm::{LlmError, StreamEvent, Usage};
 use crate::types::{Message, ToolDefinition};
 
+mod go;
 pub mod google;
 pub mod messages;
 pub mod openai;
@@ -28,6 +29,18 @@ mod transport_tests;
 
 pub use summarizer::ProviderSummarizer;
 pub use title::generate_session_title;
+
+/// Stable per-conversation identity, shared by turns and auxiliary completions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequestContext {
+    pub session_id: uuid::Uuid,
+}
+
+impl RequestContext {
+    pub fn new(session_id: uuid::Uuid) -> Self {
+        Self { session_id }
+    }
+}
 
 /// API format types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -212,6 +225,7 @@ pub trait Provider: Send + Sync {
         tools: Option<&[ToolDefinition]>,
         model: &ModelInfo,
         sender: Sender<StreamEvent>,
+        context: RequestContext,
     ) -> Result<Usage, LlmError>;
 
     /// List available models

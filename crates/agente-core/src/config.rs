@@ -169,17 +169,12 @@ pub struct AppConfig {
     pub auth_store: AuthStore,
 }
 
-/// Resolved provider info for UI
-/// Direct Anthropic and Google/Gemini integrations are retired. Messages
-/// compatibility remains available to other providers such as MiniMax.
-pub fn provider_is_supported(id: &str, provider: &ProviderConfig) -> bool {
-    !matches!(
-        id.to_ascii_lowercase().as_str(),
-        "anthropic" | "google" | "gemini"
-    ) && !provider
-        .api_format
-        .as_deref()
-        .is_some_and(|format| format.eq_ignore_ascii_case("gemini"))
+/// The same allowlist gates saved configuration, the registry, and the picker.
+pub fn provider_is_supported(id: &str, _provider: &ProviderConfig) -> bool {
+    matches!(
+        id,
+        "deepseek" | "minimax" | "glm" | "opencode-go" | "openrouter"
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -191,7 +186,7 @@ pub struct ProviderEntry {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let mut provider = HashMap::new();
+        let mut provider: HashMap<String, ProviderConfig> = HashMap::new();
 
         // Built-in provider defaults — single source of truth.
         // The provider registry derives implementations from these configs.
@@ -227,9 +222,8 @@ impl Default for AppConfig {
                     ..Default::default()
                 },
                 models: models! {
-                    "MiniMax-M2.7" => "MiniMax M2.7", 128000;
-                    "MiniMax-Text-01" => "MiniMax Text 01", 1000000;
-                    "MiniMax-M1" => "MiniMax M1", 1000000
+                    "MiniMax-M3" => "MiniMax M3", 1000000;
+                    "MiniMax-M2.7" => "MiniMax M2.7", 204800
                 },
                 ..Default::default()
             },
@@ -276,18 +270,18 @@ impl Default for AppConfig {
         provider.insert(
             "deepseek".into(),
             ProviderConfig {
-                api: Some("https://api.deepseek.com/v1".into()),
+                api: Some("https://api.deepseek.com".into()),
                 name: Some("DeepSeek".into()),
                 env: vec!["DEEPSEEK_API_KEY".into()],
                 npm: Some("@ai-sdk/openai".into()),
                 api_format: Some("openai".into()),
                 options: ProviderOptions {
-                    base_url: Some("https://api.deepseek.com/v1".into()),
+                    base_url: Some("https://api.deepseek.com".into()),
                     ..Default::default()
                 },
                 models: models! {
-                    "deepseek-chat" => "DeepSeek V3", 64000;
-                    "deepseek-reasoner" => "DeepSeek R1", 64000
+                    "deepseek-flash" => "DeepSeek Flash", 128000;
+                    "deepseek-v4-pro" => "DeepSeek V4 Pro", 128000
                 },
                 ..Default::default()
             },
@@ -476,6 +470,37 @@ impl Default for AppConfig {
                 options: ProviderOptions {
                     base_url: Some("https://api.z.ai/api/paas/v4".into()),
                     ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+
+        provider.insert(
+            "glm".into(),
+            ProviderConfig {
+                api: Some("https://api.z.ai/api/paas/v4".into()),
+                name: Some("GLM (Z.AI API)".into()),
+                env: vec!["ZAI_API_KEY".into(), "ZHIPU_API_KEY".into()],
+                api_format: Some("openai".into()),
+                models: models! {
+                    "glm-5.3" => "GLM 5.3", 200000;
+                    "glm-5.3-flash" => "GLM 5.3 Flash", 200000
+                },
+                ..Default::default()
+            },
+        );
+
+        provider.insert(
+            "opencode-go".into(),
+            ProviderConfig {
+                api: Some("https://opencode.ai/zen/go/v1".into()),
+                name: Some("OpenCode Go".into()),
+                env: vec!["OPENCODE_GO_API_KEY".into(), "OPENCODE_API_KEY".into()],
+                api_format: Some("openai".into()),
+                models: models! {
+                    "deepseek-v4.1-flash" => "DeepSeek V4.1 Flash", 128000;
+                    "minimax-m3" => "MiniMax M3", 1000000;
+                    "gpt-6-luna" => "GPT 6 Luna", 272000
                 },
                 ..Default::default()
             },
@@ -927,11 +952,13 @@ impl Default for AppConfig {
             },
         );
 
+        provider.retain(|id, config| provider_is_supported(id, config));
+
         Self {
-            default_provider: Some("openrouter".into()),
-            default_model: Some("openai/gpt-4o-mini".into()),
-            planner_model: Some("openai/gpt-4o-mini".into()),
-            executor_model: Some("openai/gpt-4o-mini".into()),
+            default_provider: Some("deepseek".into()),
+            default_model: Some("deepseek-flash".into()),
+            planner_model: Some("deepseek-flash".into()),
+            executor_model: Some("deepseek-flash".into()),
             editor: None,
             auto_approve: AutoApproveConfig::default(),
             default_mode: Some("Build".into()),
@@ -1647,13 +1674,13 @@ mod tests {
         let config = AppConfig::default();
         let entries = config.provider_entries();
         assert!(!entries.is_empty());
-        assert!(entries.iter().any(|e| e.id == "openai"));
+        assert!(entries.iter().any(|e| e.id == "openrouter"));
     }
 
     #[test]
     fn test_resolve_base_url() {
         let config = AppConfig::default();
-        let url = config.resolve_base_url("openai");
+        let url = config.resolve_base_url("openrouter");
         assert!(url.is_some());
         assert!(url.unwrap().starts_with("http"));
     }
@@ -1668,8 +1695,8 @@ mod tests {
     #[test]
     fn test_get_provider_name() {
         let config = AppConfig::default();
-        let name = config.get_provider_name("openai");
-        assert_eq!(name, "OpenAI");
+        let name = config.get_provider_name("openrouter");
+        assert_eq!(name, "OpenRouter");
     }
 
     #[test]
@@ -1691,9 +1718,14 @@ mod tests {
     #[test]
     fn test_strip_secrets() {
         let mut config = AppConfig::default();
-        config.provider.get_mut("openai").unwrap().options.api_key = Some("secret".into());
+        config
+            .provider
+            .get_mut("openrouter")
+            .unwrap()
+            .options
+            .api_key = Some("secret".into());
         let stripped = config.strip_secrets();
-        assert!(stripped.provider["openai"].options.api_key.is_none());
+        assert!(stripped.provider["openrouter"].options.api_key.is_none());
     }
 
     #[test]
@@ -1736,29 +1768,17 @@ mod tests {
     }
 
     #[test]
-    fn default_providers_include_pi_aliases() {
+    fn default_providers_are_the_five_supported_services() {
         let config = AppConfig::default();
         let ids: Vec<String> = config
             .provider_entries()
             .into_iter()
             .map(|p| p.id)
             .collect();
-        for id in [
-            "together",
-            "fireworks",
-            "kimi-coding",
-            "ant-ling",
-            "baseten",
-            "qwen-token-plan",
-            "xiaomi",
-            "moonshotai-cn",
-            "zai-coding-cn",
-        ] {
+        assert_eq!(ids.len(), 5);
+        for id in ["deepseek", "minimax", "glm", "opencode-go", "openrouter"] {
             assert!(ids.iter().any(|p| p == id), "missing provider {id}");
         }
-        assert!(!ids.iter().any(|p| p == "togetherai"));
-        assert!(!ids.iter().any(|p| p == "fireworks-ai"));
-        assert!(!ids.iter().any(|p| p == "kimi-for-coding"));
     }
 
     #[test]
@@ -1774,7 +1794,7 @@ mod tests {
             CatalogModel {
                 provider: None,
                 id: "gpt-4o".to_string(),
-                provider_id: "openai".to_string(),
+                provider_id: "openrouter".to_string(),
                 name: "GPT-4o Real".to_string(),
                 family: None,
                 capabilities: ModelCapabilities::default(),
@@ -1791,9 +1811,9 @@ mod tests {
         );
         let mut catalog = crate::catalog::ModelCatalog::default();
         catalog.providers.insert(
-            "openai".to_string(),
+            "openrouter".to_string(),
             crate::catalog::CatalogProvider {
-                id: "openai".to_string(),
+                id: "openrouter".to_string(),
                 name: "OpenAI".to_string(),
                 env: vec!["OPENAI_API_KEY".to_string()],
                 api: "https://api.openai.com/v1".to_string(),
@@ -1806,7 +1826,9 @@ mod tests {
 
         config.merge_catalog(&catalog);
         assert_eq!(
-            config.provider["openai"].models["gpt-4o"].name.as_deref(),
+            config.provider["openrouter"].models["gpt-4o"]
+                .name
+                .as_deref(),
             Some("GPT-4o Real")
         );
     }
@@ -1885,7 +1907,7 @@ mod tests {
         let catalog_model = |id: &str| CatalogModel {
             provider: None,
             id: id.to_string(),
-            provider_id: "openai".to_string(),
+            provider_id: "openrouter".to_string(),
             name: format!("Model {id}"),
             family: None,
             capabilities: ModelCapabilities::default(),
@@ -1909,9 +1931,9 @@ mod tests {
 
         let mut catalog = ModelCatalog::default();
         catalog.providers.insert(
-            "openai".to_string(),
+            "openrouter".to_string(),
             CatalogProvider {
-                id: "openai".to_string(),
+                id: "openrouter".to_string(),
                 name: "OpenAI".to_string(),
                 env: vec!["OPENAI_API_KEY".to_string()],
                 api: "https://api.openai.com/v1".to_string(),
@@ -1943,7 +1965,7 @@ mod tests {
         // The built-in placeholder models from `AppConfig::default()` are not
         // catalog-derived and legitimately stay; none of the 2,000 catalog
         // rows may.
-        let leaked: Vec<_> = persisted.provider["openai"]
+        let leaked: Vec<_> = persisted.provider["openrouter"]
             .models
             .keys()
             .filter(|id| id.starts_with("model-"))
@@ -1970,7 +1992,7 @@ mod tests {
             CatalogModel {
                 provider: None,
                 id: "gpt-4o".to_string(),
-                provider_id: "openai".to_string(),
+                provider_id: "openrouter".to_string(),
                 name: "GPT-4o".to_string(),
                 family: None,
                 capabilities: ModelCapabilities::default(),
@@ -1987,9 +2009,9 @@ mod tests {
         );
         let mut catalog = ModelCatalog::default();
         catalog.providers.insert(
-            "openai".to_string(),
+            "openrouter".to_string(),
             CatalogProvider {
-                id: "openai".to_string(),
+                id: "openrouter".to_string(),
                 name: "OpenAI".to_string(),
                 env: vec!["OPENAI_API_KEY".to_string()],
                 api: "https://api.openai.com/v1".to_string(),
@@ -2005,7 +2027,7 @@ mod tests {
         // The user renames the model in their own config.
         config
             .provider
-            .get_mut("openai")
+            .get_mut("openrouter")
             .unwrap()
             .models
             .get_mut("gpt-4o")
@@ -2015,7 +2037,7 @@ mod tests {
         let mut persisted = config.strip_secrets();
         persisted.strip_catalog_derived(config.catalog.as_ref());
         assert_eq!(
-            persisted.provider["openai"].models["gpt-4o"]
+            persisted.provider["openrouter"].models["gpt-4o"]
                 .name
                 .as_deref(),
             Some("My GPT"),
@@ -2141,7 +2163,7 @@ mod tests {
             "hand-added model must survive"
         );
         // Built-ins always stay, and the serialized form stays small.
-        assert!(persisted.provider.contains_key("openai"));
+        assert!(persisted.provider.contains_key("openrouter"));
         let written = serde_json::to_string(&persisted).unwrap();
         assert!(
             written.len() < 256 * 1024,

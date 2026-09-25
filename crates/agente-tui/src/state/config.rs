@@ -766,12 +766,12 @@ mod tests {
     fn model_display_name_uses_catalog_names() {
         let config = ConfigState::new(AppConfig::default());
         assert_eq!(
-            config.get_model_display_name("openai", "gpt-4o"),
-            "OpenAI GPT-4o"
+            config.get_model_display_name("openrouter", "openai/gpt-4o"),
+            "OpenRouter GPT-4o (Router)"
         );
         assert_eq!(
-            config.get_model_display_name("minimax", "MiniMax-M1"),
-            "MiniMax M1"
+            config.get_model_display_name("minimax", "MiniMax-M2.7"),
+            "MiniMax M2.7"
         );
     }
 
@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn provider_display_name_is_human_readable() {
         let config = ConfigState::new(AppConfig::default());
-        assert_eq!(config.get_provider_display_name("openai"), "OpenAI");
+        assert_eq!(config.get_provider_display_name("openrouter"), "OpenRouter");
         assert_eq!(config.get_provider_display_name("minimax"), "MiniMax");
         // Retired providers no longer receive built-in display metadata.
         assert_eq!(config.get_provider_display_name("google"), "google");

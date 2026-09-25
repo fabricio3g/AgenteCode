@@ -337,13 +337,11 @@ pub fn truncate_output(content: &str) -> ToolOutput {
     };
 
     let final_result = if truncated_content.len() > MAX_OUTPUT_BYTES {
-        let mut end = MAX_OUTPUT_BYTES;
-        let content_ref = truncated_content.as_str();
-        while end > 0 && !content_ref.is_char_boundary(end) {
-            end -= 1;
-        }
         truncated = true;
-        format!("{}\n\n... output truncated ...", &truncated_content[..end])
+        format!(
+            "{}\n\n... output truncated ...",
+            crate::util::truncate_at_char_boundary(&truncated_content, MAX_OUTPUT_BYTES)
+        )
     } else {
         truncated_content
     };
@@ -1152,6 +1150,17 @@ mod tests {
         let output = ToolOutput::truncated("test content".to_string());
         assert_eq!(output.content, "test content");
         assert!(output.truncated);
+    }
+
+    #[test]
+    fn truncate_output_preserves_utf8_at_byte_limit() {
+        let prefix = "a".repeat(MAX_OUTPUT_BYTES - 1);
+        let result = truncate_output(&format!("{prefix}🎉tail"));
+        assert!(result.truncated);
+        assert_eq!(
+            result.content,
+            format!("{prefix}\n\n... output truncated ...")
+        );
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use super::{ApiFormat, ModelInfo, Provider, ProviderCapabilities, ProviderInfo};
+use super::{ApiFormat, ModelInfo, Provider, ProviderCapabilities, ProviderInfo, RequestContext};
 use crate::llm::{LlmError, StopReason, StreamEvent, Usage};
 use crate::types::{Message, ProviderContinuation, Role, ToolDefinition};
 use async_trait::async_trait;
@@ -301,12 +301,14 @@ impl Provider for MessagesProvider {
         tools: Option<&[ToolDefinition]>,
         model: &ModelInfo,
         sender: Sender<StreamEvent>,
+        context: RequestContext,
     ) -> Result<Usage, LlmError> {
         let response = super::send_request(
             &self.info,
             model,
             "messages",
             &self.request_body(messages, tools, model),
+            context,
         )
         .await?;
         let mut stream = super::sse::EventStream::new(response.bytes_stream());

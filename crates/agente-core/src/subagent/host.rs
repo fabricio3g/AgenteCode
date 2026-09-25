@@ -9,7 +9,7 @@
 
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc::Sender, Arc};
+use std::sync::{mpsc::Sender, Arc, OnceLock};
 
 use crate::agent::channel::loop_detection::{DEFAULT_LOOP_NUDGE_AFTER, DEFAULT_LOOP_STOP_AFTER};
 use crate::agent::channel::{run_agent_loop, AgentRunConfig, ToolCallOutcome};
@@ -24,7 +24,9 @@ use crate::subagent::definition::{
     resolve_timeout_ms, CustomSubagent, EffectiveRuntimeConfig, SubagentParentDefaults,
     DEFAULT_SUBAGENT_SUMMARY_CAP,
 };
-use crate::subagent::registry::{bound_conversation, QueuedSpawn, SubagentRegistry};
+use crate::subagent::registry::{
+    bound_conversation, QueuedSpawn, SpawnAdmission, SubagentRegistry,
+};
 use crate::subagent::types::{
     SubagentCapabilityMode, SubagentIsolation, SubagentResult, SubagentSnapshot,
     SubagentSpawnRequest, SubagentStatus,
@@ -100,6 +102,9 @@ struct SubagentHostInner {
     registry: SubagentRegistry,
     max_depth: u32,
     max_concurrent: usize,
+    /// The parent runtime owns queued preparation; forwarders run on plain
+    /// OS threads, and child runtimes disappear when their loops finish.
+    scheduler: OnceLock<tokio::runtime::Handle>,
 }
 
 /// Child task ids are allocated from a high offset so they never collide with
@@ -234,6 +239,7 @@ impl SubagentHost {
                 registry,
                 max_depth,
                 max_concurrent,
+                scheduler: OnceLock::new(),
             }),
         }
     }
@@ -251,7 +257,6 @@ impl SubagentHost {
         &self,
         tool_call: &ToolCall,
         args: serde_json::Value,
-        parent_messages: &[Message],
         context: ToolExecutionContext,
         depth: u32,
     ) -> ToolCallOutcome {
@@ -283,9 +288,7 @@ impl SubagentHost {
                         "Missing required 'description' parameter",
                     );
                 }
-                let result = self
-                    .spawn(request, parent_messages, parent_cancel, depth)
-                    .await;
+                let result = self.spawn(request, parent_cancel, depth).await;
                 ToolCallOutcome {
                     tool_call_id,
                     tool_name: "task".to_string(),
@@ -483,10 +486,15 @@ impl SubagentHost {
     async fn spawn(
         &self,
         request: SubagentSpawnRequest,
-        parent_messages: &[Message],
         parent_cancel: AbortSignal,
         depth: u32,
     ) -> SubagentResult {
+        self.inner
+            .scheduler
+            .get_or_init(tokio::runtime::Handle::current);
+        if parent_cancel.is_aborted() {
+            return err_result("Subagent spawn cancelled before admission");
+        }
         // Depth guard (parent = depth 0).
         if depth >= self.inner.max_depth {
             return err_result(format!(
@@ -565,56 +573,11 @@ impl SubagentHost {
         // Admission: start now when a concurrency slot is free, otherwise
         // queue FIFO and return a Pending result immediately — never block
         // the parent turn waiting for a slot.
-        if self.inner.registry.started_count() >= self.inner.max_concurrent {
-            let controller = parent_cancel.child_controller();
-            let snapshot = SubagentSnapshot {
-                id: id.clone(),
-                subagent_type: request.subagent_type.clone(),
-                description: request.description.clone(),
-                status: SubagentStatus::Pending,
-                summary: None,
-                conversation: Vec::new(),
-                model: model.clone(),
-                depth: depth + 1,
-                background,
-                started_at: chrono::Utc::now(),
-                finished_at: None,
-                cwd: None,
-                worktree: None,
-            };
-            self.inner.registry.insert(snapshot);
-            self.inner.registry.enqueue(QueuedSpawn {
-                id: id.clone(),
-                request: request.clone(),
-                cfg: cfg.clone(),
-                parent_messages: parent_messages.to_vec(),
-                controller,
-                depth,
-                coerced_to_read_only,
-            });
-            let _ = self.inner.config.event_sender.send(AgentTaskEvent {
-                task_id: self.inner.config.task_id,
-                event: AgentEvent::SubagentStarted {
-                    id: id.clone(),
-                    subagent_type: request.subagent_type.clone(),
-                    description: request.description.clone(),
-                },
-            });
-            let position = self.inner.registry.queued_position(&id).unwrap_or(1);
-            let running = self.inner.registry.started_count();
-            return SubagentResult {
-                id: id.clone(),
-                status: SubagentStatus::Pending,
-                summary: Some(format!("queued at position {position} ({running} running)")),
-                resume_from_hint: Some(id),
-                is_error: false,
-            };
-        }
-
         let snapshot = SubagentSnapshot {
             id: id.clone(),
             subagent_type: request.subagent_type.clone(),
             description: request.description.clone(),
+            prompt: request.prompt.clone(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),
@@ -626,21 +589,45 @@ impl SubagentHost {
             cwd: None,
             worktree: None,
         };
-        let completion_rx = self.inner.registry.insert(snapshot);
-        // A child token is linked to the parent without a relay task; the
-        // launch registers its controller for kill_task.
         let child_controller = parent_cancel.child_controller();
-        let completion_rx = if background {
-            None
-        } else {
-            Some(completion_rx)
+        let admission = self.inner.registry.admit(
+            snapshot,
+            QueuedSpawn {
+                id: id.clone(),
+                request: request.clone(),
+                cfg: cfg.clone(),
+                controller: child_controller.clone(),
+                depth,
+                coerced_to_read_only,
+            },
+            self.inner.max_concurrent,
+        );
+        let completion_rx = match admission {
+            Err(error) => return err_result(error),
+            Ok(SpawnAdmission::Running(rx)) => (!background).then_some(rx),
+            Ok(SpawnAdmission::Queued { position, running }) => {
+                let _ = self.inner.config.event_sender.send(AgentTaskEvent {
+                    task_id: self.inner.config.task_id,
+                    event: AgentEvent::SubagentStarted {
+                        id: id.clone(),
+                        subagent_type: request.subagent_type.clone(),
+                        description: request.description.clone(),
+                    },
+                });
+                // Also covers a slot freed just before admission.
+                self.try_start_queued();
+                return SubagentResult {
+                    id: id.clone(),
+                    status: SubagentStatus::Pending,
+                    summary: Some(format!("queued at position {position} ({running} running)")),
+                    resume_from_hint: Some(id),
+                    is_error: false,
+                };
+            }
         };
 
         let timeout_ms = resolve_timeout_ms(request.timeout_ms);
-        let prep = match self
-            .prepare_child(&id, &request, cfg, parent_messages)
-            .await
-        {
+        let prep = match self.prepare_child(&id, &request, cfg).await {
             Ok(prep) => prep,
             Err(e) => {
                 self.fail_child(&id, &e);
@@ -679,6 +666,7 @@ impl SubagentHost {
             },
         });
         maybe_notify_completion(self, id, SubagentStatus::Failed, message);
+        self.try_start_queued();
     }
 
     /// Resolve the child's checkout (or reuse the resumed child's), then build
@@ -689,7 +677,6 @@ impl SubagentHost {
         id: &str,
         request: &SubagentSpawnRequest,
         mut cfg: EffectiveRuntimeConfig,
-        parent_messages: &[Message],
     ) -> Result<ChildPrep, String> {
         let resume_source = request
             .resume_from
@@ -776,7 +763,7 @@ impl SubagentHost {
                 });
                 conv
             }
-            None => fork_subagent_context(parent_messages, &child_system_prompt, &request.prompt),
+            None => fork_subagent_context(&child_system_prompt, &request.prompt),
         };
         let max_iterations = request.max_iterations;
         Ok(ChildPrep {
@@ -882,6 +869,7 @@ impl SubagentHost {
         // recursively. Communication (approvals, cancel watch, completion) is
         // cross-runtime-safe.
         let run_config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
             sender: child_tx.clone(),
             task_id: child_task_id,
             messages,
@@ -977,6 +965,7 @@ impl SubagentHost {
                     id: id.clone(),
                     subagent_type: request.subagent_type,
                     description: String::new(),
+                    prompt: request.prompt.clone(),
                     status: SubagentStatus::Failed,
                     summary: Some("subagent state lost".into()),
                     conversation: Vec::new(),
@@ -1008,39 +997,18 @@ impl SubagentHost {
     /// waited in line reports through `task_output`/notice, since its `task`
     /// call already returned the Pending handle.
     pub(crate) fn try_start_queued(&self) {
-        loop {
-            if self.inner.registry.started_count() >= self.inner.max_concurrent {
-                return;
-            }
-            let Some(item) = self.inner.registry.dequeue_next() else {
-                return;
-            };
-            let snap_model = self
-                .inner
-                .registry
-                .get(&item.id)
-                .filter(|snap| snap.status == SubagentStatus::Pending)
-                .map(|snap| snap.model.clone());
-            let Some(model) = snap_model else {
-                // Killed (or otherwise finished) while queued: drop it.
-                continue;
-            };
-            self.inner.registry.update(&item.id, |snap| {
-                snap.status = SubagentStatus::Running;
-                // The inline `task` call already returned a Pending handle, so
-                // this child's result can only arrive by push; without this a
-                // queued explore/plan would strand its result.
-                snap.background = true;
-            });
+        let Some(scheduler) = self.inner.scheduler.get() else {
+            return; // No spawn has been admitted by this host yet.
+        };
+        while let Some((item, model)) = self
+            .inner
+            .registry
+            .start_next_queued(self.inner.max_concurrent)
+        {
             let host = self.clone();
-            tokio::spawn(async move {
+            scheduler.spawn(async move {
                 let prep = match host
-                    .prepare_child(
-                        &item.id,
-                        &item.request,
-                        item.cfg.clone(),
-                        &item.parent_messages,
-                    )
+                    .prepare_child(&item.id, &item.request, item.cfg.clone())
                     .await
                 {
                     Ok(prep) => prep,
@@ -1117,10 +1085,9 @@ fn forward_child_events(
                 full_text = text.clone();
                 let mut text = text;
                 if text.len() > MAX_SUBAGENT_STREAM_BYTES {
-                    let mut end = MAX_SUBAGENT_STREAM_BYTES;
-                    while end > 0 && !text.is_char_boundary(end) {
-                        end -= 1;
-                    }
+                    let end =
+                        crate::util::truncate_at_char_boundary(&text, MAX_SUBAGENT_STREAM_BYTES)
+                            .len();
                     text.truncate(end);
                     text.push_str("\n… child output truncated …\n");
                 }
@@ -1351,26 +1318,8 @@ fn forward_child_events(
             );
         }
     }
-    // Release the child's worktree: a clean checkout returns to the warm pool,
-    // a dirty one stays on disk for review with its flag flipped.
-    let worktree = host
-        .inner
-        .registry
-        .get(&subagent_id)
-        .and_then(|snap| snap.worktree.clone());
-    if let Some(info) = worktree {
-        let registry = host.inner.registry.clone();
-        let id = subagent_id.clone();
-        tokio::spawn(async move {
-            if !worktree::release(&info).await {
-                registry.update(&id, |snap| {
-                    if let Some(wt) = snap.worktree.as_mut() {
-                        wt.dirty = true;
-                    }
-                });
-            }
-        });
-    }
+    // The checkout was settled BEFORE the terminal status was published.
+    // Never release it again here: a resume may already own it.
     // A slot freed (or a queued entry died): start waiting spawns FIFO.
     host.try_start_queued();
 }
@@ -1484,6 +1433,172 @@ mod tests {
         }
     }
 
+    fn test_snapshot(id: &str) -> SubagentSnapshot {
+        SubagentSnapshot {
+            id: id.into(),
+            subagent_type: "explore".into(),
+            description: "test".into(),
+            prompt: "Explicit handoff".into(),
+            status: SubagentStatus::Running,
+            summary: None,
+            conversation: vec![],
+            model: "test-model".into(),
+            depth: 1,
+            background: true,
+            started_at: chrono::Utc::now(),
+            finished_at: None,
+            cwd: None,
+            worktree: None,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn forwarder_drains_queue_even_after_preparation_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = SubagentRegistry::new();
+        registry.insert(test_snapshot("blocker"));
+        let mut source = test_snapshot("source");
+        source.status = SubagentStatus::Completed;
+        source.worktree = Some(worktree::WorktreeInfo::synthetic(
+            root.path().to_string_lossy(),
+            root.path().to_string_lossy(),
+            "branch",
+            "base",
+            true,
+        ));
+        registry.insert(source);
+        // Simulate an earlier resume already owning the source's checkout.
+        assert!(worktree::claim_for_resume(root.path()));
+        let (host, events) = queue_test_host(registry.clone(), 1);
+        let mut request = queue_test_request();
+        request.resume_from = Some("source".into());
+        request.isolation = SubagentIsolation::None;
+        request.run_in_background = Some(false);
+        let failed_prep = host.spawn(request.clone(), AbortSignal::never(), 0).await;
+        assert_eq!(failed_prep.status, SubagentStatus::Pending);
+        request.resume_from = None;
+        request.cwd = Some(root.path().to_string_lossy().into_owned());
+        let next = host.spawn(request, AbortSignal::never(), 0).await;
+        assert_eq!(next.status, SubagentStatus::Pending);
+        assert!(registry.get(&next.id).unwrap().background);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(AgentTaskEvent {
+            task_id: 7,
+            event: AgentEvent::Done {
+                conversation: vec![],
+                tokens: 0,
+            },
+        })
+        .unwrap();
+        drop(tx);
+        // No runtime entered on this thread: dispatch must use the host handle.
+        std::thread::spawn(move || forward_child_events(rx, host, "blocker".into()))
+            .join()
+            .expect("forwarder must not panic outside Tokio");
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !registry.get(&next.id).unwrap().status.is_terminal() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("a prep failure must free its slot and start the next child");
+        worktree::release_resume_claim(root.path());
+        assert_eq!(registry.started_count(), 0);
+        assert_eq!(registry.queued_count(), 0);
+        assert!(registry
+            .get(&failed_prep.id)
+            .unwrap()
+            .summary
+            .unwrap()
+            .contains("already in use"));
+        // The second child reaches its loop; an unconfigured test provider
+        // fails locally without any network request.
+        assert!(registry
+            .get(&next.id)
+            .unwrap()
+            .summary
+            .unwrap()
+            .contains("Unknown provider"));
+        assert!(events.try_iter().any(|event| matches!(event.event,
+            AgentEvent::SubagentCompletedNotice { ref id, .. } if id == &failed_prep.id)));
+    }
+
+    #[test]
+    fn worktree_completion_on_plain_thread_does_not_release_twice() {
+        let root = tempfile::tempdir().unwrap();
+        for args in [
+            vec!["init", "--quiet"],
+            vec![
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "initial",
+            ],
+        ] {
+            let output = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root.path())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        std::fs::write(root.path().join("child.txt"), "keep this work").unwrap();
+        let registry = SubagentRegistry::new();
+        let mut snapshot = test_snapshot("child");
+        snapshot.worktree = Some(worktree::WorktreeInfo::synthetic(
+            root.path().to_string_lossy(),
+            root.path().to_string_lossy(),
+            "branch",
+            "HEAD",
+            false,
+        ));
+        registry.insert(snapshot);
+        let (host, _events) = queue_test_host(registry.clone(), 1);
+        let (tx, rx) = std::sync::mpsc::channel();
+        tx.send(AgentTaskEvent {
+            task_id: 7,
+            event: AgentEvent::Done {
+                conversation: vec![],
+                tokens: 0,
+            },
+        })
+        .unwrap();
+        drop(tx);
+        std::thread::spawn(move || forward_child_events(rx, host, "child".into()))
+            .join()
+            .expect("worktree completion must not try tokio::spawn on the forwarder thread");
+        let snapshot = registry.get("child").unwrap();
+        assert_eq!(snapshot.status, SubagentStatus::Completed);
+        assert!(snapshot.worktree.unwrap().dirty);
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("child.txt")).unwrap(),
+            "keep this work"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_spawn_is_rejected_before_admission() {
+        let registry = SubagentRegistry::new();
+        let (host, _events) = queue_test_host(registry.clone(), 0);
+        let controller = AbortController::new();
+        controller.abort();
+        let result = host
+            .spawn(queue_test_request(), controller.signal(), 0)
+            .await;
+        assert!(result.is_error);
+        assert!(registry.list().is_empty());
+        assert_eq!(registry.queued_count(), 0);
+    }
+
     /// Unbounded is the child default: an omitted
     /// `max_iterations` reaches the loop as `None`, an explicit value passes
     /// through untouched. The parent's budget is never inherited.
@@ -1502,7 +1617,7 @@ mod tests {
         let cfg =
             resolve_effective_config(&request, &parent_defaults, &[]).expect("explore resolves");
         let prep = host
-            .prepare_child("child-unbounded", &request, cfg, &[])
+            .prepare_child("child-unbounded", &request, cfg)
             .await
             .expect("prep succeeds");
         assert_eq!(
@@ -1516,7 +1631,7 @@ mod tests {
         let cfg =
             resolve_effective_config(&request, &parent_defaults, &[]).expect("explore resolves");
         let prep = host
-            .prepare_child("child-capped", &request, cfg, &[])
+            .prepare_child("child-capped", &request, cfg)
             .await
             .expect("prep succeeds");
         assert_eq!(prep.max_iterations, Some(7), "explicit cap passes through");
@@ -1589,6 +1704,7 @@ mod tests {
             id: id.clone(),
             subagent_type: "explore".into(),
             description: "quiet".into(),
+            prompt: String::new(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),
@@ -1633,6 +1749,7 @@ mod tests {
             id: "slow".into(),
             subagent_type: "explore".into(),
             description: "d".into(),
+            prompt: String::new(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),
@@ -1671,7 +1788,7 @@ mod tests {
         // Zero slots forces every spawn onto the queue.
         let (host, _events) = queue_test_host(registry.clone(), 0);
         let result = host
-            .spawn(queue_test_request(), &[], AbortSignal::never(), 0)
+            .spawn(queue_test_request(), AbortSignal::never(), 0)
             .await;
         assert_eq!(result.status, SubagentStatus::Pending);
         assert!(
@@ -1790,6 +1907,7 @@ mod tests {
             id: "slow-child".into(),
             subagent_type: "explore".into(),
             description: "slow test".into(),
+            prompt: String::new(),
             status: SubagentStatus::Running,
             summary: None,
             conversation: Vec::new(),

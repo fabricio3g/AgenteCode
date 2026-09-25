@@ -372,6 +372,9 @@ impl ToolCore for EditFileTool {
         } = args;
         let path = path
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'path' parameter".to_string()))?;
+        // Only legacy search/replace permits fuzzy recovery. An edits array
+        // promises exact matching even when it contains just one replacement.
+        let exact = edits.as_ref().is_some_and(|items| !items.is_empty());
         let edits = collect_edits(search.as_deref(), replace.as_deref(), edits.as_deref())?;
 
         let resolved = super::resolve_project_path(&path, project_dir)?;
@@ -398,7 +401,7 @@ impl ToolCore for EditFileTool {
             let mut matches: Vec<(usize, usize, String, bool)> = Vec::new();
 
             for (index, (old_text, new_text)) in edits.iter().enumerate() {
-                let (idx, end, fuzzy) = if multi {
+                let (idx, end, fuzzy) = if exact {
                     let idx = content.find(old_text.as_str()).ok_or_else(|| {
                         ToolError::ExecutionError(format!(
                             "Could not find edits[{index}] in {resolved_str}. The oldText must match exactly."
@@ -444,7 +447,7 @@ impl ToolCore for EditFileTool {
                     }
                 };
 
-                if multi {
+                if exact {
                     let occurrences = content.match_indices(old_text.as_str()).count();
                     if occurrences != 1 {
                         return Err(ToolError::ExecutionError(format!(
@@ -648,6 +651,63 @@ mod tests {
         assert!(res.is_ok(), "{:?}", res.err());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn single_array_edit_never_falls_back_to_fuzzy_matching() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.txt");
+        let original = "say “hello”\n";
+        std::fs::write(&path, original).unwrap();
+        atomic_fs::record_read(&path, original);
+        let tool = TypedTool::new(EditFileTool);
+        let err = tool
+            .execute(
+                json!({
+                    "path": "a.txt",
+                    "edits": [{"oldText": "say \"hello\"", "newText": "changed"}]
+                }),
+                dir.path().to_str().unwrap(),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("match exactly"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+
+        // Legacy callers explicitly retain the documented fuzzy behavior.
+        let result = tool
+            .execute(
+                json!({
+                    "path": "a.txt", "search": "say \"hello\"", "replace": "changed"
+                }),
+                dir.path().to_str().unwrap(),
+            )
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "changed\n");
+    }
+
+    #[tokio::test]
+    async fn rejected_multi_edit_does_not_partially_modify_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.txt");
+        let original = "one\ntwo\nthree\n";
+        std::fs::write(&path, original).unwrap();
+        atomic_fs::record_read(&path, original);
+        let tool = TypedTool::new(EditFileTool);
+        for edits in [
+            json!([{"oldText": "one", "newText": "1"}, {"oldText": "missing", "newText": "2"}]),
+            json!([{"oldText": "one\ntwo", "newText": "1"}, {"oldText": "two\nthree", "newText": "2"}]),
+        ] {
+            let result = tool
+                .execute(
+                    json!({"path": "a.txt", "edits": edits}),
+                    dir.path().to_str().unwrap(),
+                )
+                .await;
+            assert!(result.is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
     }
 
     #[tokio::test]

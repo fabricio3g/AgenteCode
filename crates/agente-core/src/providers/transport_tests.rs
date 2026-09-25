@@ -77,7 +77,7 @@ fn partial_provider_config_keeps_native_format_and_model_overrides_survive_cache
     );
     let catalog = ModelCatalog::parse_json(
         &json!({
-            "opencode":{"id":"opencode","models":{
+            "openrouter":{"id":"openrouter","models":{
                 "fixture":{"id":"fixture","name":"Fixture","reasoning":true,
                     "provider":{"npm":"@ai-sdk/openai","api":"http://model-override"},
                     "reasoning_options":[{"type":"effort","values":[null,"high"]}]}
@@ -91,7 +91,7 @@ fn partial_provider_config_keeps_native_format_and_model_overrides_survive_cache
     config.refresh_catalog(&cached);
     config
         .provider
-        .get_mut("opencode")
+        .get_mut("openrouter")
         .unwrap()
         .models
         .get_mut("fixture")
@@ -100,7 +100,7 @@ fn partial_provider_config_keeps_native_format_and_model_overrides_survive_cache
         .insert("temperature".into(), json!(0.2));
     config.refresh_catalog(&cached);
     let registry = ProviderRegistry::from_config(&config);
-    let model = resolve_model_info(&registry, config.catalog.as_ref(), "opencode", "fixture");
+    let model = resolve_model_info(&registry, config.catalog.as_ref(), "openrouter", "fixture");
     assert_eq!(model.api.format, Some(ApiFormat::Responses));
     assert_eq!(model.api.base_url.as_deref(), Some("http://model-override"));
     assert_eq!(model.options["temperature"], 0.2);
@@ -139,9 +139,21 @@ async fn request(
     format: ApiFormat,
     events: Vec<Value>,
 ) -> (String, Value, Vec<StreamEvent>, Result<Usage, LlmError>) {
+    request_for("gateway", format, events).await
+}
+
+async fn request_for(
+    provider_id: &str,
+    format: ApiFormat,
+    events: Vec<Value>,
+) -> (String, Value, Vec<StreamEvent>, Result<Usage, LlmError>) {
     let (url, request) = server(events);
-    let provider = routed::RoutedProvider::new(info(url), HashMap::new());
+    let mut provider_info = info(url);
+    provider_info.id = provider_id.into();
+    let provider = routed::RoutedProvider::new(provider_info, HashMap::new());
     let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+    let mut selected_model = model(format);
+    selected_model.provider_id = provider_id.into();
     let result = provider
         .stream_completion(
             &[Message::user("inspect")],
@@ -150,8 +162,9 @@ async fn request(
                 description: "Read file".into(),
                 parameters: json!({"type":"object","properties":{"path":{"type":"string"}}}),
             }]),
-            &model(format),
+            &selected_model,
             tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
         )
         .await;
     let mut events = Vec::new();
@@ -160,6 +173,19 @@ async fn request(
     }
     let (headers, body) = request.recv_timeout(Duration::from_secs(10)).unwrap();
     (headers, body, events, result)
+}
+
+#[tokio::test]
+async fn openrouter_preserves_model_specific_response_routing() {
+    let (headers, body, _, result) = request_for(
+        "openrouter",
+        ApiFormat::Responses,
+        vec![json!({"type":"response.completed","response":{"output":[],"usage":{"input_tokens":2,"output_tokens":1}}})],
+    )
+    .await;
+    assert!(result.is_ok(), "{result:?}");
+    assert!(headers.starts_with("POST /responses "));
+    assert_eq!(body["model"], "reasoner");
 }
 
 fn transcript(events: &[StreamEvent]) -> Message {

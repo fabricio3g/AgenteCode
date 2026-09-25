@@ -778,8 +778,7 @@ impl App {
                             .find(|e| e.id == hovered);
                         if let Some(entry) = entry {
                             if let Some(sub_id) = entry.subagent_id.clone() {
-                                self.state.ui.subagent_detail_id = Some(sub_id);
-                                self.state.ui.subagent_detail_scroll = 0;
+                                self.state.ui.open_subagent_detail(sub_id);
                                 self.state.ui.needs_render = true;
                                 return Ok(());
                             }
@@ -2062,10 +2061,9 @@ impl App {
                 // Open the live detail modal for the selected row instead of
                 // just closing — the list is overview, the modal is inspect.
                 if let Some(selected) = entries.get(self.state.input.subagents_selected) {
-                    self.state.ui.subagent_detail_id = Some(selected.id.clone());
-                    self.state.ui.subagent_detail_scroll = 0;
-                    self.state.ui.subagent_diff = None;
-                    self.state.input.close_subagents();
+                    self.state.ui.open_subagent_detail(selected.id.clone());
+                    // Keep the overview beneath the child view: Esc restores
+                    // the same selected task rather than dropping into chat.
                 } else {
                     self.state.input.close_subagents();
                 }
@@ -2102,14 +2100,35 @@ impl App {
         Ok(())
     }
 
-    /// Focused subagent modal: scroll with ↑↓/PgUp/PgDn/wheel, `d` reviews the
-    /// child's worktree diff, `k` kills a live child, Esc/Enter/q closes.
+    /// Read-only child session: Tab/1–3 changes view; Esc returns to its owner.
     pub(super) fn handle_subagent_detail_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        use crate::state::SubagentDetailTab;
+        let page = self
+            .state
+            .ui
+            .subagent_detail_area
+            .map(|area| area.height.saturating_sub(1).max(1) as i32)
+            .unwrap_or(8);
         match key.code {
             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => {
-                self.state.ui.subagent_detail_id = None;
-                self.state.ui.subagent_detail_scroll = 0;
-                self.state.ui.subagent_diff = None;
+                self.state.ui.close_subagent_detail();
+            }
+            KeyCode::Tab => {
+                let tab = self.state.ui.subagent_detail_tab.next();
+                self.state.ui.select_subagent_tab(tab);
+            }
+            KeyCode::Char('1') => self
+                .state
+                .ui
+                .select_subagent_tab(SubagentDetailTab::Activity),
+            KeyCode::Char('2') => self
+                .state
+                .ui
+                .select_subagent_tab(SubagentDetailTab::Handoff),
+            KeyCode::Char('3') => self.state.ui.select_subagent_tab(SubagentDetailTab::Result),
+            KeyCode::Char('o') => {
+                self.state.ui.subagent_detail_show_output =
+                    !self.state.ui.subagent_detail_show_output;
                 self.state.ui.needs_render = true;
             }
             KeyCode::Char('d') => {
@@ -2127,30 +2146,20 @@ impl App {
                     self.state.ui.subagent_diff = Some(diff);
                 }
                 self.state.ui.subagent_detail_scroll = 0;
+                self.state.ui.subagent_detail_follow = false;
                 self.state.ui.needs_render = true;
             }
-            KeyCode::Up => {
-                self.state.ui.subagent_detail_scroll =
-                    self.state.ui.subagent_detail_scroll.saturating_sub(3);
-                self.state.ui.needs_render = true;
-            }
-            KeyCode::Down => {
-                self.state.ui.subagent_detail_scroll =
-                    self.state.ui.subagent_detail_scroll.saturating_add(3);
-                self.state.ui.needs_render = true;
-            }
-            KeyCode::PageUp => {
-                self.state.ui.subagent_detail_scroll =
-                    self.state.ui.subagent_detail_scroll.saturating_sub(8);
-                self.state.ui.needs_render = true;
-            }
-            KeyCode::PageDown => {
-                self.state.ui.subagent_detail_scroll =
-                    self.state.ui.subagent_detail_scroll.saturating_add(8);
-                self.state.ui.needs_render = true;
-            }
+            KeyCode::Up => self.state.ui.scroll_subagent_detail(-1),
+            KeyCode::Down => self.state.ui.scroll_subagent_detail(1),
+            KeyCode::PageUp => self.state.ui.scroll_subagent_detail(-page),
+            KeyCode::PageDown => self.state.ui.scroll_subagent_detail(page),
             KeyCode::Home => {
                 self.state.ui.subagent_detail_scroll = 0;
+                self.state.ui.subagent_detail_follow = false;
+                self.state.ui.needs_render = true;
+            }
+            KeyCode::End => {
+                self.state.ui.subagent_detail_follow = true;
                 self.state.ui.needs_render = true;
             }
             KeyCode::Char('k') | KeyCode::Delete => {
