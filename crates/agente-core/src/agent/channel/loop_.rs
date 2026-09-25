@@ -19,6 +19,7 @@ use crate::thinking::apply_thinking_level;
 use crate::tools::ToolRegistry;
 use crate::types::{FunctionCall, Message, Role, ToolCall};
 use futures::FutureExt;
+use tracing::Instrument;
 
 use super::config::{send_event, send_turn_usage, AgentRunConfig};
 use super::errors::{categorize_error, is_context_overflow_error};
@@ -52,7 +53,7 @@ pub fn spawn_chat_task(
     mcp_manager: Option<Arc<tokio::sync::Mutex<crate::mcp::client::McpManager>>>,
     subagent_registry: crate::subagent::SubagentRegistry,
 ) -> tokio::task::JoinHandle<()> {
-    tracing::info!(provider = %provider_id, model = %model, "Spawning chat task");
+    tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
         let parent_mode = permission_engine
             .read()
@@ -176,6 +177,7 @@ impl From<String> for AgentLoopFailure {
 /// terminal `Done`/`Cancelled` events. Children run against a private channel
 /// (the `SubagentHost` forwarder translates their stream into `Subagent*`
 /// events), so the loop itself does not need to know parent vs child.
+#[tracing::instrument(skip_all, fields(session_id = %cfg.session_id, task_id = cfg.task_id, role = if cfg.is_subagent { "child" } else { "parent" }, provider = %cfg.provider_id, model = %cfg.model))]
 pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopFailure> {
     let AgentRunConfig {
         session_id,
@@ -351,7 +353,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             return Ok(());
         }
 
-        tracing::info!(iteration, "Starting iteration");
+        tracing::info!(
+            iteration,
+            message_count = messages.len(),
+            "Starting iteration"
+        );
 
         // Recover old sessions and interrupted runs containing incomplete or
         // orphaned tool messages before sending provider requests. The repair
@@ -409,6 +415,12 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         };
         let estimated_tokens = running_tokens;
         if strategy.should_compact(estimated_tokens) {
+            tracing::info!(
+                iteration,
+                estimated_tokens,
+                context_limit,
+                "Compacting agent context"
+            );
             // Prefer an LLM-generated structured summary (pi-style), falling
             // back to heuristic truncation if summarization is unavailable or
             // fails, so the request always goes through.
@@ -474,6 +486,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             };
             if let Some(result) = compacted {
                 if result.summary.tokens_saved > 0 {
+                    tracing::info!(
+                        iteration,
+                        tokens_saved = result.summary.tokens_saved,
+                        "Agent context compacted"
+                    );
                     let summary = format!(
                         "Context compacted automatically ({}).",
                         result.summary.content
@@ -501,31 +518,35 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             Vec::new()
         };
 
-        tracing::info!(model = %model_clone, "Model found, starting stream");
+        tracing::info!(iteration, format = ?api_format, tool_count = tool_defs.len(), "Starting provider request");
+        let request_started = std::time::Instant::now();
 
-        let stream_handle = tokio::spawn(async move {
-            let tools_for_request = if tool_defs.is_empty() {
-                None
-            } else {
-                Some(tool_defs.as_slice())
-            };
-            match provider_clone
-                .stream_completion(
-                    &messages_clone,
-                    tools_for_request,
-                    &model_info,
-                    tx,
-                    request_context,
-                )
-                .await
-            {
-                Ok(usage) => Ok(usage),
-                Err(e) => {
-                    tracing::error!(error = %e, "Stream completion failed");
-                    Err(e)
+        let stream_handle = tokio::spawn(
+            async move {
+                let tools_for_request = if tool_defs.is_empty() {
+                    None
+                } else {
+                    Some(tool_defs.as_slice())
+                };
+                match provider_clone
+                    .stream_completion(
+                        &messages_clone,
+                        tools_for_request,
+                        &model_info,
+                        tx,
+                        request_context,
+                    )
+                    .await
+                {
+                    Ok(usage) => Ok(usage),
+                    Err(e) => {
+                        tracing::error!(error = %e, "Stream completion failed");
+                        Err(e)
+                    }
                 }
             }
-        });
+            .instrument(tracing::Span::current()),
+        );
 
         let mut full_response = String::new();
         let mut full_reasoning = String::new();
@@ -655,6 +676,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             .clone()
             .or_else(|| stream_result.as_ref().err().cloned());
         if let Some(err) = stream_failure {
+            tracing::warn!(iteration, retry_attempt, elapsed_ms = request_started.elapsed().as_millis(), error = %crate::util::redact_secrets(&err), "Provider request failed");
             // Provider-side context overflow: the pre-request estimate said
             // the transcript fits, but the provider (real tokenizer, plus the
             // tool schemas the estimate never counts) disagrees. Shrink the
@@ -662,6 +684,11 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             // itself overflow — and re-issue the request.
             if is_context_overflow_error(&err) && overflow_recoveries < MAX_OVERFLOW_RECOVERIES {
                 overflow_recoveries += 1;
+                tracing::warn!(
+                    iteration,
+                    overflow_recoveries,
+                    "Provider context overflow; forcing compaction"
+                );
                 let forced = ContextCompactor::new(strategy.clone()).compact_forced(messages);
                 if forced.summary.tokens_saved > 0 {
                     let summary = format!(
@@ -685,6 +712,12 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             if is_retryable_error(&err) && retry_attempt < max_retries {
                 retry_attempt += 1;
                 let delay = jittered_backoff(base_delay_ms, retry_attempt - 1).as_millis() as u64;
+                tracing::info!(
+                    iteration,
+                    retry_attempt,
+                    delay_ms = delay,
+                    "Retrying provider request"
+                );
                 send_event(
                     &sender,
                     task_id,
@@ -728,6 +761,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
 
         retry_attempt = 0;
+        tracing::info!(iteration, elapsed_ms = request_started.elapsed().as_millis(), stop = ?stream_stop_reason, text_bytes = full_response.len(), reasoning_bytes = full_reasoning.len(), tool_calls = tool_calls.len(), "Provider request completed");
 
         // The provider's per-request usage is the true context size; forward
         // it every iteration so the status bar tracks the turn live instead
@@ -875,6 +909,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
 
         if hard_stop {
+            tracing::warn!(iteration, "Stopping repeated tool-call loop");
             let max_repeats = tool_calls
                 .iter()
                 .map(|call| loop_detector.repeats_of(&call.function.name, &call.function.arguments))
@@ -1200,6 +1235,7 @@ mod tests {
     struct OverflowThenOkProvider {
         info: crate::providers::ProviderInfo,
         calls: std::sync::Mutex<u32>,
+        first_error: &'static str,
     }
 
     #[async_trait::async_trait]
@@ -1223,9 +1259,7 @@ mod tests {
             };
             if first_call {
                 return Err(crate::llm::LlmError::StreamError(
-                    "The request is 265713 tokens long and exceeds this model's \
-                     context length of 262144 tokens (context_length_exceeded)"
-                        .to_string(),
+                    self.first_error.to_string(),
                 ));
             }
             sender
@@ -1314,6 +1348,7 @@ mod tests {
                 ..Default::default()
             },
             calls: std::sync::Mutex::new(0),
+            first_error: "The request is 265713 tokens long and exceeds this model's context length of 262144 tokens (context_length_exceeded)",
         });
         registry.register("test-overflow", provider.clone());
 
@@ -1405,6 +1440,59 @@ mod tests {
             "model answer must be present"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn interrupted_chat_stream_retries_and_delivers_the_answer() {
+        use crate::cancellation::AbortController;
+        use crate::permissions::{shared_permission_engine, ApprovalBroker};
+        use crate::types::AgentMode;
+
+        let registry = Arc::new(ProviderRegistry::new());
+        let provider = Arc::new(OverflowThenOkProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test-overflow".into(),
+                models: vec![overflow_test_model()],
+                ..Default::default()
+            },
+            calls: std::sync::Mutex::new(0),
+            first_error: "Chat stream ended before completion",
+        });
+        registry.register("test-overflow", provider.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
+            task_id: 1,
+            sender: tx,
+            messages: vec![Message::user("Say recovered")],
+            provider_id: "test-overflow".into(),
+            model: "stub-model".into(),
+            thinking_level: "off".into(),
+            project_dir: ".".into(),
+            max_iterations: Some(2),
+            registry,
+            catalog: None,
+            permission_engine: shared_permission_engine(AgentMode::Plan),
+            cancel_signal: AbortController::new().signal(),
+            approval_broker: ApprovalBroker::new(),
+            mcp_manager: None,
+            subagent_host: None,
+            custom_agents: Vec::new(),
+            tool_policy: None,
+            is_subagent: false,
+            depth: 0,
+            loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
+            loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+        };
+        run_agent_loop(config)
+            .await
+            .expect("transient stream recovers");
+        assert_eq!(*provider.calls.lock().unwrap(), 2);
+        let events: Vec<_> = rx.try_iter().map(|e| e.event).collect();
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, AgentEvent::Retry { .. })));
+        assert!(events.iter().any(|event| matches!(event, AgentEvent::Done { conversation, .. } if conversation.last().is_some_and(|message| message.content == "recovered"))));
     }
 
     /// Stub that demands `tool_rounds` tool executions before answering in

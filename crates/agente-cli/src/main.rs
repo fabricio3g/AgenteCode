@@ -4,20 +4,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use agente_core::config::AppConfig;
 use agente_tui::App;
 
-/// tracing MakeWriter over a single open file handle. The registry clones the
-/// `Arc` per record (cheap) instead of duplicating the fd per log line.
-#[derive(Clone)]
-struct LogFile(std::sync::Arc<std::fs::File>);
-
-impl std::io::Write for LogFile {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        (&*self.0).write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        (&*self.0).flush()
-    }
-}
+mod logging;
 
 #[derive(Parser)]
 #[command(name = "agente")]
@@ -98,22 +85,17 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Set up tracing to log to file instead of stdout (which interferes with TUI)
-    let log_file = if let Some(cache) = dirs::cache_dir() {
+    let log_dir = if let Some(cache) = dirs::cache_dir() {
         let dir = cache.join("agente");
         let _ = std::fs::create_dir_all(&dir);
-        Some(dir.join("agente.log"))
+        Some(dir)
     } else {
         None
     };
 
-    if let Some(log_path) = log_file {
-        match std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-        {
-            Ok(file) => {
-                let file = std::sync::Arc::new(file);
+    if let Some(log_dir) = log_dir {
+        match logging::LogFile::open(&log_dir) {
+            Ok((writer, log_path)) => {
                 tracing_subscriber::registry()
                     .with(
                         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
@@ -122,15 +104,18 @@ fn main() -> anyhow::Result<()> {
                     )
                     .with(
                         tracing_subscriber::fmt::layer()
-                            .with_writer(move || LogFile(std::sync::Arc::clone(&file)))
+                            .with_writer(move || writer.clone())
+                            .with_thread_names(true)
+                            .with_ansi(false)
                             .compact(),
                     )
                     .init();
+                tracing::info!(path = %log_path.display(), "Agent diagnostics started");
             }
             Err(error) => {
                 eprintln!(
                     "warning: could not open log file {}: {error}; logging disabled",
-                    log_path.display()
+                    log_dir.display()
                 );
                 tracing_subscriber::registry()
                     .with(tracing_subscriber::EnvFilter::new("off"))
@@ -270,9 +255,8 @@ fn run_non_interactive(
 
         if let Some(outcome) = turn.outcome().await {
             if matches!(outcome.status, TurnStatus::Failed) {
-                if let Some(error) = outcome.error {
-                    eprintln!("Error: {}", agente_core::util::redact_secrets(&error));
-                }
+                let error = outcome.error.unwrap_or_else(|| "Agent turn failed".into());
+                anyhow::bail!("{}", agente_core::util::redact_secrets(&error));
             }
         }
         println!("\n{}", final_text.trim());

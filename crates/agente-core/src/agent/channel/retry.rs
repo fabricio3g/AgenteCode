@@ -20,6 +20,7 @@ pub(crate) fn is_retryable_error(msg: &str) -> bool {
         || lower.contains("stream stalled")
         || lower.contains("stalled (no data")
         || lower.contains("connection reset")
+        || lower.contains("chat stream ended before completion")
         || lower.contains("network error")
         || super::errors::contains_word(&lower, "timeout")
         || lower.contains("timed out")
@@ -78,6 +79,9 @@ mod tests {
     fn statusless_transport_failures_stay_retryable() {
         assert!(is_retryable_error("Stream stalled (no data for 90s)"));
         assert!(is_retryable_error("connection reset by peer"));
+        assert!(is_retryable_error(
+            "Stream error: Chat stream ended before completion"
+        ));
         assert!(is_retryable_error("request timed out"));
         assert!(is_retryable_error("server overloaded"));
         assert!(!is_retryable_error("model refused to answer"));

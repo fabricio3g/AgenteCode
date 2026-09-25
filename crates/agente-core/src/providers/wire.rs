@@ -80,6 +80,8 @@ pub(super) async fn send_request(
         ));
     }
     let url = super::join_url(&crate::util::expand_env_templates(&base_url), path);
+    tracing::info!(provider = %info.id, model = %model.api_id, session_id = %context.session_id, format = ?model.api.format.unwrap_or(info.api_format), path, "Sending provider HTTP request");
+    let started = std::time::Instant::now();
     let mut request = crate::util::http_client()
         .post(url)
         .header("Content-Type", "application/json");
@@ -127,6 +129,7 @@ pub(super) async fn send_request(
         .send()
         .await
         .map_err(|e| LlmError::HttpError(format!("{}: {e}", info.name)))?;
+    tracing::info!(provider = %info.id, model = %model.api_id, status = %response.status(), elapsed_ms = started.elapsed().as_millis(), "Provider HTTP response");
     if !response.status().is_success() {
         let status = response.status();
         let text = crate::util::redact_secrets(&response.text().await.unwrap_or_default());

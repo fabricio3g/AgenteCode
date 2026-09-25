@@ -815,6 +815,7 @@ impl SubagentHost {
         // them as Subagent* events on the parent's channel.
         let (child_tx, child_rx) = std::sync::mpsc::channel::<AgentTaskEvent>();
         let child_task_id = next_child_task_id();
+        tracing::info!(child_id = %id, parent_task_id = self.inner.config.task_id, child_task_id, model = %model, max_iterations = ?max_iterations, "Subagent run admitted");
 
         let host = self.clone();
         let child_id = id.clone();

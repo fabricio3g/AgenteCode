@@ -107,7 +107,7 @@ impl App {
         let cancel_signal = cancel_controller.signal();
         self.state.cancel_tx = cancel_controller;
 
-        tracing::info!(provider = %provider_id, model = %model, mode = ?mode, "Sending message to chat task");
+        tracing::info!(session_id = %self.state.session.session_id, task_id = self.current_task_id, provider = %provider_id, model = %model, mode = ?mode, "Sending message to chat task");
 
         let task_handle = spawn_chat_task(
             self.state.session.session_id,

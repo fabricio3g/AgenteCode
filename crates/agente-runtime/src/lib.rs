@@ -74,9 +74,9 @@ impl RuntimeConfig {
             .clone()
             .unwrap_or_else(|| "deepseek".to_string());
         let default_model = app_config
-            .executor_model
+            .default_model
             .clone()
-            .or_else(|| app_config.default_model.clone())
+            .or_else(|| app_config.executor_model.clone())
             .unwrap_or_else(|| "deepseek-flash".to_string());
         Self {
             project_dir: project_dir.clone(),
@@ -637,6 +637,19 @@ mod tests {
 
     fn test_config() -> RuntimeConfig {
         RuntimeConfig::from_app_config(&AppConfig::default(), "D:/proj")
+    }
+
+    #[test]
+    fn headless_turn_uses_the_selected_provider_model() {
+        let config = AppConfig {
+            default_provider: Some("openrouter".into()),
+            default_model: Some("stealth/space-bunny-alpha".into()),
+            executor_model: Some("openai/gpt-4o-mini".into()),
+            ..AppConfig::default()
+        };
+        let runtime = RuntimeConfig::from_app_config(&config, "D:/proj");
+        assert_eq!(runtime.default_provider, "openrouter");
+        assert_eq!(runtime.default_model, "stealth/space-bunny-alpha");
     }
 
     #[test]

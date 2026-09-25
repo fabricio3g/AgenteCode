@@ -32,6 +32,7 @@ pub(crate) fn forward_legacy_events(
     sender: tokio_mpsc::Sender<RuntimeEventEnvelope>,
     outcome_sender: oneshot::Sender<TurnOutcome>,
 ) {
+    tracing::info!(%session_id, %turn_id, "Forwarding agent turn events");
     let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, sender);
     let mut terminal_outcome = None;
 
@@ -161,6 +162,7 @@ pub(crate) fn forward_legacy_events(
     inner.lock_turns().remove(&turn_id);
     inner.prune_finished_children();
     if let Some(outcome) = terminal_outcome {
+        tracing::info!(%session_id, %turn_id, status = ?outcome.status, revision = outcome.revision, tokens = outcome.tokens, "Agent turn ended");
         if outcome_sender.send(outcome).is_err() {
             tracing::debug!("turn outcome receiver dropped before delivery");
         }

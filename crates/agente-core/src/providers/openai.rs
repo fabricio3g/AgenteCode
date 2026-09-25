@@ -254,14 +254,18 @@ impl Provider for OpenAIProvider {
         let mut content = String::new();
         let mut completed_calls = Vec::new();
         let mut finished = false;
+        let mut done_marker = false;
+        let mut event_count = 0usize;
 
         let _ = sender.send(StreamEvent::TextStart).await;
 
         let idle = crate::util::stream_idle_timeout();
         while let Some(data) = stream.next_event(idle).await? {
             if data == "[DONE]" {
+                done_marker = true;
                 break;
             }
+            event_count += 1;
             let json: serde_json::Value = serde_json::from_str(&data)?;
             if let Some(error) = json.get("error").filter(|value| !value.is_null()) {
                 return Err(LlmError::StreamError(crate::util::redact_secrets(
@@ -407,6 +411,7 @@ impl Provider for OpenAIProvider {
         }
 
         if !finished || !tool_calls_in_progress.is_empty() {
+            tracing::warn!(provider = %self.info.id, model = %model.api_id, event_count, done_marker, finish_reason_seen = finished, pending_tool_calls = tool_calls_in_progress.len(), "Chat stream ended before completion");
             return Err(LlmError::StreamError(
                 "Chat stream ended before completion".into(),
             ));

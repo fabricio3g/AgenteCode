@@ -35,6 +35,7 @@ pub(crate) async fn prepare_tool_call(
     project_dir: &str,
 ) -> Result<PreparedToolCall, ToolCallOutcome> {
     let tool_name = &tool_call.function.name;
+    tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_name, "Tool proposed");
     let args = normalize_tool_args(tool_name, parse_tool_args(&tool_call.function.arguments));
 
     if let Some(outcome) = check_missing_args(&tool_call.id, tool_name, &args) {
@@ -123,6 +124,7 @@ pub(crate) async fn prepare_tool_call(
             // Register before publishing. A fast UI response must never race
             // the broker and get discarded because no waiter existed yet.
             let mut response_rx = broker.request(&request);
+            tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_name, request_id = %request.request_id, "Tool approval requested");
             send_event(
                 sender,
                 task_id,
@@ -137,6 +139,7 @@ pub(crate) async fn prepare_tool_call(
             };
             // The user may never answer (turn cancelled); drop the pending entry.
             broker.cancel(&request.request_id);
+            tracing::info!(task_id, tool_id = %tool_call.id, request_id = %request.request_id, decision = ?approval, "Tool approval resolved");
             match approval {
                 Some(ApprovalAction::ApproveOnce) => {
                     // Proceed with execution
@@ -394,6 +397,7 @@ pub(crate) fn finalize_tool_result(
     sender: &Sender<AgentTaskEvent>,
     task_id: u64,
 ) {
+    tracing::info!(task_id, tool_id = %outcome.tool_call_id, tool = %outcome.tool_name, is_error = outcome.is_error, result_bytes = outcome.content.len(), "Tool finished");
     send_event(
         sender,
         task_id,
@@ -450,6 +454,7 @@ async fn execute_tool_calls_sequential(
 ) -> Vec<ToolCallOutcome> {
     let mut outcomes = Vec::new();
     for tool_call in tool_calls {
+        tracing::info!(task_id, tool_id = %tool_call.id, tool = %tool_call.function.name, "Tool started");
         if cancel_signal.is_aborted() {
             tracing::info!("Sequential tool execution cancelled mid-batch");
             break;
@@ -570,6 +575,7 @@ async fn execute_tool_calls_parallel(
     let mut join_owners: std::collections::HashMap<tokio::task::Id, (usize, String, String)> =
         std::collections::HashMap::new();
     for (i, p) in prepared.into_iter().enumerate() {
+        tracing::info!(task_id, tool_id = %p.tool_call.id, tool = %p.tool_call.function.name, "Tool started");
         // Hosted subagent tools route through the SubagentHost here too, so
         // the routing never depends on which batch path a call lands in.
         if is_hosted_tool(p.tool_call.function.name.as_str()) {
