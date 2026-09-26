@@ -12,6 +12,7 @@ use crate::catalog::{
 use crate::llm::{LlmError, StreamEvent, Usage};
 use crate::types::{Message, ToolDefinition};
 
+mod cache;
 mod go;
 pub mod google;
 pub mod messages;

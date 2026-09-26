@@ -21,6 +21,9 @@ pub enum ListId {
     AtPicker,
     ModelSelector,
     ThinkingSelector,
+    SubagentModels,
+    Settings,
+    MessageActions,
     SessionList,
     FolderBrowser,
     Connect,
@@ -36,6 +39,8 @@ pub enum HitTarget {
     Approval(ApprovalAction),
     /// A tab of the subagent detail modal.
     DetailTab(super::SubagentDetailTab),
+    /// A scrollbar; carries its geometry so a row maps to an offset.
+    Scrollbar(crate::widgets::scrollbar::ScrollbarGeom),
 }
 
 #[derive(Debug, Default)]

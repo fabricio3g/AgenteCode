@@ -149,16 +149,29 @@ impl App {
                 self.state.agent.total_tokens = 0;
             }
             Command::CompactContext => {
-                let (removed, saved) = self.state.compact_conversation();
-                let message = if saved > 0 {
-                    format!(
-                        "Context compacted: saved ~{} tokens ({removed} older messages summarized)",
-                        crate::widgets::hints::format_token_count(saved)
-                    )
+                let before =
+                    agente_core::context::estimate_message_tokens(&self.state.session.conversation);
+                let (_removed, saved) = self.state.compact_conversation();
+                if saved > 0 {
+                    self.state
+                        .add_system_message(crate::state::compaction_notice(
+                            before,
+                            before.saturating_sub(saved),
+                            false,
+                        ));
                 } else {
-                    "Context is already compact".to_string()
-                };
-                self.state.add_system_message(message);
+                    // Nothing older than the always-kept recent turns: say so
+                    // briefly, without a transcript entry.
+                    let used = crate::widgets::hints::format_token_count(before);
+                    let window = crate::widgets::hints::context_ratio(&self.state)
+                        .map(|(_, limit)| {
+                            format!(" of {}", crate::widgets::hints::format_token_count(limit))
+                        })
+                        .unwrap_or_default();
+                    self.state.ui.show_toast(format!(
+                        "Nothing to compact yet · {used}{window} used, recent turns are always kept"
+                    ));
+                }
             }
             Command::ToggleAutoApprove => {
                 let new_val = !self.state.agent.auto_approve_all();
@@ -241,6 +254,15 @@ impl App {
                 self.state.input.open_subagents();
                 self.state.ui.needs_render = true;
             }
+            Command::Settings => {
+                self.state.input.show_settings = true;
+                self.state.ui.needs_render = true;
+            }
+            Command::SubagentModels => {
+                let types = crate::subagent_models::subagent_types(&self.state.session.project_dir);
+                self.state.input.open_subagent_models(types);
+                self.state.ui.needs_render = true;
+            }
             Command::Doctor => {
                 self.state.input.show_doctor = true;
                 self.state.input.doctor_scroll = 0;
@@ -265,7 +287,7 @@ impl App {
     pub(super) fn toggle_plan_build_mode(&mut self) {
         let applies_next_turn = !self.state.agent.is_idle();
         self.state.toggle_mode();
-        let mode = self.state.agent.mode.to_string();
+        let mode = self.state.agent.work_mode().label();
         if applies_next_turn {
             self.state
                 .add_system_message(format!("Next turn will use {mode} mode"));
@@ -291,5 +313,96 @@ impl App {
         let current = self.state.agent.thinking_level.clone();
         self.state.input.open_thinking_selector(&levels, &current);
         self.state.ui.needs_render = true;
+    }
+}
+
+impl App {
+    /// Run a message-dialog action for sent message `entry_id`.
+    pub(super) fn run_message_action(
+        &mut self,
+        entry_id: uuid::Uuid,
+        action: crate::message_actions::MessageAction,
+    ) -> anyhow::Result<()> {
+        use crate::message_actions::{is_available, MessageAction};
+        if !is_available(&self.state, entry_id, action) {
+            // The dialog already says why (busy agent, compacted message).
+            return Ok(());
+        }
+        let content = self
+            .state
+            .session
+            .chat_history
+            .iter()
+            .find(|e| e.id == entry_id)
+            .map(|e| e.content.clone())
+            .unwrap_or_default();
+        match action {
+            MessageAction::Copy => {
+                let _ = self.copy_to_clipboard(&content);
+                self.state.ui.show_toast("✓ message copied".to_string());
+            }
+            MessageAction::ToggleExpand => {
+                let expanded = &mut self.state.ui.expanded_message_ids;
+                if !expanded.remove(&entry_id) {
+                    expanded.insert(entry_id);
+                }
+            }
+            MessageAction::Revert => match self.state.session.revert_to(entry_id) {
+                Ok(reverted) => {
+                    self.put_back_in_composer(reverted.content);
+                    let files = match reverted.files_restored {
+                        0 => String::new(),
+                        1 => " · 1 file edit undone".to_string(),
+                        n => format!(" · {n} file edits undone"),
+                    };
+                    self.state
+                        .ui
+                        .show_toast(format!("↺ Reverted{files} · message back in the input"));
+                }
+                Err(error) => self.state.ui.show_toast(error),
+            },
+            MessageAction::Fork => {
+                let point = match self.state.session.rewind_point(entry_id) {
+                    Ok(point) => point,
+                    Err(error) => {
+                        self.state.ui.show_toast(error);
+                        return Ok(());
+                    }
+                };
+                let chat = self.state.session.chat_history[..point.chat_index].to_vec();
+                let conversation =
+                    self.state.session.conversation[..point.conversation_index].to_vec();
+                let title = self.state.session.title.clone();
+                // Keep the original resumable, then branch in place.
+                self.flush_state_to_disk();
+                self.current_task_id = self.current_task_id.wrapping_add(1);
+                self.state.reset_for_new_session();
+                self.state.session.chat_history = chat;
+                self.state.session.conversation = conversation;
+                if !title.is_empty() {
+                    self.state.session.title = format!("{title} (fork)");
+                }
+                self.state.ui.show_welcome_screen = false;
+                self.put_back_in_composer(point.content);
+                self.state
+                    .ui
+                    .show_toast("⎇ Forked into a new session · the original is saved".to_string());
+            }
+        }
+        self.state.ui.message_actions = None;
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Drop a rewound prompt back into the composer, caret at the end, and
+    /// resync the context meter with the shortened conversation.
+    fn put_back_in_composer(&mut self, content: String) {
+        self.state.input.input_cursor = content.chars().count();
+        self.state.input.input_text = content;
+        let conversation = self.state.session.conversation.clone();
+        self.state
+            .agent
+            .recompute_total_from_conversation(&conversation);
+        self.state.ui.scroll_to_bottom();
     }
 }

@@ -5,6 +5,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use agente_core::session::{self, SessionState};
+
+use super::App;
 use uuid::Uuid;
 
 enum PersistenceCommand {
@@ -207,5 +209,98 @@ mod tests {
             &mut shutdown,
         );
         assert!(matches!(pending.get(&id), Some(PendingOperation::Delete)));
+    }
+}
+
+impl App {
+    /// Replace the current session with saved `data`, loading its project's
+    /// config. Shared by the session picker and `agente --resume`.
+    pub(crate) fn open_saved_session(&mut self, data: &agente_core::session::SessionData) {
+        self.flush_state_to_disk();
+        let config = agente_core::config::AppConfig::load_for_project(
+            &data.meta.project_dir,
+            self.state.config.config.catalog.clone(),
+        );
+        self.reset_current_session(data.meta.project_dir.clone(), config);
+        self.state.load_from_session(data);
+        self.state.ui.needs_render = true;
+    }
+
+    /// `agente --resume [id]`: open the saved session whose id is `query`
+    /// or starts with it; an empty query opens the session picker instead.
+    pub fn resume_session(&mut self, query: &str) -> anyhow::Result<()> {
+        let query = query.trim();
+        if query.is_empty() {
+            self.open_session_picker();
+            return Ok(());
+        }
+        let id = resolve_session_id(&agente_core::session::list_sessions(), query)?;
+        let data = agente_core::session::load_session(&id)?;
+        self.open_saved_session(&data);
+        Ok(())
+    }
+
+    /// What to print after the TUI exits: how to come back to this session.
+    /// `None` for an empty session (nothing worth resuming).
+    pub fn resume_hint(&self) -> Option<String> {
+        let session = &self.state.session;
+        if session.chat_history.is_empty() {
+            return None;
+        }
+        let first_prompt = agente_core::session::first_user_prompt(&session.chat_history);
+        let label = agente_core::session::session_label(&session.title, &first_prompt);
+        Some(format!(
+            "Session saved · {label}\nResume with: agente --resume {}",
+            session.session_id
+        ))
+    }
+}
+
+/// The saved session `query` names: an exact id, or a prefix only one
+/// session id starts with.
+fn resolve_session_id(
+    sessions: &[agente_core::session::SessionMeta],
+    query: &str,
+) -> anyhow::Result<uuid::Uuid> {
+    let query = query.to_ascii_lowercase();
+    let matches: Vec<&agente_core::session::SessionMeta> = sessions
+        .iter()
+        .filter(|meta| meta.session_id.to_string().starts_with(&query))
+        .collect();
+    match matches.as_slice() {
+        [one] => Ok(one.session_id),
+        [] => anyhow::bail!("No saved session matches '{query}'"),
+        many => anyhow::bail!(
+            "'{query}' matches {} sessions; use more of the id:\n{}",
+            many.len(),
+            many.iter()
+                .map(|meta| format!("  {}  {}", meta.session_id, meta.label()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::resolve_session_id;
+    use agente_core::session::create_session_meta;
+
+    #[test]
+    fn resume_accepts_a_full_id_or_a_unique_prefix() {
+        let a = create_session_meta("/tmp/a");
+        let b = create_session_meta("/tmp/b");
+        let sessions = vec![a.clone(), b.clone()];
+        let full = a.session_id.to_string();
+        assert_eq!(resolve_session_id(&sessions, &full).unwrap(), a.session_id);
+        assert_eq!(
+            resolve_session_id(&sessions, &full[..8]).unwrap(),
+            a.session_id
+        );
+        assert!(resolve_session_id(&sessions, "zzzz").is_err());
+        assert!(
+            resolve_session_id(&sessions, "").is_err(),
+            "empty is ambiguous"
+        );
     }
 }

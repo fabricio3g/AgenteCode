@@ -59,6 +59,14 @@ impl App {
             // Keep the stuck-guard clock fresh on every event so silent turns
             // (no thinking_start_time) still force-reset after STUCK_TIMEOUT.
             self.state.agent.mark_agent_event();
+            // Any loop event after compaction started (bar the heartbeat
+            // that keeps a slow summary alive) means it is over.
+            if !matches!(
+                &event,
+                AgentEvent::CompactionStarted { .. } | AgentEvent::ToolHeartbeat { .. }
+            ) {
+                self.state.agent.compacting = None;
+            }
             // Streaming updates use the existing 33 ms animation paint cadence.
             // Marking every delta urgent bypasses that limiter and starves input
             // under bursts. Lifecycle changes still paint immediately.
@@ -147,6 +155,16 @@ impl App {
                     is_error,
                 } => {
                     let live = self.state.agent.finish_live_tool(&id);
+                    // Watching this call? Keep its final output on screen.
+                    if let Some(view) = self
+                        .state
+                        .ui
+                        .process_view
+                        .as_mut()
+                        .filter(|view| view.call_id == id)
+                    {
+                        view.finished = live.clone();
+                    }
                     let duration_ms = self
                         .state
                         .agent
@@ -317,19 +335,59 @@ impl App {
                         let _ = self.start_chat_turn();
                     }
                 }
+                AgentEvent::CompactionStarted { smart } => {
+                    self.state.agent.compacting = Some(smart);
+                }
                 AgentEvent::ContextCompacted {
-                    summary,
+                    summary: _,
                     compacted_conversation,
+                    tokens_before,
+                    tokens_after,
+                    smart,
                 } => {
                     // Auto-compact shrinks the in-flight transcript. Replace
                     // the persisted transcript immediately and refresh the
-                    // bar so it stops showing the pre-compact size before the
-                    // turn finishes.
+                    // meter so it stops showing the pre-compact size before
+                    // the turn finishes. The transcript gets one quiet divider;
+                    // the checkpoint itself lives in the model's context.
                     self.state.session.conversation = compacted_conversation.clone();
                     self.state
                         .agent
                         .recompute_total_from_conversation(&compacted_conversation);
-                    self.state.add_system_message(summary);
+                    self.state
+                        .add_system_message(crate::state::compaction_notice(
+                            tokens_before as usize,
+                            tokens_after as usize,
+                            smart,
+                        ));
+                }
+                AgentEvent::CallUsage {
+                    prompt_tokens,
+                    completion_tokens,
+                    cache_read_tokens,
+                    cache_creation_tokens,
+                    cost_usd,
+                    subagent_id,
+                } => {
+                    let record = |spend: &mut crate::state::Spend| {
+                        spend.record(
+                            prompt_tokens,
+                            completion_tokens,
+                            cache_read_tokens,
+                            cache_creation_tokens,
+                            cost_usd,
+                        )
+                    };
+                    // The session pays for everything; a child also keeps its
+                    // own tally for its card.
+                    record(&mut self.state.agent.spend);
+                    if let Some(child) = subagent_id
+                        .as_deref()
+                        .and_then(|id| self.state.agent.subagents.get_mut(id))
+                    {
+                        record(&mut child.spend);
+                    }
+                    self.state.ui.needs_render = true;
                 }
                 AgentEvent::TurnUsage {
                     prompt_tokens,

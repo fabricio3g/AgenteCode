@@ -161,6 +161,9 @@ pub struct Usage {
     /// Tokens written to the provider's prompt cache (Anthropic
     /// `cache_creation_input_tokens`). Charged at full price on first write.
     pub cache_creation_tokens: u32,
+    /// What the provider says this call cost in USD (OpenRouter's usage
+    /// accounting). Preferred over a catalog-price estimate when present.
+    pub cost_usd: Option<f64>,
 }
 
 impl Usage {
@@ -237,13 +240,7 @@ pub async fn stream_chat_completion(
     }
 
     let mut stream = response.bytes_stream();
-    let mut usage = Usage {
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-        cache_read_tokens: 0,
-        cache_creation_tokens: 0,
-    };
+    let mut usage = Usage::default();
     let mut buffer = String::new();
     let mut stop_reason = StopReason::Unknown;
     let mut tool_calls_in_progress: std::collections::HashMap<usize, PendingToolCall> =
@@ -396,6 +393,7 @@ mod tests {
             total_tokens: 1_200,
             cache_read_tokens: 4_000,
             cache_creation_tokens: 2_000,
+            cost_usd: None,
         };
         // prompt + cache_creation (full) + 10% of cache_read
         let effective = usage.effective_input_tokens(0.1);
@@ -410,6 +408,7 @@ mod tests {
             total_tokens: 600,
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
+            cost_usd: None,
         };
         assert_eq!(usage.effective_input_tokens(0.1), 500);
     }

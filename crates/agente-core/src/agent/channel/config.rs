@@ -98,6 +98,8 @@ pub(crate) struct AgentRunConfig {
     pub loop_nudge_after: u32,
     /// Identical-tool-call repeats before the loop stops the turn.
     pub loop_stop_after: u32,
+    /// Compact with an LLM summary instead of trimming (user setting).
+    pub smart_compaction: bool,
 }
 
 /// Tag an event with its task id and swallow send failures (the TUI may be

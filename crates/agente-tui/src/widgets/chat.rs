@@ -24,7 +24,7 @@ use crate::widgets::{display_width, fill_row, tool_icon_for, truncate_cells};
 use agente_core::types::{ClickKind, ClickRegion};
 
 /// Max body lines shown for long user messages when collapsed.
-const USER_PREVIEW_LINES: usize = 8;
+pub(crate) const USER_PREVIEW_LINES: usize = 8;
 /// Sentinel entry id for the live (in-progress) thinking panel.
 const LIVE_THINKING_ID: uuid::Uuid = uuid::Uuid::nil();
 
@@ -294,6 +294,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                     content_start: think_start,
                     content_end: think_start,
                     asset_path: None,
+                    live_call: None,
                 },
                 think_start,
                 header_end,
@@ -303,7 +304,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let mut live_tools: Vec<_> = state.agent.live_tool_calls.iter().collect();
     live_tools.sort_by(|(left, _), (right, _)| left.cmp(right));
-    for (_, call) in live_tools {
+    for (call_id, call) in live_tools {
+        // Each running row is a click target: it opens the live output view.
+        let start = history_height + lines.len();
         for line in render_live_tool(call, chat_width, fps_frame) {
             push_wrapped(
                 &mut lines,
@@ -314,6 +317,24 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 false,
             );
         }
+        let end = history_height + lines.len();
+        content_regions.push((
+            ClickRegion {
+                entry_id: live_tool_entry_id(call_id),
+                y_start: 0,
+                y_end: 0,
+                is_reasoning: false,
+                kind: ClickKind::LiveTool,
+                user_truncated: false,
+                tool_name: Some(call.name.clone()),
+                content_start: start,
+                content_end: end.saturating_sub(1),
+                asset_path: None,
+                live_call: Some(call_id.clone()),
+            },
+            start,
+            end,
+        ));
     }
 
     // Streaming: frozen-prefix model. Completed blocks (blank-line or
@@ -368,7 +389,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.chat_content_height = rendered_lines;
     state.ui.chat_visible_height = visible_height;
 
-    if state.ui.chat_auto_scroll {
+    // Eased scrolls step here, against the height just measured, so a glide
+    // to a freshly grown bottom (a sent prompt) lands on the real end.
+    if state.ui.step_scroll() {
+        state.ui.chat_scroll = state.ui.chat_scroll.min(state.max_scroll());
+    } else if state.ui.chat_auto_scroll {
         state.ui.chat_scroll = state.max_scroll();
     } else {
         state.ui.chat_scroll = state.ui.chat_scroll.min(state.max_scroll());
@@ -447,6 +472,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     });
 
     paint_hover_tint(frame, chat_area, state);
+    paint_message_fade(frame, chat_area, state);
 
     // Scrollbar (or a themed 1-col gutter when content fits — never leave Reset)
     render_scrollbar(frame, scroll_area, state);
@@ -455,15 +481,22 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     render_jump_to_bottom(frame, chat_area, state);
 }
 
-/// Faint background lift under the hovered card's rows. Painted over the
-/// finished frame so hover never touches the render caches; only bare canvas
-/// cells change, so prompt cards and diff rows keep their own backgrounds.
+/// Background lift under the hovered card's rows, plus an accent rail on
+/// subagent cards (they open a modal, so they should read as buttons).
+/// Painted over the finished frame so hover never touches the render caches;
+/// only bare canvas cells change, so prompt cards and diff rows keep their
+/// own backgrounds, and blank spacer rows stay untouched.
 fn paint_hover_tint(frame: &mut Frame, area: Rect, state: &AppState) {
     let Some(id) = state.ui.hovered_entry_id else {
         return;
     };
     let canvas = BG();
-    let tint = crate::style::hover_tint();
+    let ease = state
+        .ui
+        .hover_fade
+        .and_then(|t| t.progress())
+        .unwrap_or(1.0);
+    let tint = blend_colors(canvas, crate::style::hover_tint(), ease);
     let buf = frame.buffer_mut();
     for region in state
         .ui
@@ -473,7 +506,18 @@ fn paint_hover_tint(frame: &mut Frame, area: Rect, state: &AppState) {
     {
         let top = region.y_start.max(area.y);
         let bottom = region.y_end.min(area.bottom().saturating_sub(1));
+        if region.kind == ClickKind::Prompt {
+            paint_prompt_hover(buf, area, top, bottom, ease);
+            continue;
+        }
         for y in top..=bottom {
+            let blank = (area.x..area.right()).all(|x| {
+                buf.cell((x, y))
+                    .is_none_or(|c| c.symbol().trim().is_empty())
+            });
+            if blank {
+                continue;
+            }
             for x in area.x..area.right() {
                 if let Some(cell) = buf.cell_mut((x, y)) {
                     if cell.bg == canvas {
@@ -481,8 +525,104 @@ fn paint_hover_tint(frame: &mut Frame, area: Rect, state: &AppState) {
                     }
                 }
             }
+            if region.kind == ClickKind::Subagent {
+                if let Some(cell) = buf.cell_mut((area.x, y)) {
+                    cell.set_symbol("▎").set_fg(PRIMARY());
+                }
+            }
         }
     }
+}
+
+/// Hover on a sent message: lift its band, brighten the rail, and swap the
+/// timestamp for what a click offers. Only band cells change.
+fn paint_prompt_hover(
+    buf: &mut ratatui::buffer::Buffer,
+    area: Rect,
+    top: u16,
+    bottom: u16,
+    ease: f32,
+) {
+    const HINT: &str = "revert · fork · copy ";
+    let band = USER_BUBBLE_BG();
+    let lifted = blend_colors(band, BG_HOVER(), ease);
+    let mut first_row = None;
+    for y in top..=bottom {
+        let mut band_end = None;
+        let mut has_text = false;
+        for x in area.x..area.right() {
+            let Some(cell) = buf.cell_mut((x, y)) else {
+                continue;
+            };
+            if cell.bg != band {
+                continue;
+            }
+            match cell.symbol() {
+                "▎" => {
+                    cell.set_fg(user_rail_color(true));
+                }
+                " " => {}
+                _ => has_text = true,
+            }
+            cell.set_bg(lifted);
+            band_end = Some(x);
+        }
+        // The hint goes on the first text row (the one carrying the time),
+        // not the card's padding row.
+        if let (None, Some(end), true) = (first_row, band_end, has_text) {
+            first_row = Some((y, end));
+        }
+    }
+    // The hint replaces the time on the first row, right-aligned in the band.
+    if let Some((y, end)) = first_row {
+        let width = display_width(HINT) as u16;
+        let start = (end + 1).saturating_sub(width + 1);
+        // Never cover the message: only blank cells and the time give way.
+        let under: String = (start..start + width)
+            .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol().to_string()))
+            .collect();
+        let under = under.trim();
+        if !(under.is_empty() || (under.contains(':') && under.ends_with('M'))) {
+            return;
+        }
+        for (i, ch) in HINT.chars().enumerate() {
+            if let Some(cell) = buf.cell_mut((start + i as u16, y)) {
+                cell.set_symbol(ch.encode_utf8(&mut [0u8; 4]))
+                    .set_fg(FG_MUTED())
+                    .set_bg(lifted);
+            }
+        }
+    }
+}
+
+/// Fade the newest history block in (a just-sent prompt settling into its
+/// bubble). Only that block's rows change; the rest of the transcript and
+/// the streaming section stay steady.
+fn paint_message_fade(frame: &mut Frame, area: Rect, state: &AppState) {
+    let Some(p) = state.ui.message_fade.and_then(|t| t.progress()) else {
+        return;
+    };
+    let Some((_, start, block)) = state
+        .ui
+        .chat_frame_snapshot
+        .as_ref()
+        .and_then(|snap| snap.blocks.last())
+    else {
+        return;
+    };
+    let skip = state.ui.chat_scroll;
+    let (top, end) = (*start, start + block.lines.len());
+    let (vis_top, vis_end) = (top.max(skip), end.min(skip + area.height as usize));
+    if vis_top >= vis_end {
+        return;
+    }
+    let rows = Rect::new(
+        area.x,
+        area.y + (vis_top - skip) as u16,
+        area.width,
+        (vis_end - vis_top) as u16,
+    );
+    crate::state::anim::fade_toward(frame.buffer_mut(), rows, BG(), 1.0 - p);
 }
 
 /// Render the live streaming section: frozen-prefix model.
@@ -626,15 +766,27 @@ fn skipped_entries(
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            entry.role == agente_core::types::Role::Assistant
-                && entry.content.is_empty()
-                && entry.tool_name.is_some()
-                && (history.get(index + 1).is_some_and(|next| {
-                    next.role == agente_core::types::Role::Tool && next.tool_name == entry.tool_name
-                }) || ctx
-                    .live_tools
-                    .values()
-                    .any(|call| !call.direct && Some(&call.name) == entry.tool_name.as_ref()))
+            // A `task` spawn result echoes what its subagent card already
+            // shows (status, id, how to poll): the card is the one view.
+            let task_echo = entry.role == agente_core::types::Role::Tool
+                && entry.tool_name.as_deref() == Some("task")
+                && entry.subagent_id.is_none()
+                && history.iter().any(|card| {
+                    card.subagent_id
+                        .as_deref()
+                        .is_some_and(|id| entry.content.contains(id))
+                });
+            task_echo
+                || entry.role == agente_core::types::Role::Assistant
+                    && entry.content.is_empty()
+                    && entry.tool_name.is_some()
+                    && (history.get(index + 1).is_some_and(|next| {
+                        next.role == agente_core::types::Role::Tool
+                            && next.tool_name == entry.tool_name
+                    }) || ctx
+                        .live_tools
+                        .values()
+                        .any(|call| !call.direct && Some(&call.name) == entry.tool_name.as_ref()))
         })
         .collect()
 }
@@ -752,6 +904,7 @@ fn render_history_range(
                         content_start: block_start,
                         content_end: block_start + block.lines.len().saturating_sub(1),
                         asset_path: None,
+                        live_call: None,
                     },
                     block_start,
                     block_start + block.lines.len(),
@@ -881,6 +1034,7 @@ fn render_history_range(
                     content_start: block_start + s,
                     content_end: block_start + e.saturating_sub(1),
                     asset_path,
+                    live_call: None,
                 },
                 block_start + s,
                 block_start + e,
@@ -924,6 +1078,8 @@ fn subagent_fingerprint(
             .chain(state.model.bytes())
             .chain(worktree.bytes())
             .chain(elapsed_bucket.to_le_bytes())
+            // Cost shows on the card: a new tenth of a cent re-renders it.
+            .chain(((state.spend.cost_usd * 1000.0).round() as u64).to_le_bytes())
             .chain((state.tool_rows.len() as u64).to_le_bytes())
         {
             h = (h ^ u64::from(byte)).wrapping_mul(0x100_0000_01B3);
@@ -931,6 +1087,17 @@ fn subagent_fingerprint(
         fp ^= h;
     }
     fp
+}
+
+/// Stable per-call id for a running row, so hover lights up only that row
+/// (the live rows have no chat entry of their own).
+fn live_tool_entry_id(call_id: &str) -> uuid::Uuid {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    call_id.hash(&mut hasher);
+    let high = hasher.finish();
+    "live-tool".hash(&mut hasher);
+    uuid::Uuid::from_u64_pair(high, hasher.finish())
 }
 
 fn render_live_tool(
@@ -972,10 +1139,32 @@ fn render_live_tool(
                 .add_modifier(Modifier::BOLD),
         ),
     ];
-    let header = fill_row(header, width, bg);
+    // How long it has been running, right-aligned: a silent install no
+    // longer looks frozen.
+    let header = crate::widgets::justify(
+        header,
+        vec![Span::styled(
+            call.elapsed_label(),
+            Style::default().fg(FG_DIM()).bg(bg),
+        )],
+        width,
+        bg,
+    );
 
     let mut lines = vec![Line::from(header)];
     if call.output.is_empty() {
+        if call.started.elapsed().as_secs() >= 2 {
+            lines.push(Line::from(vec![
+                sp("      "),
+                Span::styled(
+                    format!(
+                        "{} · click to watch",
+                        crate::widgets::process_view::empty_output_hint(call)
+                    ),
+                    Style::default().fg(FG_DIM()),
+                ),
+            ]));
+        }
         return lines;
     }
 
@@ -1252,7 +1441,7 @@ fn render_entry_block(
             agente_core::types::Role::Assistant => {
                 (render_assistant(entry, chat_width, worked_for), false)
             }
-            agente_core::types::Role::System => (render_system(entry), false),
+            agente_core::types::Role::System => (render_system(entry, chat_width), false),
             agente_core::types::Role::Tool => (
                 render_tool(entry, chat_width, tool_fold, dense_next, tool_args),
                 false,
@@ -1303,10 +1492,9 @@ fn render_entry_block(
             } else {
                 regions.push((start, end, ClickKind::Tool, false));
             }
-        } else if matches!(
-            entry.role,
-            agente_core::types::Role::User | agente_core::types::Role::Assistant
-        ) {
+        } else if entry.role == agente_core::types::Role::User {
+            regions.push((start, end, ClickKind::Prompt, user_truncated));
+        } else if entry.role == agente_core::types::Role::Assistant {
             regions.push((start, end, ClickKind::Message, user_truncated));
         }
     }
@@ -1473,75 +1661,25 @@ fn apply_selection_style(
 }
 
 fn render_scrollbar(frame: &mut Frame, area: Rect, state: &mut AppState) {
-    if area.height == 0 || area.width == 0 {
-        state.ui.chat_scrollbar_x = None;
-        state.ui.chat_scrollbar_height = 0;
-        state.ui.chat_scrollbar_dragging = false;
-        return;
-    }
-    // A modal owns the screen: the chat paints before the overlay, so a
-    // scrollbar drawn here ran down the right edge straight across the open
-    // card. Blank the gutter instead — and clear the hit region, or a click on
-    // the dialog's edge would start a scrollbar drag underneath it.
-    if crate::state::modal_owner(state).is_modal() {
-        state.ui.chat_scrollbar_x = None;
-        state.ui.chat_scrollbar_height = 0;
-        state.ui.chat_scrollbar_dragging = false;
-        let fill: Vec<Line<'static>> = (0..area.height)
-            .map(|_| Line::from(Span::styled(" ", Style::default().bg(BG()))))
-            .collect();
-        frame.render_widget(Paragraph::new(fill).style(Style::default().bg(BG())), area);
-        return;
-    }
-    // Content fits: still fill the gutter with the theme bg so the right edge
-    // is never a Reset-colored column.
-    if state.ui.chat_content_height <= state.ui.chat_visible_height {
-        state.ui.chat_scrollbar_x = None;
-        state.ui.chat_scrollbar_height = 0;
-        state.ui.chat_scrollbar_dragging = false;
-        let fill: Vec<Line<'static>> = (0..area.height)
-            .map(|_| Line::from(Span::styled(" ", Style::default().bg(BG()))))
-            .collect();
-        frame.render_widget(Paragraph::new(fill).style(Style::default().bg(BG())), area);
-        return;
-    }
-    let ratio = state.ui.chat_visible_height as f64 / state.ui.chat_content_height as f64;
-    let bar_height = ((area.height as f64) * ratio).max(1.0) as u16;
-    let max_scroll = state.max_scroll();
-    let scroll_ratio = if max_scroll > 0 {
-        state.ui.chat_scroll as f64 / max_scroll as f64
+    // A modal owns the screen: the chat paints before the overlay, so a bar
+    // drawn here would run down the edge across the open card (and grab its
+    // clicks). The shared bar also blanks the gutter when everything fits.
+    let (total, visible) = if crate::state::modal_owner(state).is_modal() {
+        (0, 0)
     } else {
-        0.0
+        (state.ui.chat_content_height, state.ui.chat_visible_height)
     };
-    let bar_pos = ((area.height - bar_height) as f64 * scroll_ratio).round() as u16;
-    state.ui.chat_scrollbar_x = Some(area.x);
-    state.ui.chat_scrollbar_y = area.y;
-    state.ui.chat_scrollbar_height = area.height;
-    state.ui.chat_scrollbar_thumb_y = area.y + bar_pos;
-    state.ui.chat_scrollbar_thumb_height = bar_height;
-
-    // Thumb only, no track: the bar is chrome, not content. It brightens
-    // while hovered or dragged so it reads as grabbable.
-    let active = state.ui.chat_scrollbar_dragging
-        || state
-            .ui
-            .pointer_in(Rect::new(area.x.saturating_sub(1), area.y, 3, area.height));
-    let thumb = if active { FG_MUTED() } else { FG_DIM() };
-    let mut scroll_lines: Vec<Line<'static>> = Vec::new();
-    for i in 0..area.height {
-        let (ch, color) = if i >= bar_pos && i < bar_pos + bar_height {
-            ("┃", thumb)
-        } else {
-            (" ", BG())
-        };
-        scroll_lines.push(Line::from(Span::styled(
-            ch,
-            Style::default().fg(color).bg(BG()),
-        )));
-    }
-    frame.render_widget(
-        Paragraph::new(scroll_lines).style(Style::default().bg(BG())),
+    super::scrollbar::render(
+        frame,
         area,
+        super::scrollbar::ScrollSurface::Chat,
+        super::scrollbar::Viewport {
+            offset: state.ui.chat_scroll,
+            visible,
+            total,
+        },
+        BG(),
+        &state.ui,
     );
 }
 
@@ -1776,29 +1914,21 @@ fn render_user(
         return lines;
     }
 
-    // `> Validate the cart total …` as an inset card with vertical padding.
-    //
-    // The prompt sits in its own elevated block (BG_ELEMENT)
-    // inset from the transcript edges, with a blue `>` prefix. One blank
-    // padded row above and below the text lets a one-line prompt read as a
-    // card instead of a single band. Height never changes on hover; long
-    // prompts collapse to USER_PREVIEW_LINES with a dim hint row.
-    let bg = BG_ELEMENT();
-    let on_bg = Style::default().bg(bg);
-    let prompt_style = Style::default()
-        .fg(SECONDARY())
-        .bg(bg)
-        .add_modifier(Modifier::BOLD);
+    // `▎  Validate the cart total …                4:23 AM` — a card in the
+    // panel tone with a full-height accent rail, inset one column from the
+    // transcript edges, with a padded row above and below the text so it
+    // reads as a bubble, not a band. Hover (painted over the frame by
+    // `paint_hover_tint`) lifts it, brightens the rail and swaps the time
+    // for the click hint.
+    let bg = USER_BUBBLE_BG();
+    let rail_style = Style::default().fg(user_rail_color(false)).bg(bg);
     let text_style = Style::default().fg(FG()).bg(bg);
     let hint_style = Style::default().fg(FG_DIM()).bg(bg);
-    // Horizontal inset so the bubble floats inside the transcript instead of
-    // bleeding edge-to-edge; the prompt reads as a card at one column margin.
     const INSET: usize = 1;
     let inset = INSET.min(width / 4);
     let box_width = width.saturating_sub(inset * 2).max(8);
-    // `  > ` prefix width.
-    const LEFT_CHROME: usize = 2 + 2;
-
+    // `▎  ` rail + gap, one column of right padding.
+    const LEFT_CHROME: usize = 3;
     let content_width = box_width.saturating_sub(LEFT_CHROME + 1).max(8);
 
     let content_lines: Vec<&str> = entry.content.lines().collect();
@@ -1821,12 +1951,7 @@ fn render_user(
             wrapped_content.push(String::new());
         } else {
             for row in wrap_line(&Line::from(line.to_string()), content_width) {
-                let text: String = row
-                    .spans
-                    .iter()
-                    .map(|s| s.content.as_ref())
-                    .collect::<String>();
-                wrapped_content.push(text);
+                wrapped_content.push(row.spans.iter().map(|s| s.content.as_ref()).collect());
             }
         }
     }
@@ -1834,79 +1959,54 @@ fn render_user(
         wrapped_content.push(String::new());
     }
 
-    // One body row: inset margin (canvas bg) + `  > text` padded out to the
-    // bubble width so the elevated background reads as a floating card.
     let margin = Span::styled(" ".repeat(inset), Style::default().bg(BG()));
-    let body_row = |first: bool, body: String| -> Line<'static> {
-        let mut inner = vec![
-            Span::styled("  ", on_bg),
-            Span::styled(if first { "> " } else { "  " }, prompt_style),
-            Span::styled(body.clone(), text_style),
-        ];
-        let used: usize = inner
-            .iter()
-            .map(|s| display_width(s.content.as_ref()))
-            .sum();
-        let free = box_width.saturating_sub(used);
-        if first {
-            // Reference layout: the timestamp sits inside the card, right
-            // aligned on the prompt's row.
-            let time = format_time_am_pm(entry.timestamp);
-            let time_w = display_width(&time);
-            if time_w + 2 <= free {
-                inner.push(Span::styled(" ".repeat(free - time_w - 2), on_bg));
-                inner.push(Span::styled(time, timestamp().bg(bg)));
-                inner.push(Span::styled("  ", on_bg));
-            } else {
-                inner.push(Span::styled(" ".repeat(free), on_bg));
-            }
-        } else {
-            inner.push(Span::styled(" ".repeat(free), on_bg));
-        }
+    let row = |body: Vec<Span<'static>>, trail: Vec<Span<'static>>| -> Line<'static> {
+        let mut lead = vec![Span::styled("▎  ", rail_style)];
+        lead.extend(body);
         let mut spans = vec![margin.clone()];
-        spans.extend(inner);
+        spans.extend(crate::widgets::justify(lead, trail, box_width, bg));
         Line::from(spans)
     };
 
-    // Full-width padded row inside the card (vertical breathing room).
-    let pad_row = |lines: &mut Vec<Line<'_>>| {
-        let mut spans = vec![margin.clone()];
-        spans.push(Span::styled(" ".repeat(box_width), on_bg));
-        lines.push(Line::from(spans));
-    };
-
     lines.push(themed_blank_row(width)); // gap above the message
-    pad_row(&mut lines);
-
+    lines.push(row(Vec::new(), Vec::new())); // padding inside the card
     for (index, text) in wrapped_content.iter().enumerate() {
-        lines.push(body_row(index == 0, text.clone()));
-    }
-
-    if truncatable {
-        let hint = if expanded {
-            "▾ click to collapse".to_string()
+        // The time rides the first row, right-aligned inside the band.
+        let trail = if index == 0 {
+            vec![Span::styled(
+                format_time_am_pm(entry.timestamp),
+                timestamp().bg(bg),
+            )]
         } else {
-            format!("▸ +{hidden} lines · click to expand")
+            Vec::new()
         };
-        let mut inner = vec![Span::styled("    ", on_bg), Span::styled(hint, hint_style)];
-        let used: usize = inner
-            .iter()
-            .map(|s| display_width(s.content.as_ref()))
-            .sum();
-        inner.push(Span::styled(
-            " ".repeat(box_width.saturating_sub(used)),
-            on_bg,
-        ));
-        let mut spans = vec![margin.clone()];
-        spans.extend(inner);
-        lines.push(Line::from(spans));
+        lines.push(row(vec![Span::styled(text.clone(), text_style)], trail));
     }
-
-    pad_row(&mut lines);
-
-    lines.push(themed_blank_row(width)); // matching outer margin below the message
+    if hidden > 0 {
+        lines.push(row(
+            vec![Span::styled(format!("▸ +{hidden} lines"), hint_style)],
+            Vec::new(),
+        ));
+    }
+    lines.push(row(Vec::new(), Vec::new())); // padding inside the card
+    lines.push(themed_blank_row(width)); // matching gap below
 
     lines
+}
+
+/// The user bubble's band: one step above the canvas.
+#[allow(non_snake_case)]
+fn USER_BUBBLE_BG() -> ratatui::style::Color {
+    BG_PANEL()
+}
+
+/// Rail colour: a muted accent at rest, full accent under the pointer.
+fn user_rail_color(hovered: bool) -> ratatui::style::Color {
+    if hovered {
+        PRIMARY()
+    } else {
+        blend_colors(PRIMARY(), USER_BUBBLE_BG(), 0.45)
+    }
 }
 
 // ── Assistant message: content + footer ──────────────────────────────────
@@ -2065,7 +2165,27 @@ fn format_time_am_pm(ts: chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
-fn render_system(entry: &agente_core::types::ChatEntry) -> Vec<Line<'_>> {
+fn render_system(entry: &agente_core::types::ChatEntry, width: usize) -> Vec<Line<'_>> {
+    // Compaction notices read as a quiet divider across the transcript:
+    // `── ⟲ Context compacted · 182k → 64k · summarized ────────`.
+    if let Some(notice) = entry.content.strip_prefix(crate::state::COMPACTION_MARK) {
+        let label = format!(" ⟲ {notice} ");
+        let lead = 2usize;
+        let tail = width.saturating_sub(lead + display_width(&label));
+        return vec![
+            themed_blank_row(width),
+            Line::from(fill_row(
+                vec![
+                    s("─".repeat(lead), Style::default().fg(BORDER_RULE())),
+                    s(label, Style::default().fg(FG_DIM())),
+                    s("─".repeat(tail), Style::default().fg(BORDER_RULE())),
+                ],
+                width,
+                BG(),
+            )),
+            themed_blank_row(width),
+        ];
+    }
     let mut lines = Vec::new();
     if !entry.content.is_empty() {
         for line in render_markdown(&entry.content) {
@@ -2473,6 +2593,9 @@ fn render_subagent(
     if let Some(ms) = ui.and_then(|u| u.elapsed_ms()) {
         status_text.push_str(&format!(" · {}", format_duration(ms)));
     }
+    if let Some(cost) = ui.and_then(|u| u.spend.cost_label()) {
+        status_text.push_str(&format!(" · {cost}"));
+    }
     let header = crate::widgets::justify(
         lead,
         vec![Span::styled(status_text, on(Style::default().fg(FG_DIM())))],
@@ -2613,6 +2736,26 @@ fn format_worked_for(ms: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_spawn_results_hide_behind_their_subagent_card() {
+        let card = agente_core::types::ChatEntry {
+            subagent_id: Some("a4fd3374".into()),
+            ..tool_entry("task", "Explore the repo", None)
+        };
+        let echo = tool_entry(
+            "task",
+            "Subagent a4fd3374 (running) started.\nstatus: running",
+            None,
+        );
+        let unrelated = tool_entry("task", "Subagent zzzz started.", None);
+        let history = vec![card, echo, unrelated];
+        let ctx = HistoryRenderCtx {
+            live_tools: &std::collections::HashMap::new(),
+            subagents: &std::collections::HashMap::new(),
+        };
+        assert_eq!(skipped_entries(&history, &ctx), vec![false, true, false]);
+    }
 
     #[test]
     fn subagent_card_stays_compact_with_long_history() {

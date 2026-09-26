@@ -90,6 +90,27 @@ pub struct ModelCost {
     pub cache_write: f64,
 }
 
+impl ModelCost {
+    /// Whether the catalog knows any price for this model. Free and unknown
+    /// models report all zeros; callers show no cost rather than `$0.00`.
+    pub fn is_priced(&self) -> bool {
+        self.input > 0.0 || self.output > 0.0
+    }
+
+    /// USD cost of one call. Rates are per million tokens and each count is
+    /// its own bucket (uncached input, output, cache reads, cache writes).
+    /// A catalog without cache rates bills those tokens at the input rate —
+    /// an upper bound, never an undercount.
+    pub fn cost_usd(&self, input: u32, output: u32, cache_read: u32, cache_write: u32) -> f64 {
+        let or_input = |rate: f64| if rate > 0.0 { rate } else { self.input };
+        (f64::from(input) * self.input
+            + f64::from(output) * self.output
+            + f64::from(cache_read) * or_input(self.cache_read)
+            + f64::from(cache_write) * or_input(self.cache_write))
+            / 1_000_000.0
+    }
+}
+
 /// Model limits (context window, max tokens)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ModelLimits {
@@ -742,6 +763,20 @@ pub fn effective_limits(limit: &ModelLimits) -> ModelLimits {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn call_cost_prices_each_token_bucket() {
+        let cost = super::ModelCost {
+            input: 2.0,
+            output: 8.0,
+            cache_read: 0.2,
+            cache_write: 0.0,
+        };
+        // 1M uncached in, 0.5M out, 2M cache reads, 1M writes at input rate.
+        let usd = cost.cost_usd(1_000_000, 500_000, 2_000_000, 1_000_000);
+        assert!((usd - (2.0 + 4.0 + 0.4 + 2.0)).abs() < 1e-9, "{usd}");
+        assert!(!super::ModelCost::default().is_priced());
+    }
+
     use super::*;
 
     const FIXTURE: &str = r#"{

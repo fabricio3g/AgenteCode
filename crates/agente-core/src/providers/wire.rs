@@ -46,6 +46,7 @@ pub(crate) fn wire_options(options: &HashMap<String, Value>) -> HashMap<String, 
         "api_format",
         "npm",
         "provider",
+        "cache_control",
     ] {
         result.remove(control);
     }

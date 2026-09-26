@@ -59,6 +59,22 @@ pub struct InputState {
     pub model_selector_provider: Option<String>,
     /// Selected model index
     pub model_selector_selected: usize,
+    /// Subagent type the model picker is choosing for (`/subagent-models`);
+    /// `None` switches the main model.
+    pub model_selector_target: Option<String>,
+
+    // Message actions dialog (click a sent message)
+    pub message_actions_selected: usize,
+
+    // Settings dialog (/settings)
+    pub show_settings: bool,
+    pub settings_selected: usize,
+
+    // Subagent models dialog (/subagent-models)
+    pub show_subagent_models: bool,
+    pub subagent_models_selected: usize,
+    /// Override keys captured when the dialog opened (`*`, built-ins, custom).
+    pub subagent_model_types: Vec<String>,
 
     // Subagents popup (/subagents)
     /// Show the running/completed subagents list
@@ -232,6 +248,12 @@ impl InputState {
     }
 
     /// Open the `/subagents` popup
+    pub fn open_subagent_models(&mut self, types: Vec<String>) {
+        self.show_subagent_models = true;
+        self.subagent_models_selected = 0;
+        self.subagent_model_types = types;
+    }
+
     pub fn open_subagents(&mut self) {
         self.show_subagents = true;
         self.subagents_selected = 0;

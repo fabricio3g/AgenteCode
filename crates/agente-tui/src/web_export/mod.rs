@@ -337,6 +337,7 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
             .collect::<Vec<_>>(),
     )
     .unwrap_or_else(|_| "[]".to_string());
+    let favicon = crate::brand::favicon_link();
 
     format!(
         r##"<!DOCTYPE html>
@@ -344,7 +345,8 @@ pub fn generate_visual_gallery_html(scenarios_data: &[GalleryEntry]) -> String {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agente TUI — Browser Visual Studio & Invariant Inspector</title>
+{favicon}
+<title>Agente Code — Browser Visual Studio & Invariant Inspector</title>
 <style>
   :root {{
     --bg-app: #0e0e11;

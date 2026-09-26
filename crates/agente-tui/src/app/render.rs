@@ -67,7 +67,6 @@ fn write_render_crash_log(width: u16, height: u16, state: &AppState) {
 pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     let size = frame.area();
     state.ui.hits.begin_frame();
-    state.ui.step_scroll();
     frame.render_widget(
         ratatui::widgets::Block::default().style(
             ratatui::style::Style::default()
@@ -147,11 +146,6 @@ pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     // Ephemeral confirmation chip; expires itself, never persisted.
     state.ui.clear_expired_toast();
     widgets::chat::render_toast(frame, content, state);
-
-    // Advance queued effects last, over the transcript only, so a fade never
-    // touches the composer or the status bar. Nothing pumped these before, so
-    // every queued animation sat unrendered.
-    state.ui.render_effects(frame.buffer_mut(), content);
 }
 
 fn render_content(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, state: &mut AppState) {
@@ -208,42 +202,8 @@ fn render_header(frame: &mut ratatui::Frame, area: ratatui::layout::Rect, state:
         }
     }
 
-    // Right side: `plan │ 2.6k / 262.1k`.
-    let usage = widgets::hints::context_usage(state);
-    let left_w: usize = spans
-        .iter()
-        .map(|sp| crate::widgets::display_width(&sp.content))
-        .sum();
-    let mut right_spans: Vec<Span<'static>> = Vec::new();
-    if let Some((usage, warn)) = usage {
-        let mode = crate::widgets::input::mode_spans(state);
-        let mode_w: usize = mode
-            .iter()
-            .map(|sp| crate::widgets::display_width(&sp.content))
-            .sum();
-        let usage_w = crate::widgets::display_width(&usage);
-        let sep_w = crate::widgets::display_width(" │ ");
-        // Keep the mode when the full group fits; fall back to usage alone.
-        if left_w + mode_w + sep_w + usage_w + 3 <= area.width as usize {
-            right_spans.extend(mode);
-            right_spans.push(Span::styled(" │ ", Style::default().fg(FG_DIM()).bg(BG())));
-        }
-        right_spans.push(Span::styled(
-            usage,
-            Style::default()
-                .fg(if warn { WARNING() } else { FG_MUTED() })
-                .bg(BG()),
-        ));
-        right_spans.push(Span::styled(" ", Style::default().bg(BG())));
-    }
-    let right_w: usize = right_spans
-        .iter()
-        .map(|sp| crate::widgets::display_width(&sp.content))
-        .sum();
-    let pad = (area.width as usize).saturating_sub(left_w + right_w);
-    spans.push(Span::styled(" ".repeat(pad), Style::default().bg(BG())));
-    spans.extend(right_spans);
-
+    // Mode, spend and context live on the status row under the composer;
+    // the header is just where you are.
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(Style::default().bg(BG())),
         area,
@@ -314,6 +274,16 @@ fn render_overlays(
         crate::widgets::dim_backdrop(frame, content);
     }
 
+    // A dialog that just took over eases in from the canvas.
+    if state.ui.last_modal_owner != Some(owner) {
+        state.ui.last_modal_owner = Some(owner);
+        if owner.floats_over_chat() && !state.ui.reduce_motion {
+            state.ui.surface_fade = Some(crate::state::anim::Tween::start(
+                crate::state::anim::MODAL_MS,
+            ));
+        }
+    }
+
     match owner {
         crate::state::ModalOwner::Approval => widgets::approval::render(frame, content, state),
         crate::state::ModalOwner::PlanAsk => widgets::plan_ask::render(frame, content, state),
@@ -325,6 +295,16 @@ fn render_overlays(
             widgets::subagent_detail::render(frame, content, state)
         }
         crate::state::ModalOwner::ModelSelector => model_selector::render(frame, content, state),
+        crate::state::ModalOwner::SubagentModels => {
+            crate::subagent_models::render(frame, content, state)
+        }
+        crate::state::ModalOwner::Settings => crate::settings::render(frame, content, state),
+        crate::state::ModalOwner::MessageActions => {
+            crate::message_actions::render(frame, content, state)
+        }
+        crate::state::ModalOwner::ProcessView => {
+            widgets::process_view::render(frame, content, state)
+        }
         crate::state::ModalOwner::ThinkingSelector => {
             crate::thinking_selector::render(frame, content, state)
         }
@@ -339,6 +319,14 @@ fn render_overlays(
         | crate::state::ModalOwner::SlashPicker
         | crate::state::ModalOwner::Welcome
         | crate::state::ModalOwner::None => {}
+    }
+    if let Some(p) = state.ui.surface_fade.and_then(|t| t.progress()) {
+        crate::state::anim::fade_toward(
+            frame.buffer_mut(),
+            content,
+            crate::style::BG(),
+            (1.0 - p) * 0.6,
+        );
     }
 }
 

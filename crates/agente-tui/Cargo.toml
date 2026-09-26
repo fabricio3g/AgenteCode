@@ -26,6 +26,8 @@ syntect = "5.3.0"
 
 [dev-dependencies]
 insta = "1"
+# `examples/gen_brand.rs`: outlines the wordmark and rasterizes the icon set.
+resvg = "0.45"
 tempfile = { workspace = true }
 
 [lints]

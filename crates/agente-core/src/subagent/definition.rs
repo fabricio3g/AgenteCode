@@ -12,7 +12,7 @@ use super::types::{SubagentCapabilityMode, SubagentSpawnRequest};
 /// Default nesting depth for subagents (parent = depth 0).
 pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 3;
 /// Default max concurrently running subagents per session.
-pub const DEFAULT_MAX_CONCURRENT_SUBAGENTS: usize = 4;
+pub const DEFAULT_MAX_CONCURRENT_SUBAGENTS: usize = 8;
 /// Cap for the final summary a subagent returns to its parent.
 pub const DEFAULT_SUBAGENT_SUMMARY_CAP: usize = 4000;
 /// Default wall-clock budget per spawn. A stuck child (silent provider stall,
@@ -294,14 +294,18 @@ pub struct EffectiveRuntimeConfig {
     pub tools: Option<Vec<String>>,
     pub capability: SubagentCapabilityMode,
     pub model: Option<String>,
+    /// Provider for `model` when a subagent-model override applies; `None`
+    /// runs on the parent's provider.
+    pub provider: Option<String>,
     pub cwd: Option<String>,
 }
 
 /// Resolve the effective runtime config for a spawn request.
 ///
 /// Precedence: explicit override > subagent type > parent defaults. The
-/// model is always the parent's selected model: children never run on a
-/// different model than the user picked.
+/// model is the parent's selected model here — frontmatter and the `task`
+/// call can never pick one. The only other source is the user's own
+/// `subagent_models` setting, applied by `SubagentHost::spawn`.
 pub fn resolve_effective_config(
     request: &SubagentSpawnRequest,
     parent: &SubagentParentDefaults,
@@ -365,6 +369,7 @@ pub fn resolve_effective_config(
         tools: type_tools,
         capability,
         model,
+        provider: None,
         cwd,
     })
 }
@@ -665,8 +670,9 @@ mod tests {
         assert_eq!(cfg2.capability, SubagentCapabilityMode::ReadOnly);
     }
 
-    /// Children always run on the parent's selected model — there is no
-    /// per-type, per-request, or custom-agent override.
+    /// Children run on the parent's selected model unless the user set a
+    /// `subagent_models` override (applied by the host) — frontmatter and
+    /// the spawn request can never choose one.
     #[test]
     fn child_inherits_the_parent_model() {
         let req = SubagentSpawnRequest {

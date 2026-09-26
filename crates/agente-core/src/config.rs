@@ -126,6 +126,30 @@ impl Default for AutoApproveConfig {
     }
 }
 
+/// Provider + model a subagent type runs on instead of the parent's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentModel {
+    pub provider: String,
+    pub model: String,
+}
+
+/// Subagent type → model override.
+pub type SubagentModels = HashMap<String, SubagentModel>;
+
+/// Override key that applies to every subagent type without its own entry.
+pub const ALL_SUBAGENTS: &str = "*";
+
+/// The override a `subagent_type` runs on: its own entry, else the
+/// [`ALL_SUBAGENTS`] entry, else `None` (inherit the parent's model).
+pub fn subagent_model_for<'a>(
+    models: &'a SubagentModels,
+    subagent_type: &str,
+) -> Option<&'a SubagentModel> {
+    models
+        .get(subagent_type)
+        .or_else(|| models.get(ALL_SUBAGENTS))
+}
+
 /// Full application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -157,6 +181,20 @@ pub struct AppConfig {
     /// Snap instead of animating (eased scrolling, hover fades).
     #[serde(default)]
     pub reduce_motion: bool,
+    /// Compact with an LLM-written checkpoint (goals, decisions, files,
+    /// open work) instead of plain trimming. Off by default: trimming is
+    /// instant and free; smart compaction costs one extra model call.
+    #[serde(default)]
+    pub smart_compaction: bool,
+    /// Subagents allowed to run at once; the rest queue FIFO. `None` uses
+    /// `DEFAULT_MAX_CONCURRENT_SUBAGENTS`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_parallel_subagents: Option<usize>,
+    /// Per-subagent-type model overrides (`explore`, `plan`, custom names, or
+    /// [`ALL_SUBAGENTS`] for every type). Types without an entry run on the
+    /// parent's model.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub subagent_models: SubagentModels,
     /// Maximum agent tool-loop iterations per turn. Long-horizon tasks can
     /// exceed the old hardcoded cap of 50; default is 500.
     #[serde(default)]
@@ -967,6 +1005,9 @@ impl Default for AppConfig {
             default_mode: Some("Build".into()),
             theme: None,
             reduce_motion: false,
+            smart_compaction: false,
+            max_parallel_subagents: None,
+            subagent_models: HashMap::new(),
             max_iterations: None,
             default_thinking_level: None,
             discovered_models: HashMap::new(),
@@ -979,6 +1020,13 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Subagents that may run at once (at least one).
+    pub fn parallel_subagents(&self) -> usize {
+        self.max_parallel_subagents
+            .unwrap_or(crate::subagent::DEFAULT_MAX_CONCURRENT_SUBAGENTS)
+            .max(1)
+    }
+
     /// Resolved tool-loop iteration cap for a single turn.
     /// Defaults to 500 — generous enough for long-horizon tasks while still
     /// acting as a safety valve against pathological tool-calling loops.
@@ -1371,6 +1419,16 @@ impl AppConfig {
                 self.discovered_models.insert(k, v);
             }
         }
+        if other.theme.is_some() {
+            self.theme = other.theme;
+        }
+        self.reduce_motion |= other.reduce_motion;
+        self.smart_compaction |= other.smart_compaction;
+        if other.max_parallel_subagents.is_some() {
+            self.max_parallel_subagents = other.max_parallel_subagents;
+        }
+        // Per-type entries: the workspace wins for the types it names.
+        self.subagent_models.extend(other.subagent_models);
         self.auto_approve = other.auto_approve;
         self
     }
@@ -1584,6 +1642,9 @@ impl AppConfig {
             default_mode: self.default_mode.clone(),
             theme: self.theme.clone(),
             reduce_motion: self.reduce_motion,
+            smart_compaction: self.smart_compaction,
+            max_parallel_subagents: self.max_parallel_subagents,
+            subagent_models: self.subagent_models.clone(),
             default_thinking_level: self.default_thinking_level.clone(),
             discovered_models: self.discovered_models.clone(),
             mcp: self.mcp.clone(),
@@ -1835,6 +1896,45 @@ mod tests {
                 .name
                 .as_deref(),
             Some("GPT-4o Real")
+        );
+    }
+
+    #[test]
+    fn subagent_model_overrides_fall_back_to_the_all_entry() {
+        let pick = |provider: &str, model: &str| SubagentModel {
+            provider: provider.into(),
+            model: model.into(),
+        };
+        let mut models = SubagentModels::new();
+        assert_eq!(subagent_model_for(&models, "explore"), None);
+        models.insert(ALL_SUBAGENTS.into(), pick("deepseek", "deepseek-flash"));
+        models.insert("plan".into(), pick("openrouter", "a/b"));
+        assert_eq!(
+            subagent_model_for(&models, "plan"),
+            Some(&pick("openrouter", "a/b"))
+        );
+        assert_eq!(
+            subagent_model_for(&models, "explore"),
+            Some(&pick("deepseek", "deepseek-flash"))
+        );
+
+        // Round-trips through the config file, and workspace entries win.
+        let base = AppConfig {
+            subagent_models: models,
+            ..AppConfig::default()
+        };
+        let json = serde_json::to_string(&base).unwrap();
+        let loaded: AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.subagent_models, base.subagent_models);
+        let workspace = AppConfig {
+            subagent_models: SubagentModels::from([("plan".into(), pick("glm", "glm-5"))]),
+            ..AppConfig::default()
+        };
+        let merged = base.merge(workspace);
+        assert_eq!(merged.subagent_models["plan"], pick("glm", "glm-5"));
+        assert_eq!(
+            merged.subagent_models[ALL_SUBAGENTS].model,
+            "deepseek-flash"
         );
     }
 

@@ -12,9 +12,7 @@ use crate::llm::{StopReason, StreamEvent};
 use crate::permissions::{ApprovalBroker, SharedPermissionEngine};
 use crate::providers::{ProviderRegistry, ProviderSummarizer};
 use crate::subagent::SubagentHost;
-use crate::subagent::{
-    SubagentHostConfig, DEFAULT_MAX_CONCURRENT_SUBAGENTS, DEFAULT_MAX_SUBAGENT_DEPTH,
-};
+use crate::subagent::{SubagentHostConfig, DEFAULT_MAX_SUBAGENT_DEPTH};
 use crate::thinking::apply_thinking_level;
 use crate::tools::ToolRegistry;
 use crate::types::{FunctionCall, Message, Role, ToolCall};
@@ -52,6 +50,9 @@ pub fn spawn_chat_task(
     approval_broker: ApprovalBroker,
     mcp_manager: Option<Arc<tokio::sync::Mutex<crate::mcp::client::McpManager>>>,
     subagent_registry: crate::subagent::SubagentRegistry,
+    subagent_models: crate::config::SubagentModels,
+    smart_compaction: bool,
+    max_parallel_subagents: usize,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
@@ -65,6 +66,7 @@ pub fn spawn_chat_task(
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: custom_agents.clone(),
+                subagent_models,
                 event_sender: sender.clone(),
                 task_id,
                 provider_id: provider_id.clone(),
@@ -80,7 +82,7 @@ pub fn spawn_chat_task(
                 registry: subagent_registry,
             },
             DEFAULT_MAX_SUBAGENT_DEPTH,
-            DEFAULT_MAX_CONCURRENT_SUBAGENTS,
+            max_parallel_subagents,
         );
         let config = AgentRunConfig {
             session_id,
@@ -107,6 +109,7 @@ pub fn spawn_chat_task(
             depth: 0,
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction,
         };
         // A panic inside the loop must not kill the spawned task silently:
         // without a terminal event the TUI would hang "running" until the
@@ -202,6 +205,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         depth,
         loop_nudge_after,
         loop_stop_after,
+        smart_compaction,
     } = cfg;
 
     let mut tool_registry = ToolRegistry::with_agents(&project_dir, &custom_agents);
@@ -399,6 +403,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         }
         model_info.options = provider.get_request_options(&model_info);
         apply_thinking_level(&mut model_info, api_format, &thinking_level);
+        let price = model_info.cost.clone();
 
         // Auto-compact before the request when the estimated context is near
         // the model's window. Mirrors pi's `shouldCompact`, which uses the
@@ -421,16 +426,21 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 context_limit,
                 "Compacting agent context"
             );
-            // Prefer an LLM-generated structured summary (pi-style), falling
-            // back to heuristic truncation if summarization is unavailable or
-            // fails, so the request always goes through.
-            let summarizer = ProviderSummarizer::new(
-                provider.clone(),
-                model_info.clone(),
-                crate::providers::RequestContext::new(session_id),
-            );
-            let compactor =
-                ContextCompactor::new(strategy.clone()).with_summarizer(Arc::new(summarizer));
+            // Smart compaction (user setting) writes an LLM checkpoint,
+            // falling back to trimming if the summary fails; otherwise trim
+            // straight away — instant, and no extra model call.
+            let smart = smart_compaction;
+            send_event(&sender, task_id, AgentEvent::CompactionStarted { smart });
+            let compactor = ContextCompactor::new(strategy.clone());
+            let compactor = if smart {
+                compactor.with_summarizer(Arc::new(ProviderSummarizer::new(
+                    provider.clone(),
+                    model_info.clone(),
+                    crate::providers::RequestContext::new(session_id),
+                )))
+            } else {
+                compactor
+            };
             // The summarizer's own LLM round-trip can take a while; heartbeat
             // through it so the TUI's stuck guard never sees the turn silent.
             let heartbeat_sender = sender.clone();
@@ -495,16 +505,20 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         "Context compacted automatically ({}).",
                         result.summary.content
                     );
+                    let tokens_after = crate::context::estimate_message_tokens(&result.messages);
                     send_event(
                         &sender,
                         task_id,
                         AgentEvent::ContextCompacted {
                             summary,
+                            tokens_before: estimated_tokens as u32,
+                            tokens_after: tokens_after as u32,
+                            smart,
                             compacted_conversation: result.messages.clone(),
                         },
                     );
                     messages = result.messages;
-                    running_tokens = crate::context::estimate_message_tokens(&messages);
+                    running_tokens = tokens_after;
                 }
             }
         }
@@ -622,6 +636,25 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                                     .saturating_add(usage.cache_creation_tokens);
                                 last_prompt_tokens = usage.prompt_tokens;
                                 last_completion_tokens = usage.completion_tokens;
+                                send_event(&sender, task_id, AgentEvent::CallUsage {
+                                    prompt_tokens: usage.prompt_tokens,
+                                    completion_tokens: usage.completion_tokens,
+                                    cache_read_tokens: usage.cache_read_tokens,
+                                    cache_creation_tokens: usage.cache_creation_tokens,
+                                    // The provider's own charge wins; the
+                                    // catalog price is the estimate.
+                                    cost_usd: usage.cost_usd.or_else(|| {
+                                        price.is_priced().then(|| {
+                                            price.cost_usd(
+                                                usage.prompt_tokens,
+                                                usage.completion_tokens,
+                                                usage.cache_read_tokens,
+                                                usage.cache_creation_tokens,
+                                            )
+                                        })
+                                    }),
+                                    subagent_id: None,
+                                });
                                 stream_stop_reason = stop_reason;
                                 break;
                             }
@@ -689,6 +722,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     overflow_recoveries,
                     "Provider context overflow; forcing compaction"
                 );
+                let tokens_before = running_tokens;
                 let forced = ContextCompactor::new(strategy.clone()).compact_forced(messages);
                 if forced.summary.tokens_saved > 0 {
                     let summary = format!(
@@ -702,6 +736,9 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         task_id,
                         AgentEvent::ContextCompacted {
                             summary,
+                            tokens_before: tokens_before as u32,
+                            tokens_after: running_tokens as u32,
+                            smart: false,
                             compacted_conversation: messages.clone(),
                         },
                     );
@@ -1408,6 +1445,7 @@ mod tests {
             depth: 0,
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
         };
         run_agent_loop(config).await.expect("turn recovers");
 
@@ -1483,6 +1521,7 @@ mod tests {
             depth: 0,
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
         };
         run_agent_loop(config)
             .await
@@ -1650,6 +1689,7 @@ mod tests {
             depth: 1,
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
         };
         (dir, rx, provider, config)
     }

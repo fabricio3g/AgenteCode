@@ -81,6 +81,132 @@ pub struct SubagentToolRow {
     pub finished: bool,
 }
 
+/// The three Shift+Tab modes. `Auto` is Build with every tool call
+/// auto-approved: no approval cards, the agent just works.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkMode {
+    Plan,
+    Build,
+    Auto,
+}
+
+impl WorkMode {
+    /// Parse a saved `default_mode`; anything unknown is Build.
+    pub fn parse(value: Option<&str>) -> Self {
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("plan") => Self::Plan,
+            Some(v) if v.eq_ignore_ascii_case("auto") => Self::Auto,
+            _ => Self::Build,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Plan => "plan",
+            Self::Build => "build",
+            Self::Auto => "auto",
+        }
+    }
+
+    /// Shift+Tab order: plan → build → auto → plan.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Plan => Self::Build,
+            Self::Build => Self::Auto,
+            Self::Auto => Self::Plan,
+        }
+    }
+
+    pub fn agent_mode(self) -> AgentMode {
+        match self {
+            Self::Plan => AgentMode::Plan,
+            Self::Build | Self::Auto => AgentMode::Build,
+        }
+    }
+
+    /// Accent: plan amber, build green, auto the brand accent.
+    pub fn color(self) -> ratatui::style::Color {
+        match self {
+            Self::Plan => crate::style::WARNING(),
+            Self::Build => crate::style::SUCCESS(),
+            Self::Auto => crate::style::PRIMARY(),
+        }
+    }
+}
+
+/// What the session's model calls cost, summed per call from
+/// `AgentEvent::CallUsage` (parent and subagents alike).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Spend {
+    /// USD over the calls the catalog could price.
+    pub cost_usd: f64,
+    /// Calls with a known price.
+    pub priced_calls: u32,
+    /// Calls on models without catalog pricing (free/unknown).
+    pub unpriced_calls: u32,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+}
+
+impl Spend {
+    pub fn record(
+        &mut self,
+        input: u32,
+        output: u32,
+        cache_read: u32,
+        cache_write: u32,
+        cost_usd: Option<f64>,
+    ) {
+        self.input_tokens += u64::from(input);
+        self.output_tokens += u64::from(output);
+        self.cache_read_tokens += u64::from(cache_read);
+        self.cache_write_tokens += u64::from(cache_write);
+        match cost_usd {
+            Some(cost) => {
+                self.cost_usd += cost;
+                self.priced_calls += 1;
+            }
+            None => self.unpriced_calls += 1,
+        }
+    }
+
+    /// Share of prompt tokens served from the provider cache, once any
+    /// prompt has been sent.
+    pub fn cache_hit_rate(&self) -> Option<f64> {
+        let prompt = self.input_tokens + self.cache_read_tokens + self.cache_write_tokens;
+        (prompt > 0).then(|| self.cache_read_tokens as f64 / prompt as f64)
+    }
+
+    /// `$0.042` once any call had a price.
+    pub fn cost_label(&self) -> Option<String> {
+        (self.priced_calls > 0).then(|| format_usd(self.cost_usd))
+    }
+
+    /// Header label: `$0.042 · 82% cached`. `None` before the first call.
+    pub fn label(&self) -> Option<String> {
+        let cost = self.cost_label();
+        let cache = self
+            .cache_hit_rate()
+            .map(|rate| format!("{:.0}% cached", rate * 100.0));
+        match (cost, cache) {
+            (Some(cost), Some(cache)) => Some(format!("{cost} · {cache}")),
+            (Some(one), None) | (None, Some(one)) => Some(one),
+            (None, None) => None,
+        }
+    }
+}
+
+/// `$0.004` below a cent, `$0.42` / `$12.30` above.
+pub fn format_usd(usd: f64) -> String {
+    if usd > 0.0 && usd < 0.01 {
+        format!("${usd:.3}")
+    } else {
+        format!("${usd:.2}")
+    }
+}
+
 /// Bounded live output for one in-flight tool call. Chat history currently
 /// stores tool calls and results as separate persisted entries, so this keeps
 /// transient progress keyed by the provider's stable call id until the result
@@ -89,8 +215,32 @@ pub struct SubagentToolRow {
 pub struct LiveToolCall {
     pub name: String,
     pub args: String,
+    /// The newest output (bounded; the oldest bytes drop first).
     pub output: String,
     pub direct: bool,
+    /// When the call started, for the elapsed readout.
+    pub started: std::time::Instant,
+}
+
+impl LiveToolCall {
+    /// `6m03s` / `42s` since the call started.
+    pub fn elapsed_label(&self) -> String {
+        let secs = self.started.elapsed().as_secs();
+        if secs >= 60 {
+            format!("{}m{:02}s", secs / 60, secs % 60)
+        } else {
+            format!("{secs}s")
+        }
+    }
+
+    /// The shell command, when this is a shell call.
+    pub fn command(&self) -> Option<String> {
+        serde_json::from_str::<serde_json::Value>(&self.args)
+            .ok()?
+            .get("command")?
+            .as_str()
+            .map(str::to_string)
+    }
 }
 
 const MAX_LIVE_TOOL_OUTPUT_BYTES: usize = 32 * 1024;
@@ -124,6 +274,8 @@ pub struct SubagentUiState {
     pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Isolated checkout when the child runs in a worktree.
     pub worktree: Option<agente_core::subagent::WorktreeInfo>,
+    /// What this child's model calls cost (its own nested children included).
+    pub spend: Spend,
 }
 
 impl SubagentUiState {
@@ -150,6 +302,9 @@ impl SubagentUiState {
 pub struct AgentRuntimeState {
     /// Current agent mode (Plan or Build)
     pub mode: AgentMode,
+    /// Build with every tool call auto-approved (`WorkMode::Auto`). The
+    /// permission engine only knows Plan/Build; this rides on top.
+    pub auto_mode: bool,
     /// Mode that was active when the current turn started (preserved for the whole turn)
     pub current_turn_mode: AgentMode,
     /// Current agent state (Idle, Planning, Executing, etc.)
@@ -187,6 +342,11 @@ pub struct AgentRuntimeState {
     pub last_turn_cache_read_tokens: u32,
     /// Tokens written to the provider's prompt cache on the most recent turn.
     pub last_turn_cache_creation_tokens: u32,
+    /// Session spend summed over every model call (subagents included).
+    pub spend: Spend,
+    /// Compaction in flight: `Some(true)` while an LLM summary is written,
+    /// `Some(false)` while trimming. Cleared by the next loop event.
+    pub compacting: Option<bool>,
     /// Set while the agent loop backs off and retries a transient provider
     /// error (surfaced on the status bar). Cleared on the next stream event.
     pub retry_status: Option<RetryStatus>,
@@ -238,10 +398,13 @@ impl Default for AgentRuntimeState {
             approval_queue: ApprovalQueue::default(),
             auto_approve_persistent: false,
             auto_approve_runtime: false,
+            auto_mode: false,
             total_tokens: 0,
             last_turn_prompt_tokens: 0,
             last_turn_completion_tokens: 0,
             last_turn_cache_read_tokens: 0,
+            spend: Spend::default(),
+            compacting: None,
             last_turn_cache_creation_tokens: 0,
             retry_status: None,
             thinking_expanded: false,
@@ -449,6 +612,7 @@ impl AgentRuntimeState {
                 args,
                 output: String::new(),
                 direct,
+                started: std::time::Instant::now(),
             },
         );
         self.live_tools_epoch = self.live_tools_epoch.wrapping_add(1);
@@ -458,14 +622,16 @@ impl AgentRuntimeState {
         let Some(call) = self.live_tool_calls.get_mut(id) else {
             return;
         };
-        let remaining = MAX_LIVE_TOOL_OUTPUT_BYTES.saturating_sub(call.output.len());
-        if remaining == 0 {
-            return;
+        // Keep the tail: a long install's latest lines matter, its first
+        // 32 KB do not. Drop from the front on a char boundary.
+        call.output.push_str(chunk);
+        if call.output.len() > MAX_LIVE_TOOL_OUTPUT_BYTES {
+            let mut cut = call.output.len() - MAX_LIVE_TOOL_OUTPUT_BYTES;
+            while !call.output.is_char_boundary(cut) {
+                cut += 1;
+            }
+            call.output.drain(..cut);
         }
-        call.output
-            .push_str(agente_core::util::truncate_at_char_boundary(
-                chunk, remaining,
-            ));
     }
 
     pub fn finish_live_tool(&mut self, id: &str) -> Option<LiveToolCall> {
@@ -517,7 +683,30 @@ impl AgentRuntimeState {
 
     /// Effective auto-approve value (persistent OR runtime).
     pub fn auto_approve_all(&self) -> bool {
-        self.auto_approve_persistent || self.auto_approve_runtime
+        self.auto_approve_persistent
+            || self.auto_approve_runtime
+            || (self.auto_mode && self.mode == AgentMode::Build)
+    }
+
+    /// The Shift+Tab mode as the user sees it.
+    pub fn work_mode(&self) -> WorkMode {
+        match (self.mode, self.auto_mode) {
+            (AgentMode::Plan, _) => WorkMode::Plan,
+            (AgentMode::Build, false) => WorkMode::Build,
+            (AgentMode::Build, true) => WorkMode::Auto,
+        }
+    }
+
+    /// Select `mode` for the next turn; `apply_now` also re-arms the live
+    /// permission engine (idle only — a running turn keeps its mode).
+    pub fn select_work_mode(&mut self, mode: WorkMode, apply_now: bool) {
+        self.auto_mode = mode == WorkMode::Auto;
+        if apply_now {
+            self.set_mode(mode.agent_mode());
+            self.sync_engine_auto_approve();
+        } else {
+            self.mode = mode.agent_mode();
+        }
     }
 
     /// Set the user's persistent auto-approve preference and sync the engine.
@@ -554,6 +743,25 @@ impl AgentRuntimeState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn spend_sums_calls_and_reports_cache_rate() {
+        let mut spend = super::Spend::default();
+        assert_eq!(spend.label(), None, "nothing before the first call");
+        spend.record(200, 50, 800, 0, Some(0.0042));
+        spend.record(100, 20, 900, 0, Some(0.003));
+        assert_eq!(spend.label().as_deref(), Some("$0.007 · 85% cached"));
+        spend.record(0, 0, 0, 0, None);
+        assert_eq!(spend.unpriced_calls, 1);
+        assert_eq!(super::format_usd(12.3), "$12.30");
+
+        let free = {
+            let mut s = super::Spend::default();
+            s.record(100, 10, 0, 0, None);
+            s
+        };
+        assert_eq!(free.label().as_deref(), Some("0% cached"), "no fake $0.00");
+    }
+
     use super::*;
     use agente_core::types::Role;
 
@@ -583,19 +791,20 @@ mod tests {
     }
 
     #[test]
-    fn live_tool_output_preserves_utf8_and_respects_byte_cap() {
+    fn live_tool_output_keeps_the_newest_bytes_on_char_boundaries() {
         let mut agent = AgentRuntimeState::default();
         agent.start_live_tool("call".into(), "shell".into(), "{}".into(), false);
-        let prefix = "a".repeat(MAX_LIVE_TOOL_OUTPUT_BYTES - 1);
-        agent.append_live_tool_output("call", &prefix);
+        agent.append_live_tool_output("call", &"a".repeat(MAX_LIVE_TOOL_OUTPUT_BYTES - 1));
         agent.append_live_tool_output("call", "🎉tail");
-        assert_eq!(agent.live_tool_calls["call"].output, prefix);
+        let output = &agent.live_tool_calls["call"].output;
+        assert!(output.len() <= MAX_LIVE_TOOL_OUTPUT_BYTES);
+        assert!(output.ends_with("🎉tail"), "newest output survives");
 
-        agent.append_live_tool_output("call", "x");
-        agent.append_live_tool_output("call", "ignored");
-        assert_eq!(agent.live_tool_calls["call"].output, format!("{prefix}x"));
-        agent.append_live_tool_output("unknown", "ignored");
-        assert_eq!(agent.live_tool_calls.len(), 1);
+        // A cut landing inside a multi-byte char moves forward, never splits.
+        agent.append_live_tool_output("call", &"é".repeat(MAX_LIVE_TOOL_OUTPUT_BYTES));
+        let output = &agent.live_tool_calls["call"].output;
+        assert!(output.len() <= MAX_LIVE_TOOL_OUTPUT_BYTES);
+        assert!(output.chars().all(|c| c == 'é'));
     }
 
     #[test]

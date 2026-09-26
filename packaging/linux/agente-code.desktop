@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Agente Code
+GenericName=Terminal coding agent
+Comment=Keyboard-first terminal coding agent
+Exec=agente
+Icon=agente-code
+Terminal=true
+Categories=Development;IDE;
+Keywords=agent;ai;code;terminal;
+StartupNotify=false

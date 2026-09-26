@@ -143,6 +143,8 @@ fn base_state() -> AppState {
     state.config.current_model = "deepseek-v4-flash".to_string();
     state.config.connected_providers = vec!["deepseek".to_string()];
     state.ui.show_welcome_screen = false;
+    // Screenshots capture one frame: show settled UI, not a mid-fade dialog.
+    state.ui.reduce_motion = true;
     state
 }
 
@@ -679,6 +681,7 @@ fn seed_subagent(state: &mut AppState) {
             started_at: Some(chrono::Utc::now() - chrono::Duration::seconds(12)),
             finished_at: None,
             worktree: Some(worktree),
+            spend: Default::default(),
         },
     );
 }
@@ -1284,4 +1287,134 @@ fn ui_survives_degenerate_sizes() {
             }
         }
     }
+}
+
+#[test]
+fn hovered_subagent_card_gets_a_band_and_rail() {
+    let mut state = base_state();
+    seed_subagent(&mut state);
+    let draw = |state: &mut AppState| {
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("test terminal");
+        terminal
+            .draw(|frame| crate::app::render_app(frame, state))
+            .expect("draw");
+        terminal.backend().buffer().clone()
+    };
+    let buf = draw(&mut state);
+    let row = (0..24)
+        .find(|&y| {
+            let text: String = (0..80).map(|x| buf[(x, y)].symbol()).collect();
+            text.contains("Explore  Find every provider")
+        })
+        .expect("subagent card painted");
+    let id = state
+        .session
+        .chat_history
+        .iter()
+        .find(|e| e.subagent_id.is_some())
+        .unwrap()
+        .id;
+    state.ui.hovered_entry_id = Some(id);
+    let buf = draw(&mut state);
+    assert_eq!(buf[(0, row)].symbol(), "▎", "accent rail on hover");
+    assert_eq!(
+        buf[(40, row)].bg,
+        crate::style::BG_HOVER(),
+        "full hover band"
+    );
+    assert_eq!(
+        buf[(0, row + 1)].symbol(),
+        "▎",
+        "rail spans the activity row"
+    );
+    assert_ne!(
+        buf[(40, row + 2)].bg,
+        crate::style::BG_HOVER(),
+        "spacer stays bare"
+    );
+}
+
+#[test]
+fn sent_prompt_glides_into_place_and_repins() {
+    let draw = |state: &mut AppState| {
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("test terminal");
+        terminal
+            .draw(|frame| crate::app::render_app(frame, state))
+            .expect("draw");
+    };
+    for reduce_motion in [false, true] {
+        let mut state = base_state();
+        state.ui.reduce_motion = reduce_motion;
+        seed_conversation(&mut state);
+        draw(&mut state);
+        assert!(state.ui.chat_auto_scroll);
+
+        state.add_user_message("hola, agente".into());
+        draw(&mut state);
+        if reduce_motion {
+            assert!(state.ui.message_fade.is_none());
+            assert_eq!(state.ui.chat_scroll, state.max_scroll(), "snaps");
+            continue;
+        }
+        assert!(state.ui.message_fade.is_some_and(|t| t.running()));
+        assert!(state.ui.chat_scroll < state.max_scroll(), "still gliding");
+        let mut frames = 1;
+        while state.ui.scroll_target.is_some() {
+            draw(&mut state);
+            frames += 1;
+            assert!(frames < 20, "glide must settle");
+        }
+        assert_eq!(state.ui.chat_scroll, state.max_scroll());
+        assert!(state.ui.chat_auto_scroll, "re-pinned to follow the reply");
+    }
+}
+
+#[test]
+fn status_row_shows_session_spend_and_cache_rate() {
+    let mut state = base_state();
+    state.agent.spend.record(1_000, 200, 4_000, 0, Some(0.042));
+    let mut terminal = Terminal::new(TestBackend::new(100, 20)).expect("test terminal");
+    terminal
+        .draw(|frame| crate::app::render_app(frame, &mut state))
+        .expect("draw");
+    let buf = terminal.backend().buffer();
+    // The status row sits under the composer: the last row of the frame.
+    let status: String = (0..100).map(|x| buf[(x, 19)].symbol()).collect();
+    assert!(status.contains("$0.04 · 80% cached"), "status: {status}");
+    let header: String = (0..100).map(|x| buf[(x, 0)].symbol()).collect();
+    assert!(
+        !header.contains('$'),
+        "header no longer carries spend: {header}"
+    );
+}
+
+#[test]
+fn hovered_prompt_lifts_and_offers_its_actions() {
+    let mut state = base_state();
+    state.add_user_message("Implement the plan".into());
+    state.ui.message_fade = None;
+    state.ui.scroll_target = None;
+    state.ui.chat_auto_scroll = true;
+    let draw = |state: &mut AppState| {
+        let mut terminal = Terminal::new(TestBackend::new(80, 20)).expect("test terminal");
+        terminal
+            .draw(|frame| crate::app::render_app(frame, state))
+            .expect("draw");
+        terminal.backend().buffer().clone()
+    };
+    let text = |buf: &Buffer, y: u16| -> String { (0..80).map(|x| buf[(x, y)].symbol()).collect() };
+    let buf = draw(&mut state);
+    let row = (0..20)
+        .find(|&y| text(&buf, y).contains("Implement the plan"))
+        .expect("bubble painted");
+    assert!(text(&buf, row).contains('▎'), "rail");
+    assert!(
+        text(&buf, row - 1).contains('▎'),
+        "padded card, not a thin band"
+    );
+    state.ui.hovered_entry_id = Some(state.session.chat_history[0].id);
+    let buf = draw(&mut state);
+    let hovered = text(&buf, row);
+    assert!(hovered.contains("revert · fork · copy"), "{hovered}");
+    assert!(hovered.contains("Implement the plan"), "text never covered");
 }

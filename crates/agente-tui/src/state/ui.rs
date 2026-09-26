@@ -107,30 +107,6 @@ impl RenderedChatBlock {
     }
 }
 
-/// Mix `from` toward `to` by `amount` (0.0 = unchanged, 1.0 = fully `to`).
-///
-/// Only RGB colours blend; indexed and named colours have no numeric channels
-/// to interpolate, so they are left as-is rather than guessed at.
-fn blend(
-    from: ratatui::style::Color,
-    to: ratatui::style::Color,
-    amount: f32,
-) -> ratatui::style::Color {
-    use ratatui::style::Color;
-    let (Color::Rgb(fr, fg_, fb), Color::Rgb(tr, tg, tb)) = (from, to) else {
-        return from;
-    };
-    let mix = |a: u8, b: u8| -> u8 {
-        (a as f32 + (b as f32 - a as f32) * amount)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    };
-    Color::Rgb(mix(fr, tr), mix(fg_, tg), mix(fb, tb))
-}
-
-/// How long a newly-appended message takes to fade in.
-const MESSAGE_FADE_MS: u32 = 220;
-
 /// Upper bound on cached chat blocks (sessions are immutable per-entry; the cap
 /// prevents unbounded growth across tabs / reloads).
 const MAX_CHAT_CACHE_BLOCKS: usize = 4096;
@@ -330,6 +306,47 @@ impl SubagentDetailTab {
     }
 }
 
+/// The live output view of one tool call (click a running tool row).
+#[derive(Debug, Clone)]
+pub struct ProcessView {
+    /// Provider call id of the tool being watched.
+    pub call_id: String,
+    /// The call as it ended, kept so the view survives completion.
+    pub finished: Option<super::LiveToolCall>,
+    /// First visible output line.
+    pub scroll: usize,
+    /// Stick to the newest output (cleared by scrolling up).
+    pub follow: bool,
+    /// Scroll ceiling from the last paint.
+    pub max_scroll: usize,
+    /// Body rect from the last paint (wheel hit-testing).
+    pub area: Option<Rect>,
+}
+
+impl ProcessView {
+    pub fn open(call_id: String) -> Self {
+        Self {
+            call_id,
+            finished: None,
+            scroll: 0,
+            follow: true,
+            max_scroll: 0,
+            area: None,
+        }
+    }
+
+    pub fn scroll_by(&mut self, delta: isize) {
+        self.follow = false;
+        self.scroll = self
+            .scroll
+            .saturating_add_signed(delta)
+            .min(self.max_scroll);
+        if self.scroll >= self.max_scroll {
+            self.follow = true;
+        }
+    }
+}
+
 /// UI state for layout and rendering
 pub struct UiState {
     /// When set, show a full-width diff peek for this modified file (Esc closes).
@@ -369,21 +386,15 @@ pub struct UiState {
     pub chat_area_y: u16,
     /// Left column of the chat content area
     pub chat_area_x: u16,
-    /// Scrollbar column for chat, if visible
-    pub chat_scrollbar_x: Option<u16>,
-    /// Scrollbar top row
-    pub chat_scrollbar_y: u16,
-    /// Scrollbar track height
-    pub chat_scrollbar_height: u16,
-    /// Scrollbar thumb top row
-    pub chat_scrollbar_thumb_y: u16,
-    /// Scrollbar thumb height
-    pub chat_scrollbar_thumb_height: u16,
-    /// Whether the chat scrollbar is being dragged
-    pub chat_scrollbar_dragging: bool,
+    /// Scrollbar being dragged (any surface), with its geometry at press.
+    pub scroll_drag: Option<crate::widgets::scrollbar::ScrollbarGeom>,
     /// Last known mouse position (screen coords) — drives hover highlights
     /// on interactive chips like `[stop]` and the jump-to-bottom control.
     pub mouse_pos: Option<(u16, u16)>,
+    /// Sent message whose action dialog (revert / fork / copy) is open.
+    pub message_actions: Option<Uuid>,
+    /// Live output view of a running (or just finished) tool call.
+    pub process_view: Option<ProcessView>,
     /// Hit target for the jump-to-bottom control (set each paint when visible).
     pub jump_bottom_area: Option<Rect>,
     /// Hit target for the `[stop]` button in the activity strip (set each
@@ -466,7 +477,14 @@ pub struct UiState {
     pub last_frame_time: std::time::Instant,
     /// Effect manager
     /// When the current message fade-in began, if one is running.
-    pub message_fade_started: Option<std::time::Instant>,
+    pub message_fade: Option<super::anim::Tween>,
+    /// Ease-in for a surface that just appeared (a dialog, or the empty chat
+    /// after the hero is dismissed).
+    pub surface_fade: Option<super::anim::Tween>,
+    /// Modal owner painted last frame (to detect a dialog opening).
+    pub last_modal_owner: Option<super::ModalOwner>,
+    /// Hover band ease-in for the hovered chat card.
+    pub hover_fade: Option<super::anim::Tween>,
 
     // Flags
     /// Needs re-render
@@ -506,12 +524,9 @@ impl Default for UiState {
             chat_visible_height: 0,
             chat_area_y: 0,
             chat_area_x: 0,
-            chat_scrollbar_x: None,
-            chat_scrollbar_y: 0,
-            chat_scrollbar_height: 0,
-            chat_scrollbar_thumb_y: 0,
-            chat_scrollbar_thumb_height: 0,
-            chat_scrollbar_dragging: false,
+            scroll_drag: None,
+            message_actions: None,
+            process_view: None,
             jump_bottom_area: None,
             stop_hitbox: None,
             hits: super::hits::HitMap::default(),
@@ -544,7 +559,10 @@ impl Default for UiState {
             anim_start: std::time::Instant::now(),
             fps_last_time: std::time::Instant::now(),
             last_frame_time: std::time::Instant::now(),
-            message_fade_started: None,
+            message_fade: None,
+            surface_fade: None,
+            last_modal_owner: None,
+            hover_fade: None,
             needs_render: true,
             should_quit: false,
             show_welcome_screen: true,
@@ -563,6 +581,9 @@ pub fn is_hover_target(region: &ClickRegion) -> bool {
         ClickKind::Tool | ClickKind::ToolGroup | ClickKind::Subagent | ClickKind::OpenAsset => {
             !region.is_reasoning
         }
+        // Your own messages open the message actions, and running tools open
+        // their live output: both hover.
+        ClickKind::Prompt | ClickKind::LiveTool => true,
         ClickKind::Message => region.user_truncated,
         ClickKind::Thinking => false,
     }
@@ -646,13 +667,26 @@ impl UiState {
         self.chat_scroll = 0;
     }
 
+    /// Glide to the bottom of the transcript, then re-pin. The target is
+    /// resolved against the *current* content height each frame, so content
+    /// that grows while gliding (a new message) is still where it lands.
+    pub fn glide_to_bottom(&mut self) {
+        if self.reduce_motion {
+            self.chat_auto_scroll = true;
+            return;
+        }
+        self.chat_auto_scroll = false;
+        self.scroll_target = Some(usize::MAX);
+        self.needs_render = true;
+    }
+
     /// Eased scroll by `delta` rows (negative = up). The viewport walks toward
     /// the target over the next frames (see [`Self::step_scroll`]). Repeated
     /// input stacks onto the pending target, so a fast wheel spin travels
     /// further than the same notches spread out.
     pub fn glide_by(&mut self, delta: isize) {
         let max = self.max_scroll();
-        let base = self.scroll_target.unwrap_or(self.chat_scroll);
+        let base = self.scroll_target.map_or(self.chat_scroll, |t| t.min(max));
         let target = base.saturating_add_signed(delta).min(max);
         if delta < 0 {
             self.chat_auto_scroll = false;
@@ -821,8 +855,7 @@ impl UiState {
         self.chat_auto_scroll = true;
         self.chat_content_height = 0;
         self.chat_visible_height = 0;
-        self.chat_scrollbar_x = None;
-        self.chat_scrollbar_dragging = false;
+        self.scroll_drag = None;
         self.jump_bottom_area = None;
         self.click_regions.clear();
         self.expanded_message_ids.clear();
@@ -865,7 +898,8 @@ impl UiState {
             ClickKind::Thinking => 0u8,
             ClickKind::Subagent => 0u8,
             ClickKind::Tool | ClickKind::ToolGroup => 1,
-            ClickKind::Message => 2,
+            ClickKind::LiveTool => 1,
+            ClickKind::Message | ClickKind::Prompt => 2,
         })
     }
 
@@ -1139,7 +1173,12 @@ impl UiState {
     /// pulses gate on agent state — neither belongs here, or idle welcome
     /// would pin the loop at 16ms forever.
     pub fn has_active_animation(&self) -> bool {
-        self.message_fade_started.is_some() || self.toast.is_some() || self.scroll_target.is_some()
+        let running = |t: &Option<super::anim::Tween>| t.is_some_and(|t| t.running());
+        running(&self.message_fade)
+            || running(&self.surface_fade)
+            || running(&self.hover_fade)
+            || self.toast.is_some()
+            || self.scroll_target.is_some()
     }
 
     /// Tick effects and return delta time
@@ -1161,55 +1200,17 @@ impl UiState {
     /// cannot compile against our buffer type.
     pub fn trigger_message_fade(&mut self) {
         self.needs_render = true;
-        self.message_fade_started = Some(std::time::Instant::now());
+        if !self.reduce_motion {
+            self.message_fade = Some(super::anim::Tween::start(super::anim::MESSAGE_MS));
+        }
     }
 
-    /// Advance the message fade and paint it over `area`.
-    ///
-    /// Returns true while the animation is still running, so the caller keeps
-    /// requesting frames instead of freezing it half-way through.
-    pub fn render_effects(
-        &mut self,
-        buf: &mut ratatui::buffer::Buffer,
-        area: ratatui::layout::Rect,
-    ) -> bool {
-        let Some(started) = self.message_fade_started else {
-            return false;
-        };
-        if area.width == 0 || area.height == 0 {
-            self.message_fade_started = None;
-            return false;
+    /// Point hover at `id`, easing the band in when it lands on a new card.
+    pub fn set_hovered_entry(&mut self, id: Option<Uuid>) {
+        if id != self.hovered_entry_id && id.is_some() && !self.reduce_motion {
+            self.hover_fade = Some(super::anim::Tween::start(super::anim::HOVER_MS));
         }
-
-        let elapsed = started.elapsed().as_millis() as f32;
-        if elapsed >= MESSAGE_FADE_MS as f32 {
-            self.message_fade_started = None;
-            return false;
-        }
-
-        // Quad-out: fast at the start, settling gently — the shape that reads
-        // as "smooth" rather than linear-and-mechanical.
-        let t = (elapsed / MESSAGE_FADE_MS as f32).clamp(0.0, 1.0);
-        let eased = 1.0 - (1.0 - t) * (1.0 - t);
-        let toward_bg = 1.0 - eased;
-
-        let bg = crate::style::BG();
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                let Some(cell) = buf.cell_mut((x, y)) else {
-                    continue;
-                };
-                cell.set_style(
-                    ratatui::style::Style::default()
-                        .fg(blend(cell.fg, bg, toward_bg))
-                        .bg(blend(cell.bg, bg, toward_bg))
-                        .add_modifier(cell.modifier),
-                );
-            }
-        }
-
-        self.needs_render = true;
-        true
+        self.hovered_entry_id = id;
     }
 
     /// Request re-render

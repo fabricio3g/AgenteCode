@@ -8,6 +8,8 @@ pub mod markdown;
 pub mod pick;
 pub mod plan_ask;
 pub mod plan_review;
+pub mod process_view;
+pub mod scrollbar;
 pub mod subagent_detail;
 pub mod welcome;
 

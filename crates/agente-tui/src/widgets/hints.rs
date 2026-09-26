@@ -26,27 +26,14 @@ const HINTS: &[(&str, &str)] = &[
     ("F1", "help"),
 ];
 
-/// Compact `9.5k / 200k` context readout for the header (no
-/// percentage). `None` when no context window is known. The bool flags >70%
-/// full (warning color). `total_tokens` is the live transcript estimate
-/// (recomputed from `session.conversation` on Done/Cancelled/compact — see
+/// `(used, window)` for the context meter, `None` when the model's window
+/// is unknown. `total_tokens` is the live transcript estimate (recomputed
+/// from `session.conversation` on Done/Cancelled/compact — see
 /// `state/agent.rs`), not a cumulative sum.
-pub(crate) fn context_usage(state: &AppState) -> Option<(String, bool)> {
+pub(crate) fn context_ratio(state: &AppState) -> Option<(usize, usize)> {
     let model = state.resolve_model(&state.config.current_provider, &state.config.current_model)?;
     let limit = model.limits.context as usize;
-    if limit == 0 {
-        return None;
-    }
-    let used = state.agent.total_tokens as usize;
-    let pct = used as f64 / limit as f64;
-    Some((
-        format!(
-            "{} / {}",
-            format_token_count(used),
-            format_token_count(limit)
-        ),
-        pct > 0.7,
-    ))
+    (limit > 0).then_some((state.agent.total_tokens as usize, limit))
 }
 
 pub(crate) fn format_token_count(tokens: usize) -> String {
@@ -69,36 +56,102 @@ pub(crate) fn format_token_count(tokens: usize) -> String {
     }
 }
 
+/// Status segments for the row under the composer, in drop order (first
+/// to go when narrow): `plan │ $0.042 · 82% cached │ ━━━━━━━━ 61k / 262k`.
+fn status_segments(state: &AppState) -> Vec<Vec<Span<'static>>> {
+    let on_bg = |text: String, fg| Span::styled(text, Style::default().fg(fg).bg(BG()));
+    let mut segments = vec![crate::widgets::input::mode_spans(state)];
+    if let Some(spend) = state.agent.spend.label() {
+        segments.push(vec![on_bg(spend, FG_DIM())]);
+    }
+    if let Some(smart) = state.agent.compacting {
+        let label = if smart {
+            "summarizing context…"
+        } else {
+            "compacting…"
+        };
+        segments.push(vec![on_bg(label.to_string(), PRIMARY())]);
+    } else if let Some((used, limit)) = context_ratio(state) {
+        segments.push(context_meter(used, limit));
+    }
+    segments
+}
+
+/// `━━━━━━━━ 61k / 262k`: an 8-cell fill meter plus the numbers. Muted
+/// normally, amber past 70%, red past 85% — where auto-compaction starts.
+fn context_meter(used: usize, limit: usize) -> Vec<Span<'static>> {
+    const CELLS: usize = 8;
+    let ratio = used as f64 / limit.max(1) as f64;
+    let color = if ratio >= 0.85 {
+        ERROR()
+    } else if ratio >= 0.7 {
+        WARNING()
+    } else {
+        FG_MUTED()
+    };
+    let filled = ((ratio * CELLS as f64).round() as usize).min(CELLS);
+    vec![
+        Span::styled("━".repeat(filled), Style::default().fg(color).bg(BG())),
+        Span::styled(
+            "━".repeat(CELLS - filled),
+            Style::default().fg(BORDER_RULE()).bg(BG()),
+        ),
+        Span::styled(
+            format!(
+                " {} / {}",
+                format_token_count(used),
+                format_token_count(limit)
+            ),
+            Style::default().fg(color).bg(BG()),
+        ),
+    ]
+}
+
+fn width_of(spans: &[Span<'static>]) -> usize {
+    spans
+        .iter()
+        .map(|sp| crate::widgets::display_width(&sp.content))
+        .sum()
+}
+
+/// The row under the composer: key hints on the left (hidden while typing),
+/// live status on the right. Status wins the space; hints take what is left.
 pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     if area.height == 0 || area.width == 0 {
         return;
     }
     let canvas = Style::default().bg(BG());
-    // Typing is when the hints matter least: the row goes quiet until the
-    // composer is empty again.
-    if !state.input.input_text.is_empty() {
-        frame.render_widget(Paragraph::new("").style(canvas), area);
-        return;
-    }
-
-    // Same `key action · key action` grammar as every modal footer; middle
-    // hints drop whole when narrow, the trailing `F1 help` stays.
     let max = area.width as usize;
-    let mut spans = vec![Span::styled(" ", canvas)];
-    spans.extend(footer_hints(HINTS, area.width.saturating_sub(1)));
 
-    // Right-aligned version watermark.
-    let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
-    let used: usize = spans
-        .iter()
-        .map(|sp| crate::widgets::display_width(&sp.content))
-        .sum();
-    let vw = crate::widgets::display_width(&version);
-    if used + vw + 1 < max {
-        spans.push(Span::styled(" ".repeat(max - used - vw), canvas));
-        spans.push(Span::styled(version, Style::default().fg(FG_DIM())));
+    let mut segments = status_segments(state);
+    let joined_width = |segs: &[Vec<Span<'static>>]| -> usize {
+        segs.iter().map(|seg| width_of(seg)).sum::<usize>() + 3 * segs.len().saturating_sub(1)
+    };
+    while segments.len() > 1 && joined_width(&segments) + 2 > max {
+        segments.remove(0);
     }
+    let mut status: Vec<Span<'static>> = Vec::new();
+    for (i, segment) in segments.into_iter().enumerate() {
+        if i > 0 {
+            status.push(Span::styled(" │ ", Style::default().fg(FG_DIM()).bg(BG())));
+        }
+        status.extend(segment);
+    }
+    status.push(Span::styled(" ", canvas));
+    let status_w = width_of(&status);
 
+    // `key action · key action` in the space the status leaves; quiet while
+    // the composer has text.
+    let mut spans = vec![Span::styled(" ", canvas)];
+    let hint_budget = max.saturating_sub(status_w + 3);
+    if state.input.input_text.is_empty() && hint_budget >= 12 {
+        spans.extend(footer_hints(HINTS, hint_budget as u16));
+    }
+    let used = width_of(&spans);
+    if used + status_w <= max {
+        spans.push(Span::styled(" ".repeat(max - used - status_w), canvas));
+        spans.extend(status);
+    }
     frame.render_widget(Paragraph::new(Line::from(spans)).style(canvas), area);
 }
 
@@ -120,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn context_usage_reads_model_limit() {
+    fn context_meter_reads_model_limit() {
         let mut state = AppState::new(AppConfig::default(), "/tmp/hints-test".to_string());
         state.config.config.catalog = Some(
             ModelCatalog::parse_json(
@@ -147,13 +200,16 @@ mod tests {
         state.config.connected_providers.push("test".to_string());
         state.agent.total_tokens = 9500;
 
-        let (text, warn) = context_usage(&state).expect("usage");
-        assert_eq!(text, "9.5k / 200k");
-        assert!(!warn);
-
-        state.agent.total_tokens = 180_000;
-        let (_, warn) = context_usage(&state).expect("usage");
-        assert!(warn);
+        let (used, limit) = context_ratio(&state).expect("usage");
+        assert_eq!((used, limit), (9_500, 200_000));
+        let text = |spans: Vec<Span<'static>>| -> String {
+            spans.iter().map(|s| s.content.as_ref()).collect()
+        };
+        let meter = context_meter(used, limit);
+        assert_eq!(text(meter.clone()), "━━━━━━━━ 9.5k / 200k");
+        assert_eq!(meter[2].style.fg, Some(FG_MUTED()));
+        // Past the 85% auto-compact line the meter turns red.
+        assert_eq!(context_meter(180_000, limit)[0].style.fg, Some(ERROR()));
     }
 
     #[test]
@@ -170,16 +226,25 @@ mod tests {
     }
 
     #[test]
-    fn hints_drop_middle_segments_when_narrow() {
+    fn narrow_rows_keep_status_and_shed_hints() {
         let state = AppState::new(AppConfig::default(), "/tmp/hints-test".to_string());
-        let backend = TestBackend::new(24, 1);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
-        let text: String = (0..24)
-            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
-            .collect();
-        assert!(!text.contains("Ctrl+P"), "got: {text}");
-        assert!(text.contains("F1 help"), "escape hatch stays: {text}");
+        let row = |width: u16| -> String {
+            let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+            terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+            (0..width)
+                .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+                .collect()
+        };
+        // Wide: hints left, status right.
+        let wide = row(120);
+        assert!(wide.contains("F1 help") && wide.contains("build"), "{wide}");
+        // Narrow: the status wins the row; hints give way whole.
+        let narrow = row(24);
+        assert!(!narrow.contains("Ctrl+P"), "got: {narrow}");
+        assert!(
+            narrow.trim_end().ends_with("128k"),
+            "status stays: {narrow}"
+        );
     }
 
     #[test]
@@ -191,6 +256,7 @@ mod tests {
         let text: String = (0..80)
             .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
             .collect();
-        assert!(text.trim().is_empty(), "got: {text}");
+        assert!(!text.contains("Shift+Tab"), "hints hide: {text}");
+        assert!(text.contains("build"), "status stays: {text}");
     }
 }

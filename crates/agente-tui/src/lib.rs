@@ -1,5 +1,6 @@
 pub mod app;
 pub mod at_file_picker;
+pub mod brand;
 pub mod command_palette;
 pub mod connect;
 pub mod doctor;
@@ -9,11 +10,14 @@ mod freeze_harness;
 pub mod git_status;
 pub mod help;
 pub mod mentions;
+pub mod message_actions;
 pub mod model_selector;
 pub mod session_picker;
+pub mod settings;
 pub mod slash_command;
 pub mod state;
 pub mod style;
+pub mod subagent_models;
 pub mod syntax_highlight;
 pub mod thinking_selector;
 #[cfg(test)]

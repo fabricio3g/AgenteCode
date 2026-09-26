@@ -95,6 +95,7 @@ impl App {
     ) -> anyhow::Result<Self> {
         enable_raw_mode()?;
         io::stdout().execute(EnterAlternateScreen)?;
+        io::stdout().execute(crossterm::terminal::SetTitle(crate::brand::PRODUCT_NAME))?;
         crossterm::execute!(
             io::stdout(),
             crossterm::event::EnableMouseCapture,
@@ -268,6 +269,7 @@ impl App {
         let drain_elapsed = drain_start.elapsed();
 
         let anim_active = self.state.has_active_animation();
+        let ambient = self.state.wants_ambient_paint();
         let is_streaming = self.state.agent.wants_stream_paint();
         // The approval ◆ pulse needs ticks even with empty stream buffers.
         let waiting_approval = matches!(
@@ -284,6 +286,11 @@ impl App {
             Duration::from_millis(8)
         } else if anim_active || waiting_approval {
             Duration::from_millis(16)
+        } else if ambient {
+            Self::paint_delay(
+                self.state.ui.last_stream_paint_at.map(|at| at.elapsed()),
+                crate::widgets::welcome::SEA_FRAME_MS,
+            )
         } else {
             Duration::from_millis(100)
         };
@@ -315,7 +322,12 @@ impl App {
                 .last_stream_paint_at
                 .map(|t| t.elapsed().as_millis() >= Self::STREAM_PAINT_MIN_MS)
                 .unwrap_or(true);
-        let should_render = user_wants_paint || stream_paint_due;
+        // The hero's ambient sea: a slow repaint of its own.
+        let ambient_paint_due = self.state.wants_ambient_paint()
+            && self.state.ui.last_stream_paint_at.is_none_or(|t| {
+                t.elapsed().as_millis() >= u128::from(crate::widgets::welcome::SEA_FRAME_MS)
+            });
+        let should_render = user_wants_paint || stream_paint_due || ambient_paint_due;
 
         let mut paint_elapsed = Duration::ZERO;
         if should_render {
@@ -329,7 +341,7 @@ impl App {
                 render::render_app_safe(&mut self.terminal, state);
             }
             paint_elapsed = paint_start.elapsed();
-            if is_streaming || anim_active || waiting_approval {
+            if is_streaming || anim_active || waiting_approval || ambient_paint_due {
                 self.state.ui.last_stream_paint_at = Some(paint_start);
             }
         }

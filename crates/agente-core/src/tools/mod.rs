@@ -890,22 +890,33 @@ impl ToolRegistry {
         self.tools.get(name).map(|t| t.as_ref())
     }
 
+    /// Tool definitions, sorted by name.
+    ///
+    /// The order is part of every request's cached prefix: `tools` is a
+    /// `HashMap` with a per-instance random seed and a registry is rebuilt
+    /// each turn, so an unsorted list reshuffled the tools on every turn and
+    /// broke prompt caching on every provider.
     pub fn definitions(&self) -> Vec<ToolDefinition> {
-        self.tools
+        let mut defs: Vec<ToolDefinition> = self
+            .tools
             .values()
             .map(|t| ToolDefinition {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
                 parameters: t.parameters(),
             })
-            .collect()
+            .collect();
+        defs.sort_by(|a, b| a.name.cmp(&b.name));
+        defs
     }
 
     /// Get tool definitions filtered by agent mode.
     /// Plan mode only allows non-mutating tools (kind-derived, see
     /// [`ToolKind::mutates_project`]).
+    /// Sorted by name for the same prompt-cache reason as [`Self::definitions`].
     pub fn definitions_for_mode(&self, mode: crate::types::AgentMode) -> Vec<ToolDefinition> {
-        self.tools
+        let mut defs: Vec<ToolDefinition> = self
+            .tools
             .values()
             .filter(|t| {
                 match mode {
@@ -921,7 +932,9 @@ impl ToolRegistry {
                 description: t.description().to_string(),
                 parameters: t.parameters(),
             })
-            .collect()
+            .collect();
+        defs.sort_by(|a, b| a.name.cmp(&b.name));
+        defs
     }
 
     /// Check if a tool is allowed in the given mode
@@ -1487,5 +1500,29 @@ mod tests {
         assert!(resolved.starts_with(&canon_project));
         // Fully resolved to the real file, not left pointing at the link.
         assert_eq!(std::fs::read_to_string(&resolved).unwrap(), "x");
+    }
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::ToolRegistry;
+
+    fn names(defs: Vec<crate::types::ToolDefinition>) -> Vec<String> {
+        defs.into_iter().map(|d| d.name).collect()
+    }
+
+    /// Each turn builds a fresh registry; the tools array is part of the
+    /// cached prompt prefix and must never reshuffle between turns.
+    #[test]
+    fn tool_order_is_identical_across_registries() {
+        let first = names(ToolRegistry::new("/tmp/order").definitions());
+        for _ in 0..8 {
+            assert_eq!(names(ToolRegistry::new("/tmp/order").definitions()), first);
+        }
+        assert!(first.windows(2).all(|w| w[0] <= w[1]), "sorted: {first:?}");
+        let plan = names(
+            ToolRegistry::new("/tmp/order").definitions_for_mode(crate::types::AgentMode::Plan),
+        );
+        assert!(plan.windows(2).all(|w| w[0] <= w[1]), "sorted: {plan:?}");
     }
 }

@@ -402,7 +402,8 @@ fn is_mutating_file_tool(tool_name: &str) -> bool {
 }
 
 fn parse_mode(mode: &str) -> AgentMode {
-    if mode.eq_ignore_ascii_case("build") {
+    // `auto` is the TUI's build-with-auto-approve; headless runs it as build.
+    if mode.eq_ignore_ascii_case("build") || mode.eq_ignore_ascii_case("auto") {
         AgentMode::Build
     } else {
         AgentMode::Plan

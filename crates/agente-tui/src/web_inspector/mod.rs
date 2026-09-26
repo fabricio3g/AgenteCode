@@ -647,14 +647,24 @@ fn dispatch_actor_action(
     }
 }
 
-/// Standalone interactive studio web page.
+/// Standalone interactive studio web page, with the brand favicon.
 fn get_studio_html() -> &'static str {
-    r##"<!DOCTYPE html>
+    static PAGE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        STUDIO_HTML.replacen(
+            "<title>",
+            &format!("{}\n<title>", crate::brand::favicon_link()),
+            1,
+        )
+    });
+    &PAGE
+}
+
+const STUDIO_HTML: &str = r##"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agente TUI — Live Browser Studio & Inspector</title>
+<title>Agente Code — Live Browser Studio & Inspector</title>
 <style>
   :root {
     --bg-app: #0c0c0f;
@@ -1120,5 +1130,4 @@ fn get_studio_html() -> &'static str {
 </script>
 </body>
 </html>
-"##
-}
+"##;

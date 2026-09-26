@@ -4,9 +4,7 @@
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-};
+use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::state::{AppState, PlanReviewPhase};
@@ -84,19 +82,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     ])
     .areas(inner);
 
-    // ── Meta ─────────────────────────────────────────────────────────────
-    {
-        let meta = format!("{} · v{} · ↑↓ / PgUp·PgDn scroll", plan.path, plan.version);
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                crate::widgets::truncate_cells(&meta, meta_row.width as usize),
-                Style::default().fg(FG_DIM()).bg(BG_PANEL()),
-            ))
-            .style(Style::default().bg(BG_PANEL())),
-            meta_row,
-        );
-    }
-
     // ── Body: full-width markdown ────────────────────────────────────────
     let [body_main, scroll_col] =
         Layout::horizontal([Constraint::Fill(1), Constraint::Length(1)]).areas(body);
@@ -160,21 +145,40 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         text_area,
     );
 
-    // Scrollbar
-    if total > visible && scroll_col.height > 0 {
-        let mut sb_state = ScrollbarState::new(total as usize)
-            .position(scroll as usize)
-            .viewport_content_length(visible as usize);
-        frame.render_stateful_widget(
-            Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                .begin_symbol(None)
-                .end_symbol(None)
-                .track_symbol(Some("│"))
-                .thumb_symbol("█")
-                .style(Style::default().fg(BORDER_SUBTLE()).bg(BG_PANEL()))
-                .thumb_style(Style::default().fg(FG_DIM()).bg(BG_PANEL())),
-            scroll_col,
-            &mut sb_state,
+    crate::widgets::scrollbar::render(
+        frame,
+        scroll_col,
+        crate::widgets::scrollbar::ScrollSurface::Plan,
+        crate::widgets::scrollbar::Viewport {
+            offset: scroll as usize,
+            visible: visible as usize,
+            total: total as usize,
+        },
+        BG_PANEL(),
+        &state.ui,
+    );
+
+    // ── Meta: file · version on the left, where you are on the right ─────
+    {
+        let position = crate::widgets::scrollbar::position_label(
+            scroll as usize,
+            visible as usize,
+            total as usize,
+        )
+        .map(|at| format!("↑↓ scroll · {at}"))
+        .unwrap_or_default();
+        let meta = crate::widgets::justify(
+            vec![Span::styled(
+                format!("{} · v{}", plan.path, plan.version),
+                Style::default().fg(FG_DIM()),
+            )],
+            vec![Span::styled(position, Style::default().fg(FG_DIM()))],
+            meta_row.width as usize,
+            BG_PANEL(),
+        );
+        frame.render_widget(
+            Paragraph::new(Line::from(meta)).style(Style::default().bg(BG_PANEL())),
+            Rect::new(meta_row.x, meta_row.y, meta_row.width, 1),
         );
     }
 

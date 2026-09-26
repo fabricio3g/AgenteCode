@@ -89,6 +89,8 @@ pub struct SubagentHostConfig {
     /// spawning used to re-read `.agente/agents` from disk on every `task`
     /// call. Built-ins are always live.
     pub custom_agents: Vec<CustomSubagent>,
+    /// User-configured per-type model overrides (`subagent_models` setting).
+    pub subagent_models: crate::config::SubagentModels,
 }
 
 /// Spawn orchestration + shared registry, shareable between parent and children.
@@ -517,6 +519,13 @@ impl SubagentHost {
             Ok(cfg) => cfg,
             Err(e) => return err_result(e),
         };
+        if let Some(chosen) = crate::config::subagent_model_for(
+            &self.inner.config.subagent_models,
+            &request.subagent_type,
+        ) {
+            cfg.model = Some(chosen.model.clone());
+            cfg.provider = Some(chosen.provider.clone());
+        }
 
         // Plan-mode parent: every child runs read-only. Coerce instead of
         // rejecting — the `task` default is `general-purpose` (capability
@@ -696,7 +705,13 @@ impl SubagentHost {
                 cfg.cwd = Some(info.path.clone());
                 worktree_info = Some(info);
             }
-        } else if request.isolation == SubagentIsolation::Worktree && request.cwd.is_none() {
+        } else if request.isolation == SubagentIsolation::Worktree
+            && request.cwd.is_none()
+            // A read-only child (explore, plan, anything under a Plan-mode
+            // parent) cannot change files, so it reads the parent root
+            // directly: no checkout to create, seed, or clean up.
+            && cfg.capability != SubagentCapabilityMode::ReadOnly
+        {
             if let Some(root) = worktree::find_repo_root(Path::new(&self.inner.config.project_dir))
             {
                 let label = format!("{}-{}", request.subagent_type, short_id(id));
@@ -874,7 +889,10 @@ impl SubagentHost {
             sender: child_tx.clone(),
             task_id: child_task_id,
             messages,
-            provider_id: host.inner.config.provider_id.clone(),
+            provider_id: cfg
+                .provider
+                .clone()
+                .unwrap_or_else(|| host.inner.config.provider_id.clone()),
             model: model.clone(),
             thinking_level: host.inner.config.thinking_level.clone(),
             project_dir: cfg
@@ -898,6 +916,8 @@ impl SubagentHost {
             depth: depth + 1,
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            // Children always trim: they are short-lived and cheap.
+            smart_compaction: false,
         };
         let thread_name = format!("agente-subagent-{child_id}");
         let error_sender = child_tx;
@@ -1163,6 +1183,7 @@ fn forward_child_events(
                     request,
                 });
             }
+            AgentEvent::CompactionStarted { .. } => {}
             AgentEvent::ContextCompacted { summary, .. } => {
                 send(AgentEvent::SubagentText {
                     id: subagent_id.clone(),
@@ -1276,6 +1297,23 @@ fn forward_child_events(
                 maybe_notify_completion(&host, &subagent_id, SubagentStatus::Failed, &summary);
                 break;
             }
+            // A child's spend is the session's spend: pass it up unchanged
+            // (grandchildren arrive here already forwarded by their parent).
+            AgentEvent::CallUsage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                cost_usd,
+                subagent_id: nested,
+            } => send(AgentEvent::CallUsage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                cost_usd,
+                subagent_id: nested.or_else(|| Some(subagent_id.clone())),
+            }),
             // Not relevant from a child loop.
             AgentEvent::Thinking
             | AgentEvent::ReasoningDelta(_)
@@ -1398,6 +1436,7 @@ mod tests {
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: Vec::new(),
+                subagent_models: Default::default(),
                 event_sender,
                 task_id: 1,
                 provider_id: "test".into(),
@@ -1924,6 +1963,7 @@ mod tests {
         let host = SubagentHost::new(
             SubagentHostConfig {
                 custom_agents: Vec::new(),
+                subagent_models: Default::default(),
                 event_sender,
                 task_id: 1,
                 provider_id: "test".into(),

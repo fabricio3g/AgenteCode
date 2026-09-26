@@ -62,9 +62,10 @@ impl WorktreeInfo {
     }
 }
 
-/// One warm checkout kept ready. More than one rarely helps: children start
-/// seconds apart and the replenish task refills while the first runs.
-const WARM_TARGET: usize = 1;
+/// Warm checkouts kept ready. Only writing children take one (read-only
+/// children run in the parent root), and they tend to arrive in pairs when
+/// the model fans out, so two warm ones cover the common burst.
+const WARM_TARGET: usize = 2;
 
 /// Worktree directories older than this are collected at pool creation. Only
 /// checkouts explicitly marked [`STATE_DISPOSABLE`] are ever removed.

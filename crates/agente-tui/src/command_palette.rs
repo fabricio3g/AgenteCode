@@ -39,6 +39,8 @@ pub enum Command {
     Redo,
     InitProject,
     ListSubagents,
+    SubagentModels,
+    Settings,
     Doctor,
     ViewPlan,
     ViewChanges,
@@ -70,6 +72,8 @@ impl Command {
             Self::Redo,
             Self::InitProject,
             Self::ListSubagents,
+            Self::SubagentModels,
+            Self::Settings,
             Self::Doctor,
             Self::ViewPlan,
             Self::ViewChanges,
@@ -101,6 +105,8 @@ impl Command {
             Self::Redo => "Redo File Changes",
             Self::InitProject => "Initialize Project",
             Self::ListSubagents => "List Subagents",
+            Self::SubagentModels => "Subagent Models",
+            Self::Settings => "Settings",
             Self::Doctor => "Terminal Doctor",
             Self::ViewPlan => "View Plan",
             Self::ViewChanges => "View Changes",
@@ -132,6 +138,8 @@ impl Command {
             Self::Redo => "/redo",
             Self::InitProject => "/init",
             Self::ListSubagents => "/subagents",
+            Self::SubagentModels => "/subagent-models",
+            Self::Settings => "/settings",
             Self::Doctor => "/doctor",
             Self::ViewPlan => "/plan",
             Self::ViewChanges => "/changes",
@@ -163,6 +171,8 @@ impl Command {
             Self::Redo => "Re-apply last undone file mutations",
             Self::InitProject => "Create or refresh AGENTS.md for this project",
             Self::ListSubagents => "List running/completed subagents (k to kill)",
+            Self::SubagentModels => "Choose the model each subagent type runs on",
+            Self::Settings => "Smart compaction, motion, approvals, theme",
             Self::Doctor => "Inspect terminal capabilities, fonts, clipboard & git",
             Self::ViewPlan => "Show the active plan checklist in chat",
             Self::ViewChanges => "Show session file changes and diffs in chat",
@@ -626,7 +636,7 @@ mod tests {
             "exact slash matches must lead: {slashes:?}"
         );
         // Every survivor has to mention "mo" at a word start somewhere.
-        assert!(slashes.len() <= 4, "filter is still too loose: {slashes:?}");
+        assert!(slashes.len() <= 5, "filter is still too loose: {slashes:?}");
         for unrelated in [
             "/clear", "/compact", "/editor", "/session", "/export", "/undo",
         ] {

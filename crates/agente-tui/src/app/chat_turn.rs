@@ -126,6 +126,9 @@ impl App {
             self.approval_broker.clone(),
             Some(Arc::clone(&self.state.config.mcp_manager)),
             self.state.subagent_registry.clone(),
+            self.state.config.config.subagent_models.clone(),
+            self.state.config.config.smart_compaction,
+            self.state.config.config.parallel_subagents(),
         );
         self.state.agent.task_handle = Some(task_handle);
 

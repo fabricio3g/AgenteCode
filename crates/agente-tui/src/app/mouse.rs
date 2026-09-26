@@ -6,6 +6,7 @@ use ratatui::layout::{Position, Rect};
 
 use super::App;
 use crate::state::{modal_owner, ChatSelection, ConnectScreen, HitTarget, ListId, ModalOwner};
+use crate::widgets::scrollbar::{ScrollSurface, ScrollbarGeom};
 use crate::widgets::welcome;
 
 /// Sentinel for live thinking panel (must match widgets/chat.rs).
@@ -28,6 +29,9 @@ impl App {
             ModalOwner::AtPicker => ListId::AtPicker,
             ModalOwner::ModelSelector => ListId::ModelSelector,
             ModalOwner::ThinkingSelector => ListId::ThinkingSelector,
+            ModalOwner::SubagentModels => ListId::SubagentModels,
+            ModalOwner::Settings => ListId::Settings,
+            ModalOwner::MessageActions => ListId::MessageActions,
             ModalOwner::SessionPicker if self.state.picker.session_picker_browsing => {
                 ListId::FolderBrowser
             }
@@ -49,6 +53,9 @@ impl App {
             ListId::AtPicker => &mut input.at_picker_selected,
             ListId::ModelSelector => &mut input.model_selector_selected,
             ListId::ThinkingSelector => &mut input.thinking_selector_selected,
+            ListId::SubagentModels => &mut input.subagent_models_selected,
+            ListId::Settings => &mut input.settings_selected,
+            ListId::MessageActions => &mut input.message_actions_selected,
             ListId::SessionList => &mut self.state.picker.session_picker_selected,
             ListId::FolderBrowser => &mut self.state.picker.session_picker_browse_selected,
             ListId::Welcome => &mut self.state.ui.welcome_selected,
@@ -95,6 +102,8 @@ impl App {
         match hit {
             HitTarget::Approval(action) => self.handle_approval_action(action)?,
             HitTarget::DetailTab(tab) => self.state.ui.select_subagent_tab(tab),
+            // Scrollbars act on press (see `route_mouse`), not on release.
+            HitTarget::Scrollbar(_) => {}
             HitTarget::Row {
                 list: ListId::Welcome,
                 index,
@@ -120,18 +129,14 @@ impl App {
 
     /// Everything the pointer position feeds into paint. A move that leaves
     /// this unchanged needs no repaint.
-    fn pointer_fingerprint(&self) -> (Option<HitTarget>, Option<uuid::Uuid>, [bool; 3]) {
+    fn pointer_fingerprint(&self) -> (Option<HitTarget>, Option<uuid::Uuid>, [bool; 2]) {
         let ui = &self.state.ui;
-        let scrollbar = ui
-            .mouse_pos
-            .is_some_and(|(x, y)| self.is_chat_scrollbar_hit(x, y));
         (
             ui.hovered_hit.clone(),
             ui.hovered_entry_id,
             [
                 ui.stop_hitbox.is_some_and(|r| ui.pointer_in(r)),
                 ui.jump_bottom_area.is_some_and(|r| ui.pointer_in(r)),
-                scrollbar,
             ],
         )
     }
@@ -171,6 +176,15 @@ impl App {
             .scroll_subagent_detail(if delta < 0 { -3 } else { 3 });
         true
     }
+
+    /// Wheel-scroll the live output view (it owns the screen while open).
+    fn process_view_scroll(&mut self, delta: i32) -> bool {
+        let Some(view) = self.state.ui.process_view.as_mut() else {
+            return false;
+        };
+        view.scroll_by(if delta < 0 { -3 } else { 3 });
+        true
+    }
 }
 
 impl App {
@@ -196,10 +210,31 @@ impl App {
                 let target = self.state.ui.hits.at(x, y);
                 self.hover_hit(target);
             }
+            // Scrollbars (any surface, modal or not): press jumps and starts
+            // a drag, drags scrub, release ends it.
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some(HitTarget::Scrollbar(geom)) = self.state.ui.hits.at(x, y) {
+                    self.state.ui.scroll_drag = Some(geom);
+                    self.state.ui.mouse_down = None;
+                    self.state.ui.drag_selecting = false;
+                    self.state.ui.selection = None;
+                    self.scroll_surface_to(geom, y);
+                    return Ok(());
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(geom) = self.state.ui.scroll_drag {
+                    self.scroll_surface_to(geom, y);
+                    return Ok(());
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) if self.state.ui.scroll_drag.is_some() => {
+                self.state.ui.scroll_drag = None;
+                self.state.ui.needs_render = true;
+                return Ok(());
+            }
             MouseEventKind::Up(MouseButton::Left)
-                if !self.state.ui.drag_selecting
-                    && !self.state.ui.chat_scrollbar_dragging
-                    && !self.state.ui.suppress_click_on_up =>
+                if !self.state.ui.drag_selecting && !self.state.ui.suppress_click_on_up =>
             {
                 // Resolve at the press position so release jitter can't
                 // retarget the click onto a neighbouring row.
@@ -231,7 +266,8 @@ impl App {
                     }
                     let consumed = self.picker_scroll(-1)
                         || self.plan_review_scroll(-1, mouse.column, mouse.row)
-                        || self.subagent_detail_scroll(-1, mouse.column, mouse.row);
+                        || self.subagent_detail_scroll(-1, mouse.column, mouse.row)
+                        || self.process_view_scroll(-1);
                     if !consumed && owner.wheel_falls_through_to_chat() {
                         // Floating card with no scrollable body (approval,
                         // plan ask, …): the transcript stays visible behind
@@ -247,7 +283,8 @@ impl App {
                     }
                     let consumed = self.picker_scroll(1)
                         || self.plan_review_scroll(1, mouse.column, mouse.row)
-                        || self.subagent_detail_scroll(1, mouse.column, mouse.row);
+                        || self.subagent_detail_scroll(1, mouse.column, mouse.row)
+                        || self.process_view_scroll(1);
                     if !consumed && owner.wheel_falls_through_to_chat() {
                         self.state.glide_by(3);
                     }
@@ -285,15 +322,7 @@ impl App {
                     self.state.ui.needs_render = true;
                     return Ok(());
                 }
-                if self.is_chat_scrollbar_hit(mouse.column, mouse.row) {
-                    self.state.ui.chat_scrollbar_dragging = true;
-                    self.state.ui.mouse_down = None;
-                    self.state.ui.drag_selecting = false;
-                    self.state.ui.selection = None;
-                    self.scroll_chat_from_scrollbar_row(mouse.row);
-                    self.state.ui.needs_render = true;
-                } else {
-                    self.state.ui.chat_scrollbar_dragging = false;
+                {
                     self.state.ui.mouse_down = Some((mouse.column, mouse.row));
                     self.state.ui.drag_selecting = false;
                     self.state.ui.selection = None;
@@ -311,10 +340,7 @@ impl App {
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                if self.state.ui.chat_scrollbar_dragging {
-                    self.scroll_chat_from_scrollbar_row(mouse.row);
-                    self.state.ui.needs_render = true;
-                } else if let Some((ox, oy)) = self.state.ui.mouse_down {
+                if let Some((ox, oy)) = self.state.ui.mouse_down {
                     let dx = mouse.column.abs_diff(ox);
                     let dy = mouse.row.abs_diff(oy);
                     if dx >= DRAG_THRESHOLD || dy >= DRAG_THRESHOLD {
@@ -341,9 +367,7 @@ impl App {
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                if self.state.ui.chat_scrollbar_dragging {
-                    self.state.ui.chat_scrollbar_dragging = false;
-                } else if self.state.ui.drag_selecting {
+                if self.state.ui.drag_selecting {
                     // Partial selection → copy selected text
                     if let Some(text) = self
                         .state
@@ -392,7 +416,7 @@ impl App {
                     .filter(|r| crate::state::is_hover_target(r))
                     .map(|r| r.entry_id);
                 if hover != prev_hover {
-                    self.state.ui.hovered_entry_id = hover;
+                    self.state.ui.set_hovered_entry(hover);
                 }
             }
             _ => {}
@@ -400,41 +424,32 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn is_chat_scrollbar_hit(&self, x: u16, y: u16) -> bool {
-        let Some(scrollbar_x) = self.state.ui.chat_scrollbar_x else {
-            return false;
-        };
-        x >= scrollbar_x.saturating_sub(1)
-            && x <= scrollbar_x.saturating_add(1)
-            && y >= self.state.ui.chat_scrollbar_y
-            && y < self
-                .state
-                .ui
-                .chat_scrollbar_y
-                .saturating_add(self.state.ui.chat_scrollbar_height)
-    }
-
-    pub(super) fn scroll_chat_from_scrollbar_row(&mut self, row: u16) {
-        let max_scroll = self.state.max_scroll();
-        let track_height = self.state.ui.chat_scrollbar_height;
-        let thumb_height = self.state.ui.chat_scrollbar_thumb_height.max(1);
-        let movable = track_height.saturating_sub(thumb_height);
-
-        self.state.ui.chat_auto_scroll = false;
-        if max_scroll == 0 || movable == 0 {
-            self.state.ui.chat_scroll = 0;
-            return;
+    /// Move `geom`'s surface so its thumb sits under pointer `row`.
+    fn scroll_surface_to(&mut self, geom: ScrollbarGeom, row: u16) {
+        let offset = geom.offset_at(row);
+        let ui = &mut self.state.ui;
+        match geom.surface {
+            ScrollSurface::Chat => {
+                // Direct manipulation: drop any eased scroll in flight.
+                ui.scroll_target = None;
+                ui.chat_scroll = offset;
+                ui.chat_auto_scroll = offset >= geom.max_offset;
+            }
+            ScrollSurface::Plan => {
+                self.state.plan_review.scroll = offset.min(usize::from(u16::MAX)) as u16;
+            }
+            ScrollSurface::Process => {
+                if let Some(view) = self.state.ui.process_view.as_mut() {
+                    view.follow = offset >= geom.max_offset;
+                    view.scroll = offset;
+                }
+            }
+            ScrollSurface::SubagentDetail => {
+                ui.subagent_detail_follow = false;
+                ui.subagent_detail_scroll = offset;
+            }
         }
-
-        // Dragging is direct manipulation: drop any eased scroll in flight.
-        self.state.ui.scroll_target = None;
-        let track_y = self.state.ui.chat_scrollbar_y;
-        let pos = row.saturating_sub(track_y).min(movable);
-        let scroll = ((pos as f64 / movable as f64) * max_scroll as f64).round() as usize;
-        self.state.ui.chat_scroll = scroll.min(max_scroll);
-        if self.state.ui.chat_scroll >= max_scroll {
-            self.state.ui.chat_auto_scroll = true;
-        }
+        self.state.ui.needs_render = true;
     }
 
     pub(super) fn handle_click(&mut self, x: u16, y: u16) -> anyhow::Result<()> {
@@ -472,6 +487,25 @@ impl App {
             // Layout will shift under the cursor; do not leave hover on a neighbor.
             self.state.ui.hovered_entry_id = None;
             self.state.ui.suppress_hover_until_move = true;
+            self.state.ui.needs_render = true;
+            return Ok(());
+        }
+
+        // A running tool → watch its live output.
+        if region.kind == ClickKind::LiveTool {
+            if let Some(call_id) = region.live_call.clone() {
+                self.state.ui.process_view = Some(crate::state::ProcessView::open(call_id));
+                self.state.ui.hovered_entry_id = None;
+                self.state.ui.needs_render = true;
+            }
+            return Ok(());
+        }
+
+        // Your own message → revert / fork / copy (expand lives there too).
+        if region.kind == ClickKind::Prompt {
+            self.state.ui.message_actions = Some(region.entry_id);
+            self.state.input.message_actions_selected = 0;
+            self.state.ui.hovered_entry_id = None;
             self.state.ui.needs_render = true;
             return Ok(());
         }
@@ -969,6 +1003,77 @@ mod tests {
         // mirror a rendered modal so max_scroll is non-zero.
         app.state.plan_review.body_line_count = 200;
         app.state.plan_review.body_visible = 20;
+    }
+
+    #[test]
+    fn plan_scrollbar_jumps_and_drags() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        let body: String = (1..=120).map(|i| format!("- step {i}\n")).collect();
+        app.state
+            .plan_review
+            .open_review("/tmp/plan.md".into(), "Plan".into(), body);
+        let buf = render(&mut app, 80, 24);
+        // The thumb glyph marks the bar's column; its first row is the top.
+        let (col, top) = (0..24u16)
+            .find_map(|y| {
+                (0..80u16)
+                    .find(|&x| buf[(x, y)].symbol() == "┃")
+                    .map(|x| (x, y))
+            })
+            .expect("plan scrollbar painted");
+        let meta = (0..80u16).map(|x| buf[(x, 2)].symbol()).collect::<String>();
+        assert!(meta.contains("of 120"), "position shown: {meta}");
+
+        // Press near the bottom of the track: jump to the end.
+        app.handle_mouse(down(col, top + 13)).unwrap();
+        let max = app.state.plan_review.max_scroll();
+        assert!(app.state.plan_review.scroll + 2 >= max, "jumped to the end");
+        // Drag back to the top: scrub to the start; release ends the drag.
+        app.handle_mouse(drag_to(col, top)).unwrap();
+        assert_eq!(app.state.plan_review.scroll, 0);
+        app.handle_mouse(up(col, top)).unwrap();
+        assert!(app.state.ui.scroll_drag.is_none());
+    }
+
+    #[test]
+    fn clicking_a_running_tool_opens_its_live_output() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.agent.state = agente_core::types::AgentState::Executing;
+        app.state.agent.start_live_tool(
+            "call-1".into(),
+            "shell".into(),
+            r#"{"command":"npm i -D puppeteer | tail -5"}"#.into(),
+            false,
+        );
+        app.state
+            .agent
+            .append_live_tool_output("call-1", "added 12 packages\nfound 0 vulnerabilities\n");
+        let buf = render(&mut app, 80, 24);
+        let row = find_row(&buf, "npm i").expect("running row painted");
+        let header: String = (0..80).map(|x| buf[(x, row)].symbol()).collect();
+        assert!(
+            header.trim_end().ends_with('s'),
+            "elapsed on the row: {header}"
+        );
+
+        app.handle_mouse(down(20, row)).unwrap();
+        app.handle_mouse(up(20, row)).unwrap();
+        assert!(app.state.ui.process_view.is_some(), "view opened");
+        let buf = render(&mut app, 80, 24);
+        assert!(
+            find_row(&buf, "found 0 vulnerabilities").is_some(),
+            "live output shown"
+        );
+        assert!(find_row(&buf, "follow").is_some(), "footer hints");
+
+        // The call finishes while watched: the final output stays.
+        let finished = app.state.agent.finish_live_tool("call-1");
+        app.state.ui.process_view.as_mut().unwrap().finished = finished;
+        let buf = render(&mut app, 80, 24);
+        assert!(find_row(&buf, "finished").is_some());
+        assert!(find_row(&buf, "found 0 vulnerabilities").is_some());
     }
 
     #[test]

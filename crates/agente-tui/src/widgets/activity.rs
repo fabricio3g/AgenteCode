@@ -118,6 +118,12 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 "Waiting on {running_children} subagent{}…",
                 if running_children == 1 { "" } else { "s" }
             )
+        } else if let Some(smart) = state.agent.compacting {
+            if smart {
+                "Summarizing context…".to_string()
+            } else {
+                "Compacting context…".to_string()
+            }
         } else {
             state
                 .agent

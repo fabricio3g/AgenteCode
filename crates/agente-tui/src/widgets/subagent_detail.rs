@@ -72,6 +72,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     if !model.is_empty() {
         meta.push_str(&format!(" · {model}"));
     }
+    if let Some(cost) = live.and_then(|s| s.spend.cost_label()) {
+        meta.push_str(&format!(" · {cost}"));
+    }
     let body = modal_card_tinted(
         frame,
         panel,
@@ -216,19 +219,31 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     for (i, line) in content.into_iter().skip(scroll).take(visible).enumerate() {
         paint_row(frame, 5 + i as u16, line);
     }
+    // Scrollbar in the card's right padding column, beside the content.
+    let total = max_scroll + visible;
+    super::scrollbar::render(
+        frame,
+        Rect::new(
+            body.right().saturating_sub(1),
+            body.y + 5,
+            1,
+            (visible as u16).min(body.height.saturating_sub(5)),
+        ),
+        super::scrollbar::ScrollSurface::SubagentDetail,
+        super::scrollbar::Viewport {
+            offset: scroll,
+            visible,
+            total,
+        },
+        BG_PANEL(),
+        &state.ui,
+    );
 
     // Tabs on the left, scroll position (only when it scrolls) on the right.
     let position = if state.ui.subagent_detail_follow {
         "following".to_string()
-    } else if max_scroll > 0 {
-        format!(
-            "{}–{} of {}",
-            scroll + 1,
-            (scroll + visible).min(max_scroll + visible),
-            max_scroll + visible
-        )
     } else {
-        String::new()
+        super::scrollbar::position_label(scroll, visible, max_scroll + visible).unwrap_or_default()
     };
     paint_row(
         frame,

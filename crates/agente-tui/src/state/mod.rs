@@ -10,6 +10,7 @@
 //! - `todo`: Todo list state
 
 mod agent;
+pub mod anim;
 mod chat_summary;
 mod config;
 mod hits;
@@ -23,8 +24,8 @@ mod ui;
 pub use session::diff_line_counts;
 
 pub use agent::{
-    AgentRuntimeState, ApprovalQueue, LiveToolCall, PendingApproval, RetryStatus, SubagentToolRow,
-    SubagentUiState,
+    format_usd, AgentRuntimeState, ApprovalQueue, LiveToolCall, PendingApproval, RetryStatus,
+    Spend, SubagentToolRow, SubagentUiState, WorkMode,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
 pub use hits::{HitMap, HitTarget, ListId};
@@ -38,12 +39,11 @@ pub use session::SessionState;
 pub use todo::TodoState;
 pub use ui::{
     is_hover_target, ChatCacheKey, ChatFrameSnapshot, ChatPlainLine, ChatSelection, Fold,
-    RenderedChatBlock, StreamMarkdownCache, SubagentDetailTab, UiState,
+    ProcessView, RenderedChatBlock, StreamMarkdownCache, SubagentDetailTab, UiState,
 };
 
 use agente_core::cancellation::AbortController;
 use agente_core::permissions::shared_permission_engine_with_config;
-use agente_core::types::AgentMode;
 
 /// Main application state - orchestrates all sub-states
 ///
@@ -86,18 +86,33 @@ pub struct AppState {
     pub subagent_registry: agente_core::subagent::SubagentRegistry,
 }
 
+/// Prefix marking a compaction notice in the transcript (rendered as a
+/// divider by the chat widget).
+pub const COMPACTION_MARK: &str = "⟲ ";
+
+/// Transcript line for a compaction: `⟲ Context compacted · 182k → 64k ·
+/// summarized` (or `trimmed`).
+pub fn compaction_notice(before: usize, after: usize, smart: bool) -> String {
+    use crate::widgets::hints::format_token_count as k;
+    format!(
+        "{COMPACTION_MARK}Context compacted · {} → {} · {}",
+        k(before),
+        k(after),
+        if smart { "summarized" } else { "trimmed" }
+    )
+}
+
 impl AppState {
     /// Create a new AppState with default values
     pub fn new(app_config: agente_core::config::AppConfig, project_dir: String) -> Self {
         let cancel_tx = AbortController::new();
         let project_dir = agente_core::util::normalize_project_dir(project_dir);
-        let mode = match app_config.default_mode.as_deref() {
-            Some(value) if value.eq_ignore_ascii_case("plan") => AgentMode::Plan,
-            _ => AgentMode::Build,
-        };
+        let work_mode = WorkMode::parse(app_config.default_mode.as_deref());
+        let mode = work_mode.agent_mode();
 
         let mut agent = AgentRuntimeState {
             mode,
+            auto_mode: work_mode == WorkMode::Auto,
             current_turn_mode: mode,
             shared_permission_engine: shared_permission_engine_with_config(
                 mode,
@@ -152,6 +167,7 @@ impl AppState {
         self.agent.last_turn_completion_tokens = 0;
         self.agent.last_turn_cache_read_tokens = 0;
         self.agent.last_turn_cache_creation_tokens = 0;
+        self.agent.spend = Spend::default();
         self.agent.last_response_duration = None;
 
         self.session = SessionState::new(self.session.project_dir.clone());
@@ -215,15 +231,10 @@ impl AppState {
     /// the mode for the next turn; the live permission engine stays pinned to
     /// `current_turn_mode` until the next turn starts.
     pub fn toggle_mode(&mut self) {
-        if self.agent.is_idle() {
-            self.agent.toggle_mode();
-        } else {
-            self.agent.mode = match self.agent.mode {
-                agente_core::types::AgentMode::Plan => agente_core::types::AgentMode::Build,
-                agente_core::types::AgentMode::Build => agente_core::types::AgentMode::Plan,
-            };
-        }
-        self.config.config.default_mode = Some(self.agent.mode.to_string());
+        let next = self.agent.work_mode().next();
+        let idle = self.agent.is_idle();
+        self.agent.select_work_mode(next, idle);
+        self.config.config.default_mode = Some(next.label().to_string());
         // No immediate disk write: the mode is persisted on the next config
         // flush (model change, session save, quit), keeping this path pure
         // state and testable without touching the user's real config.
@@ -263,10 +274,8 @@ impl AppState {
         app_config: agente_core::config::AppConfig,
     ) {
         let project_dir = agente_core::util::normalize_project_dir(project_dir);
-        let mode = match app_config.default_mode.as_deref() {
-            Some(value) if value.eq_ignore_ascii_case("plan") => AgentMode::Plan,
-            _ => AgentMode::Build,
-        };
+        let work_mode = WorkMode::parse(app_config.default_mode.as_deref());
+        let mode = work_mode.agent_mode();
         let thinking_level = app_config
             .default_thinking_level
             .clone()
@@ -282,6 +291,7 @@ impl AppState {
         self.agent.message_queue.clear();
         self.agent.steering_queue.clear();
         self.agent.mode = mode;
+        self.agent.auto_mode = work_mode == WorkMode::Auto;
         self.agent.current_turn_mode = mode;
         self.agent.thinking_level = thinking_level;
         self.agent.shared_permission_engine = permission_engine;
@@ -291,6 +301,7 @@ impl AppState {
         self.agent.last_turn_completion_tokens = 0;
         self.agent.last_turn_cache_read_tokens = 0;
         self.agent.last_turn_cache_creation_tokens = 0;
+        self.agent.spend = Spend::default();
         self.agent.last_response_duration = None;
 
         self.config = ConfigState::new(app_config);
@@ -310,7 +321,9 @@ impl AppState {
     pub fn add_user_message(&mut self, content: String) {
         let mode_str = self.agent.mode.to_string();
         self.session.add_user_message(content, mode_str);
-        self.ui.chat_auto_scroll = true;
+        // The prompt rises out of the composer into its bubble: glide to the
+        // new bottom while the new block fades in.
+        self.ui.glide_to_bottom();
         self.ui.trigger_message_fade();
     }
 
@@ -342,8 +355,8 @@ impl AppState {
         let reasoning = self.take_reasoning();
         self.session
             .add_assistant_message(content, mode_str, duration, reasoning);
+        // No fade: the text was already on screen while it streamed.
         self.ui.chat_auto_scroll = true;
-        self.ui.trigger_message_fade();
     }
 
     /// Add interrupted message to chat history
@@ -685,6 +698,15 @@ impl AppState {
     }
 
     /// Whether any continuous UI animation or active turn needs smooth continuous rendering
+    /// The hero's tilde sea is on screen and should keep drifting (a slow
+    /// ~15 fps ambient repaint, separate from the fast animation tick).
+    pub fn wants_ambient_paint(&self) -> bool {
+        self.ui.show_welcome_screen
+            && self.session.chat_history.is_empty()
+            && !self.ui.reduce_motion
+            && !self.plan_review.takes_chat_area()
+    }
+
     pub fn has_active_animation(&self) -> bool {
         self.ui.has_active_animation()
             || !matches!(
@@ -762,6 +784,14 @@ pub enum ModalOwner {
     SubagentDetail,
     Connect,
     ModelSelector,
+    /// Per-subagent-type model overrides (`/subagent-models`).
+    SubagentModels,
+    /// Preferences dialog (`/settings`).
+    Settings,
+    /// Revert / fork / copy for a clicked sent message.
+    MessageActions,
+    /// Live output of a running tool call.
+    ProcessView,
     ThinkingSelector,
     CommandPalette,
     Help,
@@ -835,6 +865,10 @@ impl ModalOwner {
                 | Self::SubagentDetail
                 | Self::Connect
                 | Self::ModelSelector
+                | Self::SubagentModels
+                | Self::Settings
+                | Self::MessageActions
+                | Self::ProcessView
                 | Self::ThinkingSelector
                 | Self::CommandPalette
                 | Self::Doctor
@@ -868,6 +902,12 @@ pub fn modal_owner(state: &AppState) -> ModalOwner {
     if state.picker.show_session_picker {
         return ModalOwner::SessionPicker;
     }
+    if state.ui.message_actions.is_some() {
+        return ModalOwner::MessageActions;
+    }
+    if state.ui.process_view.is_some() {
+        return ModalOwner::ProcessView;
+    }
     if state.ui.subagent_detail_id.is_some() {
         return ModalOwner::SubagentDetail;
     }
@@ -879,6 +919,12 @@ pub fn modal_owner(state: &AppState) -> ModalOwner {
     }
     if state.input.show_model_selector {
         return ModalOwner::ModelSelector;
+    }
+    if state.input.show_subagent_models {
+        return ModalOwner::SubagentModels;
+    }
+    if state.input.show_settings {
+        return ModalOwner::Settings;
     }
     if state.input.show_thinking_selector {
         return ModalOwner::ThinkingSelector;
@@ -912,6 +958,7 @@ mod tests {
     use super::*;
     use agente_core::config::AppConfig;
     use agente_core::session::{SessionData, SessionMeta};
+    use agente_core::types::AgentMode;
     use agente_core::types::{ChatEntry, Role};
 
     #[test]

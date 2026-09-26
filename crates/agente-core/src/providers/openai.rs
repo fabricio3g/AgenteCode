@@ -162,6 +162,16 @@ impl Provider for OpenAIProvider {
             }
         }
 
+        // Explicit prompt-cache breakpoints where the route needs them
+        // (OpenRouter's Claude/Gemini); auto-caching APIs get the same stable
+        // prefix without markers.
+        if super::cache::wants_breakpoints(false, &self.info.id, model) {
+            if let Some(system) = messages_json.iter_mut().find(|m| m["role"] == "system") {
+                super::cache::mark_last_block(system);
+            }
+            super::cache::mark_recent_user_turns(&mut messages_json);
+        }
+
         let mut body = serde_json::json!({
             "model": model.api_id,
             "messages": messages_json,
@@ -204,6 +214,16 @@ impl Provider for OpenAIProvider {
             .is_none_or(|v| !matches!(v, serde_json::Value::Bool(false)));
         if include_usage {
             body["stream_options"] = serde_json::json!({ "include_usage": true });
+        }
+        // OpenRouter always reports the real charge (`usage.cost`) in the
+        // final chunk — the old `usage: {include: true}` flag is deprecated.
+        //
+        // OpenCode Go's gateway only reuses a cached prefix when the request
+        // names its session: a stable `prompt_cache_key` routes every turn of
+        // one session to the same cache.
+        if let Some(key) = super::cache::prompt_cache_key(&self.info.id, model, context.session_id)
+        {
+            body["prompt_cache_key"] = serde_json::json!(key);
         }
 
         // Add options from model config (skip control knobs that are not wire params)
@@ -403,10 +423,17 @@ impl Provider for OpenAIProvider {
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0) as u32;
                 usage.total_tokens = usage.prompt_tokens.saturating_add(usage.completion_tokens);
-                usage.cache_read_tokens = json["usage"]["prompt_tokens_details"]["cached_tokens"]
-                    .as_u64()
-                    .unwrap_or(0) as u32;
-                usage.prompt_tokens = usage.prompt_tokens.saturating_sub(usage.cache_read_tokens);
+                // Hits/writes under every dialect (DeepSeek reports
+                // `prompt_cache_hit_tokens`, not `prompt_tokens_details`).
+                // OpenRouter bills the call itself: `usage.cost` in USD.
+                usage.cost_usd = u.get("cost").and_then(|v| v.as_f64());
+                let (read, write) = super::cache::openai_usage_cache(&json["usage"]);
+                usage.cache_read_tokens = read;
+                usage.cache_creation_tokens = write;
+                usage.prompt_tokens = usage
+                    .prompt_tokens
+                    .saturating_sub(read)
+                    .saturating_sub(write);
             }
         }
 
@@ -588,6 +615,11 @@ impl OpenAIProvider {
                 known.reasoning_options = vec![reasoning];
                 known.compat = crate::thinking::ThinkingFormat::OpenRouter;
             }
+            if !known.cost.is_priced() {
+                if let Some(cost) = live_pricing(raw) {
+                    known.cost = cost;
+                }
+            }
             return known;
         }
 
@@ -613,7 +645,7 @@ impl OpenAIProvider {
             api_id: id.to_string(),
             provider_id: self.info.id.clone(),
             capabilities,
-            cost: ModelCost::default(),
+            cost: live_pricing(raw).unwrap_or_default(),
             limits: ModelLimits {
                 // 0 means "unknown" — resolve/enrich fills from catalog or default.
                 context: live_context,
@@ -628,6 +660,31 @@ impl OpenAIProvider {
             compat: crate::thinking::detect_thinking_format(&self.info.id, &self.info.base_url),
         }
     }
+}
+
+/// Per-million prices from a live `/models` entry. OpenRouter publishes USD
+/// **per token** as strings (`"pricing": {"prompt": "0.000003", …}`); the
+/// catalog convention is per million tokens.
+fn live_pricing(raw: &serde_json::Value) -> Option<ModelCost> {
+    let pricing = raw.get("pricing")?;
+    let rate = |key: &str| -> f64 {
+        pricing
+            .get(key)
+            .and_then(|v| {
+                v.as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| v.as_f64())
+            })
+            .filter(|v: &f64| v.is_finite() && *v >= 0.0)
+            .map_or(0.0, |per_token| per_token * 1_000_000.0)
+    };
+    let cost = ModelCost {
+        input: rate("prompt"),
+        output: rate("completion"),
+        cache_read: rate("input_cache_read"),
+        cache_write: rate("input_cache_write"),
+    };
+    cost.is_priced().then_some(cost)
 }
 
 /// Convert OpenRouter's live model reasoning contract into the shared model
@@ -713,6 +770,20 @@ fn truncate_error_body(text: &str) -> String {
 
 #[cfg(test)]
 mod discovery_tests {
+    #[test]
+    fn live_openrouter_pricing_converts_per_token_strings() {
+        let raw = serde_json::json!({"pricing": {"prompt": "0.000003", "completion": "0.000015", "input_cache_read": "0.0000003"}});
+        let cost = super::live_pricing(&raw).expect("priced");
+        assert!((cost.input - 3.0).abs() < 1e-9);
+        assert!((cost.output - 15.0).abs() < 1e-9);
+        assert!((cost.cache_read - 0.3).abs() < 1e-9);
+        let free = serde_json::json!({"pricing": {"prompt": "0", "completion": "0"}});
+        assert!(
+            super::live_pricing(&free).is_none(),
+            "free models stay unpriced"
+        );
+    }
+
     use super::*;
     use std::sync::Arc;
 

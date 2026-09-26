@@ -44,6 +44,16 @@ struct Cli {
     acp_stdio: bool,
 
     #[arg(
+        short,
+        long,
+        value_name = "SESSION_ID",
+        num_args = 0..=1,
+        default_missing_value = "",
+        help = "Resume a saved session by id (or a unique prefix); bare --resume opens the picker"
+    )]
+    resume: Option<String>,
+
+    #[arg(
         long,
         help = "Headless only: require approval prompts instead of auto-approving tools"
     )]
@@ -185,7 +195,19 @@ fn main() -> anyhow::Result<()> {
         // Run TUI
         let runtime = tokio::runtime::Runtime::new()?;
         let mut app = App::new(config, project_dir, runtime)?;
+        if let Some(query) = cli.resume.as_deref() {
+            if let Err(error) = app.resume_session(query) {
+                // Leave the alternate screen before reporting.
+                drop(app);
+                eprintln!("agente: {error}");
+                std::process::exit(2);
+            }
+        }
         app.run()?;
+        // The terminal is restored by now: say how to come back.
+        if let Some(hint) = app.resume_hint() {
+            println!("\n{hint}\n");
+        }
     }
 
     Ok(())

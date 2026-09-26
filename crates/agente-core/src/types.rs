@@ -245,6 +245,10 @@ pub enum ClickKind {
     OpenAsset,
     /// Subagent card (click opens the live detail modal).
     Subagent,
+    /// A message the user sent (click opens revert / fork / copy).
+    Prompt,
+    /// A tool still running (click opens its live output).
+    LiveTool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,6 +273,9 @@ pub struct ClickRegion {
     pub content_start: usize,
     #[serde(default)]
     pub content_end: usize,
+    /// Provider call id of a running tool (`ClickKind::LiveTool`).
+    #[serde(default)]
+    pub live_call: Option<String>,
     /// Path to the media file or asset to open on click.
     #[serde(default)]
     pub asset_path: Option<String>,

@@ -171,6 +171,10 @@ impl App {
             | ModalOwner::Help
             | ModalOwner::Subagents
             | ModalOwner::SubagentDetail
+            | ModalOwner::SubagentModels
+            | ModalOwner::Settings
+            | ModalOwner::MessageActions
+            | ModalOwner::ProcessView
             | ModalOwner::ThinkingSelector => {}
         }
     }
@@ -444,6 +448,22 @@ impl App {
             }
             ModalOwner::ModelSelector => {
                 self.handle_model_selector_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::SubagentModels => {
+                self.handle_subagent_models_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::Settings => {
+                self.handle_settings_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::MessageActions => {
+                self.handle_message_actions_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::ProcessView => {
+                self.handle_process_view_key(key)?;
                 return Ok(true);
             }
             ModalOwner::CommandPalette => {
@@ -1158,6 +1178,175 @@ impl App {
         Ok(())
     }
 
+    /// Keys for the live output view: scroll, End follows, `s` stops the
+    /// running operation, Esc closes.
+    fn handle_process_view_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        let running = self
+            .state
+            .ui
+            .process_view
+            .as_ref()
+            .is_some_and(|view| self.state.agent.live_tool_calls.contains_key(&view.call_id));
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.state.ui.process_view = None,
+            KeyCode::Char('s') if running => {
+                self.stop_current_operation();
+                self.state.ui.process_view = None;
+            }
+            code => {
+                if let Some(view) = self.state.ui.process_view.as_mut() {
+                    match code {
+                        KeyCode::Up => view.scroll_by(-1),
+                        KeyCode::Down => view.scroll_by(1),
+                        KeyCode::PageUp => view.scroll_by(-20),
+                        KeyCode::PageDown => view.scroll_by(20),
+                        KeyCode::Home => {
+                            view.follow = false;
+                            view.scroll = 0;
+                        }
+                        KeyCode::End => view.follow = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Keys for the message dialog: move, Enter runs, r/f/c/e shortcuts.
+    fn handle_message_actions_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        use crate::message_actions::actions;
+        let Some(entry_id) = self.state.ui.message_actions else {
+            return Ok(());
+        };
+        let list = actions(&self.state, entry_id);
+        let last = list.len().saturating_sub(1);
+        let selected = self.state.input.message_actions_selected.min(last);
+        let chosen = match key.code {
+            KeyCode::Esc => {
+                self.state.ui.message_actions = None;
+                None
+            }
+            KeyCode::Up => {
+                self.state.input.message_actions_selected = selected.saturating_sub(1);
+                None
+            }
+            KeyCode::Down => {
+                self.state.input.message_actions_selected = (selected + 1).min(last);
+                None
+            }
+            KeyCode::Enter => list.get(selected).copied(),
+            KeyCode::Char(c) => list.iter().copied().find(|a| a.key() == c),
+            _ => None,
+        };
+        if let Some(action) = chosen {
+            self.run_message_action(entry_id, action)?;
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Keys for `/settings`: move, Enter/Space changes the row, Esc closes.
+    fn handle_settings_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        use crate::settings::{Setting, SETTINGS};
+        let last = SETTINGS.len() - 1;
+        let selected = self.state.input.settings_selected.min(last);
+        match key.code {
+            KeyCode::Esc => self.state.input.show_settings = false,
+            KeyCode::Up => self.state.input.settings_selected = selected.saturating_sub(1),
+            KeyCode::Down => self.state.input.settings_selected = (selected + 1).min(last),
+            KeyCode::Enter | KeyCode::Char(' ') => match SETTINGS[selected] {
+                Setting::SmartCompaction => {
+                    let config = &mut self.state.config.config;
+                    config.smart_compaction = !config.smart_compaction;
+                    self.state.persist_config();
+                }
+                Setting::ParallelSubagents => {
+                    let config = &mut self.state.config.config;
+                    config.max_parallel_subagents =
+                        Some(crate::settings::next_parallel(config.parallel_subagents()));
+                    self.state.persist_config();
+                }
+                Setting::ReduceMotion => {
+                    let on = !self.state.ui.reduce_motion;
+                    self.state.ui.reduce_motion = on;
+                    self.state.config.config.reduce_motion = on;
+                    self.state.persist_config();
+                }
+                Setting::AutoApprove => {
+                    let on = !self.state.agent.auto_approve_persistent;
+                    if !self.state.set_auto_approve(on) {
+                        self.state
+                            .ui
+                            .show_toast("Change this while the agent is idle".to_string());
+                    }
+                }
+                Setting::Theme => {
+                    self.execute_command(crate::command_palette::Command::ToggleTheme)?
+                }
+                Setting::SubagentModels => {
+                    self.execute_command(crate::command_palette::Command::SubagentModels)?;
+                }
+            },
+            _ => {}
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Keys for `/subagent-models`: move, Enter opens the model picker for the
+    /// row, Del/Backspace resets it to inherit, Esc closes.
+    fn handle_subagent_models_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        let input = &mut self.state.input;
+        let last = input.subagent_model_types.len().saturating_sub(1);
+        match key.code {
+            KeyCode::Esc => input.show_subagent_models = false,
+            KeyCode::Up => {
+                input.subagent_models_selected = input.subagent_models_selected.saturating_sub(1)
+            }
+            KeyCode::Down => {
+                input.subagent_models_selected = (input.subagent_models_selected + 1).min(last)
+            }
+            KeyCode::Enter => {
+                if let Some(target) = input
+                    .subagent_model_types
+                    .get(input.subagent_models_selected)
+                    .cloned()
+                {
+                    if self.state.is_connected() {
+                        self.state.input.model_selector_target = Some(target);
+                        self.state.input.show_model_selector = true;
+                        self.state.input.model_selector_query.clear();
+                        self.state.input.model_selector_selected = 0;
+                    } else {
+                        self.state.open_connect_screen();
+                    }
+                }
+            }
+            KeyCode::Delete | KeyCode::Backspace => {
+                if let Some(target) = input
+                    .subagent_model_types
+                    .get(input.subagent_models_selected)
+                {
+                    if self
+                        .state
+                        .config
+                        .config
+                        .subagent_models
+                        .remove(target.as_str())
+                        .is_some()
+                    {
+                        self.state.persist_config();
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
     pub(super) fn handle_model_selector_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
         // Use the same filtered list as rendering: only connected providers
         let all_entries: Vec<_> = self
@@ -1177,6 +1366,7 @@ impl App {
                 code: KeyCode::Esc, ..
             } => {
                 self.state.input.show_model_selector = false;
+                self.state.input.model_selector_target = None;
             }
             KeyEvent {
                 code: KeyCode::Up, ..
@@ -1201,6 +1391,21 @@ impl App {
                 if !self.state.is_connected() {
                     self.state.input.show_model_selector = false;
                     self.state.open_connect_screen();
+                } else if let (Some(entry), Some(target)) = (
+                    filtered.get(self.state.input.model_selector_selected),
+                    self.state.input.model_selector_target.take(),
+                ) {
+                    // Choosing for a subagent type: store the override, go
+                    // back to the subagent models dialog.
+                    self.state.config.config.subagent_models.insert(
+                        target,
+                        agente_core::config::SubagentModel {
+                            provider: entry.provider.clone(),
+                            model: entry.model_id.clone(),
+                        },
+                    );
+                    self.state.input.show_model_selector = false;
+                    self.state.persist_config();
                 } else if let Some(entry) = filtered.get(self.state.input.model_selector_selected) {
                     self.state.config.current_provider = entry.provider.clone();
                     self.state.config.current_model = entry.model_id.clone();
@@ -2337,22 +2542,10 @@ impl App {
                 .filter(|session| util::session_matches(session, folder, query))
                 .collect();
             if let Some(meta) = filtered.get(idx - 1) {
-                match session::load_session(&meta.session_id) {
-                    Ok(data) => {
-                        self.flush_state_to_disk();
-                        let config = agente_core::config::AppConfig::load_for_project(
-                            &data.meta.project_dir,
-                            self.state.config.config.catalog.clone(),
-                        );
-                        self.reset_current_session(data.meta.project_dir.clone(), config);
-                        self.state.load_from_session(&data);
-                        self.state.picker.close();
-                        self.state.ui.needs_render = true;
-                    }
-                    Err(_) => {
-                        self.state.picker.close();
-                    }
+                if let Ok(data) = session::load_session(&meta.session_id) {
+                    self.open_saved_session(&data);
                 }
+                self.state.picker.close();
             }
         }
         Ok(())
@@ -2476,6 +2669,14 @@ impl App {
         self.flush_state_to_disk();
         self.current_task_id = self.current_task_id.wrapping_add(1);
         self.state.reset_for_new_session();
+        // Straight to work: the hero steps aside and every key goes to the
+        // composer; the empty chat eases in so the switch reads as intended.
+        self.state.ui.show_welcome_screen = false;
+        if !self.state.ui.reduce_motion {
+            self.state.ui.surface_fade = Some(crate::state::anim::Tween::start(
+                crate::state::anim::MODAL_MS,
+            ));
+        }
         self.state.ui.show_toast("New session started".to_string());
         self.state.ui.needs_render = true;
     }
@@ -2581,10 +2782,28 @@ mod tests {
         assert_ne!(app.state.session.session_id, old_id);
         assert!(app.state.session.chat_history.is_empty());
         assert!(app.state.input.input_text.is_empty());
-        // The welcome screen returns so the empty state reads as new.
-        assert!(app.state.ui.show_welcome_screen);
+        // The hero steps aside: the empty chat owns the screen, keys go to
+        // the composer.
+        assert!(!app.state.ui.show_welcome_screen);
         // The toast confirms — no system message pollutes the new transcript.
         assert!(app.state.ui.toast.is_some());
+    }
+
+    #[test]
+    fn hero_new_session_dismisses_the_hero_and_focuses_the_composer() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = true;
+        app.state.ui.welcome_selected = 0; // "New session"
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.state.ui.show_welcome_screen, "hero is gone");
+        // Keys now type into the composer instead of driving the menu.
+        app.handle_key(key(KeyCode::Char('h'), KeyModifiers::NONE))
+            .unwrap();
+        app.handle_key(key(KeyCode::Down, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.input.input_text, "h");
+        assert_eq!(app.state.ui.welcome_selected, 0);
     }
 
     #[test]
@@ -2619,17 +2838,171 @@ mod tests {
     #[test]
     fn ctrl_tab_toggles_mode() {
         let mut app = test_app();
-        let before = app.state.agent.mode;
+        let before = app.state.agent.work_mode();
         app.handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
             .unwrap();
         assert_ne!(
-            app.state.agent.mode, before,
+            app.state.agent.work_mode(),
+            before,
             "Ctrl+Tab must toggle plan/build mode"
         );
-        // Toggling again returns to the original mode.
+        // Plan → build → auto: the third press returns to the start.
+        for _ in 0..2 {
+            app.handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
+                .unwrap();
+        }
+        assert_eq!(app.state.agent.work_mode(), before);
+    }
+
+    #[test]
+    fn settings_toggles_smart_compaction_which_defaults_off() {
+        let mut app = test_app();
+        assert!(!app.state.config.config.smart_compaction, "off by default");
+        app.execute_command(crate::command_palette::Command::Settings)
+            .unwrap();
+        app.state.input.settings_selected = 0; // Smart compaction
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.config.config.smart_compaction);
+        app.handle_key(key(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.state.input.show_settings);
+    }
+
+    #[test]
+    fn exit_hint_names_the_session_to_resume() {
+        let mut app = test_app();
+        assert_eq!(
+            app.resume_hint(),
+            None,
+            "nothing to resume in an empty session"
+        );
+        app.state.add_user_message("Fix the retry loop".into());
+        let hint = app.resume_hint().expect("hint");
+        let id = app.state.session.session_id.to_string();
+        assert!(hint.contains(&format!("agente --resume {id}")), "{hint}");
+        assert!(hint.contains("Fix the retry loop"), "labelled: {hint}");
+    }
+
+    #[test]
+    fn fork_from_a_sent_message_starts_a_branch_session() {
+        let mut app = test_app();
+        let user = |content: &str| types::Message {
+            role: types::Role::User,
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+        };
+        app.state.add_user_message("first".into());
+        app.state.session.conversation.push(user("first"));
+        app.state.add_user_message("second".into());
+        app.state.session.conversation.push(user("second"));
+        let old_session = app.state.session.session_id;
+        let second = app.state.session.chat_history[1].id;
+
+        app.state.ui.message_actions = Some(second);
+        app.handle_key(key(KeyCode::Char('f'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert_ne!(app.state.session.session_id, old_session, "new session");
+        assert!(app.state.ui.message_actions.is_none(), "dialog closed");
+        assert_eq!(
+            app.state.session.chat_history.len(),
+            1,
+            "chat up to the message"
+        );
+        assert_eq!(app.state.session.conversation.len(), 1);
+        assert_eq!(
+            app.state.input.input_text, "second",
+            "message back in the input"
+        );
+    }
+
+    #[test]
+    fn subagent_calls_count_for_the_child_and_the_session() {
+        use agente_core::agent::AgentEvent;
+        let mut app = test_app();
+        app.inject_agent_event(AgentEvent::SubagentStarted {
+            id: "child".into(),
+            subagent_type: "explore".into(),
+            description: "look around".into(),
+        });
+        let call = |cost, subagent_id: Option<&str>| AgentEvent::CallUsage {
+            prompt_tokens: 100,
+            completion_tokens: 10,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            cost_usd: Some(cost),
+            subagent_id: subagent_id.map(str::to_string),
+        };
+        app.inject_agent_event(call(0.004, Some("child")));
+        app.inject_agent_event(call(0.010, None));
+        app.process_agent_events();
+        let child = &app.state.agent.subagents["child"].spend;
+        assert_eq!(child.cost_label().as_deref(), Some("$0.004"));
+        assert_eq!(app.state.agent.spend.cost_label().as_deref(), Some("$0.01"));
+    }
+
+    #[test]
+    fn compaction_shows_progress_then_a_transcript_divider() {
+        use agente_core::agent::AgentEvent;
+        let mut app = test_app();
+        app.state.agent.state = types::AgentState::StreamingResponse;
+        app.inject_agent_event(AgentEvent::CompactionStarted { smart: true });
+        app.process_agent_events();
+        assert_eq!(app.state.agent.compacting, Some(true));
+        // A heartbeat during a slow summary keeps the indicator up.
+        app.inject_agent_event(AgentEvent::ToolHeartbeat { id: String::new() });
+        app.process_agent_events();
+        assert_eq!(app.state.agent.compacting, Some(true));
+
+        app.inject_agent_event(AgentEvent::ContextCompacted {
+            summary: "checkpoint".into(),
+            tokens_before: 182_000,
+            tokens_after: 64_000,
+            smart: true,
+            compacted_conversation: Vec::new(),
+        });
+        app.process_agent_events();
+        assert_eq!(app.state.agent.compacting, None);
+        let last = app.state.session.chat_history.last().unwrap();
+        assert_eq!(
+            last.content,
+            "⟲ Context compacted · 182k → 64k · summarized"
+        );
+    }
+
+    #[test]
+    fn auto_mode_is_build_with_every_call_approved() {
+        let mut app = test_app();
+        app.state
+            .agent
+            .select_work_mode(crate::state::WorkMode::Plan, true);
+        let cycle: Vec<_> = (0..3)
+            .map(|_| {
+                app.handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
+                    .unwrap();
+                app.state.agent.work_mode()
+            })
+            .collect();
+        use crate::state::WorkMode::*;
+        assert_eq!(cycle, [Build, Auto, Plan]);
+
+        app.state.agent.select_work_mode(Auto, true);
+        assert_eq!(app.state.agent.mode, types::AgentMode::Build);
+        assert!(app.state.agent.auto_approve_all(), "auto approves");
+        assert_eq!(app.state.config.config.default_mode, Some("plan".into()));
         app.handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
             .unwrap();
-        assert_eq!(app.state.agent.mode, before);
+        assert_eq!(app.state.agent.work_mode(), Plan);
+        assert!(
+            !app.state.agent.auto_approve_all(),
+            "leaving auto stops approving"
+        );
+        assert_eq!(app.state.config.config.default_mode, Some("plan".into()));
     }
 
     #[test]
@@ -2643,9 +3016,9 @@ mod tests {
             ),
         ] {
             let mut app = test_app();
-            let before = app.state.agent.mode;
+            let before = app.state.agent.work_mode();
             app.handle_key(key(code, modifiers)).unwrap();
-            assert_ne!(app.state.agent.mode, before);
+            assert_ne!(app.state.agent.work_mode(), before);
         }
     }
 
@@ -2654,21 +3027,21 @@ mod tests {
         let mut single = test_app();
         single.state.ui.show_welcome_screen = true;
         single.state.ui.welcome_selected = 1;
-        let mode = single.state.agent.mode;
+        let mode = single.state.agent.work_mode();
 
         single
             .handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
             .unwrap();
 
         assert_eq!(single.state.ui.welcome_selected, 1);
-        assert_ne!(single.state.agent.mode, mode);
+        assert_ne!(single.state.agent.work_mode(), mode);
     }
 
     #[test]
     fn ctrl_tab_selects_next_mode_while_agent_runs() {
         let mut app = test_app();
-        let before = app.state.agent.mode;
-        app.state.agent.current_turn_mode = before;
+        let before = app.state.agent.work_mode();
+        app.state.agent.current_turn_mode = before.agent_mode();
         let permission_mode = app
             .state
             .agent
@@ -2679,9 +3052,14 @@ mod tests {
         app.state.agent.state = types::AgentState::Executing;
         app.handle_key(key(KeyCode::Tab, KeyModifiers::CONTROL))
             .unwrap();
-        assert_ne!(app.state.agent.mode, before, "next-turn mode changed");
+        assert_ne!(
+            app.state.agent.work_mode(),
+            before,
+            "next-turn mode changed"
+        );
         assert_eq!(
-            app.state.agent.current_turn_mode, before,
+            app.state.agent.current_turn_mode,
+            before.agent_mode(),
             "the running turn keeps its original mode"
         );
         assert_eq!(

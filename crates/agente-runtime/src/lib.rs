@@ -53,6 +53,12 @@ pub struct RuntimeConfig {
     pub approval_broker: ApprovalBroker,
     pub mcp_manager: Option<Arc<tokio::sync::Mutex<McpManager>>>,
     pub subagent_registry: SubagentRegistry,
+    /// Per-subagent-type model overrides from the user's config.
+    pub subagent_models: agente_core::config::SubagentModels,
+    /// LLM-summary compaction instead of trimming (user setting).
+    pub smart_compaction: bool,
+    /// Subagents allowed to run at once.
+    pub max_parallel_subagents: usize,
     /// Optional durable session store. When set, every session commit writes
     /// an atomic snapshot through the store and cache misses recover from it,
     /// so sessions survive process restarts. `None` keeps the runtime purely
@@ -66,7 +72,12 @@ impl RuntimeConfig {
         // Fail closed: only an explicit "build" grants write access, mirroring
         // agente-core's parse_mode. Unknown strings run in Plan mode.
         let mode = match app_config.default_mode.as_deref() {
-            Some(value) if value.eq_ignore_ascii_case("build") => AgentMode::Build,
+            // `auto` = the TUI's build-with-auto-approve; headless runs build.
+            Some(value)
+                if value.eq_ignore_ascii_case("build") || value.eq_ignore_ascii_case("auto") =>
+            {
+                AgentMode::Build
+            }
             _ => AgentMode::Plan,
         };
         let default_provider = app_config
@@ -98,6 +109,9 @@ impl RuntimeConfig {
             approval_broker: ApprovalBroker::new(),
             mcp_manager: None,
             subagent_registry: SubagentRegistry::new(),
+            subagent_models: app_config.subagent_models.clone(),
+            smart_compaction: app_config.smart_compaction,
+            max_parallel_subagents: app_config.parallel_subagents(),
             session_store: None,
         }
     }
@@ -483,6 +497,9 @@ impl RuntimeHandle {
             self.inner.config.approval_broker.clone(),
             self.inner.config.mcp_manager.clone(),
             self.inner.config.subagent_registry.clone(),
+            self.inner.config.subagent_models.clone(),
+            self.inner.config.smart_compaction,
+            self.inner.config.max_parallel_subagents,
         );
 
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);

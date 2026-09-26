@@ -84,8 +84,18 @@ pub enum AgentEvent {
         tokens: u32,
         partial_text: String,
     },
+    /// Compaction is starting (smart = an LLM summary is being written,
+    /// which can take a while). Followed by `ContextCompacted` on success.
+    CompactionStarted {
+        smart: bool,
+    },
     ContextCompacted {
         summary: String,
+        /// Estimated context before and after, for the transcript divider.
+        tokens_before: u32,
+        tokens_after: u32,
+        /// Summarized by the model (smart) rather than trimmed.
+        smart: bool,
         /// The compacted transcript. The TUI replaces `session.conversation`
         /// immediately so the status bar reflects the post-compact size
         /// before the turn finishes.
@@ -100,6 +110,20 @@ pub enum AgentEvent {
         completion_tokens: u32,
         cache_read_tokens: u32,
         cache_creation_tokens: u32,
+    },
+    /// One model call finished: its own token buckets and what it cost.
+    /// Emitted per call by every loop — subagents included, forwarded up to
+    /// the parent — so summing these gives the session's real spend.
+    /// `cost_usd` is `None` when the catalog has no price for the model.
+    CallUsage {
+        prompt_tokens: u32,
+        completion_tokens: u32,
+        cache_read_tokens: u32,
+        cache_creation_tokens: u32,
+        cost_usd: Option<f64>,
+        /// The subagent whose loop made the call (`None` = the main agent).
+        /// Set by the forwarder; nested children keep their own id.
+        subagent_id: Option<String>,
     },
     /// The provider request failed transiently (429/5xx/network) and the loop
     /// is backing off before retrying. The TUI surfaces this on the status bar.

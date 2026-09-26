@@ -328,10 +328,10 @@ pub fn input_cursor() -> Style {
     Style::default().fg(PRIMARY())
 }
 
-/// Background lift for a hovered row on the bare canvas: halfway between the
-/// canvas and `BG_HOVER`, so it reads as "live" without looking selected.
+/// Background lift for a hovered card on the bare canvas. The full
+/// `BG_HOVER` step: the old half-step tint was invisible on a black canvas.
 pub fn hover_tint() -> Color {
-    blend_colors(BG(), BG_HOVER(), 0.5)
+    BG_HOVER()
 }
 
 // Panel/element styles (background)

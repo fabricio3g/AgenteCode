@@ -367,3 +367,126 @@ async fn every_transport_rejects_stream_errors_and_early_eof() {
         }
     }
 }
+
+#[tokio::test]
+async fn anthropic_requests_carry_rolling_cache_breakpoints() {
+    let (_, body, _, result) = request(ApiFormat::Anthropic, vec![
+        json!({"type":"message_start","message":{"usage":{"input_tokens":4,"cache_read_input_tokens":90,"cache_creation_input_tokens":6}}}),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}),
+        json!({"type":"message_stop"}),
+    ])
+    .await;
+    let usage = result.expect("stream completes");
+    assert_eq!(
+        body["messages"][0]["content"][0]["cache_control"]["type"],
+        "ephemeral"
+    );
+    assert_eq!(usage.cache_read_tokens, 90);
+    assert_eq!(usage.cache_creation_tokens, 6);
+}
+
+#[tokio::test]
+async fn deepseek_cache_hits_are_counted_and_auto_caching_needs_no_markers() {
+    let (_, body, _, result) = request_for("deepseek", ApiFormat::OpenAI, vec![
+        json!({"choices":[{"delta":{"content":"ok"}}]}),
+        json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+               "usage":{"prompt_tokens":100,"completion_tokens":2,"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":20}}),
+    ])
+    .await;
+    let usage = result.expect("stream completes");
+    assert_eq!(usage.cache_read_tokens, 80, "DeepSeek hits were read as 0");
+    assert_eq!(usage.prompt_tokens, 20, "uncached remainder only");
+    assert!(
+        body["messages"][0]["content"].is_string(),
+        "no cache_control for auto-caching APIs"
+    );
+}
+
+#[tokio::test]
+async fn openrouter_claude_routes_get_explicit_breakpoints() {
+    let (url, request) = server(vec![
+        json!({"choices":[{"delta":{"content":"ok"}}]}),
+        json!({"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":1}}),
+    ]);
+    let mut provider_info = info(url);
+    provider_info.id = "openrouter".into();
+    let provider = routed::RoutedProvider::new(provider_info, HashMap::new());
+    let (tx, mut rx) = tokio::sync::mpsc::channel(128);
+    let mut selected = model(ApiFormat::OpenAI);
+    selected.provider_id = "openrouter".into();
+    selected.api_id = "anthropic/claude-sonnet-4".into();
+    let system = Message {
+        role: crate::types::Role::System,
+        content: "You are Agente".into(),
+        ..Message::user("")
+    };
+    let result = provider
+        .stream_completion(
+            &[system, Message::user("inspect")],
+            None,
+            &selected,
+            tx,
+            RequestContext::new(uuid::Uuid::new_v4()),
+        )
+        .await;
+    while rx.recv().await.is_some() {}
+    assert!(result.is_ok(), "{result:?}");
+    let (_, body) = request.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert_eq!(
+        body["messages"][0]["content"][0]["cache_control"]["type"],
+        "ephemeral"
+    );
+    assert_eq!(body["messages"][1]["content"][0]["text"], "inspect");
+    assert_eq!(
+        body["messages"][1]["content"][0]["cache_control"]["type"],
+        "ephemeral"
+    );
+    assert!(
+        body.get("cache_control").is_none(),
+        "control knob never hits the wire"
+    );
+}
+
+#[tokio::test]
+async fn openrouter_reported_cost_reaches_usage() {
+    let (_, body, _, result) = request_for(
+        "openrouter",
+        ApiFormat::OpenAI,
+        vec![
+            json!({"choices":[{"delta":{"content":"ok"}}]}),
+            json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+               "usage":{"prompt_tokens":1200,"completion_tokens":40,"cost":0.00217,
+                        "prompt_tokens_details":{"cached_tokens":1000}}}),
+        ],
+    )
+    .await;
+    let usage = result.expect("stream completes");
+    assert_eq!(usage.cost_usd, Some(0.00217), "provider's own charge");
+    assert_eq!(usage.cache_read_tokens, 1000);
+    assert!(
+        body.get("usage").is_none(),
+        "deprecated usage.include is not sent"
+    );
+}
+
+#[test]
+fn opencode_go_gets_a_session_cache_key_and_breakpoints() {
+    // The Go endpoint itself is pinned (keys never leave opencode.ai), so
+    // this checks the request decisions rather than a mock round-trip.
+    let mut go = model(ApiFormat::OpenAI);
+    go.provider_id = "opencode-go".into();
+    let session = uuid::Uuid::new_v4();
+    assert_eq!(
+        super::cache::prompt_cache_key("opencode-go", &go, session),
+        Some(session.to_string())
+    );
+    assert!(super::cache::wants_breakpoints(false, "opencode-go", &go));
+    assert_eq!(
+        super::cache::prompt_cache_key("deepseek", &go, session),
+        None
+    );
+    assert!(!super::cache::wants_breakpoints(false, "deepseek", &go));
+}

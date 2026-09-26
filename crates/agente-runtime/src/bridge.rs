@@ -119,6 +119,7 @@ pub(crate) fn forward_legacy_events(
             AgentEvent::ContextCompacted {
                 summary,
                 compacted_conversation,
+                ..
             } => {
                 let revision = replace_conversation(
                     &inner,
@@ -221,6 +222,8 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
                 todos: serde_json::to_value(todos).unwrap_or(serde_json::Value::Null),
             }
         }
+        // Per-call spend is a TUI meter; headless clients keep `Usage`.
+        AgentEvent::CallUsage { .. } | AgentEvent::CompactionStarted { .. } => return None,
         AgentEvent::TurnUsage {
             prompt_tokens,
             completion_tokens,

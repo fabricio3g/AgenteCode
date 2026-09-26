@@ -52,6 +52,28 @@ pub struct SessionState {
     /// wholesale and would clobber it. Queued notices drain at the turn
     /// boundary (or immediately when the agent is idle).
     pub pending_notices: Vec<String>,
+    /// Undo-stack depth when each user message was sent, so reverting to a
+    /// message can undo exactly the file edits made after it. In-memory
+    /// only: a reloaded session can still rewind the chat, not the files.
+    pub checkpoints: HashMap<Uuid, usize>,
+}
+
+/// A user message resolved for rewinding: where it sits in the transcript
+/// and in the model's conversation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RewindPoint {
+    pub chat_index: usize,
+    pub conversation_index: usize,
+    pub content: String,
+    /// File edits made after the message (`None`: no checkpoint).
+    pub later_file_edits: Option<usize>,
+}
+
+/// What a revert did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reverted {
+    pub content: String,
+    pub files_restored: usize,
 }
 
 impl Default for SessionState {
@@ -76,6 +98,7 @@ impl SessionState {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             pending_notices: Vec::new(),
+            checkpoints: HashMap::new(),
         }
     }
 
@@ -107,8 +130,10 @@ impl SessionState {
 
     /// Add a user message to the chat history
     pub fn add_user_message(&mut self, content: String, mode: String) {
+        let id = Uuid::new_v4();
+        self.checkpoints.insert(id, self.undo_stack.len());
         self.chat_history.push(ChatEntry {
-            id: Uuid::new_v4(),
+            id,
             role: Role::User,
             content,
             tool_name: None,
@@ -123,6 +148,68 @@ impl SessionState {
             subagent_type: None,
             diff_stats: None,
         });
+    }
+
+    /// Locate user message `entry_id` for a revert or fork.
+    ///
+    /// The transcript and the model's conversation are separate lists, so the
+    /// message is found in the conversation by content and occurrence (the
+    /// n-th identical prompt maps to the n-th identical user message). That
+    /// holds for queued prompts and reloaded sessions alike, and fails safely
+    /// when compaction has dropped the message.
+    pub fn rewind_point(&self, entry_id: Uuid) -> Result<RewindPoint, String> {
+        let chat_index = self
+            .chat_history
+            .iter()
+            .position(|e| e.id == entry_id && e.role == Role::User)
+            .ok_or("Only your own messages can be rewound")?;
+        let content = self.chat_history[chat_index].content.clone();
+        let occurrence = self.chat_history[..chat_index]
+            .iter()
+            .filter(|e| e.role == Role::User && e.content == content)
+            .count();
+        let conversation_index = self
+            .conversation
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.role == Role::User && m.content == content)
+            .nth(occurrence)
+            .map(|(i, _)| i)
+            .ok_or("That message was compacted out of the context")?;
+        let later_file_edits = self
+            .checkpoints
+            .get(&entry_id)
+            .map(|depth| self.undo_stack.len().saturating_sub(*depth));
+        Ok(RewindPoint {
+            chat_index,
+            conversation_index,
+            content,
+            later_file_edits,
+        })
+    }
+
+    /// Rewind to just before user message `entry_id`: undo the file edits
+    /// made after it (each through the conflict-checked undo stack, so Redo
+    /// still works), then cut the transcript and the conversation. Returns
+    /// the message so it can go back into the composer.
+    pub fn revert_to(&mut self, entry_id: Uuid) -> Result<Reverted, String> {
+        let point = self.rewind_point(entry_id)?;
+        let edits = point.later_file_edits.unwrap_or(0);
+        for done in 0..edits {
+            // Stop before touching the chat if a file changed underneath us.
+            self.undo_last_change().map_err(|error| {
+                format!("Reverted {done} of {edits} file edits, then stopped: {error}")
+            })?;
+        }
+        self.chat_history.truncate(point.chat_index);
+        self.conversation.truncate(point.conversation_index);
+        let kept: std::collections::HashSet<Uuid> =
+            self.chat_history.iter().map(|e| e.id).collect();
+        self.checkpoints.retain(|id, _| kept.contains(id));
+        Ok(Reverted {
+            content: point.content,
+            files_restored: edits,
+        })
     }
 
     /// Add a system message to the chat history
@@ -531,6 +618,57 @@ fn hash_optional(content: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn revert_rewinds_chat_conversation_and_later_file_edits() {
+        let dir = std::env::temp_dir().join(format!("agente-revert-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        let mut session = SessionState::new(dir.to_string_lossy().to_string());
+        let user = |content: &str| Message {
+            role: Role::User,
+            content: content.into(),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+        };
+
+        session.add_user_message("first".into(), "Build".into());
+        session.conversation.push(user("first"));
+        std::fs::write(&file, "v1").unwrap();
+        session.track_file_change("a.txt", None, Some("v1".into()));
+
+        session.add_user_message("second".into(), "Build".into());
+        let second = session.chat_history.last().unwrap().id;
+        session.conversation.push(user("second"));
+        std::fs::write(&file, "v2").unwrap();
+        session.track_file_change("a.txt", Some("v1".into()), Some("v2".into()));
+
+        let point = session.rewind_point(second).unwrap();
+        assert_eq!(point.later_file_edits, Some(1));
+        let reverted = session.revert_to(second).unwrap();
+        assert_eq!(reverted.content, "second");
+        assert_eq!(reverted.files_restored, 1);
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "v1",
+            "only later edits undone"
+        );
+        assert_eq!(session.chat_history.len(), 1);
+        assert_eq!(session.conversation.len(), 1);
+        assert!(session.redo_stack.len() == 1, "redo can bring it back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rewind_refuses_messages_compacted_out() {
+        let mut session = SessionState::new("/tmp/agente-rewind".into());
+        session.add_user_message("gone".into(), "Build".into());
+        let id = session.chat_history[0].id;
+        assert!(session.rewind_point(id).unwrap_err().contains("compacted"));
+    }
+
     use super::*;
 
     fn temp_session() -> (std::path::PathBuf, SessionState) {

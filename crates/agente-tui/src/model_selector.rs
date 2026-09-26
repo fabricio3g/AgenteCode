@@ -107,13 +107,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             DiscoveryStatus::Failed(error) => Some(error.as_str()),
             _ => None,
         });
-    let mut title_spans = vec![s("Switch model", style::bold())];
+    let title = match state.input.model_selector_target.as_deref() {
+        Some(target) => format!("Model for {}", crate::subagent_models::type_label(target)),
+        None => "Switch model".to_string(),
+    };
+    let mut title_spans = vec![s(title, style::bold())];
     let badge = if refreshing { "  ◌ refreshing" } else { "" };
     let suffix_budget = (panel.width.saturating_sub(4) as usize)
         .saturating_sub(12 + crate::widgets::display_width(badge) + 5);
-    if !state.config.current_model.is_empty() && suffix_budget > 0 {
-        let display = state
-            .get_model_display_name(&state.config.current_provider, &state.config.current_model);
+    if let Some((provider, model)) = model_in_effect(state).filter(|_| suffix_budget > 0) {
+        let display = state.get_model_display_name(provider, model);
         title_spans.push(s(
             format!(
                 " · ◈ {}",
@@ -270,7 +273,25 @@ fn render_input(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 }
 
+/// The `(provider, model)` the picker marks with `◈`: the main model, or
+/// the chosen subagent type's override when picking for one.
+fn model_in_effect(state: &AppState) -> Option<(&str, &str)> {
+    match state.input.model_selector_target.as_deref() {
+        Some(target) => state
+            .config
+            .config
+            .subagent_models
+            .get(target)
+            .map(|m| (m.provider.as_str(), m.model.as_str())),
+        None => (!state.config.current_model.is_empty()).then_some((
+            state.config.current_provider.as_str(),
+            state.config.current_model.as_str(),
+        )),
+    }
+}
+
 fn render_models(frame: &mut Frame, area: Rect, state: &AppState, models: &[&ModelEntry]) {
+    let in_effect = model_in_effect(state);
     let selected = state.input.model_selector_selected;
     let mut items = Vec::new();
     let mut current_provider = "";
@@ -281,8 +302,7 @@ fn render_models(frame: &mut Frame, area: Rect, state: &AppState, models: &[&Mod
                 state.get_provider_display_name(&entry.provider),
             ));
         }
-        let is_current = entry.model_id == state.config.current_model
-            && entry.provider == state.config.current_provider;
+        let is_current = in_effect == Some((entry.provider.as_str(), entry.model_id.as_str()));
         let window = entry
             .context_window
             .map(|w| vec![s(format_token_count(w as usize), style::dim())])

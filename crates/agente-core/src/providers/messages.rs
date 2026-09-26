@@ -98,8 +98,20 @@ impl MessagesProvider {
             .map(|m| m.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
+        let breakpoints = super::cache::wants_breakpoints(true, &self.info.id, model);
         if !system.is_empty() {
-            body["system"] = json!(system);
+            // Array form so the system prompt (and the tools before it) can
+            // carry the cache breakpoint.
+            body["system"] = if breakpoints {
+                json!([{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}])
+            } else {
+                json!(system)
+            };
+        }
+        if breakpoints {
+            if let Some(turns) = body["messages"].as_array_mut() {
+                super::cache::mark_recent_user_turns(turns);
+            }
         }
         for (key, value) in super::wire_options(&model.options) {
             match key.as_str() {

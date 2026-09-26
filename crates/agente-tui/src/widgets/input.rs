@@ -79,25 +79,25 @@ fn border_color(state: &AppState) -> ratatui::style::Color {
 
 /// Mode readout for the top header: `plan` or `build`, in the mode accent.
 pub fn mode_spans(state: &AppState) -> Vec<Span<'static>> {
-    let is_plan = state.agent.mode == AgentMode::Plan;
+    let mode = state.agent.work_mode();
     vec![Span::styled(
-        if is_plan { "plan" } else { "build" },
-        Style::default().fg(mode_accent_color(is_plan)).bg(BG()),
+        mode.label(),
+        Style::default().fg(mode.color()).bg(BG()),
     )]
 }
 
-/// Bottom-border readout `model (thinking) · mode`, degraded to fit `width`
-/// cells: the thinking level drops first, then the model truncates. The
-/// approval label is appended only when auto-approve is on; the default `ask`
-/// state stays silent.
+/// Bottom-border readout `model (thinking)`, degraded to fit `width` cells:
+/// the thinking level drops first, then the model truncates. The mode lives
+/// on the status row below, not here — showing it twice was noise. An
+/// always-approve override on Plan/Build is still flagged (`auto` mode says
+/// it on the status row).
 pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
     if width < 8 {
         return Vec::new();
     }
-    let is_plan = state.agent.mode == AgentMode::Plan;
-    let mode_label = if is_plan { "plan" } else { "build" };
-    let mode_color = mode_accent_color(is_plan);
-    let approval = state.agent.auto_approve_all().then_some("always-approve");
+    let approval = (state.agent.auto_approve_all()
+        && state.agent.work_mode() != crate::state::WorkMode::Auto)
+        .then_some(" · always-approve");
     let bg = panel_bg();
 
     let model = if !state.config.current_model.is_empty() {
@@ -107,7 +107,6 @@ pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
     } else {
         String::new()
     };
-
     let thinking = state
         .resolve_model(&state.config.current_provider, &state.config.current_model)
         .filter(agente_core::thinking::model_supports_thinking)
@@ -115,27 +114,17 @@ pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
         .filter(|level| !level.is_empty() && level != agente_core::thinking::THINKING_OFF);
 
     let fits = |text: &str| crate::widgets::display_width(text) <= width;
-    let mut suffix = format!(" · {mode_label}");
-    if let Some(label) = approval {
-        suffix.push_str(" · ");
-        suffix.push_str(label);
-    }
-    let suffix_width = crate::widgets::display_width(&suffix);
-
     // Degrade gracefully: drop the thinking level, then truncate the model.
     let with_thinking = thinking
         .as_ref()
         .map(|level| format!("{model} ({level})"))
         .unwrap_or_else(|| model.clone());
-    let model_text = if fits(&format!("{with_thinking}{suffix}")) {
+    let model_text = if fits(&with_thinking) {
         with_thinking
-    } else if fits(&format!("{model}{suffix}")) {
-        model.clone()
     } else {
-        let budget = width.saturating_sub(suffix_width).max(1);
-        truncate_cells(&model, budget)
+        truncate_cells(&model, width)
     };
-    let show_approval = approval.is_some() && fits(&format!("{model_text}{suffix}"));
+    let show_approval = approval.is_some_and(|label| fits(&format!("{model_text}{label}")));
 
     let mut spans: Vec<Span<'static>> = Vec::new();
     if !model_text.is_empty() {
@@ -144,15 +133,9 @@ pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
             Style::default().fg(FG_MUTED()).bg(bg),
         ));
     }
-    spans.push(Span::styled(" · ", Style::default().fg(FG_DIM()).bg(bg)));
-    spans.push(Span::styled(
-        mode_label.to_string(),
-        Style::default().fg(mode_color).bg(bg),
-    ));
     if show_approval {
-        spans.push(Span::styled(" · ", Style::default().fg(FG_DIM()).bg(bg)));
         spans.push(Span::styled(
-            approval.unwrap_or_default().to_string(),
+            approval.unwrap_or_default(),
             Style::default().fg(FG_DIM()).bg(bg),
         ));
     }
@@ -167,8 +150,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let bg = panel_bg();
     let border = border_color(state);
 
-    // Reference composer: a quiet rounded box; the model · mode readout rides
-    // the bottom border.
+    // Reference composer: a quiet rounded box; the model readout rides the
+    // bottom border.
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
