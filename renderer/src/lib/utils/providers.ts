@@ -1,26 +1,23 @@
 import type { AppConfig } from '$lib/types/chat';
+import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 export type CloudProviderMeta = {
   id: string;
   label: string;
   defaultBaseUrl: string;
   group: 'cloud' | 'local';
+  /** Where to create an API key; local servers need none. */
+  keyUrl?: string;
 };
 
+/** Supported providers (see shared/providers.ts for why the list is short). */
 export const CLOUD_PROVIDERS: CloudProviderMeta[] = [
-  { id: 'openai', label: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1', group: 'cloud' },
-  { id: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', group: 'cloud' },
-  { id: 'anthropic', label: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com', group: 'cloud' },
-  { id: 'groq', label: 'Groq', defaultBaseUrl: 'https://api.groq.com', group: 'cloud' },
-  { id: 'gemini', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com', group: 'cloud' },
-  { id: 'mistral', label: 'Mistral AI', defaultBaseUrl: 'https://api.mistral.ai/v1', group: 'cloud' },
-  { id: 'together', label: 'Together AI', defaultBaseUrl: 'https://api.together.xyz/v1', group: 'cloud' },
-  { id: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com/v1', group: 'cloud' },
-  { id: 'cohere', label: 'Cohere', defaultBaseUrl: 'https://api.cohere.ai/compatibility/v1', group: 'cloud' },
-  { id: 'perplexity', label: 'Perplexity', defaultBaseUrl: 'https://api.perplexity.ai', group: 'cloud' },
+  { id: 'opencode-go', label: 'OpenCode Go', defaultBaseUrl: 'https://opencode.ai/zen/go/v1', group: 'cloud', keyUrl: 'https://opencode.ai/auth' },
+  { id: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', group: 'cloud', keyUrl: 'https://openrouter.ai/settings/keys' },
+  { id: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', group: 'cloud', keyUrl: 'https://platform.deepseek.com/api_keys' },
   { id: 'lmstudio', label: 'LM Studio', defaultBaseUrl: 'http://localhost:1234/v1', group: 'local' },
   { id: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', group: 'local' },
-  { id: 'custom', label: 'Custom / Other', defaultBaseUrl: 'https://api.openai.com/v1', group: 'local' }
+  { id: 'custom', label: 'Custom / Other', defaultBaseUrl: '', group: 'local' }
 ];
 
 export const PROVIDER_URLS: Record<string, string> = Object.fromEntries(
@@ -28,16 +25,9 @@ export const PROVIDER_URLS: Record<string, string> = Object.fromEntries(
 );
 
 export const PROVIDER_DOCS: Record<string, string> = {
-  openai: 'https://developers.openai.com/api/docs/guides/reasoning',
-  anthropic: 'https://platform.claude.com/docs/en/build-with-claude/extended-thinking',
-  gemini: 'https://ai.google.dev/gemini-api/docs/function-calling',
-  groq: 'https://console.groq.com/docs/reasoning',
-  openrouter: 'https://openrouter.ai/docs/guides/best-practices/reasoning-tokens',
-  mistral: 'https://docs.mistral.ai/studio/conversations/function-calling',
-  deepseek: 'https://api-docs.deepseek.com/guides/thinking_mode/',
-  together: 'https://docs.together.ai/docs/reasoning-overview',
-  cohere: 'https://docs.cohere.com/docs/compatibility-api',
-  perplexity: 'https://docs.perplexity.ai/docs/sonar/quickstart',
+  'opencode-go': 'https://opencode.ai/docs/go/',
+  openrouter: 'https://openrouter.ai/docs/quickstart',
+  deepseek: 'https://api-docs.deepseek.com/',
   lmstudio: 'https://lmstudio.ai/docs/developer/openai-compat/tools',
   ollama: 'https://docs.ollama.com/api/openai-compatibility'
 };
@@ -51,7 +41,7 @@ export function providerLabel(id: string): string {
 }
 
 export function defaultBaseUrl(id: string): string {
-  return PROVIDER_URLS[id] || 'https://api.openai.com/v1';
+  return PROVIDER_URLS[id] || DEFAULT_PROVIDER_BASE_URL;
 }
 
 export type ProviderSaved = {
@@ -106,7 +96,7 @@ export function configuredProviders(
   options?: { includeActiveAlways?: boolean }
 ): ConfiguredProviderInfo[] {
   const providers = (config?.llm?.providers || {}) as Record<string, ProviderSaved>;
-  const active = String(config?.llm?.provider || 'openai');
+  const active = String(config?.llm?.provider || DEFAULT_PROVIDER_ID);
   const includeActiveAlways = options?.includeActiveAlways !== false;
   const out: ConfiguredProviderInfo[] = [];
   const seen = new Set<string>();
@@ -147,21 +137,3 @@ export function configuredProviders(
   out.sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.label.localeCompare(b.label));
   return out;
 }
-
-/** Brand-ish accent per provider for settings avatars. */
-export const PROVIDER_COLORS: Record<string, string> = {
-  openai: '#10a37f',
-  openrouter: '#7c7cf4',
-  anthropic: '#d97757',
-  groq: '#f55036',
-  gemini: '#4788f4',
-  mistral: '#ff7000',
-  deepseek: '#4d6bfe',
-  together: '#0f6fff',
-  cohere: '#39594d',
-  perplexity: '#20808d',
-  lmstudio: '#5b6ee1',
-  ollama: '#6b7280',
-  local: '#e8734a',
-  custom: '#64748b'
-};

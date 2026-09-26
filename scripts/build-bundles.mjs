@@ -21,6 +21,7 @@ const RUNTIME_EXTERNALS = [
   '@huggingface/transformers',
   'onnxruntime-node',
   'kokoro-js',
+  'node-pty',
 ];
 
 // The main bundle imports these through optionalDependencies or the OTel API

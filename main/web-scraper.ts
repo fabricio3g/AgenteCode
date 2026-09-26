@@ -475,7 +475,7 @@ async function fetchReaderFallback(url, maxLength, timeoutMs) {
       headers: {
         Accept: 'text/plain',
         'X-Return-Format': 'markdown',
-        'User-Agent': 'Chatea/1.0'
+        'User-Agent': 'FlaxeoChat/1.0'
       }
     });
     if (!response.ok) return null;
@@ -533,7 +533,7 @@ export async function scrapeUrlStructured({
       signal: AbortSignal.timeout(safeTimeout),
       redirect: 'follow',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Chatea/1.0; +local-research)',
+        'User-Agent': 'Mozilla/5.0 (compatible; FlaxeoChat/1.0; +local-research)',
         Accept:
           'text/html,application/xhtml+xml,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain;q=0.9,*/*;q=0.8'
       }

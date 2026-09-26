@@ -102,11 +102,26 @@ const TRANSPORT_RE =
  * ONE home for error heuristics — retry policies and UI copy switch on the
  * code, never on message regexes.
  */
+/**
+ * OpenRouter wraps an upstream provider's failure in a generic message
+ * ("JSON error injected into SSE stream"); the actual reason rides along in
+ * `error.metadata` (provider name, raw upstream body). Keep it, so the error
+ * says what actually went wrong.
+ */
+function withUpstreamDetail(message: string, body: unknown): string {
+  const meta = (body && typeof body === 'object' ? (body as { metadata?: Record<string, unknown> }).metadata : undefined) ?? undefined;
+  if (!meta) return message;
+  const provider = typeof meta.provider_name === 'string' ? meta.provider_name : '';
+  const raw = typeof meta.raw === 'string' ? meta.raw : meta.raw ? JSON.stringify(meta.raw) : '';
+  const detail = [provider, raw.slice(0, 400)].filter(Boolean).join(': ');
+  return detail && !message.includes(detail) ? `${message} (${detail})` : message;
+}
+
 export function classifyError(input: unknown): LlmFailure {
   if (input && typeof input === 'object') {
     const err = input as { status?: unknown; code?: unknown; message?: unknown; name?: unknown };
     const status = Number(err.status ?? err.code ?? 0);
-    const message = String(err.message ?? input);
+    const message = withUpstreamDetail(String(err.message ?? input), (input as { error?: unknown }).error);
 
     // AbortError from an caller signal is not a failure worth retrying.
     if (err.name === 'AbortError' || err.name === 'AbortSignalTimeoutError') {

@@ -10,7 +10,6 @@ import {
   normalizeSearchItem,
   textFromInvertedIndex,
 } from '../../main/search-providers/shared.ts';
-import { parseHtmlResults } from '../../main/search-providers/aggregator/html-parser.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -76,29 +75,13 @@ describe('research text coercion', () => {
 });
 
 describe('aggregator parsing and ranking', () => {
-  it('parses a representative HTML result fixture', () => {
-    const results = parseHtmlResults({
-      html: '<article><h2><a href="/page">Example title</a></h2><p>Useful example snippet.</p></article>',
-      baseUrl: 'https://example.com',
-      engine: 'mwmbl',
-      resultSelector: 'article',
-      titleSelector: 'h2 a',
-      urlSelector: 'h2 a',
-      snippetSelector: 'p',
-      maxResults: 3,
-    });
-    assert.equal(results.length, 1);
-    assert.equal(results[0].url, 'https://example.com/page');
-    assert.equal(results[0].provider, 'mwmbl');
-  });
-
   it('merges consensus results and limits repeated domains', () => {
     const make = (provider, rank, title, url) => normalizeSearchItem(provider, {
       title, url, snippet: `${title} about search aggregation`,
     }, rank - 1);
     const ranked = mergeAndRankResults([
       make('wiby', 1, 'Shared result', 'https://shared.example/article?utm_source=test'),
-      make('mojeek', 2, 'Shared result', 'https://shared.example/article'),
+      make('crossref', 2, 'Shared result', 'https://shared.example/article'),
       make('wiby', 2, 'Second', 'https://shared.example/second'),
       make('wiby', 3, 'Third', 'https://shared.example/third'),
       make('wikipedia', 1, 'Diverse source', 'https://different.example/page'),
@@ -106,7 +89,7 @@ describe('aggregator parsing and ranking', () => {
     const shared = ranked.find((item) => item.title === 'Shared result');
     assert.ok(shared);
     assert.ok(shared.providers.includes('wiby'));
-    assert.ok(shared.providers.includes('mojeek'));
+    assert.ok(shared.providers.includes('crossref'));
     assert.ok(ranked.some((item) => item.url.includes('different.example')));
     assert.ok(ranked.filter((item) => item.url.includes('shared.example')).length <= 3);
   });

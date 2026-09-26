@@ -6,97 +6,26 @@ import {
   normalizeProviderName, providerHasCredentials, providerDisplayName, providerCandidates,
   getCacheKey, getCachedResult, setCachedResult, mergeAndRankResults, buildContext,
   buildJinaReaderUrl, toErrorMessage, classifyNetworkError, providerSearchError,
-  DEFAULT_CONTEXT_BUDGET
+  DEFAULT_CONTEXT_BUDGET,
+  REMOVED_SEARCH_PROVIDERS
 } from './search-providers/shared.ts';
 import type { SearchResult } from './search-providers/shared.ts';
 import {
-  searchTavily, searchBrave, searchGoogleCse, searchSerpApi, searchSearxng,
-  searchBing, searchSerper, searchExa, searchJina, searchYouCom, searchPerplexity, searchDuckDuckGo
+  searchTavily, searchBrave, searchSearxng, searchExa, searchJina, searchYouCom, searchPerplexity
 } from './search-providers/providers.ts';
 import { searchAggregator } from './search-providers/aggregator.ts';
 import { scrapeUrlStructured } from './web-scraper.ts';
-
-let electronSearchWindow: BrowserWindow | null = null;
-
-async function searchElectron(query: string, maxResults: number): Promise<SearchResult[]> {
-  try {
-    if (!electronSearchWindow || electronSearchWindow.isDestroyed()) {
-      electronSearchWindow = new BrowserWindow({
-        width: 1280,
-        height: 800,
-        show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-          webSecurity: true
-        }
-      });
-    }
-
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    await electronSearchWindow.loadURL(url, { waitUntil: 'domcontentloaded' });
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const results = await electronSearchWindow.webContents.executeJavaScript(`
-      (function() {
-        const items = [];
-        const resultLinks = document.querySelectorAll('a.result__a');
-        const resultSnippets = document.querySelectorAll('a.result__snippet');
-        for (let i = 0; i < Math.min(resultLinks.length, ${maxResults}); i++) {
-          const link = resultLinks[i];
-          const snippet = resultSnippets[i];
-          let href = link.getAttribute('href') || '';
-          if (href.startsWith('//duckduckgo.com/l/?uddg=')) {
-            try {
-              href = decodeURIComponent(href.split('uddg=')[1].split('&')[0]);
-            } catch (e) {}
-          }
-          items.push({
-            title: link.textContent.trim(),
-            url: href,
-            snippet: snippet ? snippet.textContent.trim() : ''
-          });
-        }
-        return items;
-      })()
-    `);
-
-    return results.map((item: { title?: string; url?: string; snippet?: string }, index: number) => ({
-      title: item.title || `Result ${index + 1}`,
-      url: item.url || '',
-      snippet: item.snippet || '',
-      full_content: item.snippet || '',
-      provider: 'electron',
-      providers: ['electron'],
-      source_rank: index + 1,
-      published_at: null,
-      metadata: { source: 'electron_browser' }
-    }));
-  } catch (err: unknown) {
-    if (electronSearchWindow && !electronSearchWindow.isDestroyed()) {
-      electronSearchWindow.close();
-      electronSearchWindow = null;
-    }
-    throw err;
-  }
-}
 
 async function runProviderSearch(provider: string, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   switch (provider) {
     case 'aggregator': return searchAggregator(query, maxResults, options);
     case 'tavily': return searchTavily(query, maxResults, options);
     case 'brave': return searchBrave(query, maxResults, options);
-    case 'google_cse': return searchGoogleCse(query, maxResults, options);
-    case 'serpapi': return searchSerpApi(query, maxResults, options);
     case 'searxng': return searchSearxng(query, maxResults, options);
-    case 'electron': return searchElectron(query, maxResults);
-    case 'bing': return searchBing(query, maxResults, options);
-    case 'serper': return searchSerper(query, maxResults, options);
     case 'exa': return searchExa(query, maxResults, options);
     case 'jina': return searchJina(query, maxResults, options);
     case 'youcom': return searchYouCom(query, maxResults, options);
     case 'perplexity': return searchPerplexity(query, maxResults, options);
-    case 'duckduckgo': return searchDuckDuckGo(query, maxResults);
     default: throw new Error(`Unsupported search provider: ${provider}`);
   }
 }
@@ -148,7 +77,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
 
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
-    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'Chatea/1.0' };
+    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'FlaxeoChat/1.0' };
     if (options.jina_api_key) {
       headers.Authorization = `Bearer ${options.jina_api_key as string}`;
     }
@@ -346,7 +275,9 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const conversationContext = compactSearchContext(context || options?.conversation_context || '');
   const effectiveQuery = buildEffectiveSearchQuery(normalizedQuery, conversationContext);
   const searchMode = mode === 'max' ? 'max' : deep ? 'deep' : 'search';
-  const explicitProvider = normalizeProviderName(options?.provider || 'auto');
+  const requestedProvider = normalizeProviderName(options?.provider || 'auto');
+  // A saved choice of a removed provider (a scraper or reseller) searches with auto.
+  const explicitProvider = REMOVED_SEARCH_PROVIDERS.includes(requestedProvider) ? 'auto' : requestedProvider;
   const maxResults = Math.max(1, Math.min(Number(options?.max_results) || 6, 20));
   const contextBudget = Math.max(500, Number(options?.context_budget_chars) || DEFAULT_CONTEXT_BUDGET[searchMode as keyof typeof DEFAULT_CONTEXT_BUDGET] || DEFAULT_CONTEXT_BUDGET.search);
   const searchOptions = { ...(options || {}), conversation_context: conversationContext, search_query: effectiveQuery || normalizedQuery };
@@ -384,10 +315,8 @@ export async function webSearch({ query, context, deep, mode, options }: { query
   const minimumUsefulResults = searchMode === 'search' ? 1 : Math.min(3, maxResults);
 
   if (explicitProvider !== 'auto') {
-    if (!providerHasCredentials(explicitProvider, searchOptions) && explicitProvider !== 'aggregator' && explicitProvider !== 'duckduckgo' && explicitProvider !== 'jina' && explicitProvider !== 'electron') {
-      const credHint = explicitProvider === 'google_cse'
-        ? 'Google CSE requires an API key and Search Engine ID — configure them in Settings > Search'
-        : `Missing credentials for ${providerDisplayName(explicitProvider)} — add an API key in Settings > Search`;
+    if (!providerHasCredentials(explicitProvider, searchOptions)) {
+      const credHint = `Missing credentials for ${providerDisplayName(explicitProvider)} — add an API key in Settings > Search`;
       const error = providerSearchError(explicitProvider, new Error(credHint));
       return { ...error, query: normalizedQuery, effective_query: effectiveQuery, search_mode: searchMode, provider_attempts: [{ provider: explicitProvider, success: false, resultCount: 0, error: credHint }] };
     }
@@ -632,10 +561,14 @@ function normalizeHfModel(item: Record<string, unknown>): Record<string, unknown
   const name = repoId.split('/').pop() || repoId;
   const sizeMatch = name.match(/(?:^|[-_])([0-9]+(?:\.[0-9]+)?\s*[bB])(?:[-_]|$)/);
 
+  const cardLicense = (item.cardData as { license?: unknown } | undefined)?.license;
+  const license = String(tags.find((tag) => tag.startsWith('license:'))?.slice(8) || (typeof cardLicense === 'string' ? cardLicense : '') || '');
+
   return {
     ...item,
     repo_id: repoId,
     label: name,
+    license,
     author: repoId.split('/')[0] || 'Hugging Face',
     size_label: sizeMatch ? sizeMatch[1].replace(/\s+/g, '').toUpperCase() : undefined,
     has_vision: /vision|vl|mmproj/i.test(`${repoId} ${tags.join(' ')}`),

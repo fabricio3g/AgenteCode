@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('$lib/services/agent-preface', () => ({ runPreface: vi.fn(async () => {}) }));
 vi.mock('$lib/utils/storage', () => ({ loadAppConfig: vi.fn(async () => ({ llm: { backend_mode: 'api', provider: 'gemini', providers: { gemini: { model: 'gemini-3-flash', base_url: 'https://example.test' } } } })) }));
 vi.mock('$lib/services/bridge', () => ({ isElectron: () => true, invoke: vi.fn(), listen: vi.fn() }));
 vi.mock('$lib/services/agent-token-budget', () => ({ enforceTokenBudget: vi.fn(async () => {}) }));
@@ -107,14 +108,23 @@ describe('runAgentTask', () => {
     expect(stream.mock.calls.length).toBeLessThan(10);
   });
 
-  it('ends at the tool budget with an evidence-only answer', async () => {
+  it('ends at the tool budget with a written answer, not pasted evidence', async () => {
     let n = 0;
     stream.mockImplementation(async () => toolTurn('calculator', { expression: `${++n}+1` }));
+    vi.mocked(completeAssistantReply).mockResolvedValueOnce({ content: 'The sums are 2 through 7.', reasoning: '' } as never);
     const result = await run('Add some numbers', { maxIterations: 6, maxToolCalls: 6 });
     expect(result.stopReason).toBe('tool_limit');
     expect(result.warning).toMatch(/tool call limit/i);
-    expect(result.content).toBeTruthy();
-    expect(completeAssistantReply).not.toHaveBeenCalled();
+    expect(result.content).toBe('The sums are 2 through 7.');
+  });
+
+  it('tells the model which tool kept failing when the loop guard stops it', async () => {
+    stream.mockImplementation(async () => toolTurn('calculator', { expression: '((' }));
+    vi.mocked(completeAssistantReply).mockResolvedValueOnce({ content: 'I could not evaluate that expression.', reasoning: '' } as never);
+    const result = await run('Compute something', { maxIterations: 10, maxToolCalls: 40 });
+    expect(result.content).toBe('I could not evaluate that expression.');
+    const nudge = vi.mocked(completeAssistantReply).mock.calls[0][0].messages.at(-1);
+    expect(String(nudge?.content)).toMatch(/calculator was called repeatedly/);
   });
 
   it('forces a final answer when the step limit runs out', async () => {

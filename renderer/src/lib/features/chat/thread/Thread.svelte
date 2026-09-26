@@ -11,6 +11,7 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
+  import { threadJump } from './thread-jump.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { reducedMotion } from '$lib/utils/motion.svelte';
   import { conversationTimelinePreview } from '$lib/utils/conversation-timeline';
@@ -44,11 +45,17 @@
    * back to the bottom resumes it. Programmatic jumps land at the bottom, so
    * they converge on the same state without special-casing. */
   let followingLatest = true;
+  /** Past this distance from the bottom the composer offers a way back. */
+  const JUMP_BUTTON_PX = 320;
 
   const messages = $derived(appStore.currentChat?.messages || []);
   const contextMode = $derived(appStore.currentChat?.contextMode || 'home');
   const hasMessages = $derived(messages.length > 0);
-  const showTimeline = $derived(messages.length > 1);
+  // Short chats don't need a dial; it would only add noise.
+  const showTimeline = $derived(messages.length >= 4);
+  /** True briefly after a scroll, so the dial wakes up while you move. */
+  let scrollAwake = $state(false);
+  let scrollAwakeTimer: ReturnType<typeof setTimeout> | null = null;
 
   function distanceToBottom(): number {
     if (!container) return 0;
@@ -61,6 +68,7 @@
 
   function snapToBottom() {
     followingLatest = true;
+    threadJump.visible = false;
     if (container) container.scrollTop = container.scrollHeight;
   }
 
@@ -84,7 +92,11 @@
     const distance = distanceToBottom();
     if (distance <= FOLLOW_RESUME_PX) followingLatest = true;
     else if (distance > BOTTOM_THRESHOLD_PX) followingLatest = false;
+    threadJump.visible = distance > JUMP_BUTTON_PX;
     queueTimelineRefresh();
+    scrollAwake = true;
+    if (scrollAwakeTimer) clearTimeout(scrollAwakeTimer);
+    scrollAwakeTimer = setTimeout(() => (scrollAwake = false), 1200);
   }
 
   function pinActionsFor(messageId: string) {
@@ -266,6 +278,14 @@
     });
   });
 
+  $effect(() => {
+    threadJump.jump = () => scrollToBottom('smooth');
+    return () => {
+      threadJump.jump = null;
+      threadJump.visible = false;
+    };
+  });
+
   $effect(() => () => {
     if (pinTimer) clearTimeout(pinTimer);
     cancelAnimationFrame(timelineRafId);
@@ -330,6 +350,7 @@
         <ThreadTimeline
           markers={timelineMarkers}
           index={timelineIndex}
+          awake={scrollAwake}
           onselect={selectTimelineMessage}
           onbrowse={browseTimeline}
         />
@@ -344,11 +365,30 @@
     contain: layout style;
   }
 
+  /* Messages dissolve under the top bar instead of being cut off, mirroring
+     the composer's fade at the bottom. */
+  .thread-wrapper::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 4;
+    height: 1.75rem;
+    pointer-events: none;
+    background: linear-gradient(
+      to top,
+      transparent,
+      color-mix(in srgb, var(--chat-bg) 62%, transparent) 65%,
+      var(--chat-bg)
+    );
+  }
+
   /* No smooth scrolling here: programmatic jumps choose their own behavior and
      instant follow updates must not be eased, or the live edge lags the stream. */
   .thread-scroll {
     scrollbar-width: none;
   }
+
 
   .thread-scroll::-webkit-scrollbar {
     width: 0;

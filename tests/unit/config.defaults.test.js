@@ -72,11 +72,11 @@ describe('getDefaultTTSConfig', () => {
 });
 
 describe('getDefaultSearchConfig', () => {
-  it('uses the local aggregator by default', () => {
+  it('searches with auto and the free API sources by default', () => {
     const search = getDefaultSearchConfig();
-    assert.strictEqual(search.provider, 'aggregator');
+    assert.strictEqual(search.provider, 'auto');
     assert.strictEqual(search.max_results, 6);
-    assert.deepStrictEqual(search.aggregator_engines, ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
+    assert.deepStrictEqual(search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });
 });
 
@@ -117,15 +117,16 @@ describe('getDefaultProviders', () => {
   it('returns provider map with expected keys', () => {
     const providers = getDefaultProviders();
     assert.ok(providers);
-    assert.ok(providers.openai);
+    assert.ok(providers['opencode-go']);
     assert.ok(providers.openrouter);
+    assert.strictEqual(providers.openai, undefined);
     assert.ok(providers.lmstudio);
     assert.ok(Object.keys(providers).length >= 3);
   });
 
-  it('has correct openai base URL', () => {
+  it('has correct OpenCode Go base URL', () => {
     const providers = getDefaultProviders();
-    assert.strictEqual(providers.openai.base_url, 'https://api.openai.com/v1');
+    assert.strictEqual(providers['opencode-go'].base_url, 'https://opencode.ai/zen/go/v1');
   });
 
   it('has correct openrouter base URL', () => {
@@ -214,7 +215,7 @@ describe('getDefaultLLMConfig', () => {
     const llm = getDefaultLLMConfig(localModelsRoot);
     assert.ok(llm);
     assert.strictEqual(llm.backend_mode, 'api');
-    assert.strictEqual(llm.provider, 'openai');
+    assert.strictEqual(llm.provider, 'openrouter');
   });
 
   it('has default system prompt', () => {
@@ -232,7 +233,7 @@ describe('getDefaultLLMConfig', () => {
   it('has providers map', () => {
     const llm = getDefaultLLMConfig(localModelsRoot);
     assert.ok(llm.providers);
-    assert.ok(llm.providers.openai);
+    assert.ok(llm.providers.openrouter);
   });
 
   it('passes localModelsRoot to local config', () => {
@@ -286,9 +287,9 @@ describe('getDefaultSTTConfig', () => {
     assert.strictEqual(stt.model, 'whisper-1');
   });
 
-  it('uses recommended quantized whisper.cpp model by default', () => {
+  it('uses the light multilingual whisper.cpp model by default (quick first setup)', () => {
     const stt = getDefaultSTTConfig();
-    assert.strictEqual(stt.whisper_quality, 'medium_q5');
+    assert.strictEqual(stt.whisper_quality, 'small_q5');
   });
 });
 
@@ -365,7 +366,7 @@ describe('getDefaultConfig', () => {
     const config = getDefaultConfig(paths);
     
     // Verify defaults are applied
-    assert.strictEqual(config.llm.provider, 'openai');
+    assert.strictEqual(config.llm.provider, 'openrouter');
     assert.strictEqual(config.tts.engine, 'wasm');
     assert.strictEqual(config.stt.provider, 'local');
     assert.strictEqual(config.rag.enabled, true);

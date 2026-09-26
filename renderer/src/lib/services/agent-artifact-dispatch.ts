@@ -11,11 +11,11 @@ import {
   handleCreateDashboard,
   handleCreateDiagram,
   handleCreateHtmlCard,
+  handleCreateWidget,
   handleCreateInfoCard,
   handleCreateMap,
   handleCreateReport,
-  handleCreateWorkProduct,
-  handleExportResearchPackage
+  handleCreateWorkProduct
 } from '$lib/services/agent-tool-artifacts';
 import {
   handleCreateDocument,
@@ -34,9 +34,9 @@ export type ArtifactToolRuntime =
   & RuntimeFor<typeof handleCreateSpreadsheet>
   & RuntimeFor<typeof handleCreatePresentation>
   & RuntimeFor<typeof handleCreatePdf>
-  & RuntimeFor<typeof handleExportResearchPackage>
   & RuntimeFor<typeof handleCreateInfoCard>
   & RuntimeFor<typeof handleCreateHtmlCard>
+  & RuntimeFor<typeof handleCreateWidget>
   & RuntimeFor<typeof handleCreateChart>
   & RuntimeFor<typeof handleCreateDiagram>
   & RuntimeFor<typeof handleCreateMap>
@@ -55,9 +55,9 @@ const executors = {
   create_spreadsheet: (args, ctx, runtime) => invoke(handleCreateSpreadsheet, args, ctx, runtime),
   create_presentation: (args, ctx, runtime) => invoke(handleCreatePresentation, args, ctx, runtime),
   create_pdf: (args, ctx, runtime) => invoke(handleCreatePdf, args, ctx, runtime),
-  export_research_package: (args, ctx, runtime) => invoke(handleExportResearchPackage, args, ctx, runtime),
   create_info_card: (args, ctx, runtime) => invoke(handleCreateInfoCard, args, ctx, runtime),
   create_html_card: (args, ctx, runtime) => invoke(handleCreateHtmlCard, args, ctx, runtime),
+  create_widget: (args, ctx, runtime) => invoke(handleCreateWidget, args, ctx, runtime),
   create_chart: (args, ctx, runtime) => invoke(handleCreateChart, args, ctx, runtime),
   create_diagram: (args, ctx, runtime) => invoke(handleCreateDiagram, args, ctx, runtime),
   create_map: (args, ctx, runtime) => invoke(handleCreateMap, args, ctx, runtime),

@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { getAppPaths } from './paths.ts';
-import { downloadToFile, extractArchive, resetDirectory, markExecutable } from './archive-install.ts';
+import { extractArchive, resetDirectory, markExecutable } from './archive-install.ts';
+import { trackDownload } from './model-download.ts';
 
 const isWindows = process.platform === 'win32';
 const WHISPER_BINARIES = isWindows
@@ -29,7 +30,7 @@ export async function downloadWhisperRuntime(
 
   // Downloading owns 0-80%, extraction and finalizing the rest.
   const archivePath = path.join(paths.cacheRoot, asset_name);
-  await downloadToFile(download_url, archivePath, (fraction) => {
+  await trackDownload({ url: download_url, dest: archivePath, label: `whisper.cpp ${release_tag}`, category: 'engine' }, (fraction) => {
     emit(Math.round(fraction * 80), 'downloading');
   });
 
@@ -45,8 +46,14 @@ export async function downloadWhisperRuntime(
       const full = path.join(dir, e.name);
       if (e.isDirectory()) {
         findBinary(full);
-      } else if (WHISPER_BINARIES.includes(e.name) && !binaryPath) {
-        binaryPath = markExecutable(full);
+      } else if (WHISPER_BINARIES.includes(e.name)) {
+        const current = binaryPath ? WHISPER_BINARIES.indexOf(path.basename(binaryPath)) : Infinity;
+        const marked = markExecutable(full);
+        // Prefer whisper-cli over the deprecated `main` stub.
+        if (WHISPER_BINARIES.indexOf(e.name) < current) binaryPath = marked;
+      } else if (/^whisper-server(\.exe)?$/.test(e.name)) {
+        // The warm server (whisper-server.ts) runs from the same folder.
+        markExecutable(full);
       }
     }
   }

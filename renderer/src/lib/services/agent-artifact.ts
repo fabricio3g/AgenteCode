@@ -1,7 +1,7 @@
 import type { AgentArtifact, ArtifactManifest, InlineArtifactPayload } from '$lib/types/chat';
 import type { ToolResult } from '$lib/services/agent-types';
 import { normalizeArtifact } from '$lib/services/artifact-model';
-import { viewerPathFor } from '$lib/utils/artifact-files';
+import { specPathFor, viewerPathFor } from '$lib/utils/artifact-files';
 
 export const INLINE_ARTIFACT_FILE = '__artifact__.json';
 
@@ -69,6 +69,17 @@ export function buildArtifactFromContext(ctx: ArtifactContext): AgentArtifact | 
  * carry their own `__viewer__/…` sibling instead, which `resolveArtifactPreview`
  * finds first anyway.
  */
+/** A generated file's own title (the deck's, the report's), not its file name. */
+function specTitleOf(raw: string | undefined): string {
+  if (!raw) return '';
+  try {
+    const spec = JSON.parse(raw) as { deck?: { title?: string }; report?: { title?: string }; title?: string };
+    return String(spec.deck?.title || spec.report?.title || spec.title || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export function buildScopedArtifact(
   ctx: ArtifactContext,
   result: { createdFiles?: string[]; artifactManifest?: ArtifactManifest }
@@ -80,8 +91,9 @@ export function buildScopedArtifact(
   const files: Record<string, string> = {};
   for (const path of created) {
     if (ctx.files[path] !== undefined) files[path] = ctx.files[path];
-    const viewer = viewerPathFor(path);
-    if (ctx.files[viewer] !== undefined) files[viewer] = ctx.files[viewer];
+    for (const sibling of [viewerPathFor(path), specPathFor(path)]) {
+      if (ctx.files[sibling] !== undefined) files[sibling] = ctx.files[sibling];
+    }
   }
   if (!Object.keys(files).length) return null;
 
@@ -90,11 +102,12 @@ export function buildScopedArtifact(
     : created.find((path) => files[path] !== undefined);
 
   const visible = Object.keys(files).filter((path) => !path.startsWith('__'));
+  const specTitle = entryPath ? specTitleOf(files[specPathFor(entryPath)]) : '';
 
   return normalizeArtifact({
     title: manifest.kind === 'work_product'
       ? (ctx.workProduct?.title || 'Work product')
-      : (visible.length === 1 ? visible[0] : 'Generated documents'),
+      : specTitle || (visible.length === 1 ? visible[0] : 'Generated documents'),
     files,
     previewHtml: null,
     inline: entryPath ? parseInlinePayload(files[entryPath]) : null,
@@ -105,24 +118,26 @@ export function buildScopedArtifact(
   });
 }
 
+/**
+ * Records a generated Office/PDF file on the artifact. In workspace mode the
+ * caller has already written it to disk (`savedTo`); the artifact still keeps
+ * a copy so it previews in the chat either way.
+ */
 export function addGeneratedArtifactFile(params: {
-  executionMode: 'workspace' | 'sandbox';
   files: Record<string, string>;
-  file: { path: string; dataUrl: string; mime: string; previewHtml?: string };
+  file: { path: string; dataUrl: string; mime: string; previewHtml?: string; spec?: unknown };
+  savedTo?: string;
   viewerPathFor: (path: string) => string;
   ok: (output: unknown, extra?: Partial<ToolResult>) => ToolResult;
-  fail: (error: string, note?: string) => ToolResult;
 }): ToolResult {
-  if (params.executionMode === 'workspace') {
-    return params.fail('Office/PDF artifact generation is currently available in chat sandbox mode only.');
-  }
   params.files[params.file.path] = params.file.dataUrl;
+  if (params.file.spec) params.files[specPathFor(params.file.path)] = JSON.stringify(params.file.spec);
   if (params.file.previewHtml) {
     params.files[params.viewerPathFor(params.file.path)] = params.file.previewHtml;
     params.files['__preview__.html'] = params.file.previewHtml;
   }
   return params.ok(
-    { path: params.file.path, mime: params.file.mime, size: params.file.dataUrl.length, preview: !!params.file.previewHtml },
+    { path: params.file.path, mime: params.file.mime, size: params.file.dataUrl.length, preview: !!params.file.previewHtml, ...(params.savedTo ? { savedTo: params.savedTo } : {}) },
     { createdFiles: [params.file.path] }
   );
 }

@@ -1,6 +1,8 @@
 import { invoke, listen } from '$lib/services/bridge';
 
-export type BrowserViewportPreset = 'desktop' | 'laptop' | 'tablet' | 'mobile';
+import type { BrowserViewportPreset } from '$shared/browser-viewports';
+
+export type { BrowserViewportPreset } from '$shared/browser-viewports';
 
 export interface BrowserPanelTab {
   id: string;
@@ -13,14 +15,11 @@ export interface BrowserPanelState {
   visible: boolean;
   activeTabId: string | null;
   tabs: BrowserPanelTab[];
+  /** An agent used the browser in the last few seconds. */
+  agentDriving?: boolean;
+  /** The user took control; agent actions are refused. */
+  takeover?: boolean;
 }
-
-export const BROWSER_VIEWPORTS: Record<BrowserViewportPreset, { width: number; height: number; mobile: boolean; label: string }> = {
-  desktop: { width: 1280, height: 720, mobile: false, label: 'Desktop' },
-  laptop: { width: 1440, height: 900, mobile: false, label: 'Laptop' },
-  tablet: { width: 834, height: 1112, mobile: true, label: 'Tablet' },
-  mobile: { width: 390, height: 844, mobile: true, label: 'Mobile' }
-};
 
 export async function openBrowserTab(url?: string): Promise<{ id: string; url: string }> {
   return invoke('browser_open_tab', { url });
@@ -52,6 +51,14 @@ export async function syncBrowserPanelBounds(rect: { x: number; y: number; width
 
 export async function setBrowserViewport(preset: BrowserViewportPreset, tabId?: string): Promise<void> {
   await invoke('browser_viewport', { preset, tabId });
+}
+
+export async function setBrowserTakeover(on: boolean): Promise<void> {
+  await invoke('browser_takeover', { on });
+}
+
+export async function browserHistory(action: 'back' | 'forward' | 'reload', tabId?: string): Promise<void> {
+  await invoke('browser_history', { action, tabId });
 }
 
 export async function browserNavigate(url: string, tabId?: string): Promise<unknown> {

@@ -6,6 +6,10 @@ export interface HardwareInfo {
   cpu_model: string;
   vram_gb: number;
   vram_estimated?: boolean;
+  /** Live GPU memory in use, when the driver reports it. */
+  vram_used_gb?: number | null;
+  /** System memory the GPU can also borrow (integrated GPUs). */
+  shared_gb?: number | null;
   gpu_name: string;
   gpu_backend: 'cuda' | 'vulkan' | 'metal' | 'cpu' | string;
   os_platform: string;
@@ -84,7 +88,10 @@ export interface CachedModelMeta {
 
 export interface DownloadJob {
   id: string;
+  /** hf_model: resumable model files. file: a one-off (engine, speech model). */
   kind: string;
+  /** For the download manager's icon: chat, speech, voice or engine. */
+  category?: 'chat' | 'speech' | 'voice' | 'engine';
   model_id: string;
   repo_id: string;
   file: string;
@@ -301,16 +308,10 @@ export interface SearchOptions {
   aggregator_engines?: string[];
   safe_search?: number;
   conversation_context?: string;
-  google_cse_api_key?: string;
-  google_cse_id?: string;
   brave_api_key?: string;
-  serpapi_api_key?: string;
   tavily_api_key?: string;
   exa_api_key?: string;
   searxng_base_url?: string;
-  bing_api_key?: string;
-  bing_endpoint?: string;
-  serper_api_key?: string;
   jina_api_key?: string;
   jina_base_url?: string;
   youcom_api_key?: string;

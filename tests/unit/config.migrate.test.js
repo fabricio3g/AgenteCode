@@ -10,6 +10,7 @@ import {
   ensureOnboarding,
   ensureSearchConfig,
   migrateConfig,
+  dropRemovedProviders,
   URL_FIXES,
   LEGACY_TTS_VARIANTS,
   LEGACY_DEFAULT_MODELS,
@@ -319,6 +320,7 @@ describe('migrateConfig', () => {
         providers: {
           openai: { base_url: 'https://api.openai.com', model: 'gpt-4o-mini' },
           openrouter: { base_url: 'https://openrouter.ai/api', model: 'openai/gpt-4o-mini' },
+          deepseek: { base_url: 'https://api.deepseek.com', model: 'gpt-4o-mini' },
         },
       },
       tts: { model_variant: 'kitten_en_nano_08' },
@@ -326,8 +328,8 @@ describe('migrateConfig', () => {
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, true);
-    assert.strictEqual(cfg.llm.providers.openai.base_url, 'https://api.openai.com/v1');
-    assert.strictEqual(cfg.llm.providers.openai.model, '');
+    assert.strictEqual(cfg.llm.providers.openai, undefined);
+    assert.strictEqual(cfg.llm.providers.deepseek.model, '');
     assert.strictEqual(cfg.llm.providers.openrouter.base_url, 'https://openrouter.ai/api/v1');
     assert.strictEqual(cfg.tts.model_variant, 'kokoro_v11');
     assert.strictEqual(cfg.stt.provider, 'local');
@@ -338,13 +340,13 @@ describe('migrateConfig', () => {
     const cfg = {
       llm: {
         providers: {
-          openai: { base_url: 'https://api.openai.com/v1', model: 'gpt-4-turbo' },
+          deepseek: { base_url: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
         },
       },
       tts: { model_variant: 'kokoro_v11', model_dir: '/path/to/models/kokoro-multi-lang-v1_1', model: 'model.int8.onnx' },
       stt: { provider: 'local' },
       onboarding: { completed: true },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -376,7 +378,7 @@ describe('migrateConfig', () => {
     const cfg = {
       llm: { providers: {} },
       onboarding: { completed: false },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -387,7 +389,7 @@ describe('migrateConfig', () => {
       custom_field: 'should_remain',
       llm: { providers: {} },
       onboarding: { completed: true },
-      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'wikipedia'] },
+      search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['wikipedia', 'arxiv'] },
     };
     const result = migrateConfig(cfg, modelsRoot);
     assert.strictEqual(result.dirty, false);
@@ -402,20 +404,49 @@ describe('migrateConfig', () => {
 });
 
 describe('ensureSearchConfig', () => {
-  it('adds aggregator search defaults when missing', () => {
+  it('adds search defaults when missing', () => {
     const cfg = {};
     const dirty = ensureSearchConfig(cfg);
     assert.strictEqual(dirty, true);
-    assert.strictEqual(cfg.search.provider, 'aggregator');
+    assert.strictEqual(cfg.search.provider, 'auto');
     assert.strictEqual(cfg.search.max_results, 6);
-    assert.deepStrictEqual(cfg.search.aggregator_engines, ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
+    assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });
 
   it('does not overwrite an explicit provider', () => {
-    const cfg = { search: { provider: 'brave', max_results: 8, aggregator_engines: ['duckduckgo'] } };
+    const cfg = { search: { provider: 'brave', max_results: 8, aggregator_engines: ['wikipedia'] } };
     const dirty = ensureSearchConfig(cfg);
     assert.strictEqual(dirty, false);
     assert.strictEqual(cfg.search.provider, 'brave');
     assert.strictEqual(cfg.search.max_results, 8);
+  });
+
+  it('moves users off removed scrapers and resellers', () => {
+    const cfg = { search: { provider: 'serpapi', max_results: 6, aggregator_engines: ['duckduckgo', 'google', 'wikipedia'], providers: { serpapi: { api_key: 'k' }, tavily: { api_key: 't' } } } };
+    assert.strictEqual(ensureSearchConfig(cfg), true);
+    assert.strictEqual(cfg.search.provider, 'auto');
+    assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia']);
+    assert.deepStrictEqual(Object.keys(cfg.search.providers), ['tavily']);
+  });
+
+  it('falls back to the default engines when none are left', () => {
+    const cfg = { search: { provider: 'aggregator', max_results: 6, aggregator_engines: ['duckduckgo', 'mojeek'] } };
+    ensureSearchConfig(cfg);
+    assert.deepStrictEqual(cfg.search.aggregator_engines, ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
+  });
+});
+
+describe('dropRemovedProviders', () => {
+  it('drops Anthropic and Gemini and clears them as the active route', () => {
+    const cfg = { llm: { provider: 'anthropic', providers: { anthropic: { model: 'x' }, gemini: {}, openrouter: { model: 'y' } } } };
+    assert.strictEqual(dropRemovedProviders(cfg), true);
+    assert.strictEqual(cfg.llm.provider, '');
+    assert.deepStrictEqual(Object.keys(cfg.llm.providers), ['openrouter']);
+  });
+
+  it('leaves other providers alone', () => {
+    const cfg = { llm: { provider: 'deepseek', providers: { deepseek: {} } } };
+    assert.strictEqual(dropRemovedProviders(cfg), false);
+    assert.strictEqual(cfg.llm.provider, 'deepseek');
   });
 });

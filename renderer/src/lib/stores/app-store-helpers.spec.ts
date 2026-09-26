@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatMessage, ChatSession } from '$lib/types/chat';
-import { markAgentStopped, normalizeChat, normalizeSessionComposerMode, optimisticAck, reliableUsageMetadata, repairRoleplayChat } from '$lib/stores/app-store-helpers';
+import { markAgentStopped, normalizeChat, normalizeMessage, normalizeSessionComposerMode, optimisticAck, reliableUsageMetadata, repairRoleplayChat } from '$lib/stores/app-store-helpers';
 
 describe('normalizeSessionComposerMode', () => {
   it('preserves instant alongside agent', () => {
@@ -178,5 +178,14 @@ describe('stopped agent presentation', () => {
       { label: 'Search', status: 'done' },
       { label: 'Stopped', status: 'done', detail: 'Stopped by user' }
     ]);
+  });
+});
+
+describe('normalizeMessage artifacts', () => {
+  it('keeps every artifact a turn produced, not only the last one', () => {
+    const chart = { title: 'Chart', files: { 'chart.json': '{}' } };
+    const map = { title: 'Map', files: { 'map.json': '{}' } };
+    const message = normalizeMessage({ id: 'm', role: 'assistant', content: '', artifacts: [chart, map], artifact: map }, 0);
+    expect(message.artifacts).toEqual([chart, map]);
   });
 });

@@ -66,7 +66,7 @@ export interface LocalLLMConfig {
 /**
  * Provider type options.
  */
-export type ProviderType = 'openai_compat' | 'anthropic' | 'gemini' | 'mistral' | 'groq';
+export type ProviderType = 'openai_compat';
 
 /**
  * Provider default parameters.
@@ -157,7 +157,7 @@ export type STTProviderType = 'local' | 'api';
  * GGML quantized models for whisper.cpp (single .bin file per model).
  */
 export type WhisperQuality =
-  | 'tiny_q5' | 'base_q5' | 'small_q5' | 'medium_q5' | 'large_v3_q5';
+  | 'tiny_q5' | 'base_q5' | 'small_q5' | 'medium_q5' | 'large_v3_q5' | 'large_v3_turbo_q5';
 
 /**
  * STT configuration.
@@ -223,6 +223,10 @@ export interface AppPaths {
   secretsPath: string;
   modelsRoot: string;
   localModelsRoot: string;
+  enginesRoot: string;
+  speechModelsRoot: string;
+  voiceModelsRoot: string;
+  downloadsRoot: string;
   appData: string;
   assetsRoot: string;
   localBinRoot: string;

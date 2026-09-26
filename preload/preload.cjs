@@ -18,7 +18,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'get_loaded_models', 'unload_model', 'get_recommended_settings', 'preview_local_model_command',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
   'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'read_file_base64',
-  'stt_transcribe', 'get_stt_status', 'unload_whisper',   'fetch_provider_models', 'get_api_model_context', 'detect_tool_support',
+  'stt_transcribe', 'get_stt_status', 'unload_whisper', 'voice_setup_plan', 'setup_voice', 'list_speech_models', 'use_speech_model', 'remove_speech_model', 'get_engine_overview', 'list_instances', 'start_instance', 'stop_instance', 'set_instance_sharing', 'get_instance_key', 'check_whisper_update', 'update_whisper_engine', 'cleanup_engines', 'open_data_folder',   'fetch_provider_models', 'test_provider_connection', 'get_api_model_context', 'detect_tool_support',
   'get_reasoning_capabilities',
   'get_whisper_runtimes', 'delete_whisper_runtime', 'download_whisper_runtime',
   'chat_complete', 'chat_stream_start', 'chat_stream_cancel',
@@ -33,7 +33,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'live_get_weather', 'live_convert_currency', 'live_get_quote', 'live_geocode_place',
 
   'path_exists', 'open_models_folder', 'pick_workspace_folder', 'pick_model_file', 'pick_whisper_runtime_file',
-  'index_workspace_folder', 'snapshot_workspace_files', 'write_workspace_file', 'read_workspace_file',
+  'index_workspace_folder', 'snapshot_workspace_files', 'write_workspace_file', 'write_workspace_binary', 'read_workspace_file',
   'create_workspace_document', 'rename_workspace_file', 'delete_workspace_file',
   'open_workspace_file', 'create_workspace_folder', 'workspace_exec', 'write_temp_file',
   'reset_media_permissions',
@@ -41,26 +41,28 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agent_list_tasks', 'agent_delete_task', 'agent_clear_history',
 
   'sandbox_exec',
-  'browser_open_tab', 'browser_list_tabs', 'browser_set_active', 'browser_close_tab',
+  'browser_agent_action', 'browser_takeover', 'browser_history', 'browser_open_tab', 'browser_list_tabs', 'browser_set_active', 'browser_close_tab',
   'browser_close_all', 'browser_panel_visible', 'browser_panel_bounds', 'browser_viewport',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',
   'generate_docx', 'generate_xlsx', 'generate_pdf',
-  'artifact_preview_open',
   'fetch_url_content', 'crawl_web',
   'agente_start_session', 'agente_prompt',
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
-  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data', 'agente_live_chats'
+  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data', 'agente_live_chats',
+  'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
+  'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
+  'agente_changes', 'agente_file_diff', 'agente_revert_file'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([
-  'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress',
+  'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start',
-  'code_agent_event', 'browser_panel_state'
+  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -92,7 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
 
   // App info
-  appName: 'Chatea',
+  appName: 'Flaxeo Chat',
 
   // Platform info
   platform: process.platform,

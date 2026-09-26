@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { onMount } from 'svelte';
   import { ChevronDown, MoreHorizontal, Search, TestTube2 } from 'lucide-svelte';
   import { say } from '$lib/copy';
@@ -24,25 +25,25 @@
     label: string;
     needsKey?: boolean;
     needsUrl?: boolean;
-    needsEngineId?: boolean;
+    /** Where to get a key; the free-tier providers first. */
+    keyUrl?: string;
     needsModel?: boolean;
   };
 
+  /*
+   * Only providers used through their official API (or your own SearXNG).
+   * Result-page scrapers and resellers of scraped Google results are gone.
+   */
   const SEARCH_PROVIDERS: SearchProviderItem[] = [
-    { id: 'aggregator', label: 'Flaxeo Aggregator' },
     { id: 'auto', label: 'Auto' },
-    { id: 'duckduckgo', label: 'DuckDuckGo' },
+    { id: 'aggregator', label: 'Flaxeo Aggregator' },
+    { id: 'tavily', label: 'Tavily', needsKey: true, keyUrl: 'https://app.tavily.com' },
+    { id: 'exa', label: 'Exa', needsKey: true, keyUrl: 'https://dashboard.exa.ai' },
+    { id: 'brave', label: 'Brave Search', needsKey: true, keyUrl: 'https://api-dashboard.search.brave.com' },
     { id: 'searxng', label: 'SearXNG', needsUrl: true },
-    { id: 'brave', label: 'Brave Search', needsKey: true },
-    { id: 'google_cse', label: 'Google CSE', needsKey: true, needsEngineId: true },
-    { id: 'tavily', label: 'Tavily', needsKey: true },
-    { id: 'exa', label: 'Exa', needsKey: true },
-    { id: 'serpapi', label: 'SerpAPI', needsKey: true },
-    { id: 'serper', label: 'Serper (Google)', needsKey: true },
-    { id: 'perplexity', label: 'Perplexity', needsKey: true, needsModel: true },
-    { id: 'jina', label: 'Jina AI', needsKey: true, needsUrl: true },
-    { id: 'bing', label: 'Bing Search (legacy endpoint)', needsKey: true, needsUrl: true },
-    { id: 'youcom', label: 'You.com', needsKey: true },
+    { id: 'jina', label: 'Jina AI', needsKey: true, needsUrl: true, keyUrl: 'https://jina.ai/api-dashboard' },
+    { id: 'perplexity', label: 'Perplexity', needsKey: true, needsModel: true, keyUrl: 'https://www.perplexity.ai/account/api' },
+    { id: 'youcom', label: 'You.com', needsKey: true, keyUrl: 'https://api.you.com' },
   ];
 
   const ENGINE_GROUPS: Array<{
@@ -54,14 +55,12 @@
     { id: 'general', label: 'General', includes: (item) => !item.recommended && item.category === 'general' },
     { id: 'research', label: 'Research', includes: (item) => item.category === 'research' },
     { id: 'configured', label: 'Self-hosted / API', includes: (item) => item.category === 'self_hosted' || item.category === 'api' },
-    { id: 'experimental', label: 'Experimental', includes: (item) => item.category === 'experimental' },
   ];
 
   let {
     searchProvider = $bindable(),
     searchMaxResults = $bindable(),
     searchApiKey = $bindable(),
-    searchEngineId = $bindable(),
     searchBaseUrl = $bindable(),
     searchModel = $bindable(),
     searchApiUrl = $bindable(),
@@ -74,7 +73,6 @@
     searchProvider: string;
     searchMaxResults: string;
     searchApiKey: string;
-    searchEngineId: string;
     searchBaseUrl: string;
     searchModel: string;
     searchApiUrl: string;
@@ -104,14 +102,13 @@
     Boolean(
       currentSearchProvider.needsKey
       || currentSearchProvider.needsUrl
-      || currentSearchProvider.needsEngineId
       || currentSearchProvider.needsModel
     )
   );
 
   onMount(async () => {
     try {
-      catalog = await getAggregatorCatalog();
+      catalog = (await getAggregatorCatalog()) ?? [];
     } catch (error) {
       catalogError = error instanceof Error ? error.message : 'Could not load the engine catalog.';
     }
@@ -203,11 +200,6 @@
 </script>
 
 <div class="space-y-5">
-  <div>
-    <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Search</h3>
-    <p class="mt-1 text-sm text-muted-foreground">Choose how web results are collected and how broad each standard search should be.</p>
-  </div>
-
   <section class="rounded-2xl bg-[var(--muted)]">
     <div class="px-4">
       <Field
@@ -272,14 +264,12 @@
           <Field label="API key" htmlFor="search-api-key">
             <Input id="search-api-key" type="password" bind:value={searchApiKey} placeholder={`${currentSearchProvider.label} API key`} />
           </Field>
-        {/if}
-        {#if currentSearchProvider.needsEngineId}
-          <Field label="Search engine ID" htmlFor="search-engine-id">
-            <Input id="search-engine-id" bind:value={searchEngineId} placeholder="Programmable Search Engine ID" />
-          </Field>
+          {#if currentSearchProvider.keyUrl}
+            <a class="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground" href={currentSearchProvider.keyUrl} target="_blank" rel="noreferrer">{$t('searchSettings.getKey', { values: { name: currentSearchProvider.label } })}</a>
+          {/if}
         {/if}
         {#if currentSearchProvider.needsUrl}
-          <Field label={searchProvider === 'bing' ? 'Endpoint' : 'Base URL'} htmlFor="search-base-url">
+          <Field label="Base URL" htmlFor="search-base-url">
             <Input id="search-base-url" bind:value={searchBaseUrl} placeholder="https://…" />
           </Field>
         {/if}

@@ -57,7 +57,11 @@ function closeThinkStep(run: AgentRun, step: AgentStep, toolCalls: ToolCall[], c
   step.detail = toolCalls.length
     ? (research ? labels : `Next: ${labels}`)
     : (research ? 'Writing report' : 'Preparing the answer');
-  if (toolCalls.length && cleanContent && cleanContent.length > 10 && !run.transport.directMode) {
+  // The first turn's text before its tool calls is the agent talking to the
+  // user ("Let me check…"): keep it as the bubble's opening line.
+  if (toolCalls.length && cleanContent.trim() && run.turn === 1 && !research && !run.steps.some((s) => s.preface)) {
+    run.steps.unshift({ id: uid('step'), type: 'done', label: 'Preface', status: 'done', preface: true, detail: cleanContent.trim().slice(0, 600) });
+  } else if (toolCalls.length && cleanContent && cleanContent.length > 10 && !run.transport.directMode) {
     const trimmed = cleanContent.slice(0, 240).replace(/\|+$/g, '').trim();
     if (trimmed) {
       run.steps.push({

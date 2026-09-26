@@ -14,7 +14,8 @@ export const ARTIFACT_ICON_NAMES = [
   'layout-dashboard',
   'layout-list',
   'code',
-  'library'
+  'library',
+  'sparkles'
 ] as const;
 
 export type ArtifactIconName = typeof ARTIFACT_ICON_NAMES[number];
@@ -44,6 +45,12 @@ function toToolParameters(schema: ArtifactArgsSchema): ToolDefinition['function'
   delete json.$schema;
   return json as ToolDefinition['function']['parameters'];
 }
+
+const CHART_TYPE_ALIASES: Record<string, string> = {
+  column: 'bar', columns: 'bar', 'stacked-bar': 'bar', stacked: 'bar', histogram: 'bar', horizontal: 'bar', 'horizontal-bar': 'bar',
+  area: 'line', spline: 'line', 'line-chart': 'line', trend: 'line',
+  doughnut: 'donut', ring: 'donut', 'pie-chart': 'pie'
+};
 
 function defineArtifact<const T extends ArtifactDefinitionInput>(input: T): T & Pick<ArtifactTypeEntry, 'toolDefinition'> {
   return {
@@ -120,7 +127,9 @@ const builtinArtifacts = [
       content: z.string().optional().describe('Report body when not split into sections'),
       format: z.enum(['html', 'markdown']).optional().describe('Output format'),
       path: pathSchema,
-      theme: z.enum(['light', 'dark']).optional().describe('Color theme for HTML reports')
+      subtitle: z.string().optional(),
+      theme: z.enum(['light', 'dark']).optional().describe('Color theme for HTML reports'),
+      accent: z.enum(['slate', 'blue', 'green', 'amber', 'rose', 'violet']).optional().describe('One muted accent color for HTML reports')
     })
   }),
   defineArtifact({
@@ -153,8 +162,34 @@ const builtinArtifacts = [
   }),
   defineArtifact({
     id: 'presentation', name: 'Presentations', description: 'PPTX slide decks with slide viewer', icon: 'presentation', category: 'documents', presentation: 'document', defaultEnabled: true,
-    toolName: 'create_presentation', toolDescription: 'Create a real PPTX slide deck with a built-in slide viewer.',
-    argsSchema: z.object({ title: z.string().min(1), slides: z.array(z.object({ title: z.string().optional(), content: z.string().optional(), bullets: z.array(z.string()).optional(), notes: z.string().optional() }).passthrough()).min(1), path: pathSchema })
+    toolName: 'create_presentation',
+    toolDescription: 'Create a real PPTX slide deck in a clean, minimal design. Give each slide the layout that fits its content: title, section, bullets, two-column (left/right), quote, stats (2–4 big numbers), table, or chart (native PowerPoint chart). Keep bullets short; put detail in notes.',
+    argsSchema: z.object({
+      title: z.string().min(1),
+      subtitle: z.string().optional(),
+      theme: z.enum(['light', 'dark']).optional().describe('Slide background'),
+      accent: z.enum(['slate', 'blue', 'green', 'amber', 'rose', 'violet']).optional().describe('One muted accent color'),
+      slides: z.array(z.object({
+        layout: z.enum(['title', 'section', 'bullets', 'two-column', 'quote', 'stats', 'table', 'chart']).optional(),
+        title: z.string().optional(),
+        subtitle: z.string().optional(),
+        bullets: z.array(z.string()).optional(),
+        content: z.string().optional(),
+        left: z.object({ heading: z.string().optional(), bullets: z.array(z.string()) }).optional().describe('two-column: left column'),
+        right: z.object({ heading: z.string().optional(), bullets: z.array(z.string()) }).optional().describe('two-column: right column'),
+        quote: z.string().optional(),
+        attribution: z.string().optional(),
+        stats: z.array(z.object({ value: z.string(), label: z.string() })).max(4).optional().describe('stats: big numbers with labels'),
+        table: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.coerce.string())) }).optional(),
+        chart: z.object({
+          type: z.enum(['column', 'bar', 'line', 'pie', 'doughnut']).optional(),
+          labels: z.array(z.coerce.string()),
+          series: z.array(z.object({ name: z.string(), values: z.array(z.coerce.number()) }))
+        }).optional(),
+        notes: z.string().optional().describe('Speaker notes')
+      }).passthrough()).min(1),
+      path: pathSchema
+    })
   }),
   defineArtifact({
     id: 'pdf', name: 'PDF Files', description: 'PDF documents with built-in viewer', icon: 'file', category: 'documents', presentation: 'document', defaultEnabled: true,
@@ -165,7 +200,13 @@ const builtinArtifacts = [
     id: 'chart', name: 'Charts', description: 'Native inline bar, line, pie, and donut charts', icon: 'bar-chart', category: 'visuals', presentation: 'inline', defaultEnabled: true,
     toolName: 'create_chart', toolDescription: 'Create a deterministic inline chart artifact rendered locally.',
     argsSchema: z.object({
-      title: z.string().min(1), chart_type: z.enum(['bar', 'line', 'pie', 'donut']).default('bar'), labels: z.array(z.coerce.string()).min(1),
+      title: z.string().min(1),
+      // Models reach for the chart vocabulary they know; map the common names.
+      chart_type: z.preprocess(
+        (value) => (typeof value === 'string' ? (CHART_TYPE_ALIASES[value.trim().toLowerCase()] ?? value.trim().toLowerCase()) : value),
+        z.enum(['bar', 'line', 'pie', 'donut'])
+      ).default('bar'),
+      labels: z.array(z.coerce.string()).min(1),
       datasets: z.array(z.object({ label: z.coerce.string().optional(), data: z.array(z.coerce.number()) })).min(1), path: pathSchema
     })
   }),
@@ -222,10 +263,19 @@ const builtinArtifacts = [
     argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), path: pathSchema })
   }),
   defineArtifact({
-    id: 'research_package', name: 'Research exports', description: 'Citations, evidence matrices, and bibliography files', icon: 'library', category: 'research', presentation: 'document', defaultEnabled: true,
-    toolName: 'export_research_package', toolDescription: 'Export evidence-backed research deliverables from gathered sources.',
-    argsSchema: z.object({ kinds: z.array(z.enum(['citations', 'matrix', 'shortlist', 'bibliography', 'protocol'])).min(1).default(['citations']), title: z.string().optional(), query: z.string().optional() })
+    id: 'widget', name: 'Interactive widgets', description: 'Small interactive views: calculators, comparisons, quizzes, explainers', icon: 'sparkles', category: 'cards', presentation: 'inline', defaultEnabled: true,
+    toolName: 'create_widget',
+    toolDescription: [
+      'Build a small interactive view inline in chat (dynamic view): a calculator with sliders, a comparison with toggles, a quiz or flashcards, a checklist, a timeline, a step-by-step explainer with tabs, a what-if simulation.',
+      'html: the markup. script: plain JavaScript that makes it interactive (optional). Runs offline in a sealed frame: no network, no external libraries, no storage.',
+      'Style with the built-in classes, not your own colors: fx-stack, fx-row, fx-between, fx-grid, fx-card, fx-label, fx-value, fx-muted, fx-small, fx-btn (primary, ghost), fx-seg (buttons with class on), fx-tabs, fx-chip (good, bad, warn, info), fx-bar > span, fx-list, fx-timeline, fx-up, fx-down, fx-divider; plain table, details/summary, input[type=range] are styled too.',
+      'Helpers in script: fx.$(sel), fx.$$(sel), fx.num(n), fx.money(n, "EUR"), fx.pct(0.12), fx.ask("follow-up question") to suggest a next question.',
+      'Use real numbers from the conversation or tools. Keep it compact.'
+    ].join(' '),
+    argsSchema: z.object({ title: z.string().min(1), html: z.string().min(1), script: z.string().optional(), path: pathSchema })
   })
+  // Research exports (citations, evidence matrix, …) are not an artifact: the
+  // research widget on Search / Deep / Max answers builds them on demand.
 ] as const satisfies readonly ArtifactTypeEntry[];
 
 export type ArtifactToolName = typeof builtinArtifacts[number]['toolName'];

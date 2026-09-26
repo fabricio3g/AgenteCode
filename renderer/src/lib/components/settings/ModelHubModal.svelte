@@ -12,27 +12,31 @@
 </script>
 
 <script lang="ts">
+  import ArtifactTypesPanel from './ArtifactTypesPanel.svelte';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { onMount, untrack } from 'svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import {
     Plus, X,
-    Search, Cpu, Volume2, Settings,
+    Search, Cpu, Volume2, Settings, Shapes
   } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { getInstalledRuntimes } from '$lib/services/files';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { CLOUD_PROVIDERS } from '$lib/utils/providers';
+  import { CLOUD_PROVIDERS, isProviderConfigured } from '$lib/utils/providers';
+  import { DEFAULT_PROVIDER_ID } from '$shared/providers';
+  import { t } from 'svelte-i18n';
+  import { Button, Dialog, Input } from '$lib/components/ui';
+  import SettingsPage from './SettingsPage.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
-  import LocalRuntimePanel from './LocalRuntimePanel.svelte';
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
-  import HardwareSummary from './VoiceSettings.svelte';
   import ModelWorkspace from './ModelWorkspace.svelte';
   import ModelNavRail from './ModelNavRail.svelte';
   import VoiceSection from './sections/VoiceSection.svelte';
+  import ThisComputerSection from './sections/ThisComputerSection.svelte';
   import ProviderDetail from './sections/ProviderDetail.svelte';
   import type { ModelHubSection } from '$lib/utils/model-hub-routing';
   import type { ModelHubTab } from '$lib/types/model-hub';
@@ -56,7 +60,7 @@
   }
 
   // ── Model Providers nav (Jan grammar) ─────────────────────────────────
-  let selectedProviderId = $state('openai');
+  let selectedProviderId = $state(DEFAULT_PROVIDER_ID);
   let addModalOpen = $state(false);
   let newEndpointLabel = $state('');
   let newEndpointUrl = $state('');
@@ -75,22 +79,23 @@
   }
 
   const settingsNavItems = $derived([
-    { id: 'general' as NavSection, label: 'General', description: 'Profile and chat behavior', icon: Settings, active: false },
-    { id: 'search' as NavSection, label: 'Search', description: 'Web search providers', icon: Search, active: false },
-    { id: 'local' as NavSection, label: 'Local Runtime', description: 'Hardware and local engine', icon: Cpu, active: hasRuntime },
-    { id: 'voice' as NavSection, label: 'Voice', description: 'Speech output and input', icon: Volume2, active: false },
+    { id: 'general' as NavSection, label: $t('settingsNav.general'), icon: Settings, active: false },
+    { id: 'search' as NavSection, label: $t('settingsNav.search'), icon: Search, active: false },
+    { id: 'artifacts' as NavSection, label: $t('settingsNav.artifacts'), icon: Shapes, active: false },
+    { id: 'local' as NavSection, label: $t('settingsNav.local'), icon: Cpu, active: hasRuntime },
+    { id: 'voice' as NavSection, label: $t('settingsNav.voice'), icon: Volume2, active: false },
   ]);
 
   const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore' || activeSection === 'loaded');
   const isProvidersSection = $derived(activeSection === 'providers');
-  const navAriaLabel = $derived('Settings sections');
+  const navAriaLabel = $derived($t('settingsNav.label'));
 
   /** Legacy providers.custom config surfaces as a row so nothing is orphaned. */
   const legacyCustomEntry = $derived.by(() => {
     if ((appStore.config.llm?.custom_providers ?? []).some((p) => p.id === 'custom')) return null;
     const saved = appStore.config.llm?.providers?.custom;
     if (!saved || (!saved.has_api_key && !saved.api_key && !saved.model)) return null;
-    return { id: 'custom', label: 'Custom / Other', base_url: '' };
+    return { id: 'custom', label: $t('settingsNav.customEndpoint'), base_url: '' };
   });
 
   const localProviderItems = $derived(CLOUD_PROVIDERS.filter((p) => p.group === 'local' && p.id !== 'custom'));
@@ -100,10 +105,15 @@
     ...(appStore.config.llm?.custom_providers ?? [])
   ]);
 
+  function providerStatus(id: string): 'in-use' | 'ready' | 'none' {
+    if (appStore.backendMode === 'api' && appStore.activeProviderName === id) return 'in-use';
+    return isProviderConfigured(appStore.config, id) ? 'ready' : 'none';
+  }
+
   function providerLabelOf(id: string): string {
     return CLOUD_PROVIDERS.find((p) => p.id === id)?.label
       ?? appStore.config.llm?.custom_providers?.find((p) => p.id === id)?.label
-      ?? (id === 'custom' ? 'Custom / Other' : id);
+      ?? (id === 'custom' ? $t('settingsNav.customEndpoint') : id);
   }
 
   function selectProvider(id: string) {
@@ -116,7 +126,7 @@
     if (active && appStore.backendMode === 'api') return active;
     const firstConfigured = [...remoteProviderItems, ...localProviderItems]
       .find((p) => appStore.config.llm?.providers?.[p.id]?.has_api_key || appStore.config.llm?.providers?.[p.id]?.model);
-    return firstConfigured?.id ?? 'openai';
+    return firstConfigured?.id ?? DEFAULT_PROVIDER_ID;
   }
 
   async function submitNewEndpoint() {
@@ -132,9 +142,9 @@
       }
       closeAddModal();
       selectProvider(id);
-      toastStore.success(key ? `${name} added and ready` : `${name} added — add your API key to finish setup`);
+      toastStore.success($t(key ? 'settingsNav.endpointAddedReady' : 'settingsNav.endpointAdded', { values: { name } }));
     } catch (err) {
-      toastStore.error('Failed to add endpoint: ' + ((err as Error)?.message || String(err)));
+      toastStore.error((err as Error)?.message || String(err));
     } finally {
       addingEndpoint = false;
     }
@@ -215,7 +225,7 @@
   <div
     role="dialog"
     aria-modal="true"
-    aria-label="Models and settings"
+    aria-label={$t('settingsNav.dialogLabel')}
     tabindex="-1"
     class="relative flex h-[min(780px,calc(100vh-2rem))] w-[min(1120px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-[var(--radius-2xl)] bg-popover text-foreground shadow-[shadow:var(--shadow-xl)] max-sm:h-[calc(100vh-1rem)] max-sm:w-[calc(100vw-1rem)]"
     transition:flyAndScale={{ y: 8, start: 0.98, duration: 240 }}
@@ -226,12 +236,15 @@
           type="button"
           class="aui-icon-button size-8 hover:text-[var(--error)]"
           onclick={close}
-          aria-label="Close"
+          aria-label={$t('settingsNav.close')}
         >
           <X class="size-3.5" />
         </button>
       </div>
     {/snippet}
+
+    <!-- Close floats over the content: no empty title bar above the page. -->
+    <div class="absolute right-3 top-3 z-20">{@render modalClose()}</div>
 
     {#if isModelSection}
       <!-- Models: rail spans full modal height; no title bar — close floats
@@ -244,10 +257,6 @@
           onautoload={(next) => setModelAutoLoad(next)}
         />
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div class="flex h-14 shrink-0 items-center justify-end px-4 sm:px-5">
-            {@render modalClose()}
-          </div>
-
           <ModelWorkspace bind:tab={modelTab} bind:autoLoad={modelAutoLoad} />
         </div>
       </div>
@@ -255,13 +264,13 @@
     <!-- Settings: no top title bar — the nav spans the full modal height and
          the close floats top-right over the content with no divider. -->
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-      <aside class="shrink-0 border-b border-[var(--border-subtle)] bg-muted/20 px-3 py-2 md:w-[216px] md:border-b-0 md:border-r md:px-3 md:py-4">
+      <aside class="shrink-0 border-b border-[var(--border)] px-3 py-2 md:w-[220px] md:border-b-0 md:border-r md:px-3 md:py-5">
+        <p class="hidden px-2.5 pb-3 text-[15px] font-semibold tracking-[-0.01em] text-foreground md:block">{$t('settingsNav.title')}</p>
         <nav class="flex gap-1 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-visible" aria-label={navAriaLabel}>
           {#each settingsNavItems as item}
             <button
               type="button"
-              class={`flex min-w-max items-center gap-2 rounded-full border-0 px-3 py-2 text-[13px] font-medium shadow-none outline-none transition-[background-color,color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/25 active:scale-[0.99] md:min-w-0
-                ${activeSection === item.id ? 'bg-[var(--surface-active)] text-foreground' : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}`}
+              class={`nav-row flex min-w-max items-center gap-2.5 md:min-w-0 ${activeSection === item.id ? 'is-active' : ''}`}
               aria-current={activeSection === item.id ? 'page' : undefined}
               onclick={() => (activeSection = item.id)}
             >
@@ -279,14 +288,14 @@
 
           <!-- Model Providers group -->
           <div class="min-w-max md:min-w-0 md:mt-3 md:border-t md:border-[var(--border-subtle)] md:pt-3">
-            <div class="flex items-center justify-between gap-2 px-3 pb-1">
-              <span class="text-[10px] font-semibold text-muted-foreground">Model providers</span>
+            <div class="flex items-center justify-between gap-2 px-2.5 pb-1">
+              <span class="text-[11px] font-semibold text-muted-foreground">{$t('settingsNav.providers')}</span>
               <button
                 type="button"
                 class="flex size-5 items-center justify-center rounded-md text-muted-foreground transition hover:bg-[var(--surface-hover)] hover:text-foreground"
                 onclick={openAddModal}
-                title="Add custom endpoint"
-                aria-label="Add custom endpoint"
+                title={$t('settingsNav.addEndpoint')}
+                aria-label={$t('settingsNav.addEndpoint')}
               >
                 <Plus class="size-3.5" />
               </button>
@@ -294,36 +303,35 @@
 
             {#snippet providerGroup(title: string | null, items: Array<{ id: string; label: string }>)}
               {#if title}
-                <p class="mt-2 px-3 text-[9px] font-semibold text-muted-foreground/70">{title}</p>
+                <p class="mt-2 px-2.5 text-[10px] font-medium text-muted-foreground/80">{title}</p>
               {/if}
               {#each items as p (p.id)}
                 {@const selected = isProvidersSection && selectedProviderId === p.id}
-                {@const routing = appStore.backendMode === 'api' && appStore.activeProviderName === p.id}
+                {@const status = providerStatus(p.id)}
                 <button
                   type="button"
-                  class={`flex w-full min-w-max items-center gap-2 rounded-full border-0 px-3 py-1.5 text-[13px] font-medium outline-none transition-colors duration-[var(--motion-fast)] md:min-w-0 ${selected ? 'bg-[var(--surface-active)] text-foreground' : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}`}
+                  class={`nav-row flex w-full min-w-max items-center gap-2.5 md:min-w-0 ${selected ? 'is-active' : ''}`}
                   aria-current={selected ? 'page' : undefined}
                   onclick={() => selectProvider(p.id)}
                 >
                   <ProviderIcon provider={p.id} size={18} />
                   <span class="min-w-0 flex-1 truncate text-left">{providerLabelOf(p.id)}</span>
-                  {#if routing}
-                    <span class="mr-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]" title="Active route"></span>
+                  {#if status === 'in-use'}
+                    <span class="mr-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--success)]" title={$t('settingsNav.inUse')}></span>
+                  {:else if status === 'ready'}
+                    <span class="mr-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--text-muted)] opacity-60" title={$t('settingsNav.connected')}></span>
                   {/if}
                 </button>
               {/each}
             {/snippet}
 
-            {@render providerGroup('Local', localProviderItems)}
-            {@render providerGroup('Remote', remoteProviderItems)}
+            {@render providerGroup($t('settingsNav.cloud'), remoteProviderItems)}
+            {@render providerGroup($t('settingsNav.onDevice'), localProviderItems)}
           </div>
         </nav>
       </aside>
 
       <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div class="flex h-14 shrink-0 items-center justify-end px-4 sm:px-5">
-          {@render modalClose()}
-        </div>
 
         <main class="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
         {#if activeSection === 'voice'}
@@ -332,19 +340,14 @@
           <UnifiedSettingsPanel activeTab="General" />
         {:else if activeSection === 'search'}
           <UnifiedSettingsPanel activeTab="Search" />
+        {:else if activeSection === 'artifacts'}
+          <SettingsPage title={$t('artifacts.typesTitle')} description={$t('artifacts.typesHint')}>
+            <ArtifactTypesPanel />
+          </SettingsPage>
         {:else if activeSection === 'providers'}
-          <ProviderDetail providerId={selectedProviderId} />
+          {#key selectedProviderId}<ProviderDetail providerId={selectedProviderId} />{/key}
         {:else if activeSection === 'local'}
-          <div class="flex-1 overflow-y-auto bg-background">
-            <div class="mx-auto max-w-[760px] space-y-5 p-5 sm:p-6">
-              <div>
-                <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">Local Runtime</h3>
-                <p class="mt-1 text-sm text-muted-foreground">Review available hardware and manage the local inference engine.</p>
-              </div>
-              <HardwareSummary />
-              <LocalRuntimePanel embedded />
-            </div>
-          </div>
+          <ThisComputerSection />
         {/if}
         </main>
       </div>
@@ -352,85 +355,64 @@
     {/if}
 
     {#if addModalOpen}
-      <!-- Add custom endpoint — floats over the settings dialog. -->
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        role="presentation"
-        class="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[var(--overlay)] p-4"
-        use:modalLayer={{ onclose: closeAddModal }}
-        onclick={(e) => { if (e.target === e.currentTarget) closeAddModal(); }}
-      >
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Add custom provider"
-          tabindex="-1"
-          class="w-[min(440px,100%)] rounded-[var(--radius-2xl)] border border-border bg-popover text-foreground shadow-[shadow:var(--shadow-xl)]"
-          onclick={(e) => e.stopPropagation()}
+      <Dialog title={$t('settingsNav.addEndpointTitle')} description={$t('settingsNav.addEndpointHint')} size="sm" onclose={closeAddModal}>
+        <form
+          id="add-endpoint-form"
+          class="space-y-3 px-5 py-4"
+          onsubmit={(e) => { e.preventDefault(); void submitNewEndpoint(); }}
         >
-          <div class="flex items-center justify-between gap-3 px-5 pb-1 pt-4">
-            <div>
-              <h3 class="text-[15px] font-semibold tracking-[-0.01em]">Add custom provider</h3>
-              <p class="mt-0.5 text-xs text-muted-foreground">Connect any OpenAI-compatible endpoint.</p>
-            </div>
-            <button
-              type="button"
-              class="aui-icon-button size-8 shrink-0"
-              onclick={closeAddModal}
-              aria-label="Close"
-            >
-              <X class="size-3.5" />
-            </button>
-          </div>
-          <form
-            class="space-y-3 px-5 py-4"
-            onsubmit={(e) => { e.preventDefault(); void submitNewEndpoint(); }}
-          >
-            <label class="block">
-              <span class="mb-1 block text-xs font-medium text-muted-foreground">Name</span>
-              <input
-                class="aui-input w-full text-sm"
-                bind:value={newEndpointLabel}
-                placeholder="e.g. My gateway"
-                autocomplete="off"
-              />
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-xs font-medium text-muted-foreground">Base URL</span>
-              <input
-                class="aui-input w-full text-sm"
-                bind:value={newEndpointUrl}
-                placeholder="https://api.example.com/v1"
-                inputmode="url"
-                autocomplete="off"
-              />
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-xs font-medium text-muted-foreground">API key <span class="font-normal opacity-70">(optional)</span></span>
-              <input
-                type="password"
-                class="aui-input w-full text-sm"
-                bind:value={newEndpointKey}
-                placeholder="sk-…"
-                autocomplete="off"
-              />
-            </label>
-            <div class="flex justify-end gap-1.5 pt-1">
-              <button
-                type="button"
-                class="rounded-full px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
-                onclick={closeAddModal}
-              >Cancel</button>
-              <button
-                type="submit"
-                class="rounded-full bg-[var(--primary)] px-4 py-1.5 text-[13px] font-semibold text-[var(--primary-fg)] transition disabled:opacity-50"
-                disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim() || addingEndpoint}
-              >{addingEndpoint ? 'Adding…' : 'Add provider'}</button>
-            </div>
-          </form>
-        </div>
-      </div>
+          <label class="block space-y-1.5">
+            <span class="text-xs font-medium text-muted-foreground">{$t('settingsNav.endpointName')}</span>
+            <Input bind:value={newEndpointLabel} placeholder={$t('settingsNav.endpointNamePlaceholder')} autocomplete="off" autofocus />
+          </label>
+          <label class="block space-y-1.5">
+            <span class="text-xs font-medium text-muted-foreground">{$t('providers.baseUrl')}</span>
+            <Input bind:value={newEndpointUrl} placeholder="https://api.example.com/v1" inputmode="url" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="block space-y-1.5">
+            <span class="text-xs font-medium text-muted-foreground">{$t('providers.apiKey')} <span class="font-normal opacity-70">· {$t('providers.optional')}</span></span>
+            <Input type="password" bind:value={newEndpointKey} placeholder="sk-…" autocomplete="off" />
+          </label>
+        </form>
+        {#snippet footer()}
+          <Button variant="ghost" onclick={closeAddModal}>{$t('providers.cancel')}</Button>
+          <Button type="submit" form="add-endpoint-form" loading={addingEndpoint} disabled={!newEndpointLabel.trim() || !newEndpointUrl.trim()}>
+            {$t('settingsNav.addEndpointAction')}
+          </Button>
+        {/snippet}
+      </Dialog>
     {/if}
   </div>
 </div>
+
+<style>
+  /* Nav rows: quiet, the same size in both rails. Active is a soft fill,
+     never a ring; the focus ring only shows for keyboard focus. */
+  :global(.nav-row) {
+    height: 2rem;
+    padding: 0 0.625rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    outline: none;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+  }
+
+  :global(.nav-row:hover) {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
+
+  :global(.nav-row.is-active) {
+    background: var(--surface-active);
+    color: var(--foreground);
+  }
+
+  :global(.nav-row:focus-visible) {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--ring) 45%, transparent);
+  }
+</style>

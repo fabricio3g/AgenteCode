@@ -64,10 +64,9 @@ export function escapeHtml(value: unknown): string {
  * supplied (a model that answered with prose instead of structure).
  */
 export function normalizeSections(sections: unknown, fallbackContent?: string): SectionInput[] {
-  if (!Array.isArray(sections)) {
-    return fallbackContent ? [{ content: fallbackContent }] : [];
-  }
-  return sections.map((section) => {
+  const intro: SectionInput[] = fallbackContent ? [{ content: fallbackContent }] : [];
+  if (!Array.isArray(sections)) return intro;
+  const normalized = sections.map((section): SectionInput => {
     if (typeof section === 'string') return { content: section };
     const item = (section && typeof section === 'object') ? section as Record<string, unknown> : {};
     return {
@@ -78,4 +77,6 @@ export function normalizeSections(sections: unknown, fallbackContent?: string): 
       citations: Array.isArray(item.citations) ? item.citations.map((citation) => text(citation)).filter(Boolean) : []
     };
   }).filter((section) => section.title || section.heading || section.content || section.bullets?.length);
+  // Body prose sent alongside sections reads as the introduction.
+  return [...intro, ...normalized];
 }

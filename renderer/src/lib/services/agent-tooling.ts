@@ -24,10 +24,14 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'query_knowledge',
   'calculator',
   'browser_open',
-  'browser_navigate',
   'browser_snapshot',
   'browser_click',
-  'browser_type',
+  'browser_fill',
+  'browser_press',
+  'browser_scroll',
+  'browser_wait',
+  'browser_back',
+  'browser_console',
   'browser_screenshot',
   'read_file',
   'write_file',
@@ -46,10 +50,10 @@ export const CHAT_AGENT_TOOL_NAMES = new Set([
   'create_dashboard',
   'create_info_card',
   'create_html_card',
+  'create_widget',
   'get_weather',
   'convert_currency',
-  'get_quote',
-  'export_research_package'
+  'get_quote'
 ]);
 
 export type AgentProfile = 'chat' | 'code' | 'search' | 'work';
@@ -278,28 +282,18 @@ export function getToolDefinitions(
         }
       }
     },
+    // Agent browser (shared driver in the main process): snapshots list
+    // elements with refs, and every action takes those refs.
     {
       type: 'function', function: {
         name: 'browser_open',
         description:
-          'Open a URL in the floating agent browser panel (isolated profile, user watches live). Use for any task needing a real page. Returns a text snapshot of the page.',
+          'Open a URL in the agent browser panel (isolated profile, the user watches live) and return a snapshot: title, URL, visible elements with refs (e12), and text.',
         parameters: {
           type: 'object',
           properties: {
-            url: { type: 'string', description: 'http(s) URL to open' }
-          },
-          required: ['url']
-        }
-      }
-    },
-    {
-      type: 'function', function: {
-        name: 'browser_navigate',
-        description: 'Navigate the active agent browser tab to an http(s) URL. Returns a text snapshot.',
-        parameters: {
-          type: 'object',
-          properties: {
-            url: { type: 'string', description: 'http(s) URL to load' }
+            url: { type: 'string', description: 'http(s) URL to open' },
+            newTab: { type: 'boolean', description: 'Open in a new tab' }
           },
           required: ['url']
         }
@@ -308,41 +302,90 @@ export function getToolDefinitions(
     {
       type: 'function', function: {
         name: 'browser_snapshot',
-        description: 'Read the active agent browser tab: URL, title, text, links, inputs, buttons.',
+        description: 'Read the current page: URL, title, visible elements with refs, new console errors, and the visible text.',
         parameters: { type: 'object', properties: {} }
       }
     },
     {
       type: 'function', function: {
         name: 'browser_click',
-        description: 'Click a control in the active agent browser tab by its visible text. Returns a fresh snapshot.',
+        description: 'Click an element by its ref from the latest snapshot. Returns the new snapshot.',
         parameters: {
           type: 'object',
-          properties: {
-            text: { type: 'string', description: 'Visible text of the link or button to click' }
-          },
-          required: ['text']
+          properties: { ref: { type: 'string', description: 'Element ref, e.g. "e12"' } },
+          required: ['ref']
         }
       }
     },
     {
       type: 'function', function: {
-        name: 'browser_type',
-        description: 'Focus a field by CSS selector in the active agent browser tab and type text into it.',
+        name: 'browser_fill',
+        description: 'Replace the text in a field by ref; set submit to press Enter afterwards (search boxes, forms).',
         parameters: {
           type: 'object',
           properties: {
-            selector: { type: 'string', description: 'CSS selector of the input field' },
-            text: { type: 'string', description: 'Text to type' }
+            ref: { type: 'string', description: 'Element ref, e.g. "e4"' },
+            text: { type: 'string', description: 'Text to enter' },
+            submit: { type: 'boolean', description: 'Press Enter after typing' }
           },
-          required: ['selector', 'text']
+          required: ['ref', 'text']
         }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_press',
+        description: 'Press a key: Enter, Tab, Escape, Backspace, Space, ArrowUp/Down/Left/Right, PageUp, PageDown, Home, End.',
+        parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_scroll',
+        description: 'Scroll by pages (default one page down), or bring an element into view by ref.',
+        parameters: {
+          type: 'object',
+          properties: {
+            direction: { type: 'string', enum: ['up', 'down'] },
+            pages: { type: 'number' },
+            ref: { type: 'string' }
+          }
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_wait',
+        description: 'Wait until text or a CSS selector appears, or the URL contains a string (default 8s, max 30s).',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            selector: { type: 'string' },
+            url: { type: 'string' },
+            timeoutMs: { type: 'number' }
+          }
+        }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_back',
+        description: 'Go back in the browser history.',
+        parameters: { type: 'object', properties: {} }
+      }
+    },
+    {
+      type: 'function', function: {
+        name: 'browser_console',
+        description: "Read the page's console output, uncaught exceptions and failed requests since the last check.",
+        parameters: { type: 'object', properties: { level: { type: 'string', enum: ['error', 'warning', 'all'] } } }
       }
     },
     {
       type: 'function', function: {
         name: 'browser_screenshot',
-        description: 'Capture a screenshot of the active agent browser tab. Returns a data URL image.',
+        description: 'Capture the visible page as an image (for layout and visual questions; vision models only).',
         parameters: { type: 'object', properties: {} }
       }
     },
@@ -379,7 +422,9 @@ export function getToolDefinitions(
 export const STEP_TYPE: Record<string, AgentStep['type']> = {
   web_search: 'searching', fetch_url: 'reading',
   browser_open: 'reading', browser_navigate: 'reading', browser_snapshot: 'reading',
-  browser_click: 'executing', browser_type: 'executing', browser_screenshot: 'reading',
+  browser_click: 'executing', browser_type: 'executing', browser_fill: 'executing', browser_press: 'executing',
+  browser_scroll: 'reading', browser_wait: 'reading', browser_back: 'reading', browser_console: 'reading',
+  browser_screenshot: 'reading',
   query_knowledge: 'reading',
   read_file: 'reading', list_files: 'reading', search_files: 'reading',
   write_file: 'writing', delete_file: 'writing', edit_file: 'writing',
@@ -387,8 +432,7 @@ export const STEP_TYPE: Record<string, AgentStep['type']> = {
   get_diagnostics: 'reading',
   preview_project: 'preview', create_report: 'writing',
   create_work_product: 'writing', create_document: 'writing', create_spreadsheet: 'writing', create_presentation: 'writing', create_pdf: 'writing', create_chart: 'writing', create_diagram: 'writing', create_map: 'writing', create_dashboard: 'writing',
-  create_info_card: 'writing', create_html_card: 'writing',
+  create_info_card: 'writing', create_html_card: 'writing', create_widget: 'writing',
   get_weather: 'searching', convert_currency: 'tool', get_quote: 'searching',
-  export_research_package: 'writing',
   calculator: 'tool',
 };

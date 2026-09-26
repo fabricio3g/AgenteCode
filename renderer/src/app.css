@@ -613,43 +613,50 @@ textarea {
 
 .aui-menu {
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.875rem;
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow:
-    var(--shadow-sm),
-    inset 0 0 0 1px var(--border-subtle);
-  padding: 0.25rem;
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 8px 24px -6px rgb(0 0 0 / 0.12);
+  padding: 0.3125rem;
   /* Above code/activity drawers and composer chrome */
   z-index: 100;
 }
 
 .dark .aui-menu {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.3),
-    inset 0 0 0 1px var(--border-subtle);
+  border-color: var(--border);
+  box-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.5);
 }
 
+/* A quiet row: foreground text, soft hover fill, a check for the current choice. */
 .aui-menu-item {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 0.5625rem;
   background: transparent;
-  padding: 0.4rem 0.65rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
+  padding: 0.4375rem 0.625rem;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  line-height: 1.3;
   text-align: left;
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-menu-item:hover {
+.aui-menu-item > svg:first-child {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.aui-menu-item:hover,
+.aui-menu-item:focus-visible {
   background: var(--muted);
-  color: var(--foreground);
+  outline: none;
 }
 
 .aui-menu-item.is-danger,
@@ -668,13 +675,35 @@ textarea {
 
 .aui-menu-item:disabled:hover {
   background: transparent;
-  color: var(--muted-foreground);
 }
 
 .aui-menu-item.is-active {
-  background: var(--primary);
-  color: var(--primary-foreground);
   font-weight: 500;
+}
+
+.aui-menu-item-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.aui-menu-item-hint {
+  color: var(--muted-foreground);
+  font-size: 0.71875rem;
+  font-weight: 400;
+}
+
+.aui-menu-check {
+  flex-shrink: 0;
+  color: var(--foreground);
+}
+
+.aui-menu-divider {
+  height: 1px;
+  margin: 0.3125rem 0.375rem;
+  background: var(--border-subtle);
 }
 
 .aui-segmented {
@@ -2399,4 +2428,51 @@ input[type="range"]::-moz-range-thumb {
    * left to animate now.
    */
   .stream-caret > :last-child::after { animation: none !important; opacity: 0.7; }
+}
+
+/*
+ * Office fonts, mapped to look-alikes the machine already has, so documents
+ * and decks that name them don't fall back to a default serif. The real font
+ * wins when it is installed.
+ */
+@font-face { font-family: 'Aptos'; src: local('Aptos'), local('Segoe UI'), local('Inter'), local('Helvetica Neue'), local('Liberation Sans'), local('Arial'), local('DejaVu Sans'); }
+@font-face { font-family: 'Aptos Display'; src: local('Aptos Display'), local('Segoe UI'), local('Inter'), local('Helvetica Neue'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Calibri'; src: local('Calibri'), local('Carlito'), local('Segoe UI'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Calibri Light'; src: local('Calibri Light'), local('Carlito'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Cambria'; src: local('Cambria'), local('Caladea'), local('Liberation Serif'), local('Georgia'); }
+
+/* ── Icons ──────────────────────────────────────────────────────────────
+   Lucide at 1.5px: lighter at the 14–16px sizes the app uses. The 12px and
+   smaller icons keep a touch more weight so they don't go hairline. */
+svg.lucide {
+  stroke-width: 1.5;
+  transition:
+    translate 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    rotate 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    scale 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+svg.lucide:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
+  stroke-width: 1.75;
+}
+
+/* Hover motion: a small, meaningful nudge per icon — fast and quiet. Uses the
+   individual transform properties so Tailwind's rotate-180 etc. still apply. */
+:is(button, a, [role='menuitem'], [role='tab'], label):not(:disabled):hover {
+  & svg:is(.lucide-plus, .lucide-x) { rotate: 90deg; }
+  & svg:is(.lucide-settings, .lucide-settings-2, .lucide-cog, .lucide-sun) { rotate: 45deg; }
+  & svg:is(.lucide-refresh-cw, .lucide-rotate-cw, .lucide-refresh-ccw, .lucide-rotate-ccw, .lucide-repeat) { rotate: 120deg; }
+  & svg:is(.lucide-arrow-up, .lucide-send, .lucide-house, .lucide-home, .lucide-upload, .lucide-chevron-up) { translate: 0 -1.5px; }
+  & svg:is(.lucide-arrow-down, .lucide-download, .lucide-chevron-down) { translate: 0 1.5px; }
+  & svg:is(.lucide-arrow-left, .lucide-chevron-left, .lucide-undo-2) { translate: -1.5px 0; }
+  & svg:is(.lucide-arrow-right, .lucide-chevron-right, .lucide-redo-2) { translate: 1.5px 0; }
+  & svg:is(.lucide-external-link, .lucide-arrow-up-right, .lucide-square-arrow-out-up-right) { translate: 1px -1px; }
+  & svg:is(.lucide-trash, .lucide-trash-2, .lucide-paperclip, .lucide-pencil, .lucide-pen, .lucide-pen-line, .lucide-square-pen, .lucide-moon) { rotate: -12deg; }
+  & svg:is(.lucide-search, .lucide-globe, .lucide-globe-2, .lucide-earth) { rotate: 15deg; }
+  & svg:is(.lucide-copy, .lucide-mic, .lucide-brain, .lucide-sparkles, .lucide-star, .lucide-heart, .lucide-bell, .lucide-thumbs-up, .lucide-thumbs-down, .lucide-maximize, .lucide-maximize-2, .lucide-expand, .lucide-volume-2, .lucide-play) { scale: 1.12; }
+  & svg:is(.lucide-minimize, .lucide-minimize-2, .lucide-shrink) { scale: 0.88; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  svg.lucide { transition: none; }
+  :is(button, a, [role='menuitem'], [role='tab'], label):hover svg.lucide { translate: none; rotate: none; scale: none; }
 }

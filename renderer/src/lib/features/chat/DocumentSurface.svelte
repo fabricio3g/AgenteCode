@@ -1,21 +1,16 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { AlertCircle, Download, ExternalLink, FileText, Files, Search, X } from 'lucide-svelte';
+  import { AlertCircle, Download, ExternalLink, FileText, Search, X } from 'lucide-svelte';
   import { motionFade } from '$lib/utils/transitions';
   import Portal from '$lib/ui/components/Portal.svelte';
-  import { renderMarkdown } from '$lib/utils/markdown';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
-  import { parseContentSegments } from '$lib/utils/charts';
-  import ChartBlock from '$lib/features/chat/ChartBlock.svelte';
   import { getFileIcon, getViewerKind, downloadFromDataUrl, downloadFromSrc } from '$lib/utils/doc-utils';
   import type { ViewerKind } from '$lib/utils/doc-utils';
-  import PdfViewer from './viewers/PdfViewer.svelte';
-  import DocxViewer from './viewers/DocxViewer.svelte';
-  import XlsxViewer from './viewers/XlsxViewer.svelte';
-  import TextViewer from './viewers/TextViewer.svelte';
-  import SlidesViewer from './SlidesViewer.svelte';
+  import DocumentViewer from './DocumentViewer.svelte';
+  import { documentSource, isMarkdownDocument } from './document-viewer';
   import { baseName, fileTypeLabel, type DocumentSurfaceItem } from './document-surface';
+  import { t } from 'svelte-i18n';
+  import { say } from '$lib/copy';
 
   interface Props {
     docs?: DocumentSurfaceItem[];
@@ -40,7 +35,6 @@
   let open = $state(false);
   let activeId = $state('');
   let query = $state('');
-  let previewEl = $state<HTMLElement | undefined>(undefined);
 
   const visibleDocs = $derived((docs || []).filter(Boolean));
   const activeDoc = $derived.by(() => {
@@ -50,28 +44,33 @@
   function cleanSurfaceTitle(value: string) {
     const raw = (value || '').trim();
     if (!raw || /^agent workspace\s*\(/i.test(raw) || raw.toLowerCase() === 'work product') {
-      if (activeDoc?.kind === 'report') return 'Report';
-      if (activeDoc?.kind === 'slides') return 'Slides';
-      if (visibleDocs.length > 1) return 'Documents';
-      return activeDoc?.title || baseName(activeDoc?.name || '') || 'Document';
+      if (activeDoc?.kind === 'report') return $t('artifacts.kind.report');
+      if (activeDoc?.kind === 'slides') return $t('artifacts.kind.presentation');
+      if (visibleDocs.length > 1) return $t('artifacts.group.documents');
+      return activeDoc?.title || baseName(activeDoc?.name || '') || $t('artifacts.kind.document');
     }
     return raw;
   }
 
   const surfaceTitle = $derived(cleanSurfaceTitle(title || activeDoc?.title || activeDoc?.name || ''));
-  const primaryType = $derived(activeDoc ? fileTypeLabel(activeDoc.name, activeDoc.kind) : 'FILE');
+  /** "Document", "Presentation", or the file's extension. */
+  function typeLabel(doc: DocumentSurfaceItem): string {
+    if (doc.kind === 'report') return $t('artifacts.kind.document');
+    if (doc.kind === 'slides') return $t('artifacts.kind.presentation');
+    return fileTypeLabel(doc.name);
+  }
+  const primaryType = $derived(activeDoc ? typeLabel(activeDoc) : '');
   const primaryIcon = $derived(activeDoc ? getFileIcon(activeDoc.name, activeDoc.type || '') : FileText);
   const subtitle = $derived.by(() => {
     const parts = [
-      visibleDocs.length > 1 ? `${visibleDocs.length} files` : primaryType,
-      sourceCount > 0 ? `${sourceCount} sources` : ''
+      visibleDocs.length > 1 ? say.files(visibleDocs.length) : primaryType,
+      sourceCount > 0 ? $t('artifacts.reader.sources', { values: { n: sourceCount } }) : ''
     ].filter(Boolean);
     return parts.join(' · ');
   });
   const warnings = $derived(Array.from(new Set(visibleDocs.flatMap((doc) => doc.warnings || []))));
   const status = $derived(visibleDocs.find((doc) => doc.status)?.status || (warnings.length ? 'partial' : 'ready'));
   const activeText = $derived((activeDoc?.content || '').toLowerCase());
-  const safePreviewHtml = $derived(activeDoc?.previewHtml ? buildPreviewHtml(activeDoc.previewHtml, {}, activeDoc.name).html : '');
   const searchTerm = $derived(query.trim());
   const canSearch = $derived.by(() => {
     if (!activeDoc) return false;
@@ -126,28 +125,8 @@
     openReaderFor(doc);
   }
 
-  function utf8Base64(value: string) {
-    const bytes = new TextEncoder().encode(value);
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.slice(i, i + chunk));
-    }
-    return btoa(binary);
-  }
-
   function docSource(doc: DocumentSurfaceItem | null) {
-    if (!doc) return '';
-    if (doc.dataUrl) return doc.dataUrl;
-    if (doc.content !== undefined) {
-      const mime = doc.name.endsWith('.csv')
-        ? 'text/csv'
-        : doc.name.endsWith('.md') || doc.name.endsWith('.markdown')
-          ? 'text/markdown'
-          : 'text/plain';
-      return `data:${mime};charset=utf-8;base64,${utf8Base64(doc.content)}`;
-    }
-    return '';
+    return documentSource(doc);
   }
 
   function viewerKind(doc: DocumentSurfaceItem | null): ViewerKind {
@@ -157,28 +136,8 @@
   }
 
   function isMarkdown(doc: DocumentSurfaceItem | null) {
-    const name = doc?.name.toLowerCase() || '';
-    return doc?.kind === 'report' || name.endsWith('.md') || name.endsWith('.markdown');
+    return isMarkdownDocument(doc);
   }
-
-  function highlightedMarkdown(content: string) {
-    const html = renderMarkdown(content || '');
-    const term = searchTerm;
-    if (!term) return html;
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return html.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-  }
-
-  function reportSegments(content: string) {
-    return parseContentSegments(content || '');
-  }
-
-  $effect(() => {
-    if (!open || !searchTerm || !previewEl || !isMarkdown(activeDoc)) return;
-    requestAnimationFrame(() => {
-      previewEl?.querySelector('mark')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-  });
 
   function downloadDoc(doc: DocumentSurfaceItem | null, event?: Event) {
     event?.preventDefault();
@@ -225,7 +184,7 @@
             {/if}
             <span class="attachment-copy">
               <span class="attachment-title">{doc.title || baseName(doc.name)}</span>
-              <span class="attachment-type">{fileTypeLabel(doc.name, doc.kind)}</span>
+              <span class="attachment-type">{typeLabel(doc)}</span>
             </span>
             {#if allowDownload && viewerKind(doc) !== 'image' && (docSource(doc) || doc.kind === 'slides')}
               <button
@@ -257,7 +216,7 @@
         </span>
         <span class="document-copy">
           <span class="document-title">{surfaceTitle}</span>
-          <span class="document-subtitle">{subtitle}{#if status !== 'ready'} · {status}{/if}</span>
+          <span class="document-subtitle">{subtitle}{#if status !== 'ready'} · {$t(`artifacts.status.${status}`)}{/if}</span>
         </span>
         <span class="document-actions">
           {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
@@ -265,7 +224,7 @@
               <Download class="h-3.5 w-3.5" />
             </button>
           {/if}
-          <button type="button" class="document-action" onclick={openReader} title="Open reader">
+          <button type="button" class="document-action" onclick={openReader} title={$t('artifacts.reader.open')}>
             <ExternalLink class="h-3.5 w-3.5" />
           </button>
         </span>
@@ -275,7 +234,7 @@
     {#if open}
       <Portal className="document-reader-portal">
         <div class="document-reader-layer" transition:motionFade={{ duration: 120 }}>
-          <button class="document-reader-scrim" aria-label="Close reader" onclick={closeReader}></button>
+          <button class="document-reader-scrim" aria-label={$t('artifacts.reader.close')} onclick={closeReader}></button>
         </div>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
@@ -291,32 +250,32 @@
             <header class="workspace-header">
               <div class="reader-title-wrap">
                 <div class="reader-title">{surfaceTitle}</div>
-                <div class="reader-subtitle">{subtitle || 'Document'}{#if status !== 'ready'} · {status}{/if}</div>
+                <div class="reader-subtitle">{subtitle || $t('artifacts.kind.document')}{#if status !== 'ready'} · {$t(`artifacts.status.${status}`)}{/if}</div>
               </div>
               <div class="workspace-tools">
                 {#if canSearch}
-                  <label class="workspace-search" title="Search current document">
+                  <label class="workspace-search" title={$t('artifacts.reader.search')}>
                     <Search class="h-3.5 w-3.5" />
-                    <input bind:value={query} placeholder="Search" />
+                    <input bind:value={query} placeholder={$t('artifacts.reader.search')} />
                     {#if query}
-                      <button type="button" class="search-clear" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">
+                      <button type="button" class="search-clear" onclick={() => (query = '')} aria-label={$t('artifacts.clearSearch')} title={$t('artifacts.clearSearch')}>
                         <X class="h-3 w-3" />
                       </button>
                     {/if}
                   </label>
                 {/if}
                 {#if allowDownload && activeDoc && (docSource(activeDoc) || activeDoc.kind === 'slides')}
-                  <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label="Download" title="Download">
+                  <button type="button" class="reader-icon-btn" onclick={(event) => downloadDoc(activeDoc, event)} aria-label={$t('artifacts.card.download')} title={$t('artifacts.card.download')}>
                     <Download class="h-4 w-4" />
                   </button>
                 {/if}
-                <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label="Close" title="Close">
+                <button type="button" class="reader-icon-btn" onclick={closeReader} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
                   <X class="h-4 w-4" />
                 </button>
               </div>
             </header>
           {:else}
-            <button type="button" class="image-viewer-close" onclick={closeReader} aria-label="Close image preview" title="Close">
+            <button type="button" class="image-viewer-close" onclick={closeReader} aria-label={$t('artifacts.reader.close')} title={$t('artifacts.reader.close')}>
               <X class="h-5 w-5" />
             </button>
           {/if}
@@ -331,20 +290,16 @@
           {#if searchTerm && canSearch}
             <div class="workspace-search-status" class:miss={!searchHit}>
               {#if viewerKind(activeDoc) === 'xlsx'}
-                Filtering spreadsheet rows
-              {:else if searchMatchCount === 1}
-                1 match
-              {:else if searchMatchCount > 1}
-                {searchMatchCount} matches
+                {$t('artifacts.reader.filteringRows')}
               {:else}
-                No matches
+                {$t('artifacts.reader.matches', { values: { n: searchMatchCount } })}
               {/if}
             </div>
           {/if}
 
           <div class="reader-body" class:single={visibleDocs.length === 1}>
             {#if visibleDocs.length > 1}
-              <nav class="reader-rail" aria-label="Documents">
+              <nav class="reader-rail" aria-label={$t('artifacts.group.documents')}>
                 {#each visibleDocs as doc (doc.id)}
                   <button
                     type="button"
@@ -359,77 +314,16 @@
                     </span>
                     <span class="reader-file-copy">
                       <span class="reader-file-title">{doc.title || baseName(doc.name)}</span>
-                      <span class="reader-file-type">{fileTypeLabel(doc.name, doc.kind)}</span>
+                      <span class="reader-file-type">{typeLabel(doc)}</span>
                     </span>
                   </button>
                 {/each}
               </nav>
             {/if}
 
-            <main class="reader-preview" bind:this={previewEl}>
+            <main class="reader-preview">
               {#if activeDoc}
-                {#if activeDoc.kind === 'slides' && activeDoc.slides?.length}
-                  <SlidesViewer slides={activeDoc.slides} onDownload={onDownloadSlides || (() => {})} />
-                {:else if viewerKind(activeDoc) === 'pdf' && docSource(activeDoc)}
-                  <PdfViewer src={docSource(activeDoc)} filename={activeDoc.name} />
-                {:else if viewerKind(activeDoc) === 'docx' && docSource(activeDoc)}
-                  <!--
-                    Before the generic previewHtml branch on purpose: generated
-                    DOCX artifacts carry an HTML viewer in `__viewer__/…`, and
-                    rendering that instead of the document is exactly the plain
-                    text column the real page renderer replaces.
-                  -->
-                  <DocxViewer src={docSource(activeDoc)} filename={activeDoc.name} />
-                {:else if activeDoc.previewHtml}
-                  <iframe class="reader-iframe" srcdoc={safePreviewHtml} sandbox="" referrerpolicy="no-referrer" title="{activeDoc.name} preview"></iframe>
-                {:else if isMarkdown(activeDoc)}
-                  {#if activeDoc.kind === 'report'}
-                    <article class="reader-article">
-                      {#each reportSegments(activeDoc.content || '') as segment}
-                        {#if segment.kind === 'text'}
-                          {#if segment.content.trim()}
-                            <div class="markdown-body mb-3">{@html highlightedMarkdown(segment.content)}</div>
-                          {/if}
-                        {:else}
-                          <ChartBlock
-                            type={segment.type}
-                            title={segment.title}
-                            xlabel={segment.xlabel}
-                            ylabel={segment.ylabel}
-                            raw={segment.raw}
-                          />
-                        {/if}
-                      {/each}
-                    </article>
-                  {:else}
-                    <article class="reader-article markdown-body">
-                      {@html highlightedMarkdown(activeDoc.content || '')}
-                    </article>
-                  {/if}
-                {:else if viewerKind(activeDoc) === 'pdf'}
-                  <PdfViewer src={docSource(activeDoc)} filename={activeDoc.name} />
-                {:else if viewerKind(activeDoc) === 'docx'}
-                  <DocxViewer src={docSource(activeDoc)} filename={activeDoc.name} />
-                {:else if viewerKind(activeDoc) === 'xlsx'}
-                  <XlsxViewer src={docSource(activeDoc)} filename={activeDoc.name} query={query} />
-                {:else if viewerKind(activeDoc) === 'text'}
-                  <TextViewer src={docSource(activeDoc)} filename={activeDoc.name} query={query} />
-                {:else if viewerKind(activeDoc) === 'image'}
-                  <div class="reader-image-stage">
-                    {#if docSource(activeDoc)}
-                      <img class="reader-image" src={docSource(activeDoc)} alt={activeDoc.title || baseName(activeDoc.name)} />
-                    {:else}
-                      <div class="reader-empty">Image preview is not available for this file.</div>
-                    {/if}
-                  </div>
-                {:else if viewerKind(activeDoc) === 'pptx'}
-                  <div class="reader-empty">
-                    <Files class="h-5 w-5" />
-                    <span>PPTX preview is not available for this file. Download it to open the deck.</span>
-                  </div>
-                {:else}
-                  <div class="reader-empty">Preview not available for this file type.</div>
-                {/if}
+                <DocumentViewer doc={activeDoc} {query} {onDownloadSlides} />
               {/if}
             </main>
           </div>
@@ -912,73 +806,29 @@
     transform: scale(1.03);
   }
 
-  .reader-preview :global(mark) {
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--primary) 22%, transparent);
-    color: inherit;
-    padding: 0 0.08rem;
-  }
 
   .reader-body.single {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .reader-article {
-    width: min(56rem, 100%);
-    margin: 0 auto;
-    color: var(--text);
-    font-size: 0.95rem;
-    line-height: 1.68;
-  }
 
-  .reader-iframe {
-    width: 100%;
-    height: calc(96vh - 7.5rem);
-    border: 0;
-    background: #fff;
-  }
 
-  .reader-image-stage {
-    display: flex;
-    min-height: calc(96vh - 9rem);
-    align-items: center;
-    justify-content: center;
-    padding: 0.25rem;
-  }
 
-  .reader-image {
-    display: block;
-    max-width: 100%;
-    max-height: calc(96vh - 10rem);
-    object-fit: contain;
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-sm);
-  }
 
-  .image-workspace .reader-image-stage {
+  .image-workspace :global(.doc-image-stage) {
     width: 100%;
     height: 100%;
     min-height: 0;
     padding: 0;
   }
 
-  .image-workspace .reader-image {
+  .image-workspace :global(.doc-image) {
     max-width: 100%;
     max-height: 94vh;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);
   }
 
-  .reader-empty {
-    display: flex;
-    min-height: 18rem;
-    align-items: center;
-    justify-content: center;
-    gap: 0.55rem;
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-  }
 
   @media (max-width: 760px) {
     .document-workspace {

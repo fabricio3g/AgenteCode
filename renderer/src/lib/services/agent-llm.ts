@@ -8,6 +8,7 @@ import type { AppConfig, ReasoningLevel } from '$lib/types/chat';
 import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 import { toErrorMessage } from '$lib/utils/errors';
 import { samplingParams } from '$shared/llm-params';
+import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 export type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
 
@@ -56,9 +57,9 @@ async function resolveAgentTransport(config: AppConfig): Promise<AgentTransport 
     };
   }
 
-  const providerName = config.llm?.provider || 'openai';
+  const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
   const providers = config.llm?.providers || {};
-  const provider = providers[providerName] || { base_url: 'https://api.openai.com/v1', model: '' };
+  const provider = providers[providerName] || { base_url: DEFAULT_PROVIDER_BASE_URL, model: '' };
   if (!provider.base_url) return null;
   return {
     backend: 'api',

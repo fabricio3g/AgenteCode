@@ -5,6 +5,8 @@ import { spawn } from 'node:child_process';
 import { loadConfig, WHISPER_QUALITY_CATALOG } from './config.ts';
 import { getAppPaths } from './paths.ts';
 import { resolveWhisperBinary, detectBestBackend, pickBestRuntime, listWhisperBinaries } from './whisper-resolver.ts';
+import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/providers.ts';
+import { findWhisperServer, stopWhisperServer, transcribeWithServer, whisperServerStatus } from './whisper-server.ts';
 
 const MAX_STT_AUDIO_BYTES = 16 * 1024 * 1024;
 const FFMPEG_TIMEOUT_MS = 45_000;
@@ -57,7 +59,7 @@ interface WhisperModelInfo {
   searchedDirs: string[];
 }
 
-function checkLocalWhisperModel(quality): WhisperModelInfo {
+export function checkLocalWhisperModel(quality): WhisperModelInfo {
   const catalog = WHISPER_QUALITY_CATALOG[quality];
   if (!catalog) return { available: false, modelPath: '', catalog: null, searchedDirs: [] };
 
@@ -65,6 +67,7 @@ function checkLocalWhisperModel(quality): WhisperModelInfo {
   const paths = getAppPaths();
   const configuredModelsDir = String(cfg?.llm?.local?.models_dir || '').trim();
   const candidateDirs = [
+    path.join(paths.speechModelsRoot, 'whisper'),
     configuredModelsDir ? path.join(configuredModelsDir, 'whisper', catalog.dir) : '',
     configuredModelsDir ? path.join(configuredModelsDir, catalog.dir) : '',
     path.join(paths.modelsRoot, 'whisper', catalog.dir),
@@ -81,9 +84,7 @@ function checkLocalWhisperModel(quality): WhisperModelInfo {
 
   return {
     available: false,
-    modelPath: candidateDirs.length
-      ? path.join(candidateDirs[0], catalog.file)
-      : path.join(paths.modelsRoot, 'whisper', catalog.dir, catalog.file),
+    modelPath: path.join(candidateDirs[0], catalog.file),
     catalog,
     searchedDirs: candidateDirs,
   };
@@ -121,6 +122,14 @@ async function decodeAudioToWav(audioBytes, mimeType): Promise<{ wavPath: string
     const detail = stderr.trim() || errorMessage(err) || 'unknown ffmpeg decode failure';
     throw new Error(`Unable to decode recorded audio (${mimeType}). ${detail}`);
   }
+}
+
+function writeTempWav(audioBytes): { wavPath: string; inputPath: string | null } {
+  const tmpDir = path.join(os.tmpdir(), 'flaxeo-stt');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const wavPath = path.join(tmpDir, `input-${Date.now()}-${process.pid}-${Math.random().toString(16).slice(2, 10)}.wav`);
+  fs.writeFileSync(wavPath, audioBytes);
+  return { wavPath, inputPath: null };
 }
 
 function normalizeAudioBytes({ audio_base64, audio_bytes }) {
@@ -260,10 +269,25 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
   const language = String(cfg.stt?.language || 'auto').trim() || 'auto';
   const threads = Math.min(os.cpus().length, 4);
 
+  // The app records 16 kHz mono WAV itself, so ffmpeg is only needed for
+  // other formats (older builds, pasted files).
+  const isWav = /wav/i.test(String(mimeType));
+
+  // Fast path: a warm whisper-server (GPU when available).
+  const serverPath = isWav ? findWhisperServer(binary.path) : null;
+  if (serverPath) {
+    try {
+      const result = await transcribeWithServer(serverPath, modelPath, Buffer.from(audioBytes), language);
+      return { text: result.text, language };
+    } catch (err) {
+      console.warn('[stt-engine] whisper-server failed, falling back to the CLI:', errorMessage(err));
+    }
+  }
+
   let wavPath: string | null = null;
   let inputPath: string | null = null;
   try {
-    const decoded = await decodeAudioToWav(audioBytes, mimeType);
+    const decoded = isWav ? writeTempWav(audioBytes) : await decodeAudioToWav(audioBytes, mimeType);
     wavPath = decoded.wavPath;
     inputPath = decoded.inputPath;
     const result = await runWhisperCli(binary.path, modelPath, wavPath, { language, threads });
@@ -280,9 +304,9 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
 
 async function transcribeApi(audioBytes, mimeType) {
   const cfg = loadConfig();
-  const providerName = cfg.llm?.provider || 'openai';
+  const providerName = cfg.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = cfg.llm?.providers?.[providerName] || {};
-  const baseUrl = (provider.base_url || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const baseUrl = (provider.base_url || DEFAULT_PROVIDER_BASE_URL).replace(/\/+$/, '');
   const apiKey = provider.api_key || '';
   const sttModel = cfg.stt?.model || 'whisper-1';
 
@@ -382,7 +406,7 @@ export function getSttStatus() {
   const binary = getWhisperBinary();
   const sttProvider = resolveSttProviderMode(cfg, modelAvailable && !!binary);
 
-  const providerName = cfg.llm?.provider || 'openai';
+  const providerName = cfg.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = cfg.llm?.providers?.[providerName] || {};
   const hasApiKey = !!(provider.api_key && provider.api_key !== '***');
 
@@ -412,10 +436,12 @@ export function getSttStatus() {
     has_cuda: backend.hasCuda,
     has_vulkan: backend.hasVulkan,
     installed_runtimes: listWhisperBinaries().length,
+    server_available: !!findWhisperServer(binary?.path || null),
+    server_running: whisperServerStatus().running,
+    server_gpu: whisperServerStatus().gpu,
   };
 }
 
 export function unloadWhisper() {
-  // No-op: whisper.cpp CLI runs as a one-shot subprocess per transcription.
-  // There's no persistent recognizer to unload.
+  stopWhisperServer();
 }

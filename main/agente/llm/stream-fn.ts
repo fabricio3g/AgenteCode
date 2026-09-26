@@ -27,7 +27,8 @@ export interface AgenteTransport {
  * Floor for agent runs when the user configured no cap. Provider defaults are
  * often tiny; a truncated tool-call JSON array is unrecoverable mid-stream.
  */
-export const AGENT_MAX_TOKENS_FLOOR = 4096;
+// Coding turns write whole files in one tool call; 4096 cut them off mid-JSON.
+export const AGENT_MAX_TOKENS_FLOOR = 16_384;
 
 /** Provider TokenUsage → the agent core's snake_case vocabulary (CoreTokenUsage). */
 function toCoreUsage(usage: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null | undefined): CoreTokenUsage | null {
@@ -52,10 +53,36 @@ function finishToStopReason(finish: FinishReason | undefined): StopReason | null
   }
 }
 
-/** AgentMessage[] → OpenAI-compatible wire messages (the convertToLlm choke point). */
+/**
+ * AgentMessage[] → OpenAI-compatible wire messages (the convertToLlm choke point).
+ *
+ * Tool messages can only carry text on most providers, so images a tool
+ * returned (browser screenshots) follow the batch of tool results as one user
+ * message — after every result of the batch, so tool-call pairing stays valid.
+ */
 export function toWireMessages(messages: AgentMessage[]): Array<Record<string, unknown>> {
   const wire: Array<Record<string, unknown>> = [];
-  for (const message of messages) {
+  let pendingImages: Array<{ toolName: string; data: string; mimeType: string }> = [];
+  const flushImages = () => {
+    if (!pendingImages.length) return;
+    const names = [...new Set(pendingImages.map((image) => image.toolName))].join(', ');
+    wire.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: `[Images returned by ${names}]` },
+        ...pendingImages.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))
+      ]
+    });
+    pendingImages = [];
+  };
+  // Only the latest batch's images are sent: older screenshots would fill the
+  // context with pictures of pages that have since changed.
+  let lastAssistant = -1;
+  messages.forEach((message, index) => {
+    if (message.role === 'assistant') lastAssistant = index;
+  });
+  for (const [index, message] of messages.entries()) {
+    if (message.role !== 'tool') flushImages();
     if (message.role === 'user') {
       const parts: Array<Record<string, unknown>> = [{ type: 'text', text: message.content }];
       for (const image of message.images ?? []) {
@@ -81,8 +108,14 @@ export function toWireMessages(messages: AgentMessage[]): Array<Record<string, u
         tool_call_id: message.toolCallId,
         content: message.content
       });
+      if (index > lastAssistant) {
+        for (const image of message.images ?? []) pendingImages.push({ toolName: message.toolName, ...image });
+      } else if (message.images?.length) {
+        wire[wire.length - 1]!.content = `${message.content}\n(Earlier screenshot omitted — take a new one if you need to see the page.)`;
+      }
     }
   }
+  flushImages();
   return wire;
 }
 
@@ -177,20 +210,15 @@ export function createProviderStreamFn(transport: AgenteTransport): StreamFn {
       };
     }
 
-    const toolCalls = finalizeToolCalls(toolCallAccumulator) as Array<{ id: string; name: string; arguments: unknown }> | undefined;
-    const calls: ToolCall[] = (toolCalls ?? [])
-      .filter((call) => call.name)
-      .map((call) => ({
-        id: call.id || `call_${Math.random().toString(36).slice(2, 10)}`,
-        name: call.name,
-        arguments:
-          call.arguments && typeof call.arguments === 'object'
-            ? (call.arguments as Record<string, unknown>)
-            : safeParseObject(call.arguments)
-      }));
+    const { calls, cutOff } = parseToolCalls(
+      finalizeToolCalls(toolCallAccumulator) as Array<{ id: string; name: string; arguments: unknown }> | undefined
+    );
 
     // An explicit finish reason wins; the tool-call heuristic is the
-    // fallback for providers that never surface one.
+    // fallback for providers that never surface one. Arguments that are not
+    // complete JSON mean the output was cut off even when the provider
+    // reports a normal finish: treat that as a length stop, so the loop
+    // refuses to run the half-written call.
     const stopFromFinish = finishToStopReason(finish);
     return {
       ...base,
@@ -198,17 +226,40 @@ export function createProviderStreamFn(transport: AgenteTransport): StreamFn {
       reasoning: reasoning || undefined,
       usage,
       toolCalls: calls.length ? calls : undefined,
-      stopReason: stopFromFinish ?? (calls.length ? 'toolUse' : 'stop')
+      stopReason: cutOff ? 'length' : stopFromFinish ?? (calls.length ? 'toolUse' : 'stop')
     };
   };
 }
 
-function safeParseObject(value: unknown): Record<string, unknown> {
+/**
+ * Assembled tool calls with parsed arguments. `cutOff` is true when any
+ * call's arguments are not complete JSON — the output limit hit mid-call.
+ */
+export function parseToolCalls(raw: Array<{ id: string; name: string; arguments: unknown }> | undefined): { calls: ToolCall[]; cutOff: boolean } {
+  let cutOff = false;
+  const calls = (raw ?? [])
+    .filter((call) => call.name)
+    .map((call) => {
+      const parsed = call.arguments && typeof call.arguments === 'object'
+        ? (call.arguments as Record<string, unknown>)
+        : safeParseObject(call.arguments);
+      if (parsed === null) cutOff = true;
+      return {
+        id: call.id || `call_${Math.random().toString(36).slice(2, 10)}`,
+        name: call.name,
+        arguments: parsed ?? {}
+      };
+    });
+  return { calls, cutOff };
+}
+
+/** Tool arguments as an object; null when the JSON is incomplete (the stream was cut). */
+function safeParseObject(value: unknown): Record<string, unknown> | null {
   if (typeof value !== 'string' || !value.trim()) return {};
   try {
     const parsed = JSON.parse(value);
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
   } catch {
-    return {};
+    return null;
   }
 }

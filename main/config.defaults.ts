@@ -1,4 +1,6 @@
+import { DEFAULT_AGGREGATOR_ENGINES } from './search-providers/aggregator/constants.ts';
 import path from 'node:path';
+import { DEFAULT_PROVIDER_ID } from '../shared/providers.ts';
 import type {
   AppConfig,
   AppPaths,
@@ -60,7 +62,7 @@ export function getDefaultProvider(baseUrl: string): LLMProviderConfig {
 
 export function getDefaultProviders(): Record<string, LLMProviderConfig> {
   return {
-    openai: getDefaultProvider('https://api.openai.com/v1'),
+    'opencode-go': getDefaultProvider('https://opencode.ai/zen/go/v1'),
     openrouter: getDefaultProvider('https://openrouter.ai/api/v1'),
     deepseek: {
       type: 'openai_compat',
@@ -116,7 +118,7 @@ export function getDefaultLocalLLMConfig(
 export function getDefaultLLMConfig(localModelsRoot: string): LLMConfig {
   return {
     backend_mode: 'api',
-    provider: 'openai',
+    provider: DEFAULT_PROVIDER_ID,
     system_prompt: 'You are a helpful assistant.',
     user_prompt: '',
     local: getDefaultLocalLLMConfig(localModelsRoot),
@@ -138,7 +140,7 @@ export function getDefaultSTTConfig(): STTConfig {
   return {
     provider: 'local',
     model: 'whisper-1',
-    whisper_quality: 'medium_q5',
+    whisper_quality: 'small_q5',
     language: 'auto',
     backend: 'auto',
   };
@@ -153,9 +155,10 @@ export function getDefaultOnboardingConfig(): OnboardingConfig {
 
 export function getDefaultSearchConfig(): SearchConfig {
   return {
-    provider: 'aggregator',
+    // Auto: a keyed search API when one is set up, else the free API sources.
+    provider: 'auto',
     max_results: 6,
-    aggregator_engines: ['duckduckgo', 'wikipedia', 'wiby', 'mojeek'],
+    aggregator_engines: [...DEFAULT_AGGREGATOR_ENGINES],
     safe_search: 2,
     providers: {},
   };

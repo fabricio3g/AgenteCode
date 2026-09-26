@@ -5,6 +5,8 @@
   import GeneralSettings from './GeneralSettings.svelte';
   import SearchSettings from './SearchSettings.svelte';
   import { StatusIndicator } from '$lib/components/ui';
+  import { t } from 'svelte-i18n';
+  import SettingsPage from './SettingsPage.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import {
@@ -25,12 +27,11 @@
   let persistedSearchProvider = $state(appStore.config.search?.provider || 'aggregator');
   let searchMaxResults = $state(String(appStore.config.search?.max_results ?? 6));
   let searchApiKey = $state('');
-  let searchEngineId = $state(appStore.config.search?.providers?.google_cse?.engine_id || '');
   let searchBaseUrl = $state(appStore.config.search?.providers?.searxng?.base_url || 'https://searx.org');
   let searchModel = $state(appStore.config.search?.providers?.perplexity?.model || 'sonar');
   let searchApiUrl = $state(appStore.config.search?.providers?.perplexity?.api_url || 'https://api.perplexity.ai');
   let aggregatorEngines = $state<string[]>([
-    ...(appStore.config.search?.aggregator_engines || ['duckduckgo', 'wikipedia', 'wiby', 'mojeek'])
+    ...(appStore.config.search?.aggregator_engines || ['wikipedia', 'arxiv', 'crossref', 'pubmed'])
   ]);
   let searchSafeSearch = $state(String(appStore.config.search?.safe_search ?? 2));
   let aggregatorProviders = $state<Record<string, Record<string, unknown>>>(
@@ -92,22 +93,17 @@
   })));
 
   const providersRequiringConfiguration = new Set([
-    'searxng', 'brave', 'google_cse', 'tavily', 'exa', 'serpapi',
-    'serper', 'perplexity', 'jina', 'bing', 'youcom',
+    'searxng', 'brave', 'tavily', 'exa', 'perplexity', 'jina', 'youcom',
   ]);
 
   function getStoredSearchApiKey(provider: string): string {
     const providers = appStore.config.search?.providers || {};
     switch (provider) {
-      case 'google_cse': return providers.google_cse?.api_key || '';
       case 'brave': return providers.brave?.api_key || '';
-      case 'serpapi': return providers.serpapi?.api_key || '';
-      case 'serper': return providers.serper?.api_key || '';
       case 'tavily': return providers.tavily?.api_key || '';
       case 'exa': return providers.exa?.api_key || '';
       case 'searxng': return providers.searxng?.base_url || '';
       case 'jina': return providers.jina?.api_key || '';
-      case 'bing': return providers.bing?.api_key || '';
       case 'perplexity': return providers.perplexity?.api_key || '';
       case 'youcom': return providers.youcom?.api_key || '';
       default: return '';
@@ -203,12 +199,7 @@
         safe_search: Number(searchSafeSearch),
         providers: {
           ...aggregatorProviders,
-          ...(searchProvider === 'google_cse'
-            ? { google_cse: { api_key: searchApiKey || appStore.config.search?.providers?.google_cse?.api_key, engine_id: searchEngineId || appStore.config.search?.providers?.google_cse?.engine_id } }
-            : {}),
           ...(searchProvider === 'brave' ? { brave: { api_key: searchApiKey || appStore.config.search?.providers?.brave?.api_key } } : {}),
-          ...(searchProvider === 'serpapi' ? { serpapi: { api_key: searchApiKey || appStore.config.search?.providers?.serpapi?.api_key } } : {}),
-          ...(searchProvider === 'serper' ? { serper: { api_key: searchApiKey || appStore.config.search?.providers?.serper?.api_key } } : {}),
           ...(searchProvider === 'tavily' ? { tavily: { api_key: searchApiKey || appStore.config.search?.providers?.tavily?.api_key } } : {}),
           ...(searchProvider === 'exa' ? { exa: { api_key: searchApiKey || appStore.config.search?.providers?.exa?.api_key } } : {}),
           ...(searchProvider === 'searxng'
@@ -216,9 +207,6 @@
             : {}),
           ...(searchProvider === 'jina'
             ? { jina: { api_key: searchApiKey || appStore.config.search?.providers?.jina?.api_key, base_url: searchBaseUrl || appStore.config.search?.providers?.jina?.base_url || 'https://api.jina.ai' } }
-            : {}),
-          ...(searchProvider === 'bing'
-            ? { bing: { api_key: searchApiKey || appStore.config.search?.providers?.bing?.api_key, endpoint: searchBaseUrl || appStore.config.search?.providers?.bing?.endpoint || 'https://api.bing.microsoft.com/v7.0/search' } }
             : {}),
           ...(searchProvider === 'perplexity'
             ? { perplexity: { api_key: searchApiKey || appStore.config.search?.providers?.perplexity?.api_key, model: searchModel || appStore.config.search?.providers?.perplexity?.model || 'sonar', api_url: searchApiUrl || appStore.config.search?.providers?.perplexity?.api_url || 'https://api.perplexity.ai' } }
@@ -238,15 +226,17 @@
   }
 </script>
 
-<section class="min-h-0 flex-1 overflow-y-auto bg-background">
-  <div class="mx-auto flex w-full max-w-[760px] flex-col px-4 py-5 sm:px-6 sm:py-6">
-    <div class="mb-2 flex min-h-7 justify-end">
+<SettingsPage
+  title={activeTab === 'General' ? $t('generalSettings.title') : $t('searchSettings.title')}
+  description={activeTab === 'General' ? $t('generalSettings.description') : $t('searchSettings.description')}
+>
+    {#snippet actions()}
       {#if activeTab === 'General'}
         <StatusIndicator state={generalStatus} message={generalStatusMessage} onretry={generalAutosave.retry} />
       {:else}
         <StatusIndicator state={searchStatus} message={searchStatusMessage} onretry={searchAutosave.retry} />
       {/if}
-    </div>
+    {/snippet}
 
     {#if activeTab === 'General'}
       <GeneralSettings
@@ -260,7 +250,6 @@
         bind:searchProvider
         bind:searchMaxResults
         bind:searchApiKey
-        bind:searchEngineId
         bind:searchBaseUrl
         bind:searchModel
         bind:searchApiUrl
@@ -271,5 +260,4 @@
         savingConfiguration={savingSearchConfiguration}
       />
     {/if}
-  </div>
-</section>
+</SettingsPage>

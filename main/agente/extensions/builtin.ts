@@ -19,6 +19,10 @@ export const gitToolsExtension: AgenteExtensionDefinition = {
   icon: 'git-branch',
   defaultEnabled: true,
   setup(pi) {
+    // Outside a repository both tools answer plainly instead of failing, so
+    // the model moves on rather than retrying git.
+    const NOT_A_REPO = /not a git repository|no es un repositorio git|não é um repositório git|n'est pas un dépôt git|kein git-repository/i;
+    const notARepo = (err: unknown) => NOT_A_REPO.test(err instanceof Error ? err.message : String(err));
     const run = async (projectRoot: string, args: string[]) => {
       const { stdout } = await execFileAsync('git', args, {
         cwd: projectRoot,
@@ -47,6 +51,7 @@ export const gitToolsExtension: AgenteExtensionDefinition = {
             details: { branch: branch.trim(), dirty: status !== '(empty)' }
           };
         } catch (err: unknown) {
+          if (notARepo(err)) return { content: 'This project is not a git repository.' };
           return { content: `git_status failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
         }
       }
@@ -71,6 +76,7 @@ export const gitToolsExtension: AgenteExtensionDefinition = {
             details: { staged: !!args.staged }
           };
         } catch (err: unknown) {
+          if (notARepo(err)) return { content: 'This project is not a git repository, so there is no diff to show.' };
           return { content: `git_diff failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
         }
       }

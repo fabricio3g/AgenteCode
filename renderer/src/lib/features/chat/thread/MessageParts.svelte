@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import ResearchWidget from './ResearchWidget.svelte';
   import { AlertCircle } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -102,6 +103,12 @@
     appStore.composer = buildUIActionMessage(event);
     await appStore.sendCurrentMessage();
   }
+
+  /** Artifacts open in the chat's side panel. */
+  function openArtifact(index: number) {
+    const chatId = appStore.currentChat?.id;
+    if (chatId) appStore.openArtifactPanel(chatId, ctx.message.id, index);
+  }
 </script>
 
 <!--
@@ -124,7 +131,7 @@
   {:else if part.kind === 'tool-status'}
     <div class="aui-cot-stack mb-1 w-full">
       <AgentBlock
-        steps={ctx.message.agentSteps || []}
+        steps={(ctx.message.agentSteps || []).filter((step) => !step.preface)}
         reasoning={appStore.config.ui?.enable_thinking ? ctx.displayReasoning : ''}
         status={ctx.message.status}
         totalElapsedSeconds={resolveTotalElapsed(ctx.message, ctx.displayMetadata)}
@@ -137,6 +144,8 @@
         awaitingApproval={pendingApprovals.length > 0}
       />
     </div>
+  {:else if part.kind === 'research'}
+    <ResearchWidget />
   {:else if part.kind === 'approval'}
     <ApprovalRequest approvals={pendingApprovals} />
   {:else if part.kind === 'error'}
@@ -158,6 +167,8 @@
         <span class="pending-label text-xs text-muted-foreground">{part.status}</span>
       {/if}
     </div>
+  {:else if part.kind === 'preface'}
+    <p class="mb-2 text-[15px] leading-relaxed text-foreground">{part.content}</p>
   {:else if part.kind === 'content'}
     <RichContent
       content={part.content}
@@ -177,7 +188,7 @@
   {:else if part.kind === 'artifact'}
     <ArtifactBlock
       artifact={part.artifact}
-      onOpen={() => appStore.openArtifact(part.artifact, ctx.message.id)}
+      onOpen={() => openArtifact(part.index)}
     />
   {/if}
 {/each}

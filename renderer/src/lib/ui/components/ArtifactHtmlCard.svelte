@@ -1,8 +1,18 @@
 <svelte:options runes={true} />
 
+<!--
+  An HTML card or an interactive widget, drawn in the app's own style.
+
+  Static cards (no script) keep scripts off and grant `allow-same-origin` only
+  so this component can measure them. Widgets (with a script) get the opposite:
+  `allow-scripts` with an opaque origin and a no-network CSP (see widget-kit),
+  and report their own height by message.
+-->
+
 <script lang="ts">
   import type { HtmlCardArtifactPayload } from '$lib/types/chat';
-  import { buildPreviewHtml } from '$lib/utils/preview-builder';
+  import { appStore } from '$lib/stores/app.svelte';
+  import { buildWidgetDocument, readThemeTokens } from './widget-kit';
 
   interface Props {
     payload: HtmlCardArtifactPayload;
@@ -10,17 +20,72 @@
 
   let { payload }: Props = $props();
 
-  const srcdoc = $derived.by(() => {
-    const body = String(payload.html || '');
-    // Minimal document shell; styles inherit readable defaults for light/dark-ish content.
-    return buildPreviewHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><style>
-      :root { color-scheme: light dark; }
-      html, body { margin: 0; padding: 0; background: transparent; color: inherit; font: 14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
-      body { padding: 0.35rem 0.15rem; }
-      table { border-collapse: collapse; width: 100%; }
-      th, td { border: 1px solid rgba(127,127,127,0.35); padding: 0.35rem 0.5rem; text-align: left; }
-      img { max-width: 100%; height: auto; }
-    </style></head><body>${body}</body></html>`, {}, 'index.html').html;
+  const MAX_HEIGHT = 720;
+  let frame = $state<HTMLIFrameElement>();
+  let height = $state(160);
+  let error = $state('');
+  let tokens = $state(typeof document === 'undefined' ? '' : readThemeTokens());
+
+  const interactive = $derived(!!payload.script?.trim());
+  const srcdoc = $derived(buildWidgetDocument({ html: String(payload.html || ''), script: payload.script, tokens }));
+
+  // Follow the app theme: the card re-renders when light/dark flips.
+  $effect(() => {
+    if (typeof MutationObserver === 'undefined') return;
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => {
+      const next = readThemeTokens();
+      if (next !== tokens) tokens = next;
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+    return () => observer.disconnect();
+  });
+
+  const clampHeight = (value: number) => Math.min(MAX_HEIGHT, Math.max(40, Math.ceil(value)));
+
+  // Static card: measure the same-origin document directly.
+  $effect(() => {
+    if (!frame || interactive) return;
+    let observer: ResizeObserver | null = null;
+    // The body, not the document: the document is never shorter than the frame.
+    const measure = () => {
+      const body = frame?.contentDocument?.body;
+      if (body) height = clampHeight(body.getBoundingClientRect().height);
+    };
+    const onLoad = () => {
+      measure();
+      observer?.disconnect();
+      const root = frame?.contentDocument?.body;
+      if (root && typeof ResizeObserver !== 'undefined') {
+        observer = new ResizeObserver(measure);
+        observer.observe(root);
+      }
+    };
+    frame.addEventListener('load', onLoad);
+    return () => {
+      frame?.removeEventListener('load', onLoad);
+      observer?.disconnect();
+    };
+  });
+
+  // Widget: messages from this frame only.
+  $effect(() => {
+    if (!interactive) return;
+    error = '';
+    const onMessage = (event: MessageEvent) => {
+      if (!frame || event.source !== frame.contentWindow) return;
+      const data = event.data as { source?: string; type?: string; height?: number; text?: string; message?: string };
+      if (data?.source !== 'flaxeo-widget') return;
+      if (data.type === 'height' && typeof data.height === 'number') height = clampHeight(data.height);
+      else if (data.type === 'error') error = String(data.message || 'Script error').slice(0, 200);
+      else if (data.type === 'ask' && data.text?.trim()) {
+        // A suggestion, never a send: the user reviews it in the composer.
+        appStore.updateComposer(data.text.trim());
+        window.dispatchEvent(new Event('focus-composer'));
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   });
 </script>
 
@@ -30,15 +95,32 @@
       <h3>{payload.title}</h3>
     </header>
   {/if}
-  <div class="html-card-frame-wrap">
-    <iframe
-      class="html-card-frame"
-      title={payload.title || 'HTML card'}
-      srcdoc={srcdoc}
-      sandbox=""
-      referrerpolicy="no-referrer"
-    ></iframe>
+  <div class="html-card-frame-wrap" style:height={`${height}px`}>
+    {#if interactive}
+      <iframe
+        bind:this={frame}
+        class="html-card-frame"
+        title={payload.title || 'Widget'}
+        {srcdoc}
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
+        scrolling={height >= MAX_HEIGHT ? 'auto' : 'no'}
+      ></iframe>
+    {:else}
+      <iframe
+        bind:this={frame}
+        class="html-card-frame"
+        title={payload.title || 'HTML card'}
+        {srcdoc}
+        sandbox="allow-same-origin"
+        referrerpolicy="no-referrer"
+        scrolling={height >= MAX_HEIGHT ? 'auto' : 'no'}
+      ></iframe>
+    {/if}
   </div>
+  {#if error}
+    <p class="html-card-error">{error}</p>
+  {/if}
 </section>
 
 <style>
@@ -57,22 +139,14 @@
   .html-card-header h3 {
     margin: 0 0 0.55rem;
     font-size: 0.95rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text);
   }
 
-  /*
-   * The frame fills the wrap instead of being pinned to 220px. Previously the wrap
-   * allowed up to min(48vh, 360px) while the iframe was fixed at 220px under
-   * `overflow: hidden`, so a card taller than 220px was cropped with no scrollbar
-   * and no indication anything was missing. The iframe's own document scrolls now.
-   */
   .html-card-frame-wrap {
     width: 100%;
-    height: min(48vh, 360px);
-    min-height: 120px;
-    border-radius: calc(var(--artifact-radius, 12px) - 4px);
-    background: color-mix(in srgb, var(--surface, #fff) 92%, transparent);
+    overflow: hidden;
+    transition: height 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .html-card-frame {
@@ -81,5 +155,15 @@
     height: 100%;
     border: 0;
     background: transparent;
+  }
+
+  .html-card-error {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .html-card-frame-wrap { transition: none; }
   }
 </style>

@@ -11,7 +11,10 @@
 -->
 
 <script lang="ts">
-  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, Play, ShieldCheck, Square, Zap } from 'lucide-svelte';
+  import { Archive, ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, GitCompareArrows, MessageSquarePlus, Play, ShieldCheck, Square, SquareTerminal, Zap } from 'lucide-svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import { codeWorkspace } from './workspace.svelte';
+  import { exactSlashCommand, matchSlashCommands, slashQuery, type SlashCommand } from './slash-commands';
   import { t } from 'svelte-i18n';
   import type { ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
@@ -36,7 +39,7 @@
 
   const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
-  const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? 'supervised');
+  const runtimeMode = $derived(chat.codeAgent?.runtimeMode ?? codeStore.defaultMode);
   // Honest model visibility: without a usable model the bar says so instead
   // of letting a send die inside the provider.
   const modelReady = $derived(codeStore.modelReady);
@@ -96,6 +99,99 @@
   );
 
   /** Size the input to its content — shared helper keeps Home parity. */
+
+  // ── Slash commands ───────────────────────────────────────────────────
+  type Command = SlashCommand & { icon: typeof Archive; label: string; hint: string; disabled?: boolean; run: () => void | Promise<void> };
+
+  const project = $derived(codeStore.projectById(chat.projectId ?? null));
+  const commands = $derived<Command[]>([
+    {
+      name: 'compact', icon: Archive, label: $t('code.slash.compact'), hint: $t('code.compactHint'),
+      // Session state is not reactive; check it when the command runs.
+      disabled: running,
+      run: async () => {
+        if (!codeStore.hasSession(chat.id)) {
+          toastStore.info($t('code.slash.nothingToCompact'));
+          return;
+        }
+        const result = await codeStore.compact(chat.id);
+        if (result.ok) toastStore.success($t('code.slash.compacted'));
+        else toastStore.error($t('code.compactFailed', { values: { error: result.error ?? '' } }));
+      }
+    },
+    { name: 'new', icon: MessageSquarePlus, label: $t('code.newConversation'), hint: $t('code.slash.newHint'), disabled: !project, run: () => { if (project) codeStore.newConversation(project); } },
+    { name: 'plan', icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint'), run: () => selectMode('plan') },
+    { name: 'supervised', icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint'), run: () => selectMode('supervised') },
+    { name: 'full', aliases: ['auto'], icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint'), run: () => selectMode('full') },
+    { name: 'changes', icon: GitCompareArrows, label: $t('codeWs.changes'), hint: $t('code.slash.changesHint'), run: () => codeWorkspace.toggleChanges(true) },
+    {
+      name: 'terminal', icon: SquareTerminal, label: $t('codeWs.terminal'), hint: $t('code.slash.terminalHint'), disabled: !project,
+      run: async () => {
+        if (!project) return;
+        try {
+          await codeWorkspace.toggleBottom('terminal', project.rootPath);
+        } catch (error) {
+          toastStore.error($t('codeWs.terminalFailed', { values: { reason: (error as Error).message } }));
+        }
+      }
+    }
+  ]);
+
+  let slashIndex = $state(0);
+  let slashDismissed = $state(false);
+  const slashText = $derived(slashQuery(text));
+  const slashMatches = $derived(slashText === null ? [] : matchSlashCommands(commands, slashText));
+  const slashOpen = $derived(slashText !== null && !slashDismissed && slashMatches.length > 0);
+
+  $effect(() => {
+    void slashText;
+    slashIndex = 0;
+  });
+
+  function clearComposer() {
+    text = '';
+    slashDismissed = false;
+    if (textarea) autoGrow(textarea);
+  }
+
+  async function runCommand(command: Command) {
+    if (command.disabled) return;
+    clearComposer();
+    await command.run();
+  }
+
+  function completeCommand(command: Command) {
+    text = `/${command.name}`;
+    void Promise.resolve().then(focusComposer);
+  }
+
+  /** Keys the open slash menu handles; true when the key was used. */
+  function onSlashKey(event: KeyboardEvent): boolean {
+    if (!slashOpen) return false;
+    const count = slashMatches.length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      return true;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      completeCommand(slashMatches[slashIndex]!);
+      return true;
+    }
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      void runCommand(slashMatches[slashIndex]!);
+      return true;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      slashDismissed = true;
+      return true;
+    }
+    return false;
+  }
+
   function autoGrow(element: HTMLTextAreaElement) {
     autogrowTextarea(element, MAX_TEXTAREA_PX);
   }
@@ -109,6 +205,12 @@
   async function submit() {
     const value = text.trim();
     if (!value) return;
+    // "/compact" typed out and sent runs the command, it is not a message.
+    const command = exactSlashCommand(commands, value);
+    if (command) {
+      await runCommand(command);
+      return;
+    }
     if (running) {
       text = '';
       if (textarea) autoGrow(textarea);
@@ -131,6 +233,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (onSlashKey(event)) return;
     // Escape stops a live run (the shortcut help promises it).
     if (event.key === 'Escape' && running) {
       event.preventDefault();
@@ -154,6 +257,7 @@
   function onInput(event: Event) {
     const element = event.currentTarget as HTMLTextAreaElement;
     text = element.value;
+    slashDismissed = false;
     autoGrow(element);
   }
 
@@ -210,6 +314,30 @@
         {$t('code.awaitingApproval')}
       </button>
     {/if}
+    {#if slashOpen}
+      <div class="slash-menu" role="listbox" aria-label={$t('code.slash.title')}>
+        {#each slashMatches as command, index (command.name)}
+          {@const Icon = command.icon}
+          <button
+            type="button"
+            role="option"
+            aria-selected={index === slashIndex}
+            aria-disabled={command.disabled}
+            class="slash-item"
+            class:is-active={index === slashIndex}
+            class:is-disabled={command.disabled}
+            onmouseenter={() => (slashIndex = index)}
+            onmousedown={(event) => event.preventDefault()}
+            onclick={() => void runCommand(command)}
+          >
+            <Icon class="size-4 shrink-0 text-muted-foreground" />
+            <span class="font-mono text-[12.5px] text-foreground">/{command.name}</span>
+            <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{command.hint}</span>
+          </button>
+        {/each}
+        <p class="slash-foot">{$t('code.slash.keys')}</p>
+      </div>
+    {/if}
     <div class="composer-shell aui-composer pointer-events-auto transition">
       <div class="composer-body">
         <textarea
@@ -225,7 +353,7 @@
         <div class="composer-actions">
           <!-- Runtime mode gate — plan / supervised / full-auto. Scope lives on
                the left of the bar; the model picker answers on the right. -->
-          <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="16rem" label={$t('code.modeSelector')} class="p-1.5">
+          <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
             {#snippet trigger(props)}
               <button
                 type="button"
@@ -240,19 +368,15 @@
                 <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
               </button>
             {/snippet}
+            <p class="px-2.5 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
             {#each modes as mode (mode.id)}
-              <MenuItem active={false} class="!items-start !py-2" onselect={() => selectMode(mode.id)}>
-                <span class="mode-icon mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                  {#if mode.id === runtimeMode}
-                    <Check class="size-3.5 text-foreground" />
-                  {:else}
-                    <mode.icon class="size-3.5" />
-                  {/if}
-                </span>
-                <span class="option-body min-w-0 flex-1">
+              {@const selected = mode.id === runtimeMode}
+              <MenuItem class="mode-option !items-center !gap-3 !px-3 !py-2 {selected ? '!bg-[var(--surface-active)]' : ''}" onselect={() => selectMode(mode.id)}>
+                <span class="min-w-0 flex-1">
                   <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
-                  <span class="block text-[11px] leading-snug text-muted-foreground">{mode.hint}</span>
+                  <span class="block text-[11.5px] leading-snug text-muted-foreground">{mode.hint}</span>
                 </span>
+                <Check class="size-4 shrink-0 text-foreground {selected ? '' : 'invisible'}" />
               </MenuItem>
             {/each}
           </Menu>
@@ -385,6 +509,36 @@
     align-items: center;
     gap: 0.375rem;
     min-height: 2rem;
+  }
+
+  .slash-menu {
+    margin-bottom: 0.5rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+    background: var(--popover, var(--background));
+    box-shadow: var(--shadow-lg);
+  }
+  .slash-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4375rem 0.625rem;
+    border-radius: 0.625rem;
+    text-align: left;
+  }
+  .slash-item.is-active {
+    background: var(--surface-active);
+  }
+  .slash-item.is-disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .slash-foot {
+    padding: 0.375rem 0.625rem 0.25rem;
+    font-size: 11px;
+    color: var(--muted-foreground);
   }
 
   .composer-textarea {

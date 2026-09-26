@@ -4,6 +4,7 @@
   import { FileText } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import ViewerStatus from './ViewerStatus.svelte';
+  import { readArrayBuffer } from './viewer-source';
   import { escapeHtml, highlightTerm } from './viewer-text';
 
   interface Props {
@@ -33,8 +34,8 @@
     textContent = '';
     highlightedHtml = '';
     try {
-      const response = await fetch(src);
-      const text = await response.text();
+      // Not fetch(): the app's CSP blocks fetching data: URLs.
+      const text = new TextDecoder().decode(await readArrayBuffer(src, 'file'));
       textContent = text;
 
       if (lang && text) {

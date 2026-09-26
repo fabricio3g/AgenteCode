@@ -11,7 +11,9 @@
 
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
-  import { Paperclip } from 'lucide-svelte';
+  import { ArrowDown, Paperclip } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { threadJump } from './thread/thread-jump.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { ttsStore } from '$lib/stores/tts.svelte';
@@ -27,6 +29,8 @@
   import ModeSelector from './composer/ModeSelector.svelte';
   import SelectedTextCard from './composer/SelectedTextCard.svelte';
   import VoiceModeOverlay from './composer/VoiceModeOverlay.svelte';
+  import ComposerRecorder from './composer/ComposerRecorder.svelte';
+  import DictationSetupPopover from './composer/DictationSetupPopover.svelte';
   import { ComposerAttachments } from './composer/use-attachments.svelte';
   import { Dictation } from './composer/use-dictation.svelte';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
@@ -349,6 +353,23 @@
       </div>
     {/if}
 
+    {#if dictation.phase === 'choose'}
+      <DictationSetupPopover {dictation} />
+    {/if}
+
+    <!-- Back to the latest message, on the tab row's right end. -->
+    {#if threadJump.visible && threadJump.jump}
+      <button
+        type="button"
+        class="jump-latest"
+        onclick={() => threadJump.jump?.()}
+        aria-label={$t('chat.jumpToLatest')}
+        title={$t('chat.jumpToLatest')}
+      >
+        <ArrowDown class="size-4" />
+      </button>
+    {/if}
+
     <VoiceModeOverlay
       phase={dictation.phase}
       isListening={dictation.listening}
@@ -404,6 +425,10 @@
         ></textarea>
 
         <div class="composer-actions">
+          {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
+            <!-- Dictation takes over the chip row: waveform, timer, cancel, done. -->
+            <ComposerRecorder {dictation} />
+          {:else}
           <ComposerAddMenu onattach={() => fileInput?.click()} />
 
           <ModelSwitcher />
@@ -416,6 +441,7 @@
             onsubmit={() => void submit()}
             onstop={() => appStore.stopStreaming()}
           />
+          {/if}
         </div>
       </div>
     </div>
@@ -438,13 +464,13 @@
     content: '';
     position: absolute;
     inset-inline: 0;
-    top: -3rem;
-    height: 3rem;
+    top: -2rem;
+    height: 2rem;
     pointer-events: none;
     background: linear-gradient(
       to bottom,
       transparent,
-      color-mix(in srgb, var(--chat-bg) 72%, transparent) 58%,
+      color-mix(in srgb, var(--chat-bg) 62%, transparent) 65%,
       var(--chat-bg)
     );
   }
@@ -473,6 +499,46 @@
     font-weight: 600;
   }
 
+  /* Level with the Agent / Instant tabs, flush with the input's right edge. */
+  .jump-latest {
+    position: absolute;
+    top: 0;
+    right: 0.35rem;
+    z-index: 30;
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--card);
+    color: var(--muted-foreground);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+    pointer-events: auto;
+    animation: jump-in var(--motion-fast) var(--motion-ease);
+    transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .jump-latest:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+
+  .jump-latest:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
+  }
+
+  @keyframes jump-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .jump-latest { animation: none; }
+  }
+
   .drop-overlay {
     position: absolute;
     inset: 0;
@@ -496,8 +562,8 @@
   .composer-body {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
-    padding: 0.875rem 0.875rem 0.625rem;
+    gap: 0.25rem;
+    padding: 0.875rem 0.75rem 0.5rem;
   }
 
   /* Attach and chips left, dictate/send right, on their own line. */
@@ -516,9 +582,9 @@
   .composer-textarea {
     display: block;
     margin: 0;
-    min-height: 1.5rem;
-    max-height: 11rem;
-    padding: 0;
+    min-height: 2.5rem;
+    max-height: 13rem;
+    padding: 0 0.25rem;
     font-size: 1rem;
     line-height: 1.55;
     letter-spacing: -0.005em;

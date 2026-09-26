@@ -37,6 +37,8 @@ export interface CodeRunState {
   done: boolean;
   /** Why the run ended — drives the end-of-run status chip. */
   stopReason?: CodeStopReason;
+  /** Where the current turn's output starts (see `rollBackTurn`). */
+  turnMark?: { content: number; timeline: number; lastText: number; reasoning: number };
   /** Live retry notice (dsh llm/retry); cleared by the next content event. */
   retrying?: { attempt: number; delayMs: number } | null;
   /** The model-maintained todo list, updated live via todo_update. */
@@ -73,6 +75,23 @@ function upsertStep(state: CodeRunState, step: AgentStep): void {
  * step. Segments are separated by a blank line in `content`, so the text of
  * consecutive turns never runs together ("…first.Done —").
  */
+function lastTextLength(state: CodeRunState): number {
+  const last = state.timeline[state.timeline.length - 1];
+  return last?.kind === 'text' ? last.text.length : 0;
+}
+
+/** Drop what the current turn wrote: the model is replaying it. */
+function rollBackTurn(state: CodeRunState): void {
+  const mark = state.turnMark;
+  if (!mark) return;
+  state.content = state.content.slice(0, mark.content);
+  state.timeline = state.timeline.slice(0, mark.timeline);
+  const last = state.timeline[state.timeline.length - 1];
+  if (last?.kind === 'text') last.text = last.text.slice(0, mark.lastText);
+  state.reasoningRaw = state.reasoningRaw.slice(0, mark.reasoning);
+  state.reasoning = sanitizeAgentVisibleText(state.reasoningRaw);
+}
+
 function appendText(state: CodeRunState, delta: string): void {
   const last = state.timeline[state.timeline.length - 1];
   if (last?.kind === 'text') {
@@ -123,6 +142,7 @@ function describeToolArgs(toolName: string, args: unknown): string {
       return offset || limit ? `${text('path')} · ${offset || 1}–${(offset || 1) + Math.max(limit, 1) - 1}` : text('path');
     }
     case 'write':
+      return record.append ? `${text('path')} · +append` : text('path');
     case 'edit':
       return text('path');
     case 'bash':
@@ -173,6 +193,9 @@ export function orderedEntries(
   const out: Array<{ key: string; step?: AgentStep; text?: string }> = [];
   entries.forEach((entry, index) => {
     const step = entry.kind === 'step' ? steps.get(entry.id) : undefined;
+    // Engine bookkeeping, not work to show: turn rows and output-cap notes
+    // (saved by older runs), and todo updates (the Tasks card shows those).
+    if (step && (step.id.startsWith('turn-') || step.id.startsWith('length-') || step.toolName === 'todo_write')) return;
     if (step) out.push({ key: `s-${step.id}`, step });
     else if (entry.kind === 'text' && entry.text.trim()) out.push({ key: `t-${index}`, text: entry.text });
   });
@@ -277,6 +300,9 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     // Turns are an engine detail: one run reads as one piece of work, with a
     // single "worked for" footer instead of a row per model call.
     case 'turn_start':
+      // Where this turn's output begins, in case a retry discards it.
+      state.turnMark = { content: state.content.length, timeline: state.timeline.length, lastText: lastTextLength(state), reasoning: state.reasoningRaw.length };
+      return false;
     case 'turn_end':
       return false;
     case 'compaction_start':
@@ -314,7 +340,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
         });
       }
       // Attach the cumulative diff to the most recent file-writing step.
-      const writing = [...state.steps].reverse().find((s) => s.toolName === 'write' || s.toolName === 'edit');
+      const writing = [...state.steps].reverse().find((s) => s.type !== 'approval' && (s.toolName === 'write' || s.toolName === 'edit'));
       if (writing) {
         writing.diffStats = [...state.diffStats];
         writing.fileChanges = [...state.fileChanges];
@@ -332,19 +358,13 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
     }
     case 'llm_retry': {
       state.retrying = { attempt: event.attempt, delayMs: event.delayMs };
+      if (event.discardPartial) rollBackTurn(state);
       return true;
     }
-    case 'length_continue': {
+    case 'length_continue':
+      // The loop continues on its own; a row per cap hit was only noise.
       state.truncatedOnce = true;
-      const step: AgentStep = {
-        id: `length-${event.turnIndex}`,
-        type: 'planning',
-        label: copy.codeRun.continuing,
-        status: 'done'
-      };
-      upsertStep(state, step);
-      return true;
-    }
+      return false;
     case 'todo_update': {
       state.todos = event.todos.map((todo) => ({ ...todo }));
       return true;

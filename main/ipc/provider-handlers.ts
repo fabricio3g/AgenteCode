@@ -1,4 +1,6 @@
 import type { IpcMain } from 'electron';
+import { getDialect, resolveDialect } from '../providers/dialects.ts';
+import { testProviderConnection } from '../providers/connection-test.ts';
 
 type Provider = {
   name: string;
@@ -28,6 +30,16 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
       throw new Error(`No API key configured for ${providerName || 'the selected provider'}. Please add your API key in Settings > LLM Providers.`);
     }
     return provider.fetchModels(realKey, baseUrl);
+  });
+
+  ipcMain.handle('test_provider_connection', async (_e, { baseUrl, apiKey, providerName }) => {
+    const dialect = getDialect(String(providerName || '')) ?? resolveDialect(providerName, baseUrl);
+    return testProviderConnection({
+      dialect,
+      baseUrl,
+      apiKey: resolveApiKey(apiKey, baseUrl, providerName),
+      requireKey: dialect.group === 'cloud'
+    });
   });
 
   ipcMain.handle('get_api_model_context', async (_e, { baseUrl, apiKey, providerName, modelId }) => {

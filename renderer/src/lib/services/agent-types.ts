@@ -11,6 +11,8 @@ export type ToolCall = {
 export type ToolResult = {
   success: boolean;
   output?: unknown;
+  /** An image for vision models (browser screenshots); never serialized into the text payload. */
+  image?: { data: string; mimeType: string };
   error?: string;
   note?: string;
   createdFiles?: string[];

@@ -32,7 +32,7 @@ export function registerWorkspaceHandlers({
   pickWhisperRuntimeFile,
   indexWorkspaceFolder,
   snapshotWorkspaceFiles,
-  writeWorkspaceFile,
+  writeWorkspaceFile, writeWorkspaceBinary,
   readWorkspaceFile,
   createWorkspaceDocument,
   renameWorkspaceFile,
@@ -52,6 +52,7 @@ export function registerWorkspaceHandlers({
   ipcMain.handle('index_workspace_folder', (_e, { path, chatId }) => indexWorkspaceFolder(path, chatId));
   ipcMain.handle('snapshot_workspace_files', (_e, { workspaceRoot }) => snapshotWorkspaceFiles(workspaceRoot));
   ipcMain.handle('write_workspace_file', (_e, { workspaceRoot, relativePath, content }) => writeWorkspaceFile(workspaceRoot, relativePath, content));
+  ipcMain.handle('write_workspace_binary', (_e, { workspaceRoot, relativePath, dataUrl }) => writeWorkspaceBinary(workspaceRoot, relativePath, dataUrl));
   ipcMain.handle('read_workspace_file', (_e, { workspaceRoot, relativePath }) => readWorkspaceFile(workspaceRoot, relativePath));
   ipcMain.handle('create_workspace_document', (_e, { workspaceRoot, relativePath, docType, content }) =>
     createWorkspaceDocument(workspaceRoot, relativePath, docType, content));

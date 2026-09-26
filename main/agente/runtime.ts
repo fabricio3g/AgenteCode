@@ -18,10 +18,14 @@ import { createProviderStreamFn, type AgenteTransport } from './llm/stream-fn.ts
 import { ToolRegistry } from './tools/registry.ts';
 import { createBuiltinTools } from './tools/builtins.ts';
 import { createTodoTool, type TodoStore } from './tools/todo.ts';
+import { createBrowserTools } from './tools/browser.ts';
+import { createProcessTools } from './tools/processes.ts';
+import { processRegistry } from './processes.ts';
+import { isVisionModel } from '../../shared/model-capabilities.ts';
 import { CheckpointStore } from './tools/checkpoint.ts';
 import { SessionTree, newSessionId, projectSlug } from './sessions/session-tree.ts';
 import { deleteSessionFiles } from './sessions/session-data.ts';
-import { buildAgenteSystemPrompt, renderTodosSection } from './prompts.ts';
+import { buildAgenteSystemPrompt, renderProcessesSection, renderTodosSection } from './prompts.ts';
 import { ExtensionRunner } from './extensions/extension-runner.ts';
 import { createBuiltinExtensions } from './extensions/builtin.ts';
 import type { AgenteExtensionDefinition } from './extensions/extension-api.ts';
@@ -37,6 +41,7 @@ import type {
   CodeStopReason,
   CodeTodoItem
 } from '../../shared/agente-protocol.ts';
+import { DEFAULT_PROVIDER_BASE_URL } from '../../shared/providers.ts';
 
 const DEFAULT_MAX_TURNS = 40;
 /** Assumed context window when the provider cannot tell us. */
@@ -155,11 +160,20 @@ export function resolveTransport(providerName: string, modelOverride?: string, t
   const provider = (llm.providers ?? {})[providerName] ?? {};
   return {
     providerName,
-    baseUrl: provider.base_url || 'https://api.openai.com/v1',
+    baseUrl: provider.base_url || DEFAULT_PROVIDER_BASE_URL,
     model: modelOverride || provider.model || '',
     reasoning,
     params: samplingParams(provider)
   };
+}
+
+/** Local models see images only with a vision projector loaded; API models by id. */
+function transportSeesImages(transport: AgenteTransport): boolean {
+  if (transport.providerName === 'local') {
+    const cfg = loadConfigFromDisk() as { llm?: { local?: { mmproj_path?: string } } };
+    return !!cfg.llm?.local?.mmproj_path;
+  }
+  return isVisionModel(transport.model);
 }
 
 // ── Event bridging ─────────────────────────────────────────────────────
@@ -185,7 +199,7 @@ function toCodeAgentEvent(chatId: string, event: AgentEvent): CodeAgentEvent | n
     case 'tool_end':
       return { type: 'tool_end', chatId, toolCallId: event.toolCallId, result: event.result, isError: event.isError, ...(event.status !== undefined ? { status: event.status } : {}), ...(event.fileChanges !== undefined ? { fileChanges: event.fileChanges } : {}), ...(event.diffStats !== undefined ? { diffStats: event.diffStats } : {}) };
     case 'llm_retry':
-      return { type: 'llm_retry', chatId, attempt: event.attempt, delayMs: event.delayMs };
+      return { type: 'llm_retry', chatId, attempt: event.attempt, delayMs: event.delayMs, ...(event.discardPartial ? { discardPartial: true } : {}) };
     case 'length_continue':
       return { type: 'length_continue', chatId, turnIndex: event.turnIndex };
     case 'todo_update':
@@ -255,10 +269,14 @@ async function describeDiff(toolName: string, args: Record<string, unknown>): Pr
   if (toolName === 'write') {
     const content = String(args.content ?? '');
     const preview = content.split('\n').slice(0, 40).map((line) => `+${line}`).join('\n');
-    return `${content.length > 0 ? 'Write/overwrite' : 'Create'} ${String(args.path ?? '')} (${content.length} bytes)\n${preview}`;
+    const verb = args.append ? 'Append to' : content.length > 0 ? 'Write/overwrite' : 'Create';
+    return `${verb} ${String(args.path ?? '')} (${content.length} bytes)\n${preview}`;
   }
   if (toolName === 'bash') {
     return `$ ${String(args.command ?? '')}`;
+  }
+  if (typeof args.url === 'string') {
+    return `Open ${args.url}`;
   }
   return undefined;
 }
@@ -339,6 +357,14 @@ function buildHooks(session: RuntimeSession): AgentLoopHooks {
           if (decision === 'deny') {
             return { block: 'The user denied this action. Ask how to proceed or choose a different approach.' };
           }
+        }
+      } else if (session.runtimeMode !== 'full' && tool.requiresApproval?.(args)) {
+        // Not an edit, but not always safe either (e.g. browsing to an
+        // external site): a per-action approval, never the plan gate.
+        const decision = await requestApproval(session, toolName, args, await describeDiff(toolName, args), 'action', signal);
+        if (canceled()) return canceledGate;
+        if (decision === 'deny') {
+          return { block: 'The user denied this action. Ask how to proceed or choose a different approach.' };
         }
       }
 
@@ -490,7 +516,12 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
   }
 
   const registry = new ToolRegistry();
-  for (const tool of createBuiltinTools(args.projectRoot)) registry.register(tool);
+  for (const tool of createBuiltinTools(args.projectRoot, { chatId: args.chatId, processes: processRegistry })) registry.register(tool);
+  for (const tool of createProcessTools(args.chatId, processRegistry)) registry.register(tool);
+  // Screenshots go only to models that can see them; the check reads the
+  // session's current transport, since the model can change mid-session.
+  const live: { session: RuntimeSession | null } = { session: null };
+  for (const tool of createBrowserTools({ canSeeImages: () => transportSeesImages(live.session?.transport ?? transport) })) registry.register(tool);
   const todos: TodoStore = { items: [] };
   registry.register(createTodoTool(todos));
 
@@ -535,6 +566,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
     disposed: false,
     agent: undefined as unknown as Agent
   };
+  live.session = session;
   if (session.checkpointsEnabled) {
     session.checkpoints = new CheckpointStore(path.join(checkpointsDir, tree.header.id));
     for (const checkpoint of await session.checkpoints.listTurns()) {
@@ -565,7 +597,7 @@ export async function startSession(args: AgenteStartSessionArgs): Promise<{ sess
       return baseStreamFn({
         ...request,
         messages,
-        systemPrompt: request.systemPrompt + renderTodosSection(todos.items)
+        systemPrompt: request.systemPrompt + renderTodosSection(todos.items) + renderProcessesSection(processRegistry.list(args.chatId))
       });
     },
     maxTurns: DEFAULT_MAX_TURNS,
@@ -621,6 +653,8 @@ export async function deleteSessionData(args: { chatIds?: string[]; sessionIds?:
     const live = sessions.get(chatId);
     if (live) sessionIds.add(live.sessionId);
     closeSessionInternal(chatId);
+    // A deleted conversation must not leave its dev server running.
+    await processRegistry.stopChat(chatId);
   }
   const removed = await deleteSessionFiles(agentePaths(), [...sessionIds]);
   return { ok: true, removed };
@@ -633,6 +667,7 @@ export function liveChatIds(): string[] {
 
 export function disposeAllSessions(): void {
   for (const chatId of Array.from(sessions.keys())) closeSessionInternal(chatId);
+  processRegistry.killAll();
 }
 
 // ── Commands ───────────────────────────────────────────────────────────
@@ -722,7 +757,7 @@ export function setModel(chatId: string, provider: string, model: string, thinki
     return baseStreamFn({
       ...request,
       messages,
-      systemPrompt: request.systemPrompt + renderTodosSection(todos.items)
+      systemPrompt: request.systemPrompt + renderTodosSection(todos.items) + renderProcessesSection(processRegistry.list(session.chatId))
     });
   };
   session.tree.append('model_change', { provider, model, thinkingLevel });
@@ -777,6 +812,13 @@ function checkpointStoreFor(chatId: string, sessionId?: string): CheckpointStore
   if (session) return session.checkpoints;
   if (!sessionId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(sessionId)) return null;
   return new CheckpointStore(path.join(agentePaths().checkpointsDir, sessionId));
+}
+
+/** Where a conversation's checkpoints live (the Changes pane reads them outside git). */
+export function checkpointDirFor(chatId: string, sessionId?: string): string | undefined {
+  const id = requireSession(chatId)?.sessionId ?? sessionId;
+  if (!id || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id)) return undefined;
+  return path.join(agentePaths().checkpointsDir, id);
 }
 
 export async function listCheckpoints(chatId: string, sessionId?: string): Promise<AgenteCheckpointSummary[]> {

@@ -2,7 +2,8 @@
 // read / write / edit / bash / grep / ls against the project root. Plain
 // registered tools — an extension could have provided any of them.
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+import type { ProcessRegistry } from '../processes.ts';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -77,19 +78,51 @@ export function createReadTool(projectRoot: string): AgentTool {
   });
 }
 
+/**
+ * A plain write that would shrink a large file to a fragment which does not
+ * begin the way the file does is almost always a continuation sent without
+ * append — the failure that wipes a long file mid-way. Exported for tests.
+ */
+export function looksLikeLostContinuation(existing: string, next: string): boolean {
+  if (existing.length < 4_000 || next.length >= existing.length * 0.5) return false;
+  // A real rewrite opens the same way (a doctype, an import, a shebang).
+  const firstLine = (text: string) => (text.trimStart().split('\n')[0] ?? '').trim().slice(0, 80);
+  return firstLine(next) !== firstLine(existing);
+}
+
 export function createWriteTool(projectRoot: string): AgentTool {
   return defineTool({
     name: 'write',
-    description: 'Create or overwrite a file with the given content. Parent directories are created.',
+    description:
+      'Create or overwrite a file with the given content. Parent directories are created. ' +
+      'For a long file, write the first part, then add the rest with append: true calls — never write a fragment without append, it replaces the whole file.',
     schema: z.object({
       path: relPathSchema,
-      content: z.string().describe('Full file content')
+      content: z.string().describe('File content (the whole file, or the next part with append: true)'),
+      append: z.boolean().optional().describe('Add content to the end of the existing file instead of replacing it'),
+      overwrite: z.boolean().optional().describe('Confirm replacing a large existing file with much shorter content')
     }),
     mutating: true,
     executionMode: 'sequential',
     async execute(args) {
       const abs = resolveInRoot(projectRoot, args.path);
       await fsp.mkdir(path.dirname(abs), { recursive: true });
+      if (args.append) {
+        await fsp.appendFile(abs, args.content, 'utf8');
+        const total = (await fsp.stat(abs)).size;
+        return {
+          content: `Appended ${args.content.length} bytes to ${args.path} (now ${total} bytes).`,
+          details: { path: args.path, bytes: Buffer.byteLength(args.content), appended: true }
+        };
+      }
+      const existing = await fsp.readFile(abs, 'utf8').catch(() => null);
+      if (existing !== null && !args.overwrite && looksLikeLostContinuation(existing, args.content)) {
+        return {
+          content: `Not written: this would replace ${args.path} (${existing.length} bytes) with ${args.content.length} bytes that do not start like the file — it looks like the next part of it. `
+            + 'To add it to the end, call write again with append: true. To really replace the file, pass overwrite: true.',
+          isError: true
+        };
+      }
       await fsp.writeFile(abs, args.content, 'utf8');
       return {
         content: `Wrote ${args.content.length} bytes to ${args.path}.`,
@@ -148,38 +181,86 @@ export function createEditTool(projectRoot: string): AgentTool {
   });
 }
 
-export function createBashTool(projectRoot: string): AgentTool {
+export interface BashToolOptions {
+  /** Owning conversation; background processes are listed and stopped per chat. */
+  chatId?: string;
+  processes?: ProcessRegistry;
+}
+
+/** Kill a detached child and everything it spawned. */
+function killGroup(child: ChildProcess): void {
+  if (!child.pid) return;
+  try {
+    if (process.platform === 'win32') child.kill('SIGKILL');
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    // Already exited.
+  }
+}
+
+export function createBashTool(projectRoot: string, options: BashToolOptions = {}): AgentTool {
+  const { chatId, processes } = options;
   return defineTool({
     name: 'bash',
     description:
-      'Run a shell command in the project root and return combined stdout/stderr with the exit code. Avoid interactive commands.',
+      'Run a shell command in the project root and return combined stdout/stderr with the exit code. Avoid interactive commands.' +
+      (processes
+        ? ' For anything that keeps running (dev servers, watchers, `npm run dev`), set background: true — the call returns right away with a process id and the first output; read more with process_output and stop it with process_stop.'
+        : ''),
     schema: z.object({
       command: z.string().min(1).describe('The command to run'),
-      timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('Timeout in ms (default 120000)')
+      timeoutMs: z.number().int().min(1000).max(600_000).optional().describe('Timeout in ms (default 120000). Ignored with background.'),
+      ...(processes
+        ? { background: z.boolean().optional().describe('Keep running after this call returns (servers, watchers)') }
+        : {})
     }),
     mutating: true,
     executionMode: 'sequential',
     async execute(args, ctx) {
+      if (processes && chatId && (args as { background?: boolean }).background) {
+        const started = processes.start({ chatId, command: args.command, cwd: projectRoot });
+        await processes.settle(started.id, 4_000);
+        const info = processes.get(started.id) ?? started;
+        const firstOutput = (processes.output(started.id, 4_000) ?? '').trim();
+        const state = info.status === 'running'
+          ? `Running in the background as ${info.id}.`
+          : `Exited with code ${info.exitCode} before it could keep running.`;
+        return {
+          content: [state, info.urls.length ? `Listening on ${info.urls.join(', ')}` : '', firstOutput || '(no output yet)']
+            .filter(Boolean).join('\n'),
+          isError: info.status !== 'running' && info.exitCode !== 0,
+          details: { processId: info.id, urls: info.urls, background: true }
+        };
+      }
+
       const timeoutMs = args.timeoutMs ?? 120_000;
       const isWindows = process.platform === 'win32';
       const child = spawn(isWindows ? 'cmd.exe' : 'bash', isWindows ? ['/c', args.command] : ['-c', args.command], {
         cwd: projectRoot,
         env: { ...process.env, NO_COLOR: '1', TERM: 'dumb' },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // Its own group, so a timeout or Stop also ends what it spawned.
+        detached: !isWindows
       });
 
       let output = '';
       let truncated = false;
+      let lastUpdate = 0;
       const append = (chunk: Buffer) => {
         if (output.length >= MAX_OUTPUT_BYTES) {
           truncated = true;
           return;
         }
         output += chunk.toString('utf8', 0, Math.min(chunk.length, MAX_OUTPUT_BYTES - output.length));
+        // Stream the tail so a long command is visibly alive.
+        const now = Date.now();
+        if (now - lastUpdate > 250) {
+          lastUpdate = now;
+          ctx.onUpdate?.(output.slice(-4_000));
+        }
       };
-      child.stdout.on('data', append);
-      child.stderr.on('data', append);
-      ctx.onUpdate?.({ status: 'running' });
+      child.stdout?.on('data', append);
+      child.stderr?.on('data', append);
 
       const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
         child.once('exit', (code, signal) => resolve({ code, signal }));
@@ -189,24 +270,24 @@ export function createBashTool(projectRoot: string): AgentTool {
         });
       });
 
-      const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
-      ctx.signal.addEventListener('abort', () => child.kill('SIGKILL'), { once: true });
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; killGroup(child); }, timeoutMs);
+      ctx.signal.addEventListener('abort', () => killGroup(child), { once: true });
       const started = Date.now();
-      const { code, signal } = await exited;
+      const { code } = await exited;
       clearTimeout(timer);
 
       const durationMs = Date.now() - started;
       let report = output.trim();
       if (truncated) report += `\n… (output truncated at ${MAX_OUTPUT_BYTES} bytes)`;
-      const tail =
-        signal === 'SIGKILL' && durationMs >= timeoutMs
-          ? `\n(exit: timed out after ${timeoutMs}ms)`
-          : `\n(exit ${code})`;
+      const tail = timedOut
+        ? `\n(exit: timed out after ${timeoutMs}ms${processes ? ' — use background: true for commands that keep running' : ''})`
+        : `\n(exit ${code})`;
 
       return {
         content: `${report || '(no output)'}${tail}`,
         isError: code !== 0,
-        details: { exitCode: code, durationMs, timedOut: signal === 'SIGKILL' && durationMs >= timeoutMs }
+        details: { exitCode: code, durationMs, timedOut }
       };
     }
   });
@@ -332,12 +413,12 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${escaped}$`);
 }
 
-export function createBuiltinTools(projectRoot: string): AgentTool[] {
+export function createBuiltinTools(projectRoot: string, bash: BashToolOptions = {}): AgentTool[] {
   return [
     createReadTool(projectRoot),
     createWriteTool(projectRoot),
     createEditTool(projectRoot),
-    createBashTool(projectRoot),
+    createBashTool(projectRoot, bash),
     createGrepTool(projectRoot),
     createLsTool(projectRoot)
   ];

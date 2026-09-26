@@ -1,11 +1,10 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import type { GgufMeta, HardwareInfo, RecommendedSettings } from '$lib/types/bridge';
-  import { AlertTriangle, BrainCircuit, ChevronDown, ChevronRight, Cpu, Gauge, HardDrive, Layers3, LoaderCircle, MemoryStick, RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-svelte';
+  import { AlertTriangle, CircleCheck, Info, LoaderCircle, Sparkles } from 'lucide-svelte';
   import { untrack } from 'svelte';
+  import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { getHardwareLimits } from '$lib/services/hardware';
@@ -14,17 +13,25 @@
   import { getInstalledRuntimes, pickMmprojFile } from '$lib/services/files';
   import { formatContextLength, formatModelParameterCount } from '$lib/utils/local-models';
   import { formatBytes } from '$lib/utils/format';
-  import { Select } from '$lib/components/ui';
+  import { Badge, Button, Dialog, Disclosure, SegmentedControl, Select, Switch } from '$lib/components/ui';
 
   /** Presets scale with the model's real trained context, not a hard cap. */
   const contextPresets = $derived.by(() => {
-    const base = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
-    const presets = base.filter((preset) => preset <= maxContext);
+    const base = [4096, 8192, 16384, 32768, 65536, 131072];
+    const presets = base.filter((preset) => preset < maxContext);
     // The model's own maximum is always offered as the last stop.
-    if (maxContext >= 512 && !presets.includes(maxContext)) presets.push(maxContext);
+    if (maxContext >= 512) presets.push(maxContext);
     return presets;
   });
   const cacheTypes = ['f16', 'q8_0', 'q4_0'];
+  const engineToggles = [
+    ['flashAttention', 'localModelLoadFlashAttention'],
+    ['offloadKv', 'localModelLoadOffloadKvCache'],
+    ['keepInMemory', 'localModelLoadKeepInMemory'],
+    ['mmap', 'localModelLoadMmap'],
+    ['contextShift', 'localModelLoadContextShift'],
+    ['swaFull', 'localModelLoadSwaFull']
+  ] as const;
   const splitModes = ['', 'layer', 'row', 'tensor', 'none'];
   const mtpDraftNMaxPresets = [2, 3, 4, 6, 8];
 
@@ -33,9 +40,9 @@
   let recommended = $state<RecommendedSettings | null>(null);
   let advancedOpen = $state(false);
   let loadingMeta = $state(false);
-  let viewMode = $state<'simple' | 'advanced'>('simple');
 
   const target = $derived(appStore.localModelLoadTarget);
+  const loading = $derived(appStore.localModelLoading);
   const isAnyModelLoaded = $derived(Boolean(modelsStore.status?.active_model));
   const maxContext = $derived(Math.max(512, Number(metadata?.context_length || target?.context_length || 4096)));
   const blockCount = $derived(Math.max(0, Number(metadata?.block_count || 0)));
@@ -44,20 +51,15 @@
   const isMoeModel = $derived(expertCount > 0);
   const parameterCount = $derived(Number(metadata?.parameter_count || 0));
   const fileSizeBytes = $derived(Number(metadata?.file_size_bytes || 0));
-  const displayArchitecture = $derived(String(metadata?.architecture || target?.architecture || '').trim());
-  const displayQuantization = $derived(String(metadata?.quantization_name || target?.quantization_name || '').trim());
-  const displayParameterLabel = $derived(formatModelParameterCount(parameterCount || target?.parameter_count || 0));
-  const displayContextLabel = $derived(formatContextLength(maxContext || target?.context_length || 0));
-  const displaySizeLabel = $derived(fileSizeBytes > 0 ? formatBytes(fileSizeBytes) : String(target?.size_label || '').trim());
   const headerMetaLine = $derived.by(() => {
-    const parts = [
-      displayArchitecture,
-      displayQuantization,
-      displayParameterLabel,
-      displaySizeLabel,
-      displayContextLabel ? `${displayContextLabel} context` : ''
-    ].filter(Boolean);
-    return parts.join(' / ');
+    const context = formatContextLength(maxContext || target?.context_length || 0);
+    return [
+      String(metadata?.architecture || target?.architecture || '').trim(),
+      String(metadata?.quantization_name || target?.quantization_name || '').trim(),
+      formatModelParameterCount(parameterCount || target?.parameter_count || 0),
+      fileSizeBytes > 0 ? formatBytes(fileSizeBytes) : String(target?.size_label || '').trim(),
+      context ? $t('localLoad.contextMeta', { values: { n: context } }) : ''
+    ].filter(Boolean).join(' · ');
   });
   const gpuLayersMax = $derived.by(() => {
     const current = Number(appStore.localModelLoadGpuLayers || 0);
@@ -75,11 +77,8 @@
   let contextIsAuto = $state(!appStore.localModelLoadContextLength);
   let gpuLayersIsAuto = $state(!appStore.localModelLoadGpuLayers);
 
-  // Clamped computed values from local state
   const contextLength = $derived(Math.max(512, Math.min(maxContext, localContextLength)));
   const gpuLayers = $derived(Math.max(0, Math.min(gpuLayersMax, localGpuLayers)));
-  const cpuThreads = $derived(Math.max(1, Math.min(cpuThreadsMax, localCpuThreads)));
-  const batchSize = $derived(Math.max(1, Number(appStore.localModelLoadBatchSize || 512)));
 
   function cacheQuantFactor(type: string) {
     if (type === 'q4_0') return 0.25;
@@ -103,92 +102,69 @@
       ? (fileSizeGb * layerFraction) + (appStore.localModelLoadOffloadKvCache ? kvCacheGb : 0)
       : 0;
     const ramNeededGb = Math.max(0, totalGb - gpuGb);
-
-    const warnings: string[] = [];
-    let compatible = true;
-    if (hardware) {
-      if (ramNeededGb > Number(hardware.free_ram_gb || 0) * 0.9) {
-        warnings.push(`Estimated RAM usage (${ramNeededGb.toFixed(1)} GB) is close to available RAM (${Number(hardware.free_ram_gb || 0).toFixed(1)} GB).`);
-      }
-      if (ramNeededGb > Number(hardware.total_ram_gb || 0) * 0.95) {
-        compatible = false;
-        warnings.push('Estimated RAM usage exceeds total system RAM.');
-      }
-      if (gpuLayers > 0 && Number(hardware.vram_gb || 0) > 0 && gpuGb > Number(hardware.vram_gb || 0) * 0.95) {
-        warnings.push(`GPU layers may exceed VRAM (${gpuGb.toFixed(1)} GB > ${Number(hardware.vram_gb || 0).toFixed(1)} GB).`);
-      }
-    }
-
-    return {
-      totalGb,
-      gpuGb,
-      ramNeededGb,
-      compatible,
-      warnings
-    };
+    const compatible = !hardware || ramNeededGb <= Number(hardware.total_ram_gb || 0) * 0.95;
+    return { totalGb, gpuGb, ramNeededGb, compatible };
   });
 
-  const toolSupport = $derived.by(() => {
-    const source = metadata?.chat_template_uses_tools ?? target?.chat_template_uses_tools;
-    if (source === true) return { label: 'Supported', tone: 'text-fg' };
-    if (source === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
-    if (!loadingMeta) return { label: 'Unknown', tone: 'text-fg-secondary' };
-    return { label: 'Unknown', tone: 'text-fg-secondary' };
+  /** One plain-language answer to "will this run, and how well?" */
+  const fit = $derived.by((): { tone: 'success' | 'warning' | 'error' | 'neutral'; text: string } | null => {
+    if (!hardware) return null;
+    const vram = Number(hardware.vram_gb || 0);
+    if (!memoryEstimate.compatible) return { tone: 'error', text: $t('localLoad.fitWontFit') };
+    if (gpuLayersIsAuto) return { tone: 'neutral', text: $t('localLoad.fitAuto') };
+    if (vram > 0 && memoryEstimate.gpuGb > vram * 0.95) return { tone: 'warning', text: $t('localLoad.fitOverVram') };
+    if (memoryEstimate.ramNeededGb > Number(hardware.free_ram_gb || 0) * 0.9) return { tone: 'warning', text: $t('localLoad.fitTight') };
+    if (gpuLayers === 0 || vram <= 0) return { tone: 'neutral', text: $t('localLoad.fitCpu') };
+    if (gpuLayers < gpuLayersMax) return { tone: 'neutral', text: $t('localLoad.fitPartial') };
+    return { tone: 'success', text: $t('localLoad.fitGpu') };
   });
 
-  const thinkingSupport = $derived.by(() => {
-    const supported = metadata?.chat_template_supports_thinking;
-    if (supported === true) return { label: 'Supported', tone: 'text-fg' };
-    if (supported === false) return { label: 'Not supported', tone: 'text-fg-secondary' };
-    return { label: 'Unknown', tone: 'text-fg-secondary' };
+  const meterRows = $derived.by(() => {
+    if (!hardware) return [];
+    const rows: Array<{ label: string; used: number; total: number }> = [];
+    const vram = Number(hardware.vram_gb || 0);
+    if (vram > 0 && gpuLayers > 0) rows.push({ label: $t('localLoad.meterGpu'), used: memoryEstimate.gpuGb, total: vram });
+    rows.push({ label: $t('localLoad.meterRam'), used: memoryEstimate.ramNeededGb, total: Number(hardware.total_ram_gb || 0) });
+    return rows;
   });
+
+  const toolSupport = $derived(metadata?.chat_template_uses_tools ?? target?.chat_template_uses_tools);
+  const thinkingSupport = $derived(metadata?.chat_template_supports_thinking);
+  const thinkingLocked = $derived(thinkingSupport === false);
   // When the model's GGUF lost its chat template, the server gets one from a
   // downloaded sidecar or the built-in family template. Say so — otherwise a
   // repaired model reads as a normal one and a truly unsupported one reads
   // as a mystery.
   const templateFallbackNote = $derived.by(() => {
     const source = metadata?.chat_template_source;
-    if (source === 'sidecar') return 'Chat template loaded from Hugging Face.';
+    if (source === 'sidecar') return $t('localLoad.templateSidecar');
     if (source === 'builtin') {
       const family = metadata?.chat_template_family;
-      return family ? `Chat template restored (${family}).` : 'Chat template restored.';
+      return family ? $t('localLoad.templateRestoredFamily', { values: { family } }) : $t('localLoad.templateRestored');
     }
-    if (source === 'none') return 'No chat template found — thinking and tools are unavailable.';
+    if (source === 'none') return $t('localLoad.templateNone');
     return '';
   });
-  const thinkingMode = $derived(appStore.localModelLoadThinkingMode);
-  const thinkingLocked = $derived(thinkingSupport.label === 'Not supported');
-  const thinkingSummary = $derived.by(() => {
-    const mode = thinkingMode === 'auto' ? 'Auto' : thinkingMode === 'off' ? 'Off' : 'On';
-    return `${thinkingSupport.label} · ${mode}`;
-  });
 
-  function setThinkingMode(mode: 'auto' | 'off' | 'on') {
-    appStore.localModelLoadThinkingMode = mode;
-  }
-
-  const visionSupport = $derived.by(() => {
-    if (appStore.localModelLoadMmprojPath) {
-      return { label: 'Projector selected', tone: 'text-fg' };
-    }
-    return { label: 'Text only', tone: 'text-fg-secondary' };
-  });
   const visionSelectedName = $derived(appStore.localModelLoadMmprojPath
     ? (appStore.localModelLoadMmprojPath.split(/[/\\]/).pop() || '')
     : '');
 
-  const mtpSupport = $derived.by(() => {
-    const builtIn = metadata?.has_mtp_layers === true
-      || (target?.name || '').toLowerCase().includes('mtp');
-    if (builtIn) return { label: 'Built-in MTP', tone: 'text-fg', allowToggle: true, requireDraft: false };
-    if (metadata?.has_mtp_layers === false) return { label: 'Not supported', tone: 'text-fg-secondary', allowToggle: false, requireDraft: false };
-    return { label: 'Unknown', tone: 'text-fg-secondary', allowToggle: true, requireDraft: true };
+  const mtp = $derived.by(() => {
+    const builtIn = metadata?.has_mtp_layers === true || (target?.name || '').toLowerCase().includes('mtp');
+    if (builtIn) return { builtIn: true, allowToggle: true, requireDraft: false };
+    if (metadata?.has_mtp_layers === false) return { builtIn: false, allowToggle: false, requireDraft: false };
+    return { builtIn: false, allowToggle: true, requireDraft: true };
   });
-  const mtpLockedOff = $derived(!mtpSupport.allowToggle);
-  const mtpDraftSelected = $derived(!!appStore.localModelLoadMtpDraftPath);
+
+  const capabilities = $derived([
+    { label: $t('localLoad.capTools'), on: toolSupport === true, known: toolSupport != null },
+    { label: $t('localLoad.capThinking'), on: thinkingSupport === true, known: thinkingSupport != null },
+    { label: $t('localLoad.capVision'), on: Boolean(visionSelectedName), known: true },
+    { label: $t('localLoad.capMtp'), on: mtp.builtIn, known: metadata?.has_mtp_layers != null || mtp.builtIn }
+  ]);
 
   let projectorCandidates = $state<string[]>([]);
-  let loadingProjectorCandidates = $state(false);
 
   $effect(() => {
     const modelPath = target?.path;
@@ -196,26 +172,16 @@
       projectorCandidates = [];
       return;
     }
-    loadingProjectorCandidates = true;
     void appStore.listProjectorCandidates(modelPath).then((list) => {
-      projectorCandidates = list;
-      loadingProjectorCandidates = false;
+      // Offer a few one-click picks; "Choose file" covers the rest.
+      projectorCandidates = [...new Set(list)].slice(0, 4);
     });
   });
 
   async function pickProjector() {
     if (!target?.path) return;
     const selected = await pickMmprojFile();
-    if (!selected) return;
-    appStore.localModelLoadMmprojPath = selected;
-  }
-
-  async function clearProjector() {
-    appStore.localModelLoadMmprojPath = '';
-  }
-
-  async function applyProjectorCandidate(path: string) {
-    appStore.localModelLoadMmprojPath = path;
+    if (selected) appStore.localModelLoadMmprojPath = selected;
   }
 
   // ── Command preview ──────────────────────────────────────────────────
@@ -274,21 +240,16 @@
     // Applying the preset is an explicit choice: it takes both sliders off auto.
     localContextLength = Number(recommended.context_length || contextLength);
     localGpuLayers = Number(recommended.gpu_layers || 0);
-    localCpuThreads = Number(recommended.cpu_threads || cpuThreads);
+    localCpuThreads = Number(recommended.cpu_threads || localCpuThreads);
     contextIsAuto = false;
     gpuLayersIsAuto = false;
     appStore.localModelLoadContextLength = String(localContextLength);
     appStore.localModelLoadGpuLayers = String(localGpuLayers);
     appStore.localModelLoadCpuThreads = String(localCpuThreads);
-    appStore.localModelLoadBatchSize = String(recommended.batch_size || batchSize);
+    appStore.localModelLoadBatchSize = String(recommended.batch_size || appStore.localModelLoadBatchSize || 512);
     appStore.localModelLoadFlashAttention = recommended.flash_attention ?? true;
     appStore.localModelLoadOffloadKvCache = recommended.offload_kv ?? true;
     appStore.localModelLoadMmap = recommended.use_mmap ?? true;
-  }
-
-  function resetToSavedDefaults() {
-    if (!target) return;
-    void appStore.openLocalModelLoadDialog(target);
   }
 
   // Sync local slider values when target model changes (i.e., a new dialog opens)
@@ -301,11 +262,10 @@
     gpuLayersIsAuto = !storedGpu;
     // Sliders show where auto is likely to land, but stay off until touched.
     localContextLength = Number(storedCtx || 4096);
-    localGpuLayers = storedGpu ? Number(storedGpu) : gpuLayersMax;
+    localGpuLayers = storedGpu ? Number(storedGpu) : untrack(() => gpuLayersMax);
     localCpuThreads = Number(storedCpu || 4);
   });
 
-  // Commit local values to store (called on slider change / input blur).
   // Touching a control takes it off auto; '' in the store means auto.
   function commitContext() {
     contextIsAuto = false;
@@ -317,14 +277,32 @@
   }
   function commitCpuThreads() { appStore.localModelLoadCpuThreads = String(localCpuThreads); }
 
-  function useAutoContext() {
-    contextIsAuto = true;
-    appStore.localModelLoadContextLength = '';
+  // Segmented choices. "custom" is whatever the slider says.
+  const gpuChoice = $derived(gpuLayersIsAuto ? 'auto' : gpuLayers >= gpuLayersMax ? 'all' : gpuLayers === 0 ? 'cpu' : 'custom');
+  function chooseGpu(value: string) {
+    if (value === 'auto') {
+      gpuLayersIsAuto = true;
+      appStore.localModelLoadGpuLayers = '';
+      return;
+    }
+    if (value === 'all') localGpuLayers = gpuLayersMax;
+    else if (value === 'cpu') localGpuLayers = 0;
+    else return;
+    commitGpuLayers();
   }
-  function useAutoGpuLayers() {
-    gpuLayersIsAuto = true;
-    appStore.localModelLoadGpuLayers = '';
+
+  const contextChoice = $derived(contextIsAuto ? 'auto' : contextPresets.includes(contextLength) ? String(contextLength) : 'custom');
+  function chooseContext(value: string) {
+    if (value === 'auto') {
+      contextIsAuto = true;
+      appStore.localModelLoadContextLength = '';
+      return;
+    }
+    if (value === 'custom') return;
+    localContextLength = Number(value);
+    commitContext();
   }
+  const shortContext = (n: number) => (n >= 1024 ? `${Math.round(n / 1024)}k` : String(n));
 
   $effect(() => {
     const model = target;
@@ -333,15 +311,14 @@
     metadata = null;
     hardware = null;
     recommended = null;
-    // Don't track localContextLength/localGpuLayers — fetch once per model, not on every slider tick
+    // Don't track the sliders — fetch once per model, not on every tick.
     const ctx = untrack(() => Number(appStore.localModelLoadContextLength || 0)) || undefined;
     const gpu = untrack(() => Number(appStore.localModelLoadGpuLayers || 0)) || undefined;
     void Promise.allSettled([
       getGgufMetadata(model.path),
       getHardwareLimits(),
       getRecommendedSettings(model.path, ctx, gpu, appStore.localModelLoadRuntimePath || appStore.config?.llm?.local?.runtime_path)
-    ]).then((results) => {
-      const [metaResult, hardwareResult, recommendedResult] = results;
+    ]).then(([metaResult, hardwareResult, recommendedResult]) => {
       if (metaResult.status === 'fulfilled') metadata = metaResult.value;
       if (hardwareResult.status === 'fulfilled') hardware = hardwareResult.value;
       if (recommendedResult.status === 'fulfilled') recommended = recommendedResult.value;
@@ -355,830 +332,415 @@
       void getInstalledRuntimes().then(r => { hasRuntime = (r.runtimes?.length ?? 0) > 0; }).catch(() => { hasRuntime = null; });
     }
   });
+
+  function openRuntimeManager() {
+    appStore.closeLocalModelLoadDialog();
+    appStore.modelManagerOpenSection = 'runtime';
+    appStore.modelManagerOpen = true;
+  }
+
+  const loadBlockedReason = $derived(
+    hasRuntime === false ? $t('localLoad.runtimeMissingShort') : !memoryEstimate.compatible ? $t('localLoad.fitWontFit') : ''
+  );
 </script>
 
+{#snippet row(title: string, hint: string, control: import('svelte').Snippet, below?: import('svelte').Snippet)}
+  <div class="py-3">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div class="min-w-0">
+        <div class="text-[13px] font-medium text-foreground">{title}</div>
+        {#if hint}<div class="text-xs text-muted-foreground">{hint}</div>{/if}
+      </div>
+      {@render control()}
+    </div>
+    {#if below}<div class="mt-2.5">{@render below()}</div>{/if}
+  </div>
+{/snippet}
+
+{#snippet field(label: string, control: import('svelte').Snippet)}
+  <label class="block space-y-1.5">
+    <span class="text-xs font-medium text-muted-foreground">{label}</span>
+    {@render control()}
+  </label>
+{/snippet}
+
 {#if target}
-  <div class="aui-modal-backdrop" role="dialog" aria-modal="true" use:modalLayer={{ onclose: () => appStore.closeLocalModelLoadDialog() }} transition:motionFade={{ duration: 150}}>
-  <div class="aui-modal-surface load-modal-surface max-h-[92vh] max-w-4xl overflow-y-auto p-6" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200}}>
- <div class="mb-5 flex items-start justify-between gap-4">
- <div class="min-w-0 space-y-2">
- <div>
- <div class="text-[15px] font-semibold leading-5 text-foreground">Load local model</div>
- <div class="mt-1 truncate text-[13px] leading-5 text-muted-foreground">{target.name}</div>
- </div>
- {#if headerMetaLine}
- <div class="text-[12px] leading-5 text-muted-foreground">{headerMetaLine}</div>
- {/if}
- </div>
- <button type="button" class="aui-icon-button size-8" onclick={() => appStore.closeLocalModelLoadDialog()} aria-label="Close load dialog">
- <X class="size-4" />
- </button>
- </div>
-
-  <div class="info-card mb-5 grid gap-2 sm:grid-cols-2 text-[13px] leading-5 text-[var(--text-secondary)]">
-  <div class="flex items-center justify-between gap-3"><span>Tools</span><span class={`font-medium ${toolSupport.tone}`}>{toolSupport.label}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Vision</span><span class={`font-medium ${visionSupport.tone}`}>{visionSupport.label}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Thinking</span><span class={`font-medium ${thinkingSupport.tone}`}>{thinkingSummary}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>MTP</span><span class={`font-medium ${mtpSupport.tone}`}>{mtpSupport.label}</span></div>
-  {#if templateFallbackNote}
-    <div class="sm:col-span-2 text-[12px] leading-5 text-[var(--text-tertiary)]">{templateFallbackNote}</div>
-  {/if}
-  </div>
-
- <!-- Runtime missing warning -->
- {#if hasRuntime === false}
-   <div class="runtime-warning mb-4 flex items-start gap-3 rounded-lg bg-[var(--surface)] px-4 py-3">
-  <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
-  <div class="flex-1 min-w-0">
-  <p class="text-[13px] font-medium text-[var(--text)]">Runtime not installed</p>
-  <p class="mt-0.5 text-[12px] text-[var(--text-secondary)]">The llama.cpp runtime is required to run local models. Install it first.</p>
-  </div>
-   <button
-   class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90"
-   onclick={() => { appStore.closeLocalModelLoadDialog(); appStore.modelManagerOpenSection = 'runtime'; appStore.modelManagerOpen = true;}}
-   >
-  Install Runtime
-  </button>
-  </div>
- {/if}
-
-   <!-- View mode toggle -->
-   <div class="mb-4 flex items-center gap-3">
-   <div class="flex items-center rounded-full bg-[var(--muted)] p-[3px]">
-   <button class={`rounded-full px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'simple' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'simple')}>Simple</button>
-   <button class={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition ${viewMode === 'advanced' ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`} onclick={() => (viewMode = 'advanced')}>
-   <SlidersHorizontal class="h-3 w-3" />
-   Advanced
-   </button>
-   </div>
-  {#if loadingMeta}
-  <span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-  <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-  Loading metadata…
-  </span>
-  {/if}
-  </div>
-
-  {#if viewMode === 'simple'}
-  <!-- ==================== SIMPLE VIEW ==================== -->
-  <div class="simple-view space-y-5">
-
-    <!-- GPU layers -->
-    <div class="space-y-2">
-      <div class="flex items-center justify-between gap-3">
-        <span class="text-[13px] font-medium text-[var(--text)]">GPU layers</span>
-        <span class="text-[13px] text-[var(--text-secondary)]">{gpuLayersIsAuto ? 'Auto' : gpuLayers}</span>
-      </div>
-      <div class="flex items-center gap-3">
-      <div class="flex items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]">
-        <button
-          class={`rounded-full px-3 py-1.5 text-[12px] transition ${gpuLayersIsAuto ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-          onclick={useAutoGpuLayers}
-          title="Let llama.cpp fit the model to available VRAM"
-        >
-          Auto
-        </button>
-        <button
-          class={`rounded-full px-3 py-1.5 text-[12px] transition ${!gpuLayersIsAuto && gpuLayers === gpuLayersMax ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-          onclick={() => { localGpuLayers = gpuLayersMax; commitGpuLayers(); }}
-        >
-          All ({gpuLayersMax})
-        </button>
-        <button
-          class={`rounded-full px-3 py-1.5 text-[12px] transition ${!gpuLayersIsAuto && gpuLayers === 0 ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-          onclick={() => { localGpuLayers = 0; commitGpuLayers(); }}
-        >
-          CPU
-        </button>
-      </div>
-      <input
-        type="range"
-        min="0"
-        max={gpuLayersMax}
-        value={localGpuLayers}
-        oninput={(e) => { localGpuLayers = Number((e.target as HTMLInputElement).value);}}
-        onchange={commitGpuLayers}
-        class="flex-1 h-1 bg-[var(--border)] rounded-full appearance-none cursor-pointer accent-black dark:accent-white {gpuLayersIsAuto ? 'opacity-50' : ''}"
-      />
-      </div>
-    </div>
-
-    <!-- Context length -->
-    <div class="space-y-2">
-      <div class="flex items-center justify-between gap-3">
-        <span class="text-[13px] font-medium text-[var(--text)]">Context length</span>
-        <span class="text-[13px] text-[var(--text-secondary)]">
-          {contextIsAuto ? 'Auto' : (localContextLength >= 1024 ? `${Math.round(localContextLength/1024)}k` : localContextLength)}
-        </span>
-      </div>
-      <div class="flex items-center gap-3">
-      <div class="flex flex-wrap items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]">
-        <button
-          class={`rounded-full px-3 py-1.5 text-[12px] transition ${contextIsAuto ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-          onclick={useAutoContext}
-          title="Use the model's trained context, reduced to fit memory"
-        >
-          Auto
-        </button>
-        {#each contextPresets as preset}
-          {#if preset <= maxContext}
-            <button
-              class={`rounded-full px-3 py-1.5 text-[12px] transition ${!contextIsAuto && contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-              onclick={() => { localContextLength = preset; commitContext();}}
-            >
-              {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
-            </button>
-          {/if}
-        {/each}
-      </div>
-      <input
-        type="range"
-        min="512"
-        max={maxContext}
-        value={localContextLength}
-        oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
-        onchange={commitContext}
-        class="flex-1 h-1 bg-[var(--border)] rounded-full appearance-none cursor-pointer accent-black dark:accent-white {contextIsAuto ? 'opacity-50' : ''}"
-      />
-      </div>
-    </div>
-
-    <!-- MoE expert offload — only meaningful on mixture-of-experts models -->
-    {#if isMoeModel}
-      <div class="rounded-lg bg-[var(--surface)] px-3 py-2.5">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <div class="text-[13px] font-medium text-[var(--text)]">Keep experts on CPU</div>
-            <div class="text-[11px] text-[var(--text-tertiary)]">
-              Frees VRAM for attention layers. Often the difference between this {expertCount}-expert model running or not.
-            </div>
-          </div>
-          <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-            <input
-              type="checkbox"
-              class="peer sr-only"
-              checked={appStore.localModelLoadCpuMoe}
-              onchange={(e) => { appStore.localModelLoadCpuMoe = (e.currentTarget as HTMLInputElement).checked; }}
-            />
-            <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)]"></span>
-            <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
-            <span class="text-[11px] font-semibold">{appStore.localModelLoadCpuMoe ? 'All' : 'Off'}</span>
-          </label>
-        </div>
-        {#if appStore.localModelLoadCpuMoe}
-          <div class="mt-2 flex items-center gap-2">
-            <span class="text-[11px] text-[var(--text-tertiary)]">Or offload only the first N layers' experts:</span>
-            <input
-              class="w-20 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[12px] text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
-              type="number"
-              min="0"
-              max={blockCount || 999}
-              bind:value={appStore.localModelLoadNCpuMoe}
-              placeholder="all"
-              inputmode="numeric"
-            />
-          </div>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Thinking level: server default unless the user pins off/on. -->
-    <div class="flex items-center justify-between gap-3 rounded-lg bg-[var(--surface)] px-3 py-2">
-      <div>
-        <div class="text-[13px] font-medium text-[var(--text)]">Thinking</div>
-          <div class="text-[11px] text-[var(--text-tertiary)]">Auto lets the server decide from the model's template. Off passes --reasoning off.</div>
-      </div>
-      <div class="flex items-center gap-1 rounded-full bg-[var(--muted)] p-[3px]" role="group" aria-label="Thinking level">
-        {#each [['auto', 'Auto'], ['off', 'Off'], ['on', 'On']] as [mode, label]}
-          <button
-            type="button"
-            class={`rounded-full px-3 py-1.5 text-[12px] transition ${thinkingMode === mode ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'} disabled:opacity-50`}
-            disabled={thinkingLocked}
-            title={thinkingLocked ? 'This model template does not support thinking' : undefined}
-            onclick={() => setThinkingMode(mode as 'auto' | 'off' | 'on')}
-          >
-            {label}
-          </button>
-        {/each}
-      </div>
-    </div>
-
-    <!-- Vision projector selector -->
-    <div class="rounded-lg bg-[var(--surface)] px-3 py-2.5">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <div class="text-[13px] font-medium text-[var(--text)]">Vision projector</div>
-          <div class="text-[11px] text-[var(--text-tertiary)]">{visionSelectedName || 'Text only — pick a mmproj to enable vision.'}</div>
-        </div>
-        <div class="flex shrink-0 items-center gap-2">
-          {#if visionSelectedName}
-            <button type="button" class="rounded-full px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={clearProjector}>Clear</button>
-            <button type="button" class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Change</button>
-          {:else}
-            <button type="button" class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90" onclick={pickProjector}>Select projector</button>
-          {/if}
-        </div>
-      </div>
-      {#if projectorCandidates.length > 0 && !visionSelectedName}
-        <div class="mt-2 flex flex-wrap gap-1.5">
-          {#each projectorCandidates as candidate}
-            {@const candidateName = candidate.split(/[/\\]/).pop() || ''}
-            <button type="button" class="rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={() => applyProjectorCandidate(candidate)} title={candidate}>
-              {candidateName}
-            </button>
+  <Dialog
+    title={appStore.localModelLoadAsInstance ? $t('instances.startTitle') : $t('localLoad.title')}
+    description={target.name}
+    size="lg"
+    onclose={() => appStore.closeLocalModelLoadDialog()}
+  >
+    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+      <!-- What this model is and what it can do -->
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {#if headerMetaLine}<span class="text-xs text-muted-foreground">{headerMetaLine}</span>{/if}
+        <div class="flex flex-wrap gap-1.5">
+          {#each capabilities as cap (cap.label)}
+            <Badge tone={cap.on ? 'success' : 'neutral'} title={cap.known ? '' : $t('localLoad.capUnknown')}>
+              {cap.label}{cap.known ? '' : ' ?'}
+            </Badge>
           {/each}
         </div>
-      {/if}
-    </div>
-
-    <!-- MTP toggle -->
-    <div class="rounded-lg bg-[var(--surface)] px-3 py-2.5">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <div class="text-[13px] font-medium text-[var(--text)]">MTP (speculative decoding)</div>
-          <div class="text-[11px] text-[var(--text-tertiary)]">{mtpSupport.label === 'Built-in MTP' ? 'Built-in MTP head detected.' : 'Speculative decoding via an MTP draft head.'}</div>
-        </div>
-        <label class="relative inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-          <input
-            type="checkbox"
-            class="peer sr-only"
-            checked={appStore.localModelLoadMtpEnabled}
-            disabled={mtpLockedOff || (!mtpDraftSelected && mtpSupport.requireDraft)}
-            onchange={(e) => { appStore.localModelLoadMtpEnabled = (e.currentTarget as HTMLInputElement).checked; }}
-          />
-          <span class="h-4 w-7 rounded-full bg-[var(--surface-hover)] transition peer-checked:bg-[var(--primary)] peer-disabled:opacity-50"></span>
-          <span class="absolute left-0.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-[var(--text-muted)] transition peer-checked:translate-x-3.5 peer-checked:bg-[var(--primary-fg)]"></span>
-          <span class="text-[11px] font-semibold">{appStore.localModelLoadMtpEnabled ? 'On' : 'Off'}</span>
-        </label>
+        {#if loadingMeta}
+          <LoaderCircle class="size-3.5 animate-spin text-muted-foreground" aria-label={$t('localLoad.readingModel')} />
+        {/if}
       </div>
-      {#if mtpSupport.requireDraft && appStore.localModelLoadMtpEnabled}
-        <div class="mt-2 space-y-1.5">
-          <div class="text-[11px] text-[var(--text-tertiary)]">Draft head (MTP). Required when the target model does not include MTP layers.</div>
+      {#if templateFallbackNote}
+        <p class="mt-1.5 text-xs text-muted-foreground">{templateFallbackNote}</p>
+      {/if}
+
+      {#if hasRuntime === false}
+        <div class="mt-4 flex items-start gap-3 rounded-lg border border-warning-border bg-warning-bg px-3 py-2.5">
+          <AlertTriangle class="mt-0.5 size-4 shrink-0 text-warning" />
+          <div class="min-w-0 flex-1">
+            <p class="text-[13px] font-medium text-foreground">{$t('localLoad.runtimeMissing')}</p>
+            <p class="text-xs text-muted-foreground">{$t('localLoad.runtimeMissingHint')}</p>
+          </div>
+          <Button size="sm" onclick={openRuntimeManager}>{$t('localLoad.installRuntime')}</Button>
+        </div>
+      {/if}
+
+      <!-- Will it fit? -->
+      {#if fit}
+        <div class="mt-4 rounded-lg border border-border px-3 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-2 text-[13px] font-medium"
+              class:text-success={fit.tone === 'success'}
+              class:text-warning={fit.tone === 'warning'}
+              class:text-error={fit.tone === 'error'}
+            >
+              {#if fit.tone === 'success'}<CircleCheck class="size-4 shrink-0" />
+              {:else if fit.tone === 'neutral'}<Info class="size-4 shrink-0 text-muted-foreground" />
+              {:else}<AlertTriangle class="size-4 shrink-0" />{/if}
+              <span class="min-w-0">{fit.text}</span>
+            </div>
+            <Button variant="ghost" size="xs" onclick={applyRecommendedPreset} disabled={!recommended}>
+              <Sparkles /> {$t('localLoad.useRecommended')}
+            </Button>
+          </div>
+          <div class="mt-2.5 space-y-2">
+            {#each meterRows as meter (meter.label)}
+              {@const pct = meter.total > 0 ? Math.min(100, (meter.used / meter.total) * 100) : 0}
+              <div class="grid grid-cols-[3rem_1fr_auto] items-center gap-3 text-xs text-muted-foreground">
+                <span>{meter.label}</span>
+                <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div class="h-full rounded-full transition-[width] {meter.used > meter.total * 0.95 ? 'bg-error' : 'bg-primary'}" style="width: {pct}%"></div>
+                </div>
+                <span class="tabular-nums">{meter.used.toFixed(1)} / {meter.total.toFixed(1)} GB</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- The few choices most people make -->
+      <div class="mt-2 divide-y divide-[var(--border-subtle)]">
+        {#snippet gpuControl()}
+          <SegmentedControl
+            label={$t('localLoad.gpuLayers')}
+            value={gpuChoice}
+            onchange={chooseGpu}
+            options={[
+              { value: 'auto', label: $t('localLoad.auto') },
+              { value: 'all', label: $t('localLoad.gpuAll', { values: { n: gpuLayersMax } }) },
+              { value: 'cpu', label: $t('localLoad.gpuCpu') },
+              ...(gpuChoice === 'custom' ? [{ value: 'custom', label: String(gpuLayers) }] : [])
+            ]}
+          />
+        {/snippet}
+        {#snippet gpuSlider()}
+          <input
+            type="range"
+            min="0"
+            max={gpuLayersMax}
+            value={localGpuLayers}
+            aria-label={$t('localLoad.gpuLayers')}
+            oninput={(e) => { localGpuLayers = Number(e.currentTarget.value); }}
+            onchange={commitGpuLayers}
+            class="load-range w-full"
+            class:is-auto={gpuLayersIsAuto}
+          />
+        {/snippet}
+        {@render row($t('localLoad.gpuLayers'), $t('localLoad.gpuLayersHint'), gpuControl, gpuSlider)}
+
+        {#snippet contextControl()}
+          <SegmentedControl
+            label={$t('localLoad.context')}
+            value={contextChoice}
+            onchange={chooseContext}
+            options={[
+              { value: 'auto', label: $t('localLoad.auto') },
+              ...contextPresets.map((preset) => ({ value: String(preset), label: shortContext(preset) })),
+              ...(contextChoice === 'custom' ? [{ value: 'custom', label: shortContext(contextLength) }] : [])
+            ]}
+          />
+        {/snippet}
+        {#snippet contextSlider()}
+          <input
+            type="range"
+            min="512"
+            max={maxContext}
+            step="512"
+            value={localContextLength}
+            aria-label={$t('localLoad.context')}
+            oninput={(e) => { localContextLength = Number(e.currentTarget.value); }}
+            onchange={commitContext}
+            class="load-range w-full"
+            class:is-auto={contextIsAuto}
+          />
+        {/snippet}
+        {@render row($t('localLoad.context'), $t('localLoad.contextHint'), contextControl, contextSlider)}
+
+        {#snippet thinkingControl()}
+          <SegmentedControl
+            label={$t('localLoad.thinking')}
+            value={appStore.localModelLoadThinkingMode}
+            onchange={(mode) => { appStore.localModelLoadThinkingMode = mode as 'auto' | 'off' | 'on'; }}
+            options={[
+              { value: 'auto', label: $t('localLoad.auto'), disabled: thinkingLocked },
+              { value: 'off', label: $t('localLoad.off'), disabled: thinkingLocked },
+              { value: 'on', label: $t('localLoad.on'), disabled: thinkingLocked }
+            ]}
+          />
+        {/snippet}
+        {@render row($t('localLoad.thinking'), thinkingLocked ? $t('localLoad.thinkingUnsupported') : $t('localLoad.thinkingHint'), thinkingControl)}
+
+        {#snippet visionControl()}
+          <div class="flex shrink-0 items-center gap-1.5">
+            {#if visionSelectedName}
+              <Button variant="ghost" size="sm" onclick={() => { appStore.localModelLoadMmprojPath = ''; }}>{$t('localLoad.clear')}</Button>
+            {/if}
+            <Button variant="outline" size="sm" onclick={pickProjector}>
+              {visionSelectedName ? $t('localLoad.change') : $t('localLoad.chooseFile')}
+            </Button>
+          </div>
+        {/snippet}
+        {#snippet visionCandidates()}
+          <div class="flex flex-wrap gap-1.5">
+            {#each projectorCandidates as candidate (candidate)}
+              <Button variant="outline" size="xs" title={candidate} onclick={() => { appStore.localModelLoadMmprojPath = candidate; }}>
+                {candidate.split(/[/\\]/).pop()}
+              </Button>
+            {/each}
+          </div>
+        {/snippet}
+        {@render row(
+          $t('localLoad.vision'),
+          visionSelectedName || $t('localLoad.visionHint'),
+          visionControl,
+          projectorCandidates.length && !visionSelectedName ? visionCandidates : undefined
+        )}
+
+        {#if isMoeModel}
+          {#snippet moeControl()}
+            <Switch label={$t('localLoad.moe')} bind:checked={appStore.localModelLoadCpuMoe} />
+          {/snippet}
+          {#snippet moeLayers()}
+            <div class="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{$t('localLoad.moeLayers')}</span>
+              <input
+                class="load-input w-20"
+                type="number"
+                min="0"
+                max={blockCount || 999}
+                bind:value={appStore.localModelLoadNCpuMoe}
+                placeholder={$t('localLoad.all')}
+                inputmode="numeric"
+              />
+            </div>
+          {/snippet}
+          {@render row(
+            $t('localLoad.moe'),
+            $t('localLoad.moeHint', { values: { n: expertCount } }),
+            moeControl,
+            appStore.localModelLoadCpuMoe ? moeLayers : undefined
+          )}
+        {/if}
+
+        {#snippet mtpControl()}
+          <Switch
+            label={$t('localLoad.mtp')}
+            bind:checked={appStore.localModelLoadMtpEnabled}
+            disabled={!mtp.allowToggle}
+          />
+        {/snippet}
+        {#snippet mtpDraft()}
           <div class="flex flex-wrap items-center gap-2">
             <input
-              class="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12px] text-[var(--text)] outline-none focus:border-[var(--border-hover)]"
+              class="load-input min-w-0 flex-1"
               type="text"
               bind:value={appStore.localModelLoadMtpDraftPath}
-              placeholder="C:/models/qwen3.6-mtp-draft.gguf"
+              placeholder={$t('localLoad.mtpDraftPlaceholder')}
+              aria-label={$t('localLoad.mtpDraft')}
             />
             <Select
               value={appStore.localModelLoadMtpDraftNMax}
               onchange={(value) => { appStore.localModelLoadMtpDraftNMax = value; }}
               options={[
                 { value: '', label: 'n-max' },
-                ...mtpDraftNMaxPresets.map((preset) => ({ value: String(preset), label: String(preset) })),
+                ...mtpDraftNMaxPresets.map((preset) => ({ value: String(preset), label: String(preset) }))
               ]}
               class="h-8 w-24 text-xs"
-              aria-label="MTP draft max tokens"
+              aria-label={$t('localLoad.mtpDraftMax')}
             />
           </div>
-        </div>
-      {/if}
-    </div>
-
-    <!-- Memory info -->
-    <div class="text-[13px] text-[var(--text-secondary)]">
-      {memoryEstimate.ramNeededGb.toFixed(1)}G RAM{gpuLayers > 0 ? ` + ${memoryEstimate.gpuGb.toFixed(1)}G GPU` : ''}
-    </div>
-
-    <!-- Quick actions -->
-    <div class="flex items-center gap-2">
-      <button
-        class="rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-        onclick={applyRecommendedPreset}
-        disabled={!recommended}
-      >
-        Apply recommended
-      </button>
-    </div>
-
-    <!-- Loading progress — phases come from llama-server's own startup log -->
-    {#if appStore.localModelLoading}
-      <div class="space-y-1.5">
-        <div class="flex items-center gap-3">
-          <div class="h-1 flex-1 overflow-hidden rounded-full bg-[var(--border)]">
-            <div class="h-full bg-[var(--primary)] transition-all" style={`width: ${Math.max(8, appStore.localModelLoadProgress)}%`}></div>
-          </div>
-          <span class="text-[12px] text-[var(--text-secondary)]">{appStore.localModelLoadProgress}%</span>
-        </div>
-        {#if appStore.localModelLoadPhase}
-          <div class="text-[11px] text-[var(--text-tertiary)]">{appStore.localModelLoadPhase}</div>
-        {/if}
+        {/snippet}
+        {@render row(
+          $t('localLoad.mtp'),
+          !mtp.allowToggle ? $t('localLoad.mtpUnsupported') : mtp.builtIn ? $t('localLoad.mtpBuiltIn') : $t('localLoad.mtpHint'),
+          mtpControl,
+          mtp.requireDraft && appStore.localModelLoadMtpEnabled ? mtpDraft : undefined
+        )}
       </div>
-    {/if}
 
-  </div>
-  {:else}
-  <!-- ==================== ADVANCED VIEW ==================== -->
-  <div class="mb-4 grid gap-2 grid-cols-2 lg:grid-cols-4">
-  <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Layers3 class="h-3 w-3" /> Context</div>
-  <div class="text-[13px] font-medium text-[var(--text)]">{maxContext.toLocaleString()}t</div>
-  </div>
-  <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Cpu class="h-3 w-3" /> CPU</div>
-  <div class="text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.physical_cores}C / ${hardware.cpu_threads}T` : '…'}</div>
-  </div>
-  <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><MemoryStick class="h-3 w-3" /> RAM</div>
-  <div class="text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.total_ram_gb.toFixed(0)} GB` : '…'}</div>
-  </div>
-  <div class="rounded-lg bg-[var(--surface)] px-3 py-3">
-  <div class="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-muted)]"><Gauge class="h-3 w-3" /> GPU</div>
-  <div class="truncate text-[13px] font-medium text-[var(--text)]">{hardware ? `${hardware.gpu_name || 'CPU only'}${hardware.vram_gb > 0 ? ` · ${hardware.vram_estimated ? '~' : ''}${hardware.vram_gb.toFixed(1)}G` : ''}` : '…'}</div>
-  </div>
-  </div>
+      {#if appStore.localModelLoadAsInstance}
+        <!-- Another instance: its own port, optionally reachable from the network. -->
+        <label class="mt-3 flex items-start gap-3 rounded-xl border border-[var(--border)] px-3.5 py-3">
+          <Switch bind:checked={appStore.localModelLoadShare} label={$t('instances.shareOnNetwork')} />
+          <span class="text-[13px] text-foreground">
+            {$t('instances.shareOnNetwork')}
+            <span class="block text-xs text-muted-foreground">{$t('instances.shareHintNew')}</span>
+          </span>
+        </label>
+      {/if}
 
-  {#if hardware?.vram_estimated}
-  <div class="-mt-1 mb-2 text-[11px] text-[var(--text-tertiary)]">GPU memory is estimated for integrated graphics; adjust GPU layers if startup fails.</div>
-  {/if}
+      <!-- Everything llama-server accepts, for people who know what they want -->
+      <Disclosure class="mt-3" title={$t('localLoad.advanced')} description={$t('localLoad.advancedHint')} bind:open={advancedOpen}>
+        <div class="space-y-4">
+          {#if hardware}
+            <p class="text-xs text-muted-foreground">
+              {hardware.gpu_name || $t('localLoad.cpuOnly')}{hardware.vram_gb > 0 ? ` · ${hardware.vram_estimated ? '~' : ''}${hardware.vram_gb.toFixed(1)} GB VRAM` : ''}
+              · {hardware.physical_cores}C / {hardware.cpu_threads}T · {hardware.total_ram_gb.toFixed(0)} GB RAM
+              {#if recommended?.backend} · {recommended.backend}{/if}
+            </p>
+          {/if}
 
-  <div class="mb-4 flex flex-wrap items-center gap-2">
-  <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={applyRecommendedPreset} disabled={!recommended}>
-  <Sparkles class="h-3.5 w-3.5" />
-  Apply recommended
-  </button>
-  <button class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={resetToSavedDefaults}>
-  <RotateCcw class="h-3.5 w-3.5" />
-  Reset
-  </button>
-  </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            {#snippet threads()}
+              <div class="flex items-center gap-3">
+                <input type="range" min="1" max={cpuThreadsMax} bind:value={localCpuThreads} onchange={commitCpuThreads} class="load-range flex-1" />
+                <span class="w-8 text-right text-xs tabular-nums text-muted-foreground">{localCpuThreads}</span>
+              </div>
+            {/snippet}
+            {@render field($t('localLoad.cpuThreads'), threads)}
+            {#snippet batch()}<input class="load-input w-full" bind:value={appStore.localModelLoadBatchSize} inputmode="numeric" />{/snippet}
+            {@render field($t('localLoad.batchSize'), batch)}
+            {#snippet cacheK()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadCacheTypeK} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
+            {@render field($t('localLoad.cacheTypeK'), cacheK)}
+            {#snippet cacheV()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadCacheTypeV} options={cacheTypes.map((type) => ({ value: type, label: type }))} />{/snippet}
+            {@render field($t('localLoad.cacheTypeV'), cacheV)}
+            {#snippet parallel()}<input class="load-input w-full" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />{/snippet}
+            {@render field($t('localLoad.parallel'), parallel)}
+            {#snippet split()}<Select class="h-9 w-full text-[13px]" bind:value={appStore.localModelLoadSplitMode} options={splitModes.map((mode) => ({ value: mode, label: mode || $t('localLoad.auto') }))} />{/snippet}
+            {@render field($t('localLoad.splitMode'), split)}
+            {#snippet seed()}<input class="load-input w-full" bind:value={appStore.localModelLoadSeed} inputmode="numeric" placeholder={$t('localLoad.optional')} />{/snippet}
+            {@render field($t('localLoad.seed'), seed)}
+            {#snippet cacheRam()}<input class="load-input w-full" bind:value={appStore.localModelLoadCacheRamMb} inputmode="numeric" placeholder="8192" />{/snippet}
+            {@render field($t('localLoad.promptCache'), cacheRam)}
+            {#snippet ropeBase()}<input class="load-input w-full" bind:value={appStore.localModelLoadRopeFreqBase} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
+            {@render field($t('localLoad.ropeBase'), ropeBase)}
+            {#snippet ropeScale()}<input class="load-input w-full" bind:value={appStore.localModelLoadRopeFreqScale} inputmode="decimal" placeholder={$t('localLoad.optional')} />{/snippet}
+            {@render field($t('localLoad.ropeScale'), ropeScale)}
+            {#snippet cacheReuse()}<input class="load-input w-full" bind:value={appStore.localModelLoadCacheReuse} inputmode="numeric" placeholder="0" />{/snippet}
+            {@render field($t('localLoad.cacheReuse'), cacheReuse)}
+            {#snippet runtimePath()}<input class="load-input w-full" bind:value={appStore.localModelLoadRuntimePath} placeholder={$t('localLoad.runtimePathPlaceholder')} />{/snippet}
+            {@render field($t('localLoad.runtimePath'), runtimePath)}
+          </div>
 
-  <div class="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-  <div class="space-y-3">
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] ">
-  <SlidersHorizontal class="h-3.5 w-3.5" />
-  Core settings
-  </div>
+          <div class="grid gap-x-6 sm:grid-cols-2">
+            {#each engineToggles as [key, prop] (key)}
+              <div class="flex items-center justify-between gap-3 py-1.5 text-[13px]">
+                <span title={$t(`localLoad.${key}Hint`)}>{$t(`localLoad.${key}`)}</span>
+                <Switch label={$t(`localLoad.${key}`)} bind:checked={appStore[prop]} />
+              </div>
+            {/each}
+          </div>
 
-   <div class="mb-2.5 flex flex-wrap gap-1 rounded-full bg-[var(--background)] p-[3px]">
-  {#each contextPresets as preset}
-  {#if preset <= maxContext}
-  <button
-   class={`rounded-full px-3 py-1.5 text-[12px] font-medium transition ${contextLength === preset ? 'bg-[var(--surface-active)] text-[var(--text)]' : 'text-[var(--text-tertiary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}`}
-  onclick={() => { localContextLength = preset; commitContext();}}
-  >
-  {preset >= 1024 ? `${Math.round(preset / 1024)}k` : preset}
-  </button>
-  {/if}
-  {/each}
-  </div>
+          <!-- Command preview: exactly what llama-server will be told, built
+               through the same resolver as a real launch. -->
+          <div class="rounded-lg bg-muted/50 p-3">
+            <div class="flex items-center justify-between gap-2 pb-2">
+              <span class="text-xs font-medium text-muted-foreground">{$t('localLoad.command')}</span>
+              {#if commandPreview}
+                <Button variant="ghost" size="xs" onclick={copyCommandPreview}>
+                  {copiedPreview ? $t('localLoad.copied') : $t('localLoad.copy')}
+                </Button>
+              {/if}
+            </div>
+            {#if previewLoading && !commandPreview}
+              <p class="text-xs text-muted-foreground">{$t('localLoad.commandResolving')}</p>
+            {:else if commandPreview}
+              <pre class="max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-muted-foreground">{commandPreview}</pre>
+              <p class="pt-1.5 text-[11px] text-muted-foreground">{$t('localLoad.commandNote')}</p>
+            {:else}
+              <p class="text-xs text-muted-foreground">{$t('localLoad.commandUnavailable')}</p>
+            {/if}
+          </div>
+        </div>
+      </Disclosure>
 
-  <div class="space-y-3">
-  <label class="block space-y-2 text-sm">
-  <div class="flex items-center justify-between gap-3">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Context length</span>
-  <input
-  class="w-24 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-right outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]"
-  type="number"
-  value={localContextLength}
-  min="512"
-  max={maxContext}
-  oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitContext}
-  inputmode="numeric"
-  />
-  </div>
-  <input
-  type="range"
-  min="512"
-  max={maxContext}
-  value={localContextLength}
-  oninput={(e) => { localContextLength = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitContext}
-  class="w-full accent-black dark:accent-white"
-  />
-  </label>
-
-  <label class="block space-y-2 text-sm">
-  <div class="flex items-center justify-between gap-3">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">GPU layers</span>
-  <input
-  class="w-24 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 text-[13px] text-right outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]"
-  type="number"
-  value={localGpuLayers}
-  min="0"
-  max={gpuLayersMax || 0}
-  oninput={(e) => { localGpuLayers = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitGpuLayers}
-  inputmode="numeric"
-  />
-  </div>
-  <input
-  type="range"
-  min="0"
-  max={gpuLayersMax || 0}
-  value={localGpuLayers}
-  oninput={(e) => { localGpuLayers = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitGpuLayers}
-  class="w-full accent-black dark:accent-white"
-  />
-  </label>
-
-  <div class="grid gap-3 md:grid-cols-2">
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">CPU threads</span>
-  <input
-  type="range"
-  min="1"
-  max={cpuThreadsMax}
-  value={localCpuThreads}
-  oninput={(e) => { localCpuThreads = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitCpuThreads}
-  class="w-full accent-black dark:accent-white"
-  />
-  <input
-  class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[14px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]"
-  type="number"
-  value={localCpuThreads}
-  min="1"
-  max={cpuThreadsMax}
-  oninput={(e) => { localCpuThreads = Number((e.target as HTMLInputElement).value);}}
-  onchange={commitCpuThreads}
-  inputmode="numeric"
-  />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Batch size</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[14px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadBatchSize} inputmode="numeric" />
-  </label>
-  </div>
-  </div>
-  </section>
-
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)] ">
-  <HardDrive class="h-3.5 w-3.5" />
-  Memory estimate
-  </div>
-  <div class="grid gap-2 grid-cols-3">
-  <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] text-[var(--text-tertiary)]">Total</div>
-  <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{memoryEstimate.totalGb.toFixed(2)} GB</div>
-  </div>
-  <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] text-[var(--text-tertiary)]">GPU</div>
-  <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{gpuLayers > 0 ? `${memoryEstimate.gpuGb.toFixed(2)} GB` : '--'}</div>
-  </div>
-  <div class="rounded-lg bg-[var(--surface-hover)] px-2.5 py-2">
-  <div class="text-[10px] text-[var(--text-tertiary)]">RAM</div>
-  <div class="mt-0.5 text-xs font-medium text-[var(--text)]">{memoryEstimate.ramNeededGb.toFixed(2)} GB</div>
-  </div>
-  </div>
-
-  <!-- RAM gauge bar -->
-  {#if hardware}
-  {@const totalRam = Number(hardware.total_ram_gb || 0)}
-  {@const gpuUsage = memoryEstimate.gpuGb}
-  {@const ramUsage = memoryEstimate.ramNeededGb}
-  {@const usedTotal = gpuUsage + ramUsage}
-  {@const overflows = usedTotal > totalRam}
-  {@const barMax = overflows ? usedTotal : totalRam}
-  {@const gpuPct = barMax > 0 ? (gpuUsage / barMax) * 100 : 0}
-  {@const ramPct = barMax > 0 ? (ramUsage / barMax) * 100 : 0}
-  {@const freeGb = Math.max(0, totalRam - usedTotal)}
-  <div class="mt-3 space-y-1.5">
-  <div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
-  <span>System RAM</span>
-  <span>{totalRam.toFixed(1)} GB</span>
-  </div>
-  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {overflows ? 'bg-error-bg' : 'bg-[var(--surface-hover)]'}">
-  {#if gpuUsage > 0}
-  <div
-  class="absolute inset-y-0 left-0 rounded-l-lg bg-[var(--text-secondary)]"
-  style="width: {gpuPct}%"
-  ></div>
-  {/if}
-  <div
-  class="absolute inset-y-0 bg-[var(--text-tertiary)] {gpuUsage <= 0 ? 'rounded-l-lg' : ''} {!overflows && freeGb > 0 ? '' : 'rounded-r-lg'}"
-  style="left: {gpuPct}%; width: {ramPct}%"
-  ></div>
-  {#if overflows}
-  <div
-   class="absolute inset-y-0 border-r-2 border-dashed border-[var(--text-muted)]"
-   style="left: {(totalRam / barMax) * 100}%"
-   ></div>
-  {/if}
-  </div>
-  <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-[var(--text-tertiary)]">
-  {#if gpuUsage > 0}
-  <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--text-secondary)]"></span>
-  GPU: {gpuUsage.toFixed(2)} GB
-  </span>
-  {/if}
-  <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--text-tertiary)]"></span>
-  RAM: {ramUsage.toFixed(2)} GB
-  </span>
-  <span class="inline-flex items-center gap-1">
-  <span class="inline-block h-2 w-2 rounded-lg bg-[var(--surface-hover)]"></span>
-  Free: {freeGb.toFixed(2)} GB
-  </span>
-  {#if overflows}
-   <span class="font-medium text-[var(--text)]">⚠ Exceeds by {(usedTotal - totalRam).toFixed(2)} GB</span>
-  {/if}
-  </div>
-  </div>
-
-  <!-- VRAM gauge bar -->
-  {#if gpuLayers > 0 && Number(hardware.vram_gb || 0) > 0}
-  {@const totalVram = Number(hardware.vram_gb || 0)}
-  {@const vramUsedPct = totalVram > 0 ? Math.min((gpuUsage / totalVram) * 100, 100) : 0}
-  {@const vramOverflows = gpuUsage > totalVram}
-  <div class="mt-3 space-y-1.5">
-  <div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
-  <span>VRAM</span>
-  <span>{gpuUsage.toFixed(2)} / {totalVram.toFixed(1)} GB ({vramUsedPct.toFixed(0)}%)</span>
-  </div>
-  <div class="relative h-2.5 w-full overflow-hidden rounded-lg {vramOverflows ? 'bg-[var(--surface)]' : 'bg-[var(--surface-hover)]'}">
-  <div
-  class="absolute inset-y-0 left-0 rounded-l-lg bg-[var(--text-secondary)] {vramUsedPct >= 100 ? 'rounded-r-lg' : ''}"
-  style="width: {vramUsedPct}%"
-  ></div>
-  </div>
-  </div>
-  {/if}
-  {/if}
-
-  {#if memoryEstimate.warnings.length}
-    <div class={`mt-3 rounded-lg px-3 py-2 text-sm ${memoryEstimate.compatible ? 'bg-[var(--background)] text-[var(--text)]' : 'bg-error-bg text-error'}`}>
-  <div class="mb-1 flex items-center gap-2 font-medium">
-  <AlertTriangle class="h-4 w-4" />
-  {memoryEstimate.compatible ? 'Load may be tight' : 'Memory may be insufficient'}
-  </div>
-  <div class="space-y-1 text-xs">
-  {#each memoryEstimate.warnings as warning}
-  <div>{warning}</div>
-  {/each}
-  </div>
-  </div>
-  {/if}
-  </section>
-
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <button class="advanced-toggle flex w-full items-center justify-between gap-3 text-left text-[12px] font-semibold text-[var(--text)]" onclick={() => (advancedOpen = !advancedOpen)}>
-  <span class="inline-flex items-center gap-2">
-  <BrainCircuit class="h-3.5 w-3.5" />
-  Advanced
-  </span>
-  {#if advancedOpen}
-  <ChevronDown class="h-3.5 w-3.5 text-[var(--text-muted)]" />
-  {:else}
-  <ChevronRight class="h-3.5 w-3.5 text-[var(--text-muted)]" />
-  {/if}
-  </button>
-
-  {#if advancedOpen}
-  <div class="mt-3 space-y-3">
-  <div class="grid gap-3 md:grid-cols-2">
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Runtime path</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadRuntimePath} placeholder="Optional llama-server path" />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Parallel slots</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadParallel} inputmode="numeric" />
-  </label>
-  </div>
-
-  <div class="grid gap-3 md:grid-cols-2">
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Cache type K</span>
-  <Select
-    class="h-10 w-full text-[13px]"
-    bind:value={appStore.localModelLoadCacheTypeK}
-    options={cacheTypes.map((type) => ({ value: type, label: type }))}
-  />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Cache type V</span>
-  <Select
-    class="h-10 w-full text-[13px]"
-    bind:value={appStore.localModelLoadCacheTypeV}
-    options={cacheTypes.map((type) => ({ value: type, label: type }))}
-  />
-  </label>
-  </div>
-
-  <div class="grid gap-3 md:grid-cols-3">
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Seed</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadSeed} inputmode="numeric" placeholder="Optional" />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">RoPE base</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadRopeFreqBase} inputmode="decimal" placeholder="Optional" />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">RoPE scale</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadRopeFreqScale} inputmode="decimal" placeholder="Optional" />
-  </label>
-  </div>
-
-  <div class="grid gap-3 md:grid-cols-3">
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Prompt cache (MB)</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadCacheRamMb} inputmode="numeric" placeholder="8192" />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Cache reuse</span>
-  <input class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] outline-none transition text-[var(--text)] focus:border-[var(--border-hover)]" bind:value={appStore.localModelLoadCacheReuse} inputmode="numeric" placeholder="0" />
-  </label>
-  <label class="space-y-2 text-sm">
-  <span class="text-[13px] font-medium text-[var(--text-secondary)]">Split mode</span>
-  <Select
-    class="h-10 w-full text-[13px]"
-    bind:value={appStore.localModelLoadSplitMode}
-    options={splitModes.map((mode) => ({ value: mode, label: mode || 'auto' }))}
-  />
-  </label>
-  </div>
-
-  <div class="grid gap-2 md:grid-cols-2">
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span>Flash attention</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadFlashAttention} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span title="Keep the KV cache in VRAM. Turning this off frees VRAM at a large speed cost.">Offload KV cache</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadOffloadKvCache} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span>Keep in memory</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadKeepInMemory} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span>Memory map file</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadMmap} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span title="Drop the oldest turns when the context fills instead of failing the request.">Context shift</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadContextShift} />
-  </label>
-   <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text-secondary)]">
-  <span title="Full-size sliding-window cache. Improves prompt reuse on Gemma-style models.">Full SWA cache</span>
-  <input type="checkbox" bind:checked={appStore.localModelLoadSwaFull} />
-  </label>
-  </div>
-
-  <!-- Command preview: exactly what llama-server will be told, built through
-       the same resolver as a real launch. -->
-  <div class="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
-    <div class="flex items-center justify-between gap-2 pb-2">
-      <span class="text-[11px] font-semibold r text-[var(--text-muted)]">Equivalent command</span>
-      {#if commandPreview}
-        <button
-          type="button"
-          class="rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-          onclick={copyCommandPreview}
-        >
-          {copiedPreview ? 'Copied' : 'Copy'}
-        </button>
+      {#if appStore.localModelLoadError && !loading}
+        <div class="mt-3 flex items-start gap-2 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-xs text-error" role="alert">
+          <AlertTriangle class="mt-0.5 size-3.5 shrink-0" />
+          <span class="min-w-0 break-words">{appStore.localModelLoadError}</span>
+        </div>
       {/if}
     </div>
-    {#if previewLoading && !commandPreview}
-      <p class="py-1 text-xs text-[var(--text-muted)]">Resolving command…</p>
-    {:else if commandPreview}
-      <pre class="max-h-32 overflow-auto rounded-md bg-[var(--surface)] p-2.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-[var(--text-secondary)]">{commandPreview}</pre>
-      <p class="pt-1.5 text-[10px] text-[var(--text-muted)]">The app spawns this directly — no shell — with a per-launch API key added automatically.</p>
-    {:else}
-      <p class="py-1 text-xs text-[var(--text-muted)]">Command unavailable — install a runtime first.</p>
-    {/if}
-  </div>
-  </div>
-  {/if}
-  </section>
-  </div>
 
-  <div class="space-y-3">
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-3 text-[12px] font-semibold text-[var(--text-tertiary)]">Summary</div>
-  <div class="space-y-2 text-[13px] text-[var(--text-secondary)]">
-  <div class="flex items-center justify-between gap-3"><span>Model max context</span><span class="font-medium text-[var(--text)]">{maxContext.toLocaleString()}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Context</span><span class="font-medium text-[var(--text)]">{contextIsAuto ? 'Auto (--fit)' : contextLength.toLocaleString()}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Tool template</span><span class="font-medium text-[var(--text)]">{toolSupport.label}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Vision projector</span><span class="font-medium text-[var(--text)]">{appStore.localModelLoadMmprojPath ? 'Detected' : 'Not found'}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Backend</span><span class="font-medium text-[var(--text)]">{recommended?.backend || hardware?.gpu_backend || 'cpu'}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Device</span><span class="font-medium text-[var(--text)]">{recommended?.selected_device || 'auto'}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Binary backends</span><span class="font-medium text-[var(--text)]">{recommended?.available_backends?.join(', ') || 'unknown'}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>GPU layers</span><span class="font-medium text-[var(--text)]">{gpuLayersIsAuto ? 'Auto (--fit)' : gpuLayers}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>CPU threads</span><span class="font-medium text-[var(--text)]">{cpuThreads}</span></div>
-  <div class="flex items-center justify-between gap-3"><span>Batch size</span><span class="font-medium text-[var(--text)]">{batchSize}</span></div>
-  </div>
-  </section>
-
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <label class="flex items-start gap-2.5 text-[13px] text-[var(--text-secondary)]">
-  <input type="checkbox" class="mt-0.5" bind:checked={appStore.localModelRememberSettings} />
-  <span>
-  <span class="block font-medium text-[var(--text)]">Remember settings</span>
-  <span class="text-[var(--text-tertiary)]">Reuse this profile next time.</span>
-  </span>
-  </label>
-  </section>
-
-  {#if appStore.localModelLoading}
-   <section class="rounded-lg bg-[var(--surface)] p-4">
-  <div class="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)]">
-  <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-  Loading model…
-  </div>
-  <div class="h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]">
-  <div class="h-full rounded-full bg-[var(--primary)] transition-all" style={`width: ${Math.max(8, appStore.localModelLoadProgress)}%`}></div>
-  </div>
-  {#if appStore.localModelLoadPhase}
-  <div class="mt-1.5 text-[11px] text-[var(--text-tertiary)]">{appStore.localModelLoadPhase}</div>
-  {/if}
-  </section>
-  {/if}
-  </div>
-  </div>
-  {/if}
-
-  <div class="mt-6 flex items-center justify-between gap-3">
-    <div>
-      {#if isAnyModelLoaded && !appStore.localModelLoading}
-        <button
-          class="rounded-full px-3.5 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-          onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
-        >
-          Unload
-        </button>
-      {/if}
-    </div>
-    <div class="flex items-center gap-2">
-      {#if appStore.localModelLoading}
-        <button
-          class="rounded-full bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90"
-          onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog();}}
-        >
-          Stop
-        </button>
+    {#snippet footer()}
+      {#if loading}
+        <div class="mr-auto flex min-w-0 flex-1 items-center gap-3">
+          <LoaderCircle class="size-4 shrink-0 animate-spin text-muted-foreground" />
+          <div class="min-w-0 flex-1">
+            <div class="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div class="h-full rounded-full bg-primary transition-[width]" style="width: {Math.max(6, appStore.localModelLoadProgress)}%"></div>
+            </div>
+            <div class="mt-1 truncate text-xs text-muted-foreground">{appStore.localModelLoadPhase || $t('localLoad.loading')}</div>
+          </div>
+        </div>
+        <Button variant="outline" onclick={() => appStore.closeLocalModelLoadDialog()}>{$t('localLoad.hide')}</Button>
+        <Button variant="destructive" onclick={() => appStore.stopLocalModel()}>{$t('localLoad.stop')}</Button>
       {:else}
-        <button
-          class="rounded-full px-3.5 py-2 text-[13px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]"
-          onclick={() => appStore.closeLocalModelLoadDialog()}
-        >
-          Cancel
-        </button>
-        <button
-          class="rounded-full bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50"
-          onclick={() => appStore.confirmLocalModelLoad()}
-          disabled={!memoryEstimate.compatible}
-        >
-          Load
-        </button>
+        <div class="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+          <Switch label={$t('localLoad.remember')} bind:checked={appStore.localModelRememberSettings} />
+          <span>{$t('localLoad.remember')}</span>
+          {#if isAnyModelLoaded}
+            <Button variant="ghost" size="sm" class="ml-2" onclick={async () => { await appStore.stopLocalModel(); appStore.closeLocalModelLoadDialog(); }}>
+              {$t('localLoad.unloadCurrent')}
+            </Button>
+          {/if}
+        </div>
+        {#if loadBlockedReason}
+          <span class="text-xs text-error">{loadBlockedReason}</span>
+        {/if}
+        <Button variant="ghost" onclick={() => appStore.closeLocalModelLoadDialog()}>{$t('localLoad.cancel')}</Button>
+        <Button onclick={() => appStore.confirmLocalModelLoad()} disabled={Boolean(loadBlockedReason)}>{appStore.localModelLoadAsInstance ? $t('instances.start') : $t('localLoad.load')}</Button>
       {/if}
-    </div>
-  </div>
- </div>
- </div>
+    {/snippet}
+  </Dialog>
 {/if}
 
 <style>
-  .load-modal-surface {
+  .load-range {
+    height: 0.25rem;
+    cursor: pointer;
+    accent-color: var(--primary);
+  }
+  .load-range.is-auto {
+    opacity: 0.4;
+  }
+  .load-input {
+    height: 2.25rem;
+    border-radius: var(--radius-md);
     border: 1px solid var(--border);
     background: var(--background);
-    box-shadow: var(--shadow-xl);
+    padding: 0 0.625rem;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
   }
-
-  .info-card,
-  .runtime-warning,
-  .load-modal-surface section {
-    border: 0 !important;
-    border-radius: var(--radius-lg);
-    background: var(--surface);
-    box-shadow: none;
+  .load-input:focus {
+    border-color: var(--border-hover);
   }
-
-  .info-card {
-    border-radius: var(--radius-xl);
-    padding: 0.85rem 1rem;
-  }
-
-  .load-modal-surface button {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .load-modal-surface .advanced-toggle {
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    color: var(--text) !important;
-  }
-
-  .load-modal-surface .advanced-toggle:hover {
-    background: transparent !important;
-    filter: none !important;
-    box-shadow: none !important;
-  }
-
-  :global(.dark) .load-modal-surface {
-    background: var(--background);
-    box-shadow: var(--shadow-xl);
-  }
-
 </style>

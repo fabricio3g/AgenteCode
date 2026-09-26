@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Volume2, VolumeX, Check, ChevronDown, LoaderCircle } from 'lucide-svelte';
+  import { Volume2, VolumeX, ChevronDown, LoaderCircle } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
@@ -85,9 +85,8 @@
     {/snippet}
     {#each KOKORO_LANGUAGES as lang (lang.code)}
       <MenuItem active={lang.code === selectedLang} onselect={() => selectLang(lang.code)}>
-        <span>{lang.label}</span>
-        <span class="ml-auto text-[10px] text-[var(--text-muted)]">{lang.voices.length}</span>
-        {#if lang.code === selectedLang}<Check class="h-3 w-3 text-[var(--primary)]" />{/if}
+        <span class="flex-1">{lang.label}</span>
+        <span class="text-[10px] text-[var(--text-muted)]">{lang.voices.length}</span>
       </MenuItem>
     {/each}
   </Menu>
@@ -118,8 +117,7 @@
               onselect={() => { onSelect(voice.id); voiceOpen = false; }}
             >
               <Volume2 class="h-3 w-3 shrink-0 {voice.id === selectedVoice ? 'text-[var(--primary)]' : 'text-[var(--text-muted)]'}" />
-              <span class="truncate">{voice.name}</span>
-              {#if voice.id === selectedVoice}<Check class="ml-auto h-3 w-3 shrink-0" />{/if}
+              <span class="min-w-0 flex-1 truncate">{voice.name}</span>
             </MenuItem>
           {/each}
         {/if}

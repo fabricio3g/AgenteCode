@@ -12,7 +12,7 @@ import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDi
 import { clearRagDocuments, ingestDocument, ingestText, ingestTextFast, listRagDocuments, queryDocuments, removeRagDocument } from '$lib/services/rag';
 import { webSearch } from '$lib/services/search';
 import { getRecommendedSettings, loadLocalModel, onSupervisorEvent, stopLlama } from '$lib/services/runtime';
-import { isElectron } from '$lib/services/bridge';
+import { invoke, isElectron } from '$lib/services/bridge';
 import { downloadsStore } from '$lib/stores/downloads.svelte';
 import { deepResearchStore } from '$lib/stores/deep-research.svelte';
 import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
@@ -23,6 +23,7 @@ import type { CompletionResult, RequestMessage } from '$lib/services/chat-api';
 import { completeAssistantReply, detectToolSupport, fetchModels, fetchReasoningCapabilities, hasConfiguredVisionModel, loadChatConfig, reasoningRouteIdentity, streamAssistantReply } from '$lib/services/chat-api';
 import { loadChatState, saveChatState, saveAppConfig, saveChatStateToDb, loadChatStateFromDb, deleteChatFromDb } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
+import { describeLocalLoadError } from '$lib/utils/local-load-errors';
 import { resolveContextBudgetPreview } from '$lib/stores/app-context-budget-preview';
 import { buildSystemPrompt, selectBaseSystemPrompt } from '$lib/stores/app-prompts';
 import {
@@ -116,6 +117,7 @@ import {
   type ContextBudget,
   type ElectronApi
 } from '$lib/stores/app-store-helpers';
+import { DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 class AppStore {
   ready = $state(false);
@@ -138,7 +140,14 @@ class AppStore {
   runtimeManagerOpen = $state(false);
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
-  artifactSettingsOpen = $state(false);
+  /** What the Home surface shows: the chat, or the Artifacts screen. */
+  homeView = $state<'chat' | 'artifacts'>('chat');
+  /** The artifact open on the Artifacts screen (`chatId:messageId:index`), or the library. */
+  artifactScreenKey = $state<string | null>(null);
+  /** Opened from a chat: Back returns there instead of to the library. */
+  artifactReturnChatId = $state<string | null>(null);
+  /** Per chat: the artifact open in the chat's side panel. */
+  artifactPanels = $state<Record<string, { messageId: string; index: number }>>({});
   llmDrawerOpen = $state(false);
   sidebarOpen = $state(true);
   chatSearchOpen = $state(false);
@@ -168,6 +177,10 @@ class AppStore {
   /** Per-code-chat drawer open state (isolated across sessions). */
 
   localModelLoadTarget = $state<LocalModelLoadTarget | null>(null);
+  /** The load dialog starts another instance (Models → Running) instead of replacing the chat model. */
+  localModelLoadAsInstance = $state(false);
+  /** Instance mode: bind to the local network. */
+  localModelLoadShare = $state(false);
   // Empty means auto: llama.cpp's --fit sizes these against real device memory.
   localModelLoadContextLength = $state('');
   localModelLoadGpuLayers = $state('');
@@ -200,6 +213,8 @@ class AppStore {
   localModelRememberSettings = $state(false);
   localModelLoadProgress = $state(0);
   localModelLoadPhase = $state('');
+  /** Why the last load failed, in words; cleared when a new load starts. */
+  localModelLoadError = $state('');
   localModelLoading = $state(false);
   localModelActive = $state<{ name: string; path: string; hasMmproj: boolean } | null>(null);
   onboardingOpen = $state(false);
@@ -215,7 +230,7 @@ class AppStore {
   }
 
   get activeProviderName() {
-    return this.config.llm?.provider || 'openai';
+    return this.config.llm?.provider || DEFAULT_PROVIDER_ID;
   }
 
   get backendMode() {
@@ -565,6 +580,44 @@ class AppStore {
     this.artifactStudioOpen = artifact ? open : false;
   }
 
+  /** The current chat's side-panel artifact, if one is open. */
+  get artifactPanel(): { chatId: string; messageId: string; index: number } | null {
+    const chatId = this.currentChat?.id;
+    const ref = chatId ? this.artifactPanels[chatId] : undefined;
+    return chatId && ref ? { chatId, ...ref } : null;
+  }
+
+  /** Open an artifact beside its chat; the same artifact again toggles it shut. */
+  openArtifactPanel(chatId: string, messageId: string, index: number) {
+    const current = this.artifactPanels[chatId];
+    const same = current?.messageId === messageId && current.index === index;
+    const next = { ...this.artifactPanels };
+    if (same) delete next[chatId];
+    else next[chatId] = { messageId, index };
+    this.artifactPanels = next;
+  }
+
+  closeArtifactPanel(chatId: string) {
+    if (!this.artifactPanels[chatId]) return;
+    const next = { ...this.artifactPanels };
+    delete next[chatId];
+    this.artifactPanels = next;
+  }
+
+  /** Show the Artifacts library. */
+  showArtifactLibrary() {
+    this.artifactScreenKey = null;
+    this.artifactReturnChatId = null;
+    this.homeView = 'artifacts';
+  }
+
+  /** Open one artifact full-screen; Back goes to `returnChatId` when given. */
+  openArtifactScreen(chatId: string, messageId: string, index: number, returnChatId: string | null = chatId) {
+    this.artifactScreenKey = `${chatId}:${messageId}:${index}`;
+    this.artifactReturnChatId = returnChatId;
+    this.homeView = 'artifacts';
+  }
+
   openArtifact(artifact: AgentArtifact | null, messageId: string | null = null) {
     if (!artifact && messageId && this.currentChat) {
       artifact = resolveArtifactForMessage(this.currentChat, messageId);
@@ -609,12 +662,17 @@ class AppStore {
     this.activityDrawerOpen = false;
   }
 
-  async openLocalModelLoadDialog(model: LocalModelLoadTarget) {
+  async openLocalModelLoadDialog(model: LocalModelLoadTarget, options: { asInstance?: boolean } = {}) {
     if (!model.path) return;
+    this.localModelLoadAsInstance = !!options.asInstance;
+    this.localModelLoadShare = false;
     this.localModelLoadTarget = model;
+    // Reopening during a load shows its progress; only a fresh dialog resets it.
+    if (this.localModelLoading) return;
     this.localModelLoadRuntimePath = this.config.llm?.local?.runtime_path || '';
     this.localModelLoadProgress = 0;
     this.localModelLoadPhase = '';
+    this.localModelLoadError = '';
     // Auto-detect mmproj in same folder
     this.localModelLoadMmprojPath = '';
     this.localModelLoadMmprojPath = await this.detectMmprojForModel(model.path);
@@ -672,8 +730,11 @@ class AppStore {
     this.localModelRememberSettings = resolved.rememberSettings;
   }
 
+  /** Hides the dialog. A load in progress keeps running and reporting. */
   closeLocalModelLoadDialog() {
     this.localModelLoadTarget = null;
+    this.localModelLoadAsInstance = false;
+    if (this.localModelLoading) return;
     this.localModelLoadProgress = 0;
     this.localModelLoadPhase = '';
   }
@@ -755,25 +816,87 @@ class AppStore {
     }
   }
 
-  async confirmLocalModelLoad() {
-    if (!this.localModelLoadTarget?.path) return;
+  /** The full launch config from the dialog, for another instance (no port/host: main picks them). */
+  private buildInstanceLaunchConfig(path: string): Record<string, unknown> {
+    const num = (value: unknown) => (value === '' || value == null || !Number.isFinite(Number(value)) ? undefined : Number(value));
+    return {
+      model_path: path,
+      backend_mode: 'auto',
+      runtime_path: this.localModelLoadRuntimePath || this.config.llm?.local?.runtime_path || undefined,
+      context_length: num(this.localModelLoadContextLength) || undefined,
+      gpu_offload: num(this.localModelLoadGpuLayers),
+      cpu_threads: num(this.localModelLoadCpuThreads) || undefined,
+      batch_size: num(this.localModelLoadBatchSize) || undefined,
+      flash_attention: this.localModelLoadFlashAttention,
+      offload_kv_cache: this.localModelLoadOffloadKvCache,
+      keep_in_memory: this.localModelLoadKeepInMemory,
+      mmap: this.localModelLoadMmap,
+      seed: num(this.localModelLoadSeed),
+      parallel: num(this.localModelLoadParallel),
+      rope_freq_base: num(this.localModelLoadRopeFreqBase),
+      rope_freq_scale: num(this.localModelLoadRopeFreqScale),
+      cache_type_k: this.localModelLoadCacheTypeK || undefined,
+      cache_type_v: this.localModelLoadCacheTypeV || undefined,
+      mmproj_path: this.localModelLoadMmprojPath || undefined,
+      thinking_mode: this.localModelLoadThinkingMode === 'auto' ? undefined : this.localModelLoadThinkingMode,
+      mtp: this.localModelLoadMtpEnabled,
+      mtp_draft_path: this.localModelLoadMtpDraftPath || undefined,
+      mtp_draft_n_max: num(this.localModelLoadMtpDraftNMax),
+      cpu_moe: this.localModelLoadCpuMoe,
+      n_cpu_moe: num(this.localModelLoadNCpuMoe),
+      context_shift: this.localModelLoadContextShift,
+      cache_ram_mb: num(this.localModelLoadCacheRamMb),
+      cache_reuse: num(this.localModelLoadCacheReuse),
+      swa_full: this.localModelLoadSwaFull,
+      split_mode: this.localModelLoadSplitMode || undefined
+    };
+  }
+
+  /** Instance mode: launch next to the running models, leave chat as it is. */
+  private async startLocalInstanceFromDialog(path: string) {
     this.localModelLoading = true;
+    this.localModelLoadError = '';
+    this.localModelLoadProgress = 20;
+    this.localModelLoadPhase = 'Starting another instance';
+    try {
+      await invoke('start_instance', { model_path: path, config: this.buildInstanceLaunchConfig(path), share: this.localModelLoadShare });
+      this.localModelLoadTarget = null;
+      this.localModelLoadAsInstance = false;
+    } catch (err) {
+      this.localModelLoadError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.localModelLoading = false;
+      this.localModelLoadProgress = 0;
+      this.localModelLoadPhase = '';
+    }
+  }
+
+  async confirmLocalModelLoad() {
+    // The dialog can be hidden mid-load, which clears localModelLoadTarget.
+    const target = this.localModelLoadTarget;
+    if (!target?.path || this.localModelLoading) return;
+    if (this.localModelLoadAsInstance) {
+      await this.startLocalInstanceFromDialog(target.path);
+      return;
+    }
+    this.localModelLoading = true;
+    this.localModelLoadError = '';
     this.localModelLoadProgress = 5;
     this.localModelLoadPhase = 'Preparing load configuration';
     try {
       // Re-detect mmproj in case it wasn't found during dialog open
-      if (!this.localModelLoadMmprojPath && this.localModelLoadTarget.path) {
-        this.localModelLoadMmprojPath = await this.detectMmprojForModel(this.localModelLoadTarget.path);
+      if (!this.localModelLoadMmprojPath && target.path) {
+        this.localModelLoadMmprojPath = await this.detectMmprojForModel(target.path);
       }
       await this.setBackendMode('local');
       this.localModelLoadProgress = 12;
       this.localModelLoadPhase = 'Saving local model selection';
       await this.updateLocalModel({
-        id: this.localModelLoadTarget.id,
-        name: this.localModelLoadTarget.name,
-        path: this.localModelLoadTarget.path,
+        id: target.id,
+        name: target.name,
+        path: target.path,
         source: 'local',
-        details: this.localModelLoadTarget.details
+        details: target.details
       });
       const loadState = {
         contextLength: this.localModelLoadContextLength,
@@ -808,9 +931,9 @@ class AppStore {
       await this.updateLocalSettings(buildLocalModelSettingsPatch(loadState));
       const remembered = readRememberedLocalModelSettings();
       if (this.localModelRememberSettings) {
-        remembered[this.localModelLoadTarget.id] = buildRememberedLocalModelSettingsEntry(loadState);
+        remembered[target.id] = buildRememberedLocalModelSettingsEntry(loadState);
       } else {
-        delete remembered[this.localModelLoadTarget.id];
+        delete remembered[target.id];
       }
       writeRememberedLocalModelSettings(remembered);
       const config = await loadChatConfig();
@@ -822,7 +945,7 @@ class AppStore {
       try {
         await loadLocalModel(buildLocalModelRuntimeRequest({
           config,
-          target: this.localModelLoadTarget,
+          target,
           state: loadState
         }));
       } finally {
@@ -835,18 +958,25 @@ class AppStore {
       this.localModelLoadProgress = 100;
       this.localModelLoadPhase = 'Model ready';
       this.localModelActive = {
-        name: this.localModelLoadTarget?.name || 'local model',
-        path: this.localModelLoadTarget?.path || '',
+        name: target.name || 'local model',
+        path: target.path || '',
         hasMmproj: !!(this.localModelLoadMmprojPath),
       };
-      toastStore.success(`Model loaded: ${this.localModelLoadTarget?.name || 'local model'}`);
+      toastStore.success(`Model loaded: ${target.name || 'local model'}`);
       if (isElectron()) {
         detectToolSupport().catch(() => {});
         // Forced: a fresh server just came up, so re-probe even when the
         // model identity is unchanged.
         this.refreshReasoningCapabilities(true).catch(() => {});
       }
-      this.localModelLoadTarget = null;
+      if (this.localModelLoadTarget === target) this.localModelLoadTarget = null;
+    } catch (error) {
+      const message = describeLocalLoadError(toErrorMessage(error));
+      this.localModelLoadError = message;
+      this.localModelLoadProgress = 0;
+      this.localModelLoadPhase = '';
+      // The dialog may be hidden: the toast is how the failure reaches the user.
+      toastStore.error(message);
     } finally {
       this.localModelLoading = false;
     }
@@ -1096,6 +1226,7 @@ class AppStore {
   }
 
   setActiveSpace(mode: ChatContextMode) {
+    this.homeView = 'chat';
     const nextMode = normalizeContextMode(mode);
     if (this.currentChat) {
       const currentMode = normalizeContextMode(this.currentChat.contextMode);
@@ -1111,6 +1242,7 @@ class AppStore {
   }
 
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
+    this.homeView = 'chat';
     const contextMode = normalizeContextMode(mode);
     const now = Date.now();
     const composerMode = this.defaultComposerModeFor(contextMode);
@@ -1150,6 +1282,7 @@ class AppStore {
   }
 
   selectChat(chatId: string) {
+    this.homeView = 'chat';
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
     const mode = normalizeContextMode(match.contextMode);
@@ -1433,7 +1566,7 @@ class AppStore {
           modelPath: local.selected_model_path || ''
         });
       } else {
-        const providerName = config.llm?.provider || 'openai';
+        const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
         const provider = (config.llm?.providers?.[providerName] || {}) as { base_url?: string; api_key?: string; model?: string };
         capabilities = await fetchReasoningCapabilities({
           baseUrl: provider.base_url,
@@ -2737,7 +2870,7 @@ class AppStore {
   private _apiModelsCacheKey(): string | null {
     const isLocal = this.config.llm?.backend_mode === 'local' && isElectron();
     if (isLocal) return null;
-    const providerName = this.config.llm?.provider || 'openai';
+    const providerName = this.config.llm?.provider || DEFAULT_PROVIDER_ID;
     const provider = this.config.llm?.providers?.[providerName];
     const baseUrl = provider?.base_url || '';
     return `${providerName}:${baseUrl}`;
@@ -2923,6 +3056,22 @@ class AppStore {
     await this.refreshModels();
   }
 
+  /**
+   * Chat with a running local instance (Models → Running → Use in chat):
+   * local mode, that model, that instance's port. Pass null to clear it.
+   */
+  async useLocalInstance(instance: { name: string; path: string; base_url: string } | null) {
+    if (!instance) {
+      this.localModelActive = null;
+      await this.updateLocalSettings({ base_url: 'http://127.0.0.1:11435/v1' });
+      return;
+    }
+    const next = setLocalModelConfig(this.config, { name: instance.name, path: instance.path } as never);
+    next.llm = { ...next.llm, local: { ...(next.llm?.local || {}), base_url: instance.base_url } };
+    await this.commitConfig(next, {});
+    this.localModelActive = { name: instance.name, path: instance.path, hasMmproj: false };
+  }
+
   async setLocalRuntimePath(path: string) {
     await this.updateLocalSettings({ runtime_path: path });
     this.localModelLoadRuntimePath = path;
@@ -3000,6 +3149,10 @@ class AppStore {
     model_variant?: string;
   }) {
     await this.commitConfig(mergeTtsSettingsConfig(this.config, partial));
+  }
+
+  async updateSttSettings(partial: Partial<NonNullable<AppConfig['stt']>>) {
+    await this.commitConfig({ ...this.config, stt: { ...(this.config.stt ?? {}), ...partial } });
   }
 }
 

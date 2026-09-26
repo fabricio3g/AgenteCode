@@ -1,8 +1,11 @@
 import { appStore } from '$lib/stores/app.svelte';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { ttsStore } from '$lib/stores/tts.svelte';
-import { isElectron } from '$lib/services/bridge';
+import { invoke, isElectron, listen } from '$lib/services/bridge';
 import { sttTranscribe } from '$lib/services/stt';
+import { recordingToWav } from './wav-encode';
+import { setupSpeech } from './speech-models';
+import { hasMicrophone } from './mic-probe';
 
 /**
  * Speech-to-text for the composer.
@@ -30,6 +33,7 @@ type RecognitionInstance = {
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
+  abort?: () => void;
 };
 
 type RecognitionCtor = new () => RecognitionInstance;
@@ -39,8 +43,13 @@ const WAVE_WEIGHTS = [28, 36, 46, 34, 26, 38, 52, 58, 44, 32, 26, 37, 49, 35, 28
   (height) => height / 58
 );
 
+/** Bars in the scrolling waveform the composer draws while recording. */
+const HISTORY_BARS = 64;
+/** How often a new bar scrolls in. */
+const HISTORY_STEP_MS = 55;
+
 /** Cap a recording so the transcription payload stays small. */
-const MAX_RECORDING_MS = 30_000;
+const MAX_RECORDING_MS = 60_000;
 /** Anything shorter than this is a mis-click, not speech. */
 const MIN_RECORDING_MS = 250;
 
@@ -74,7 +83,9 @@ function microphoneAccessMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Unable to access microphone.';
 }
 
-export type DictationPhase = 'idle' | 'permission' | 'recording' | 'transcribing' | 'error';
+export type DictationPhase = 'idle' | 'choose' | 'setup' | 'permission' | 'recording' | 'transcribing' | 'error';
+
+type VoiceSetupPlan = { supported: boolean; needsRuntime: boolean; needsModel: boolean; bytes: number };
 
 export class Dictation {
   /** Web Speech is listening. */
@@ -93,6 +104,19 @@ export class Dictation {
   interim = $state('');
   /** 15 normalized levels driving the waveform bars. */
   audioLevels = $state<number[]>(Array(WAVE_WEIGHTS.length).fill(0));
+  /** The last few seconds of loudness, oldest first: the composer's scrolling waveform. */
+  history = $state<number[]>(Array(HISTORY_BARS).fill(0));
+  /** Seconds since recording started. */
+  elapsed = $state(0);
+  /** First-run install of the voice engine, 0–100. */
+  setupProgress = $state(0);
+
+  private historyAt = 0;
+  private elapsedTimer: ReturnType<typeof setInterval> | null = null;
+  /** Stop without transcribing (the × in the recorder). */
+  private discard = false;
+  /** Voice engine is known to be installed; checked once per session. */
+  private voiceReady = false;
 
   private recognition: RecognitionInstance | null = null;
   private recorder: MediaRecorder | null = null;
@@ -160,9 +184,23 @@ export class Dictation {
     }
     this.speechListening = false;
     this.whisperListening = false;
-    this.phase = 'idle';
+    if (this.phase !== 'setup') this.phase = 'idle';
     this.interim = '';
     this.stopAnalyser();
+  }
+
+  /** Clear a failed attempt and hand the row back to the chips. */
+  dismiss(): void {
+    if (this.phase === 'error') this.phase = 'idle';
+  }
+
+  /** Stop and throw the recording away. */
+  cancel(): void {
+    this.discard = true;
+    if (this.speechListening) {
+      try { this.recognition?.abort?.(); } catch { /* already stopped */ }
+    }
+    this.stop();
   }
 
   dispose(): void {
@@ -275,9 +313,16 @@ export class Dictation {
     }
 
     ttsStore.stop();
+    // No microphone plugged in: say so before offering any download.
+    if (!(await hasMicrophone())) {
+      toastStore.error(microphoneAccessMessage(new DOMException('No microphone', 'NotFoundError')));
+      return;
+    }
+    if (!(await this.ensureVoiceEngine())) return;
     this.phase = 'permission';
     this.interim = '';
     this.recordedChunks = [];
+    this.discard = false;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(this.audioConstraints());
@@ -300,8 +345,13 @@ export class Dictation {
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         this.whisperListening = false;
-        this.phase = 'transcribing';
         this.stopAnalyser();
+        if (this.discard) {
+          this.discard = false;
+          this.phase = 'idle';
+          return;
+        }
+        this.phase = 'transcribing';
 
         try {
           const blob = new Blob(this.recordedChunks, { type: mimeType });
@@ -311,8 +361,16 @@ export class Dictation {
             return;
           }
 
-          const bytes = new Uint8Array(await blob.arrayBuffer());
-          const result = await sttTranscribe(bytes as never, mimeType.split(';')[0]);
+          // 16 kHz mono WAV: whisper.cpp reads it as-is, no ffmpeg anywhere.
+          let bytes: Uint8Array;
+          let sentType = 'audio/wav';
+          try {
+            bytes = await recordingToWav(blob);
+          } catch {
+            bytes = new Uint8Array(await blob.arrayBuffer());
+            sentType = mimeType.split(';')[0];
+          }
+          const result = await sttTranscribe(bytes as never, sentType);
           this.phase = 'idle';
           this.interim = '';
 
@@ -351,6 +409,59 @@ export class Dictation {
       this.stopAnalyser();
       toastStore.error(microphoneAccessMessage(err));
     }
+  }
+
+  // ── First-run setup ───────────────────────────────────────────────────────
+
+  /**
+   * On first use nothing is installed: ask which model to download (the
+   * composer shows the choice) instead of starting a download unasked.
+   * Returns true when recording can start now.
+   */
+  private async ensureVoiceEngine(): Promise<boolean> {
+    if (this.voiceReady) return true;
+    let plan: VoiceSetupPlan;
+    try {
+      plan = await invoke<VoiceSetupPlan>('voice_setup_plan');
+    } catch {
+      return true; // older main process: let transcription report what's missing
+    }
+    // `provider: 'api'` means the user chose a cloud speech service.
+    const apiOnly = (appStore.config.stt as { provider?: string } | undefined)?.provider === 'api';
+    if (apiOnly || !plan.supported || (!plan.needsRuntime && !plan.needsModel)) {
+      this.voiceReady = true;
+      return true;
+    }
+    this.phase = 'choose';
+    return false;
+  }
+
+  /** The user picked a model in the first-run popover: install it, then listen. */
+  async installAndStart(quality: string): Promise<void> {
+    this.phase = 'setup';
+    this.setupProgress = 0;
+    const unlisten = await listen<{ phase: string; progress: number }>('voice-setup-progress', (event) => {
+      // The engine is small; the model is most of the download.
+      this.setupProgress = event.phase === 'runtime' ? Math.round(event.progress * 0.1) : event.phase === 'model' ? 10 + Math.round(event.progress * 0.9) : 100;
+    });
+    try {
+      await setupSpeech(quality);
+      this.voiceReady = true;
+      this.phase = 'idle';
+    } catch (err) {
+      this.phase = 'error';
+      toastStore.error(err instanceof Error ? err.message : 'Voice setup failed. Please try again.');
+      return;
+    } finally {
+      unlisten();
+      this.setupProgress = 0;
+    }
+    this.toggle(false);
+  }
+
+  /** Close the first-run choice without installing anything. */
+  closeChoice(): void {
+    if (this.phase === 'choose') this.phase = 'idle';
   }
 
   // ── Shared ────────────────────────────────────────────────────────────────
@@ -402,7 +513,13 @@ export class Dictation {
         const rms = Math.sqrt(sumSquares / samples.length);
         this.smoothedLevel = Math.min(1, this.smoothedLevel * 0.75 + rms * 4);
 
-        const now = Date.now() / 1000;
+        const nowMs = Date.now();
+        if (nowMs - this.historyAt >= HISTORY_STEP_MS) {
+          this.historyAt = nowMs;
+          this.history = [...this.history.slice(1), Math.min(1, this.smoothedLevel * 1.4)];
+        }
+
+        const now = nowMs / 1000;
         this.audioLevels = WAVE_WEIGHTS.map((weight, index) => {
           const idle = 0.12 + Math.sin(now * 1.8 + index * 0.7) * 0.06;
           return Math.max(idle, this.smoothedLevel * weight);
@@ -411,6 +528,9 @@ export class Dictation {
         this.analyserRaf = requestAnimationFrame(tick);
       };
       this.analyserRaf = requestAnimationFrame(tick);
+      this.elapsed = 0;
+      const startedAt = Date.now();
+      this.elapsedTimer = setInterval(() => (this.elapsed = Math.floor((Date.now() - startedAt) / 1000)), 250);
     } catch {
       /* Web Audio unavailable — the waveform simply stays flat */
     }
@@ -429,5 +549,8 @@ export class Dictation {
     this.micStream = null;
     this.smoothedLevel = 0;
     this.audioLevels = Array(WAVE_WEIGHTS.length).fill(0);
+    this.history = Array(HISTORY_BARS).fill(0);
+    if (this.elapsedTimer) clearInterval(this.elapsedTimer);
+    this.elapsedTimer = null;
   }
 }

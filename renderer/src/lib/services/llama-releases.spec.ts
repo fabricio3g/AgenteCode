@@ -161,3 +161,23 @@ describe('llama.cpp release asset selection', () => {
     expect(assets.find((a) => a.variant === 'recommended')?.backend).toBe('cpu');
   });
 });
+
+describe('fetchLlamaReleaseAssets', () => {
+  it('skips a newest release with no builds instead of falling back to the pinned one', async () => {
+    const { fetchLlamaReleaseAssets } = await import('./llama-releases');
+    const releases = [
+      { tag_name: 'v0.5.0', assets: [] },
+      { tag_name: 'b11192', prerelease: true, assets: [{ name: 'llama-b11192-bin-ubuntu-vulkan-x64.tar.gz', browser_download_url: 'https://x.test/v.tgz' }, { name: 'llama-b11192-bin-ubuntu-x64.tar.gz', browser_download_url: 'https://x.test/c.tgz' }] }
+    ];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify(releases), { status: 200 })) as typeof fetch;
+    try {
+      const result = await fetchLlamaReleaseAssets({ platform: 'linux', arch: 'x64', gpu_backend: 'vulkan', has_gpu: true });
+      expect(result.tag).toBe('b11192');
+      expect(result.notice).toBe('');
+      expect(result.assets.some((asset) => asset.name.includes('vulkan'))).toBe(true);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

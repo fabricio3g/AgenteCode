@@ -1,15 +1,19 @@
-export type AggregatorEngineCategory = 'recommended' | 'general' | 'research' | 'self_hosted' | 'api' | 'experimental';
-export type AggregatorEngineTransport = 'json' | 'html' | 'xml';
+export type AggregatorEngineCategory = 'recommended' | 'general' | 'research' | 'self_hosted' | 'api';
+export type AggregatorEngineTransport = 'json' | 'xml';
 export type AggregatorEngineStability = 'stable' | 'beta' | 'experimental';
 export type AggregatorRequirement = 'api_key' | 'base_url';
 
+/*
+ * Every engine here is reached through an interface its operator offers for
+ * programmatic use: an official API, a documented JSON endpoint, or a server
+ * the user runs themselves. Scraping search-engine result pages is against
+ * those engines' terms, so there are no HTML scrapers in this catalog.
+ */
 export type AggregatorEngineId =
-  | 'duckduckgo' | 'wikipedia' | 'wiby' | 'mojeek'
-  | 'qwant' | 'sepiasearch' | 'bing' | 'brave' | 'startpage' | 'yahoo' | 'librex'
-  | 'yep' | 'mwmbl' | 'marginalia' | 'yandex' | 'baidu' | 'google' | 'ghostery'
-  | 'searxng' | 'yacy' | 'fourget' | 'openserp'
-  | 'kagi' | 'firecrawl' | 'searchapi' | 'linkup' | 'ollama_web' | 'perplexity_search'
-  | 'arxiv' | 'openalex' | 'crossref' | 'stackexchange' | 'hackernews';
+  | 'wikipedia' | 'wiby' | 'sepiasearch'
+  | 'arxiv' | 'openalex' | 'crossref' | 'pubmed' | 'semantic_scholar' | 'stackexchange' | 'hackernews'
+  | 'searxng' | 'yacy' | 'fourget'
+  | 'kagi' | 'firecrawl' | 'linkup' | 'ollama_web' | 'perplexity_search';
 
 export interface AggregatorEngineDefinition {
   id: AggregatorEngineId;
@@ -36,50 +40,34 @@ const engine = (
   id, label, category, transport, stability,
   requires: [],
   supports_safe_search: false,
-  timeout_ms: transport === 'html' ? 8000 : 7000,
+  timeout_ms: 7000,
   recommended: false,
   ...extra,
 });
 
 export const AGGREGATOR_ENGINE_CATALOG: AggregatorEngineDefinition[] = [
-  engine('duckduckgo', 'DuckDuckGo', 'recommended', 'html', 'stable', { recommended: true, supports_safe_search: true }),
-  engine('wikipedia', 'Wikipedia', 'recommended', 'json', 'stable', { recommended: true }),
-  engine('wiby', 'Wiby', 'recommended', 'json', 'stable', { recommended: true, description: 'Independent small-web index.' }),
-  engine('mojeek', 'Mojeek', 'recommended', 'html', 'stable', { recommended: true, supports_safe_search: true }),
+  engine('wikipedia', 'Wikipedia', 'recommended', 'json', 'stable', { recommended: true, description: 'Encyclopedia articles (Wikimedia API).' }),
+  engine('wiby', 'Wiby', 'general', 'json', 'stable', { description: 'Independent small-web index (public JSON API).' }),
+  engine('arxiv', 'arXiv', 'recommended', 'xml', 'stable', { recommended: true, description: 'Preprints (arXiv API; metadata CC0).' }),
+  engine('crossref', 'Crossref', 'recommended', 'json', 'stable', { recommended: true, description: 'Scholarly works metadata (Crossref REST API).' }),
+  engine('semantic_scholar', 'Semantic Scholar', 'research', 'json', 'stable', { description: 'Papers with abstracts (Semantic Scholar API, ODC-BY). Heavily rate-limited without a key.' }),
+  engine('pubmed', 'PubMed', 'recommended', 'json', 'stable', { recommended: true, description: 'Biomedical literature (NCBI E-utilities).' }),
 
-  engine('qwant', 'Qwant', 'general', 'json', 'beta', { supports_safe_search: true }),
-  engine('sepiasearch', 'Sepia Search', 'general', 'json', 'stable', { supports_safe_search: true }),
-  engine('bing', 'Bing Web', 'general', 'html', 'beta'),
-  engine('brave', 'Brave Web', 'general', 'html', 'beta', { supports_safe_search: true }),
-  engine('startpage', 'Startpage', 'general', 'html', 'beta'),
-  engine('yahoo', 'Yahoo', 'general', 'html', 'beta'),
-  engine('yep', 'Yep', 'general', 'html', 'experimental'),
-  engine('mwmbl', 'Mwmbl', 'general', 'html', 'experimental'),
-  engine('marginalia', 'Marginalia', 'general', 'html', 'experimental'),
-  engine('ghostery', 'Ghostery Search', 'general', 'html', 'experimental'),
+  engine('sepiasearch', 'Sepia Search', 'general', 'json', 'stable', { supports_safe_search: true, description: 'PeerTube videos (public API).' }),
 
-  engine('arxiv', 'arXiv', 'research', 'xml', 'stable'),
-  engine('openalex', 'OpenAlex', 'research', 'json', 'stable'),
-  engine('crossref', 'Crossref', 'research', 'json', 'stable'),
-  engine('stackexchange', 'Stack Exchange', 'research', 'json', 'stable'),
-  engine('hackernews', 'Hacker News', 'research', 'json', 'stable'),
+  engine('openalex', 'OpenAlex', 'research', 'json', 'stable', { description: 'Scholarly works (OpenAlex API; about 100 free calls a day without a key).' }),
+  engine('stackexchange', 'Stack Exchange', 'research', 'json', 'stable', { description: 'Programming Q&A (Stack Exchange API).' }),
+  engine('hackernews', 'Hacker News', 'research', 'json', 'stable', { description: 'Tech news and discussion (Algolia HN API).' }),
 
   engine('searxng', 'SearXNG', 'self_hosted', 'json', 'stable', { requires: ['base_url'], supports_safe_search: true }),
   engine('yacy', 'YaCy', 'self_hosted', 'json', 'stable', { requires: ['base_url'], default_base_url: 'http://localhost:8090' }),
   engine('fourget', '4get', 'self_hosted', 'json', 'beta', { requires: ['base_url'] }),
-  engine('openserp', 'OpenSERP', 'self_hosted', 'json', 'beta', { requires: ['base_url'] }),
 
   engine('kagi', 'Kagi', 'api', 'json', 'stable', { requires: ['api_key'], default_base_url: 'https://kagi.com/api/v1' }),
   engine('firecrawl', 'Firecrawl Search', 'api', 'json', 'stable', { requires: ['api_key'], default_base_url: 'https://api.firecrawl.dev/v2' }),
-  engine('searchapi', 'SearchApi.io', 'api', 'json', 'stable', { requires: ['api_key'], default_base_url: 'https://www.searchapi.io/api/v1' }),
   engine('linkup', 'Linkup', 'api', 'json', 'beta', { requires: ['api_key'], default_base_url: 'https://api.linkup.so/v1' }),
   engine('ollama_web', 'Ollama Web Search', 'api', 'json', 'beta', { requires: ['api_key'], default_base_url: 'https://ollama.com/api' }),
   engine('perplexity_search', 'Perplexity Search', 'api', 'json', 'beta', { requires: ['api_key'], default_base_url: 'https://api.perplexity.ai' }),
-
-  engine('librex', 'LibreX', 'experimental', 'html', 'experimental'),
-  engine('yandex', 'Yandex', 'experimental', 'html', 'experimental'),
-  engine('baidu', 'Baidu', 'experimental', 'html', 'experimental'),
-  engine('google', 'Google Web', 'experimental', 'html', 'experimental', { supports_safe_search: true }),
 ];
 
 export const DEFAULT_AGGREGATOR_ENGINES: AggregatorEngineId[] =
@@ -88,7 +76,8 @@ export const DEFAULT_AGGREGATOR_ENGINES: AggregatorEngineId[] =
 export const SUPPORTED_AGGREGATOR_ENGINES: AggregatorEngineId[] =
   AGGREGATOR_ENGINE_CATALOG.map((item) => item.id);
 
-export const AGGREGATOR_USER_AGENT = 'Flaxeo/1.0 (local search aggregator)';
+/** Identifies the app and how to reach its maintainers, as Wikimedia and Crossref ask. */
+export const AGGREGATOR_USER_AGENT = 'FlaxeoChat/1.0 (+https://github.com/fabricio3g/Flaxeo-Chat)';
 export const AGGREGATOR_CONCURRENCY = 4;
 export const AGGREGATOR_DEADLINE_MS = 12_000;
 export const AGGREGATOR_FAILURE_THRESHOLD = 3;

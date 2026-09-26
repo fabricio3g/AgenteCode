@@ -6,41 +6,49 @@ import { providerCandidates, providerDisplayName, providerHasCredentials } from 
 describe('search aggregator provider', () => {
   it('is available without credentials', () => {
     assert.equal(providerHasCredentials('aggregator', {}), true);
-    assert.equal(providerDisplayName('aggregator'), 'Chatea Aggregator');
+    assert.equal(providerDisplayName('aggregator'), 'Flaxeo Chat Aggregator');
   });
 
   it('is included in auto provider candidates', () => {
     const candidates = providerCandidates('auto', {}, 'search');
-    assert.equal(candidates[0], 'aggregator');
-    assert.ok(candidates.includes('duckduckgo'));
+    assert.deepEqual(candidates, ['aggregator']);
+    assert.deepEqual(providerCandidates('auto', { tavily_api_key: 't' }, 'search'), ['tavily', 'aggregator']);
   });
 
   it('normalizes default aggregator engines', () => {
-    assert.deepEqual(normalizeAggregatorEngines(undefined), ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
+    assert.deepEqual(normalizeAggregatorEngines(undefined), ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
   });
 
   it('preserves explicitly selected configurable engines', () => {
-    assert.deepEqual(normalizeAggregatorEngines(['duckduckgo', 'searxng']), ['duckduckgo', 'searxng']);
+    assert.deepEqual(normalizeAggregatorEngines(['wikipedia', 'searxng']), ['wikipedia', 'searxng']);
   });
 
-  it('ports the websearch aggregator engine set into the project', () => {
+  it('drops removed scrapers and falls back to the defaults when nothing is left', () => {
+    assert.deepEqual(normalizeAggregatorEngines(['google', 'wikipedia']), ['wikipedia']);
+    assert.deepEqual(normalizeAggregatorEngines(['duckduckgo', 'mojeek']), ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
+  });
+
+  it('never routes to a removed scraper or reseller', () => {
+    for (const removed of ['duckduckgo', 'electron', 'serpapi', 'serper', 'google_cse', 'bing']) {
+      assert.deepEqual(providerCandidates(removed, {}, 'search'), ['aggregator']);
+    }
+  });
+
+  it('offers only API-based engines, no result-page scrapers', () => {
     const engines = getSupportedAggregatorEngines();
-    for (const engine of [
-      'duckduckgo', 'wikipedia', 'wiby', 'mojeek', 'qwant', 'sepiasearch',
-      'bing', 'brave', 'startpage', 'yahoo', 'librex', 'searxng',
-      'yep', 'mwmbl', 'marginalia', 'yandex', 'baidu', 'google', 'ghostery',
-      'yacy', 'fourget', 'openserp', 'kagi', 'firecrawl', 'searchapi',
-      'linkup', 'ollama_web', 'perplexity_search', 'arxiv', 'openalex',
-      'crossref', 'stackexchange', 'hackernews'
-    ]) {
+    for (const engine of ['wikipedia', 'wiby', 'arxiv', 'crossref', 'semantic_scholar', 'pubmed', 'openalex', 'stackexchange', 'hackernews', 'searxng', 'kagi']) {
       assert.ok(engines.includes(engine), `${engine} should be supported`);
     }
+    for (const scraper of ['duckduckgo', 'mojeek', 'google', 'bing', 'brave', 'yahoo', 'startpage', 'yandex', 'baidu', 'qwant', 'openserp', 'searchapi']) {
+      assert.ok(!engines.includes(scraper), `${scraper} must not be offered`);
+    }
+    assert.ok(getAggregatorCatalog().every((item) => item.transport === 'json' || item.transport === 'xml'));
   });
 
   it('exposes registry metadata and recommended defaults', () => {
     const catalog = getAggregatorCatalog();
     assert.equal(catalog.length, getSupportedAggregatorEngines().length);
-    assert.deepEqual(catalog.filter((item) => item.recommended).map((item) => item.id), ['duckduckgo', 'wikipedia', 'wiby', 'mojeek']);
+    assert.deepEqual(catalog.filter((item) => item.recommended).map((item) => item.id), ['wikipedia', 'arxiv', 'crossref', 'pubmed']);
     assert.ok(catalog.every((item) => item.label && item.category && item.transport));
   });
 });

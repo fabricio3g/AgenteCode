@@ -8,6 +8,8 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import CodeSurface from '$lib/features/code/CodeSurface.svelte';
+  import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
+  import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
   import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
   import { charactersStore } from '$lib/features/roleplay/characters.svelte';
   import { worldsStore } from '$lib/features/roleplay/worlds.svelte';
@@ -16,7 +18,6 @@
   import SystemPromptModal from '$lib/components/settings/SystemPromptModal.svelte';
   import LocalModelLoadModal from '$lib/components/settings/LocalModelLoadModal.svelte';
   import ModelHubModal from '$lib/components/settings/ModelHubModal.svelte';
-  import ArtifactSettingsModal from '$lib/components/settings/ArtifactSettingsModal.svelte';
   import ArtifactStudioModal from '$lib/components/agent/ArtifactStudioModal.svelte';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import ConfirmDialog from '$lib/components/layout/ConfirmDialog.svelte';
@@ -27,6 +28,7 @@
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
+  import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import { Plus, Boxes, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -131,6 +133,33 @@
     appStore.runtimeManagerOpen = false;
     openModelHub(legacyFlagToModelHubSection('runtimeManagerOpen'));
   });
+
+  // ── Sidebar width (drag its edge; remembered) ────────────────────────
+  const SIDEBAR_WIDTH_KEY = 'flaxeo.sidebar.width';
+  function readSidebarWidth(): number {
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      return Number.isFinite(saved) && saved >= 200 ? saved : 240;
+    } catch {
+      return 240;
+    }
+  }
+  let sidebarWidth = $state(readSidebarWidth());
+  let sidebarResizing = $state(false);
+  let sidebarStart = 0;
+
+  function resizeSidebar(delta: number) {
+    sidebarWidth = Math.round(Math.min(440, Math.max(200, sidebarStart + delta)));
+  }
+
+  function endSidebarResize() {
+    sidebarResizing = false;
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    } catch {
+      // Blocked storage: the width lasts for this session.
+    }
+  }
 </script>
 
 <div class="flex h-full overflow-hidden bg-background text-foreground">
@@ -138,6 +167,8 @@
   <div
     class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-sidebar"
     class:expanded={appStore.sidebarOpen}
+    class:resizing={sidebarResizing}
+    style="--sidebar-w: {sidebarWidth}px"
   >
     <div class="sidebar-view-full absolute inset-0 flex flex-col">
       <Sidebar />
@@ -179,6 +210,16 @@
     </div>
   </div>
 
+  {#if appStore.sidebarOpen}
+    <ResizeHandle
+      axis="x"
+      label={$t('shortcuts.resizeSidebar')}
+      onstart={() => { sidebarStart = sidebarWidth; sidebarResizing = true; }}
+      onresize={resizeSidebar}
+      onend={endSidebarResize}
+    />
+  {/if}
+
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
   <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
     <Titlebar />
@@ -190,12 +231,17 @@
       <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {#if inCodeSpace}
           <CodeSurface />
+        {:else if appStore.homeView === 'artifacts'}
+          <ArtifactsScreen />
         {:else if inRoleplaySpace}
           <RoleplaySurface />
         {:else}
           <HomeSurface />
         {/if}
       </div>
+      {#if !inCodeSpace && appStore.homeView === 'chat' && appStore.artifactPanel}
+        <ArtifactPanel />
+      {/if}
       {#if browserPanelStore.open}
         <BrowserPanel />
       {/if}
@@ -212,9 +258,6 @@
   <ModelHubModal />
 {/if}
 
-{#if appStore.artifactSettingsOpen}
-  <ArtifactSettingsModal />
-{/if}
 
 <Toaster />
 <ConfirmDialog />
@@ -263,9 +306,13 @@
     width: 3.5rem; /* w-14 */
     transition: width var(--motion-smooth) var(--motion-ease-out);
   }
-  /* 15rem: room for a project tree with row actions and status dots. */
+  /* Default 15rem: room for a project tree with row actions and status
+     dots; dragging the edge sets --sidebar-w. */
   .sidebar-outer.expanded {
-    width: 15rem; /* w-60 */
+    width: var(--sidebar-w, 15rem);
+  }
+  .sidebar-outer.resizing {
+    transition: none;
   }
 
   .sidebar-view-full {

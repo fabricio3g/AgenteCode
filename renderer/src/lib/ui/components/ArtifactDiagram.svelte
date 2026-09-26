@@ -41,17 +41,41 @@
    * six hardcoded light-mode hexes, unreadable on the dark artifact surface.
    */
   function themeVariables(root: HTMLElement) {
-    const styles = getComputedStyle(root);
-    const read = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+    // Mermaid's color math only understands hex/rgb/hsl; tokens are often
+    // oklch() or color-mix(), which it silently turns into dark grays. Let the
+    // browser resolve each token to rgb() first.
+    const probe = document.createElement('span');
+    probe.style.display = 'none';
+    root.appendChild(probe);
+    const read = (name: string) => {
+      probe.style.color = '';
+      probe.style.color = `var(${name})`;
+      return getComputedStyle(probe).color || 'rgb(0, 0, 0)';
+    };
+    const surface = read('--card');
+    const node = read('--muted');
+    const ink = read('--foreground');
+    const line = read('--muted-foreground');
+    const border = read('--border');
+    probe.remove();
     return {
       background: 'transparent',
-      primaryColor: read('--surface-hover', '#eef0ff'),
-      primaryTextColor: read('--foreground', '#1f2437'),
-      primaryBorderColor: read('--border-hover', '#0d0d0d'),
-      lineColor: read('--text-secondary', '#0d0d0d'),
-      secondaryColor: read('--muted', '#f5f6ff'),
-      tertiaryColor: read('--surface', '#ffffff'),
-      textColor: read('--foreground', '#1f2437')
+      fontFamily: 'inherit',
+      fontSize: '13px',
+      primaryColor: node,
+      primaryTextColor: ink,
+      primaryBorderColor: border,
+      secondaryColor: node,
+      tertiaryColor: surface,
+      mainBkg: node,
+      nodeBorder: border,
+      clusterBkg: surface,
+      clusterBorder: border,
+      lineColor: line,
+      textColor: ink,
+      edgeLabelBackground: surface,
+      labelBackground: surface,
+      titleColor: ink
     };
   }
 

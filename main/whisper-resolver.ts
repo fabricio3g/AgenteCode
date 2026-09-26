@@ -25,20 +25,22 @@ function findWhisperBinaryInDir(dirPath: string): string[] {
     if (fs.existsSync(top)) return [top];
   }
 
+  // Collect every candidate, then take the best name: current releases still
+  // ship a `main` that only prints a deprecation notice and exits with 1.
   const found: string[] = [];
   function walk(dir: string, depth: number) {
-    if (found.length || depth > 3) return;
+    if (depth > 3) return;
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
-      if (found.length) return;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) { walk(full, depth + 1); continue; }
       if (WHISPER_CLI_NAMES.includes(entry.name)) found.push(full);
     }
   }
   walk(dirPath, 0);
-  return found;
+  found.sort((a, b) => WHISPER_CLI_NAMES.indexOf(path.basename(a)) - WHISPER_CLI_NAMES.indexOf(path.basename(b)));
+  return found.slice(0, 1);
 }
 
 interface WhisperRuntime {

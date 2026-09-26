@@ -7,7 +7,11 @@
 -->
 
 <script lang="ts">
-  import { Box, Compass, FolderInput, FolderOpen, Layers, Upload } from 'lucide-svelte';
+  import { Box, Compass, FolderInput, FolderOpen, Layers } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { get } from 'svelte/store';
+  import { Switch } from '$lib/components/ui';
+  import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
@@ -27,11 +31,12 @@
     onautoload: (value: boolean) => void;
   } = $props();
 
-  const items = [
-    { id: 'discover' as ModelHubTab, label: 'Explore', icon: Compass },
-    { id: 'library' as ModelHubTab, label: 'Library', icon: Layers },
-    { id: 'active' as ModelHubTab, label: 'Loaded Instances', icon: Box }
-  ];
+  const activeDownloads = $derived(downloadsStore.jobs.filter((job) => ['queued', 'running'].includes(job.status)).length);
+  const items = $derived([
+    { id: 'discover' as ModelHubTab, label: $t('modelHub.navExplore'), icon: Compass, count: 0, dot: false },
+    { id: 'library' as ModelHubTab, label: $t('modelHub.navLibrary'), icon: Layers, count: activeDownloads, dot: false },
+    { id: 'active' as ModelHubTab, label: $t('modelHub.navRunning'), icon: Box, count: 0, dot: !!modelsStore.status?.active_model }
+  ]);
 
   let importing = $state(false);
 
@@ -43,73 +48,55 @@
       if (!path) return;
       await importLocalModel(path, false);
       await Promise.all([modelsStore.refreshIndex(), appStore.refreshModels()]);
-      toastStore.success('Model imported');
+      toastStore.success(get(t)('modelHub.imported'));
     } catch (error) {
-      toastStore.error(`Import failed: ${(error as Error)?.message || error}`);
+      toastStore.error(get(t)('modelHub.importFailed', { values: { reason: (error as Error)?.message || String(error) } }));
     } finally {
       importing = false;
     }
   }
 </script>
 
-<aside class="flex w-48 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-[var(--border-subtle)] p-2 pt-4" aria-label="Local models">
-  <nav class="flex flex-col gap-0.5" aria-label="Model sections">
+<aside class="flex shrink-0 flex-col gap-1 overflow-y-auto border-r border-[var(--border)] px-3 py-5 md:w-[220px]" aria-label={$t('modelHub.navLabel')}>
+  <p class="px-2.5 pb-3 text-[15px] font-semibold tracking-[-0.01em] text-foreground">{$t('modelHub.navTitle')}</p>
+  <nav class="flex flex-col gap-1" aria-label={$t('modelHub.navLabel')}>
     {#each items as item (item.id)}
       {@const Icon = item.icon}
       <button
         type="button"
-        class={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] font-medium transition ${tab === item.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+        class={`nav-row flex items-center gap-2.5 ${tab === item.id ? 'is-active' : ''}`}
         aria-current={tab === item.id ? 'page' : undefined}
         onclick={() => onselecttab(item.id)}
       >
         <Icon class="size-4 shrink-0" />
-        <span class="truncate">{item.label}</span>
+        <span class="min-w-0 flex-1 truncate">{item.label}</span>
+        {#if item.count}<span class="rounded-full bg-primary px-1.5 text-[10px] font-semibold tabular-nums text-primary-fg">{item.count}</span>{/if}
+        {#if item.dot}<span class="size-1.5 shrink-0 rounded-full bg-[var(--success)]"></span>{/if}
       </button>
     {/each}
   </nav>
-  <div class="mt-auto space-y-0.5 px-1 pb-1 pt-3">
+
+  <div class="mt-auto space-y-0.5 border-t border-[var(--border)] pt-3">
     <button
       type="button"
-      class="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] font-medium text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+      class="nav-row flex w-full items-center gap-2.5 font-normal"
       onclick={() => void openModelsFolder()}
     >
       <FolderOpen class="size-4 shrink-0" />
-      <span class="truncate">Open folder</span>
+      <span class="truncate">{$t('modelHub.openFolder')}</span>
     </button>
     <button
       type="button"
-      class="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] font-medium text-muted-foreground transition hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+      class="nav-row flex w-full items-center gap-2.5 font-normal disabled:opacity-50"
       onclick={() => void importModel()}
       disabled={importing}
     >
       <FolderInput class="size-4 shrink-0" />
-      <span class="truncate">{importing ? 'Importing…' : 'Import model'}</span>
+      <span class="truncate">{importing ? $t('modelHub.importing') : $t('modelHub.importModel')}</span>
     </button>
-    <button
-      type="button"
-      class="auto-load-toggle flex w-full items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-[11px] transition"
-      class:is-on={autoLoad}
-      onclick={() => onautoload(!autoLoad)}
-      aria-pressed={autoLoad}
-      title="When on, new downloads load automatically once complete"
-    >
-      <Upload class="size-3.5 shrink-0" />
-      Auto-load
-    </button>
+    <div class="flex items-center justify-between gap-2 px-2.5 py-1.5" title={$t('modelHub.autoLoadHint')}>
+      <span class="text-[12px] text-muted-foreground">{$t('modelHub.autoLoad')}</span>
+      <Switch label={$t('modelHub.autoLoad')} checked={autoLoad} onchange={(next) => onautoload(next)} />
+    </div>
   </div>
 </aside>
-
-<style>
-  .auto-load-toggle {
-    color: var(--muted-foreground);
-    background: transparent;
-  }
-  .auto-load-toggle:hover {
-    color: var(--foreground);
-    background: var(--muted);
-  }
-  .auto-load-toggle.is-on {
-    color: var(--primary-foreground);
-    background: var(--primary);
-  }
-</style>

@@ -3,8 +3,14 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { Quote } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import Portal from '$lib/components/ui/Portal.svelte';
 
   const MAX_SELECTION_CHARS = 6000;
+  const BUTTON_HEIGHT = 30;
+  const GAP = 8;
+  /** Keep clear of the titlebar. */
+  const TOP_MARGIN = 56;
 
   let visible = $state(false);
   let selectedText = $state('');
@@ -12,8 +18,7 @@
   let y = $state(0);
   let updateTimer: ReturnType<typeof setTimeout> | null = null;
   let pointerSelecting = false;
-  /** Last pointerup inside message content: exact release point. */
-  let lastPointer = $state<{ x: number; y: number; at: number } | null>(null);
+  let placement = $state<'above' | 'below'>('above');
 
   function isEditableElement(node: Node | null): boolean {
     const element = node instanceof Element ? node : node?.parentElement;
@@ -74,70 +79,18 @@
       return;
     }
 
-    // Mouse users: the release point IS the selection end. Immune to
-    // caret-rect quirks, which only serve keyboard selections below.
-    const pointer = lastPointer;
-    if (pointer && Date.now() - pointer.at < 500) {
-      selectedText = text.slice(0, MAX_SELECTION_CHARS);
-      x = Math.min(Math.max(pointer.x + 4, 8), window.innerWidth - 150);
-      const belowY = pointer.y + 6;
-      const aboveY = pointer.y - 38;
-      y = Math.min(
-        Math.max(belowY + 34 < window.innerHeight ? belowY : Math.max(aboveY, 8), 8),
-        window.innerHeight - 40
-      );
-      visible = true;
-      return;
-    }
-
-    // Anchor to the end of the selection (the focus character).
-    // Order: exact caret rect at focus, directional line rect, bbox corner.
-    // The final clamp keeps the button inside the selection's own box, so
-    // a bad rect can never fling it across the window.
-    const lineRects = range.getClientRects();
-    let backward = false;
-    try {
-      const anchorNode = selection.anchorNode;
-      const focusNode = selection.focusNode;
-      if (anchorNode && focusNode) {
-        if (anchorNode === focusNode) {
-          backward = selection.anchorOffset > selection.focusOffset;
-        } else {
-          backward = Boolean(
-            anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
-          );
-        }
-      }
-    } catch { /* assume forward */ }
-
-    let caretX: number | null = null;
-    let caretY: number | null = null;
-    try {
-      const caret = range.cloneRange();
-      caret.collapse(!backward);
-      const caretRects = caret.getClientRects();
-      const caretRect = caretRects.length ? caretRects[0] : null;
-      if (caretRect && (caretRect.width || caretRect.height)) {
-        caretX = backward ? caretRect.left : caretRect.right;
-        caretY = caretRect.bottom;
-      }
-    } catch { /* fall through to line rects */ }
-
-    let endRect: DOMRect | null = null;
-    if (lineRects.length) {
-      endRect = backward ? lineRects[0] : lineRects[lineRects.length - 1];
-    }
-    const focusX = caretX ?? (endRect ? (backward ? endRect.left : endRect.right) : selRect.right);
-    const focusY = caretY ?? (endRect ? endRect.bottom : selRect.bottom);
-
+    // Centered above the selection's first line, like a text toolbar, so it
+    // never covers the text that follows; below the last line when the top
+    // is too close to the window edge.
+    const lines = range.getClientRects();
+    const first = lines.length ? lines[0] : selRect;
+    const last = lines.length ? lines[lines.length - 1] : selRect;
+    const center = lines.length === 1 ? first.left + first.width / 2 : selRect.left + selRect.width / 2;
     selectedText = text.slice(0, MAX_SELECTION_CHARS);
-    x = Math.min(Math.max(focusX + 4, 8), selRect.right + 4, window.innerWidth - 150);
-    const belowY = focusY + 6;
-    const aboveY = focusY - 38;
-    y = Math.min(
-      Math.max(belowY + 34 < window.innerHeight ? belowY : Math.max(aboveY, 8), 8),
-      window.innerHeight - 40
-    );
+    x = Math.min(Math.max(center, 80), window.innerWidth - 80);
+    const above = first.top - BUTTON_HEIGHT - GAP;
+    placement = above > TOP_MARGIN ? 'above' : 'below';
+    y = placement === 'above' ? above : Math.min(last.bottom + GAP, window.innerHeight - BUTTON_HEIGHT - 8);
     visible = true;
   }
 
@@ -170,12 +123,9 @@
     hide();
   }
 
-  function handlePointerUp(event?: MouseEvent) {
+  function handlePointerUp() {
     if (!pointerSelecting) return;
     pointerSelecting = false;
-    if (event && typeof event.clientX === 'number') {
-      lastPointer = { x: event.clientX, y: event.clientY, at: Date.now() };
-    }
     scheduleUpdate(160);
   }
 
@@ -208,48 +158,69 @@
 </script>
 
 {#if visible}
+  <!-- Portaled: the thread wrapper's `contain: layout` would otherwise make
+       fixed coordinates relative to it, offsetting the pill by the sidebar. -->
+  <Portal>
   <button
     type="button"
     class="selected-text-ask-action"
+    class:below={placement === 'below'}
     style={`left:${x}px; top:${y}px;`}
     onclick={askSelectedText}
-    aria-label="Add selected text to chat"
+    aria-label={$t('chat.selection.addLabel')}
   >
     <Quote class="size-3.5" />
-    <span>Add to chat</span>
+    <span>{$t('chat.selection.add')}</span>
   </button>
+  </Portal>
 {/if}
 
 <style>
+  /* A small pill that floats over the text, centered on the selection. */
   .selected-text-ask-action {
     position: fixed;
     z-index: 80;
     display: inline-flex;
+    height: 30px;
     align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    gap: 0.35rem;
+    gap: 0.4rem;
+    padding: 0 0.75rem 0 0.65rem;
     border: 1px solid var(--border);
-    background: var(--popover);
-    opacity: 1;
+    border-radius: 9999px;
+    background: var(--popover, var(--background));
     color: var(--foreground);
-    box-shadow: var(--shadow-sm);
-    padding: 0.4rem 0.7rem;
-    font-size: 12px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 16px -4px rgb(0 0 0 / 0.14);
+    font-size: 12.5px;
     font-weight: 500;
-    line-height: 1;
-    animation: selectedAskIn 110ms ease-out;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    animation: selectedAskIn 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: background-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .selected-text-ask-action :global(svg) {
+    color: var(--muted-foreground);
   }
 
   .selected-text-ask-action:hover {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
-    background: color-mix(in srgb, var(--foreground) 8%, var(--background));
-    opacity: 1;
-    color: var(--foreground);
+    background: color-mix(in srgb, var(--foreground) 5%, var(--popover, var(--background)));
   }
 
   @keyframes selectedAskIn {
-    from { opacity: 0; transform: translateY(3px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translate(-50%, 3px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  .selected-text-ask-action.below {
+    animation-name: selectedAskInBelow;
+  }
+
+  @keyframes selectedAskInBelow {
+    from { opacity: 0; transform: translate(-50%, -3px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .selected-text-ask-action { animation: none; }
   }
 </style>

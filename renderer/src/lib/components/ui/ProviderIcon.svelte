@@ -2,8 +2,7 @@
   import { Cpu, Server } from 'lucide-svelte';
 
   let { provider, size = 20 }: { provider: string; size?: number } = $props();
-  const brands = new Set(['openai', 'openrouter', 'anthropic', 'groq', 'gemini', 'mistral',
-    'together', 'deepseek', 'cohere', 'perplexity', 'lmstudio', 'ollama']);
+  const brands = new Set(['opencode-go', 'openrouter', 'deepseek', 'lmstudio', 'ollama']);
 </script>
 
 <span class="provider-icon" style:width={`${size}px`} style:height={`${size}px`} aria-hidden="true">

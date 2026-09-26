@@ -34,6 +34,19 @@ function build(
 }
 
 describe('buildMessageParts', () => {
+  it('shows search, deep and max runs as the research widget, not the step line', () => {
+    for (const searchMode of ['search', 'deep', 'max'] as const) {
+      const kinds = build({
+        message: message({ searchMode, status: 'streaming', mode: 'agent', agentSteps: [{ id: 's1', type: 'searching', label: 'Search', status: 'running', toolName: 'web_search' }] }),
+        displayContent: 'Answer so far'
+      });
+      expect(kinds[0]).toBe('research');
+      expect(kinds).not.toContain('tool-status');
+      expect(kinds).toContain('content');
+    }
+    expect(build({ message: message({ searchMode: 'chat', mode: 'agent', agentSteps: [{ id: 's1', type: 'tool', label: 'x', status: 'done' }] }) })).toContain('tool-status');
+  });
+
   it('puts a pending approval directly after the tool status line', () => {
     const kinds = build({
       message: message({ status: 'streaming', agentSteps: [{ id: 's1', type: 'tool', label: 'bash', status: 'running' }] }),
@@ -122,12 +135,27 @@ describe('buildMessageParts', () => {
     expect(kinds.filter((k) => k === 'tool-status')).toHaveLength(1);
   });
 
-  it('shows a tool status line for an agent turn that has not produced output yet', () => {
+  it('shows typing dots, not a planning row, before an agent turn has said anything', () => {
     const kinds = build({
       message: message({ mode: 'agent', status: 'streaming' })
     });
-    expect(kinds).toContain('tool-status');
-    expect(kinds).not.toContain('pending');
+    expect(kinds).toContain('pending');
+    expect(kinds).not.toContain('tool-status');
+  });
+
+  it('leads an agent turn with its opening line, above the work', () => {
+    const kinds = build({
+      message: message({
+        mode: 'agent',
+        status: 'streaming',
+        agentSteps: [
+          { id: 'p', type: 'done', label: 'Preface', status: 'done', preface: true, detail: "I'll check the weather." },
+          { id: 's', type: 'thinking', label: 'Planning', status: 'running' }
+        ]
+      }),
+      displayContent: "I'll check the weather."
+    });
+    expect(kinds).toEqual(['preface', 'tool-status']);
   });
 
   it('renders a report surface for report metadata', () => {

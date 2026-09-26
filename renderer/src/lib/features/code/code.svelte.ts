@@ -57,6 +57,9 @@ interface AgenteRun extends CodeRunState {
  * `send()` starts a run or steers; `followUp()` queues for when it would
  * stop. Every user-visible input lands in the transcript.
  */
+/** Remembers the last runtime mode picked, for new conversations. */
+const DEFAULT_MODE_KEY = 'flaxeo.code.defaultMode';
+
 class CodeStore {
   projects = $state<CodeProject[]>([]);
   loading = $state(false);
@@ -252,6 +255,20 @@ class CodeStore {
    * raw-target write never notifies subscribers, leaving the sidebar tree
    * and the surface blind to the new conversation.
    */
+  /**
+   * The mode new conversations start in: the last one picked, full-auto
+   * until then (approvals stay one click away in the composer).
+   */
+  get defaultMode(): 'full' | 'supervised' | 'plan' {
+    try {
+      const saved = localStorage.getItem(DEFAULT_MODE_KEY);
+      if (saved === 'full' || saved === 'supervised' || saved === 'plan') return saved;
+    } catch {
+      // Blocked storage: fall through to the default.
+    }
+    return 'full';
+  }
+
   newConversation(project: CodeProject): ChatSession {
     const created = appStore.createChat('code');
     const chat = appStore.chats.find((c) => c.id === created.id);
@@ -261,7 +278,7 @@ class CodeStore {
       instanceId: 'agente',
       driverKind: 'agente',
       substrate: 'native',
-      runtimeMode: 'supervised',
+      runtimeMode: this.defaultMode,
       updatedAt: Date.now()
     };
     this.activeProjectId = project.id;
@@ -533,7 +550,7 @@ class CodeStore {
         if (!model) {
           throw new Error('No model selected — pick one in the Model Hub first.');
         }
-        const runtimeMode = chat.codeAgent?.runtimeMode || 'supervised';
+        const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
         const resumeSessionId = chat.codeAgent?.sessionId || undefined;
         const { sessionId } = await startCodeAgentSession({
           chatId,
@@ -629,6 +646,11 @@ class CodeStore {
     if (chat?.codeAgent) {
       chat.codeAgent.runtimeMode = mode;
       chat.codeAgent.updatedAt = Date.now();
+    }
+    try {
+      localStorage.setItem(DEFAULT_MODE_KEY, mode);
+    } catch {
+      // Blocked storage: the choice applies to this conversation only.
     }
     await setCodeAgentRuntimeMode(chatId, mode);
   }

@@ -1,61 +1,87 @@
 <svelte:options runes={true} />
 
+<!--
+  The llama.cpp engine: which build runs local models, what it is doing right
+  now, and where to get another build. Installed builds come first because
+  that is what people come here to check; installing is the second section.
+-->
+
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { RefreshCw, Trash2, Download, AlertTriangle, Cpu, Zap, ChevronDown, ChevronUp, Square, LoaderCircle } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
+  import { get } from 'svelte/store';
+  import { Check, Download, LoaderCircle, RefreshCw, Square, Trash2, TriangleAlert, Zap } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { confirmStore } from '$lib/stores/confirm.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
+  import { modelsStore } from '$lib/stores/models.svelte';
   import { deleteRuntimeBinary, downloadRuntime, getInstalledRuntimes } from '$lib/services/files';
   import { getSupervisorStatus, getRuntimeTelemetry, stopLlama } from '$lib/services/runtime';
   import type { RuntimeTelemetry } from '$lib/types/bridge';
-  import { modelsStore } from '$lib/stores/models.svelte';
   import { listen } from '$lib/services/bridge';
   import { getRuntimeRecommendations, type RuntimeRecommendations } from '$lib/services/system-info';
-  import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset } from '$lib/services/llama-releases';
+  import { fetchLlamaReleaseAssets, toDownloadPayload, type ReleaseAsset, type ReleaseFetchResult } from '$lib/services/llama-releases';
+  import { Badge, Button, Disclosure, Input } from '$lib/components/ui';
+  import SettingsSection from './SettingsSection.svelte';
 
-  let { closeOnUse = false, embedded = false } = $props<{ closeOnUse?: boolean; embedded?: boolean }>();
+  type InstalledRuntime = { name: string; path: string; is_active?: boolean };
+  type Supervisor = { state?: string; load_phase?: string; active_model?: string | null; build_info?: string; n_ctx?: number; total_slots?: number };
 
   let platformInfo = $state<RuntimeRecommendations>({ platform: 'linux', arch: 'x64', gpu_backend: 'cpu', has_gpu: false, recommended_variant: 'cpu' });
 
-  const platform = $derived({ os: platformInfo.platform, arch: platformInfo.arch });
-  const hasGpu = $derived(platformInfo.has_gpu);
-  const gpuBackend = $derived(platformInfo.gpu_backend.toLowerCase());
+  const platformLabel = $derived.by(() => {
+    const os = platformInfo.platform === 'macos' ? 'macOS' : platformInfo.platform === 'windows' ? 'Windows' : 'Linux';
+    const gpu = platformInfo.has_gpu ? `${platformInfo.gpu_backend.toUpperCase()} GPU` : '';
+    return [os, platformInfo.arch, gpu].filter(Boolean).join(' · ');
+  });
 
+  // ── Releases ─────────────────────────────────────────────────────────
   let releaseAssets = $state<ReleaseAsset[]>([]);
   let releaseExtras = $state<ReleaseAsset[]>([]);
   let loadingRelease = $state(false);
-  let releaseError = $state('');
+  let releaseNotice = $state<ReleaseFetchResult['notice']>('');
+  let latestTag = $state('');
   let releaseTag = $state('');
 
   async function fetchLatestRelease() {
     loadingRelease = true;
-    releaseError = '';
-    releaseAssets = [];
-    releaseExtras = [];
     try {
       const result = await fetchLlamaReleaseAssets(platformInfo);
       releaseTag = result.tag;
       releaseAssets = result.assets;
       releaseExtras = result.extras;
-      releaseError = result.error;
+      releaseNotice = result.notice;
+      latestTag = result.latestTag ?? '';
     } finally {
       loadingRelease = false;
     }
   }
 
-  let runtimes = $state<any[]>([]);
-  let supervisor = $state<any | null>(null);
+  // ── Installed builds and the running server ──────────────────────────
+  let runtimes = $state<InstalledRuntime[]>([]);
+  let supervisor = $state<Supervisor | null>(null);
   let telemetry = $state<RuntimeTelemetry | null>(null);
 
+  const configuredPath = $derived(appStore.config?.llm?.local?.runtime_path || '');
+  const isActive = (rt: InstalledRuntime) => rt.is_active ?? configuredPath === rt.path;
+  const running = $derived(!!supervisor && !!supervisor.state && !['idle', 'unknown', 'Stopped', 'stopped'].includes(supervisor.state));
+
   async function refresh() {
-    const out = await getInstalledRuntimes() as { runtimes?: any[] };
+    const out = await getInstalledRuntimes() as { runtimes?: InstalledRuntime[] };
     runtimes = Array.isArray(out?.runtimes) ? out.runtimes : [];
-    supervisor = await getSupervisorStatus().catch(() => null);
+    supervisor = await getSupervisorStatus().catch(() => null) as Supervisor | null;
     telemetry = await getRuntimeTelemetry().catch(() => null);
   }
 
-  async function removeRuntime(path: string) {
-    await deleteRuntimeBinary(path);
+  async function removeRuntime(rt: InstalledRuntime) {
+    const accepted = await confirmStore.ask({
+      title: get(t)('runtime.deleteTitle', { values: { name: rt.name } }),
+      message: get(t)('runtime.deleteMessage'),
+      confirmLabel: get(t)('runtime.delete'),
+      danger: true
+    });
+    if (!accepted) return;
+    await deleteRuntimeBinary(rt.path);
     await refresh();
   }
 
@@ -65,53 +91,38 @@
     await modelsStore.refreshStatus();
   }
 
-  function useRuntime(path: string) {
-    appStore.setLocalRuntimePath(path);
-    if (closeOnUse) appStore.runtimeManagerOpen = false;
-  }
-
+  // ── Installing ───────────────────────────────────────────────────────
   let downloading = $state<string | null>(null);
   let downloadProgress = $state(0);
   let downloadPhase = $state('');
   let downloadError = $state('');
-  let showAdvanced = $state(false);
   let customUrl = $state('');
   let customAsset = $state('');
   let customTag = $state('');
 
+  async function install(payload: Parameters<typeof downloadRuntime>[0], name: string) {
+    downloading = name;
+    downloadProgress = 0;
+    downloadPhase = 'downloading';
+    downloadError = '';
+    try {
+      await downloadRuntime(payload);
+      await refresh();
+      // The first build someone installs is the one they mean to use.
+      if (!configuredPath && runtimes.length === 1) appStore.setLocalRuntimePath(runtimes[0].path);
+    } catch (e: unknown) {
+      downloadError = String((e as Error)?.message || e || '');
+    } finally {
+      downloading = null;
+    }
+  }
+
+  const installAsset = (asset: ReleaseAsset) => install(toDownloadPayload(asset), asset.name);
+  const installCustom = () =>
+    install({ download_url: customUrl.trim(), asset_name: customAsset.trim(), release_tag: customTag.trim() }, customAsset.trim());
+
   let unlisten: (() => void) | null = null;
   let telemetryTimer: ReturnType<typeof setInterval> | null = null;
-
-  async function installAsset(asset: ReleaseAsset) {
-    downloading = asset.name;
-    downloadProgress = 0;
-    downloadPhase = 'downloading';
-    downloadError = '';
-    try {
-      await downloadRuntime(toDownloadPayload(asset));
-      await refresh();
-    } catch (e: any) {
-      downloadError = String(e?.message || e || 'Download failed');
-    } finally {
-      downloading = null;
-    }
-  }
-
-  async function installCustom() {
-    if (!customUrl.trim() || !customAsset.trim() || !customTag.trim()) return;
-    downloading = customAsset.trim();
-    downloadProgress = 0;
-    downloadPhase = 'downloading';
-    downloadError = '';
-    try {
-      await downloadRuntime({ download_url: customUrl.trim(), asset_name: customAsset.trim(), release_tag: customTag.trim() });
-      await refresh();
-    } catch (e: any) {
-      downloadError = String(e?.message || e || 'Download failed');
-    } finally {
-      downloading = null;
-    }
-  }
 
   onMount(async () => {
     await refresh();
@@ -134,229 +145,172 @@
   });
 </script>
 
-<div class={embedded ? 'rounded-2xl bg-[var(--muted)]' : 'flex-1 overflow-y-auto'}>
-  {#if runtimes.length === 0}
-    <div class="mx-5 mt-4 flex items-start gap-3 rounded-xl bg-[var(--surface)] px-4 py-3">
-      <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
-      <div>
-        <p class="text-[13px] font-medium text-[var(--text)]">No runtime installed</p>
-        <p class="mt-0.5 text-[12px] text-[var(--text-secondary)]">Download and install the llama.cpp runtime below to load local models.</p>
+{#snippet progress(name: string)}
+  {#if downloading === name}
+    <div class="mt-2 flex items-center gap-2">
+      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-active)]">
+        <div class="h-full rounded-full bg-primary transition-[width]" style="width:{Math.max(4, downloadProgress)}%"></div>
       </div>
+      <span class="w-24 text-right text-[11px] tabular-nums text-muted-foreground">
+        {downloadPhase === 'extracting' ? $t('runtime.extracting') : `${downloadProgress.toFixed(0)}%`}
+      </span>
     </div>
   {/if}
+{/snippet}
 
-  <div class="space-y-3 p-5">
-    <div class="flex items-center justify-between">
+<!-- Installed builds + the running server -->
+<SettingsSection title={$t('runtime.installed')} description={$t('runtime.installedHint')}>
+  {#snippet actions()}
+    <Button variant="ghost" size="icon-sm" onclick={() => void refresh()} aria-label={$t('runtime.refresh')} title={$t('runtime.refresh')}><RefreshCw /></Button>
+  {/snippet}
+
+  {#if !runtimes.length}
+    <div class="flex items-start gap-2.5 py-3 text-sm">
+      <TriangleAlert class="mt-0.5 size-4 shrink-0 text-warning" />
       <div>
-        <p class="text-[13px] font-semibold text-[var(--text)]">Download runtime</p>
-        <p class="text-[12px] text-[var(--text-muted)]">
-          Detected: <span class="font-medium text-[var(--text-secondary)]">{platform.os === 'macos' ? 'macOS' : platform.os === 'windows' ? 'Windows' : 'Linux'} / {platform.arch}</span>
-          {#if hasGpu}
-            / <span class="font-medium text-[var(--text-secondary)]">{gpuBackend.toUpperCase()} GPU</span>
-          {/if}
-        </p>
-      </div>
-      <div class="flex items-center gap-1.5">
-        {#if releaseTag}
-          <span class="text-[12px] text-[var(--text-muted)]">{releaseTag}</span>
-        {/if}
-        <button class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={fetchLatestRelease} disabled={loadingRelease}>
-          <RefreshCw class={`h-3 w-3 ${loadingRelease ? 'animate-spin' : ''}`} />
-          {loadingRelease ? '' : 'Refresh'}
-        </button>
+        <p class="font-medium text-foreground">{$t('runtime.noneInstalled')}</p>
+        <p class="text-xs text-muted-foreground">{$t('runtime.noneInstalledHint')}</p>
       </div>
     </div>
-
-    {#if releaseError}
-      <div class="rounded-xl bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--text)]">{releaseError}</div>
-    {/if}
-
-    {#if loadingRelease}
-      <div class="flex items-center gap-2 py-2 text-[13px] text-[var(--text-muted)]">
-        <LoaderCircle class="h-4 w-4 animate-spin" />Fetching latest release from GitHub...
-      </div>
-    {:else if releaseAssets.length}
-      <div class="space-y-2">
-        {#each releaseAssets as asset}
-          {@const isDownloading = downloading === asset.name}
-          <div class="flex items-center justify-between gap-3 rounded-xl bg-[var(--surface)] px-4 py-3 transition">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-1.5">
-                {#if asset.variant === 'recommended'}
-                  <span class="inline-flex items-center gap-1 rounded-full bg-[var(--primary)] px-2 py-0.5 text-[10px] font-semibold text-[var(--primary-fg)]"><Zap class="h-2.5 w-2.5" />Recommended</span>
-                {:else if asset.variant === 'gpu'}
-                  <span class="inline-flex items-center gap-1 rounded-full bg-[var(--background)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]"><Zap class="h-2.5 w-2.5" />GPU</span>
-                {:else}
-                  <span class="inline-flex items-center gap-1 rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-tertiary)]"><Cpu class="h-2.5 w-2.5" />CPU</span>
-                {/if}
-                <span class="text-[12px] font-medium text-[var(--text-secondary)]">{asset.label}</span>
-              </div>
-              <p class="mt-0.5 text-[12px] text-[var(--text-muted)]">
-                {asset.description}{#if asset.companions.length} — includes the CUDA runtime{/if}
-              </p>
-              {#if isDownloading}
-                <div class="mt-1.5 space-y-1">
-                  <div class="h-2 w-full overflow-hidden rounded-full bg-[var(--surface)]">
-                    <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width:{downloadProgress}%"></div>
-                  </div>
-                  <p class="text-[10px] text-[var(--text-muted)]">{downloadPhase === 'extracting' ? 'Extracting...' : `Downloading... ${downloadProgress.toFixed(0)}%`}</p>
-                </div>
-              {/if}
-            </div>
-            <button
-              class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-50 {asset.variant === 'recommended' ? 'bg-[var(--primary)] text-[var(--primary-fg)] hover:opacity-90' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'}"
-              onclick={() => installAsset(asset)}
-              disabled={!!downloading}
-            >
-              {#if isDownloading}
-                <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-              {:else}
-                <Download class="h-3.5 w-3.5" />
-              {/if}
-              {isDownloading ? (downloadPhase === 'extracting' ? 'Extracting...' : 'Downloading...') : 'Install'}
-            </button>
-          </div>
-        {/each}
-      </div>
-    {:else if !loadingRelease && !releaseAssets.length}
-      <p class="text-[13px] text-[var(--text-muted)]">No matching release assets found for your platform.</p>
-    {/if}
-
-    {#if downloadError}
-      <div class="rounded-xl bg-[var(--surface)] px-3 py-2 text-[12px] text-[var(--text)]">{downloadError}</div>
-    {/if}
-
-    <button class="flex items-center gap-1 border-0 text-[12px] text-[var(--text-muted)] hover:text-[var(--text-secondary)]" onclick={() => (showAdvanced = !showAdvanced)}>
-      {#if showAdvanced}<ChevronUp class="h-3.5 w-3.5" />{:else}<ChevronDown class="h-3.5 w-3.5" />{/if}
-      Other builds / manual URL
-    </button>
-    {#if showAdvanced}
-      {#if releaseExtras.length}
-        <div class="space-y-2 rounded-xl bg-[var(--surface)] px-4 py-3">
-          <p class="text-[12px] text-[var(--text-muted)]">Superseded builds for this platform.</p>
-          {#each releaseExtras as extra}
-            <div class="flex items-center justify-between gap-3">
-              <span class="min-w-0 truncate text-[12px] text-[var(--text-secondary)]">{extra.label}</span>
-              <button
-                class="shrink-0 rounded-full px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)] disabled:opacity-50"
-                onclick={() => installAsset(extra)}
-                disabled={!!downloading}
-              >
-                Install
-              </button>
-            </div>
-          {/each}
+  {:else}
+    {#each runtimes as rt (rt.path)}
+      {@const active = isActive(rt)}
+      <div class="flex items-center gap-3 py-2.5">
+        <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {active ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
+          {#if active}<Check class="size-2.5" />{/if}
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium text-foreground">{rt.name}</p>
+          <p class="truncate text-[11px] text-muted-foreground" title={rt.path}>{rt.path}</p>
         </div>
-      {/if}
-      <div class="space-y-2 rounded-xl bg-[var(--surface)] px-4 py-3">
-        <input bind:value={customTag} placeholder="Release tag (e.g. b4620)" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <input bind:value={customAsset} placeholder="Asset filename (e.g. llama-b4620-bin-ubuntu-x64.zip)" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <input bind:value={customUrl} placeholder="Direct download URL" class="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--text)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--border-hover)]" />
-        <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90 disabled:opacity-50" onclick={installCustom} disabled={!!downloading || !customUrl.trim()}>
-          <Download class="h-3.5 w-3.5" />Install from URL
-        </button>
+        {#if active}
+          <Badge tone="success">{$t('runtime.active')}</Badge>
+        {:else}
+          <Button variant="outline" size="sm" onclick={() => appStore.setLocalRuntimePath(rt.path)}>{$t('runtime.use')}</Button>
+        {/if}
+        <Button variant="ghost" size="icon-sm" class="text-muted-foreground hover:text-error" onclick={() => void removeRuntime(rt)} aria-label={$t('runtime.deleteTitle', { values: { name: rt.name } })}>
+          <Trash2 />
+        </Button>
       </div>
-    {/if}
-  </div>
-
-  <div class="border-t border-[var(--border)] p-5">
-    <div class="mb-3 flex items-center justify-between">
-      <p class="text-[13px] font-semibold text-[var(--text)]">Installed runtimes</p>
-      <button class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] text-[var(--text-tertiary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={refresh}>
-        <RefreshCw class="h-3 w-3" />Refresh
-      </button>
-    </div>
-
-    {#if !runtimes.length}
-      <div class="rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-[13px] text-[var(--text-muted)]">
-        No runtime binaries installed yet.
-      </div>
-    {:else}
-      <div class="space-y-2">
-        {#each runtimes as rt}
-          {@const isActive = rt.is_active ?? (appStore.config?.llm?.local?.runtime_path === rt.path)}
-          <div class="flex items-center justify-between gap-3 rounded-lg px-4 py-3 transition {isActive ? 'bg-[var(--surface-active)]' : 'bg-[var(--surface)]'}">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                {#if isActive}
-                  <span class="inline-block h-1.5 w-1.5 rounded-full bg-[var(--primary)]"></span>
-                {/if}
-                <span class="truncate text-[13px] font-medium text-[var(--text-secondary)]">{rt.name}</span>
-              </div>
-              <p class="truncate text-[12px] text-[var(--text-muted)]">{rt.path}</p>
-            </div>
-            <div class="flex shrink-0 items-center gap-1.5">
-              {#if !isActive}
-                <button class="inline-flex items-center gap-1.5 rounded-full bg-[var(--primary)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--primary-fg)] transition hover:opacity-90" onclick={() => useRuntime(rt.path)}>
-                  Use
-                </button>
-              {:else}
-                <span class="text-[12px] font-medium text-[var(--text-secondary)]">Active</span>
-              {/if}
-              <button class="rounded-full p-1.5 text-[var(--text-muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]" onclick={() => removeRuntime(rt.path)} title="Delete">
-                <Trash2 class="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </div>
+    {/each}
+  {/if}
 
   {#if supervisor}
-    <div class="border-t border-[var(--border)] p-5">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-[11px] font-semibold st text-[var(--text-muted)]">Runtime process</p>
-          <p class="mt-0.5 text-[13px] font-medium text-[var(--text-secondary)]">
-            {supervisor.load_phase || supervisor.state || 'unknown'}
-            {#if supervisor.active_model} / <span class="text-[var(--text-muted)]">{supervisor.active_model.split(/[\\/]/).pop()}</span>{/if}
+    <div class="py-3">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <p class="flex items-center gap-2 text-sm font-medium text-foreground">
+            <span class="size-2 shrink-0 rounded-full {running ? 'bg-success' : 'bg-[var(--text-muted)] opacity-50'}"></span>
+            {running ? $t('runtime.running') : $t('runtime.stopped')}
           </p>
-          {#if supervisor.build_info}
-            <p class="mt-0.5 text-[11px] text-[var(--text-muted)]">{supervisor.build_info}</p>
-          {/if}
+          <p class="truncate text-xs text-muted-foreground">
+            {#if running && supervisor.active_model}{[supervisor.active_model.split(/[\\/]/).pop(), supervisor.load_phase].filter(Boolean).join(' · ')}
+            {:else}{$t('runtime.stoppedHint')}{/if}
+          </p>
         </div>
-        {#if supervisor.state !== 'idle' && supervisor.state !== 'unknown'}
-          <button class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--text)]" onclick={stopRuntime}>
-            <Square class="h-3 w-3" />Stop
-          </button>
+        {#if running}
+          <Button variant="outline" size="sm" onclick={() => void stopRuntime()}><Square /> {$t('runtime.stop')}</Button>
         {/if}
       </div>
 
       <!-- Measured from the server's own /props and /slots, not estimated. -->
-      {#if supervisor.n_ctx || telemetry}
-        <div class="mt-3 grid gap-2 grid-cols-2 sm:grid-cols-4">
-          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] text-[var(--text-tertiary)]">Context</div>
-            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
-              {(telemetry?.context_size ?? supervisor.n_ctx)?.toLocaleString() ?? '--'}
+      {#if running && (supervisor.n_ctx || telemetry)}
+        <dl class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {#each [
+            [$t('runtime.context'), (telemetry?.context_size ?? supervisor.n_ctx)?.toLocaleString() ?? '—'],
+            [$t('runtime.peakContext'), telemetry?.context_percent != null ? `${telemetry.context_percent}%` : '—'],
+            [$t('runtime.slots'), telemetry ? `${telemetry.slots_busy}/${telemetry.slots_total}` : String(supervisor.total_slots ?? '—')],
+            [$t('runtime.speed'), telemetry?.tokens_per_second != null ? `${telemetry.tokens_per_second.toFixed(1)} tok/s` : '—']
+          ] as [label, value] (label)}
+            <div class="rounded-lg bg-[var(--muted)] px-3 py-2">
+              <dt class="text-[10px] text-muted-foreground">{label}</dt>
+              <dd class="mt-0.5 text-xs font-medium tabular-nums text-foreground">{value}</dd>
             </div>
-          </div>
-          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] text-[var(--text-tertiary)]" title="High watermark of context observed since the server started">Peak ctx</div>
-            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
-              {telemetry?.context_percent != null ? `${telemetry.context_percent}%` : '--'}
-            </div>
-          </div>
-          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] text-[var(--text-tertiary)]">Slots</div>
-            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
-              {telemetry ? `${telemetry.slots_busy}/${telemetry.slots_total}` : (supervisor.total_slots ?? '--')}
-            </div>
-          </div>
-          <div class="rounded-lg bg-[var(--surface)] px-3 py-2">
-            <div class="text-[10px] text-[var(--text-tertiary)]">Tok/s</div>
-            <div class="mt-0.5 text-[12px] font-medium text-[var(--text)]">
-              {telemetry?.tokens_per_second != null ? telemetry.tokens_per_second.toFixed(1) : '--'}
-            </div>
-          </div>
-        </div>
-        {#if telemetry?.context_percent != null}
-          <div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-hover)]">
-            <div class="h-full rounded-full bg-[var(--primary)] transition-all" style="width:{telemetry.context_percent}%"></div>
-          </div>
-        {/if}
+          {/each}
+        </dl>
       {/if}
+      {#if supervisor.build_info}<p class="mt-2 text-[11px] text-muted-foreground">{supervisor.build_info}</p>{/if}
     </div>
   {/if}
-</div>
+</SettingsSection>
+
+<!-- Install another build -->
+<SettingsSection title={$t('runtime.install')} description={$t('runtime.installHint', { values: { platform: platformLabel } })}>
+  {#snippet actions()}
+    {#if releaseTag}<span class="text-xs tabular-nums text-muted-foreground">{releaseTag}</span>{/if}
+    <Button variant="ghost" size="icon-sm" onclick={() => void fetchLatestRelease()} disabled={loadingRelease} aria-label={$t('runtime.checkReleases')} title={$t('runtime.checkReleases')}>
+      <RefreshCw class={loadingRelease ? 'animate-spin' : ''} />
+    </Button>
+  {/snippet}
+
+  {#if releaseNotice}
+    <p class="py-2.5 text-xs text-muted-foreground">{$t(`runtime.notice.${releaseNotice}`, { values: { latest: latestTag, tag: releaseTag } })}</p>
+  {/if}
+
+  {#if loadingRelease && !releaseAssets.length}
+    <p class="flex items-center gap-2 py-3 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('runtime.checking')}</p>
+  {:else if !releaseAssets.length}
+    <p class="py-3 text-sm text-muted-foreground">{$t('runtime.noBuilds')}</p>
+  {:else}
+    {#each releaseAssets as asset (asset.name)}
+      {@const recommended = asset.variant === 'recommended'}
+      <div class="py-3">
+        <div class="flex items-center gap-3">
+          <div class="min-w-0 flex-1">
+            <p class="flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground">
+              {asset.label}
+              {#if recommended}<Badge tone="success" class="gap-1"><Zap class="size-2.5" />{$t('runtime.recommended')}</Badge>{/if}
+            </p>
+            <p class="text-xs text-muted-foreground">
+              {[$t(`runtime.backend.${asset.backend}`), asset.companions.length ? $t('runtime.includesCuda') : ''].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <Button
+            variant={recommended ? 'default' : 'outline'}
+            size="sm"
+            onclick={() => void installAsset(asset)}
+            disabled={!!downloading}
+            loading={downloading === asset.name}
+          >
+            <Download /> {$t('runtime.installAction')}
+          </Button>
+        </div>
+        {@render progress(asset.name)}
+      </div>
+    {/each}
+  {/if}
+
+  {#if downloadError}
+    <p class="py-2.5 text-xs text-error">{$t('runtime.installFailed', { values: { reason: downloadError } })}</p>
+  {/if}
+
+  <div class="py-3">
+    <Disclosure title={$t('runtime.otherBuilds')} description={$t('runtime.otherBuildsHint')} class="border-0 bg-card">
+      <div class="space-y-4">
+        {#if releaseExtras.length}
+          <div class="space-y-1">
+            {#each releaseExtras as extra (extra.name)}
+              <div class="flex items-center justify-between gap-3 py-1">
+                <span class="min-w-0 truncate text-xs text-foreground">{extra.label}</span>
+                <Button variant="ghost" size="xs" onclick={() => void installAsset(extra)} disabled={!!downloading}>{$t('runtime.installAction')}</Button>
+              </div>
+              {@render progress(extra.name)}
+            {/each}
+          </div>
+        {/if}
+        <div class="space-y-2">
+          <p class="text-xs font-medium text-muted-foreground">{$t('runtime.fromUrl')}</p>
+          <Input bind:value={customTag} placeholder={$t('runtime.tagPlaceholder')} />
+          <Input bind:value={customAsset} placeholder={$t('runtime.assetPlaceholder')} />
+          <Input bind:value={customUrl} placeholder={$t('runtime.urlPlaceholder')} spellcheck="false" />
+          <div class="flex justify-end">
+            <Button size="sm" onclick={() => void installCustom()} disabled={!!downloading || !customUrl.trim() || !customAsset.trim() || !customTag.trim()}>
+              <Download /> {$t('runtime.installFromUrl')}
+            </Button>
+          </div>
+          {@render progress(customAsset.trim())}
+        </div>
+      </div>
+    </Disclosure>
+  </div>
+</SettingsSection>

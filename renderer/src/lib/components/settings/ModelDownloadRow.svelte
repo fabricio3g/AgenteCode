@@ -10,6 +10,7 @@
 
 <script lang="ts">
   import { LoaderCircle, Pause, Play, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import type { DownloadJob } from '$lib/types/bridge';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { formatBytes } from '$lib/utils/format';
@@ -53,13 +54,13 @@
       </span>
       {#if running && speed}
         <span class="shrink-0 tabular-nums text-[var(--text-muted)]">
-          {formatBytes(speed.speedBps)}/s{speed.etaSeconds > 0 ? ` · ${formatEta(speed.etaSeconds)} left` : ''}
+          {formatBytes(speed.speedBps)}/s{speed.etaSeconds > 0 ? ` · ${$t('modelHub.timeLeft', { values: { time: formatEta(speed.etaSeconds) } })}` : ''}
         </span>
       {/if}
       {#if job.status === 'paused'}
-        <span class="shrink-0 text-[var(--warning)]">Paused</span>
+        <span class="shrink-0 text-[var(--warning)]">{$t('modelHub.paused')}</span>
       {:else if job.status === 'interrupted'}
-        <span class="shrink-0 text-[var(--warning)]">Interrupted — resume to continue</span>
+        <span class="shrink-0 text-[var(--warning)]">{$t('modelHub.interrupted')}</span>
       {:else if job.status === 'error'}
         <span class="truncate text-[var(--danger)]" title={job.error || ''}>{job.error}</span>
       {/if}
@@ -74,7 +75,7 @@
     </div>
 
     {#if job.load_when_ready && !['completed'].includes(job.status)}
-      <p class="mt-1 text-[10px] text-[var(--text-muted)]">Will load automatically when ready</p>
+      <p class="mt-1 text-[10px] text-[var(--text-muted)]">{$t('modelHub.willLoad')}</p>
     {/if}
   </div>
 
@@ -84,8 +85,8 @@
         type="button"
         class="aui-icon-button size-7"
         onclick={() => void downloadsStore.pauseJob(job.id).then(() => downloadsStore.refresh())}
-        aria-label="Pause download"
-        title="Pause (keeps downloaded bytes)"
+        aria-label={$t('modelHub.pause')}
+        title={$t('modelHub.pauseHint')}
       >
         <Pause class="size-3.5" />
       </button>
@@ -93,8 +94,8 @@
         type="button"
         class="aui-icon-button size-7"
         onclick={() => void downloadsStore.cancelJob(job.id)}
-        aria-label="Cancel download"
-        title="Cancel (discards partial bytes)"
+        aria-label={$t('modelHub.cancelDownload')}
+        title={$t('modelHub.cancelHint')}
       >
         <X class="size-3.5" />
       </button>
@@ -103,8 +104,8 @@
         type="button"
         class="aui-icon-button size-7"
         onclick={() => void downloadsStore.resumeJob(job)}
-        aria-label="Resume download"
-        title="Resume from where it stopped"
+        aria-label={$t('modelHub.resume')}
+        title={$t('modelHub.resumeHint')}
       >
         <Play class="size-3.5" />
       </button>
@@ -112,8 +113,8 @@
         type="button"
         class="aui-icon-button size-7"
         onclick={() => void downloadsStore.removeJob(job.id)}
-        aria-label="Dismiss"
-        title="Dismiss this entry"
+        aria-label={$t('modelHub.dismiss')}
+        title={$t('modelHub.dismiss')}
       >
         <X class="size-3.5" />
       </button>
@@ -126,8 +127,5 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--surface) 70%, transparent);
-    padding: 0.5rem 0.625rem;
   }
 </style>

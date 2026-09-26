@@ -3,16 +3,13 @@
 <!--
   The message hover bar. One implementation for both roles.
 
-  Primary actions sit inline; everything else collapses into a single overflow
-  menu. Branch paging, when present, is rendered above the menu items rather
-  than as a row wedged inside them.
+  Every action is an inline icon (edit, listen and delete included), so
+  nothing hides behind a "…" menu. The menu only remains for branch paging.
 -->
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { Check, MoreHorizontal } from 'lucide-svelte';
-  import { Menu, MenuItem } from '$lib/components/ui';
-  import { copy } from '$lib/copy';
+  import { Check } from 'lucide-svelte';
   import type { MessageAction } from './message-actions';
 
   interface Props {
@@ -20,7 +17,7 @@
     align?: 'start' | 'end';
     /** Keep the bar on screen regardless of hover. */
     visible?: boolean;
-    /** Extra content rendered at the top of the overflow menu. */
+    /** Extra inline content at the start of the row (branch paging). */
     menuHeader?: Snippet;
     /** Raised while the menu is open so the parent can keep the bar visible. */
     onmenutoggle?: (open: boolean) => void;
@@ -34,9 +31,12 @@
   let confirmedId = $state<string | null>(null);
   let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const primary = $derived(actions.filter((action) => action.primary));
-  const overflow = $derived(actions.filter((action) => !action.primary));
-  const hasOverflow = $derived(overflow.length > 0 || !!menuHeader);
+  // Primary first, then the rest; destructive actions last.
+  const inline = $derived([
+    ...actions.filter((action) => action.primary),
+    ...actions.filter((action) => !action.primary && !action.danger),
+    ...actions.filter((action) => !action.primary && action.danger)
+  ]);
 
   function run(action: MessageAction) {
     action.run();
@@ -47,12 +47,6 @@
       confirmedId = null;
       confirmTimer = null;
     }, CONFIRM_MS);
-  }
-
-  function runFromMenu(action: MessageAction) {
-    menuOpen = false;
-    onmenutoggle?.(false);
-    run(action);
   }
 
   $effect(() => {
@@ -68,7 +62,9 @@
 </script>
 
 <div class="message-action-bar {align === 'end' ? 'justify-end' : ''} {shown ? 'visible' : ''}">
-  {#each primary as action (action.id)}
+  <!-- Branch paging (‹ 1/2 ›), when present, leads the row. -->
+  {#if menuHeader}{@render menuHeader()}{/if}
+  {#each inline as action (action.id)}
     {@const Icon = action.active && action.activeIcon ? action.activeIcon : action.icon}
     {@const label = action.active && action.activeLabel ? action.activeLabel : action.label}
     <button
@@ -89,35 +85,4 @@
     </button>
   {/each}
 
-  {#if hasOverflow}
-    <Menu
-      bind:open={menuOpen}
-      placement={align === 'end' ? 'top-end' : 'top-start'}
-      label="Message actions"
-    >
-      {#snippet trigger(props)}
-        <button
-          type="button"
-          class="msg-action-btn"
-          aria-label={copy.actions.more}
-          title={copy.actions.more}
-          {...props}
-        >
-          <MoreHorizontal class="size-3" />
-        </button>
-      {/snippet}
-
-      {#if menuHeader}{@render menuHeader()}{/if}
-
-      {#each overflow as action (action.id)}
-        <MenuItem
-          icon={action.active && action.activeIcon ? action.activeIcon : action.icon}
-          label={action.active && action.activeLabel ? action.activeLabel : action.label}
-          danger={action.danger}
-          disabled={action.disabled}
-          onselect={() => runFromMenu(action)}
-        />
-      {/each}
-    </Menu>
-  {/if}
 </div>

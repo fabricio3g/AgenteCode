@@ -3,7 +3,10 @@
  * Handles upgrading older config versions to current schema.
  */
 
+import { DEFAULT_AGGREGATOR_ENGINES, SUPPORTED_AGGREGATOR_ENGINES, type AggregatorEngineId } from './search-providers/aggregator/constants.ts';
+import { REMOVED_SEARCH_PROVIDERS } from './search-providers/shared.ts';
 import path from 'node:path';
+import { REMOVED_PROVIDER_IDS } from '../shared/providers.ts';
 import type {
   AppConfig,
   TTSConfig,
@@ -70,6 +73,8 @@ const LEGACY_STT_PROVIDERS = new Set([
   'openai', 'openrouter', 'lmstudio', 'groq', 'mistral',
   'anthropic', 'gemini', 'perplexity', 'xai',
 ]);
+
+const REMOVED_PROVIDERS = new Set(REMOVED_PROVIDER_IDS);
 
 /**
  * Provider configuration interface for migration.
@@ -198,9 +203,18 @@ export function ensureSearchConfig(cfg: AppConfig): boolean {
     dirty = true;
   }
 
-  if (!search.provider) {
-    search.provider = 'aggregator';
+  // Scrapers and resellers of scraped results were removed (see
+  // search-providers/shared.ts); a saved choice of one searches with auto.
+  if (!search.provider || REMOVED_SEARCH_PROVIDERS.includes(String(search.provider))) {
+    search.provider = 'auto';
     dirty = true;
+  }
+  const savedProviders = (search.providers ?? {}) as Record<string, unknown>;
+  for (const id of REMOVED_SEARCH_PROVIDERS) {
+    if (id in savedProviders) {
+      delete savedProviders[id];
+      dirty = true;
+    }
   }
 
   if (!search.max_results) {
@@ -208,11 +222,38 @@ export function ensureSearchConfig(cfg: AppConfig): boolean {
     dirty = true;
   }
 
-  if (!Array.isArray(search.aggregator_engines)) {
-    search.aggregator_engines = ['duckduckgo', 'wikipedia', 'wiby', 'mojeek'];
+  const engines = Array.isArray(search.aggregator_engines) ? search.aggregator_engines.map(String) : null;
+  const kept = engines?.filter((id) => SUPPORTED_AGGREGATOR_ENGINES.includes(id as AggregatorEngineId)) ?? [];
+  // Drop removed engines; if that leaves nothing, use the defaults. A list
+  // that was already empty is the user's choice and stays empty.
+  if (!engines || kept.length !== engines.length) {
+    search.aggregator_engines = kept.length || (engines && !engines.length) ? kept : [...DEFAULT_AGGREGATOR_ENGINES];
     dirty = true;
   }
 
+  return dirty;
+}
+
+/**
+ * Providers whose terms need an agreement for third-party apps were removed
+ * (see shared/providers.ts). Drop their saved entries, and if one was the
+ * active route, leave no provider selected so the picker asks for a new one.
+ */
+export function dropRemovedProviders(cfg: AppConfig): boolean {
+  const llm = cfg.llm;
+  if (!llm) return false;
+  let dirty = false;
+  const providers = (llm.providers ?? {}) as Record<string, unknown>;
+  for (const id of REMOVED_PROVIDERS) {
+    if (id in providers) {
+      delete providers[id];
+      dirty = true;
+    }
+  }
+  if (REMOVED_PROVIDERS.has(String(llm.provider ?? ''))) {
+    llm.provider = '';
+    dirty = true;
+  }
   return dirty;
 }
 
@@ -223,7 +264,7 @@ export function ensureSearchConfig(cfg: AppConfig): boolean {
  * @returns Migration result with config and dirty flag
  */
 export function migrateConfig(cfg: AppConfig, modelsRoot: string): MigrationResult {
-  let dirty = false;
+  let dirty = dropRemovedProviders(cfg);
 
   // Migrate LLM providers
   const providers = cfg.llm?.providers ?? {};

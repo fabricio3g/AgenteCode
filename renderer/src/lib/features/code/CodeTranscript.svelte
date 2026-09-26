@@ -16,7 +16,7 @@
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
-  import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
+  import CodeStepRow from './CodeStepRow.svelte';
   import { t } from 'svelte-i18n';
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
@@ -46,6 +46,24 @@
   function onScroll() {
     if (!viewport) return;
     pinnedToBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
+  }
+
+  type Entry = ReturnType<typeof orderedEntries>[number];
+  type Block = { key: string; steps?: NonNullable<Entry['step']>[]; text?: string };
+
+  /** Consecutive steps become one block, so spacing separates text from work. */
+  function groupEntries(entries: Entry[]): Block[] {
+    const blocks: Block[] = [];
+    for (const entry of entries) {
+      const last = blocks[blocks.length - 1];
+      if (entry.step) {
+        if (last?.steps) last.steps.push(entry.step);
+        else blocks.push({ key: entry.key, steps: [entry.step] });
+      } else if (entry.text) {
+        blocks.push({ key: entry.key, text: entry.text });
+      }
+    }
+    return blocks;
   }
 
   function entriesFor(message: ChatMessage) {
@@ -89,17 +107,22 @@
         {@const streaming = message.status === 'streaming'}
         {@const entries = entriesFor(message)}
         {@const todos = streaming ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
-        <div class="flex flex-col gap-2">
-          {#if message.reasoning}
+        <div class="flex flex-col gap-4">
+          {#if message.reasoning?.trim()}
             <ReasoningBlock reasoning={message.reasoning} status={message.status} variant="outline" />
           {/if}
 
-          {#each entries as entry (entry.key)}
-            {#if entry.step}
-              <ToolCallRow step={entry.step} />
-            {:else if entry.text}
+          <!-- Runs of steps sit together as one block; text and cards get room around them. -->
+          {#each groupEntries(entries) as block (block.key)}
+            {#if block.steps}
+              <div class="-mx-2 flex flex-col gap-px">
+                {#each block.steps as step (step.id)}
+                  <CodeStepRow {step} />
+                {/each}
+              </div>
+            {:else if block.text}
               <div class="text-sm leading-relaxed text-foreground">
-                <RichContent content={entry.text} />
+                <RichContent content={block.text} />
               </div>
             {/if}
           {/each}
@@ -151,6 +174,11 @@
               <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-amber-600 dark:text-amber-400">
                 <TriangleAlert class="size-3" />
                 {copy.codeRun.turnLimit}{elapsed ? ` · ${elapsed}` : ''}
+              </div>
+            {:else if reason === 'stop' && !entries.length && !message.reasoning?.trim()}
+              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-amber-600 dark:text-amber-400">
+                <TriangleAlert class="size-3" />
+                {copy.codeRun.noReply}
               </div>
             {:else if reason === 'stop'}
               <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-muted-foreground">

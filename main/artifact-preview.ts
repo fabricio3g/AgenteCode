@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BrowserWindow, session, type IpcMain } from 'electron';
+import { BrowserWindow, session } from 'electron';
 import { protectedArtifactHtml } from '../shared/artifact-preview-policy.ts';
 import { getMainWindow } from './window-manager.ts';
 
@@ -60,37 +60,4 @@ export async function withArtifactTimeout<T>(operation: Promise<T>, milliseconds
   } finally {
     clearTimeout(timer);
   }
-}
-
-let previewWindow: BrowserWindow | null = null;
-
-export function registerArtifactPreviewHandlers(ipcMain: IpcMain) {
-  ipcMain.handle('artifact_preview_open', async (event, args: unknown) => {
-    const main = getMainWindow();
-    if (!main || event.sender !== main.webContents || event.senderFrame !== main.webContents.mainFrame) {
-      throw new Error('Artifact preview is only available to the main app.');
-    }
-    const input = args as { html?: unknown; title?: unknown } | null;
-    if (typeof input?.html !== 'string' || !input.html.trim() || input.html.length > 10_000_000) {
-      throw new Error('Preview must contain HTML smaller than 10 MB.');
-    }
-    if (previewWindow && !previewWindow.isDestroyed()) previewWindow.destroy();
-    const win = createArtifactWindow(true);
-    previewWindow = win;
-    win.setTitle(`${String(input.title || 'Artifact').slice(0, 120)} · Offline preview`);
-    const closeWithParent = () => { if (!win.isDestroyed()) win.destroy(); };
-    main.once('closed', closeWithParent);
-    win.once('closed', () => {
-      main.removeListener('closed', closeWithParent);
-      if (previewWindow === win) previewWindow = null;
-    });
-    try {
-      await withArtifactTimeout(loadArtifactHtml(win, input.html, true));
-      if (!win.isDestroyed()) win.show();
-      return { ok: true };
-    } catch (error) {
-      if (!win.isDestroyed()) win.destroy();
-      throw error;
-    }
-  });
 }

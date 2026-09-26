@@ -1,171 +1,367 @@
 <svelte:options runes={true} />
 
 <!--
-  DOCX viewer — real pages, not a styled text column.
+  A Word document the way Word shows it: real pages (docx-preview renders the
+  file's own geometry, fonts, headers, footers and footnotes) as white sheets
+  on a gray canvas. Along the bottom, like Word's status bar: the page you're
+  on, find in document, zoom and fit-to-width.
 
-  Mammoth gave semantic HTML plus a hand-written stylesheet inside a fixed-height
-  iframe: one endless column of body text, hardcoded light colors (a glare in dark
-  mode), and a large white void beneath short documents. The document's own page
-  geometry, headers, footers and fonts were all discarded.
-
-  `docx-preview` (Apache-2.0) renders the DOCX itself: real A4 pages, page breaks
-  from the file, headers/footers/footnotes, and document width/height. The stock
-  gray backdrop is replaced with the app's muted canvas, and pages are scaled down
-  (never up) to fit the reader column so a portrait page is fully visible on a
-  laptop screen — the same anatomy Google Docs and Word's web viewer use.
-
-  The pipeline itself lives in docx-pages.ts (loading, page counting, zoom math)
-  so this file stays a template over tested logic.
+  Pages stay white in dark mode, as in Word: the document's own colors are
+  written for paper.
 -->
 
 <script lang="ts">
-  import { copy } from '$lib/copy';
+  import { ChevronDown, ChevronUp, Minus, Plus, Search, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import ViewerStatus from './ViewerStatus.svelte';
   import { fitZoom, loadDocxInto } from './docx-pages';
+  import { panScroll, zoomAroundCenter } from './pan-scroll';
+  import { tick } from 'svelte';
 
   interface Props {
     src: string;
     filename: string;
+    /** Find text, e.g. from the reader's search box. */
+    query?: string;
   }
 
-  let { src, filename }: Props = $props();
+  let { src, filename, query = '' }: Props = $props();
+
+  const HIGHLIGHT = 'docx-find';
+  const HIGHLIGHT_ACTIVE = 'docx-find-active';
 
   let loading = $state(true);
   let error = $state<string | null>(null);
   let pageCount = $state(0);
-  let zoom = $state(1);
+  let page = $state(1);
+  /** null = fit to width (follows the panel as it resizes). */
+  let manualZoom = $state<number | null>(null);
+  let fit = $state(1);
+  let find = $state('');
+  let findIndex = $state(0);
+  let hits = $state<Range[]>([]);
   let host: HTMLDivElement | undefined = $state();
-  let stage: HTMLDivElement | undefined = $state();
+  let canvas: HTMLDivElement | undefined = $state();
 
-  async function renderDocx(source: string, name: string, target: HTMLDivElement, isCurrent: () => boolean) {
+  const zoom = $derived(manualZoom ?? fit);
+  const term = $derived((find || query).trim());
+
+  async function render(source: string, name: string, target: HTMLDivElement, isCurrent: () => boolean) {
     loading = true;
     error = null;
     pageCount = 0;
     target.replaceChildren();
     try {
-      if (!source) throw new Error('No document source available. Download the file to open it.');
-      // Each load owns its target. A superseded async render cannot overwrite
-      // the current document, even if it finishes after the new load.
+      if (!source) throw new Error($t('viewer.doc.failed'));
+      // Each load owns its target, so a superseded render can't land late.
       const pending = document.createElement('div');
       const pages = await loadDocxInto(source, name, pending);
       if (!isCurrent()) return;
       target.replaceChildren(...pending.childNodes);
       pageCount = pages;
-      recalcZoom();
+      page = 1;
+      recalcFit();
     } catch (err) {
       console.error('[DocxViewer] Failed to render DOCX:', err);
-      if (isCurrent()) {
-        error = err instanceof Error ? err.message : 'Document preview is unavailable. Download it to open.';
-      }
+      if (isCurrent()) error = $t('viewer.doc.failed');
     } finally {
       if (isCurrent()) loading = false;
     }
   }
 
-  function recalcZoom() {
-    const page = host?.querySelector<HTMLElement>('section.docx');
-    const available = (stage?.clientWidth || 0) - 40;
-    zoom = page ? fitZoom(page.offsetWidth, available) : 1;
+  function pages(): HTMLElement[] {
+    return Array.from(host?.querySelectorAll<HTMLElement>('section.docx') ?? []);
+  }
+
+  function recalcFit() {
+    const first = pages()[0];
+    const available = (canvas?.clientWidth || 0) - 48;
+    fit = first ? fitZoom(first.offsetWidth, available) : 1;
   }
 
   $effect(() => {
     if (!host) return;
     let current = true;
-    void renderDocx(src, filename, host, () => current);
+    void render(src, filename, host, () => current);
     return () => {
       current = false;
     };
   });
 
   $effect(() => {
-    if (!stage || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => recalcZoom());
-    observer.observe(stage);
+    if (!canvas || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => recalcFit());
+    observer.observe(canvas);
     return () => observer.disconnect();
+  });
+
+  /** Which page sits under the middle of the canvas. */
+  function trackPage() {
+    if (!canvas) return;
+    const middle = canvas.getBoundingClientRect().top + canvas.clientHeight / 3;
+    const list = pages();
+    let current = 1;
+    list.forEach((section, index) => {
+      if (section.getBoundingClientRect().top <= middle) current = index + 1;
+    });
+    page = current;
+  }
+
+  function goToPage(next: number) {
+    const target = pages()[Math.max(0, Math.min(pageCount - 1, next - 1))];
+    target?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function setZoom(next: number | null) {
+    const value = next === null ? null : Math.max(0.3, Math.min(3, Math.round(next * 10) / 10));
+    void zoomAroundCenter(canvas, () => (manualZoom = value), tick);
+  }
+
+  // Find: collect a Range per hit and paint them with the CSS Highlight API.
+  $effect(() => {
+    const needle = term.toLowerCase();
+    const registry = typeof CSS !== 'undefined' && 'highlights' in CSS ? CSS.highlights : null;
+    registry?.delete(HIGHLIGHT);
+    registry?.delete(HIGHLIGHT_ACTIVE);
+    if (!host || loading || !needle) {
+      hits = [];
+      return;
+    }
+    const found: Range[] = [];
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = (node.textContent || '').toLowerCase();
+      let at = text.indexOf(needle);
+      while (at >= 0) {
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + needle.length);
+        found.push(range);
+        at = text.indexOf(needle, at + needle.length);
+      }
+    }
+    hits = found;
+    findIndex = 0;
+    if (registry && found.length) registry.set(HIGHLIGHT, new Highlight(...found));
+    showHit(0);
+  });
+
+  function showHit(index: number) {
+    const range = hits[index];
+    if (!range) return;
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS) CSS.highlights.set(HIGHLIGHT_ACTIVE, new Highlight(range));
+    range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  function step(direction: 1 | -1) {
+    if (!hits.length) return;
+    findIndex = (findIndex + direction + hits.length) % hits.length;
+    showHit(findIndex);
+  }
+
+  $effect(() => () => {
+    if (typeof CSS !== 'undefined' && 'highlights' in CSS) {
+      CSS.highlights.delete(HIGHLIGHT);
+      CSS.highlights.delete(HIGHLIGHT_ACTIVE);
+    }
   });
 </script>
 
-<div class="docx-viewer" class:centered={loading || !!error}>
-  {#if loading || error}
-    <ViewerStatus
-      {loading}
-      {error}
-      label={copy.viewer.convertingDocument}
-      variant="card"
-      errorTitle={copy.viewer.previewUnavailable}
-    />
-  {/if}
-    <div class="docx-stage" class:pending={loading || !!error} bind:this={stage}>
-      <!--
-        Pages render at their fixed A4 pixel width inside the host. The stage
-        scales the whole stack to the column instead (origin top center), so a
-        portrait page is fully visible without horizontal scrolling.
-      -->
-      <div class="docx-zoom" style={`--docx-zoom: ${zoom}`}>
-        <div class="docx-host" bind:this={host}></div>
+<div class="docx-viewer">
+  <div class="docx-canvas" bind:this={canvas} onscroll={trackPage} use:panScroll={{ onzoom: (dir) => setZoom(zoom + dir * 0.1) }}>
+    {#if loading || error}
+      <div class="docx-status">
+        <ViewerStatus {loading} {error} label={$t('viewer.doc.loading')} variant="card" errorTitle={$t('viewer.doc.failed')} />
+      </div>
+    {/if}
+    <!-- CSS zoom (not a transform) so the scroll height follows the zoom. -->
+    <div class="docx-pages" class:pending={loading || !!error} style:zoom={zoom}>
+      <div class="docx-host" bind:this={host}></div>
+    </div>
+  </div>
+
+  {#if !loading && !error}
+    <div class="docx-bar">
+      <div class="page-nav">
+        <button type="button" class="bar-btn" onclick={() => goToPage(page - 1)} disabled={page <= 1} aria-label={$t('viewer.previous')}><ChevronUp class="size-3.5" /></button>
+        <span class="page-label">{$t('viewer.page', { values: { n: page, total: pageCount } })}</span>
+        <button type="button" class="bar-btn" onclick={() => goToPage(page + 1)} disabled={page >= pageCount} aria-label={$t('viewer.next')}><ChevronDown class="size-3.5" /></button>
+      </div>
+
+      <label class="find">
+        <Search class="size-3.5 shrink-0 opacity-60" />
+        <input
+          bind:value={find}
+          placeholder={$t('artifacts.reader.search')}
+          aria-label={$t('artifacts.reader.search')}
+          onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); } }}
+        />
+        {#if term}
+          <span class="find-count">{hits.length ? `${findIndex + 1}/${hits.length}` : '0'}</span>
+          <button type="button" class="bar-btn" onclick={() => step(-1)} aria-label={$t('viewer.previous')}><ChevronUp class="size-3.5" /></button>
+          <button type="button" class="bar-btn" onclick={() => step(1)} aria-label={$t('viewer.next')}><ChevronDown class="size-3.5" /></button>
+          {#if find}<button type="button" class="bar-btn" onclick={() => (find = '')} aria-label={$t('artifacts.clearSearch')}><X class="size-3.5" /></button>{/if}
+        {/if}
+      </label>
+
+      <div class="zoom">
+        <button type="button" class="fit-btn" class:on={manualZoom === null} onclick={() => setZoom(null)}>{$t('viewer.fit')}</button>
+        <button type="button" class="bar-btn" onclick={() => setZoom(zoom - 0.1)} aria-label={$t('viewer.zoomOut')}><Minus class="size-3.5" /></button>
+        <button type="button" class="zoom-value" onclick={() => setZoom(1)} title={$t('viewer.zoomReset')}>{Math.round(zoom * 100)}%</button>
+        <button type="button" class="bar-btn" onclick={() => setZoom(zoom + 0.1)} aria-label={$t('viewer.zoomIn')}><Plus class="size-3.5" /></button>
       </div>
     </div>
-    {#if !loading && !error && pageCount}
-      <div class="docx-meta">{pageCount === 1 ? '1 page' : `${pageCount} pages`}</div>
-    {/if}
+  {/if}
 </div>
 
 <style>
   .docx-viewer {
+    --docx-canvas: color-mix(in srgb, var(--foreground) 7%, var(--background));
     display: flex;
-    min-height: 100%;
+    height: var(--doc-viewer-height, calc(96vh - 8rem));
+    min-height: 16rem;
+    flex: 1 1 auto;
     flex-direction: column;
+    overflow: hidden;
+    border: var(--doc-viewer-border, 1px solid var(--border));
+    border-radius: var(--doc-viewer-radius, 0.75rem);
+    background: var(--docx-canvas);
   }
 
-  .docx-viewer.centered {
+  .docx-canvas {
+    position: relative;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 1.5rem 1.5rem 2rem;
+  }
+  /* Zoomed wider than the view: drag to move around. */
+  .docx-canvas:global(.can-pan) {
+    cursor: grab;
+  }
+  .docx-canvas:global(.is-panning) {
+    cursor: grabbing;
+    user-select: none;
+  }
+  .docx-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
     align-items: center;
     justify-content: center;
   }
-
-  /*
-   * Muted canvas; the pages themselves are the content. The parent supplies
-   * the scrolling, so this only centers the column.
-   *
-   * display:block, not flex: in a flex row a fixed-width page would shrink to
-   * the column before the scale transform is ever applied, distorting the
-   * geometry the viewer measures for fitZoom. As a block child the page keeps
-   * its real width, and the transform-origin centers the scaled stack.
-   */
-  .docx-stage {
-    display: block;
-    width: 100%;
-    padding: 0.75rem 0 1.5rem;
-  }
-
-  .docx-zoom {
-    transform: scale(var(--docx-zoom, 1));
-    transform-origin: top center;
-    will-change: transform;
+  .docx-pages {
     width: fit-content;
     margin: 0 auto;
   }
+  .docx-pages.pending {
+    visibility: hidden;
+  }
 
-  .docx-meta {
-    padding: 0 0 0.85rem;
+  .docx-bar {
+    display: flex;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0 0.5rem;
+    border-top: 1px solid var(--border);
+    background: var(--background);
+    font-size: 12px;
+    color: var(--muted-foreground);
+  }
+  .page-nav,
+  .zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+  }
+  .page-label {
+    min-width: 6.5rem;
     text-align: center;
-    color: var(--text-muted);
-    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
   }
-
-  /* The library's stock gray backdrop and card shadows are replaced with the
-     app surface, so pages sit on our canvas like PDF pages do. */
-  :global(.docx-viewer .docx-wrapper) {
+  .find {
+    display: flex;
+    min-width: 0;
+    max-width: 16rem;
+    flex: 1;
+    height: 1.625rem;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0 0.25rem 0 0.5rem;
+    border-radius: 9999px;
+    background: var(--muted);
+  }
+  .find input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
     background: transparent;
-    padding: 0;
+    font-size: 12px;
+    color: var(--foreground);
+    outline: none;
+  }
+  .find-count {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-btn {
+    display: inline-flex;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.375rem;
+    color: var(--muted-foreground);
+  }
+  .bar-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
+  .bar-btn:disabled {
+    opacity: 0.4;
+  }
+  .fit-btn {
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 11.5px;
+  }
+  .fit-btn:hover,
+  .fit-btn.on {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
+  .zoom-value {
+    min-width: 2.75rem;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
   }
 
+  /* Pages: white sheets with a soft paper shadow, spaced like Word. */
+  :global(.docx-viewer .docx-wrapper) {
+    background: transparent !important;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+  }
   :global(.docx-viewer .docx-wrapper > section.docx) {
-    box-shadow: none;
-    margin-bottom: 0.9rem;
-    border-radius: 4px;
+    margin: 0 !important;
+    background: #fff;
+    color: #1b1b1f;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 4px 16px rgb(0 0 0 / 0.08) !important;
   }
-
-  :global(.docx-viewer .docx-wrapper > section.docx:last-child) {
-    margin-bottom: 0;
+  :global(::highlight(docx-find)) {
+    background-color: rgb(255 214 10 / 0.55);
+    color: inherit;
+  }
+  :global(::highlight(docx-find-active)) {
+    background-color: rgb(255 150 0 / 0.85);
+    color: #000;
   }
 </style>

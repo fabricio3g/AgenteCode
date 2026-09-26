@@ -1,6 +1,6 @@
 import type { ModelHubTab } from '$lib/types/model-hub';
 
-export type SettingsSection = 'general' | 'providers' | 'search' | 'local' | 'voice';
+export type SettingsSection = 'general' | 'providers' | 'search' | 'artifacts' | 'local' | 'voice';
 
 export type ModelHubSection =
   | 'models'
@@ -22,6 +22,7 @@ const MODEL_HUB_SECTIONS = new Set<ModelHubSection>([
   'general',
   'providers',
   'search',
+  'artifacts',
   'local',
   'voice',
 ]);

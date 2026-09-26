@@ -889,7 +889,7 @@ async function searchWithFallback(query: string, mode: 'deep' | 'max', context?:
     deep: true,
     mode,
     options: {
-      provider: 'duckduckgo',
+      provider: 'aggregator',
       max_results: mode === 'max' ? 18 : 12
     }
   });

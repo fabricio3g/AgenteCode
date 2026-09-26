@@ -62,6 +62,7 @@
           ? 'Search'
           : ''
   );
+  // Research runs show sources, the brief and exports in the research widget.
   const isResearch = $derived(!!searchModeLabel);
 
   const workContext = $derived(ctx.message.workContext);
@@ -161,7 +162,7 @@
         </span>
       {/if}
 
-      {#if sourceCount > 0}
+      {#if sourceCount > 0 && !isResearch}
         <button type="button" class="footer-action" onclick={openSources}>
           <Globe class="size-3.5 shrink-0 opacity-70" />
           {#if searchModeLabel}<span class="footer-strong">{searchModeLabel}</span>
@@ -170,7 +171,7 @@
         </button>
       {/if}
 
-      {#if researchBrief}
+      {#if researchBrief && !isResearch}
         <button
           type="button"
           class="footer-action"
@@ -189,7 +190,7 @@
         </span>
       {/if}
 
-      {#if exportKinds.length}
+      {#if exportKinds.length && !isResearch}
         <Menu bind:open={exportMenuOpen} placement="top-start" label="Research exports" minWidth="11rem">
           {#snippet trigger(props)}
             <button type="button" class="footer-action" {...props}>

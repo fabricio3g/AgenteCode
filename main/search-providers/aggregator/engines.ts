@@ -6,18 +6,17 @@ import {
   normalizeWhitespace,
 } from '../shared.ts';
 import type { SearchResult } from '../shared.ts';
-import { searchDuckDuckGo, searchSearxng } from '../providers.ts';
+import { searchSearxng } from '../providers.ts';
 import { AGGREGATOR_USER_AGENT } from './constants.ts';
 import type { AggregatorEngineId } from './constants.ts';
-import { fetchAggregatorHtml, fetchAggregatorJson } from './http.ts';
-import { parseHtmlResults } from './html-parser.ts';
+import { fetchAggregatorJson } from './http.ts';
 import { getEngineDefinition, getEngineOption, safeSearchLevel } from './options.ts';
 
 function requestOptions(engine: AggregatorEngineId, options: Record<string, unknown>): Record<string, unknown> {
   return {
     signal: options.aggregator_signal,
     timeout_ms: getEngineDefinition(engine)?.timeout_ms || 8000,
-    retries: getEngineDefinition(engine)?.transport === 'html' ? 0 : 1,
+    retries: 1,
   };
 }
 
@@ -65,27 +64,6 @@ async function searchWiby(query: string, maxResults: number, options: Record<str
   }), maxResults);
 }
 
-async function searchQwant(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  const url = new URL('https://api.qwant.com/v3/search/web');
-  url.searchParams.set('q', query);
-  url.searchParams.set('count', String(Math.min(maxResults, 10)));
-  url.searchParams.set('locale', 'en_US');
-  url.searchParams.set('offset', '0');
-  url.searchParams.set('safesearch', String(safeSearchLevel(options)));
-  url.searchParams.set('device', 'desktop');
-  url.searchParams.set('tgb', '2');
-  const json = await fetchAggregatorJson(url.toString(), requestOptions('qwant', options));
-  const mainline = (((json?.data as Record<string, unknown> | undefined)?.result as Record<string, unknown> | undefined)?.items as Record<string, unknown> | undefined)?.mainline;
-  const items: Record<string, unknown>[] = [];
-  for (const group of Array.isArray(mainline) ? mainline as Record<string, unknown>[] : []) {
-    if (group?.type !== 'web') continue;
-    if (Array.isArray(group?.items)) items.push(...group.items as Record<string, unknown>[]);
-  }
-  return mapSearchResults('qwant', items, (item) => ({
-    title: item?.title, url: item?.url, snippet: item?.desc, metadata: item,
-  }), maxResults);
-}
-
 async function searchSepiaSearch(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const nsfw = safeSearchLevel(options) === 0 ? 'both' : 'false';
   const url = `https://sepiasearch.org/api/v1/search/videos?search=${encodeURIComponent(query)}&start=0&count=${Math.min(maxResults, 10)}&sort=-match&nsfw=${nsfw}`;
@@ -94,51 +72,6 @@ async function searchSepiaSearch(query: string, maxResults: number, options: Rec
   return mapSearchResults('sepiasearch', items, (item) => ({
     title: item?.name, url: item?.url, snippet: item?.description, metadata: item,
   }), maxResults);
-}
-
-function parseYahooRedirectUrl(rawUrl: string): string {
-  const match = rawUrl.match(/\/RU=([^/]+)(?:\/R[SK]=|$)/);
-  if (!match) return rawUrl;
-  try { return decodeURIComponent(match[1]); } catch { return rawUrl; }
-}
-
-type HtmlEngineConfig = {
-  url: string;
-  baseUrl: string;
-  resultSelector: string;
-  titleSelector: string;
-  urlSelector: string;
-  snippetSelector: string;
-  headers?: Record<string, string>;
-  urlTransform?: (value: string) => string;
-};
-
-function htmlEngineConfig(engine: AggregatorEngineId, query: string, options: Record<string, unknown>): HtmlEngineConfig | null {
-  const q = encodeURIComponent(query);
-  const safe = safeSearchLevel(options);
-  switch (engine) {
-    case 'bing': return { url: `https://www.bing.com/search?q=${q}`, baseUrl: 'https://www.bing.com', resultSelector: '.b_algo', titleSelector: 'h2 a', urlSelector: 'h2 a', snippetSelector: '.b_caption p' };
-    case 'brave': return { url: `https://search.brave.com/search?q=${q}&offset=0`, baseUrl: 'https://search.brave.com', resultSelector: '#results [data-pos]', titleSelector: 'a > .url, .title', urlSelector: 'a', snippetSelector: '.snippet-description', headers: { Cookie: `safe_search=${safe === 0 ? 'off' : safe === 1 ? 'moderate' : 'strict'}` } };
-    case 'startpage': return { url: `https://www.startpage.com/do/dsearch?q=${q}&num=10&start=0`, baseUrl: 'https://www.startpage.com', resultSelector: '.w-gl__result__main', titleSelector: 'h3', urlSelector: 'a', snippetSelector: '.w-gl__description' };
-    case 'mojeek': return { url: `https://www.mojeek.com/search?q=${q}&safe=${safe === 0 ? 0 : 1}`, baseUrl: 'https://www.mojeek.com', resultSelector: '.results-standard li', titleSelector: 'h2 > a.title', urlSelector: 'a.ob, h2 a', snippetSelector: 'p.s' };
-    case 'yahoo': return { url: `https://search.yahoo.com/search/?p=${q}`, baseUrl: 'https://search.yahoo.com', resultSelector: 'div.algo', titleSelector: 'h3.title a', urlSelector: 'h3 a', snippetSelector: '.compText', urlTransform: parseYahooRedirectUrl };
-    case 'librex': return { url: `https://search.davidovski.xyz/search.php?q=${q}&p=0&t=10`, baseUrl: 'https://search.davidovski.xyz', resultSelector: '.text-result-wrapper', titleSelector: 'a>h2', urlSelector: 'a', snippetSelector: 'span' };
-    case 'yep': return { url: `https://yep.com/web?q=${q}`, baseUrl: 'https://yep.com', resultSelector: '.result, [data-testid="result"]', titleSelector: 'h2, .result__title', urlSelector: 'a', snippetSelector: '.result__snippet, p' };
-    case 'mwmbl': return { url: `https://mwmbl.org/?q=${q}`, baseUrl: 'https://mwmbl.org', resultSelector: '.result, article', titleSelector: 'h2, h3', urlSelector: 'a', snippetSelector: 'p, .snippet' };
-    case 'marginalia': return { url: `https://search.marginalia.nu/search?query=${q}`, baseUrl: 'https://search.marginalia.nu', resultSelector: '.search-result, article', titleSelector: 'h2, h3', urlSelector: 'a', snippetSelector: '.description, p' };
-    case 'yandex': return { url: `https://yandex.com/search/?text=${q}`, baseUrl: 'https://yandex.com', resultSelector: '.serp-item', titleSelector: 'h2 a, .OrganicTitle-Link', urlSelector: 'h2 a, .OrganicTitle-Link', snippetSelector: '.OrganicTextContentSpan, .text-container' };
-    case 'baidu': return { url: `https://www.baidu.com/s?wd=${q}`, baseUrl: 'https://www.baidu.com', resultSelector: '.result, .c-container', titleSelector: 'h3 a', urlSelector: 'h3 a', snippetSelector: '.c-abstract, .content-right_8Zs40' };
-    case 'google': return { url: `https://www.google.com/search?q=${q}&safe=${safe === 0 ? 'off' : 'active'}&num=10`, baseUrl: 'https://www.google.com', resultSelector: '#search .g', titleSelector: 'h3', urlSelector: 'a', snippetSelector: '.VwiC3b, [data-sncf]' };
-    case 'ghostery': return { url: `https://search.ghostery.com/search?q=${q}`, baseUrl: 'https://search.ghostery.com', resultSelector: '.result, article', titleSelector: 'h2, h3', urlSelector: 'a', snippetSelector: '.snippet, p' };
-    default: return null;
-  }
-}
-
-async function searchHtmlEngine(engine: AggregatorEngineId, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  const config = htmlEngineConfig(engine, query, options);
-  if (!config) return [];
-  const html = await fetchAggregatorHtml(config.url, { Referer: `${config.baseUrl}/`, ...(config.headers || {}) }, requestOptions(engine, options));
-  return parseHtmlResults({ html, baseUrl: config.baseUrl, engine, resultSelector: config.resultSelector, titleSelector: config.titleSelector, urlSelector: config.urlSelector, snippetSelector: config.snippetSelector, maxResults, urlTransform: config.urlTransform });
 }
 
 async function searchResearchJson(engine: AggregatorEngineId, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
@@ -155,7 +88,8 @@ async function searchResearchJson(engine: AggregatorEngineId, query: string, max
   if (engine === 'hackernews') items = Array.isArray(data?.hits) ? data.hits as Record<string, unknown>[] : [];
   return mapSearchResults(engine, items, (item) => {
     const title = Array.isArray(item?.title) ? item.title[0] : item?.title || item?.display_name || item?.story_title;
-    const urlValue = item?.doi || item?.id || item?.link || item?.url || item?.story_url;
+    // Crossref spells these DOI / URL; OpenAlex doi / id; the rest link / url.
+    const urlValue = item?.doi || item?.DOI || item?.URL || item?.id || item?.link || item?.url || item?.story_url;
     const snippet = coerceSearchText(
       item?.abstract
       || item?.abstract_inverted_index
@@ -169,6 +103,55 @@ async function searchResearchJson(engine: AggregatorEngineId, query: string, max
       snippet,
       published_at: item?.publication_date || item?.published || item?.creation_date || item?.created_at,
       metadata: item,
+    };
+  }, maxResults);
+}
+
+async function searchSemanticScholar(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
+  const url = new URL('https://api.semanticscholar.org/graph/v1/paper/search');
+  url.searchParams.set('query', query);
+  url.searchParams.set('limit', String(Math.min(maxResults, 20)));
+  url.searchParams.set('fields', 'title,url,abstract,year,venue,authors,externalIds,publicationDate');
+  const apiKey = configuredApiKey('semantic_scholar', options);
+  const data = apiKey
+    ? await (async () => {
+      const resp = await fetchWithRetry(url.toString(), { headers: { Accept: 'application/json', 'User-Agent': AGGREGATOR_USER_AGENT, 'x-api-key': apiKey }, ...requestOptions('semantic_scholar', options) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return await resp.json() as Record<string, unknown>;
+    })()
+    : await fetchAggregatorJson(url.toString(), requestOptions('semantic_scholar', options));
+  const items = Array.isArray(data?.data) ? data.data as Record<string, unknown>[] : [];
+  return mapSearchResults('semantic_scholar', items, (item) => {
+    const doi = (item?.externalIds as Record<string, unknown> | undefined)?.DOI;
+    const authors = Array.isArray(item?.authors) ? (item.authors as Array<{ name?: string }>).map((a) => a?.name).filter(Boolean).slice(0, 4).join(', ') : '';
+    return {
+      title: item?.title,
+      url: typeof doi === 'string' && doi ? `https://doi.org/${doi}` : item?.url,
+      snippet: item?.abstract || [item?.venue, item?.year, authors].filter(Boolean).join(' · '),
+      published_at: item?.publicationDate || (item?.year ? String(item.year) : null),
+      metadata: { venue: item?.venue, year: item?.year, authors, source: 'Semantic Scholar' },
+    };
+  }, maxResults);
+}
+
+/** PubMed via NCBI E-utilities: search for ids, then fetch their summaries. */
+async function searchPubMed(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
+  const base = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+  const tool = 'tool=FlaxeoChat';
+  const search = await fetchAggregatorJson(`${base}/esearch.fcgi?db=pubmed&retmode=json&sort=relevance&retmax=${Math.min(maxResults, 20)}&term=${encodeURIComponent(query)}&${tool}`, requestOptions('pubmed', options));
+  const ids = ((search?.esearchresult as Record<string, unknown> | undefined)?.idlist as string[] | undefined) ?? [];
+  if (!ids.length) return [];
+  const summary = await fetchAggregatorJson(`${base}/esummary.fcgi?db=pubmed&retmode=json&id=${ids.join(',')}&${tool}`, requestOptions('pubmed', options));
+  const result = (summary?.result ?? {}) as Record<string, Record<string, unknown>>;
+  const items = ids.map((id) => result[id]).filter(Boolean);
+  return mapSearchResults('pubmed', items, (item) => {
+    const authors = Array.isArray(item?.authors) ? (item.authors as Array<{ name?: string }>).map((a) => a?.name).filter(Boolean).slice(0, 4).join(', ') : '';
+    return {
+      title: item?.title,
+      url: `https://pubmed.ncbi.nlm.nih.gov/${item?.uid}/`,
+      snippet: [item?.fulljournalname || item?.source, item?.pubdate, authors].filter(Boolean).join(' · '),
+      published_at: item?.sortpubdate || item?.pubdate,
+      metadata: { journal: item?.fulljournalname || item?.source, authors, source: 'PubMed' },
     };
   }, maxResults);
 }
@@ -194,7 +177,6 @@ async function searchSelfHosted(engine: AggregatorEngineId, query: string, maxRe
   let url = '';
   if (engine === 'yacy') url = `${baseUrl}/yacysearch.json?query=${encodeURIComponent(query)}&resource=global&maximumRecords=${maxResults}`;
   if (engine === 'fourget') url = `${baseUrl}/api/v1/web?s=${encodeURIComponent(query)}`;
-  if (engine === 'openserp') url = `${baseUrl}/search?q=${encodeURIComponent(query)}&format=json&limit=${maxResults}`;
   const data = await fetchAggregatorJson(url, requestOptions(engine, options));
   const channel = (data?.channels as unknown[] | undefined)?.[0] as Record<string, unknown> | undefined;
   const items = [
@@ -223,9 +205,6 @@ async function searchApiEngine(engine: AggregatorEngineId, query: string, maxRes
   } else if (engine === 'firecrawl') {
     endpoint = `${baseUrl}/search`; method = 'POST'; headers.Authorization = `Bearer ${apiKey}`;
     body = JSON.stringify({ query, limit: maxResults, sources: ['web'], timeout: 10000 });
-  } else if (engine === 'searchapi') {
-    endpoint = `${baseUrl}/search?engine=google&q=${encodeURIComponent(query)}&num=${maxResults}`;
-    headers.Authorization = `Bearer ${apiKey}`;
   } else if (engine === 'linkup') {
     endpoint = `${baseUrl}/search`; method = 'POST'; headers.Authorization = `Bearer ${apiKey}`;
     body = JSON.stringify({ q: query, depth: 'standard', outputType: 'searchResults' });
@@ -256,15 +235,15 @@ async function searchApiEngine(engine: AggregatorEngineId, query: string, maxRes
 }
 
 export async function runAggregatorEngine(engine: AggregatorEngineId, query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
-  if (engine === 'duckduckgo') return searchDuckDuckGo(query, maxResults, { signal: options.aggregator_signal, timeout_ms: getEngineDefinition(engine)?.timeout_ms });
   if (engine === 'wikipedia') return searchWikipedia(query, maxResults, options);
   if (engine === 'wiby') return searchWiby(query, maxResults, options);
-  if (engine === 'qwant') return searchQwant(query, maxResults, options);
   if (engine === 'sepiasearch') return searchSepiaSearch(query, maxResults, options);
   if (engine === 'searxng') return searchSearxng(query, maxResults, { ...options, signal: options.aggregator_signal });
   if (engine === 'arxiv') return searchArxiv(query, maxResults, options);
+  if (engine === 'semantic_scholar') return searchSemanticScholar(query, maxResults, options);
+  if (engine === 'pubmed') return searchPubMed(query, maxResults, options);
   if (['openalex', 'crossref', 'stackexchange', 'hackernews'].includes(engine)) return searchResearchJson(engine, query, maxResults, options);
-  if (['yacy', 'fourget', 'openserp'].includes(engine)) return searchSelfHosted(engine, query, maxResults, options);
-  if (['kagi', 'firecrawl', 'searchapi', 'linkup', 'ollama_web', 'perplexity_search'].includes(engine)) return searchApiEngine(engine, query, maxResults, options);
-  return searchHtmlEngine(engine, query, maxResults, options);
+  if (['yacy', 'fourget'].includes(engine)) return searchSelfHosted(engine, query, maxResults, options);
+  if (['kagi', 'firecrawl', 'linkup', 'ollama_web', 'perplexity_search'].includes(engine)) return searchApiEngine(engine, query, maxResults, options);
+  return [];
 }

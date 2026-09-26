@@ -15,11 +15,14 @@ export type MessagePart =
   | { kind: 'deep-research' }
   | { kind: 'reasoning'; reasoning: string; timing: number; totalElapsedSeconds?: number }
   | { kind: 'tool-status' }
+  /** Search / Deep / Max runs: the research widget (steps, sources, exports). */
+  | { kind: 'research' }
   | { kind: 'approval' }
   | { kind: 'error'; title: string; detail: string }
   | { kind: 'warning'; detail: string }
   | { kind: 'pending'; status?: string }
   | { kind: 'content'; content: string }
+  | { kind: 'preface'; content: string }
   | { kind: 'document'; title: string; docs: DocumentSurfaceItem[] }
   | { kind: 'slides' }
   | { kind: 'files-created' }
@@ -119,14 +122,17 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
   const parts: MessagePart[] = [];
   const isStreaming = message.status === 'streaming';
-  const hasContent = !!displayContent;
+  // The agent's opening sentence ("Let me check…") leads the turn, above its work.
+  const preface = message.agentSteps?.find((step) => step.preface)?.detail?.trim() || '';
+  const hasContent = !!displayContent && displayContent.trim() !== preface;
   // Instant fast path renders a single quiet status, never the planning chrome:
   // no reasoning trace, no tool-status line. Steps are still recorded on the
   // message (and approvals still render below) — only the surfacing is hushed.
   const isQuietInstant = message.mode === 'instant';
   const hasReasoning = enableThinking && !!displayReasoning && !isQuietInstant;
-  const hasSteps = !!message.agentSteps?.length;
+  const hasSteps = !!message.agentSteps?.some((step) => !step.preface);
 
+  if (preface) parts.push({ kind: 'preface', content: preface });
   if (hasActiveDeepResearch) parts.push({ kind: 'deep-research' });
 
   const hasAgentActivity = hasSteps || message.mode === 'agent';
@@ -141,10 +147,11 @@ export function buildMessageParts(input: BuildMessagePartsInput): MessagePart[] 
 
   // One status line for the whole tool run. The step-by-step list lives in the
   // activity drawer; duplicating it inline was the single biggest source of
-  // vertical noise in an agent turn.
-  const awaitingFirstAgentOutput =
-    message.mode === 'agent' && isStreaming && !hasContent && !hasActiveDeepResearch;
-  if (!isQuietInstant && (hasSteps || awaitingFirstAgentOutput || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
+  // vertical noise in an agent turn. Before the first step the turn shows the
+  // agent's opening line (or typing dots), not a bare "Planning" row.
+  const isResearchRun = message.searchMode === 'search' || message.searchMode === 'deep' || message.searchMode === 'max';
+  if (!isQuietInstant && isResearchRun && !hasActiveDeepResearch) parts.push({ kind: 'research' });
+  else if (!isQuietInstant && (hasSteps || hasReasoning && hasAgentActivity)) parts.push({ kind: 'tool-status' });
 
   // Directly under the status line: the run is stopped until this is answered,
   // so it outranks everything else in the turn. Pushing it here also means the

@@ -1,3 +1,4 @@
+import { isVisionModel } from '$shared/model-capabilities';
 import OpenAI from 'openai';
 import type { AppConfig, ChatMessage, ModelOption, ReasoningCapabilities, ReasoningLevel, ReasoningRequest } from '$lib/types/chat';
 import type { LocalModel } from '$lib/types/bridge';
@@ -9,6 +10,7 @@ import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/service
 import { loadAppConfig } from '$lib/utils/storage';
 import { toErrorMessage } from '$lib/utils/errors';
 import type { RoleplaySampling } from '$lib/services/roleplay-prompts';
+import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 const _openaiClients = new Map<string, OpenAI>();
 
@@ -34,7 +36,7 @@ type AppConfigLike = {
 };
 
 function getOpenAIClient(apiKey: string, baseUrl: string): OpenAI {
-  const normalized = String(baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const normalized = String(baseUrl || DEFAULT_PROVIDER_BASE_URL).replace(/\/+$/, '');
   const clientKey = `${apiKey}::${normalized}`;
   if (!_openaiClients.has(clientKey)) {
     _openaiClients.set(clientKey, new OpenAI({
@@ -47,10 +49,10 @@ function getOpenAIClient(apiKey: string, baseUrl: string): OpenAI {
 }
 
 function resolveProvider(config: AppConfig) {
-  const providerName = config.llm?.provider || 'openai';
+  const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {
-    base_url: 'https://api.openai.com/v1',
+    base_url: DEFAULT_PROVIDER_BASE_URL,
     model: ''
   };
   return { providerName, provider };
@@ -84,7 +86,7 @@ function toolSupportIdentity(config: AppConfigLike): { providerName: string; mod
       }
     };
   }
-  const providerName = config?.llm?.provider || 'openai';
+  const providerName = config?.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = config?.llm?.providers?.[providerName] || {};
   return { providerName, modelId: String(provider?.model || ''), provider };
 }
@@ -111,7 +113,7 @@ export function supportsNativeTools(config: AppConfigLike): boolean {
   }
 
   // First-party providers always support native tool calling
-  if (['openai', 'anthropic', 'gemini', 'groq', 'mistral'].includes(providerName)) {
+  if (providerName === 'deepseek') {
     toolSupportCache.set(key, true);
     debugToolSupport(config, `[agent] supportsNativeTools | providerName=${providerName} | modelId=${modelId} | first-party -> true`);
     return true;
@@ -146,7 +148,7 @@ export async function detectToolSupport(): Promise<boolean> {
   if (toolSupportCache.has(key)) return toolSupportCache.get(key)!;
 
   // First-party providers are known to support tools
-  if (['openai', 'anthropic', 'gemini', 'groq', 'mistral'].includes(providerName)) {
+  if (providerName === 'deepseek') {
     toolSupportCache.set(key, true);
     return true;
   }
@@ -194,7 +196,7 @@ export function reasoningRouteIdentity(config: AppConfig | null | undefined): st
     const local = config?.llm?.local || {};
     return `local:${local.model || ''}:${local.selected_model_path || ''}`;
   }
-  const providerName = config?.llm?.provider || 'openai';
+  const providerName = config?.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = (config?.llm?.providers?.[providerName] || {}) as { base_url?: string; model?: string };
   return `api:${providerName}:${provider.base_url || ''}:${provider.model || ''}`;
 }
@@ -356,9 +358,7 @@ interface ChatStreamEvent {
 }
 
 /** Returns true if model name suggests vision capability */
-export function isVisionModel(modelName: string): boolean {
-  return /\b(vl|vision|llava|multimodal|gemma[\s-]?3|qwen[\s-]?3[\s._-]?[0-9]|qwen[\s-]?vl)\b|gpt-4o|gpt-4\.1|gemini|claude-3/i.test(modelName);
-}
+export { isVisionModel };
 
 async function hasLocalVisionModel(config: AppConfig): Promise<boolean> {
   const mmprojPath = String(config.llm?.local?.mmproj_path || '').trim();
@@ -376,7 +376,7 @@ export async function hasConfiguredVisionModel(config: AppConfig): Promise<boole
   if (backendMode === 'local') {
     return hasLocalVisionModel(config);
   }
-  const providerName = config.llm?.provider || 'openai';
+  const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = config.llm?.providers?.[providerName];
   return isVisionModel(provider?.model || '');
 }
@@ -425,12 +425,12 @@ export async function loadChatConfig(): Promise<AppConfig> {
     ...config,
     llm: {
       ...config.llm,
-      provider: config.llm?.provider || 'openai',
+      provider: config.llm?.provider || DEFAULT_PROVIDER_ID,
       backend_mode: config.llm?.backend_mode || (isElectron() ? 'local' : 'api'),
       providers: {
         ...(config.llm?.providers || {}),
         openai: {
-          base_url: 'https://api.openai.com/v1',
+          base_url: DEFAULT_PROVIDER_BASE_URL,
           model: '',
           has_api_key: false,
           ...(config.llm?.providers?.openai || {})
@@ -1078,7 +1078,6 @@ export async function extractStructured<T = Record<string, unknown>>(args: {
   const supportsNativeJson =
     !isLocalMode &&
     (/\bgpt-4o\b|\bgpt-4\.1\b|\bclaude-3\b|\bgemini\b|\bo1\b|\bo3\b|\bo4\b/i.test(provider.model || '') ||
-     providerName === 'openai' ||
      providerName === 'openrouter');
 
   if (supportsNativeJson) {

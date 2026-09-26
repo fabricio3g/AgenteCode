@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Check, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
   import { onMount, tick, untrack } from 'svelte';
 
@@ -93,42 +93,33 @@
     rows="1"
     oninput={handleInput}
     onkeydown={onKeydown}
-    aria-label="Edit message"
+    aria-label={$t('chat.editor.label')}
   ></textarea>
 
   <div class="edit-footer">
-    <span class="edit-hint">Esc cancel · Ctrl/⌘ Enter save</span>
-    <div class="edit-actions">
-      <button class="edit-action" type="button" onclick={onCancel} aria-label="Cancel edit" title="Cancel">
-        <X class="h-3.5 w-3.5" />
-      </button>
-      <button class="edit-action is-primary" type="button" onclick={save} disabled={!content.trim()} aria-label="Save edit" title="Save">
-        <Check class="h-3.5 w-3.5" />
-      </button>
-    </div>
+    <span class="edit-hint">{$t('chat.editor.hint')}</span>
+    <button class="edit-btn" type="button" onclick={onCancel}>{$t('chat.editor.cancel')}</button>
+    <button class="edit-btn is-primary" type="button" onclick={save} disabled={!content.trim()}>{$t('chat.editor.save')}</button>
   </div>
 </div>
 
 <style>
+  /* The composer's language: one white field with a hairline edge, text
+     buttons that say what they do. */
   .edit-card {
     width: 100%;
-    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-    border-radius: 1rem;
-    background: color-mix(in srgb, var(--surface) 92%, var(--chat-bg));
-    box-shadow: var(--shadow-xs);
-    padding: 0.5rem;
-    animation: editScaleIn 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+    padding: 0.75rem 0.75rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 1.25rem;
+    background: var(--background);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.03);
+    animation: editIn 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
   }
 
   .edit-card:focus-within {
-    border-color: color-mix(in srgb, var(--border-hover) 76%, transparent);
-    background: color-mix(in srgb, var(--surface) 96%, var(--chat-bg));
-    box-shadow: var(--shadow-sm);
-  }
-
-  .edit-card.is-user {
-    background: color-mix(in srgb, var(--user-bubble, var(--primary)) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--foreground) 22%, var(--border));
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px -6px rgb(0 0 0 / 0.1);
   }
 
   .edit-input {
@@ -136,87 +127,73 @@
     width: 100%;
     min-height: 44px;
     max-height: 300px;
-    resize: none;
+    padding: 0 0.25rem;
     border: 0;
     outline: none;
-    border-radius: 0.7rem;
+    resize: none;
     background: transparent;
-    color: var(--text);
-    padding: 0.55rem 0.65rem;
-    font-size: 14px;
-    line-height: 1.5;
-    transition: height 160ms cubic-bezier(0.2, 0.8, 0.2, 1), background 0.14s ease;
+    color: var(--foreground);
+    font-size: 15px;
+    line-height: 1.55;
     scrollbar-width: thin;
-  }
-
-  .edit-input:focus {
-    background: color-mix(in srgb, var(--surface-hover) 42%, transparent);
   }
 
   .edit-footer {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0.25rem 0 0.55rem;
+    gap: 0.35rem;
+    margin-top: 0.4rem;
   }
 
   .edit-hint {
     min-width: 0;
     flex: 1;
     overflow: hidden;
+    padding-left: 0.25rem;
+    color: var(--muted-foreground);
+    font-size: 11.5px;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-tertiary);
-    font-size: 11px;
   }
 
-  .edit-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .edit-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.8rem;
-    height: 1.8rem;
-    border: 1px solid transparent;
+  .edit-btn {
+    height: 2rem;
+    padding: 0 0.85rem;
+    border: 0;
     border-radius: 999px;
     background: transparent;
-    color: var(--text-secondary);
-    transition: background 0.14s ease, color 0.14s ease, transform 0.14s ease, opacity 0.14s ease;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .edit-action:hover:not(:disabled) {
-    background: var(--surface-hover);
-    color: var(--text);
-    transform: translateY(-1px);
+  .edit-btn:hover:not(:disabled) {
+    background: var(--muted);
+    color: var(--foreground);
   }
 
-  .edit-action.is-primary {
-    background: var(--primary);
-    color: var(--primary-fg);
+  .edit-btn.is-primary {
+    background: var(--foreground);
+    color: var(--background);
   }
 
-  .edit-action.is-primary:hover:not(:disabled) {
-    filter: brightness(1.03);
+  .edit-btn.is-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--foreground) 88%, var(--background));
+    color: var(--background);
   }
 
-  .edit-action:disabled {
+  .edit-btn:disabled {
     cursor: default;
-    opacity: 0.45;
+    opacity: 0.35;
   }
 
-  @keyframes editScaleIn {
-    from {
-      opacity: 0;
-      transform: translateY(3px) scale(0.992);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+  @keyframes editIn {
+    from { opacity: 0; transform: translateY(3px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .edit-card { animation: none; }
   }
 </style>

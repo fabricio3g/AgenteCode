@@ -19,6 +19,7 @@ import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
   getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
 } from '$lib/services/agent-prompts';
+import { DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
@@ -49,9 +50,9 @@ const SEARCH_TOOL_NAMES = new Set([
   'create_dashboard',
   'create_info_card',
   'create_html_card',
+  'create_widget',
   'create_diagram',
-  'create_map',
-  'export_research_package'
+  'create_map'
 ]);
 /**
  * Instant fast-path allowlist: grounded answers and math only. No artifact
@@ -203,7 +204,7 @@ export function resolveAgentRunPlan(args: RunAgentTaskArgs, config: AppConfig, h
     Math.floor(args.maxTimeMs ?? (isCodeProfile ? CODE_MAX_TIME_MS : isChatProfile ? CHAT_MAX_TIME_MS : MAX_TIME_MS))
   );
 
-  const providerName = config.llm?.provider || 'openai';
+  const providerName = config.llm?.provider || DEFAULT_PROVIDER_ID;
   const providers = config.llm?.providers || {};
   const provider = providers[providerName] || {};
   const activeModel = localMode ? (config.llm?.local?.model || 'local-model') : (provider.model || '');

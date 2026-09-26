@@ -118,7 +118,7 @@
           onclick={() => installAsset(asset)}
           disabled={installing}
         >
-          <span class="flex-1 text-sm text-foreground">{asset.description}</span>
+          <span class="flex-1 text-sm text-foreground">{$t(`runtime.backend.${asset.backend}`)}</span>
           {#if installing && selectedAsset?.name === asset.name}
             <LoaderCircle class="size-4 shrink-0 animate-spin" />
           {:else if asset.variant === 'recommended'}

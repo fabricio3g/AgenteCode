@@ -137,6 +137,10 @@ export interface AgentStep {
   output?: string;
   fileChanges?: CodeAgentFileChange[];
   diffStats?: CodeAgentDiffStat[];
+  /** Web research steps: what was searched or read, for the research widget. */
+  research?: { query?: string; results?: number; url?: string; title?: string };
+  /** The agent's opening sentence before it starts working; shown as text, not as a step. */
+  preface?: boolean;
 }
 
 export type ChartArtifactPayload = {
@@ -187,6 +191,8 @@ export type HtmlCardArtifactPayload = {
   kind: 'html_card';
   title: string;
   html: string;
+  /** Present on interactive widgets (create_widget): runs in a sealed, offline frame. */
+  script?: string;
 };
 
 export type InlineArtifactPayload =
@@ -210,6 +216,7 @@ export type ArtifactKind =
   | 'dashboard'
   | 'info_card'
   | 'html_card'
+  | 'widget'
   | 'research_package'
   | 'web'
   | 'files';
@@ -740,7 +747,7 @@ export interface ModelOption {
   has_mmproj?: boolean;
 }
 
-export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'groq' | 'mistral' | 'openai_compat' | 'local';
+export type ProviderType = 'openai_compat' | 'local';
 
 /** Thinking default for one on-device model (load dialog + remembered settings). */
 export type LocalThinkingMode = 'auto' | 'off' | 'on';
@@ -820,14 +827,7 @@ export interface AppConfig {
     safe_search?: number;
     providers?: {
       [provider: string]: Record<string, unknown> | undefined;
-      google_cse?: {
-        api_key?: string;
-        engine_id?: string;
-      };
       brave?: {
-        api_key?: string;
-      };
-      serpapi?: {
         api_key?: string;
       };
       tavily?: {
@@ -838,10 +838,6 @@ export interface AppConfig {
       };
       searxng?: {
         base_url?: string;
-      };
-      bing?: {
-        api_key?: string;
-        endpoint?: string;
       };
       youcom?: {
         api_key?: string;
@@ -854,9 +850,6 @@ export interface AppConfig {
         api_key?: string;
         model?: string;
         api_url?: string;
-      };
-      serper?: {
-        api_key?: string;
       };
     };
   };

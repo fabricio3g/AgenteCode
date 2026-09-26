@@ -483,6 +483,8 @@ export function normalizeMessage(message: Partial<ChatMessage>, index: number): 
     storyTurn: message.storyTurn || undefined,
     agentSteps: Array.isArray(message.agentSteps) ? message.agentSteps : [],
     artifact: message.artifact || null,
+    // Every artifact the turn made; dropping this left only the last one after a reload.
+    ...(Array.isArray(message.artifacts) && message.artifacts.length ? { artifacts: message.artifacts } : {}),
     workContext: message.workContext || null
   };
 }

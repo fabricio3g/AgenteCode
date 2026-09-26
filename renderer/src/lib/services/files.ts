@@ -55,6 +55,10 @@ export async function writeWorkspaceFile(workspaceRoot: string, relativePath: st
   return invoke<string>('write_workspace_file', { workspaceRoot, relativePath, content });
 }
 
+export async function writeWorkspaceBinary(workspaceRoot: string, relativePath: string, dataUrl: string): Promise<string> {
+  return invoke<string>('write_workspace_binary', { workspaceRoot, relativePath, dataUrl });
+}
+
 async function workspaceExec(payload: {
   workspace_root: string;
   command: string;

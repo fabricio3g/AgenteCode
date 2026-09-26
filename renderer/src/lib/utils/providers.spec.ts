@@ -4,7 +4,10 @@ import type { AppConfig } from '$lib/types/chat';
 
 describe('providers utils', () => {
   it('has cloud and local catalog entries', () => {
-    expect(CLOUD_PROVIDERS.some((p) => p.id === 'openai')).toBe(true);
+    expect(CLOUD_PROVIDERS.some((p) => p.id === 'opencode-go')).toBe(true);
+    for (const removed of ['openai', 'anthropic', 'gemini', 'groq', 'mistral']) {
+      expect(CLOUD_PROVIDERS.some((p) => p.id === removed)).toBe(false);
+    }
     expect(CLOUD_PROVIDERS.some((p) => p.id === 'ollama')).toBe(true);
     expect(providerLabel('deepseek')).toBe('DeepSeek');
   });
@@ -15,7 +18,7 @@ describe('providers utils', () => {
         provider: 'deepseek',
         providers: {
           deepseek: { has_api_key: true, model: 'deepseek-v4-flash', base_url: 'https://api.deepseek.com' },
-          openai: { has_api_key: false, model: '', base_url: 'https://api.openai.com/v1' }
+          openrouter: { has_api_key: false, model: '', base_url: 'https://openrouter.ai/api/v1' }
         }
       }
     } as unknown as AppConfig;
@@ -29,35 +32,35 @@ describe('providers utils', () => {
   it('treats placeholder bullet keys as configured', () => {
     const config = {
       llm: {
-        provider: 'openai',
+        provider: 'openrouter',
         providers: {
-          openai: { api_key: '••••••••', model: 'gpt-4o', base_url: 'https://api.openai.com/v1' }
+          openrouter: { api_key: '••••••••', model: 'deepseek/deepseek-v4-flash', base_url: 'https://openrouter.ai/api/v1' }
         }
       }
     } as unknown as AppConfig;
-    expect(isProviderConfigured(config, 'openai')).toBe(true);
-    expect(configuredProviders(config).some((p) => p.id === 'openai')).toBe(true);
+    expect(isProviderConfigured(config, 'openrouter')).toBe(true);
+    expect(configuredProviders(config).some((p) => p.id === 'openrouter')).toBe(true);
   });
 
   it('always includes active provider when includeActiveAlways', () => {
     const config = {
       llm: {
-        provider: 'openai',
+        provider: 'openrouter',
         providers: {
-          openai: { has_api_key: false, model: '', base_url: 'https://api.openai.com/v1' }
+          openrouter: { has_api_key: false, model: '', base_url: 'https://openrouter.ai/api/v1' }
         }
       }
     } as unknown as AppConfig;
     const list = configuredProviders(config, { includeActiveAlways: true });
-    expect(list.some((p) => p.id === 'openai' && p.isActive)).toBe(true);
+    expect(list.some((p) => p.id === 'openrouter' && p.isActive)).toBe(true);
   });
 
   it('lists only configured providers without forcing empty ones', () => {
     const config = {
       llm: {
-        provider: 'openai',
+        provider: 'openrouter',
         providers: {
-          openai: { has_api_key: true, model: 'gpt-4o', base_url: 'https://api.openai.com/v1' },
+          openrouter: { has_api_key: true, model: 'deepseek/deepseek-v4-flash', base_url: 'https://openrouter.ai/api/v1' },
           anthropic: { model: 'claude-3-5-sonnet', base_url: 'https://api.anthropic.com/v1' },
           groq: { has_api_key: false, model: '', base_url: 'https://api.groq.com' }
         }
@@ -65,7 +68,7 @@ describe('providers utils', () => {
     } as unknown as AppConfig;
 
     const list = configuredProviders(config, { includeActiveAlways: false });
-    expect(list.map((p) => p.id)).toContain('openai');
+    expect(list.map((p) => p.id)).toContain('openrouter');
     expect(list.map((p) => p.id)).toContain('anthropic');
     expect(list.map((p) => p.id)).not.toContain('groq');
   });

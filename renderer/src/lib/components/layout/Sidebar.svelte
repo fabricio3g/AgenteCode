@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import SidebarInstances from './SidebarInstances.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
@@ -165,12 +166,15 @@
       {#if appStore.activeSpace !== 'code'}
         <button
           class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
-          onclick={() => { appStore.artifactSettingsOpen = true; }}
+          class:is-current={appStore.homeView === 'artifacts'}
+          aria-current={appStore.homeView === 'artifacts' ? 'page' : undefined}
+          onclick={() => appStore.showArtifactLibrary()}
           title={$t('sidebar.artifacts')}
         >
           <Puzzle class="size-4 shrink-0" />
           <span class="btn-label">{$t('sidebar.artifacts')}</span>
         </button>
+        <SidebarInstances />
       {/if}
     </div>
 
@@ -408,6 +412,12 @@
   .sidebar-btn:hover {
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
+  }
+
+  .sidebar-btn.is-current {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-accent-foreground);
+    font-weight: 500;
   }
 
   @media (prefers-reduced-motion: reduce) {

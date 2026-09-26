@@ -119,12 +119,24 @@ describe('agente run reducer', () => {
     expect(state.retrying).toBeNull();
   });
 
-  it('records a truncated turn that was auto-continued', () => {
+  it('drops a broken turn\'s partial text when the loop replays it', () => {
+    const state = run([
+      { type: 'turn_start', chatId: 'c', turnIndex: 1 },
+      { type: 'text_delta', chatId: 'c', delta: 'First turn done.' },
+      { type: 'turn_start', chatId: 'c', turnIndex: 2 },
+      { type: 'text_delta', chatId: 'c', delta: ' Half a senten' },
+      { type: 'llm_retry', chatId: 'c', attempt: 1, delayMs: 1000, discardPartial: true },
+      { type: 'text_delta', chatId: 'c', delta: ' A whole sentence.' }
+    ]);
+    expect(state.content).toBe('First turn done. A whole sentence.');
+  });
+
+  it('records a truncated turn without adding a row for it', () => {
     const state = run([
       { type: 'length_continue', chatId: 'c', turnIndex: 2 }
     ]);
     expect(state.truncatedOnce).toBe(true);
-    expect(state.steps.find((s) => s.id === 'length-2')?.label).toContain('output cap');
+    expect(state.steps).toEqual([]);
   });
 
   it('keeps text and tool steps in the order they happened', () => {
@@ -315,5 +327,13 @@ describe('orderedEntries', () => {
   it('falls back to steps then text for messages saved before timelines', () => {
     const entries = orderedEntries({ agentSteps: [read], content: 'answer' });
     expect(entries.map((entry) => entry.text ?? entry.step?.id)).toEqual(['r', 'answer']);
+  });
+
+  it('drops bookkeeping rows: turns, output-cap notes and todo updates', () => {
+    const turn = { id: 'turn-1', type: 'done' as const, label: 'Turn 1 complete', status: 'done' as const };
+    const cap = { id: 'length-2', type: 'planning' as const, label: 'Hit the output cap', status: 'done' as const };
+    const todo = { id: 't', type: 'tool' as const, label: 'Update tasks', toolName: 'todo_write', status: 'done' as const };
+    const entries = orderedEntries({ agentSteps: [turn, cap, todo, read], content: '' });
+    expect(entries.map((entry) => entry.step?.id)).toEqual(['r']);
   });
 });

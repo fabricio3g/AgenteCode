@@ -60,3 +60,25 @@ describe('buildWireMessages', () => {
     expect(wire.map((message) => message.role)).toEqual(['system', 'user', 'user']);
   });
 });
+
+describe('buildWireMessages with screenshots', () => {
+  const shot = { data: 'AAAA', mimeType: 'image/png' };
+
+  it('attaches the latest batch screenshot after its tool results', () => {
+    const wire = buildWireMessages(runWith([
+      { role: 'assistant', content: '', toolCalls: [call('c1', 'browser_screenshot')], stopReason: 'toolUse', ts: 1 },
+      { role: 'tool', toolCallId: 'c1', toolName: 'browser_screenshot', content: '{"page":"x"}', isError: false, images: [shot], ts: 2 }
+    ], { nativeIds: ['c1'] }));
+    expect(wire.map((message) => message.role)).toEqual(['system', 'user', 'assistant', 'tool', 'user']);
+    expect(wire[4]?.attachments?.[0]).toMatchObject({ kind: 'image', base64: 'data:image/png;base64,AAAA' });
+  });
+
+  it('drops screenshots from batches the model already answered', () => {
+    const wire = buildWireMessages(runWith([
+      { role: 'assistant', content: '', toolCalls: [call('c1', 'browser_screenshot')], stopReason: 'toolUse', ts: 1 },
+      { role: 'tool', toolCallId: 'c1', toolName: 'browser_screenshot', content: '{}', isError: false, images: [shot], ts: 2 },
+      { role: 'assistant', content: 'Looks right.', stopReason: 'stop', ts: 3 }
+    ], { nativeIds: ['c1'] }));
+    expect(wire.some((message) => message.attachments?.length)).toBe(false);
+  });
+});

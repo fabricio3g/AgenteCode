@@ -141,13 +141,13 @@ describe('Full Config Flow Integration', () => {
       
       // Create config with API keys
       const config = getDefaultConfig(paths);
-      config.llm.providers.openai.api_key = 'sk-test-key-12345';
+      config.llm.providers['opencode-go'].api_key = 'sk-test-key-12345';
       
       // Extract and save to secrets
       manager.saveApiKeysToSecrets(config);
       
       // API key should be cleared in config
-      assert.strictEqual(config.llm.providers.openai.api_key, '');
+      assert.strictEqual(config.llm.providers['opencode-go'].api_key, '');
       
       // Secrets file should exist
       assert.ok(fs.existsSync(secretsPath), 'secrets file created');
@@ -156,7 +156,7 @@ describe('Full Config Flow Integration', () => {
       manager.injectApiKeysFromSecrets(config);
       
       // API key should be restored
-      assert.strictEqual(config.llm.providers.openai.api_key, 'sk-test-key-12345');
+      assert.strictEqual(config.llm.providers['opencode-go'].api_key, 'sk-test-key-12345');
     });
 
     it('handles multiple providers with API keys', () => {
@@ -165,7 +165,7 @@ describe('Full Config Flow Integration', () => {
       const manager = new SecretsManager(crypto, paths);
       
       const config = getDefaultConfig(paths);
-      config.llm.providers.openai.api_key = 'sk-openai-key';
+      config.llm.providers['opencode-go'].api_key = 'sk-opencode-key';
       config.llm.providers.openrouter.api_key = 'sk-or-key';
       // local provider typically has no key
       
@@ -178,7 +178,7 @@ describe('Full Config Flow Integration', () => {
       
       manager.injectApiKeysFromSecrets(config);
       
-      assert.strictEqual(config.llm.providers.openai.api_key, 'sk-openai-key');
+      assert.strictEqual(config.llm.providers['opencode-go'].api_key, 'sk-opencode-key');
       assert.strictEqual(config.llm.providers.openrouter.api_key, 'sk-or-key');
     });
   });
@@ -188,15 +188,15 @@ describe('Full Config Flow Integration', () => {
       const paths = { configPath, secretsPath, modelsRoot, localModelsRoot: modelsRoot };
       const config = getDefaultConfig(paths);
       
-      config.llm.providers.openai.api_key = 'sk-super-secret-key';
+      config.llm.providers['opencode-go'].api_key = 'sk-super-secret-key';
       config.llm.providers.openrouter.api_key = 'aiza-secret-key';
       
       const redacted = redactConfig(config);
       
       // Check that sensitive values are replaced with has_api_key boolean
-      const openaiProvider = redacted.llm?.providers?.openai;
-      assert.strictEqual(openaiProvider?.has_api_key, true, 'openai has has_api_key flag');
-      assert.strictEqual(openaiProvider?.api_key, undefined, 'openai key removed');
+      const openaiProvider = redacted.llm?.providers?.['opencode-go'];
+      assert.strictEqual(openaiProvider?.has_api_key, true, 'opencode-go has has_api_key flag');
+      assert.strictEqual(openaiProvider?.api_key, undefined, 'opencode-go key removed');
       
       const openrouterProvider = redacted.llm?.providers?.openrouter;
       assert.strictEqual(openrouterProvider?.has_api_key, true, 'openrouter has has_api_key flag');
@@ -208,14 +208,14 @@ describe('Full Config Flow Integration', () => {
       const original = getDefaultConfig(paths);
       
       original.llm.provider = 'gpt-4';
-      original.llm.providers.openai.model = 'gpt-4';
+      original.llm.providers['opencode-go'].model = 'gpt-4';
       original.tts.engine = 'kokoro';
       
       const redacted = redactConfig(original);
       
       // Non-sensitive data preserved
       assert.strictEqual(redacted.llm.provider, 'gpt-4');
-      assert.strictEqual(redacted.llm.providers.openai.model, 'gpt-4');
+      assert.strictEqual(redacted.llm.providers['opencode-go'].model, 'gpt-4');
       assert.strictEqual(redacted.tts.engine, 'kokoro');
     });
   });

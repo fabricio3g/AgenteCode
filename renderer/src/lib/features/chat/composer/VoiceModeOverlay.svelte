@@ -52,7 +52,7 @@
   );
 </script>
 
-{#if appStore.voiceModeActive || isListening || phase !== 'idle'}
+{#if appStore.voiceModeActive}
   <div class="voice-card">
     <!-- Pulse ring orb -->
     <div class="orb-outer">

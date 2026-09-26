@@ -86,7 +86,7 @@ describe('handleCreateMap', () => {
      */
     const { result, ctx } = await run({ title: 'Nowhere' });
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/place name or latitude and longitude/i);
+    expect(result.error).toMatch(/place name, latitude and longitude, or markers/i);
     expect(ctx.files['map.json']).toBeUndefined();
   });
 

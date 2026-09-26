@@ -84,6 +84,7 @@ const REPEAT_WINDOW = 8;
 
 /** Error codes an automatic retry can plausibly fix (provider protocol). */
 const RETRYABLE_ERROR_CODES = new Set(['RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANSPORT']);
+const MID_STREAM_FAILURE = /injected into (the )?SSE stream|stream (was )?(interrupted|terminated|closed unexpectedly)|premature close|unexpected end of (json|stream)|upstream (error|connect|provider)/i;
 
 /**
  * Whether a stream failure looks transient and is worth an automatic retry.
@@ -91,6 +92,10 @@ const RETRYABLE_ERROR_CODES = new Set(['RATE_LIMIT', 'SERVER', 'TIMEOUT', 'TRANS
  * heuristic remains as a fallback for unclassified failures.
  */
 export function isTransientStreamError(message: string, code?: string): boolean {
+  // A stream that broke partway (OpenRouter reports an upstream failure as
+  // "JSON error injected into SSE stream") is worth another try whatever code
+  // it was filed under.
+  if (MID_STREAM_FAILURE.test(message)) return true;
   if (code) return RETRYABLE_ERROR_CODES.has(code);
   return /\b(429|rate.?limit|502|503|504|505|gateway|timeout|timed?.?out|overloaded|econn(refused|reset|aborted)?|socket hang up|network|fetch failed)\b/i
     .test(message);
@@ -131,6 +136,7 @@ function toolResultMessage(
     content: result.content,
     isError: !!result.isError,
     details: result.details,
+    ...(result.images?.length ? { images: result.images } : {}),
     ts: Date.now()
   };
 }
@@ -160,8 +166,10 @@ async function executeTool(
 
 /**
  * One model request with transient-failure retries (dsh's llm/retry pattern).
- * Only a failure that produced zero deltas retries — once content shipped to
- * the transcript, a replay would duplicate it.
+ * A failure before any output retries as-is. A stream that broke after some
+ * text but before any tool call is replayed once, with `discardPartial` so the
+ * UI drops the half-written text instead of duplicating it; a single dropped
+ * connection shouldn't end a whole task.
  */
 async function callStreamWithRetry(
   args: AgentLoopArgs,
@@ -170,6 +178,7 @@ async function callStreamWithRetry(
 ): Promise<AssistantMessage> {
   const { signal } = args;
   let sawDelta = false;
+  let replays = 0;
   for (let attempt = 1; ; attempt += 1) {
     sawDelta = false;
     const assistant = await args.streamFn({
@@ -188,16 +197,17 @@ async function callStreamWithRetry(
         }
       }
     });
-    const retryable =
+    const transient =
       assistant.stopReason === 'error'
-      && !sawDelta
-      && !assistant.content
       && !(assistant.toolCalls?.length)
       && !!assistant.errorMessage
       && isTransientStreamError(assistant.errorMessage, assistant.errorCode);
-    if (!retryable || attempt >= MAX_STREAM_ATTEMPTS || signal.aborted) return assistant;
+    const clean = !sawDelta && !assistant.content;
+    const replay = transient && !clean && replays < 1;
+    if (!(transient && (clean || replay)) || attempt >= MAX_STREAM_ATTEMPTS || signal.aborted) return assistant;
+    if (replay) replays += 1;
     const delayMs = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!;
-    emit({ type: 'llm_retry', attempt, delayMs });
+    emit({ type: 'llm_retry', attempt, delayMs, ...(replay ? { discardPartial: true } : {}) });
     await sleepAbortable(delayMs, signal);
     if (signal.aborted) return assistant;
   }
@@ -252,7 +262,9 @@ export async function runAgentLoop(args: AgentLoopArgs): Promise<AgentLoopResult
       // reason to continue, not a reason to abandon the task).
       for (const call of toolCalls) {
         const blocked = toolResultMessage(call.id, call.name, {
-          content: 'Error: the response hit the length limit before this tool call completed. Re-issue the call with shorter arguments.',
+          content: 'Not run: your reply hit the output limit before this call was complete, so its arguments were cut off. '
+            + 'Do not resend the same large payload. Write big files in parts: write the first part, '
+            + 'then add each next part with write append: true (a few hundred lines each).',
           isError: true
         });
         messages.push(blocked);

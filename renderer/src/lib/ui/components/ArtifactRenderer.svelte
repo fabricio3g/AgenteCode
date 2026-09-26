@@ -3,39 +3,17 @@
 <script lang="ts">
   import type { AgentArtifact } from '$lib/types/chat';
   import { AlertCircle, FileQuestion } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { resolveArtifactPresentation } from '$lib/services/artifact-model';
-  import { isDataUrlFile, viewerPathFor } from '$lib/utils/artifact-files';
   import DocumentSurface from '$lib/features/chat/DocumentSurface.svelte';
-  import {
-    baseName,
-    documentExtension,
-    isDocumentSurfaceFile,
-    type DocumentSurfaceItem
-  } from '$lib/features/chat/document-surface';
+  import { artifactDocumentItems } from '$lib/features/chat/document-surface';
   import InlineArtifactPreview from './InlineArtifactPreview.svelte';
 
   interface Props { artifact: AgentArtifact }
   let { artifact }: Props = $props();
 
   const resolved = $derived(resolveArtifactPresentation(artifact));
-  const documentDocs = $derived.by((): DocumentSurfaceItem[] => resolved.visibleFiles
-    .map(([path, content]) => {
-      if (!isDocumentSurfaceFile(path)) return null;
-      const ext = documentExtension(path);
-      const textLike = ['md', 'markdown', 'txt', 'csv'].includes(ext);
-      return {
-        id: path,
-        name: path,
-        title: baseName(path),
-        dataUrl: isDataUrlFile(content) ? content : undefined,
-        content: !isDataUrlFile(content) && textLike ? content : undefined,
-        previewHtml: resolved.artifact.files[viewerPathFor(path)] || '',
-        kind: ext === 'md' || ext === 'markdown' ? 'report' : 'document',
-        status: resolved.artifact.workProduct?.status,
-        warnings: resolved.artifact.workProduct?.warnings
-      };
-    })
-    .filter(Boolean) as DocumentSurfaceItem[]);
+  const documentDocs = $derived(artifactDocumentItems(resolved));
 
   const issue = $derived(resolved.manifest.issues?.[0]);
 </script>
@@ -44,8 +22,8 @@
   <div class="artifact-state artifact-state-error">
     <AlertCircle class="size-4 shrink-0" />
     <div>
-      <div class="font-medium">Artifact could not be rendered</div>
-      <div class="mt-0.5 text-xs opacity-80">{issue?.message || 'Open the studio to inspect the available source files.'}</div>
+      <div class="font-medium">{$t('artifacts.card.renderFailed')}</div>
+      <div class="mt-0.5 text-xs opacity-80">{issue?.message || $t('artifacts.card.openToInspect')}</div>
     </div>
   </div>
 {:else if resolved.manifest.presentation === 'inline' && resolved.artifact.inline}
@@ -58,8 +36,8 @@
   <div class="artifact-state">
     <FileQuestion class="size-4 shrink-0" />
     <div>
-      <div class="font-medium">Source files are ready</div>
-      <div class="mt-0.5 text-xs opacity-80">No compatible preview is available. Open the studio to inspect or download the files.</div>
+      <div class="font-medium">{$t('artifacts.card.filesReady')}</div>
+      <div class="mt-0.5 text-xs opacity-80">{$t('artifacts.card.noPreview')}</div>
     </div>
   </div>
 {/if}

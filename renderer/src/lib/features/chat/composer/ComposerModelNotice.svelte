@@ -11,21 +11,8 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { copy } from '$lib/copy';
+  import { providerLabel as providerName } from '$lib/utils/providers';
 
-  const PROVIDER_LABELS: Record<string, string> = {
-    openai: 'OpenAI',
-    openrouter: 'OpenRouter',
-    anthropic: 'Anthropic',
-    groq: 'Groq',
-    mistral: 'Mistral',
-    together: 'Together AI',
-    deepseek: 'DeepSeek',
-    cohere: 'Cohere',
-    perplexity: 'Perplexity',
-    lmstudio: 'LM Studio',
-    ollama: 'Ollama',
-    custom: 'Custom'
-  };
 
   const activeModel = $derived(modelsStore.status?.active_model);
   const runtimeState = $derived(String(modelsStore.status?.state || ''));
@@ -33,7 +20,7 @@
 
   const providerLabel = $derived(
     appStore.backendMode === 'api'
-      ? PROVIDER_LABELS[appStore.activeProviderName] || appStore.activeProviderName
+      ? providerName(appStore.activeProviderName)
       : null
   );
   const hasApiKey = $derived(

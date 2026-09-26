@@ -243,6 +243,16 @@ export async function writeWorkspaceFile(workspaceRoot, relativePath, content) {
   return fullPath;
 }
 
+/** Writes a generated binary (a `data:…;base64,` URL) into the workspace. */
+export async function writeWorkspaceBinary(workspaceRoot, relativePath, dataUrl) {
+  const match = /^data:[^;,]*;base64,(.*)$/s.exec(String(dataUrl || ''));
+  if (!match) throw new Error('Expected a base64 data URL.');
+  const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  fs.writeFileSync(fullPath, Buffer.from(match[1], 'base64'));
+  return fullPath;
+}
+
 export async function readWorkspaceFile(workspaceRoot, relativePath) {
   const fullPath = resolveWorkspacePath(workspaceRoot, relativePath);
   return fs.readFileSync(fullPath, 'utf8');

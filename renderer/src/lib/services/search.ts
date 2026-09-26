@@ -74,16 +74,10 @@ export async function webSearch(args: {
       provider: stored.search?.provider || 'aggregator',
       aggregator_engines: stored.search?.aggregator_engines,
       safe_search: stored.search?.safe_search,
-      google_cse_api_key: searchProviders.google_cse?.api_key,
-      google_cse_id: searchProviders.google_cse?.engine_id,
       brave_api_key: searchProviders.brave?.api_key,
-      serpapi_api_key: searchProviders.serpapi?.api_key,
       tavily_api_key: searchProviders.tavily?.api_key,
       exa_api_key: searchProviders.exa?.api_key,
       searxng_base_url: searchProviders.searxng?.base_url,
-      bing_api_key: searchProviders.bing?.api_key,
-      bing_endpoint: searchProviders.bing?.endpoint,
-      serper_api_key: searchProviders.serper?.api_key,
       jina_api_key: searchProviders.jina?.api_key,
       jina_base_url: searchProviders.jina?.base_url,
       youcom_api_key: searchProviders.youcom?.api_key,
@@ -116,6 +110,8 @@ export async function searchHfModels(query: string, sort = 'trending', limit = 2
 }
 
 export interface HfModelSearchItem {
+  /** SPDX-ish id from the repo tags, e.g. apache-2.0. */
+  license?: string;
   repo_id: string;
   label?: string;
   author?: string;

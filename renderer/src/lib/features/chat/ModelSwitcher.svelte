@@ -2,6 +2,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import { Check, ChevronDown, Cpu, LoaderCircle, Play, Power, RefreshCw, Search, Settings2, Sparkles, Square, X } from 'lucide-svelte';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { appStore } from '$lib/stores/app.svelte';
@@ -9,6 +10,8 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { invoke, isElectron } from '$lib/services/bridge';
   import { Button } from '$lib/components/ui';
+  import { modalLayer } from '$lib/components/ui/modal-layer';
+  import { t } from 'svelte-i18n';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
@@ -95,8 +98,8 @@
     if (modelSearch.trim()) {
       return modelsForProvider(id).length > 0 || expandedProviders[id] === true;
     }
-    if (expandedProviders[id] !== undefined) return expandedProviders[id];
-    return id === appStore.activeProviderName;
+    // Groups start collapsed (the header shows the model in use); a click opens one.
+    return expandedProviders[id] === true;
   }
 
   function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -157,7 +160,7 @@
       if (!list.length) list = seedModels(id);
       modelsByProvider = { ...modelsByProvider, [id]: list };
     } catch {
-      providerErrors = { ...providerErrors, [id]: 'Could not refresh models. Your saved model is still available.' };
+      providerErrors = { ...providerErrors, [id]: get(t)('modelPicker.refreshFailed') };
       // Keep seed / previous list — never leave empty-loading state
       if (modelsByProvider[id] === undefined) {
         modelsByProvider = { ...modelsByProvider, [id]: seedModels(id) };
@@ -188,7 +191,7 @@
         model: modelId
       });
     } catch (err) {
-      toastStore.error('Could not switch model');
+      toastStore.error(get(t)('modelPicker.switchFailed'));
       return;
     } finally {
       selectingModel = '';
@@ -203,7 +206,7 @@
       await appStore.setBackendMode(mode as 'api' | 'local');
       initCloudListWhenOpen();
     } catch {
-      toastStore.error('Could not change model source. Please try again.');
+      toastStore.error(get(t)('modelPicker.sourceFailed'));
     } finally {
       changingMode = false;
     }
@@ -279,9 +282,9 @@
     unloading = true;
     try {
       await appStore.stopLocalModel();
-      toastStore.success('Model unloaded');
+      toastStore.success(get(t)('modelPicker.unloaded'));
     } catch {
-      toastStore.error('Failed to unload model');
+      toastStore.error(get(t)('modelPicker.unloadFailed'));
     } finally {
       unloading = false;
     }
@@ -309,7 +312,8 @@
       if (appStore.backendMode !== 'api') return;
       const active = appStore.activeProviderName;
       if (!active) return;
-      expandedProviders = { ...expandedProviders, [active]: true };
+      // Every opening starts collapsed; the list is fetched ahead for search.
+      expandedProviders = {};
       void loadModelsForProvider(active);
     });
   }
@@ -327,23 +331,10 @@
     // Focus search once the modal lands.
     const focusTimer = window.setTimeout(() => searchInput?.focus(), 60);
 
+    // Escape, focus trapping and focus return come from modalLayer; this only
+    // adds arrow-key movement between the search field and the model rows.
     function handleKeydown(event: KeyboardEvent) {
       if (!panelEl) return;
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        appStore.modelMenuOpen = false;
-        return;
-      }
-      if (event.key === 'Tab') {
-        const focusable = [...panelEl.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]')];
-        const first = focusable[0];
-        const last = focusable.at(-1);
-        if (event.shiftKey && (document.activeElement === first || !panelEl.contains(document.activeElement))) {
-          event.preventDefault(); last?.focus();
-        } else if (!event.shiftKey && (document.activeElement === last || !panelEl.contains(document.activeElement))) {
-          event.preventDefault(); first?.focus();
-        }
-      }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         const rows = [...panelEl.querySelectorAll<HTMLButtonElement>('[data-model-option]:not(:disabled)')];
         const current = rows.findIndex((row) => row === document.activeElement);
@@ -361,7 +352,6 @@
     return () => {
       clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeydown);
-      triggerEl?.focus();
     };
   });
 
@@ -386,7 +376,7 @@
   aria-haspopup="dialog"
   aria-expanded={appStore.modelMenuOpen}
   aria-controls={dialogId}
-  aria-label={`Choose model: ${displayLabel || 'On device'}`}
+  aria-label={$t('modelPicker.triggerLabel', { values: { model: displayLabel || $t('modelPicker.onDevice') } })}
 >
   {#if appStore.backendMode === 'local'}
     <Cpu class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -397,9 +387,9 @@
     {#if appStore.backendMode === 'local' && isAnyModelLoaded}
       {loadedModelFilename}
     {:else if appStore.backendMode === 'local'}
-      On Device
+      {$t('modelPicker.onDevice')}
     {:else}
-      {displayLabel || 'Select model'}
+      {displayLabel || $t('modelPicker.selectModel')}
     {/if}
   </span>
   <ChevronDown class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 {appStore.modelMenuOpen ? 'rotate-180' : ''}" />
@@ -408,7 +398,7 @@
 <!-- Modal: portaled to body so Electron titlebar drag region cannot swallow clicks.
      Gray backdrop fills the window; square panel sits centered with fade/scale. -->
 {#if appStore.modelMenuOpen}
-  <div use:portalToBody class="model-modal-root fixed inset-0">
+  <div use:portalToBody use:modalLayer={{ onclose: () => (appStore.modelMenuOpen = false) }} class="model-modal-root fixed inset-0">
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div
       class="model-modal-backdrop absolute inset-0"
@@ -430,14 +420,14 @@
         transition:flyAndScale={{ y: 10, start: 0.96, duration: 180 }}
        >
     <header class="picker-heading">
-      <div><h2 id={`${dialogId}-title`}>Choose a model</h2><p>The right model for your next conversation.</p></div>
-      <button type="button" class="aui-icon-button size-8" onclick={() => (appStore.modelMenuOpen = false)} aria-label="Close model picker"><X class="size-4" /></button>
+      <div><h2 id={`${dialogId}-title`}>{$t('modelPicker.title')}</h2><p>{$t('modelPicker.subtitle')}</p></div>
+      <button type="button" class="aui-icon-button size-8" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
     </header>
     <div class="picker-source">
       {#if isElectron()}
-        <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: 'Cloud', disabled: changingMode || !!selectingModel }, { value: 'local', label: 'On device', disabled: changingMode || !!selectingModel }]} label="Model source" onchange={(mode) => void changeBackend(mode)} />
+        <SegmentedControl value={appStore.backendMode} options={[{ value: 'api', label: $t('modelPicker.cloud'), disabled: changingMode || !!selectingModel }, { value: 'local', label: $t('modelPicker.onDevice'), disabled: changingMode || !!selectingModel }]} label={$t('modelPicker.source')} onchange={(mode) => void changeBackend(mode)} />
       {/if}
-      <span class="source-caption">{appStore.backendMode === 'local' ? 'Runs on your computer' : 'Your connected providers'}</span>
+      <span class="source-caption">{appStore.backendMode === 'local' ? $t('modelPicker.localCaption') : $t('modelPicker.cloudCaption')}</span>
     </div>
     <!-- Search stays anchored while provider groups scroll below it. -->
     <div class="panel-head flex items-center gap-1.5 px-2.5 pb-2 pt-2.5">
@@ -447,16 +437,15 @@
           bind:this={searchInput}
           bind:value={modelSearch}
            type="search"
-           aria-label="Search models"
-          placeholder="Search models…"
+           aria-label={$t('modelPicker.search')}
+          placeholder={$t('modelPicker.searchPlaceholder')}
           class="search-input w-full py-1.5 pl-9 pr-9 text-[13px] text-foreground outline-none transition placeholder:text-muted-foreground"
           onclick={(e) => e.stopPropagation()}
-          onkeydown={(e) => e.key === 'Escape' && (appStore.modelMenuOpen = false)}
         />
         {#if modelSearch}
           <button
              class="clear-btn absolute right-2.5 top-1/2 -translate-y-1/2 p-1"
-             aria-label="Clear model search"
+             aria-label={$t('modelPicker.clearSearch')}
             onclick={() => (modelSearch = '')}
           >
             <X class="h-3.5 w-3.5" />
@@ -464,7 +453,7 @@
         {/if}
       </div>
       {#if appStore.backendMode === 'api'}
-        <Tooltip label="Refresh models" position="bottom">
+        <Tooltip label={$t('modelPicker.refresh')} position="bottom">
           <button
             type="button"
             class="mode-icon-btn shrink-0"
@@ -474,13 +463,13 @@
               const active = appStore.activeProviderName;
               if (active) void loadModelsForProvider(active, true);
             }}
-            aria-label="Refresh models"
+            aria-label={$t('modelPicker.refresh')}
             disabled={!!loadingProvider[appStore.activeProviderName]}
           >
             <RefreshCw class="h-4 w-4 {loadingProvider[appStore.activeProviderName] ? 'animate-spin' : ''}" />
           </button>
         </Tooltip>
-        <Tooltip label="Manage API providers" position="bottom">
+        <Tooltip label={$t('modelPicker.manageProviders')} position="bottom">
           <button
             type="button"
             class="mode-icon-btn shrink-0"
@@ -489,7 +478,7 @@
               appStore.modelManagerOpenSection = 'providers';
               appStore.modelManagerOpen = true;
             }}
-            aria-label="Manage API providers"
+            aria-label={$t('modelPicker.manageProviders')}
           >
             <Settings2 class="h-4 w-4" />
           </button>
@@ -517,7 +506,7 @@
     {#if appStore.backendMode === 'local' && localLoading}
       <div class="loading-indicator mx-3 mb-2.5 flex items-center gap-2 px-2.5 py-2">
         <LoaderCircle class="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-        <span class="text-sm font-medium text-fg-secondary">Loading model...</span>
+        <span class="text-sm font-medium text-fg-secondary">{$t('modelPicker.loadingModel')}</span>
       </div>
     {/if}
 
@@ -525,7 +514,7 @@
     {#if confirmSwitch}
       <div class="confirm-card mx-3 mb-2.5 p-2.5">
         <p class="text-[12px] text-fg-secondary">
-          Unload <span class="font-semibold text-foreground">{loadedModelFilename}</span> and load <span class="font-semibold text-foreground">{confirmSwitch.name}</span>?
+          {$t('modelPicker.switchConfirm', { values: { current: loadedModelFilename, next: confirmSwitch.name } })}
         </p>
         <div class="mt-3 flex gap-2">
           <button
@@ -533,18 +522,18 @@
             onclick={confirmSwitchModel}
           >
             <Power class="h-3.5 w-3.5" />
-            Switch
+            {$t('modelPicker.switch')}
           </button>
           <button
             class="confirm-btn secondary px-3 py-1.5 text-sm font-medium"
             onclick={() => (confirmSwitch = null)}
-          >Cancel</button>
+          >{$t('modelPicker.cancel')}</button>
         </div>
       </div>
     {/if}
 
     <!-- Model list -->
-    <div class="model-list min-h-0 flex-1 overflow-y-auto px-2 pb-2.5" aria-label="Available models" aria-busy={changingMode}>
+    <div class="model-list min-h-0 flex-1 overflow-y-auto px-2 pb-2.5" aria-label={$t('modelPicker.available')} aria-busy={changingMode}>
       {#if appStore.backendMode === 'api'}
         {#if !configured.length}
           <div class="empty-state flex flex-col items-center gap-3 px-4 py-6 text-center">
@@ -552,8 +541,8 @@
               <Sparkles class="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <p class="text-sm font-medium text-fg-secondary">No providers configured</p>
-              <p class="mt-0.5 text-xs text-muted-foreground">Add an API key in Settings → API</p>
+              <p class="text-sm font-medium text-fg-secondary">{$t('modelPicker.noProviders')}</p>
+              <p class="mt-0.5 text-xs text-muted-foreground">{$t('modelPicker.noProvidersHint')}</p>
             </div>
             <Button
               size="sm"
@@ -564,11 +553,11 @@
                 appStore.modelManagerOpen = true;
               }}
             >
-              Configure Provider
+              {$t('modelPicker.configureProvider')}
             </Button>
           </div>
         {:else if !visibleProviders.length}
-          <div class="picker-empty"><Search class="size-5" /><p>No models found</p><span>Try a model name or a provider.</span><button type="button" onclick={() => (modelSearch = '')}>Clear search</button></div>
+          <div class="picker-empty"><Search class="size-5" /><p>{$t('modelPicker.noResults')}</p><span>{$t('modelPicker.noResultsHint')}</span><button type="button" onclick={() => (modelSearch = '')}>{$t('modelPicker.clearSearch')}</button></div>
         {:else}
           <!-- Nested tree: provider → models (no card borders) -->
           <div class="provider-tree space-y-0.5 px-0.5">
@@ -597,7 +586,7 @@
                     <span class="flex items-center gap-1.5">
                       <span class="text-[13px] font-medium text-foreground">{prov.label}</span>
                       {#if prov.isActive}
-                        <span class="provider-active">Connected</span>
+                        <span class="provider-active">{$t('modelPicker.connected')}</span>
                       {/if}
                     </span>
                     {#if prov.model && !open}
@@ -614,16 +603,16 @@
                        these, so the rail was chrome restating the hierarchy. -->
                   <div class="model-nest">
                     {#if providerErrors[prov.id]}
-                      <div class="provider-error" role="status"><span>{providerErrors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void loadModelsForProvider(prov.id, true)}>Retry</button></div>
+                      <div class="provider-error" role="status"><span>{providerErrors[prov.id]}</span><button type="button" disabled={loading} onclick={() => void loadModelsForProvider(prov.id, true)}>{$t('modelPicker.retry')}</button></div>
                     {/if}
                     {#if list.length === 0 && loading}
                       <div class="flex items-center gap-2 px-2 py-1.5 text-[11px] text-muted-foreground">
                         <LoaderCircle class="h-3 w-3 animate-spin" />
-                        Loading…
+                        {$t('modelPicker.loading')}
                       </div>
                     {:else if list.length === 0}
                       <div class="px-2 py-1.5 text-[11px] text-muted-foreground">
-                        {modelSearch ? 'No matches' : 'No models — open API settings or refresh'}
+                        {modelSearch ? $t('modelPicker.noMatches') : $t('modelPicker.noProviderModels')}
                       </div>
                     {:else}
                       {#each list as model (model.id)}
@@ -653,7 +642,7 @@
                           <span class="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground"
                             >{model.name}</span
                            >
-                          {#if selected}<span class="selected-label">In use</span>{/if}
+                          {#if selected}<span class="selected-label">{$t('modelPicker.inUse')}</span>{/if}
                         </button>
                       {/each}
                     {/if}
@@ -666,8 +655,8 @@
       {:else if !appStore.models.length}
         <div class="empty-state flex flex-col items-center gap-2 px-4 py-6 text-center">
           <div>
-            <p class="text-sm font-semibold text-foreground">No local models</p>
-            <p class="mt-1 text-xs text-fg-secondary">Discover and download one in Explore</p>
+            <p class="text-sm font-semibold text-foreground">{$t('modelPicker.noLocal')}</p>
+            <p class="mt-1 text-xs text-fg-secondary">{$t('modelPicker.noLocalHint')}</p>
           </div>
           <Button
             size="sm"
@@ -678,12 +667,12 @@
               appStore.modelManagerOpen = true;
             }}
           >
-            Explore models
+            {$t('modelPicker.explore')}
           </Button>
         </div>
       {:else if filteredModels.length === 0}
         <div class="px-4 py-6 text-center">
-          <p class="text-sm text-muted-foreground">No models match your search</p>
+          <p class="text-sm text-muted-foreground">{$t('modelPicker.noResults')}</p>
         </div>
       {:else}
         <div class="space-y-0.5">
@@ -717,7 +706,7 @@
                     {:else}
                       <Square class="h-3.5 w-3.5" />
                     {/if}
-                    Unload
+                    {$t('modelPicker.unload')}
                   </Button>
                 {:else}
                   <Button
@@ -733,10 +722,10 @@
                   >
                     {#if loadingTarget}
                       <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-                      Loading
+                      {$t('modelPicker.loading')}
                     {:else}
                       <Play class="h-3.5 w-3.5" />
-                      Load
+                      {$t('modelPicker.load')}
                     {/if}
                   </Button>
                 {/if}
@@ -746,19 +735,18 @@
         </div>
       {/if}
     </div>
-    <footer class="picker-footer"><span aria-live="polite">{resultCount} {resultCount === 1 ? 'model' : 'models'}{modelSearch ? ' found' : ' available'}</span><span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate <kbd>esc</kbd> Close</span></footer>
+    <footer class="picker-footer"><span aria-live="polite">{$t(modelSearch ? 'modelPicker.countFound' : 'modelPicker.countAvailable', { values: { n: resultCount } })}</span><span class="picker-key-hint"><kbd>↑</kbd><kbd>↓</kbd> {$t('modelPicker.navigate')} <kbd>esc</kbd> {$t('modelPicker.close')}</span></footer>
   </div>
     </div>
   </div>
 {/if}
 
 <style>
-  /* A white pill with a hairline border, matching the add button beside it and
-     the suggestion chips below the composer. */
+  /* Borderless, like the add button beside it: a soft fill only on hover. */
   .model-trigger {
     color: var(--text-secondary);
-    background: var(--card);
-    border: 1px solid var(--border);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
     box-shadow: none;
     transition:
@@ -769,7 +757,6 @@
 
   .model-trigger:hover,
   .model-trigger.is-open {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--muted);
     color: var(--foreground);
   }
@@ -784,7 +771,6 @@
   /* Centered modal over a gray backdrop. Square-ish card sized to
      content, capped to the window. */
   .model-modal-root {
-    z-index: 10050;
     -webkit-app-region: no-drag;
   }
 

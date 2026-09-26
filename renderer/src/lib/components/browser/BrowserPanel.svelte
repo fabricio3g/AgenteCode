@@ -10,14 +10,17 @@
 
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { X, Plus, ArrowRight, LoaderCircle, Monitor, Laptop, Tablet, Smartphone } from 'lucide-svelte';
+  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, Bot } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import IconButton from '$lib/components/ui/IconButton.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
-  import { syncBrowserPanelBounds, BROWSER_VIEWPORTS, type BrowserViewportPreset } from '$lib/services/browser';
+  import { syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
+  import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
 
   const VIEWPORT_META: Record<BrowserViewportPreset, { label: string; icon: typeof Monitor }> = {
+    fit: { label: 'Fit', icon: PanelRight },
     desktop: { label: 'Desktop', icon: Monitor },
     laptop: { label: 'Laptop', icon: Laptop },
     tablet: { label: 'Tablet', icon: Tablet },
@@ -39,6 +42,21 @@
       event.preventDefault();
       void browserPanelStore.go().then(() => syncBounds());
     }
+  }
+
+  /** Drag the left edge to resize; the width is remembered. */
+  function startResize(event: PointerEvent) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = browserPanelStore.width;
+    const onMove = (move: PointerEvent) => browserPanelStore.setWidth(startWidth + (startX - move.clientX));
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      void syncBounds();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   function shortLabel(tab: { title: string; url: string }) {
@@ -76,8 +94,11 @@
   bind:this={panelEl}
   class="browser-panel"
   role="complementary"
-  aria-label="Agent browser"
+  aria-label={$t('browser.title')}
+  style={`width: ${browserPanelStore.width}px;`}
 >
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="browser-resize" title={$t('browser.resize')} onpointerdown={startResize}></div>
   <div class="browser-tabs" role="tablist" aria-label="Browser tabs">
     {#each browserPanelStore.tabs as tab (tab.id)}
       <div
@@ -98,7 +119,7 @@
           type="button"
           class="browser-tab-close"
           onclick={() => void browserPanelStore.closeTab(tab.id)}
-          aria-label="Close tab"
+          aria-label={$t('browser.closeTab')}
           tabindex="-1"
         >
           <X class="size-3" />
@@ -109,22 +130,31 @@
       type="button"
       class="browser-icon-btn"
       onclick={() => void browserPanelStore.newTab().then(() => syncBounds())}
-      aria-label="New tab"
-      title="New tab"
+      aria-label={$t('browser.newTab')}
+      title={$t('browser.newTab')}
     >
       <Plus class="size-3.5" />
     </button>
-    <span class="browser-driving" class:on={browserPanelStore.agentDriving} title={browserPanelStore.agentDriving ? 'Agent is driving this page' : ''}>
+    <span class="browser-driving" class:on={browserPanelStore.agentDriving} title={browserPanelStore.agentDriving ? $t('browser.agentUsing') : ''}>
       <span class="browser-driving-dot" aria-hidden="true"></span>
-      {browserPanelStore.agentDriving ? 'Agent' : ''}
+      {browserPanelStore.agentDriving ? $t('browser.agent') : ''}
     </span>
   </div>
 
   <div class="browser-bar">
+    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
+      <ArrowLeft class="size-3.5" />
+    </button>
+    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('forward')} aria-label={$t('browser.forward')} title={$t('browser.forward')}>
+      <ArrowRight class="size-3.5" />
+    </button>
+    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
+      <RotateCw class="size-3.5" />
+    </button>
     <input
       id="browser-address-input"
       class="browser-url"
-      placeholder="Search or enter website URL"
+      placeholder={$t('browser.address')}
       bind:value={browserPanelStore.addressInput}
       onkeydown={onAddressKeydown}
       spellcheck={false}
@@ -134,8 +164,8 @@
       type="button"
       class="browser-icon-btn"
       onclick={() => void browserPanelStore.go()}
-      aria-label="Go to URL"
-      title="Go"
+      aria-label={$t('browser.go')}
+      title={$t('browser.go')}
       disabled={browserPanelStore.loading}
     >
       {#if browserPanelStore.loading}
@@ -144,16 +174,22 @@
         <ArrowRight class="size-3.5" />
       {/if}
     </button>
-    <Menu placement="bottom-end" label="Screen size">
+    <Menu placement="bottom-end" label={$t('browser.screenSize')}>
       {#snippet trigger(props)}
         {@const ActiveIcon = VIEWPORT_META[browserPanelStore.viewport]?.icon ?? Monitor}
         <IconButton
           {...props}
-          label="Screen size: {VIEWPORT_META[browserPanelStore.viewport]?.label ?? ''}"
+          label="{$t('browser.screenSize')}: {browserPanelStore.viewport === 'fit' ? $t('browser.fit') : VIEWPORT_META[browserPanelStore.viewport]?.label ?? ''}"
         >
           <ActiveIcon class="size-3.5" />
         </IconButton>
       {/snippet}
+      <MenuItem
+        icon={PanelRight}
+        label={$t('browser.fit')}
+        active={browserPanelStore.viewport === 'fit'}
+        onselect={() => void browserPanelStore.setViewport('fit')}
+      />
       {#each Object.entries(BROWSER_VIEWPORTS) as [id, preset] (id)}
         {@const ItemIcon = VIEWPORT_META[id as BrowserViewportPreset]?.icon ?? Monitor}
         <MenuItem
@@ -168,15 +204,25 @@
       type="button"
       class="browser-icon-btn"
       onclick={() => void browserPanelStore.hide()}
-      aria-label="Close browser panel"
-      title="Close"
+      aria-label={$t('browser.closePanel')}
+      title={$t('browser.closePanel')}
     >
       <X class="size-3.5" />
     </button>
   </div>
 
   {#if browserPanelStore.userTakeover}
-    <div class="browser-takeover">You took control — agent paused on this tab</div>
+    <div class="browser-banner">
+      <Hand class="size-3.5 shrink-0" />
+      <span class="min-w-0 flex-1 truncate">{$t('browser.youHaveControl')}</span>
+      <button type="button" class="banner-btn" onclick={() => void browserPanelStore.setTakeover(false)}>{$t('browser.handBack')}</button>
+    </div>
+  {:else if browserPanelStore.agentDriving}
+    <div class="browser-banner is-agent">
+      <Bot class="size-3.5 shrink-0" />
+      <span class="min-w-0 flex-1 truncate">{$t('browser.agentUsing')}</span>
+      <button type="button" class="banner-btn" onclick={() => void browserPanelStore.setTakeover(true)}>{$t('browser.takeControl')}</button>
+    </div>
   {/if}
 
   <div bind:this={viewportEl} class="browser-viewport-box" aria-label="Page view"></div>
@@ -184,12 +230,12 @@
 
 <style>
   .browser-panel {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
-    width: 600px;
-    min-width: 400px;
-    max-width: 55%;
+    min-width: 360px;
+    max-width: 70%;
     flex-shrink: 0;
     overflow: hidden;
     border-left: 1px solid var(--border);
@@ -341,12 +387,47 @@
     color: var(--foreground);
   }
 
-  .browser-takeover {
-    padding: 0.2rem 0.75rem;
-    font-size: 11px;
-    color: var(--muted-foreground);
+  .browser-resize {
+    position: absolute;
+    inset-block: 0;
+    left: -3px;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 1;
+  }
+
+  .browser-resize:hover {
+    background: color-mix(in srgb, var(--sidebar-primary) 35%, transparent);
+  }
+
+  .browser-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+    font-size: 11.5px;
+    color: var(--foreground);
     background: var(--card);
     border-bottom: 1px solid var(--border);
+  }
+
+  .browser-banner.is-agent {
+    background: color-mix(in srgb, var(--sidebar-primary) 10%, var(--card));
+  }
+
+  .banner-btn {
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--background);
+    color: var(--foreground);
+    padding: 0.1rem 0.6rem;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .banner-btn:hover {
+    border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 
   .browser-viewport-box {

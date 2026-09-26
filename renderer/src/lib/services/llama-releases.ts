@@ -43,7 +43,12 @@ export type ReleaseFetchResult = {
   assets: ReleaseAsset[];
   /** Superseded builds (older CUDA versions, alternate SYCL precisions). */
   extras: ReleaseAsset[];
-  error: string;
+  /**
+   * Why a known release is shown instead of the latest one ('' when the
+   * latest matched). The UI words it; `latestTag` names the skipped release.
+   */
+  notice: '' | 'rate_limited' | 'no_match' | 'offline';
+  latestTag?: string;
 };
 
 export const LLAMA_REPO = 'ggml-org/llama.cpp';
@@ -282,39 +287,45 @@ export function buildFallbackAssets(platformInfo: RuntimePlatformInfo): ReleaseA
 export async function fetchLlamaReleaseAssets(
   platformInfo: RuntimePlatformInfo
 ): Promise<ReleaseFetchResult> {
-  const fallback = (error: string): ReleaseFetchResult => ({
+  const fallback = (notice: ReleaseFetchResult['notice'], latestTag?: string): ReleaseFetchResult => ({
     tag: FALLBACK_TAG,
     assets: buildFallbackAssets(platformInfo),
     extras: [],
-    error
+    notice,
+    ...(latestTag ? { latestTag } : {})
   });
 
   try {
-    const res = await fetch(`https://api.github.com/repos/${LLAMA_REPO}/releases/latest`, {
+    // Not /releases/latest: GitHub's "latest" can be a tag with no builds
+    // (v0.5.0), which used to pin everyone to the old fallback build.
+    const res = await fetch(`https://api.github.com/repos/${LLAMA_REPO}/releases?per_page=15`, {
       headers: {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'chatealm-desktop'
+        'User-Agent': 'FlaxeoChat'
       }
     });
 
     if (res.status === 403 || res.status === 429) {
-      return fallback(`GitHub API rate-limited — showing known release ${FALLBACK_TAG}`);
+      return fallback('rate_limited');
     }
     if (!res.ok) throw new Error(`GitHub API ${res.status}`);
 
-    const data = await res.json() as {
+    const releases = await res.json() as Array<{
       tag_name: string;
+      draft?: boolean;
+      prerelease?: boolean;
       assets: { name: string; browser_download_url: string }[];
-    };
-    const manifest = (data.assets || []).map((a) => ({ name: a.name, url: a.browser_download_url }));
-    const { assets, extras } = selectRuntimeAssets(manifest, data.tag_name, platformInfo);
-
-    if (!assets.length) {
-      return fallback(`No ${data.tag_name} build matches this platform — showing ${FALLBACK_TAG}`);
+    }>;
+    // llama.cpp flags every b-build as a pre-release; only drafts are unfinished.
+    for (const release of releases) {
+      if (release.draft) continue;
+      const manifest = (release.assets || []).map((a) => ({ name: a.name, url: a.browser_download_url }));
+      const { assets, extras } = selectRuntimeAssets(manifest, release.tag_name, platformInfo);
+      if (assets.length) return { tag: release.tag_name, assets, extras, notice: '' };
     }
-    return { tag: data.tag_name, assets, extras, error: '' };
+    return fallback('no_match', releases[0]?.tag_name);
   } catch {
-    return fallback(`Could not reach GitHub — showing known release ${FALLBACK_TAG}`);
+    return fallback('offline');
   }
 }

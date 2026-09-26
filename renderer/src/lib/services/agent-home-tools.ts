@@ -53,7 +53,8 @@ function homeTool(run: AgentRun, definition: { name: string; description: string
 
       const payload = toolResultPayload(result, MAX_TOOL_RESULT_CHARS);
       const details: HomeToolDetails = { payload };
-      return { content: JSON.stringify(payload), isError: !result.success, details };
+      // Screenshots ride as images; the wire builder attaches them for vision models.
+      return { content: JSON.stringify(payload), isError: !result.success, details, ...(result.image ? { images: [result.image] } : {}) };
     }
   };
 }

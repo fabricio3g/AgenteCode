@@ -130,7 +130,7 @@ export type CodeAgentEvent =
   | { type: 'tool_start'; chatId: string; toolCallId: string; toolName: string; args: unknown; label?: string; detail?: string }
   | { type: 'tool_update'; chatId: string; toolCallId: string; partialResult: unknown }
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean; status?: 'done' | 'error'; fileChanges?: Array<{ path: string; kind: string }>; diffStats?: Array<{ path: string; kind: string; additions: number; deletions: number }> }
-  | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number }
+  | { type: 'llm_retry'; chatId: string; attempt: number; delayMs: number; discardPartial?: boolean }
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }

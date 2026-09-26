@@ -1,7 +1,10 @@
+import './bootstrap-data.ts';
 import { app, BrowserWindow, Menu, Tray, nativeImage, shell, session, dialog, systemPreferences } from 'electron';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
+import { stopAllInstances } from './instances.ts';
 import { initTts } from './tts-engine.ts';
 import { moduleDirname } from './module-env.ts';
 import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
@@ -11,11 +14,20 @@ const moduleDir = moduleDirname(import.meta.url);
 
 const IS_DEV = !app.isPackaged;
 const RENDERER_DEV_URL = 'http://localhost:5173';
+/*
+ * Node's fetch tries IPv4 and IPv6 side by side ("happy eyeballs") but gives
+ * each attempt only 250 ms. On a slow link where IPv6 is unroutable and the
+ * IPv4 handshake takes a second, every attempt fails and the request reports
+ * ETIMEDOUT for a site that is reachable — weather, search, page reads and
+ * providers all broke that way. Give each attempt time to finish.
+ */
+net.setDefaultAutoSelectFamilyAttemptTimeout(2500);
+
 const RENDERER_PROD_PATH = path.join(moduleDir, '..', 'renderer', 'dist', 'index.html');
 const APP_ICON_PATH = IS_DEV
   ? path.join(moduleDir, '..', '..', 'renderer', 'public', 'app-icon.png')
   : path.join(moduleDir, '..', 'renderer', 'dist', 'app-icon.png');
-const APP_NAME = 'Chatea';
+const APP_NAME = 'Flaxeo Chat';
 
 let tray = null;
 
@@ -134,12 +146,14 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   try {
-    const { disposeAllAgenteSessions } = await import('./ipc-handlers.js');
+    const { disposeAllAgenteSessions, disposeCodeWorkspace } = await import('./ipc-handlers.js');
     disposeAllAgenteSessions();
+    disposeCodeWorkspace();
   } catch { /* ignore cleanup errors */ }
   try {
     const { cleanupLlm } = await import('./llm-runner.js');
     cleanupLlm();
+    stopAllInstances();
   } catch { /* ignore cleanup errors */ }
   try {
     const { closeDb } = await import('./chat-db.js');

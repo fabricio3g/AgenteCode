@@ -6,6 +6,7 @@ import {
   parseArtifactToolArgs
 } from './artifact-registry';
 import { hasArtifactExecutor } from './agent-artifact-dispatch';
+import { getToolDefinitions } from './agent-tooling';
 
 describe('artifact registry', () => {
   it('keeps ids, tool names, icons, schemas, and executors complete', () => {
@@ -162,7 +163,7 @@ const REALISTIC_CALLS: Record<string, Record<string, unknown>> = {
   create_dashboard: { title: 'KPIs', metrics: [{ label: 'Users', value: 120 }], summary: 'ok' },
   create_info_card: { title: 'Fact', rows: [{ label: 'A', value: 'B' }], source: 'https://x.test' },
   create_html_card: { title: 'Card', html: '<p>hi</p>', description: 'a card' },
-  export_research_package: { title: 'Research', citations: [{ title: 'T', url: 'https://x.test' }], format: 'md' }
+  create_widget: { title: 'Tip calculator', html: '<input type="range" id="t"><div id="out"></div>', script: 'fx.$("#t").oninput = () => {};' }
 };
 
 describe('artifact tool argument schemas', () => {
@@ -203,6 +204,7 @@ describe('artifact tool argument schemas', () => {
     expect(parseArtifactToolArgs('create_diagram', { title: 'No source' }).success).toBe(false);
     expect(parseArtifactToolArgs('create_presentation', { title: 'No slides' }).success).toBe(false);
     expect(parseArtifactToolArgs('create_html_card', { title: 'No html' }).success).toBe(false);
+    expect(parseArtifactToolArgs('create_widget', { title: 'No html', script: 'x()' }).success).toBe(false);
     expect(parseArtifactToolArgs('create_report', {}).success).toBe(false);
   });
 
@@ -212,10 +214,10 @@ describe('artifact tool argument schemas', () => {
     });
     expect(work.success).toBe(true);
     if (work.success) expect(work.data.formats).toEqual(['md']);
+  });
 
-    const research = parseArtifactToolArgs('export_research_package', { title: 'R' });
-    expect(research.success).toBe(true);
-    if (research.success) expect(research.data.kinds).toEqual(['citations']);
+  it('no longer offers research exports as an artifact tool', () => {
+    expect(getAllArtifacts().some((artifact) => artifact.toolName === ('export_research_package' as string))).toBe(false);
   });
 });
 
@@ -240,5 +242,17 @@ describe('create_map accepts a place name', () => {
     const parsed = parseArtifactToolArgs('create_map', { place: 'Madrid', centre: [1, 2] });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data).not.toHaveProperty('centre');
+  });
+});
+
+describe('create_chart chart types', () => {
+  it('accepts the names models commonly use and publishes a plain enum', () => {
+    const parsed = parseArtifactToolArgs('create_chart', { title: 'T', chart_type: 'Column', labels: ['a'], datasets: [{ data: [1] }] });
+    expect(parsed.success && parsed.data.chart_type).toBe('bar');
+    const doughnut = parseArtifactToolArgs('create_chart', { title: 'T', chart_type: 'doughnut', labels: ['a'], datasets: [{ data: [1] }] });
+    expect(doughnut.success && doughnut.data.chart_type).toBe('donut');
+    const definition = getToolDefinitions('sandbox', {}, 'work').find((tool) => tool.function.name === 'create_chart');
+    const property = (definition?.function.parameters as { properties: Record<string, { enum?: string[] }> }).properties.chart_type;
+    expect(property.enum).toEqual(['bar', 'line', 'pie', 'donut']);
   });
 });

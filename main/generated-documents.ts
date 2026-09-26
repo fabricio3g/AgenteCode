@@ -6,6 +6,7 @@ import {
   type SectionInput,
   type SheetInput
 } from '../shared/work-product.ts';
+import { ARTIFACT_BRAND } from '../shared/artifact-theme.ts';
 
 function bufferToBytes(buffer: Buffer | Uint8Array | ArrayBuffer): number[] {
   return Array.from(buffer instanceof Buffer ? buffer : Buffer.from(buffer));
@@ -15,14 +16,10 @@ export async function generateDocx(data: Record<string, unknown>) {
   const docx = await import('docx') as any;
   const title = text(data.title, 'Document');
   const subtitle = text(data.subtitle);
-  const author = text(data.author, 'Chatea');
+  const author = text(data.author, ARTIFACT_BRAND);
   const date = text(data.date, new Date().toISOString().slice(0, 10));
   const sections = normalizeSections(data.sections);
   const children: any[] = [
-    new docx.Paragraph({
-      spacing: { after: 120 },
-      children: [new docx.TextRun({ text: 'CHATEA LM WORK PRODUCT', bold: true, color: '64748B', size: 18 })]
-    }),
     new docx.Paragraph({
       text: title,
       heading: docx.HeadingLevel.TITLE,
@@ -103,9 +100,7 @@ export async function generateDocx(data: Record<string, unknown>) {
           children: [new docx.Paragraph({
             alignment: docx.AlignmentType.RIGHT,
             children: [
-              new docx.TextRun({ text: 'Chatea', color: '64748B', size: 16 }),
-              new docx.TextRun({ text: '  |  Page ', color: '64748B', size: 16 }),
-              docx.PageNumber.CURRENT
+              new docx.TextRun({ children: [docx.PageNumber.CURRENT], color: '94A3B8', size: 16 })
             ]
           })]
         })
@@ -138,7 +133,7 @@ export function uniqueWorksheetName(raw: string, used: Set<string>): string {
 export async function generateXlsx(data: Record<string, unknown>) {
   const ExcelJS = (await import('exceljs')).default;
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Chatea';
+  workbook.creator = ARTIFACT_BRAND;
   workbook.created = new Date();
 
   const sheets = Array.isArray(data.sheets) ? data.sheets as SheetInput[] : [];

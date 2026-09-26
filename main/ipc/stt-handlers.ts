@@ -1,4 +1,5 @@
-import type { IpcMain } from 'electron';
+import { BrowserWindow, type IpcMain } from 'electron';
+import { listSpeechModels, removeSpeechModel, setupVoice, useSpeechModel, voiceSetupPlan } from '../voice-setup.ts';
 import type { UnknownRecord } from './types.ts';
 
 type SttHandlerDeps = {
@@ -33,4 +34,9 @@ export function registerSttHandlers({ ipcMain, transcribeAudio, getSttStatus, un
 
   ipcMain.handle('get_stt_status', () => getSttStatus());
   ipcMain.handle('unload_whisper', () => unloadWhisper());
+  ipcMain.handle('voice_setup_plan', (_e, args?: { quality?: string }) => voiceSetupPlan(args?.quality));
+  ipcMain.handle('setup_voice', (e, args?: { quality?: string }) => setupVoice(BrowserWindow.fromWebContents(e.sender), args?.quality));
+  ipcMain.handle('list_speech_models', () => listSpeechModels());
+  ipcMain.handle('use_speech_model', (_e, args: { quality: string }) => useSpeechModel(String(args?.quality || '')));
+  ipcMain.handle('remove_speech_model', (_e, args: { quality: string }) => removeSpeechModel(String(args?.quality || '')));
 }

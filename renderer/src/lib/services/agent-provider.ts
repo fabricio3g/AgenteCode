@@ -75,7 +75,7 @@ function createChateaDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
     id: 'chatea',
     driverKind: 'chatea',
-    displayName: 'Chatea Agent (Local)',
+    displayName: 'Flaxeo Chat Agent (Local)',
     detail: 'Local-model agent (Chat mode only)',
     status: 'ready',
     accentColor: 'var(--primary)'
@@ -83,7 +83,7 @@ function createChateaDriver(): CodeAgentDriverDefinition {
   return {
     driver: {
       driverKind: 'chatea',
-      displayName: 'Chatea Agent (Local)',
+      displayName: 'Flaxeo Chat Agent (Local)',
       detail: 'Built-in local-model agent for Chat mode',
       supportsMultipleInstances: false
     },

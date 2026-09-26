@@ -72,6 +72,10 @@ export interface AgentRun {
   finalContent: string;
   finalReasoning: string;
   errorReason?: string;
+  /** The loop ended because a model request failed (not a step limit). */
+  requestFailed?: boolean;
+  /** The loop guard stopped the run: this tool kept being called (and usually failing). */
+  stuckTool?: string;
   warningReason?: string;
   stopReason: AgentStopReason;
   usage: CompletionResult['usage'];
@@ -153,7 +157,22 @@ const PREPARING = 'Preparing to use tools\u2026';
 export function buildWireMessages(run: AgentRun): RequestMessage[] {
   const which = run.transport.directMode ? 'direct' : nativeActive(run) ? 'native' : 'xml';
   const wire: RequestMessage[] = [{ role: 'system', content: run.plan.prompts[which] }, ...run.history];
-  for (const message of run.transcript) {
+  // Images from the latest tool batch only (browser screenshots): older ones
+  // show pages that have since changed. They follow the batch as a user
+  // message, which keeps native tool-call pairing valid; the request builder
+  // drops them for models without vision.
+  let lastAssistant = -1;
+  run.transcript.forEach((message, index) => {
+    if (message.role === 'assistant') lastAssistant = index;
+  });
+  let pendingImages: NonNullable<RequestMessage['attachments']> = [];
+  const flushImages = () => {
+    if (!pendingImages.length) return;
+    wire.push({ role: 'user', content: '[Screenshot returned by browser_screenshot]', attachments: pendingImages });
+    pendingImages = [];
+  };
+  for (const [index, message] of run.transcript.entries()) {
+    if (message.role !== 'tool') flushImages();
     if (message.role === 'user') {
       wire.push({ role: 'user', content: message.content });
       continue;
@@ -179,6 +198,11 @@ export function buildWireMessages(run: AgentRun): RequestMessage[] {
       }
       continue;
     }
+    if (index > lastAssistant) {
+      for (const image of message.images ?? []) {
+        pendingImages.push({ kind: 'image', base64: `data:${image.mimeType};base64,${image.data}`, name: 'screenshot.png' });
+      }
+    }
     if (run.nativeCallIds.has(message.toolCallId)) {
       wire.push({ role: 'tool', content: message.content, tool_call_id: message.toolCallId, name: message.toolName });
     } else {
@@ -186,6 +210,7 @@ export function buildWireMessages(run: AgentRun): RequestMessage[] {
       wire.push({ role: 'user', content: `Tool result for ${message.toolName}:\n${JSON.stringify(payload, null, 2)}` });
     }
   }
+  flushImages();
   return wire;
 }
 

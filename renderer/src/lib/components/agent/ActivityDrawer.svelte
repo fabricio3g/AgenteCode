@@ -11,7 +11,7 @@
   import ToolCallRow from './ToolCallRow.svelte';
 
   const message = $derived(appStore.activityMessage);
-  const steps = $derived(message?.agentSteps || []);
+  const steps = $derived((message?.agentSteps || []).filter((step) => !step.preface));
   const reasoning = $derived(message?.reasoning || '');
   const sources = $derived(message?.sources || []);
   const displaySources = $derived.by(() => dedupeSources(sources));

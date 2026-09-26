@@ -29,6 +29,12 @@ const embedding = new ManagedProcess({
 });
 
 let llamaStatus = llama.status;
+/** What the main instance was last started with, for restarts (sharing). */
+let lastMainConfig: Record<string, unknown> | null = null;
+
+export function getMainLaunchConfig(): Record<string, unknown> | null {
+  return lastMainConfig;
+}
 
 function isMmprojFileName(fileName: string): boolean {
   return /(^|[-_.])mmproj[-_.].*\.gguf$/i.test(fileName) || /projector.*\.gguf$/i.test(fileName);
@@ -183,11 +189,18 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
   const launchConfig = resolvedModelPath === config.model_path
     ? config
     : { ...config, model_path: resolvedModelPath };
+  lastMainConfig = { ...launchConfig };
 
   // Get system info for runtime config resolution
   const systemInfo = await getHardwareLimits();
 
   const port = (launchConfig.port as number) || 11435;
+  // Another server (an extra instance) already answering on this port would
+  // pass the health check for us and get its key overwritten.
+  if (llama.status?.state === 'idle' || llama.status?.port !== port) {
+    const busy = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) }).then(() => true, () => false);
+    if (busy) throw new Error(`Port ${port} is already used by another running model.`);
+  }
   const capabilities = inspectLlamaServer(runtimePath);
   // Per-launch credential so a stray browser tab cannot drive the local model
   // through the server's permissive default CORS policy.

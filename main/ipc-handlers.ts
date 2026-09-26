@@ -67,6 +67,8 @@ import { registerAppCapabilityHandlers } from './ipc/app-capability-handlers.ts'
 import { registerRuntimeHandlers } from './ipc/runtime-handlers.ts';
 import { registerTtsHandlers } from './ipc/tts-handlers.ts';
 import { registerSttHandlers } from './ipc/stt-handlers.ts';
+import { registerEngineHandlers } from './ipc/engine-handlers.ts';
+import { registerInstanceHandlers } from './ipc/instance-handlers.ts';
 import { registerWhisperHandlers } from './ipc/whisper-handlers.ts';
 import { registerProviderHandlers } from './ipc/provider-handlers.ts';
 import { registerChatHandlers } from './ipc/chat-handlers.ts';
@@ -80,6 +82,8 @@ import { registerModelManagementHandlers } from './ipc/model-handlers.ts';
 import { registerLlmRunnerHandlers } from './ipc/llm-runner-handlers.ts';
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
+import { registerBrowserAgentHandlers } from './ipc/browser-agent-handlers.ts';
+import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-workspace-handlers.ts';
 import { registerAgenteHandlers, disposeAllSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
@@ -172,6 +176,8 @@ export function registerIpcHandlers() {
   });
 
   // ── STT (speech-to-text) ──
+  registerEngineHandlers(ipcMain);
+  registerInstanceHandlers(ipcMain);
   registerSttHandlers({
     ipcMain,
     transcribeAudio,
@@ -333,6 +339,8 @@ export function registerIpcHandlers() {
   });
 
   // ── Sandbox / browser / slides ──
+  registerBrowserAgentHandlers(ipcMain);
+  registerCodeWorkspaceHandlers(ipcMain);
   registerToolingHandlers({
     ipcMain,
     sandboxExec,
@@ -367,4 +375,4 @@ export function registerIpcHandlers() {
   });
 }
 
-export { disposeAllAgenteSessions };
+export { disposeAllAgenteSessions, disposeCodeWorkspace };

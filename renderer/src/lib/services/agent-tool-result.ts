@@ -6,6 +6,7 @@ import type { ToolCall, ToolResult } from '$lib/services/agent-types';
 const OPTIONAL_PRESENTATION_TOOLS = new Set([
   'create_info_card',
   'create_html_card',
+  'create_widget',
   'create_chart',
   'create_dashboard',
   'create_diagram',
@@ -62,9 +63,9 @@ export function displayToolLabel(name: string): string {
     case 'create_spreadsheet': return 'Create spreadsheet';
     case 'create_presentation': return 'Create presentation';
     case 'create_pdf': return 'Create PDF';
-    case 'export_research_package': return 'Export research';
     case 'create_info_card': return 'Info card';
     case 'create_html_card': return 'HTML card';
+    case 'create_widget': return 'Widget';
     case 'create_chart': return 'Chart';
     case 'create_dashboard': return 'Dashboard';
     case 'get_weather': return 'Weather';
@@ -269,6 +270,14 @@ export function finalizeToolStep(step: AgentStep, result: ToolResult, toolName?:
 
   const output = result.output as Record<string, unknown> | undefined;
   if (output && typeof output === 'object') {
+    // Keep what was searched or read in structured form: the step text below
+    // is rewritten for display, and the research widget needs the query.
+    if (toolName === 'web_search') {
+      const query = String(output.query || step.detail || '').trim();
+      step.research = { query, results: Array.isArray(output.results) ? output.results.length : 0 };
+    } else if (toolName === 'fetch_url' && output.url) {
+      step.research = { url: String(output.url), title: String(output.title || '').trim() || undefined };
+    }
     const summary = shortToolStepSummary(toolName || undefined, output);
     // Keep running detail (e.g. search query) when summary has no better detail.
     if (summary.detail !== undefined) step.detail = summary.detail;

@@ -58,7 +58,7 @@ const es: CopyOverride = {
     allow: 'Permitir', deny: 'Denegar', failed: 'Falló', cancelled: 'Cancelado', stopped: 'Detenido',
     done: 'Hecho', error: 'Error', result: 'Resultado', truncated: '… (recortado)'
   },
-  codeRun: { read: 'Leer', write: 'Escribir', edit: 'Editar', bash: 'Ejecutar', grep: 'Buscar', ls: 'Listar', todo_write: 'Actualizar tareas', git_status: 'Estado de Git', git_diff: 'Diff de Git', approvePlan: 'Aprobar plan', approval: 'Aprobación', approved: 'Aprobado', denied: 'Denegado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Límite de salida alcanzado — continuando', planNote: 'Al aprobar, el agente empieza a editar; cada edición sigue pidiendo permiso.', turnLimit: 'Detenido por el límite de turnos', interrupted: 'Interrumpido — la app se cerró durante esta ejecución', plan: 'Plan' },
+  codeRun: { read: 'Leer', write: 'Escribir', edit: 'Editar', bash: 'Ejecutar', grep: 'Buscar', ls: 'Listar', todo_write: 'Actualizar tareas', git_status: 'Estado de Git', git_diff: 'Diff de Git', browser_open: 'Abrir página', browser_snapshot: 'Leer página', browser_click: 'Clic', browser_fill: 'Escribir', browser_select: 'Elegir opción', browser_press: 'Pulsar tecla', browser_hover: 'Pasar el cursor', browser_scroll: 'Desplazar', browser_wait: 'Esperar a la página', browser_back: 'Volver', browser_reload: 'Recargar', browser_console: 'Revisar consola', browser_screenshot: 'Captura', process_list: 'Listar procesos', process_output: 'Leer salida del proceso', process_stop: 'Detener proceso', approvePlan: 'Aprobar plan', approval: 'Aprobación', approved: 'Aprobado', denied: 'Denegado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Límite de salida alcanzado — continuando', planNote: 'Al aprobar, el agente empieza a editar; cada edición sigue pidiendo permiso.', turnLimit: 'Detenido por el límite de turnos', interrupted: 'Interrumpido — la app se cerró durante esta ejecución', plan: 'Plan', noReply: 'El modelo terminó sin responder. Inténtalo de nuevo o cambia a un modelo que maneje mejor las herramientas.' },
   untitled: { home: 'Nuevo chat', code: 'Nueva conversación', roleplay: 'Nuevo rol' },
   spaces: { home: 'Inicio', code: 'Código', roleplay: 'Rol' },
   roleplay: {
@@ -90,7 +90,14 @@ const es: CopyOverride = {
   },
   model: {
     loading: 'Cargando modelo…', none: 'Ningún modelo cargado', browseAll: 'Ver todos los modelos',
-    changeRuntime: 'Cambiar runtime', configureProvider: 'Configurar un proveedor'
+    changeRuntime: 'Cambiar runtime', configureProvider: 'Configurar un proveedor',
+    loadFailed: {
+      oom: 'No hay memoria suficiente para cargar este modelo. Reduce el contexto o las capas en GPU, o elige una cuantización más pequeña.',
+      port: 'El puerto del servidor local ya está en uso. Cierra el otro llama-server e inténtalo de nuevo.',
+      runtime: 'El runtime de llama.cpp falta o no pudo iniciarse. Reinstálalo desde Runtimes.',
+      file: 'No se pudo leer este archivo de modelo. Puede estar incompleto o no ser un GGUF válido.',
+      generic: 'No se pudo cargar el modelo: {reason}'
+    }
   },
   viewer: {
     loadingPdf: 'Cargando PDF…', loadingFile: 'Cargando archivo…', convertingDocument: 'Convirtiendo documento…',
@@ -134,7 +141,7 @@ const ptBR: CopyOverride = {
     allow: 'Permitir', deny: 'Negar', failed: 'Falhou', cancelled: 'Cancelado', stopped: 'Parado',
     done: 'Concluído', error: 'Erro', result: 'Resultado', truncated: '… (truncado)'
   },
-  codeRun: { read: 'Ler', write: 'Escrever', edit: 'Editar', bash: 'Executar', grep: 'Pesquisar', ls: 'Listar', todo_write: 'Atualizar tarefas', git_status: 'Status do Git', git_diff: 'Diff do Git', approvePlan: 'Aprovar plano', approval: 'Aprovação', approved: 'Aprovado', denied: 'Negado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Limite de saída atingido — continuando', planNote: 'Ao aprovar, o agente começa a editar; cada edição ainda pede permissão.', turnLimit: 'Parado no limite de turnos', interrupted: 'Interrompido — o app fechou durante esta execução', plan: 'Plano' },
+  codeRun: { read: 'Ler', write: 'Escrever', edit: 'Editar', bash: 'Executar', grep: 'Pesquisar', ls: 'Listar', todo_write: 'Atualizar tarefas', git_status: 'Status do Git', git_diff: 'Diff do Git', browser_open: 'Abrir página', browser_snapshot: 'Ler página', browser_click: 'Clicar', browser_fill: 'Digitar', browser_select: 'Escolher opção', browser_press: 'Pressionar tecla', browser_hover: 'Passar o mouse', browser_scroll: 'Rolar', browser_wait: 'Aguardar página', browser_back: 'Voltar', browser_reload: 'Recarregar', browser_console: 'Verificar console', browser_screenshot: 'Captura', process_list: 'Listar processos', process_output: 'Ler saída do processo', process_stop: 'Parar processo', approvePlan: 'Aprovar plano', approval: 'Aprovação', approved: 'Aprovado', denied: 'Negado', compacting: 'Compactando contexto', compacted: 'Contexto compactado', continuing: 'Limite de saída atingido — continuando', planNote: 'Ao aprovar, o agente começa a editar; cada edição ainda pede permissão.', turnLimit: 'Parado no limite de turnos', interrupted: 'Interrompido — o app fechou durante esta execução', plan: 'Plano', noReply: 'O modelo terminou sem responder. Tente de novo ou troque para um modelo que lide melhor com ferramentas.' },
   untitled: { home: 'Novo chat', code: 'Nova conversa', roleplay: 'Novo roleplay' },
   spaces: { home: 'Início', code: 'Código', roleplay: 'Roleplay' },
   roleplay: {
@@ -166,7 +173,14 @@ const ptBR: CopyOverride = {
   },
   model: {
     loading: 'Carregando modelo…', none: 'Nenhum modelo carregado', browseAll: 'Ver todos os modelos',
-    changeRuntime: 'Trocar runtime', configureProvider: 'Configurar um provedor'
+    changeRuntime: 'Trocar runtime', configureProvider: 'Configurar um provedor',
+    loadFailed: {
+      oom: 'Memória insuficiente para carregar este modelo. Reduza o contexto ou as camadas na GPU, ou escolha uma quantização menor.',
+      port: 'A porta do servidor local já está em uso. Feche o outro llama-server e tente novamente.',
+      runtime: 'O runtime do llama.cpp está ausente ou não iniciou. Reinstale-o em Runtimes.',
+      file: 'Não foi possível ler este arquivo de modelo. Ele pode estar incompleto ou não ser um GGUF válido.',
+      generic: 'Falha ao carregar o modelo: {reason}'
+    }
   },
   viewer: {
     loadingPdf: 'Carregando PDF…', loadingFile: 'Carregando arquivo…', convertingDocument: 'Convertendo documento…',
@@ -210,7 +224,7 @@ const fr: CopyOverride = {
     allow: 'Autoriser', deny: 'Refuser', failed: 'Échec', cancelled: 'Annulé', stopped: 'Arrêté',
     done: 'Terminé', error: 'Erreur', result: 'Résultat', truncated: '… (tronqué)'
   },
-  codeRun: { read: 'Lire', write: 'Écrire', edit: 'Modifier', bash: 'Exécuter', grep: 'Rechercher', ls: 'Lister', todo_write: 'Mettre à jour les tâches', git_status: 'État Git', git_diff: 'Diff Git', approvePlan: 'Approuver le plan', approval: 'Approbation', approved: 'Approuvé', denied: 'Refusé', compacting: 'Compactage du contexte', compacted: 'Contexte compacté', continuing: 'Limite de sortie atteinte — poursuite', planNote: 'Approuver permet à l’agent de commencer à modifier ; chaque modification demande encore votre accord.', turnLimit: 'Arrêté à la limite de tours', interrupted: 'Interrompu — l’application s’est fermée pendant l’exécution', plan: 'Plan' },
+  codeRun: { read: 'Lire', write: 'Écrire', edit: 'Modifier', bash: 'Exécuter', grep: 'Rechercher', ls: 'Lister', todo_write: 'Mettre à jour les tâches', git_status: 'État Git', git_diff: 'Diff Git', browser_open: 'Ouvrir la page', browser_snapshot: 'Lire la page', browser_click: 'Cliquer', browser_fill: 'Saisir', browser_select: 'Choisir une option', browser_press: 'Appuyer sur une touche', browser_hover: 'Survoler', browser_scroll: 'Défiler', browser_wait: 'Attendre la page', browser_back: 'Retour', browser_reload: 'Recharger', browser_console: 'Vérifier la console', browser_screenshot: 'Capture', process_list: 'Lister les processus', process_output: 'Lire la sortie', process_stop: 'Arrêter le processus', approvePlan: 'Approuver le plan', approval: 'Approbation', approved: 'Approuvé', denied: 'Refusé', compacting: 'Compactage du contexte', compacted: 'Contexte compacté', continuing: 'Limite de sortie atteinte — poursuite', planNote: 'Approuver permet à l’agent de commencer à modifier ; chaque modification demande encore votre accord.', turnLimit: 'Arrêté à la limite de tours', interrupted: 'Interrompu — l’application s’est fermée pendant l’exécution', plan: 'Plan', noReply: 'Le modèle a terminé sans répondre. Réessayez ou passez à un modèle qui gère mieux les outils.' },
   untitled: { home: 'Nouvelle conversation', code: 'Nouvelle conversation', roleplay: 'Nouveau jeu de rôle' },
   spaces: { home: 'Accueil', code: 'Code', roleplay: 'Jeu de rôle' },
   roleplay: {
@@ -242,7 +256,14 @@ const fr: CopyOverride = {
   },
   model: {
     loading: 'Chargement du modèle…', none: 'Aucun modèle chargé', browseAll: 'Voir tous les modèles',
-    changeRuntime: 'Changer de runtime', configureProvider: 'Configurer un fournisseur'
+    changeRuntime: 'Changer de runtime', configureProvider: 'Configurer un fournisseur',
+    loadFailed: {
+      oom: 'Mémoire insuffisante pour charger ce modèle. Réduisez le contexte ou les couches GPU, ou choisissez une quantification plus petite.',
+      port: "Le port du serveur local est déjà utilisé. Fermez l'autre llama-server et réessayez.",
+      runtime: "Le runtime llama.cpp est absent ou n'a pas démarré. Réinstallez-le depuis Runtimes.",
+      file: "Impossible de lire ce fichier de modèle. Il est peut-être incomplet ou n'est pas un GGUF valide.",
+      generic: 'Échec du chargement du modèle : {reason}'
+    }
   },
   viewer: {
     loadingPdf: 'Chargement du PDF…', loadingFile: 'Chargement du fichier…', convertingDocument: 'Conversion du document…',
@@ -286,7 +307,7 @@ const de: CopyOverride = {
     allow: 'Erlauben', deny: 'Ablehnen', failed: 'Fehlgeschlagen', cancelled: 'Abgebrochen', stopped: 'Gestoppt',
     done: 'Fertig', error: 'Fehler', result: 'Ergebnis', truncated: '… (gekürzt)'
   },
-  codeRun: { read: 'Lesen', write: 'Schreiben', edit: 'Bearbeiten', bash: 'Ausführen', grep: 'Suchen', ls: 'Auflisten', todo_write: 'Aufgaben aktualisieren', git_status: 'Git-Status', git_diff: 'Git-Diff', approvePlan: 'Plan freigeben', approval: 'Freigabe', approved: 'Freigegeben', denied: 'Abgelehnt', compacting: 'Kontext wird verdichtet', compacted: 'Kontext verdichtet', continuing: 'Ausgabelimit erreicht — geht weiter', planNote: 'Mit der Freigabe beginnt der Agent zu bearbeiten; jede Änderung fragt weiterhin einzeln.', turnLimit: 'Am Rundenlimit gestoppt', interrupted: 'Unterbrochen — die App wurde während des Laufs geschlossen', plan: 'Plan' },
+  codeRun: { read: 'Lesen', write: 'Schreiben', edit: 'Bearbeiten', bash: 'Ausführen', grep: 'Suchen', ls: 'Auflisten', todo_write: 'Aufgaben aktualisieren', git_status: 'Git-Status', git_diff: 'Git-Diff', browser_open: 'Seite öffnen', browser_snapshot: 'Seite lesen', browser_click: 'Klicken', browser_fill: 'Eingeben', browser_select: 'Option wählen', browser_press: 'Taste drücken', browser_hover: 'Überfahren', browser_scroll: 'Scrollen', browser_wait: 'Auf Seite warten', browser_back: 'Zurück', browser_reload: 'Neu laden', browser_console: 'Konsole prüfen', browser_screenshot: 'Screenshot', process_list: 'Prozesse auflisten', process_output: 'Prozessausgabe lesen', process_stop: 'Prozess stoppen', approvePlan: 'Plan freigeben', approval: 'Freigabe', approved: 'Freigegeben', denied: 'Abgelehnt', compacting: 'Kontext wird verdichtet', compacted: 'Kontext verdichtet', continuing: 'Ausgabelimit erreicht — geht weiter', planNote: 'Mit der Freigabe beginnt der Agent zu bearbeiten; jede Änderung fragt weiterhin einzeln.', turnLimit: 'Am Rundenlimit gestoppt', interrupted: 'Unterbrochen — die App wurde während des Laufs geschlossen', plan: 'Plan', noReply: 'Das Modell hat ohne Antwort beendet. Versuche es erneut oder wechsle zu einem Modell, das Werkzeuge besser beherrscht.' },
   untitled: { home: 'Neuer Chat', code: 'Neue Unterhaltung', roleplay: 'Neues Rollenspiel' },
   spaces: { home: 'Start', code: 'Code', roleplay: 'Rollenspiel' },
   roleplay: {
@@ -318,7 +339,14 @@ const de: CopyOverride = {
   },
   model: {
     loading: 'Modell wird geladen…', none: 'Kein Modell geladen', browseAll: 'Alle Modelle anzeigen',
-    changeRuntime: 'Runtime wechseln', configureProvider: 'Anbieter einrichten'
+    changeRuntime: 'Runtime wechseln', configureProvider: 'Anbieter einrichten',
+    loadFailed: {
+      oom: 'Nicht genug Speicher für dieses Modell. Verringere Kontextlänge oder GPU-Layer oder wähle eine kleinere Quantisierung.',
+      port: 'Der Port des lokalen Servers ist belegt. Beende den anderen llama-server und versuche es erneut.',
+      runtime: 'Die llama.cpp-Runtime fehlt oder konnte nicht starten. Installiere sie unter Runtimes neu.',
+      file: 'Diese Modelldatei konnte nicht gelesen werden. Sie ist evtl. unvollständig oder kein gültiges GGUF.',
+      generic: 'Das Modell konnte nicht geladen werden: {reason}'
+    }
   },
   viewer: {
     loadingPdf: 'PDF wird geladen…', loadingFile: 'Datei wird geladen…', convertingDocument: 'Dokument wird konvertiert…',
@@ -362,7 +390,7 @@ const ja: CopyOverride = {
     allow: '許可', deny: '拒否', failed: '失敗', cancelled: 'キャンセル済み', stopped: '停止済み',
     done: '完了', error: 'エラー', result: '結果', truncated: '…（省略）'
   },
-  codeRun: { read: '読み取り', write: '書き込み', edit: '編集', bash: '実行', grep: '検索', ls: '一覧', todo_write: 'タスクを更新', git_status: 'Git ステータス', git_diff: 'Git 差分', approvePlan: 'プランを承認', approval: '承認', approved: '承認済み', denied: '拒否', compacting: 'コンテキストを圧縮中', compacted: 'コンテキストを圧縮しました', continuing: '出力上限に達しました — 続行中', planNote: '承認するとエージェントが編集を始めます。各編集は引き続き個別に確認します。', turnLimit: 'ターン上限で停止しました', interrupted: '中断 — 実行中にアプリが終了しました', plan: 'プラン' },
+  codeRun: { read: '読み取り', write: '書き込み', edit: '編集', bash: '実行', grep: '検索', ls: '一覧', todo_write: 'タスクを更新', git_status: 'Git ステータス', git_diff: 'Git 差分', browser_open: 'ページを開く', browser_snapshot: 'ページを読む', browser_click: 'クリック', browser_fill: '入力', browser_select: '選択', browser_press: 'キーを押す', browser_hover: 'ホバー', browser_scroll: 'スクロール', browser_wait: 'ページを待つ', browser_back: '戻る', browser_reload: '再読み込み', browser_console: 'コンソール確認', browser_screenshot: 'スクリーンショット', process_list: 'プロセス一覧', process_output: '出力を読む', process_stop: 'プロセス停止', approvePlan: 'プランを承認', approval: '承認', approved: '承認済み', denied: '拒否', compacting: 'コンテキストを圧縮中', compacted: 'コンテキストを圧縮しました', continuing: '出力上限に達しました — 続行中', planNote: '承認するとエージェントが編集を始めます。各編集は引き続き個別に確認します。', turnLimit: 'ターン上限で停止しました', interrupted: '中断 — 実行中にアプリが終了しました', plan: 'プラン', noReply: 'モデルが応答せずに終了しました。もう一度試すか、ツールに強いモデルに切り替えてください。' },
   untitled: { home: '新しいチャット', code: '新しい会話', roleplay: '新しいロールプレイ' },
   spaces: { home: 'ホーム', code: 'コード', roleplay: 'ロールプレイ' },
   roleplay: {
@@ -394,7 +422,14 @@ const ja: CopyOverride = {
   },
   model: {
     loading: 'モデルを読み込み中…', none: 'モデルが読み込まれていません', browseAll: 'すべてのモデルを見る',
-    changeRuntime: 'ランタイムを変更', configureProvider: 'プロバイダーを設定'
+    changeRuntime: 'ランタイムを変更', configureProvider: 'プロバイダーを設定',
+    loadFailed: {
+      oom: 'このモデルを読み込むメモリが足りません。コンテキスト長や GPU レイヤーを減らすか、小さい量子化を選んでください。',
+      port: 'ローカルサーバーのポートが使用中です。別の llama-server を終了してから再試行してください。',
+      runtime: 'llama.cpp ランタイムが見つからないか、起動できませんでした。ランタイムから再インストールしてください。',
+      file: 'このモデルファイルを読み込めませんでした。不完全か、有効な GGUF ではない可能性があります。',
+      generic: 'モデルを読み込めませんでした: {reason}'
+    }
   },
   viewer: {
     loadingPdf: 'PDF を読み込み中…', loadingFile: 'ファイルを読み込み中…', convertingDocument: 'ドキュメントを変換中…',
@@ -438,7 +473,7 @@ const zh: CopyOverride = {
     allow: '允许', deny: '拒绝', failed: '失败', cancelled: '已取消', stopped: '已停止',
     done: '完成', error: '错误', result: '结果', truncated: '…（已截断）'
   },
-  codeRun: { read: '读取', write: '写入', edit: '编辑', bash: '运行', grep: '搜索', ls: '列出', todo_write: '更新任务', git_status: 'Git 状态', git_diff: 'Git 差异', approvePlan: '批准计划', approval: '批准', approved: '已批准', denied: '已拒绝', compacting: '正在压缩上下文', compacted: '上下文已压缩', continuing: '达到输出上限 — 继续中', planNote: '批准后代理开始编辑；每次编辑仍会单独询问。', turnLimit: '已在轮次上限处停止', interrupted: '已中断 — 运行期间应用已关闭', plan: '计划' },
+  codeRun: { read: '读取', write: '写入', edit: '编辑', bash: '运行', grep: '搜索', ls: '列出', todo_write: '更新任务', git_status: 'Git 状态', git_diff: 'Git 差异', browser_open: '打开页面', browser_snapshot: '读取页面', browser_click: '点击', browser_fill: '输入', browser_select: '选择选项', browser_press: '按键', browser_hover: '悬停', browser_scroll: '滚动', browser_wait: '等待页面', browser_back: '返回', browser_reload: '重新加载', browser_console: '检查控制台', browser_screenshot: '截图', process_list: '列出进程', process_output: '读取进程输出', process_stop: '停止进程', approvePlan: '批准计划', approval: '批准', approved: '已批准', denied: '已拒绝', compacting: '正在压缩上下文', compacted: '上下文已压缩', continuing: '达到输出上限 — 继续中', planNote: '批准后代理开始编辑；每次编辑仍会单独询问。', turnLimit: '已在轮次上限处停止', interrupted: '已中断 — 运行期间应用已关闭', plan: '计划', noReply: '模型未作答就结束了。请重试，或换用更擅长工具调用的模型。' },
   untitled: { home: '新对话', code: '新会话', roleplay: '新角色扮演' },
   spaces: { home: '主页', code: '代码', roleplay: '角色扮演' },
   roleplay: {
@@ -470,7 +505,14 @@ const zh: CopyOverride = {
   },
   model: {
     loading: '正在加载模型…', none: '未加载模型', browseAll: '浏览所有模型',
-    changeRuntime: '更换运行时', configureProvider: '配置提供商'
+    changeRuntime: '更换运行时', configureProvider: '配置提供商',
+    loadFailed: {
+      oom: '内存不足，无法加载此模型。请降低上下文长度或 GPU 层数，或选择更小的量化版本。',
+      port: '本地服务器端口已被占用。请关闭另一个 llama-server 后重试。',
+      runtime: 'llama.cpp 运行时缺失或启动失败。请在运行时中重新安装。',
+      file: '无法读取此模型文件。它可能不完整或不是有效的 GGUF。',
+      generic: '模型加载失败：{reason}'
+    }
   },
   viewer: {
     loadingPdf: '正在加载 PDF…', loadingFile: '正在加载文件…', convertingDocument: '正在转换文档…',

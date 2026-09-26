@@ -1,5 +1,5 @@
 /**
- * Main configuration module for Chatea.
+ * Main configuration module for Flaxeo Chat.
  * 
  * This module orchestrates config loading, saving, and management.
  * It integrates:
@@ -89,6 +89,14 @@ export const WHISPER_QUALITY_CATALOG = {
     file: 'ggml-large-v3-q5_0.bin',
     multilingual: true,
     files: ['ggml-large-v3-q5_0.bin'],
+  },
+  large_v3_turbo_q5: {
+    label: 'Large v3 Turbo (Q5_0) — Best',
+    repo: 'ggerganov/whisper.cpp',
+    dir: 'whisper-ggml',
+    file: 'ggml-large-v3-turbo-q5_0.bin',
+    multilingual: true,
+    files: ['ggml-large-v3-turbo-q5_0.bin'],
   },
 };
 

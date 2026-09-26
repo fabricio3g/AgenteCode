@@ -18,10 +18,10 @@ import {
   type GeneratedArtifactFile
 } from '$lib/services/generated-documents';
 import { viewerPathFor } from '$lib/utils/artifact-files';
-import { readWorkspaceFile, writeWorkspaceFile, deleteWorkspaceFile } from '$lib/services/files';
+import { readWorkspaceFile, writeWorkspaceFile, writeWorkspaceBinary, deleteWorkspaceFile } from '$lib/services/files';
 import { isWorkspace, normPath, getWsFiles, upsertWsFile, readWsText, globToRegex } from '$lib/services/agent-workspace';
 import { toErrorMessage, isAbortError } from '$lib/utils/errors';
-import { buildPreviewHtml, buildHtmlReport, buildMarkdownReport } from '$lib/services/agent-content';
+import { buildPreviewHtml } from '$lib/services/agent-content';
 import { executeWithTimeoutAndRetries } from '$lib/services/agent-tool-runtime';
 import { addGeneratedArtifactFile as addGeneratedArtifactFileEntry } from '$lib/services/agent-artifact';
 import {
@@ -61,28 +61,24 @@ function failFromError(err: unknown, note?: string): ToolResult {
   return fail(toErrorMessage(err), note);
 }
 
-/** Keep panel snapshots inside LLM context: full text rides the panel UI. */
-function summariseBrowserSnapshot(snapshot: unknown) {
-  if (!snapshot || typeof snapshot !== 'object') return snapshot;
-  const snap = snapshot as Record<string, unknown>;
-  const text = String(snap['text'] || '');
-  return {
-    ...snap,
-    text: text.length > 4000 ? text.slice(0, 4000) + '\n... (truncated)' : text,
-    links: Array.isArray(snap['links']) ? (snap['links'] as unknown[]).slice(0, 20) : snap['links'],
-    buttons: Array.isArray(snap['buttons']) ? (snap['buttons'] as unknown[]).slice(0, 20) : snap['buttons']
-  };
+/** Generated files are data URLs (binaries) or plain text (md/html). */
+async function saveGeneratedFile(ctx: ToolContext, path: string, content: string): Promise<string> {
+  if (!ctx.workspaceRoot) throw new Error('No workspace folder is open.');
+  return content.startsWith('data:')
+    ? writeWorkspaceBinary(ctx.workspaceRoot, path, content)
+    : writeWorkspaceFile(ctx.workspaceRoot, path, content);
 }
 
-function addGeneratedArtifactFile(ctx: ToolContext, file: GeneratedArtifactFile): ToolResult {
-  return addGeneratedArtifactFileEntry({
-    executionMode: ctx.executionMode,
-    files: ctx.files,
-    file,
-    viewerPathFor,
-    ok,
-    fail
-  }) as ToolResult;
+async function addGeneratedArtifactFile(ctx: ToolContext, file: GeneratedArtifactFile): Promise<ToolResult> {
+  let savedTo: string | undefined;
+  if (isWorkspace(ctx) && ctx.workspaceRoot) {
+    try {
+      savedTo = await saveGeneratedFile(ctx, file.path, file.dataUrl);
+    } catch (err) {
+      return failFromError(err, 'Could not save the file into the workspace folder.');
+    }
+  }
+  return addGeneratedArtifactFileEntry({ files: ctx.files, file, savedTo, viewerPathFor, ok });
 }
 
 /** What the file-writing handlers (write_file, edit_file) need. */
@@ -114,8 +110,6 @@ export async function executeTool(
     isWorkspace,
     uid,
     viewerPathFor,
-    buildHtmlReport,
-    buildMarkdownReport,
     writeWorkspaceFile,
     validateGeneratedDocumentArgs,
     createWorkProductArtifactFiles,
@@ -124,6 +118,7 @@ export async function executeTool(
     createPptxArtifactFile,
     createPdfArtifactFile,
     addGeneratedArtifactFile,
+    saveGeneratedFile,
     geocodePlace: liveGeocodePlace,
     ok,
     fail,
@@ -303,50 +298,24 @@ export async function executeTool(
     case 'browser_navigate':
     case 'browser_snapshot':
     case 'browser_click':
+    case 'browser_fill':
     case 'browser_type':
+    case 'browser_press':
+    case 'browser_scroll':
+    case 'browser_wait':
+    case 'browser_back':
+    case 'browser_console':
     case 'browser_screenshot': {
       if (!isElectron()) return fail('Agent browser requires the desktop app');
-      try {
-        const { browserPanelStore } = await import('$lib/stores/browser-panel.svelte');
-        browserPanelStore.agentDriving = true;
-        browserPanelStore.userTakeover = false;
-        browserPanelStore.init();
-      } catch { /* store unavailable in tests */ }
-      try {
-        if (name === 'browser_open') {
-          const url = String(args.url || '');
-          if (!url) return fail('Missing url');
-          const snapshot = await invoke<unknown>('browser_navigate', { url });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_navigate') {
-          const url = String(args.url || '');
-          if (!url) return fail('Missing url');
-          const snapshot = await invoke<unknown>('browser_navigate', { url });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_snapshot') {
-          const snapshot = await invoke<unknown>('browser_snapshot', {});
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_click') {
-          const text = String(args.text || '');
-          if (!text) return fail('Missing text');
-          const snapshot = await invoke<unknown>('browser_click', { text });
-          return ok({ snapshot: summariseBrowserSnapshot(snapshot) });
-        }
-        if (name === 'browser_type') {
-          const selector = String(args.selector || '');
-          const text = String(args.text || '');
-          if (!selector || !text) return fail('Missing selector or text');
-          await invoke('browser_type_text', { selector, text });
-          return ok({ typed: true, selector });
-        }
-        const shot = await invoke<string>('browser_screenshot', {});
-        return ok({ screenshot: String(shot).slice(0, 200000) });
-      } catch (err: unknown) {
-        return failFromError(err, 'Agent browser action failed');
-      }
+      // One driver for every agent (main/browser-actions.ts). The legacy names
+      // map onto it: navigate → open, type → fill.
+      const action = name === 'browser_navigate' ? 'open' : name === 'browser_type' ? 'fill' : name.replace('browser_', '');
+      const result = await invoke<{ ok: boolean; text: string; image?: { data: string; mimeType: string } }>(
+        'browser_agent_action',
+        { action, args }
+      ).catch((err: unknown) => ({ ok: false, text: toErrorMessage(err) }));
+      if (!result.ok) return fail(result.text);
+      return { success: true, output: { page: result.text }, ...('image' in result && result.image ? { image: result.image } : {}) };
     }
 
     default:

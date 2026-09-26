@@ -1,4 +1,10 @@
 import { afterEach } from 'vitest';
+import { addMessages, init } from 'svelte-i18n';
+import en from '../lib/locales/en.json';
+
+// Components read their text through svelte-i18n; tests render them in English.
+addMessages('en', en);
+init({ fallbackLocale: 'en', initialLocale: 'en' });
 
 if (typeof Element !== 'undefined' && !Element.prototype.animate) {
   Element.prototype.animate = function () {

@@ -56,6 +56,8 @@ export interface ToolResultMessage {
   isError: boolean;
   /** Structured payload for the UI (diffs, file lists, exit codes). */
   details?: unknown;
+  /** Images the tool returned (see ToolResult.images). */
+  images?: Array<{ data: string; mimeType: string }>;
   ts: number;
 }
 
@@ -82,6 +84,8 @@ export interface WireTool {
 export interface ToolResult {
   /** Text sent back to the model. */
   content: string;
+  /** Images for vision models (e.g. a browser screenshot), sent after the batch. */
+  images?: Array<{ data: string; mimeType: string }>;
   isError?: boolean;
   /** Structured payload for the UI/logs — never sent to the model. */
   details?: unknown;
@@ -104,6 +108,11 @@ export interface AgentTool {
   parameters: Record<string, unknown>;
   /** Mutating tools go through the approval gate in supervised mode. */
   mutating?: boolean;
+  /**
+   * Per-call approval for tools that are safe most of the time (e.g. a browser
+   * that may go to an external site). Asked in supervised and plan modes.
+   */
+  requiresApproval?(args: Record<string, unknown>): boolean;
   /** Parallel-friendly tools run concurrently within a turn. */
   executionMode?: 'sequential' | 'parallel';
   execute(toolCallId: string, args: Record<string, unknown>, ctx: ToolExecContext): Promise<ToolResult>;
@@ -132,7 +141,12 @@ export type AgentEvent =
       fileChanges?: Array<{ path: string; kind: string }>;
       diffStats?: Array<{ path: string; kind: string; additions: number; deletions: number }>;
     }
-  | { type: 'llm_retry'; attempt: number; delayMs: number }
+  /**
+   * A failed model request is being retried. `discardPartial`: the stream broke
+   * after some text arrived; that text is thrown away and the turn replayed,
+   * so consumers should drop what they showed for this turn.
+   */
+  | { type: 'llm_retry'; attempt: number; delayMs: number; discardPartial?: boolean }
   | { type: 'length_continue'; turnIndex: number }
   | { type: 'todo_update'; todos: TodoItem[] }
   | { type: 'artifact_created'; artifact: CoreArtifactRef }

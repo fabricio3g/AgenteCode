@@ -10,7 +10,7 @@
 -->
 
 <script lang="ts">
-  import { Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar } from 'lucide-svelte';
+  import { Check, Globe2, Layers, MessageSquare, Paperclip, Plus, Radar, X } from 'lucide-svelte';
   import { Menu } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
@@ -35,7 +35,7 @@
   const searchMode = $derived(MODE_IDS.find((id) => id === appStore.searchMode) || 'chat');
 </script>
 
-<Menu bind:open placement="top-start" minWidth="14rem" label="Composer options">
+<Menu bind:open placement="top-start" minWidth="16.5rem" label="Composer options">
   {#snippet trigger(props)}
     <button
       type="button"
@@ -52,43 +52,64 @@
   <button
     type="button"
     role="menuitem"
-    class="row"
+    class="aui-menu-item"
     onclick={() => { open = false; onattach(); }}
   >
-    <Paperclip class="size-4 shrink-0" />
-    <span class="row-label">{copy.composer.attach}</span>
+    <Paperclip class="size-4" />
+    <span class="aui-menu-item-text">{copy.composer.attach}</span>
   </button>
 
   {#if availableModes.length > 1}
-    <div class="group-label">Search</div>
+    <div class="aui-menu-divider" role="separator"></div>
     {#each availableModes as id (id)}
       {@const Icon = MODE_ICONS[id]}
       <button
         type="button"
         role="menuitemradio"
         aria-checked={searchMode === id}
-        class="row"
+        class="aui-menu-item"
+        class:is-active={searchMode === id}
         onclick={() => { appStore.setSearchMode(id); open = false; }}
       >
-        <Icon class="size-4 shrink-0" />
-        <span class="row-label">{copy.searchModes[id].label}</span>
-        {#if searchMode === id}<Check class="size-3.5 shrink-0" />{/if}
+        <Icon class="size-4" />
+        <span class="aui-menu-item-text">
+          <span>{copy.searchModes[id].label}</span>
+          <span class="aui-menu-item-hint">{copy.searchModes[id].description}</span>
+        </span>
+        {#if searchMode === id}<Check class="aui-menu-check size-3.5" />{/if}
       </button>
     {/each}
   {/if}
 </Menu>
 
+<!-- The active research depth stays visible once the menu closes. -->
+{#if searchMode !== 'chat' && availableModes.includes(searchMode)}
+  {@const ActiveIcon = MODE_ICONS[searchMode]}
+  <span class="mode-chip" title={copy.searchModes[searchMode].description}>
+    <ActiveIcon class="size-3.5 shrink-0" />
+    <span>{copy.searchModes[searchMode].label}</span>
+    <button
+      type="button"
+      class="mode-chip-clear"
+      aria-label={`${copy.actions.remove}: ${copy.searchModes[searchMode].label}`}
+      onclick={() => appStore.setSearchMode('chat')}
+    >
+      <X class="size-3" />
+    </button>
+  </span>
+{/if}
+
 <style>
-  /* Matches the model chip beside it: same height, white, hairline border. */
+  /* Matches the model chip beside it: same height, borderless until hovered. */
   .add-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     height: 2rem;
     width: 2rem;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
-    background: var(--card);
+    background: transparent;
     color: var(--text-secondary);
     transition:
       background-color var(--motion-fast) var(--motion-ease),
@@ -98,46 +119,46 @@
 
   .add-trigger:hover,
   .add-trigger.is-open {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--muted);
     color: var(--foreground);
+  }
+
+  /* The active depth, tinted with the brand so it reads as "on". */
+  .mode-chip {
+    display: inline-flex;
+    height: 1.75rem;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0 0.25rem 0 0.5625rem;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--primary) 9%, transparent);
+    color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
+    font-size: 0.78125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .mode-chip-clear {
+    display: inline-flex;
+    width: 1.25rem;
+    height: 1.25rem;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: inherit;
+    opacity: 0.6;
+    transition: opacity var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .mode-chip-clear:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
   }
 
   .add-trigger:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 35%, transparent);
-  }
-
-  .row {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.625rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text);
-    font-size: 0.8125rem;
-    text-align: left;
-    transition: background-color var(--motion-fast) var(--motion-ease);
-  }
-
-  .row:hover,
-  .row:focus-visible {
-    background: var(--surface-hover);
-    outline: none;
-  }
-
-  .row-label {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .group-label {
-    padding: 0.5rem 0.625rem 0.25rem;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    font-weight: 500;
   }
 </style>

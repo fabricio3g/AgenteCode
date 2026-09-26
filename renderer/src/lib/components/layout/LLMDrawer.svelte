@@ -5,6 +5,7 @@
   import { motionFade, motionFly } from '$lib/utils/transitions';
   import { Settings, X, Cpu, ExternalLink, MemoryStick, Zap, Sliders } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
+  import { providerLabel } from '$lib/utils/providers';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -67,12 +68,7 @@
     }
   }
 
-  const PROVIDER_LABELS: Record<string, string> = {
-    openai: 'OpenAI', openrouter: 'OpenRouter', anthropic: 'Anthropic',
-    groq: 'Groq', mistral: 'Mistral', deepseek: 'DeepSeek',
-    lmstudio: 'LM Studio', ollama: 'Ollama', custom: 'Custom'
-  };
-  const providerLabel = $derived(PROVIDER_LABELS[appStore.activeProviderName] || appStore.activeProviderName || 'API');
+  const activeProviderLabel = $derived(appStore.activeProviderName ? providerLabel(appStore.activeProviderName) : 'API');
   const activeModel = $derived(
     mode === 'local'
       ? (runtimeStatus?.active_model || appStore.config.llm?.local?.model || null)
@@ -160,7 +156,7 @@
             <Zap class="size-4" />
           </div>
           <div class="min-w-0 flex-1">
-            <div class="truncate text-[13px] font-semibold text-foreground">{providerLabel}</div>
+            <div class="truncate text-[13px] font-semibold text-foreground">{activeProviderLabel}</div>
             <div class="truncate text-[11px] text-muted-foreground">{activeModelShort}</div>
           </div>
           <button

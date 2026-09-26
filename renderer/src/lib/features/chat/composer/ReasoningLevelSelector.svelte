@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { Brain, ChevronDown } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ReasoningLevel } from '$lib/types/chat';
@@ -52,6 +53,14 @@
     return LEVEL_LABELS[level] || String(level);
   }
 
+  /** A short line under the common choices; finer levels speak for themselves. */
+  function hintFor(level: ReasoningLevel | null): string | undefined {
+    if (level === null) return $t('composer.thinking.auto');
+    if (level === 'off' || level === 'disabled' || level === 'none') return $t('composer.thinking.off');
+    if (level === 'on' || level === 'enabled') return $t('composer.thinking.on');
+    return undefined;
+  }
+
   function select(level: ReasoningLevel | null) {
     // 'off' is a real level (dialects map it to "disable thinking"); only
     // Auto clears back to unset so the server default applies.
@@ -61,7 +70,7 @@
 </script>
 
 {#if visible}
-  <Menu bind:open placement="top-start" minWidth="10rem" label="Reasoning level">
+  <Menu bind:open placement="top-start" minWidth="13rem" label="Reasoning level">
     {#snippet trigger(props)}
       <button type="button" class="thinking-trigger" class:is-open={open} title={triggerTitle} aria-label={`Thinking: ${currentLabel}`} {...props}>
         <Brain class="size-3.5 shrink-0" />
@@ -70,14 +79,17 @@
       </button>
     {/snippet}
 
+    <div class="menu-title">{$t('composer.thinking.title')}</div>
     <MenuItem
       label={autoLabel}
+      description={hintFor(null)}
       active={!currentLevel}
       onselect={() => select(null)}
     />
     {#each capabilities.levels as level (level)}
       <MenuItem
         label={labelFor(level)}
+        description={hintFor(level)}
         active={currentLevel === level}
         onselect={() => select(level)}
       />
@@ -86,17 +98,16 @@
 {/if}
 
 <style>
-  /* Matches the On Device model chip beside it: same height, white fill,
-     hairline border. The old aui-pill (muted fill, taller) read as selected. */
+  /* Matches the model chip beside it: same height, borderless until hovered. */
   .thinking-trigger {
     display: inline-flex;
     height: 2rem;
     max-width: 100%;
     align-items: center;
     gap: 0.375rem;
-    border: 1px solid var(--border);
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
-    background: var(--card);
+    background: transparent;
     padding: 0 0.625rem;
     color: var(--text-secondary);
     font-size: 0.8125rem;
@@ -112,9 +123,15 @@
 
   .thinking-trigger:hover,
   .thinking-trigger.is-open {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--muted);
     color: var(--foreground);
+  }
+
+  .menu-title {
+    padding: 0.375rem 0.625rem 0.25rem;
+    color: var(--muted-foreground);
+    font-size: 0.71875rem;
+    font-weight: 500;
   }
 
   .thinking-trigger:focus-visible {

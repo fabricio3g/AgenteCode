@@ -96,10 +96,10 @@ export function startThinkStep(run: AgentRun, state: PolicyState, turn: number):
 /** The tool budget ran out. Research leaves the answer to forced synthesis. */
 async function stopAtToolBudget(run: AgentRun, reason: string) {
   const { plan } = run;
+  // No raw-evidence answer here: the forced final answer writes one from what
+  // was gathered (settleWithoutAnswer remains the last resort).
   if (!plan.isResearchChat) {
-    run.finalContent = await evidenceOnlyFallback(run, `${reason} (${run.totalToolCalls}/${plan.maxToolCalls})`);
-    run.warningReason = run.warningReason || `Agent reached the dynamic tool call limit (${plan.maxToolCalls}) and returned only gathered evidence.`;
-    run.settled = true;
+    run.warningReason = run.warningReason || `Agent reached the tool call limit (${plan.maxToolCalls}) — ${reason}.`;
   }
   run.stopReason = 'tool_limit';
 }
@@ -143,11 +143,13 @@ async function loopGuardStops(run: AgentRun, state: PolicyState, toolCalls: Tool
     status: plan.isResearchChat ? 'running' : 'error',
     detail: plan.isResearchChat ? 'Synthesizing research report from gathered sources' : `Repeated calls to ${verdict.stuckTool}`
   });
-  // Research: leave finalContent empty for forced report synthesis from the pack.
+  // Leave finalContent empty either way: research gets forced report
+  // synthesis, anything else a forced answer told why the loop stopped. The
+  // raw-evidence fallback stays the last resort (settleWithoutAnswer) — a
+  // pasted search snippet is not an answer to "what's the weather?".
   if (!plan.isResearchChat) {
-    run.finalContent = await evidenceOnlyFallback(run, `it detected repeated calls to ${verdict.stuckTool}`);
-    run.warningReason = 'Agent encountered a loop and returned only gathered evidence.';
-    run.settled = true;
+    run.stuckTool = verdict.stuckTool;
+    run.warningReason = `Stopped after repeated calls to ${verdict.stuckTool}.`;
   }
   run.stopReason = 'loop';
   return true;

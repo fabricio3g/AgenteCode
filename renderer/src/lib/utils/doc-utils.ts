@@ -4,7 +4,7 @@ import { dataUrlMime, dataUrlToBytes } from './artifact-files';
 export type ViewerKind = 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'image' | 'unknown';
 
 const imageExts = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']);
-const textExts = new Set(['txt', 'md', 'csv', 'json', 'xml', 'html', 'htm', 'rtf', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'env', 'log']);
+const textExts = new Set(['txt', 'md', 'csv', 'bib', 'ris', 'json', 'xml', 'html', 'htm', 'rtf', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'env', 'log']);
 const codeExts = new Set(['js', 'ts', 'py', 'rb', 'rs', 'go', 'java', 'c', 'cpp', 'cs', 'h', 'hpp', 'php', 'swift', 'kt', 'scala', 'sh', 'bash', 'zsh', 'pl', 'lua', 'r', 'sql', 'graphql', 'css', 'scss', 'less', 'sass', 'styl']);
 
 export function getViewerKind(name: string, type = ''): ViewerKind {

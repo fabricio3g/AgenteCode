@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import type { AgentArtifact } from '$lib/types/chat';
   import { resolveArtifactPreview } from '$lib/services/artifact-model';
   import { countOf } from '$lib/utils/format';
@@ -57,7 +58,7 @@
       srcdoc={previewSrc}
       sandbox=""
       referrerpolicy="no-referrer"
-      title={artifact.title || 'Artifact preview'}
+      title={artifact.title || $t('artifacts.untitled')}
     ></iframe>
   </div>
 {:else}
@@ -72,10 +73,10 @@
   <div class="inline-unsupported">
     <FileQuestion class="size-4 shrink-0" />
     <div>
-      <div class="font-medium">This preview type isn't supported here</div>
+      <div class="font-medium">{$t('artifacts.card.unsupported')}</div>
       <div class="mt-0.5 text-xs opacity-80">
-        {inlineKind ? `Unrecognized inline artifact "${inlineKind}".` : 'No inline preview data was found.'}
-        Open the studio to inspect or download the files.
+        {inlineKind ? $t('artifacts.card.unknownKind', { values: { kind: inlineKind } }) : $t('artifacts.card.noData')}
+        {$t('artifacts.card.openToInspect')}
       </div>
     </div>
   </div>

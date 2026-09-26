@@ -1,28 +1,29 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
-  import { countOf } from '$lib/utils/format';
   import { appStore } from '$lib/stores/app.svelte';
-  import { Search, SlidersHorizontal, MoonStar, SunMedium, Download, Loader2, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
+  import { Search, SlidersHorizontal, MoonStar, SunMedium, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
+  import CodeTitlebarTools from '$lib/features/code/CodeTitlebarTools.svelte';
+  import { codeStore } from '$lib/features/code/code.svelte';
+  import { isCodeSession } from '$lib/features/shared/session-guards';
+
+  /** The open Code conversation, when there is one: its pane toggles live here. */
+  const codeChat = $derived.by(() => {
+    const chat = appStore.currentChat;
+    return appStore.activeSpace === 'code' && chat && chat.projectId && isCodeSession(chat) ? chat : null;
+  });
+  const codeProject = $derived(codeStore.projectById(codeChat?.projectId ?? null));
 
   let isMaximized = $state(false);
 
-  /**
-   * The indicator deep-links into the Hub's Library pane — downloads render
-   * inline on their model rows there, so there is no separate modal to open.
-   */
-  function openDownloads() {
-    void downloadsStore.refresh();
-    appStore.modelManagerOpenSection = 'library';
-    appStore.modelManagerOpen = true;
-  }
 
   const platform = typeof window !== 'undefined' ? (window.electronAPI?.platform ?? 'linux') : 'linux';
   const isMac = platform === 'darwin';
@@ -87,25 +88,12 @@
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
+    {#if codeChat && codeProject}
+      <CodeTitlebarTools chat={codeChat} project={codeProject} />
+    {/if}
     {#if isMac}
       <div class="traffic-lights titlebar-no-drag flex items-center gap-1.5 pl-3">
-        <div class="relative flex items-center">
-          <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
-            <button
-              class="aui-icon-button download-btn relative size-8"
-              class:is-active={downloadsStore.hasActive}
-              onclick={openDownloads}
-              aria-label="Downloads"
-            >
-              {#if downloadsStore.hasActive}
-                <Loader2 class="size-4 animate-spin" />
-                <span class="download-badge">{downloadsStore.activeCount}</span>
-              {:else}
-                <Download class="size-4" />
-              {/if}
-            </button>
-          </Tooltip>
-        </div>
+        <DownloadsButton />
         <Tooltip label="Toggle theme" position="left">
           <button
             class="aui-icon-button size-8"
@@ -139,23 +127,7 @@
       </div>
     {:else}
       <div class="win-controls titlebar-no-drag flex h-full items-center">
-        <div class="relative flex items-center">
-          <Tooltip label={downloadsStore.activeCount > 0 ? countOf(downloadsStore.activeCount, 'active download') : 'Downloads'} position="left">
-            <button
-              class="aui-icon-button download-btn relative mr-0.5 size-8"
-              class:is-active={downloadsStore.hasActive}
-              onclick={openDownloads}
-              aria-label="Downloads"
-            >
-              {#if downloadsStore.hasActive}
-                <Loader2 class="size-4 animate-spin" />
-                <span class="download-badge">{downloadsStore.activeCount}</span>
-              {:else}
-                <Download class="size-4" />
-              {/if}
-            </button>
-          </Tooltip>
-        </div>
+        <DownloadsButton class="mr-0.5" />
         <Tooltip label="Toggle theme" position="left">
           <button
             class="aui-icon-button mr-0.5 size-8"
@@ -215,22 +187,6 @@
 
   .titlebar-left {
     flex-shrink: 0;
-  }
-
-  .download-badge {
-    position: absolute;
-    right: -2px;
-    top: -2px;
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    border-radius: 999px;
-    background: var(--sidebar-primary);
-    color: var(--sidebar-primary-foreground);
-    font-size: 9px;
-    font-weight: 600;
-    line-height: 14px;
-    text-align: center;
   }
 
   .titlebar-right {

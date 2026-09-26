@@ -97,7 +97,7 @@ describe('inline widgets (info_card / html_card)', () => {
     expect(parsed.html).not.toMatch(/src=["']https?:/);
   });
 
-  it('strips single-quoted handlers, svg vectors and javascript: urls', () => {
+  it('strips single-quoted handlers, svg handlers and javascript: urls', () => {
     const ctx = makeCtx();
     const result = handleCreateHtmlCard({
       args: {
@@ -113,9 +113,28 @@ describe('inline widgets (info_card / html_card)', () => {
     expect(result.success).toBe(true);
     const parsed = JSON.parse(ctx.files['html-card.json']);
     expect(parsed.html).not.toMatch(/on\w+\s*=/i);
-    expect(parsed.html).not.toContain('<svg');
     expect(parsed.html).not.toMatch(/javascript:/i);
     expect(parsed.html).toContain('Hi');
+    // Inert SVG stays: a card's icons and small charts are drawn with it.
+    expect(parsed.html).toContain('<svg><circle/></svg>');
+  });
+
+  it('keeps card styles but strips what reaches the network', () => {
+    const ctx = makeCtx();
+    handleCreateHtmlCard({
+      args: {
+        title: 'Styled',
+        html: `<style>@import url("https://x.test/a.css"); .c{color:red;background:url(https://x.test/b.png)}</style><link rel="stylesheet" href="https://x.test/c.css"><div class="c">Styled card</div><svg><foreignObject><div>x</div></foreignObject></svg>`
+      },
+      ctx,
+      normPath: (v) => String(v || ''),
+      ok,
+      fail
+    });
+    const parsed = JSON.parse(ctx.files['html-card.json']);
+    expect(parsed.html).toContain('<style>');
+    expect(parsed.html).toContain('.c{color:red;');
+    expect(parsed.html).not.toMatch(/@import|x\.test|<link|foreignObject/i);
   });
 
   it('gracefully skips empty info card rows without failing the agent', () => {

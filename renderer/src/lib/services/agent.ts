@@ -27,6 +27,7 @@ import { runResearchBootstrap } from '$lib/services/agent-research-bootstrap';
 import { createHomeStreamFn } from '$lib/services/agent-home-stream';
 import { createHomeTools } from '$lib/services/agent-home-tools';
 import { createHomeHooks, createPolicyState, startThinkStep, type PolicyState } from '$lib/services/agent-home-policy';
+import { runPreface } from '$lib/services/agent-preface';
 import { buildAgentResult, forceFinalAnswer, settleWithoutAnswer } from '$lib/services/agent-run-finish';
 
 export { INSTANT_TOOL_NAMES } from '$lib/services/agent-run-plan';
@@ -55,6 +56,9 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   const run = createAgentRun(args, config, plan);
   debugLog(plan.debugLogs, `[agent] START | profile=${plan.agentProfile} | backend=${plan.backendMode} | provider=${plan.localMode ? 'local' : plan.providerName} | model=${plan.activeModel} | useNativeTools=${plan.nativeTools} | maxIterations=${plan.maxIterations} | maxToolCalls=${plan.maxToolCalls} | maxTimeMs=${plan.maxTimeMs}`);
 
+  // Say what it is about to do before any planning starts.
+  await runPreface(run);
+  throwIfAborted(run);
   const bootstrapped = await runResearchBootstrap(run);
   const state = createPolicyState(
     run,
@@ -86,6 +90,7 @@ export async function runAgentTask(args: RunAgentTaskArgs): Promise<AgentTaskRes
   if (loop.stopReason === 'error' && !run.settled) {
     const failed = [...run.transcript].reverse().find((message) => message.role === 'assistant' && message.stopReason === 'error');
     run.errorReason = humanizeAgentError(failed?.role === 'assistant' ? failed.errorMessage : 'The model request failed.');
+    run.requestFailed = true;
   }
 
   run.messages = buildWireMessages(run);

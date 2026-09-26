@@ -1,37 +1,55 @@
 import { randomBytes } from 'node:crypto';
 
 /**
- * Per-run credential for the local llama-server.
+ * Per-run credentials for the local llama-server instances.
  *
- * The server binds to 127.0.0.1, but its CORS policy defaults to `*` — so
- * without a key, any web page the user has open can POST to the port and drive
- * their local model. The key is generated per launch, never persisted, and
- * handed to the server via `--api-key`.
+ * Each server binds to 127.0.0.1 (or the LAN, when shared), but its CORS
+ * policy defaults to `*` — so without a key, any web page the user has open
+ * can POST to the port and drive their local model. A key is generated per
+ * launch and per port, never persisted, and handed to the server via
+ * `--api-key`.
+ *
+ * The main instance (the one chat uses by default) is tracked separately so
+ * `llamaSessionHeaders()` keeps meaning "the server we launched for chat".
  *
  * `/health` and `/models` stay public in llama.cpp, so process supervision
  * keeps working without it.
  */
-let sessionKey = '';
-let sessionPort: number | null = null;
+const keys = new Map<number, string>();
+let mainPort: number | null = null;
 
+/** Start a session for the main (chat) instance. */
 export function startLlamaSession(port: number): string {
-  sessionKey = randomBytes(24).toString('hex');
-  sessionPort = port;
-  return sessionKey;
+  mainPort = port;
+  return startInstanceSession(port);
 }
 
 export function endLlamaSession(): void {
-  sessionKey = '';
-  sessionPort = null;
+  if (mainPort != null) keys.delete(mainPort);
+  mainPort = null;
+}
+
+/** A key for an extra instance on `port`. */
+export function startInstanceSession(port: number): string {
+  const key = randomBytes(24).toString('hex');
+  keys.set(port, key);
+  return key;
+}
+
+export function endInstanceSession(port: number): void {
+  keys.delete(port);
 }
 
 export function getLlamaSessionKey(): string {
-  return sessionKey;
+  return mainPort != null ? keys.get(mainPort) ?? '' : '';
 }
 
-/** Returns the session key when `baseUrl` addresses the server we launched. */
+export function sessionKeyForPort(port: number): string {
+  return keys.get(port) ?? '';
+}
+
+/** Returns the session key when `baseUrl` addresses a server we launched. */
 export function resolveLlamaSessionKey(baseUrl: string): string {
-  if (!sessionKey || sessionPort == null) return '';
   let parsed: URL;
   try {
     parsed = new URL(String(baseUrl || ''));
@@ -40,10 +58,11 @@ export function resolveLlamaSessionKey(baseUrl: string): string {
   }
   const isLoopback = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '[::1]';
   if (!isLoopback) return '';
-  return Number(parsed.port) === sessionPort ? sessionKey : '';
+  return keys.get(Number(parsed.port)) ?? '';
 }
 
-/** Authorization header for main-process calls to the local server. */
+/** Authorization header for main-process calls to the main local server. */
 export function llamaSessionHeaders(): Record<string, string> {
-  return sessionKey ? { Authorization: `Bearer ${sessionKey}` } : {};
+  const key = getLlamaSessionKey();
+  return key ? { Authorization: `Bearer ${key}` } : {};
 }

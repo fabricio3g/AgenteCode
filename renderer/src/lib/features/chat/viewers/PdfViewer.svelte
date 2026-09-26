@@ -1,8 +1,11 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { tick } from 'svelte';
+  import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { copy } from '$lib/copy';
+  import { panScroll, zoomAroundCenter } from './pan-scroll';
   import ViewerStatus from './ViewerStatus.svelte';
   import { readArrayBuffer } from './viewer-source';
 
@@ -19,6 +22,8 @@
   type PdfPage = { pageNumber: number; width: number; height: number };
 
   let currentPage = $state(1);
+  /** Multiplies fit-to-width; 1 is "fit". */
+  let zoom = $state(1);
   let pdfDoc: any = null;
   let pages = $state<PdfPage[]>([]);
   let pageContainer: HTMLDivElement | undefined = $state();
@@ -70,7 +75,31 @@
 
   function pageScale(page: PdfPage) {
     const availableWidth = Math.max(320, (pageContainer?.clientWidth || window.innerWidth) - 48);
-    return Math.min(1.65, availableWidth / page.width);
+    return Math.min(1.65, availableWidth / page.width) * zoom;
+  }
+
+  function setZoom(next: number) {
+    const value = Math.max(0.5, Math.min(3, Math.round(next * 10) / 10));
+    if (value === zoom) return;
+    void zoomAroundCenter(pageContainer, () => {
+      zoom = value;
+      // Every page is redrawn at the new size; resize the placeholders now so
+      // the scroll extent is right before the canvases catch up.
+      for (const page of pages) {
+        const canvas = canvases.get(page.pageNumber);
+        if (canvas) delete canvas.dataset.rendered;
+        const layer = textLayers.get(page.pageNumber);
+        if (layer) delete layer.dataset.rendered;
+        const wrapper = canvas?.parentElement;
+        if (wrapper) {
+          const scale = pageScale(page);
+          wrapper.style.width = `${Math.floor(page.width * scale)}px`;
+          wrapper.style.height = `${Math.floor(page.height * scale)}px`;
+          canvas.style.width = wrapper.style.width;
+          canvas.style.height = wrapper.style.height;
+        }
+      }
+    }, tick).then(() => renderVisiblePages());
   }
 
   /*
@@ -243,8 +272,12 @@
       <button class="pdf-nav-btn" onclick={() => goToPage(currentPage + 1)} disabled={currentPage >= pageCount}>
         <ChevronRight class="h-3.5 w-3.5" />
       </button>
+      <span class="pdf-nav-sep"></span>
+      <button class="pdf-nav-btn" onclick={() => setZoom(zoom - 0.1)} disabled={zoom <= 0.5} aria-label={$t('viewer.zoomOut')}><Minus class="h-3.5 w-3.5" /></button>
+      <button class="pdf-zoom" onclick={() => setZoom(1)} title={$t('viewer.fit')}>{zoom === 1 ? $t('viewer.fit') : `${Math.round(zoom * 100)}%`}</button>
+      <button class="pdf-nav-btn" onclick={() => setZoom(zoom + 0.1)} disabled={zoom >= 3} aria-label={$t('viewer.zoomIn')}><Plus class="h-3.5 w-3.5" /></button>
     </div>
-    <div class="pdf-page-wrap" bind:this={pageContainer} onscroll={handleScroll}>
+    <div class="pdf-page-wrap" bind:this={pageContainer} onscroll={handleScroll} use:panScroll={{ onzoom: (dir) => setZoom(zoom + dir * 0.1) }}>
       <div class="pdf-pages">
         {#each pages as page (page.pageNumber)}
           <div class="pdf-page" style={`aspect-ratio:${page.width}/${page.height};`}>
@@ -308,6 +341,31 @@
     cursor: default;
   }
 
+  .pdf-nav-sep {
+    width: 1px;
+    height: 1rem;
+    margin: 0 0.15rem;
+    background: var(--border);
+  }
+
+  .pdf-zoom {
+    min-width: 2.75rem;
+    border: 0;
+    background: transparent;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .pdf-page-wrap:global(.can-pan) {
+    cursor: grab;
+  }
+
+  .pdf-page-wrap:global(.is-panning) {
+    cursor: grabbing;
+    user-select: none;
+  }
+
   .pdf-page-info {
     font-size: 0.75rem;
     font-weight: 500;
@@ -323,8 +381,12 @@
     padding: 0.75rem;
   }
 
+  /* Grows past the view when zoomed, so the overflow is on the right and
+     scrollable — centring a wider column pushed its left edge out of reach. */
   .pdf-pages {
     display: flex;
+    width: max-content;
+    min-width: 100%;
     flex-direction: column;
     align-items: center;
     gap: 0.85rem;
@@ -335,7 +397,6 @@
     position: relative;
     display: flex;
     width: fit-content;
-    max-width: 100%;
     align-items: center;
     justify-content: center;
     background: white;

@@ -49,6 +49,18 @@ function forcedNudge(run: AgentRun, attempt: number, attempts: number): string {
         codeObservationSummary(run)
       ].join('\n\n');
     }
+    // Say why the run stopped: a failed request is not a step limit, and the
+    // model will repeat whatever reason it is given to the user.
+    if (run.stuckTool) {
+      const lastFailure = [...run.observations].reverse().find((o) => o.name === run.stuckTool && !o.success);
+      return [
+        `Stop: ${run.stuckTool} was called repeatedly${lastFailure ? ` and kept failing (${lastFailure.summary.slice(0, 200)})` : ''}. Do NOT call tools.`,
+        'Answer the user now from what you already know and what was gathered. Say plainly, in one sentence, what could not be done and that they can try again. Do not paste raw search results.'
+      ].join(' ');
+    }
+    if (run.requestFailed) {
+      return `The model request failed before the task was finished (${run.errorReason}). Do NOT call tools. Tell the user plainly what was completed and what was not, and that they can send the request again. Do not describe this as a step or time limit.`;
+    }
     return 'You have reached the step limit. Do NOT call tools. Using only gathered evidence, provide the best possible final answer now. If something is uncertain, state it explicitly.';
   }
   if (plan.isCodeProfile) return 'Final attempt: no tools. Summarize file changes and next steps in plain text only.';
@@ -95,6 +107,9 @@ export async function forceFinalAnswer(run: AgentRun): Promise<void> {
       if (plan.isResearchChat) {
         run.stopReason = 'none';
         run.warningReason = undefined;
+      } else if (run.requestFailed) {
+        // The loop ended on a failed model request, not on its step budget.
+        run.warningReason = run.errorReason || 'The model request failed before the task was finished.';
       } else {
         if (run.stopReason === 'none') run.stopReason = 'iteration_limit';
         run.warningReason = run.warningReason || (plan.isCodeProfile
@@ -128,7 +143,11 @@ export async function settleWithoutAnswer(run: AgentRun): Promise<void> {
     run.errorReason = undefined;
     run.stopReason = 'none';
   } else if (!plan.isResearchChat) {
-    run.errorReason = run.errorReason || 'Agent reached iteration limit without producing a final answer.';
+    // A loop or tool-budget stop already carries its warning: the evidence
+    // answer is partial, not a failure.
+    if (!run.stuckTool && run.stopReason !== 'tool_limit') {
+      run.errorReason = run.errorReason || 'Agent reached iteration limit without producing a final answer.';
+    }
   } else {
     run.errorReason = undefined;
     run.warningReason = researchThinSourcesNotice(sources.length, richCount);

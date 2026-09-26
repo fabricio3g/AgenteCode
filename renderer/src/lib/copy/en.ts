@@ -120,6 +120,22 @@ export const COPY_EN = {
     todo_write: 'Update tasks',
     git_status: 'Git status',
     git_diff: 'Git diff',
+    browser_open: 'Open page',
+    browser_snapshot: 'Read page',
+    browser_click: 'Click',
+    browser_fill: 'Type',
+    browser_select: 'Choose option',
+    browser_press: 'Press key',
+    browser_hover: 'Hover',
+    browser_scroll: 'Scroll',
+    browser_wait: 'Wait for page',
+    browser_back: 'Go back',
+    browser_reload: 'Reload',
+    browser_console: 'Check console',
+    browser_screenshot: 'Screenshot',
+    process_list: 'List processes',
+    process_output: 'Read process output',
+    process_stop: 'Stop process',
     approvePlan: 'Approve plan',
     approval: 'Approval',
     approved: 'Approved',
@@ -130,7 +146,8 @@ export const COPY_EN = {
     planNote: 'Approving lets the agent start editing; every edit still asks individually.',
     turnLimit: 'Stopped at the turn limit',
     interrupted: 'Interrupted — the app closed during this run',
-    plan: 'Plan'
+    plan: 'Plan',
+    noReply: 'The model finished without replying. Try again, or switch to a model that handles tools better.'
   },
 
   /** Shown for a conversation that still has its placeholder title. */
@@ -211,7 +228,14 @@ export const COPY_EN = {
     none: 'No model loaded',
     browseAll: 'Browse all models',
     changeRuntime: 'Change runtime',
-    configureProvider: 'Configure a provider'
+    configureProvider: 'Configure a provider',
+    loadFailed: {
+      oom: 'Not enough memory to load this model. Lower the context length or GPU layers, or pick a smaller quant.',
+      port: "The local server's port is already in use. Close the other llama-server and try again.",
+      runtime: 'The llama.cpp runtime is missing or failed to start. Reinstall it from Runtimes.',
+      file: "This model file couldn't be read. It may be incomplete or not a valid GGUF.",
+      generic: 'The model failed to load: {reason}'
+    }
   },
 
   /** Document-viewer states. One ellipsis glyph, one failure heading. */

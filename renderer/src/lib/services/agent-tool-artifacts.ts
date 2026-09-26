@@ -1,32 +1,25 @@
 import type { AgentArtifact } from '$lib/types/chat';
-import type { GeneratedArtifactFile } from '$lib/services/generated-documents';
+import { renderReportHtml, renderReportMarkdown, type GeneratedArtifactFile } from '$lib/services/generated-documents';
+import { resolveAccent, resolveTheme } from '$shared/artifact-theme';
+import { specPathFor } from '$lib/utils/artifact-files';
 import type { ToolContext, ToolResult } from '$lib/services/agent-types';
-import {
-  buildEvidenceMatrixRows,
-  buildResearchCitations,
-  buildResearchExportFiles,
-  parseExportKinds,
-  type ResearchExportKind
-} from '$lib/services/research-artifacts';
 
 export async function handleCreateReport(params: {
   args: Record<string, unknown>;
   ctx: ToolContext;
   normPath: (value: unknown) => string;
   isWorkspace: (ctx: ToolContext) => boolean;
-  buildHtmlReport: (title: string, sections: Array<{ title?: string; heading?: string; content?: string }>, options?: { theme?: 'light' | 'dark' }) => string;
-  buildMarkdownReport: (title: string, sections: Array<{ title?: string; heading?: string; content?: string }>) => string;
   writeWorkspaceFile: (workspaceRoot: string, path: string, content: string) => Promise<unknown>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
 }): Promise<ToolResult> {
   const title = String(params.args.title || 'Report');
-  const sections = Array.isArray(params.args.sections) ? params.args.sections as Array<{ title?: string; heading?: string; content?: string }> : [];
-  const format = String(params.args.format || 'markdown');
-  const theme = (params.args.theme === 'dark' ? 'dark' : 'light') as 'light' | 'dark';
+  const format = params.args.format === 'html' ? 'html' : 'markdown';
   const path = params.normPath(params.args.path) || (format === 'html' ? 'report.html' : 'report.md');
-  const validation = params.validateGeneratedDocumentArgs({ title, sections }, [format === 'html' ? 'html' : 'md']);
+  // Validate everything the model sent: a report written as one `content`
+  // body is as valid as one split into sections.
+  const validation = params.validateGeneratedDocumentArgs(params.args, [format === 'html' ? 'html' : 'md']);
   if (!validation.ok) {
     return params.fail(
       validation.error || 'Document content is too thin.',
@@ -34,8 +27,8 @@ export async function handleCreateReport(params: {
     );
   }
   const content = format === 'html'
-    ? params.buildHtmlReport(title, sections, { theme })
-    : params.buildMarkdownReport(title, sections);
+    ? renderReportHtml(params.args, { theme: resolveTheme(params.args.theme), accent: resolveAccent(params.args.accent) })
+    : renderReportMarkdown(params.args);
 
   if (params.isWorkspace(params.ctx) && params.ctx.workspaceRoot) {
     await params.writeWorkspaceFile(params.ctx.workspaceRoot, path, content);
@@ -44,7 +37,8 @@ export async function handleCreateReport(params: {
     params.ctx.files[path] = content;
     if (format === 'html') params.ctx.files['__preview__.html'] = content;
   }
-  return params.ok({ title, format, path, sections: sections.length }, { createdFiles: [path] });
+  const sections = Array.isArray(params.args.sections) ? params.args.sections.length : 1;
+  return params.ok({ title, format, path, sections }, { createdFiles: [path] });
 }
 
 export async function handleCreateWorkProduct(params: {
@@ -59,9 +53,10 @@ export async function handleCreateWorkProduct(params: {
   ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
+  /** Workspace mode: writes one generated file into the project folder. */
+  saveGeneratedFile: (ctx: ToolContext, path: string, content: string) => Promise<string>;
 }): Promise<ToolResult> {
   if (!params.isElectron()) return params.fail('Professional work product generation requires the desktop app.');
-  if (params.isWorkspace(params.ctx)) return params.fail('Professional work products are currently available in chat sandbox mode only.');
 
   try {
     const formats = Array.isArray(params.args.formats) ? params.args.formats.map((format) => String(format)) : ['md'];
@@ -75,7 +70,9 @@ export async function handleCreateWorkProduct(params: {
     const generated = await params.createWorkProductArtifactFiles(params.args);
     const createdFiles: string[] = [];
     for (const file of generated.files) {
+      if (params.isWorkspace(params.ctx)) await params.saveGeneratedFile(params.ctx, file.path, file.dataUrl);
       params.ctx.files[file.path] = file.dataUrl;
+      if (file.spec) params.ctx.files[specPathFor(file.path)] = JSON.stringify(file.spec);
       createdFiles.push(file.path);
       if (file.previewHtml) params.ctx.files[params.viewerPathFor(file.path)] = file.previewHtml;
     }
@@ -239,9 +236,21 @@ export async function handleCreateMap(params: {
     }
   }
 
+  // Markers alone are enough: center on them and zoom to fit.
+  const plotted = markers.filter((marker) => Number.isFinite(Number(marker.lat)) && Number.isFinite(Number(marker.lng)));
+  let fittedZoom: number | null = null;
+  if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && plotted.length) {
+    const lats = plotted.map((marker) => Number(marker.lat));
+    const lngs = plotted.map((marker) => Number(marker.lng));
+    lat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    const span = Math.max(Math.max(...lngs) - Math.min(...lngs), (Math.max(...lats) - Math.min(...lats)) * 2, 0.05);
+    fittedZoom = Math.max(2, Math.min(12, Math.floor(Math.log2(360 / span))));
+  }
+
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return params.fail(
-      'A map needs either a place name or latitude and longitude.',
+      'A map needs a place name, latitude and longitude, or markers with lat/lng.',
       'Pass `place` (e.g. "Victoria, Entre Rios") and the coordinates will be resolved.'
     );
   }
@@ -261,7 +270,7 @@ export async function handleCreateMap(params: {
     title,
     latitude: lat,
     longitude: lng,
-    zoom: Number.isFinite(zoom) ? zoom : 8,
+    zoom: Number.isFinite(zoom) ? zoom : fittedZoom ?? 8,
     markers: resolvedMarkers,
     polylines
   };
@@ -300,7 +309,7 @@ export async function handleCreateDashboard(params: {
   return params.ok({ title, path, metricCount: metrics.length }, { createdFiles: [path] });
 }
 
-function sanitizeHtmlCard(html: string): string {
+export function sanitizeHtmlCard(html: string): string {
   let out = String(html || '');
   // Remove scripts and remote/active hooks — self-contained snippets only.
   // Runs in any JS env (no DOM), so regex pre-strip; the render path
@@ -317,8 +326,54 @@ function sanitizeHtmlCard(html: string): string {
   out = out.replace(/<iframe[\s\S]*?(<\/iframe>|$)/gi, '');
   out = out.replace(/<object[\s\S]*?(<\/object>|$)/gi, '');
   out = out.replace(/<embed[\s\S]*?>/gi, '');
-  out = out.replace(/<\/?(svg|math|form|meta|base|link|style)[\s>]/gi, (m) => (m.startsWith('</') ? '</div>' : '<div>'));
+  // Document-level and form tags have no place in a card: drop them outright.
+  out = out.replace(/<(meta|base|link)\b[^>]*>/gi, '');
+  out = out.replace(/<\/?(form|math)\b[^>]*>/gi, '');
+  // SVG may embed arbitrary HTML through foreignObject; the rest of SVG is fine.
+  out = out.replace(/<foreignObject[\s\S]*?(<\/foreignObject>|$)/gi, '');
+  // Styles stay (a card without its CSS is just text), minus anything that
+  // reaches the network or evaluates code.
+  out = out.replace(/@import[^;]*;?/gi, '');
+  out = out.replace(/url\(\s*(['"]?)\s*(?:https?:|\/\/)[^)]*\)/gi, 'none');
+  out = out.replace(/expression\s*\(/gi, '(');
   return out.trim();
+}
+
+/**
+ * A widget runs in a sealed, offline frame (see widget-kit), so its own
+ * scripts and inline handlers are allowed. Inline <script> blocks move into
+ * `script`; only what would escape the frame or load remote content goes.
+ */
+export function splitWidgetSource(html: string, script = ''): { html: string; script: string } {
+  const scripts: string[] = [];
+  let out = String(html || '').replace(/<script\b[^>]*>([\s\S]*?)(<\/script>|$)/gi, (_m, body: string) => {
+    if (body.trim()) scripts.push(body);
+    return '';
+  });
+  out = out.replace(/<(iframe|object)\b[\s\S]*?(<\/\1>|$)/gi, '');
+  out = out.replace(/<(embed|meta|base|link)\b[^>]*>/gi, '');
+  out = out.replace(/@import[^;]*;?/gi, '');
+  out = out.replace(/\s(href|src)\s*=\s*(['"])\s*https?:\/\/[^'"]*\2/gi, '');
+  out = out.replace(/url\(\s*(['"]?)\s*(?:https?:|\/\/)[^)]*\)/gi, 'none');
+  return { html: out.trim(), script: [String(script || ''), ...scripts].filter((part) => part.trim()).join('\n;\n') };
+}
+
+export function handleCreateWidget(params: {
+  args: Record<string, unknown>;
+  ctx: ToolContext;
+  normPath: (value: unknown) => string;
+  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
+  fail: (error: string, note?: string) => ToolResult;
+}): ToolResult {
+  const title = String(params.args.title || '').trim() || 'Widget';
+  const { html, script } = splitWidgetSource(String(params.args.html || ''), String(params.args.script || ''));
+  if (html.length < 8) return params.fail('create_widget requires html markup (the visible part of the widget).');
+  if (html.length + script.length > 120_000) return params.fail('Widget is too large. Keep it compact: one focused view.');
+
+  const path = artifactDataPath(params.normPath(params.args.path), 'widget.json');
+  const payload = { kind: 'html_card', title, html, ...(script ? { script } : {}) };
+  writeInlineArtifact(params.ctx, path, payload);
+  return params.ok({ title, path, interactive: !!script }, { createdFiles: [path] });
 }
 
 export function handleCreateInfoCard(params: {
@@ -412,58 +467,3 @@ export function handleCreateHtmlCard(params: {
   return params.ok({ title, path, htmlLength: html.length }, { createdFiles: [path] });
 }
 
-/** Deterministic research exports from gathered sources (citations, matrix, shortlist, …). */
-export function handleExportResearchPackage(params: {
-  args: Record<string, unknown>;
-  ctx: ToolContext;
-  ok: (output: unknown, extra?: Record<string, unknown>) => ToolResult;
-  fail: (error: string, note?: string) => ToolResult;
-}): ToolResult {
-  const sources = Array.isArray(params.ctx.sources) ? params.ctx.sources : [];
-  if (!sources.length) {
-    return params.fail(
-      'No gathered sources to export.',
-      'Run web_search (and fetch_url when useful) first, then call export_research_package.'
-    );
-  }
-
-  const kinds = parseExportKinds(params.args.kinds) as ResearchExportKind[];
-  const title = String(params.args.title || params.ctx.rawPrompt || 'Research').slice(0, 120);
-  const query = String(params.args.query || params.ctx.rawPrompt || '').slice(0, 400);
-
-  const files = buildResearchExportFiles({
-    sources,
-    kinds,
-    title,
-    query,
-    searchMode: params.ctx.searchMode
-  });
-
-  if (!files.length) {
-    return params.fail('Could not build research exports from the available sources.');
-  }
-
-  const createdFiles: string[] = [];
-  for (const file of files) {
-    params.ctx.files[file.path] = file.content;
-    createdFiles.push(file.path);
-  }
-
-  // Optional spreadsheet-shaped matrix for create_spreadsheet compatibility in ctx (CSV already written).
-  if (kinds.includes('matrix')) {
-    const citations = buildResearchCitations(sources);
-    const { columns, rows } = buildEvidenceMatrixRows(citations);
-    params.ctx.files['__research_matrix_preview__.json'] = JSON.stringify({ title, columns, rows }, null, 2);
-  }
-
-  return params.ok(
-    {
-      title,
-      kinds,
-      fileCount: createdFiles.length,
-      files: createdFiles,
-      sourceCount: sources.length
-    },
-    { createdFiles }
-  );
-}

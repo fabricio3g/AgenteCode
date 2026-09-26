@@ -125,7 +125,24 @@ describe('agent loop resilience', () => {
     expect(retries).toEqual([{ type: 'llm_retry', attempt: 1, delayMs: 1000 }]);
   });
 
-  it('does not retry mid-stream failures that already shipped content', async () => {
+  it('replays a stream that broke after some text once, telling the UI to drop it', async () => {
+    let call = 0;
+    const { result, events } = runLoop([], {
+      streamFn: async ({ callbacks }) => {
+        call += 1;
+        if (call === 1) {
+          callbacks?.onTextDelta?.('partial ');
+          return assistant({ stopReason: 'error', errorMessage: 'JSON error injected into SSE stream', content: 'partial ' });
+        }
+        return assistant({ stopReason: 'stop', content: 'whole answer' });
+      }
+    });
+    const outcome = await result;
+    expect(outcome.stopReason).toBe('stop');
+    expect(events.filter((e) => e.type === 'llm_retry')).toEqual([{ type: 'llm_retry', attempt: 1, delayMs: 1000, discardPartial: true }]);
+  });
+
+  it('replays a broken stream only once', async () => {
     const { result, events } = runLoop([], {
       streamFn: async ({ callbacks }) => {
         callbacks?.onTextDelta?.('partial ');
@@ -134,6 +151,14 @@ describe('agent loop resilience', () => {
     });
     const outcome = await result;
     expect(outcome.stopReason).toBe('error');
+    expect(events.filter((e) => e.type === 'llm_retry')).toHaveLength(1);
+  });
+
+  it('never replays a turn that already made a tool call', async () => {
+    const { result, events } = runLoop([], {
+      streamFn: async () => assistant({ stopReason: 'error', errorMessage: '503 gateway timeout', toolCalls: [{ id: 't1', name: 'echo', arguments: {} }] })
+    });
+    await result;
     expect(events.some((e) => e.type === 'llm_retry')).toBe(false);
   });
 

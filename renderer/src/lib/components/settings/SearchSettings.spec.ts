@@ -7,10 +7,10 @@ import SearchSettings from './SearchSettings.svelte';
 vi.mock('$lib/services/search', () => ({
   getAggregatorCatalog: vi.fn(async () => [
     {
-      id: 'duckduckgo',
-      label: 'DuckDuckGo',
+      id: 'wikipedia',
+      label: 'Wikipedia',
       category: 'recommended',
-      transport: 'html',
+      transport: 'json',
       stability: 'stable',
       requires: [],
       recommended: true,
@@ -41,11 +41,10 @@ function renderSearch(provider = 'aggregator') {
       searchProvider: provider,
       searchMaxResults: '6',
       searchApiKey: '',
-      searchEngineId: '',
       searchBaseUrl: '',
       searchModel: 'sonar',
       searchApiUrl: 'https://api.perplexity.ai',
-      aggregatorEngines: ['duckduckgo'],
+      aggregatorEngines: ['wikipedia'],
       searchSafeSearch: '2',
       aggregatorProviders: {},
       onSaveConfiguration: vi.fn(async () => undefined),
@@ -59,11 +58,11 @@ describe('SearchSettings', () => {
     const view = renderSearch();
     expect(await view.findByText('Engine pool')).toBeTruthy();
 
-    await fireEvent.click(await view.findByRole('switch', { name: 'Disable DuckDuckGo' }));
+    await fireEvent.click(await view.findByRole('switch', { name: 'Disable Wikipedia' }));
     expect(await view.findByText(/Enable at least one engine/)).toBeTruthy();
 
     cleanup();
-    const direct = renderSearch('duckduckgo');
+    const direct = renderSearch('tavily');
     expect(direct.queryByText('Engine pool')).toBeNull();
   });
 
@@ -86,7 +85,7 @@ describe('SearchSettings', () => {
 
   it('keeps bulk actions in the action menu', async () => {
     const view = renderSearch();
-    await view.findByText('DuckDuckGo');
+    await view.findByText('Wikipedia');
     await fireEvent.click(view.getByRole('button', { name: 'Engine pool actions' }));
     expect(view.getByRole('button', { name: 'Enable recommended' })).toBeTruthy();
     expect(view.getByRole('button', { name: 'Enable all configured' })).toBeTruthy();

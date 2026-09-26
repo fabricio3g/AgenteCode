@@ -12,6 +12,8 @@ export interface ToolDefinitionInput<T extends z.ZodType> {
   description: string;
   schema: T;
   mutating?: boolean;
+  /** Ask for approval on this particular call (see AgentTool.requiresApproval). */
+  requiresApproval?(args: z.output<T>): boolean;
   executionMode?: 'sequential' | 'parallel';
   execute(args: z.output<T>, ctx: ToolExecContext, toolCallId: string): Promise<ToolResult>;
 }
@@ -24,6 +26,14 @@ export function defineTool<T extends z.ZodType>(input: ToolDefinitionInput<T>): 
     description: input.description,
     parameters: json,
     mutating: input.mutating,
+    ...(input.requiresApproval
+      ? {
+          requiresApproval: (rawArgs: Record<string, unknown>) => {
+            const parsed = input.schema.safeParse(rawArgs ?? {});
+            return parsed.success ? input.requiresApproval!(parsed.data) : false;
+          }
+        }
+      : {}),
     executionMode: input.executionMode,
     async execute(toolCallId, rawArgs, ctx) {
       const parsed = input.schema.safeParse(rawArgs ?? {});

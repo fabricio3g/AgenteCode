@@ -22,9 +22,12 @@ export function normalizeAggregatorEngines(value: unknown, options: Record<strin
     .map((item) => String(item || '').trim().toLowerCase())
     .filter(Boolean);
 
-  return [...new Set(engines)].filter((engine): engine is AggregatorEngineId => {
+  const supported = [...new Set(engines)].filter((engine): engine is AggregatorEngineId => {
     return SUPPORTED_AGGREGATOR_ENGINES.includes(engine as AggregatorEngineId);
   });
+  // A list that named only removed engines (the old scrapers) would search
+  // nothing; fall back to the defaults. An empty list is the user's choice.
+  return supported.length || !engines.length ? supported : [...DEFAULT_AGGREGATOR_ENGINES];
 }
 
 export function getEngineDefinition(engineId: string) {

@@ -1,12 +1,13 @@
 <svelte:options runes={true} />
 
 <!--
-  The right-rail conversation dial: one tick per turn, wheel to browse, click to
-  jump. Extracted from the message list so the list is about scrolling and the
-  dial is about navigation.
+  The right-rail conversation dial: one hairline tick per turn, wheel or
+  arrow keys to browse, click or Enter to jump. It stays faint until the
+  thread is hovered or scrolled, so it never competes with the messages.
 -->
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { conversationDialWindow } from '$lib/utils/conversation-timeline';
   import type { TimelineMarker } from './timeline';
 
@@ -14,11 +15,13 @@
     markers: TimelineMarker[];
     /** Index of the turn the dial currently points at. */
     index: number;
+    /** True right after a scroll: wake the dial up. */
+    awake?: boolean;
     onselect: (index: number, messageId: string) => void;
     onbrowse: (index: number) => void;
   }
 
-  let { markers, index, onselect, onbrowse }: Props = $props();
+  let { markers, index, awake = false, onselect, onbrowse }: Props = $props();
 
   const WHEEL_THROTTLE_MS = 70;
 
@@ -31,9 +34,14 @@
       ...entry
     }))
   );
-  const dialPosition = $derived(
-    windowed.find((marker) => marker.distance === 0)?.position ?? 50
-  );
+
+  function roleLabel(role: TimelineMarker['role']): string {
+    return role === 'user' ? $t('chat.dial.you') : $t('chat.dial.assistant');
+  }
+
+  function previewOf(marker: TimelineMarker): string {
+    return marker.preview || $t('chat.dial.noText');
+  }
 
   function handleWheel(event: WheelEvent) {
     event.preventDefault();
@@ -44,230 +52,194 @@
     onbrowse(index + (event.deltaY > 0 ? 1 : -1));
   }
 
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
-    hoveredId = null;
-    (event.currentTarget as HTMLElement).blur();
+  function handleKeydown(event: KeyboardEvent, markerIndex: number) {
+    if (event.key === 'Escape') {
+      hoveredId = null;
+      (event.currentTarget as HTMLElement).blur();
+      return;
+    }
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault();
+    const next = Math.min(markers.length - 1, Math.max(0, markerIndex + (event.key === 'ArrowDown' ? 1 : -1)));
+    onbrowse(next);
+    // Keep focus on the tick for the turn we moved to once it renders.
+    requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(`[data-dial-index="${next}"]`);
+      target?.focus();
+    });
   }
 </script>
 
 <nav
-  class="conversation-timeline"
-  aria-label="Conversation dial. Use the mouse wheel to browse turns."
+  class="dial"
+  class:is-awake={awake || hoveredId !== null}
+  aria-label={$t('chat.dial.label')}
   onwheel={handleWheel}
   onmouseleave={() => (hoveredId = null)}
 >
-  <div class="timeline-scale">
-    <span class="timeline-position-dot" style={`top:${dialPosition}%;`} aria-hidden="true"></span>
-
-    {#each windowed as marker (marker.id)}
-      <div
-        class="timeline-marker"
-        style={`top:${marker.position}%;`}
-        role="group"
-        aria-label={marker.role === 'user' ? 'User message marker' : 'Assistant response marker'}
-        onmouseenter={() => (hoveredId = marker.id)}
-        onmouseleave={() => (hoveredId = null)}
+  {#each windowed as marker (marker.id)}
+    <div
+      class="dial-marker"
+      style={`top:${marker.position}%;`}
+      role="presentation"
+      onmouseenter={() => (hoveredId = marker.id)}
+    >
+      <button
+        type="button"
+        class="dial-tick"
+        class:is-user={marker.role === 'user'}
+        data-distance={Math.min(3, Math.abs(marker.distance))}
+        data-dial-index={marker.index}
+        aria-label={$t('chat.dial.jumpTo', { values: { role: roleLabel(marker.role), text: previewOf(marker) } })}
+        aria-current={marker.distance === 0 ? 'true' : undefined}
+        onclick={() => onselect(marker.index, marker.id)}
+        onfocus={() => (hoveredId = marker.id)}
+        onblur={() => (hoveredId = null)}
+        onkeydown={(event) => handleKeydown(event, marker.index)}
       >
-        <button
-          type="button"
-          class="timeline-marker-button"
-          class:timeline-user={marker.role === 'user'}
-          class:timeline-assistant={marker.role === 'assistant'}
-          class:timeline-active={marker.distance === 0}
-          class:timeline-near={Math.abs(marker.distance) === 1}
-          class:timeline-mid={Math.abs(marker.distance) === 2}
-          class:timeline-far={Math.abs(marker.distance) >= 3}
-          aria-label={`Jump to ${marker.role === 'user' ? 'user message' : 'assistant response'}: ${marker.preview}`}
-          aria-describedby={hoveredId === marker.id ? `timeline-tooltip-${marker.index}` : undefined}
-          aria-current={marker.distance === 0 ? 'true' : undefined}
-          onclick={() => onselect(marker.index, marker.id)}
-          onfocus={() => (hoveredId = marker.id)}
-          onblur={() => (hoveredId = null)}
-          onkeydown={handleKeydown}
-        >
-          <span class="timeline-line" aria-hidden="true"></span>
-        </button>
+        <span class="dial-line" aria-hidden="true"></span>
+      </button>
 
-        {#if hoveredId === marker.id}
-          <div id={`timeline-tooltip-${marker.index}`} class="timeline-tooltip" role="tooltip">
-            <span class="timeline-tooltip-role">{marker.role === 'user' ? 'You' : 'Assistant'}</span>
-            <span class="timeline-tooltip-preview">{marker.preview}</span>
-          </div>
-        {/if}
-      </div>
-    {/each}
-  </div>
+      {#if hoveredId === marker.id}
+        <div class="dial-tip" role="tooltip">
+          <span class="dial-tip-role">{roleLabel(marker.role)}</span>
+          <span class="dial-tip-text">{previewOf(marker)}</span>
+        </div>
+      {/if}
+    </div>
+  {/each}
 </nav>
 
 <style>
-  .conversation-timeline {
+  .dial {
     position: absolute;
     top: 50%;
-    right: 0.25rem;
+    right: 0.375rem;
     z-index: var(--z-sticky);
-    width: 1.35rem;
-    height: min(8rem, calc(100% - 3rem));
+    width: 1.5rem;
+    height: min(9rem, calc(100% - 3rem));
     transform: translateY(-50%);
-    border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--chat-bg) 82%, var(--card));
-    box-shadow: var(--shadow-xs);
-    pointer-events: none;
+    border-radius: 9999px;
+    opacity: 0.45;
+    transition:
+      opacity var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease);
+  }
+  /* Wake up when the thread is hovered, the dial is used, or you scroll. */
+  :global(.thread-wrapper:hover) .dial,
+  .dial:focus-within,
+  .dial.is-awake {
+    opacity: 1;
+  }
+  .dial:hover,
+  .dial:focus-within {
+    background: color-mix(in srgb, var(--muted) 80%, transparent);
   }
 
-  .timeline-scale {
-    position: absolute;
-    inset: 0.55rem 0.22rem;
-  }
-
-  .timeline-position-dot {
-    position: absolute;
-    left: -0.08rem;
-    z-index: 3;
-    width: 3px;
-    height: 3px;
-    transform: translate(-50%, -50%);
-    border-radius: 999px;
-    background: var(--foreground);
-    box-shadow: 0 0 0 2px var(--chat-bg);
-    transition: top 120ms linear;
-  }
-
-  .timeline-marker {
+  .dial-marker {
     position: absolute;
     inset-inline: 0;
-    z-index: 2;
     height: 0;
-    pointer-events: auto;
     transition: top 140ms var(--motion-ease);
   }
 
-  .timeline-marker-button {
+  .dial-tick {
     position: absolute;
     top: 0;
-    right: 0;
+    right: 0.3rem;
     display: flex;
-    width: 0.8rem;
-    height: 0.5rem;
+    width: 0.9rem;
+    height: 0.625rem;
     padding: 0;
     transform: translateY(-50%);
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
     border: 0;
-    border-radius: 999px;
+    border-radius: 9999px;
     background: transparent;
     cursor: pointer;
     outline: none;
   }
 
-  .timeline-line {
+  .dial-line {
     display: block;
+    width: 0.375rem;
     height: 1px;
-    border-radius: 999px;
-    opacity: 0.16;
+    border-radius: 9999px;
+    background: var(--muted-foreground);
     transition:
       width 120ms ease,
       opacity 120ms ease,
       background-color 120ms ease;
   }
-
-  .timeline-user .timeline-line {
-    width: 0.3rem;
-    background: var(--muted-foreground);
+  .dial-tick.is-user .dial-line {
+    width: 0.625rem;
   }
-
-  .timeline-assistant .timeline-line {
-    width: 0.24rem;
-    background: var(--muted-foreground);
-  }
-
-  .timeline-active .timeline-line {
-    width: 0.7rem;
+  .dial-tick[data-distance='1'] .dial-line { opacity: 0.55; }
+  .dial-tick[data-distance='2'] .dial-line { opacity: 0.35; }
+  .dial-tick[data-distance='3'] .dial-line { opacity: 0.2; }
+  .dial-tick[aria-current='true'] .dial-line {
+    width: 0.875rem;
     height: 2px;
+    background: var(--foreground);
+  }
+  .dial-tick:hover .dial-line,
+  .dial-tick:focus-visible .dial-line {
+    width: 0.875rem;
     opacity: 1;
     background: var(--foreground);
   }
-
-  .timeline-near .timeline-line {
-    width: 0.52rem;
-    opacity: 0.68;
+  .dial-tick:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 35%, transparent);
   }
 
-  .timeline-mid .timeline-line {
-    width: 0.4rem;
-    opacity: 0.4;
-  }
-
-  .timeline-far .timeline-line {
-    width: 0.26rem;
-    opacity: 0.14;
-  }
-
-  .timeline-marker-button:hover .timeline-line,
-  .timeline-marker-button:focus-visible .timeline-line {
-    width: 0.66rem;
-    opacity: 1;
-    background: var(--foreground);
-  }
-
-  .timeline-marker-button:focus-visible {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring) 36%, transparent);
-  }
-
-  .timeline-tooltip {
+  .dial-tip {
     position: absolute;
     top: 0;
-    right: calc(100% + 0.65rem);
+    right: calc(100% + 0.5rem);
     display: flex;
-    width: min(13rem, calc(100vw - 4rem));
-    max-height: 5rem;
-    padding: 0.42rem 0.5rem;
+    width: 15rem;
+    max-width: calc(100vw - 5rem);
+    padding: 0.5rem 0.75rem;
     transform: translateY(-50%);
     flex-direction: column;
-    gap: 0.2rem;
-    overflow: hidden;
+    gap: 0.125rem;
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     background: var(--popover);
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-md);
     color: var(--popover-foreground);
-    pointer-events: auto;
-    animation: timelineTooltipIn 120ms ease-out;
+    pointer-events: none;
+    animation: dial-tip-in 120ms ease-out;
   }
-
-  .timeline-tooltip-role {
+  .dial-tip-role {
+    font-size: 11px;
+    font-weight: 500;
     color: var(--muted-foreground);
-    font-size: 0.58rem;
-    font-weight: 650;
-    letter-spacing: 0.01em;
-    line-height: 1.2;
   }
-
-  .timeline-tooltip-preview {
+  .dial-tip-text {
     display: -webkit-box;
     overflow: hidden;
-    font-size: 0.69rem;
-    line-height: 1.35;
+    font-size: 12.5px;
+    line-height: 1.45;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
   }
 
-  @keyframes timelineTooltipIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+  @keyframes dial-tip-in {
+    from { opacity: 0; transform: translate(4px, -50%); }
+    to { opacity: 1; transform: translate(0, -50%); }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .timeline-marker,
-    .timeline-line,
-    .timeline-position-dot {
+    .dial,
+    .dial-marker,
+    .dial-line {
       transition: none;
     }
-
-    .timeline-tooltip {
+    .dial-tip {
       animation: none;
     }
   }

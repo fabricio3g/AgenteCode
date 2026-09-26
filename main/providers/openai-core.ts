@@ -5,7 +5,6 @@
 // normalized, one place an error is classified.
 
 import OpenAI from 'openai';
-import { Mistral } from '@mistralai/mistralai';
 import type { ReasoningCapabilities } from './base.ts';
 import {
   LlmStreamError,
@@ -25,7 +24,6 @@ import { probeToolSupport, type ToolProbeArgs } from './tool-probe.ts';
 const PASSTHROUGH_PARAMS = ['temperature', 'max_tokens', 'top_p', 'stop'] as const;
 
 const EFFORT_LEVELS = ['off', 'low', 'medium', 'high'] as const;
-const MISTRAL_PROBE_LEVELS = ['off', 'none', 'high'] as const;
 
 const clients = new Map<string, { client: unknown }>();
 
@@ -40,19 +38,6 @@ function sdkClient(dialect: Dialect, apiKey: string, baseUrl?: string): OpenAI {
     apiKey: apiKey || 'not-needed',
     baseURL: normalized,
     ...(dialect.headers ? { defaultHeaders: dialect.headers(apiKey) } : {})
-  });
-  clients.set(key, { client });
-  return client;
-}
-
-function mistralClient(dialect: Dialect, apiKey: string, baseUrl?: string): Mistral {
-  const normalized = String(baseUrl || '').trim().replace(/\/+$/, '');
-  const key = `${dialect.id}::${apiKey || ''}::${normalized}`;
-  const cached = clients.get(key);
-  if (cached) return cached.client as Mistral;
-  const client = new Mistral({
-    apiKey: apiKey || '',
-    ...(normalized ? { serverURL: normalized } : {})
   });
   clients.set(key, { client });
   return client;
@@ -78,57 +63,6 @@ function preserveLocalUsage(parsed: Record<string, unknown> | null | undefined):
   const timings = parsed.timings;
   if (!Object.keys(usage).length && !timings) return null;
   return { ...usage, ...(timings ? { timings } : {}) } as TokenUsage;
-}
-
-// ── Mistral helpers ────────────────────────────────────────────────────
-
-/** Mistral content arrives as parts or a plain string; split thinking out. */
-function extractMistralContentParts(content: unknown): { text: string; reasoning: string } {
-  if (content == null) return { text: '', reasoning: '' };
-  if (typeof content === 'string') return { text: content, reasoning: '' };
-  if (!Array.isArray(content)) return { text: String(content), reasoning: '' };
-
-  let text = '';
-  let reasoning = '';
-  for (const part of content) {
-    if (!part || typeof part !== 'object') continue;
-    const p = part as Record<string, unknown>;
-    const type = String(p.type || '').toLowerCase();
-    const value = typeof p.text === 'string'
-      ? p.text
-      : typeof p.content === 'string'
-        ? p.content
-        : typeof p.thinking === 'string'
-          ? p.thinking
-          : '';
-    if (type === 'thinking' || type === 'reasoning' || p.thinking === true) {
-      reasoning += value;
-    } else if (type === 'text' || type === 'output_text' || !type) {
-      text += value;
-    }
-  }
-  return { text, reasoning };
-}
-
-export function buildMistralRequest(dialect: Dialect, params: StreamParams, stream: boolean): Record<string, unknown> {
-  const messages = params.messages.map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-    ...(msg.name ? { name: msg.name } : {}),
-    ...(msg.tool_calls ? { toolCalls: msg.tool_calls } : {}),
-    ...(msg.tool_call_id ? { toolCallId: msg.tool_call_id } : {})
-  }));
-  return {
-    model: params.model,
-    messages,
-    ...(params.max_tokens ? { maxTokens: params.max_tokens } : {}),
-    ...(params.temperature != null ? { temperature: params.temperature } : {}),
-    ...(params.top_p != null ? { topP: params.top_p } : {}),
-    ...(params.tools?.length ? { tools: params.tools } : {}),
-    ...(params.tool_choice ? { toolChoice: params.tool_choice === 'required' ? 'any' : params.tool_choice } : {}),
-    ...dialect.reasoningBody?.(params.reasoning?.level ?? undefined, params.model),
-    stream
-  };
 }
 
 // ── The shared chunk mapper ────────────────────────────────────────────
@@ -320,57 +254,6 @@ async function* streamFetchSse(dialect: Dialect, params: StreamParams): AsyncGen
   }
 }
 
-async function* streamMistral(dialect: Dialect, params: StreamParams): AsyncGenerator<StreamChunk> {
-  const client = mistralClient(dialect, params.apiKey, params.baseUrl);
-  let stream: AsyncIterable<Record<string, any>>;
-  try {
-    stream = await client.chat.stream(
-      buildMistralRequest(dialect, params, true) as never,
-      { signal: params.signal }
-    );
-  } catch (err: unknown) {
-    throw new LlmStreamError(classifyError(err));
-  }
-
-  try {
-    for await (const chunk of stream) {
-      if (params.signal?.aborted) break;
-      const choice = chunk?.data?.choices?.[0];
-      const delta = choice?.delta ?? {};
-      const extracted = extractMistralContentParts(delta.content);
-
-      if (extracted.text) yield { type: 'text-delta', text: extracted.text };
-      if (extracted.reasoning) yield { type: 'reasoning-delta', text: extracted.reasoning };
-
-      const toolCalls = delta.toolCalls ?? delta.tool_calls;
-      if (Array.isArray(toolCalls)) {
-        for (let i = 0; i < toolCalls.length; i++) {
-          const tc = toolCalls[i] as Record<string, any>;
-          yield {
-            type: 'tool-call-delta',
-            delta: {
-              index: tc.index ?? i,
-              id: tc.id ?? undefined,
-              name: tc.function?.name ?? undefined,
-              argumentsDelta: typeof tc.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function?.arguments ?? {})
-            }
-          };
-        }
-      }
-
-      if (chunk.data?.usage) yield { type: 'usage', usage: {
-        input_tokens: chunk.data.usage.promptTokens,
-        output_tokens: chunk.data.usage.completionTokens,
-        total_tokens: chunk.data.usage.totalTokens
-      } };
-      const finish = mapOpenAiFinishReason(choice?.finishReason ?? choice?.finish_reason);
-      if (finish) yield { type: 'finish', reason: finish };
-    }
-  } catch (err: unknown) {
-    throw new LlmStreamError(classifyError(err));
-  }
-}
-
 // ── Non-streaming transports ───────────────────────────────────────────
 
 function toolCallsFromOpenAi(message: Record<string, any>): CompletionResult['toolCalls'] {
@@ -454,58 +337,10 @@ async function completeFetchSse(dialect: Dialect, params: StreamParams): Promise
   }
 }
 
-async function completeMistral(dialect: Dialect, params: StreamParams): Promise<CompletionResult> {
-  const client = mistralClient(dialect, params.apiKey, params.baseUrl);
-  try {
-    const response = await client.chat.complete(
-      buildMistralRequest(dialect, params, false) as never,
-      { signal: params.signal }
-    ) as Record<string, any>;
-    const choice = response?.choices?.[0] ?? {};
-    const message = choice.message ?? {};
-    const extracted = extractMistralContentParts(message.content);
-    const usageRecord = (response?.usage ?? {}) as Record<string, number>;
-    const calls = message.toolCalls;
-    const finishReason = mapOpenAiFinishReason(
-      choice.finishReason ?? choice.finish_reason,
-      providerErrorDetail(choice, response)
-    ) ?? undefined;
-    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
-    return {
-      content: extracted.text,
-      reasoning: extracted.reasoning,
-      usage: response?.usage
-        ? {
-            input_tokens: Number(usageRecord.promptTokens ?? 0),
-            output_tokens: Number(usageRecord.completionTokens ?? 0),
-            total_tokens: Number(usageRecord.totalTokens ?? 0)
-          }
-        : null,
-      toolCalls: Array.isArray(calls) && calls.length
-        ? calls.map((tc: Record<string, any>) => ({
-            id: String(tc.id ?? ''),
-            name: String(tc.function?.name ?? ''),
-            arguments: safeParseJson(tc.function?.arguments) ?? tc.function?.arguments ?? ''
-          }))
-        : null,
-      finishReason: finishReason as FinishReason | undefined
-    };
-  } catch (err: unknown) {
-    if (err instanceof LlmStreamError) throw err;
-    throw new LlmStreamError(classifyError(err));
-  }
-}
-
 // ── Model catalog ──────────────────────────────────────────────────────
 
 async function fetchModelsByTransport(dialect: Dialect, apiKey: string, baseUrl?: string): Promise<string[]> {
   try {
-    if (dialect.transport === 'mistral') {
-      const client = mistralClient(dialect, apiKey, baseUrl);
-      const response = await client.models.list() as Record<string, any>;
-      const list = response?.data ?? [];
-      return list.map((m: Record<string, unknown>) => String(m.id || '')).filter(Boolean).sort();
-    }
     if (dialect.transport === 'fetch-sse') {
       const base = dialect.normalizeBaseUrl
         ? dialect.normalizeBaseUrl(baseUrl)
@@ -583,14 +418,6 @@ async function fetchModelMetadataByTransport(
       const data = await res.json().catch(() => ({}));
       const list = data?.data ?? data?.models ?? [];
       const found = list.find((entry: Record<string, unknown>) => String(entry?.id || '') === String(modelId));
-      return parseModelMetadataRecord(found);
-    }
-
-    if (dialect.transport === 'mistral') {
-      const client = mistralClient(dialect, apiKey, baseUrl);
-      const response = await client.models.list() as Record<string, any>;
-      const list = response?.data ?? [];
-      const found = list.find((m: Record<string, unknown>) => String(m?.id || '') === String(modelId));
       return parseModelMetadataRecord(found);
     }
 
@@ -674,18 +501,6 @@ async function getReasoningCapabilities(
 
   // 3. Endpoint probing.
   try {
-    if (dialect.transport === 'mistral') {
-      const client = mistralClient(dialect, apiKey, baseUrl);
-      const response = await client.models.list() as Record<string, any>;
-      const list = response?.data ?? [];
-      const found = list.find((m: Record<string, unknown>) => String(m?.id || '') === String(modelId)) as Record<string, unknown> | undefined;
-      const supportsReasoning = !!(found?.reasoning || found?.supports_reasoning
-        || (Array.isArray(found?.capabilities) && (found!.capabilities as string[]).includes('reasoning')));
-      return supportsReasoning
-        ? { supported: true, levels: [...MISTRAL_PROBE_LEVELS], paramShape: 'mistral_reasoning_effort', source: 'api' }
-        : { supported: false, levels: [], paramShape: 'mistral_reasoning_effort', source: 'api' };
-    }
-
     const client = sdkClient(dialect, apiKey, baseUrl);
     try {
       return supportedParametersCaps(await client.models.retrieve(modelId ?? ''), EFFORT_LEVELS);
@@ -717,13 +532,11 @@ export interface ProviderObject {
 export function createOpenAiProvider(dialect: Dialect): ProviderObject {
   const streamTransports = {
     sdk: streamSdk,
-    'fetch-sse': streamFetchSse,
-    mistral: streamMistral
+    'fetch-sse': streamFetchSse
   } as const;
   const completeTransports = {
     sdk: completeSdk,
-    'fetch-sse': completeFetchSse,
-    mistral: completeMistral
+    'fetch-sse': completeFetchSse
   } as const;
 
   const provider: ProviderObject = {

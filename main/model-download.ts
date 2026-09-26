@@ -39,9 +39,14 @@ export type DownloadStatus =
   | 'cancelled'
   | 'error';
 
+/** What a download is, for the download manager's icon and grouping. */
+export type DownloadCategory = 'chat' | 'speech' | 'voice' | 'engine';
+
 export interface DownloadJob {
   id: string;
-  kind: 'hf_model';
+  /** hf_model: resumable model files. file: a one-off (engine, speech model). */
+  kind: 'hf_model' | 'file';
+  category?: DownloadCategory;
   model_id: string;
   repo_id: string;
   /** Primary file (first shard). Kept as `file` for renderer compatibility. */
@@ -439,6 +444,8 @@ export async function startDownloadHf({
   const job: DownloadJob = {
     id: randomUUID(),
     kind: 'hf_model',
+    // Kokoro voices come through here too (Settings → Voice).
+    category: /kokoro|piper|[\\/]voices[\\/]/i.test(`${repoId} ${destPath}`) ? 'voice' : 'chat',
     model_id: repoId.split('/').pop() || repoId,
     repo_id: repoId,
     file,
@@ -623,6 +630,62 @@ async function downloadShard(
   persistRegistry();
 }
 
+/**
+ * A one-off download (an engine archive, a speech model) shown in the
+ * download manager next to model downloads. Cancelling it from the manager
+ * aborts the transfer; the caller sees the rejection.
+ */
+export async function trackDownload(
+  { url, dest, label, category }: { url: string; dest: string; label: string; category: DownloadCategory },
+  onFraction: (fraction: number) => void = () => {}
+): Promise<void> {
+  const id = `file-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const job: DownloadJob = {
+    id, kind: 'file', category, model_id: label, repo_id: '', file: path.basename(dest), files: [path.basename(dest)],
+    url, dest_path: dest, total_bytes: 0, downloaded_bytes: 0, progress: 0, status: 'running', error: null,
+    timestamp: Date.now(), label, etag: null, last_modified: null, verified: false
+  };
+  const controller = new AbortController();
+  jobs.set(id, job);
+  controllers.set(id, controller);
+  emit(job);
+  persistRegistry();
+
+  let lastEmit = 0;
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok || !resp.body) throw new Error(`Download failed: HTTP ${resp.status}`);
+    job.total_bytes = Number(resp.headers.get('content-length') || 0);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const out = fs.createWriteStream(dest);
+    const reader = resp.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!out.write(Buffer.from(value))) await new Promise((r) => out.once('drain', r));
+        job.downloaded_bytes += value.length;
+        job.progress = job.total_bytes ? job.downloaded_bytes / job.total_bytes : 0;
+        onFraction(job.progress);
+        if (Date.now() - lastEmit > 250) { lastEmit = Date.now(); emit(job); }
+      }
+    } finally {
+      await new Promise<void>((res, rej) => out.end((err?: Error | null) => (err ? rej(err) : res())));
+    }
+    job.progress = 1;
+    setStatus(job, 'completed');
+  } catch (err) {
+    if (controller.signal.aborted) {
+      if (job.status !== 'cancelled') setStatus(job, 'cancelled');
+      throw new Error('Download cancelled.');
+    }
+    setStatus(job, 'error', err instanceof Error ? err.message : String(err));
+    throw err;
+  } finally {
+    controllers.delete(id);
+  }
+}
+
 export async function getDownloadJobs(): Promise<DownloadJob[]> {
   return Array.from(jobs.values()).sort((a, b) => b.timestamp - a.timestamp);
 }
@@ -643,6 +706,9 @@ export async function cancelDownloadJob(jobId: string): Promise<void> {
   // Cancel means clean: partial bytes go away so a later start starts fresh.
   for (const shard of shardStates.get(jobId) || []) {
     try { fs.rmSync(shard.partPath, { force: true }); } catch { /* best effort */ }
+  }
+  if (job.kind === 'file') {
+    try { fs.rmSync(job.dest_path, { force: true }); } catch { /* best effort */ }
   }
   setStatus(job, 'cancelled');
 }

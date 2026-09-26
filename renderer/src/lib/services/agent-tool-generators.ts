@@ -8,7 +8,7 @@ async function createArtifactWithValidation(params: {
   thinContentMessage: string;
   thinContentNote: string;
   createFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
-  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult;
+  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult | Promise<ToolResult>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   fail: (error: string, note?: string) => ToolResult;
 }): Promise<ToolResult> {
@@ -23,7 +23,7 @@ export async function handleCreateDocument(params: {
   ctx: ToolContext;
   args: Record<string, unknown>;
   createDocxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
-  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult;
+  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult | Promise<ToolResult>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -51,7 +51,7 @@ export async function handleCreateSpreadsheet(params: {
   ctx: ToolContext;
   args: Record<string, unknown>;
   createXlsxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
-  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult;
+  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult | Promise<ToolResult>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -79,7 +79,7 @@ export async function handleCreatePresentation(params: {
   ctx: ToolContext;
   args: Record<string, unknown>;
   createPptxArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
-  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult;
+  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult | Promise<ToolResult>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;
@@ -107,7 +107,7 @@ export async function handleCreatePdf(params: {
   ctx: ToolContext;
   args: Record<string, unknown>;
   createPdfArtifactFile: (args: Record<string, unknown>) => Promise<GeneratedArtifactFile>;
-  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult;
+  addGeneratedArtifactFile: (ctx: ToolContext, file: GeneratedArtifactFile) => ToolResult | Promise<ToolResult>;
   validateGeneratedDocumentArgs: (args: Record<string, unknown>, formats: string[]) => { ok: boolean; error?: string };
   fail: (error: string, note?: string) => ToolResult;
   failFromError: (err: unknown, note?: string) => ToolResult;

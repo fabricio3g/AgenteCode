@@ -11,8 +11,8 @@ export interface Dialect {
   label: string;
   group: 'cloud' | 'local';
   defaultBaseUrl: string;
-  /** sdk = OpenAI SDK; fetch-sse = raw POST + SSE parse; mistral = Mistral SDK envelope. */
-  transport: 'sdk' | 'fetch-sse' | 'mistral';
+  /** sdk = OpenAI SDK; fetch-sse = raw POST + SSE parse. */
+  transport: 'sdk' | 'fetch-sse';
   /** Host fragments that claim a bare base URL for this dialect. */
   matchHosts?: string[];
   /** Normalize a user-entered base URL into what the transport needs. */
@@ -27,84 +27,22 @@ export interface Dialect {
   /** Family-aware capability check; return null to fall through to endpoint probing. */
   reasoningCapabilities?: (modelId?: string, modelPath?: string) => ReasoningCapabilities | null;
   /**
+   * GET path that only succeeds with a valid key, for providers whose model
+   * list is public (so listing models proves nothing about the key).
+   */
+  keyCheckPath?: string;
+  /**
    * Send stream_options.include_usage on streaming requests. Only set this
    * where the old provider did — strict endpoints reject unknown params.
    */
   streamUsage?: boolean;
 }
 
-const EFFORT_LEVELS = ['off', 'low', 'medium', 'high'] as const;
-
 /** Plain {reasoning_effort} dialects share this body builder. */
 function effortBody(level: string | undefined): Record<string, unknown> {
   if (!level) return {};
   if (level === 'off' || level === 'disabled') return { reasoning_effort: 'none' };
   return { reasoning_effort: level };
-}
-
-/**
- * Probe-style capabilities shared by openai-compatible endpoints: accept the
- * effort param when the model's record advertises it.
- */
-function supportedParametersCaps(record: Record<string, unknown>, levels: readonly string[]): ReasoningCapabilities {
-  const params = Array.isArray(record.supported_parameters) ? record.supported_parameters as string[] : [];
-  const accepts = params.includes('reasoning_effort') || params.includes('reasoning') || !!record.reasoning;
-  return {
-    supported: accepts,
-    levels: accepts ? [...levels] as ReasoningCapabilities['levels'] : [],
-    paramShape: 'openai_reasoning_effort',
-    source: 'api'
-  };
-}
-
-// ── Groq family logic (console.groq.com/docs/reasoning) ────────────────
-
-const GROQ_GPT_OSS_LEVELS = ['low', 'medium', 'high'] as const;
-const GROQ_QWEN_LEVELS = ['none', 'default'] as const;
-
-function groqFamily(modelId?: string): 'gpt-oss' | 'qwen' | null {
-  const id = String(modelId || '').toLowerCase();
-  if (!id) return null;
-  if (id.includes('gpt-oss')) return 'gpt-oss';
-  if (id.includes('qwen')) return 'qwen';
-  return null;
-}
-
-function groqReasoningBody(level: string | undefined, modelId?: string): Record<string, unknown> {
-  const family = groqFamily(modelId);
-  if (family === 'gpt-oss') {
-    if (level === 'low' || level === 'medium' || level === 'high') {
-      return { reasoning_effort: level, include_reasoning: true };
-    }
-    return {};
-  }
-  if (family === 'qwen') {
-    // Groq requires parsed or hidden format when combining reasoning and tools.
-    if (!level) return { reasoning_format: 'parsed' };
-    if (level === 'off') return { reasoning_effort: 'none', reasoning_format: 'parsed' };
-    if (level === 'none' || level === 'default') {
-      return { reasoning_effort: level, reasoning_format: 'parsed' };
-    }
-    if (level === 'disabled' || level === 'minimal') {
-      return { reasoning_effort: 'none', reasoning_format: 'parsed' };
-    }
-    if (['low', 'medium', 'high', 'on', 'enabled'].includes(level)) {
-      return { reasoning_effort: 'default', reasoning_format: 'parsed' };
-    }
-  }
-  return {};
-}
-
-function groqReasoningCapabilities(modelId?: string): ReasoningCapabilities | null {
-  const family = groqFamily(modelId);
-  if (family === 'gpt-oss') {
-    return { supported: true, levels: [...GROQ_GPT_OSS_LEVELS], paramShape: 'openai_reasoning_effort', source: 'sdk' };
-  }
-  if (family === 'qwen') {
-    return { supported: true, levels: [...GROQ_QWEN_LEVELS], paramShape: 'openai_reasoning_effort', source: 'sdk' };
-  }
-  // Unknown family → let the endpoint probe decide.
-  return null;
 }
 
 // ── DeepSeek thinking (api-docs.deepseek.com/guides/thinking_mode) ─────
@@ -118,29 +56,6 @@ function deepseekReasoningBody(level: string | undefined): Record<string, unknow
   }
   const effort = level === 'max' || level === 'xhigh' ? 'max' : 'high';
   return { thinking: { type: 'enabled' }, reasoning_effort: effort };
-}
-
-// ── Mistral adjustable reasoning ───────────────────────────────────────
-
-const MISTRAL_LEVELS = ['off', 'none', 'high'] as const;
-const MISTRAL_REASONING_MODEL_RE = /mistral-small|mistral-medium|magistral|mistral-medium-3/i;
-
-function mistralReasoningBody(level: string | undefined): Record<string, unknown> {
-  if (!level) return {};
-  if (level === 'off') return { reasoningEffort: 'none' };
-  if (level === 'none' || level === 'high') return { reasoningEffort: level };
-  // Compat for shared UI levels: low/medium → high, disabled variants → none.
-  if (['low', 'medium', 'on', 'enabled', 'default'].includes(level)) return { reasoningEffort: 'high' };
-  if (['disabled', 'minimal'].includes(level)) return { reasoningEffort: 'none' };
-  return {};
-}
-
-function mistralReasoningCapabilities(modelId?: string): ReasoningCapabilities | null {
-  if (MISTRAL_REASONING_MODEL_RE.test(String(modelId || ''))) {
-    return { supported: true, levels: [...MISTRAL_LEVELS], paramShape: 'mistral_reasoning_effort', source: 'sdk' };
-  }
-  // Unknown → probe the models list for a reasoning flag before giving up.
-  return null;
 }
 
 // ── Local llama.cpp (chat_template_kwargs.enable_thinking) ─────────────
@@ -166,34 +81,20 @@ function localReasoningBody(level: string | undefined): Record<string, unknown> 
 
 export const DIALECTS: Dialect[] = [
   {
-    id: 'anthropic',
-    label: 'Anthropic',
+    // OpenCode Go: a flat subscription to open models behind one
+    // OpenAI-compatible endpoint (opencode.ai/docs/go).
+    id: 'opencode-go',
+    label: 'OpenCode Go',
     group: 'cloud',
-    defaultBaseUrl: 'https://api.anthropic.com',
-    transport: 'sdk'
-  },
-  {
-    id: 'gemini',
-    label: 'Google Gemini',
-    group: 'cloud',
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com',
-    transport: 'sdk'
-  },
-  {
-    id: 'groq',
-    label: 'Groq',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.groq.com/openai/v1',
+    defaultBaseUrl: 'https://opencode.ai/zen/go/v1',
     transport: 'sdk',
-    matchHosts: ['api.groq.com'],
-    normalizeBaseUrl(baseUrl) {
-      // Accept either form; the OpenAI SDK needs the full /openai/v1 path.
-      const raw = String(baseUrl || '').trim().replace(/\/+$/, '');
-      const host = raw.replace(/\/openai\/v1$/i, '') || 'https://api.groq.com';
-      return `${host}/openai/v1`;
-    },
-    reasoningBody: groqReasoningBody,
-    reasoningCapabilities: groqReasoningCapabilities
+    matchHosts: ['opencode.ai'],
+    streamUsage: true,
+    reasoningBody: effortBody,
+    reasoningCapabilities(modelId) {
+      void modelId;
+      return null; // probe the catalog
+    }
   },
   {
     id: 'openrouter',
@@ -202,8 +103,9 @@ export const DIALECTS: Dialect[] = [
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
     transport: 'sdk',
     matchHosts: ['openrouter.ai'],
+    keyCheckPath: '/key',
     headers() {
-      return { 'HTTP-Referer': 'https://chatea.app', 'X-Title': 'Chatea' };
+      return { 'HTTP-Referer': 'https://github.com/fabricio3g/Flaxeo-Chat', 'X-Title': 'Flaxeo Chat' };
     },
     reasoningBody(level) {
       if (!level) return {};
@@ -217,16 +119,6 @@ export const DIALECTS: Dialect[] = [
       void modelId;
       return null;
     }
-  },
-  {
-    id: 'mistral',
-    label: 'Mistral AI',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.mistral.ai/v1',
-    transport: 'mistral',
-    matchHosts: ['mistral.ai'],
-    reasoningBody: mistralReasoningBody,
-    reasoningCapabilities: mistralReasoningCapabilities
   },
   {
     id: 'deepseek',
@@ -244,20 +136,6 @@ export const DIALECTS: Dialect[] = [
     reasoningCapabilities(modelId) {
       void modelId;
       return { supported: true, levels: [...DEEPSEEK_LEVELS], paramShape: 'openai_reasoning_effort', source: 'sdk' };
-    }
-  },
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.openai.com/v1',
-    transport: 'sdk',
-    matchHosts: ['api.openai.com'],
-    streamUsage: true,
-    reasoningBody: effortBody,
-    reasoningCapabilities(modelId) {
-      void modelId;
-      return null; // probe via models.retrieve
     }
   },
   {
@@ -292,53 +170,15 @@ export const DIALECTS: Dialect[] = [
     streamUsage: true
   },
   {
-    id: 'together',
-    label: 'Together AI',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.together.xyz/v1',
-    transport: 'sdk',
-    matchHosts: ['api.together.xyz'],
-    reasoningBody: effortBody
-  },
-  {
-    id: 'cohere',
-    label: 'Cohere',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.cohere.ai/compatibility/v1',
-    transport: 'sdk',
-    matchHosts: ['api.cohere.ai'],
-    normalizeBaseUrl(baseUrl) {
-      const raw = String(baseUrl || '').trim().replace(/\/+$/, '');
-      // Repair the old settings default; preserve custom gateways.
-      return !raw || /^https:\/\/api\.cohere\.(ai|com)(\/v1)?$/.test(raw)
-        ? 'https://api.cohere.ai/compatibility/v1' : raw;
-    },
-    reasoningBody(level) {
-      if (!level) return {};
-      return { reasoning_effort: ['off', 'none', 'disabled'].includes(level) ? 'none' : 'high' };
-    }
-  },
-  {
-    id: 'perplexity',
-    label: 'Perplexity',
-    group: 'cloud',
-    defaultBaseUrl: 'https://api.perplexity.ai',
-    transport: 'sdk',
-    matchHosts: ['api.perplexity.ai'],
-    reasoningBody: effortBody
-  },
-  {
     id: 'custom',
     label: 'Custom / Other',
     group: 'local',
-    defaultBaseUrl: 'https://api.openai.com/v1',
+    // Custom endpoints always carry their own URL; this only fills a blank.
+    defaultBaseUrl: 'http://127.0.0.1:8080/v1',
     transport: 'sdk',
     reasoningBody: effortBody
   }
 ];
-
-/** Anthropic and Gemini have their own wire protocols and their own adapters. */
-export const ADAPTER_DIALECT_IDS = new Set(['anthropic', 'gemini']);
 
 export function getDialect(id: string): Dialect | undefined {
   return DIALECTS.find((d) => d.id === id);
@@ -362,19 +202,8 @@ export function resolveDialect(providerName?: string, baseUrl?: string): Dialect
   }
 
   for (const dialect of DIALECTS) {
-    if (ADAPTER_DIALECT_IDS.has(dialect.id)) continue; // adapters detect below
     if (name === dialect.id) return dialect;
     if (dialect.matchHosts?.some((host) => hostname === host || hostname.endsWith(`.${host}`))) return dialect;
-  }
-
-  // Adapter-owned protocols detect on looser aliases (claude, google, …).
-  if (name.includes('anthropic') || name.includes('claude') || name === 'claude'
-    || url.includes('anthropic.com') || url.includes('claude.ai')) {
-    return getDialect('anthropic')!;
-  }
-  if (name === 'gemini' || name === 'google' || name === 'googleai'
-    || url.includes('generativelanguage.googleapis.com')) {
-    return getDialect('gemini')!;
   }
 
   return getDialect('custom')!;

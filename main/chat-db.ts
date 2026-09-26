@@ -191,6 +191,8 @@ function migrate(database) {
   // Migrations for older chat-history.db files.
   addColumn(database, 'messages', 'tts_audio', 'TEXT');
   addColumn(database, 'messages', 'artifact', 'TEXT');
+  // Every artifact of a turn; `artifact` alone kept only the last one.
+  addColumn(database, 'messages', 'artifacts', 'TEXT');
   addColumn(database, 'messages', 'metadata', 'TEXT');
   addColumn(database, 'messages', 'sources', 'TEXT');
   addColumn(database, 'messages', 'search_meta', 'TEXT');
@@ -245,8 +247,8 @@ export function saveChatSession(session) {
   `);
 
   const upsertMessage = database.prepare(`
-    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, speaker_id, choices, props, story_turn, agent_task_id, active_version, tts_audio, artifact, metadata, sources, search_meta, agent_steps, rag_documents, slides, work_context, files_created)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, chat_id, role, content, reasoning, model, created_at, done, status, search_mode, mode, speaker_id, choices, props, story_turn, agent_task_id, active_version, tts_audio, artifact, artifacts, metadata, sources, search_meta, agent_steps, rag_documents, slides, work_context, files_created)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       content = excluded.content,
       reasoning = excluded.reasoning,
@@ -263,6 +265,7 @@ export function saveChatSession(session) {
       active_version = excluded.active_version,
       tts_audio = excluded.tts_audio,
       artifact = excluded.artifact,
+      artifacts = excluded.artifacts,
       metadata = excluded.metadata,
       sources = excluded.sources,
       search_meta = excluded.search_meta,
@@ -344,6 +347,7 @@ export function saveChatSession(session) {
         msg.activeVersion != null ? msg.activeVersion : null,
         stringifyJson(msg.ttsAudio),
         stringifyJson(msg.artifact),
+        Array.isArray(msg.artifacts) && msg.artifacts.length ? stringifyJson(msg.artifacts) : null,
         stringifyJson(msg.metadata),
         stringifyJson(msg.sources),
         stringifyJson(msg.searchMeta),
@@ -508,6 +512,8 @@ export function loadAllChats() {
       result.filesCreated = parseJson(msg.files_created, []);
       result.ttsAudio = parseJson(msg.tts_audio, undefined);
       result.artifact = parseJson(msg.artifact, null);
+      const artifacts = parseJson(msg.artifacts, null);
+      if (Array.isArray(artifacts) && artifacts.length) result.artifacts = artifacts;
       if (attachments.length) result.attachments = attachments;
       if (versions.length) result.versions = versions;
       return result;

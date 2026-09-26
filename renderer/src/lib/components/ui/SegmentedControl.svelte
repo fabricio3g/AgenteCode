@@ -105,7 +105,7 @@
   {id}
   class={cn(
     'relative inline-flex rounded-full p-[3px]',
-    variant === 'tabs' ? 'bg-[var(--muted)]' : 'bg-muted/60',
+    'bg-[var(--muted)]',
     className,
   )}
   role={variant === 'tabs' ? 'tablist' : 'radiogroup'}
@@ -134,7 +134,7 @@
       class={cn(
         'relative z-10 rounded-full px-3.5 py-1.5 text-xs font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
         value === option.value
-          ? variant === 'tabs' ? 'text-foreground' : 'bg-background text-foreground shadow-sm'
+          ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--surface-active)] text-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground',
       )}
       onclick={() => select(option.value)}

@@ -7,6 +7,7 @@
   import { t } from 'svelte-i18n';
   import { locale } from 'svelte-i18n';
   import { Button, Field, Input, SegmentedControl, Select, Switch } from '$lib/components/ui';
+  import SettingsSection from './SettingsSection.svelte';
   const languages = SUPPORTED_UI_LANGUAGES;
 
   let {
@@ -28,17 +29,8 @@
   }
 </script>
 
-<div class="space-y-5">
-  <div>
-    <h3 class="text-lg font-semibold tracking-[-0.02em] text-foreground">General</h3>
-    <p class="mt-1 text-sm text-muted-foreground">Personalize the interface and everyday chat behavior.</p>
-  </div>
-
-  <section class="rounded-2xl bg-[var(--muted)]">
-    <div class="px-4 pb-1 pt-3.5">
-      <h4 class="text-sm font-semibold text-foreground">Profile</h4>
-    </div>
-    <div class="px-4">
+<div class="space-y-7">
+  <SettingsSection title={$t('generalSettings.profile')}>
       <Field
         horizontal
         class="py-4"
@@ -69,14 +61,9 @@
           onchange={setLocale}
         />
       </Field>
-    </div>
-  </section>
+  </SettingsSection>
 
-  <section class="rounded-2xl bg-[var(--muted)]">
-    <div class="px-4 pb-1 pt-3.5">
-      <h4 class="text-sm font-semibold text-foreground">Chat behavior</h4>
-    </div>
-    <div class="px-4">
+  <SettingsSection title={$t('generalSettings.chatBehavior')}>
       <Field
         horizontal
         class="py-4"
@@ -109,34 +96,26 @@
           />
         </div>
       </Field>
-    </div>
-  </section>
+  </SettingsSection>
 
-  <section class="rounded-2xl bg-[var(--muted)]">
-    <div class="px-4 pb-1 pt-3.5">
-      <h4 class="text-sm font-semibold text-foreground">Appearance</h4>
-    </div>
-    <div class="px-4">
+  <SettingsSection title={$t('generalSettings.appearance')}>
       <Field
         horizontal
         class="py-4"
-        label="Color theme"
-        description="Choose a light or dark interface."
+        label={$t('generalSettings.theme')}
+        description={$t('generalSettings.themeDesc')}
       >
         <SegmentedControl
-          label="Color theme"
+          label={$t('generalSettings.theme')}
           value={themeStore.current}
-          options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]}
+          options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
           onchange={(value) => themeStore.set(value as 'light' | 'dark')}
         />
       </Field>
-    </div>
-  </section>
+  </SettingsSection>
 
-  <section class="rounded-2xl bg-[var(--muted)] p-4">
-    <h4 class="text-sm font-semibold text-foreground">{$t('generalSettings.huggingFaceAccess')}</h4>
-    <p class="mt-1 text-xs leading-relaxed text-muted-foreground">{$t('generalSettings.huggingFaceDesc')}</p>
-    <div class="mt-4">
+  <SettingsSection title={$t('generalSettings.huggingFaceAccess')} description={$t('generalSettings.huggingFaceDesc')}>
+    <div class="py-4">
       <Field label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
         <div class="flex flex-col gap-2 sm:flex-row">
           <Input
@@ -150,5 +129,5 @@
         </div>
       </Field>
     </div>
-  </section>
+  </SettingsSection>
 </div>

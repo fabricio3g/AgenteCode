@@ -1,39 +1,37 @@
 // Shared search utilities, constants, and result-processing helpers
 
+/*
+ * Only providers reached through an interface offered for programmatic use:
+ * official APIs, and the user's own SearXNG. Result-page scrapers (DuckDuckGo
+ * HTML, a hidden browser window) and resellers of scraped Google results
+ * (SerpApi, Serper) were removed; Google CSE and Bing's API are closed.
+ */
 export const DEFAULT_PROVIDER_ORDER = [
   'aggregator',
   'tavily',
-  'brave',
-  'google_cse',
-  'serpapi',
-  'searxng',
-  'electron',
-  'bing',
-  'serper',
   'exa',
+  'brave',
+  'searxng',
   'jina',
   'youcom',
-  'perplexity',
-  'duckduckgo'
+  'perplexity'
 ];
 
-export const FREE_PROVIDER_ORDER = ['aggregator', 'duckduckgo', 'jina', 'electron'];
+/** Needs no key: the aggregator's free, API-based sources. */
+export const FREE_PROVIDER_ORDER = ['aggregator'];
+
+/** Providers that existed before and are gone; saved settings naming them fall back to auto. */
+export const REMOVED_SEARCH_PROVIDERS = ['duckduckgo', 'electron', 'serpapi', 'serper', 'google_cse', 'bing'];
 
 export const PROVIDER_PRIORITY: Record<string, number> = {
   aggregator: 5.5,
   tavily: 5,
+  exa: 4.8,
   brave: 4.5,
-  google_cse: 4.2,
-  serpapi: 4,
   searxng: 3.8,
-  electron: 3.9,
-  bing: 3.6,
-  serper: 3.5,
-  exa: 3.4,
   jina: 3.3,
   youcom: 3.2,
-  perplexity: 3.1,
-  duckduckgo: 2.8
+  perplexity: 3.1
 };
 
 export const DEFAULT_CONTEXT_BUDGET = {
@@ -279,19 +277,13 @@ export function providerPriority(provider: string): number {
 export function providerDisplayName(provider: string): string {
   const names: Record<string, string> = {
     tavily: 'Tavily',
-    aggregator: 'Chatea Aggregator',
+    aggregator: 'Flaxeo Chat Aggregator',
     brave: 'Brave Search',
-    google_cse: 'Google CSE',
-    serpapi: 'SerpAPI',
     searxng: 'SearXNG',
-    electron: 'Electron Browser',
-    bing: 'Bing Search',
-    serper: 'Serper',
     exa: 'Exa',
     jina: 'Jina',
     youcom: 'You.com',
-    perplexity: 'Perplexity',
-    duckduckgo: 'DuckDuckGo'
+    perplexity: 'Perplexity'
   };
   return names[provider] || provider;
 }
@@ -304,35 +296,24 @@ export function providerHasCredentials(provider: string, options: Record<string,
       return true;
     case 'brave':
       return !!options?.brave_api_key;
-    case 'google_cse':
-      return !!options?.google_cse_api_key && !!options?.google_cse_id;
-    case 'serpapi':
-      return !!options?.serpapi_api_key;
     case 'searxng':
       return !!options?.searxng_base_url;
-    case 'electron':
-      return true;
-    case 'bing':
-      return !!options?.bing_api_key;
-    case 'serper':
-      return !!options?.serper_api_key;
     case 'exa':
       return !!options?.exa_api_key;
     case 'jina':
-      return true;
+      // s.jina.ai search needs a key; the keyless reader is only used to read pages.
+      return !!options?.jina_api_key;
     case 'youcom':
       return !!options?.youcom_api_key;
     case 'perplexity':
       return !!options?.perplexity_api_key;
-    case 'duckduckgo':
-      return true;
     default:
       return false;
   }
 }
 
 export function providerCandidates(provider: string, options: Record<string, unknown>, _searchMode: string): string[] {
-  if (provider && provider !== 'auto') return [provider];
+  if (provider && provider !== 'auto' && !REMOVED_SEARCH_PROVIDERS.includes(provider)) return [provider];
   const keyed = DEFAULT_PROVIDER_ORDER.filter((candidate) => {
     if (FREE_PROVIDER_ORDER.includes(candidate)) return false;
     return providerHasCredentials(candidate, options);

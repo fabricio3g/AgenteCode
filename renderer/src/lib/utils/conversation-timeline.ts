@@ -43,10 +43,8 @@ export function conversationTimelinePreview(message: ChatMessage, maximumLength 
     .replace(/\s+/g, ' ')
     .trim();
 
-  const fallback =
-    message.attachments?.[0]?.name ||
-    (message.role === 'user' ? 'User message' : 'Assistant response');
-  if (!plainText) return fallback;
+  // Empty means "nothing to quote"; the dial shows its own translated label.
+  if (!plainText) return message.attachments?.[0]?.name || '';
   if (plainText.length <= maximumLength) return plainText;
   return `${plainText.slice(0, Math.max(1, maximumLength - 1)).trimEnd()}…`;
 }

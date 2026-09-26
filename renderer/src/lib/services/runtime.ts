@@ -136,7 +136,9 @@ async function waitForLocalServer(baseUrl: string, timeoutMs = 60_000, signal?: 
     if (signal?.aborted) throw new Error('Aborted');
     try {
       const response = await fetch(modelsUrl, { method: 'GET', signal });
-      if (response.ok) return;
+      // Newer llama.cpp builds protect /models with the API key: a 401 still
+      // means the server is up and answering.
+      if (response.ok || response.status === 401) return;
     } catch (_err: unknown) {
       if (signal?.aborted) throw new Error('Aborted');
       // keep polling

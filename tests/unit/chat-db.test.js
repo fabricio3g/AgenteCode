@@ -129,6 +129,10 @@ describe('chat-db process persistence', () => {
           files: { 'evidence.md': '# Evidence' },
           previewHtml: '<h1>Evidence</h1>'
         },
+        artifacts: [
+          { title: 'Chart', files: { 'chart.json': '{}' } },
+          { title: 'Evidence file', files: { 'evidence.md': '# Evidence' } }
+        ],
         ragDocuments: [{ id: 'doc-1', name: 'Doc', source: 'upload' }],
         slides: [{ title: 'Slide 1', bullets: ['A'] }],
         workContext: { rootName: 'Workspace', fileCount: 2, indexedCount: 1 },
@@ -163,6 +167,7 @@ describe('chat-db process persistence', () => {
     assert.strictEqual(message.searchMeta.stopReason, 'loop');
     assert.strictEqual(message.agentSteps[0].label, 'Searching the web');
     assert.strictEqual(message.artifact.files['evidence.md'], '# Evidence');
+    assert.deepStrictEqual(message.artifacts.map((artifact) => artifact.title), ['Chart', 'Evidence file']);
     assert.strictEqual(message.ragDocuments[0].id, 'doc-1');
     assert.strictEqual(message.slides[0].title, 'Slide 1');
     assert.strictEqual(message.workContext.rootName, 'Workspace');

@@ -9,6 +9,7 @@ export { default as Menu } from './Menu.svelte';
 export { default as MenuItem } from './MenuItem.svelte';
 export type { MenuPlacement } from './menu';
 export { default as Portal } from './Portal.svelte';
+export { default as ResizeHandle } from './ResizeHandle.svelte';
 export { default as SegmentedControl } from './SegmentedControl.svelte';
 export { default as Select } from './Select.svelte';
 export type { SelectOption } from './Select.svelte';

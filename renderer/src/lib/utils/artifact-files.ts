@@ -39,3 +39,12 @@ export function artifactFileBlob(content: string): Blob {
 export function viewerPathFor(path: string): string {
   return `__viewer__/${path}.html`;
 }
+
+/**
+ * The structured input a generated binary was built from (deck, report,
+ * workbook). Kept hidden next to the file so viewers and editors can work from
+ * the spec instead of reverse-engineering the Office bytes.
+ */
+export function specPathFor(path: string): string {
+  return `__spec__/${path}.json`;
+}

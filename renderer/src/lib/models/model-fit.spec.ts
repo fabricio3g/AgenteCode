@@ -77,7 +77,7 @@ describe('recommendCuratedModels', () => {
     expect(recommendCuratedModels(null).defaultModel.id).toBe('qwen3.5-4b');
     const result = recommendCuratedModels(hardware(), {
       version: 'b10159',
-      supportedArchitectures: ['lfm2', 'qwen35', 'ministral3', 'qwen36'],
+      supportedArchitectures: ['lfm2', 'llama', 'gemma4', 'qwen35', 'mistral3'],
     });
     expect(result.fastest).toBeTruthy();
     expect(result.balance).toBeTruthy();
