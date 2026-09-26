@@ -4,7 +4,7 @@ vi.mock('$lib/services/agent-preface', () => ({ runPreface: vi.fn(async () => {}
 vi.mock('$lib/utils/storage', () => ({ loadAppConfig: vi.fn(async () => ({ llm: { backend_mode: 'api', provider: 'gemini', providers: { gemini: { model: 'gemini-3-flash', base_url: 'https://example.test' } } } })) }));
 vi.mock('$lib/services/bridge', () => ({ isElectron: () => true, invoke: vi.fn(), listen: vi.fn() }));
 vi.mock('$lib/services/agent-token-budget', () => ({ enforceTokenBudget: vi.fn(async () => {}) }));
-vi.mock('$lib/services/agent-llm', () => ({ supportsNativeTools: vi.fn(() => true), agentComplete: vi.fn(), agentStreamComplete: vi.fn() }));
+vi.mock('$lib/services/agent-llm', () => ({ supportsNativeTools: vi.fn(() => true), agentStreamComplete: vi.fn() }));
 vi.mock('$lib/services/live-data', () => ({ liveGeocodePlace: vi.fn(async () => ({ latitude: -34.6037, longitude: -58.3816, label: 'Buenos Aires, Argentina' })) }));
 
 import { agentStreamComplete, supportsNativeTools } from './agent-llm';

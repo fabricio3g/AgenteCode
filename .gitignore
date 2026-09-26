@@ -28,3 +28,6 @@ resources/bin/**
 /fallow-dead-code-full.json
 nul
 .zcode/
+
+# Local agent skills (per-machine tooling)
+.agents/skills/

@@ -109,45 +109,6 @@ function buildBody(
   return body;
 }
 
-export async function agentComplete(options: {
-  messages: RequestMessage[];
-  tools?: ToolDefinition[];
-  signal?: AbortSignal;
-  config?: unknown;
-  reasoningLevel?: ReasoningLevel | null;
-  omitMaxTokens?: boolean;
-}): Promise<CompletionResult | null> {
-  if (!isElectron()) return null;
-
-  options.signal?.throwIfAborted();
-
-  const config = options.config || await loadAppConfig();
-  const debugLogs = shouldDebugAgentLogs(config);
-  const transport = await resolveAgentTransport(config);
-  if (!transport) return null;
-  debugLog(debugLogs, `[agent-llm] route | backend=${transport.backend} | transport=${transport.transport} | model=${transport.model} | stream=false`);
-
-  try {
-    const payload = await invoke<Record<string, unknown>>('chat_complete', {
-      baseUrl: transport.baseUrl,
-      apiKey: transport.apiKey,
-      providerName: transport.providerName,
-      body: buildBody(transport, {
-        messages: options.messages,
-        tools: options.tools,
-        stream: false,
-        reasoningLevel: options.reasoningLevel,
-        omitMaxTokens: options.omitMaxTokens
-      })
-    });
-
-    return readCompletionWithTools(payload);
-  } catch (err: unknown) {
-    console.warn('[agent-llm] agentComplete failed:', toErrorMessage(err));
-    return null;
-  }
-}
-
 export async function agentStreamComplete(options: {
   messages: RequestMessage[];
   tools?: ToolDefinition[];
