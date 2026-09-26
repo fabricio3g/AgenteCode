@@ -133,9 +133,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let counter_text = (counter > 0).then(|| format!("⧗ {counter}"));
 
     // Give Stop a dedicated rectangle so clipping metadata cannot move its
-    // painted label away from the pointer target. The label itself paints on
-    // hover only — the reference strip shows no stop chrome.
-    let stop_width = area.width.min(7);
+    // painted label away from the pointer target. It is always visible but
+    // quiet; hover turns it into a filled danger chip.
+    let stop_width = area.width.min(8);
     let stop_rect = Rect::new(area.right() - stop_width, area.y, stop_width, 1);
     let content_width = area.width.saturating_sub(stop_width) as usize;
     let counter_w = counter_text
@@ -178,28 +178,24 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         }
     }
 
-    let mouse_at = state.ui.mouse_pos.or_else(|| {
-        state
-            .ui
-            .mouse_seen
-            .then_some((state.ui.mouse_x, state.ui.mouse_y))
-    });
-    let hovered = mouse_at
-        .is_some_and(|(x, y)| x >= stop_rect.x && x < stop_rect.right() && y == stop_rect.y);
+    let hovered = state.ui.pointer_in(stop_rect);
     state.ui.stop_hitbox = Some(stop_rect);
-    if hovered {
-        let stop = if stop_width >= 7 {
-            " [stop]"
-        } else if stop_width >= 6 {
-            "[stop]"
-        } else {
-            "■"
-        };
-        // A filled danger chip, not bare red text: ERROR-on-canvas washes out
-        // on dark terminals and under the modal dim veil. Same treatment as
-        // the approval card's deny chip.
-        frame.render_widget(Paragraph::new(stop).style(button_danger()), stop_rect);
-    }
+    let stop = if stop_width >= 8 {
+        " ■ stop "
+    } else if stop_width >= 6 {
+        "■ stop"
+    } else {
+        "■"
+    };
+    // Hover: a filled danger chip, not bare red text (ERROR-on-canvas washes
+    // out on dark terminals and under the modal dim veil). At rest the whole
+    // rect still paints, so nothing underneath can show through it.
+    let style = if hovered {
+        button_danger()
+    } else {
+        Style::default().fg(FG_DIM()).bg(BG())
+    };
+    frame.render_widget(Paragraph::new(stop).style(style), stop_rect);
 }
 
 /// Phase label for the left side of the strip.
@@ -270,22 +266,14 @@ mod tests {
             .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
             .collect();
         assert!(text.contains("Responding"), "got: {text}");
-        // The label is hover-only; the hitbox must still be live.
-        assert!(
-            !text.contains("[stop]"),
-            "stop label must stay hidden: {text}"
+        // Always visible (quiet at rest) so it can be found without hunting.
+        assert!(text.trim_end().ends_with("■ stop"), "got: {text}");
+        assert_eq!(
+            terminal.backend().buffer()[(76, 0)].bg,
+            BG(),
+            "rest state is not a chip"
         );
         assert!(state.ui.stop_hitbox.is_some(), "hitbox must be set");
-
-        state.ui.mouse_pos = Some((79, 0));
-        terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
-        let hovered: String = (0..80)
-            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
-            .collect();
-        assert!(
-            hovered.contains("[stop]"),
-            "hover must paint stop: {hovered}"
-        );
     }
 
     #[test]
@@ -297,17 +285,17 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
         let buf = terminal.backend().buffer();
-        // " [stop]" fills the last 7 cells with the danger background, not
+        // " ■ stop " fills the last 8 cells with the danger background, not
         // bare red text on the canvas (which washed out in dark mode).
-        for x in 73..80 {
+        for x in 72..80 {
             assert_eq!(
                 buf[(x, 0)].bg,
                 crate::style::ERROR(),
                 "cell {x} must sit on the danger fill"
             );
         }
-        let text: String = (73..80).map(|x| buf[(x, 0)].symbol()).collect();
-        assert_eq!(text, " [stop]");
+        let text: String = (72..80).map(|x| buf[(x, 0)].symbol()).collect();
+        assert_eq!(text, " ■ stop ");
     }
 
     #[test]
@@ -346,7 +334,7 @@ mod tests {
             let button: String = (hitbox.x..hitbox.right())
                 .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
                 .collect();
-            assert_eq!(button.trim(), if width >= 6 { "[stop]" } else { "■" });
+            assert_eq!(button.trim(), if width >= 6 { "■ stop" } else { "■" });
             let text: String = (0..width)
                 .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
                 .collect();

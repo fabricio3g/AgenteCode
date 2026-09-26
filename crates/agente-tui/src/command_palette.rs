@@ -5,13 +5,14 @@
 //! (no icons): label, slash, optional shortcut.
 
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::state::AppState;
+use crate::state::{AppState, ListId};
 use crate::style::{self, *};
+use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
 use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -357,21 +358,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 
     // Search field (solid bar), one gap row under the card title.
     if let Some(search_area) = panel_row(body, 1, 1) {
-        let query = &state.input.command_palette_query;
-        let (query_text, query_style) = if query.is_empty() {
-            ("Type to filter…", style::dim())
-        } else {
-            (query.as_str(), style::text())
-        };
-        fill(frame, search_area, BG_ELEMENT());
-        let search = Line::from(vec![
-            Span::styled(" ", Style::default().bg(BG_ELEMENT())),
-            Span::styled(query_text, query_style.bg(BG_ELEMENT())),
-            Span::styled("▌", style::accent().bg(BG_ELEMENT())),
-        ]);
-        frame.render_widget(
-            Paragraph::new(search).style(Style::default().bg(BG_ELEMENT())),
+        search_field(
+            frame,
             search_area,
+            &state.input.command_palette_query,
+            "Type to filter…",
         );
     }
 
@@ -384,6 +375,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         render_command_list(
             frame,
             list_area,
+            state,
+            ListId::CommandPalette,
             &commands,
             state.input.command_palette_selected,
         );
@@ -445,17 +438,18 @@ pub fn render_subagents(frame: &mut Frame, area: Rect, state: &AppState) {
             );
         } else {
             let selected = state.input.subagents_selected.min(entries.len() - 1);
-            let items: Vec<ListItem> = entries
+            let items = entries
                 .iter()
                 .enumerate()
-                .map(|(index, snap)| subagent_row(snap, index == selected, list_area.width))
+                .map(|(index, snap)| subagent_item(snap, index == selected, list_area.width))
                 .collect();
-            let mut list_state = ListState::default();
-            list_state.select(Some(selected));
-            frame.render_stateful_widget(
-                List::new(items).style(Style::default().bg(BG_PANEL())),
+            pick_list(
+                frame,
                 list_area,
-                &mut list_state,
+                &state.ui.hits,
+                ListId::Subagents,
+                items,
+                selected,
             );
         }
     }
@@ -470,12 +464,11 @@ pub fn render_subagents(frame: &mut Frame, area: Rect, state: &AppState) {
     );
 }
 
-fn subagent_row(
+fn subagent_item(
     snap: &agente_core::subagent::SubagentSnapshot,
     selected: bool,
     width: u16,
-) -> ListItem<'static> {
-    let bg = if selected { BG_HOVER() } else { BG_PANEL() };
+) -> PickItem {
     let kind = crate::widgets::SubagentStatusKind::from_core(snap.status);
     let elapsed = snap
         .finished_at
@@ -490,29 +483,36 @@ fn subagent_row(
     };
     let short: String = snap.id.chars().take(8).collect();
     let meta = format!("{} · {time}  {short}", kind.label());
-    let marker = if selected { "› " } else { "  " };
-    let meta_w = crate::widgets::display_width(&meta);
     let fixed = 4 + snap.subagent_type.len() + 3;
-    let desc_budget = (width as usize).saturating_sub(fixed + meta_w + 2).max(4);
-    let desc = crate::widgets::truncate_cells(&snap.description, desc_budget);
-    let used = fixed + crate::widgets::display_width(&desc);
-    let pad = (width as usize).saturating_sub(used + meta_w);
-    let line = Line::from(vec![
-        Span::styled(marker, style::accent().bg(bg)),
-        Span::styled(kind.glyph(), Style::default().fg(kind.color()).bg(bg)),
-        Span::styled(" ", Style::default().bg(bg)),
-        Span::styled(
-            format!("[{}] ", snap.subagent_type),
-            Style::default().fg(SECONDARY()).bg(bg),
-        ),
-        Span::styled(desc, Style::default().fg(FG()).bg(bg)),
-        Span::styled(" ".repeat(pad), Style::default().bg(bg)),
-        Span::styled(meta, style::dim().bg(bg)),
-    ]);
-    ListItem::new(line).style(Style::default().bg(bg))
+    let desc_budget = (width as usize)
+        .saturating_sub(fixed + crate::widgets::display_width(&meta) + 3)
+        .max(4);
+    PickItem::row_with_trail(
+        vec![
+            Span::styled(kind.glyph(), Style::default().fg(kind.color())),
+            Span::raw(" "),
+            Span::styled(
+                format!("[{}] ", snap.subagent_type),
+                Style::default().fg(SECONDARY()),
+            ),
+            Span::styled(
+                crate::widgets::truncate_cells(&snap.description, desc_budget),
+                row_label(selected),
+            ),
+        ],
+        vec![Span::styled(meta, style::dim())],
+    )
 }
 
-pub fn render_command_list(frame: &mut Frame, area: Rect, commands: &[Command], selected: usize) {
+/// Palette / slash-picker list of commands. `selected` is clamped here.
+pub fn render_command_list(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    list: ListId,
+    commands: &[Command],
+    selected: usize,
+) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -527,70 +527,24 @@ pub fn render_command_list(frame: &mut Frame, area: Rect, commands: &[Command], 
         );
         return;
     }
-
     let selected = selected.min(commands.len() - 1);
-    let visible = area.height as usize;
-    let start = selected
-        .saturating_sub(visible.saturating_sub(1))
-        .min(commands.len().saturating_sub(visible));
-    let end = (start + visible).min(commands.len());
-    let items: Vec<ListItem> = commands[start..end]
+    let items = commands
         .iter()
         .enumerate()
-        .map(|(index, command)| command_row(*command, start + index == selected, area.width))
+        .map(|(index, command)| command_item(*command, index == selected))
         .collect();
-    let mut list_state = ListState::default();
-    list_state.select(Some(selected - start));
-    frame.render_stateful_widget(
-        List::new(items).style(Style::default().bg(BG_PANEL())),
-        area,
-        &mut list_state,
-    );
+    pick_list(frame, area, &state.ui.hits, list, items, selected);
 }
 
-/// Text-only row: [▸] Label                    /slash   shortcut
-fn command_row(command: Command, selected: bool, width: u16) -> ListItem<'static> {
-    let bg = if selected { BG_HOVER() } else { BG_PANEL() };
-    let name_style = if selected {
-        Style::default()
-            .fg(FG())
-            .bg(bg)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(FG()).bg(bg)
-    };
-
-    let marker = if selected { "› " } else { "  " };
-    let label = command.label();
-    let slash = command.slash();
-    let shortcut = command.shortcut();
-
-    let mut spans = vec![
-        Span::styled(marker, style::accent().bg(bg)),
-        Span::styled(label, name_style),
-        Span::styled(format!("  {slash}"), style::dim().bg(bg)),
-    ];
-
-    let used = marker.chars().count() + label.chars().count() + 2 + slash.chars().count();
-    let sc_len = if shortcut.is_empty() {
-        0
-    } else {
-        shortcut.chars().count()
-    };
-
-    if sc_len > 0 && used + sc_len + 2 < width as usize {
-        let padding = (width as usize).saturating_sub(used + sc_len);
-        spans.push(Span::styled(" ".repeat(padding), Style::default().bg(bg)));
-        spans.push(Span::styled(shortcut, style::muted().bg(bg)));
-    } else {
-        // Pad remainder so no background bleed
-        let padding = (width as usize).saturating_sub(used);
-        if padding > 0 {
-            spans.push(Span::styled(" ".repeat(padding), Style::default().bg(bg)));
-        }
-    }
-
-    ListItem::new(Line::from(spans)).style(Style::default().bg(bg))
+/// `› Label  /slash ······ shortcut`
+fn command_item(command: Command, selected: bool) -> PickItem {
+    PickItem::row_with_trail(
+        vec![
+            Span::styled(command.label(), row_label(selected)),
+            Span::styled(format!("  {}", command.slash()), style::dim()),
+        ],
+        vec![Span::styled(command.shortcut(), style::muted())],
+    )
 }
 
 /// Paint every cell in `area` with a solid background (opaque).

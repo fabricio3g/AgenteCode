@@ -20,6 +20,9 @@ Build a development-engineer tool: a keyboard-first terminal coding agent (Rust)
 - **No borders on popups**: dialogs are floating panels on `BG_PANEL`; centered settings dialogs share `widgets::{modal_card, modal_footer}`
 - **Dark/light theme**: `/theme` toggles; all widgets route colors through `style.rs` accessors; the syntect theme follows the app theme
 - **Custom markdown parser**: headings, bold, italic, code, lists, rules, tables, task lists, strikethrough
+- **One list look**: every picker renders through `widgets::pick::pick_list` (`›` accent marker + `BG_ACTIVE` band + bold label, `◈` for the item in effect, dim group headers) and filters through `pick::search_field`; key hints always use `footer_hints` grammar (`Ctrl+X action · Esc close`)
+- **Hit map + hover**: widgets register interactive rects in `state.ui.hits` while painting; hovering a list row selects it, clicking selects + sends Enter; buttons lift to `BG_HOVER`; chat cards get a post-paint `hover_tint` (hover never enters render cache keys); pointer moves repaint only when `pointer_fingerprint` changes
+- **Eased scrolling**: wheel / Ctrl+↑↓ / PageUp/Down go through `glide_by` (45% of the remaining distance per frame); `reduce_motion` in config snaps instead
 - **Manual word-wrapping** via `wrap_line()` (never `Wrap` on `Paragraph`) to avoid scroll bugs
 - **Syntax highlighting**: `syntect` via `syntax_highlight.rs` for code blocks
 - **Transcript grammar**: uniform `◆ Run <verb> <subject>` tool rows, `◇` collapsed thoughts with a one-line preview, `∴` activity line, `Worked for Ns` turn footer, `┃` error rails, rounded composer with `model · mode` on the bottom border; the mode also shows in the top header

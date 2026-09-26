@@ -104,6 +104,7 @@ impl App {
         let terminal = Terminal::new(backend)?;
 
         let mut state = AppState::new(config, project_dir);
+        state.ui.reduce_motion = state.config.config.reduce_motion;
         state.refresh_recent_sessions();
         if let Some(theme) = state.config.config.theme.as_deref() {
             crate::style::set_theme(match theme {

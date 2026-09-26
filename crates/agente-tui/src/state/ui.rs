@@ -55,7 +55,8 @@ pub struct ChatPlainLine {
 
 /// A chat entry's fully-parsed render block, cached so the markdown parser and
 /// word-wrapping don't re-run for every entry on every frame. Invalidated when
-/// any of the render inputs (`width`, expand flags, hover) change.
+/// any of the render inputs (`width`, expand flags) change. Hover is painted
+/// as an overlay at frame time and never invalidates a block.
 ///
 /// The cache stores `Arc<RenderedChatBlock>`: a cache hit hands out the same
 /// allocation instead of a deep clone. The render loop then uses each block's
@@ -70,7 +71,6 @@ pub struct RenderedChatBlock {
     /// Gap rhythm input: the next rendered block is a dense (collapsed)
     /// tool card, so this block omits its trailing blank row.
     pub dense_next: bool,
-    pub hovered: bool,
     /// Parsed display lines for this entry (may wrap to multiple terminal rows).
     pub lines: Vec<ratatui::text::Line<'static>>,
     /// Plain-text mirror of `lines` (for selection/copy).
@@ -89,7 +89,6 @@ pub struct ChatCacheKey {
     pub thinking_expanded: bool,
     pub tool_fold: Fold,
     pub dense_next: bool,
-    pub hovered: bool,
 }
 
 impl RenderedChatBlock {
@@ -100,7 +99,6 @@ impl RenderedChatBlock {
             thinking_expanded: self.thinking_expanded,
             tool_fold: self.tool_fold,
             dense_next: self.dense_next,
-            hovered: self.hovered,
         }
     }
 
@@ -157,7 +155,7 @@ pub struct ChatFrameSnapshot {
     pub history_len: usize,
     /// Id of the final history entry (nil when history is empty).
     pub last_entry_id: Uuid,
-    /// Fingerprint of the expand sets + hovered entry (see
+    /// Fingerprint of the expand sets (see
     /// `UiState::chat_expand_fingerprint`).
     pub expand_fingerprint: u64,
     /// `AgentRuntimeState::live_tools_epoch` when the snapshot was built.
@@ -358,6 +356,11 @@ pub struct UiState {
     pub chat_scroll: usize,
     /// Auto-scroll chat to bottom
     pub chat_auto_scroll: bool,
+    /// Where an eased scroll is heading; `chat_scroll` walks toward it one
+    /// frame at a time (see `glide_by` / `step_scroll`).
+    pub scroll_target: Option<usize>,
+    /// Snap instead of animating (config `reduce_motion`).
+    pub reduce_motion: bool,
     /// Chat content height in lines
     pub chat_content_height: usize,
     /// Chat visible height in lines
@@ -387,8 +390,10 @@ pub struct UiState {
     /// paint while the strip is visible).
     pub stop_hitbox: Option<Rect>,
 
-    /// Click hitboxes for approval actions: (action, hitbox_rect).
-    pub approval_hitboxes: Vec<(agente_core::types::ApprovalAction, Rect)>,
+    /// Interactive regions painted last frame (list rows, dialog buttons).
+    pub hits: super::hits::HitMap,
+    /// Hit target under the pointer, for hover highlights on buttons.
+    pub hovered_hit: Option<super::hits::HitTarget>,
 
     // Interaction
     /// Clickable regions for mouse interaction
@@ -474,18 +479,10 @@ pub struct UiState {
     pub show_welcome_screen: bool,
     /// Selected welcome action button index
     pub welcome_selected: usize,
-    /// Hit targets for welcome action buttons (screen coords, rebuilt each frame)
-    pub welcome_button_rects: Vec<Rect>,
     /// Recent sessions for the session picker (capped, newest first).
     pub recent_sessions: Vec<agente_core::session::SessionMeta>,
     /// Show keyboard help overlay
     pub show_help: bool,
-
-    /// Last known mouse position (terminal cells), for welcome logo hover
-    pub mouse_x: u16,
-    pub mouse_y: u16,
-    /// Whether we have received a mouse move (avoid hover-at-0,0 flash)
-    pub mouse_seen: bool,
 }
 
 impl Default for UiState {
@@ -503,6 +500,8 @@ impl Default for UiState {
             subagent_diff: None,
             chat_scroll: 0,
             chat_auto_scroll: true,
+            scroll_target: None,
+            reduce_motion: false,
             chat_content_height: 0,
             chat_visible_height: 0,
             chat_area_y: 0,
@@ -515,7 +514,8 @@ impl Default for UiState {
             chat_scrollbar_dragging: false,
             jump_bottom_area: None,
             stop_hitbox: None,
-            approval_hitboxes: Vec::new(),
+            hits: super::hits::HitMap::default(),
+            hovered_hit: None,
             click_regions: Vec::new(),
             expanded_message_ids: HashSet::new(),
             expanded_thinking_ids: HashSet::new(),
@@ -549,18 +549,32 @@ impl Default for UiState {
             should_quit: false,
             show_welcome_screen: true,
             welcome_selected: 0,
-            welcome_button_rects: Vec::new(),
             recent_sessions: Vec::new(),
             show_help: false,
-            // Replaced with terminal-capable protocol in App::new after alt-screen.
-            mouse_x: 0,
-            mouse_y: 0,
-            mouse_seen: false,
         }
     }
 }
 
+/// Click regions that react to hover: cards whose click does something
+/// visible (fold, expand, open). Plain assistant prose and thinking headers
+/// stay quiet — tinting every paragraph under the pointer is just noise.
+pub fn is_hover_target(region: &ClickRegion) -> bool {
+    match region.kind {
+        ClickKind::Tool | ClickKind::ToolGroup | ClickKind::Subagent | ClickKind::OpenAsset => {
+            !region.is_reasoning
+        }
+        ClickKind::Message => region.user_truncated,
+        ClickKind::Thinking => false,
+    }
+}
+
 impl UiState {
+    /// True when the last known pointer position lies inside `rect`.
+    pub fn pointer_in(&self, rect: Rect) -> bool {
+        self.mouse_pos
+            .is_some_and(|(x, y)| rect.contains(ratatui::layout::Position::new(x, y)))
+    }
+
     pub fn open_subagent_detail(&mut self, id: String) {
         self.subagent_detail_id = Some(id);
         self.subagent_detail_show_output = false;
@@ -600,15 +614,17 @@ impl UiState {
         self.needs_render = true;
     }
 
-    /// Scroll chat up by amount
+    /// Scroll chat up by amount (immediate)
     pub fn scroll_up(&mut self, amount: usize) {
+        self.scroll_target = None;
         self.chat_auto_scroll = false;
         let max = self.max_scroll();
         self.chat_scroll = self.chat_scroll.saturating_sub(amount).min(max);
     }
 
-    /// Scroll chat down by amount
+    /// Scroll chat down by amount (immediate)
     pub fn scroll_down(&mut self, amount: usize) {
+        self.scroll_target = None;
         let max = self.max_scroll();
         self.chat_scroll = self.chat_scroll.saturating_add(amount).min(max);
         if self.chat_scroll >= max {
@@ -618,8 +634,60 @@ impl UiState {
 
     /// Scroll to bottom of chat
     pub fn scroll_to_bottom(&mut self) {
+        self.scroll_target = None;
         self.chat_auto_scroll = true;
         self.chat_scroll = self.max_scroll();
+    }
+
+    /// Scroll to the first line of the chat.
+    pub fn scroll_to_top(&mut self) {
+        self.scroll_target = None;
+        self.chat_auto_scroll = false;
+        self.chat_scroll = 0;
+    }
+
+    /// Eased scroll by `delta` rows (negative = up). The viewport walks toward
+    /// the target over the next frames (see [`Self::step_scroll`]). Repeated
+    /// input stacks onto the pending target, so a fast wheel spin travels
+    /// further than the same notches spread out.
+    pub fn glide_by(&mut self, delta: isize) {
+        let max = self.max_scroll();
+        let base = self.scroll_target.unwrap_or(self.chat_scroll);
+        let target = base.saturating_add_signed(delta).min(max);
+        if delta < 0 {
+            self.chat_auto_scroll = false;
+        }
+        self.scroll_target = Some(target);
+        if self.reduce_motion {
+            self.chat_scroll = target;
+        }
+        self.step_scroll();
+    }
+
+    /// Advance an eased scroll by one frame: cover 45% of the remaining
+    /// distance (at least one row), an ease-out that settles a wheel notch in
+    /// two frames and a full page in about five. Returns `true` while moving.
+    pub fn step_scroll(&mut self) -> bool {
+        let Some(target) = self.scroll_target else {
+            return false;
+        };
+        let max = self.max_scroll();
+        let target = target.min(max);
+        let dist = target.abs_diff(self.chat_scroll);
+        let step = ((dist as f32 * 0.45).ceil() as usize).min(dist);
+        if target > self.chat_scroll {
+            self.chat_scroll += step;
+        } else {
+            self.chat_scroll -= step;
+        }
+        if self.chat_scroll != target {
+            return true;
+        }
+        self.scroll_target = None;
+        if target >= max {
+            self.chat_auto_scroll = true;
+        }
+        false
     }
 
     /// True when the viewport is at (or within one row of) the bottom.
@@ -741,9 +809,6 @@ impl UiState {
         // A `/theme` toggle swaps the syntect highlight theme: every cached
         // code block must re-render, so the generation mixes in here.
         fp ^= crate::style::syntax_generation().wrapping_mul(0xD6E8_FEB8_6659_FD93);
-        if let Some(id) = self.hovered_entry_id {
-            fp ^= (id.as_u128() as u64).wrapping_mul(0xA24B_AED5_3CE5_6F03);
-        }
         fp
     }
 
@@ -778,7 +843,7 @@ impl UiState {
         self.stream_markdown_cache = StreamMarkdownCache::default();
         self.show_welcome_screen = true;
         self.welcome_selected = 0;
-        self.welcome_button_rects.clear();
+        self.hovered_hit = None;
         self.show_help = false;
         self.needs_render = true;
     }
@@ -1074,7 +1139,7 @@ impl UiState {
     /// pulses gate on agent state — neither belongs here, or idle welcome
     /// would pin the loop at 16ms forever.
     pub fn has_active_animation(&self) -> bool {
-        self.message_fade_started.is_some() || self.toast.is_some()
+        self.message_fade_started.is_some() || self.toast.is_some() || self.scroll_target.is_some()
     }
 
     /// Tick effects and return delta time
@@ -1184,6 +1249,50 @@ mod scroll_follow_tests {
 
         ui.scroll_to_bottom();
         assert_eq!(ui.chat_scroll, tall - 20);
+    }
+
+    #[test]
+    fn glide_eases_out_and_repins_at_the_bottom() {
+        let mut ui = UiState {
+            chat_content_height: 120,
+            chat_visible_height: 20,
+            chat_scroll: 100,
+            ..UiState::default()
+        };
+        ui.glide_by(-20);
+        assert!(!ui.chat_auto_scroll);
+        assert_eq!(ui.chat_scroll, 91, "first frame moves immediately");
+        let mut frames = 1;
+        while ui.step_scroll() {
+            frames += 1;
+        }
+        assert_eq!(ui.chat_scroll, 80);
+        assert!(
+            (3..=8).contains(&frames),
+            "eased over a few frames: {frames}"
+        );
+        assert!(!ui.has_active_animation());
+
+        // Stacked input extends the pending target.
+        ui.glide_by(10);
+        ui.glide_by(10);
+        while ui.step_scroll() {}
+        assert_eq!(ui.chat_scroll, 100);
+        assert!(ui.chat_auto_scroll, "arriving at the bottom re-pins");
+    }
+
+    #[test]
+    fn reduce_motion_snaps_glides() {
+        let mut ui = UiState {
+            chat_content_height: 120,
+            chat_visible_height: 20,
+            chat_scroll: 100,
+            reduce_motion: true,
+            ..UiState::default()
+        };
+        ui.glide_by(-30);
+        assert_eq!(ui.chat_scroll, 70);
+        assert!(!ui.has_active_animation());
     }
 
     #[test]

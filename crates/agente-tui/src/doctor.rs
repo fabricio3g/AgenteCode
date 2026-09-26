@@ -121,7 +121,7 @@ pub fn run_diagnostics(state: &AppState) -> Vec<DiagnosticCheck> {
 
     // 6. Mouse reporting (clicks, wheel, hover all depend on it).
     let regions = state.ui.click_regions.len();
-    let (mouse_status, mouse_details) = if state.ui.mouse_seen {
+    let (mouse_status, mouse_details) = if state.ui.mouse_pos.is_some() {
         let pos = state
             .ui
             .mouse_pos
@@ -276,7 +276,6 @@ mod tests {
         assert_eq!(before.len(), 1);
         assert!(matches!(before[0].status, CheckStatus::Warn));
 
-        state.ui.mouse_seen = true;
         state.ui.mouse_pos = Some((12, 34));
         let after: Vec<_> = run_diagnostics(&state)
             .into_iter()

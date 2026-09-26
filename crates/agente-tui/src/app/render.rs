@@ -66,6 +66,8 @@ fn write_render_crash_log(width: u16, height: u16, state: &AppState) {
 
 pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     let size = frame.area();
+    state.ui.hits.begin_frame();
+    state.ui.step_scroll();
     frame.render_widget(
         ratatui::widgets::Block::default().style(
             ratatui::style::Style::default()
@@ -130,10 +132,15 @@ pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
         render_content(frame, content, state);
     }
     if input_height > 0 {
-        render_input_section(frame, input, state);
+        widgets::input::render(frame, input, state);
     }
     if activity_height > 0 {
         widgets::activity::render(frame, activity, state);
+    }
+    // Composer pickers float up over the transcript *and* the activity strip,
+    // so they paint after both — otherwise the strip cuts through the list.
+    if input_height > 0 {
+        render_composer_picker(frame, input, state);
     }
     widgets::hints::render(frame, hints, state);
     render_overlays(frame, size, content, state);
@@ -265,10 +272,10 @@ fn shorten_dir(path: &str) -> String {
     }
 }
 
-fn render_input_section(
+fn render_composer_picker(
     frame: &mut ratatui::Frame,
     area: ratatui::layout::Rect,
-    state: &mut AppState,
+    state: &AppState,
 ) {
     // @ file picker takes priority over slash when both flags set (shouldn't happen)
     if state.input.show_at_picker {
@@ -276,7 +283,6 @@ fn render_input_section(
     } else {
         slash_command::render_above_input(frame, area, state);
     }
-    widgets::input::render(frame, area, state);
 }
 
 fn render_overlays(

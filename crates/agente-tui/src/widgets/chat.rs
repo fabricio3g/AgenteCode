@@ -47,7 +47,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let chat_width = chat_area.width as usize;
     let visible_height = chat_area.height as usize;
-    let hovered = state.ui.hovered_entry_id;
 
     // ── Frame snapshot ────────────────────────────────────────────────────
     // The rendered history is cached at frame level: when only the streaming
@@ -70,7 +69,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     // over the *whole* history so an appended entry can extend a run that
     // started earlier.
     let history_ctx = HistoryRenderCtx {
-        hovered,
         live_tools: &state.agent.live_tool_calls,
         subagents: &state.agent.subagents,
     };
@@ -448,11 +446,43 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         regions: content_regions,
     });
 
+    paint_hover_tint(frame, chat_area, state);
+
     // Scrollbar (or a themed 1-col gutter when content fits — never leave Reset)
     render_scrollbar(frame, scroll_area, state);
 
     // Jump-to-bottom chip when the user has scrolled up (esp. during streaming).
     render_jump_to_bottom(frame, chat_area, state);
+}
+
+/// Faint background lift under the hovered card's rows. Painted over the
+/// finished frame so hover never touches the render caches; only bare canvas
+/// cells change, so prompt cards and diff rows keep their own backgrounds.
+fn paint_hover_tint(frame: &mut Frame, area: Rect, state: &AppState) {
+    let Some(id) = state.ui.hovered_entry_id else {
+        return;
+    };
+    let canvas = BG();
+    let tint = crate::style::hover_tint();
+    let buf = frame.buffer_mut();
+    for region in state
+        .ui
+        .click_regions
+        .iter()
+        .filter(|r| r.entry_id == id && crate::state::is_hover_target(r))
+    {
+        let top = region.y_start.max(area.y);
+        let bottom = region.y_end.min(area.bottom().saturating_sub(1));
+        for y in top..=bottom {
+            for x in area.x..area.right() {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    if cell.bg == canvas {
+                        cell.set_bg(tint);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Render the live streaming section: frozen-prefix model.
@@ -582,7 +612,6 @@ fn stream_prefix_matches(text: &str, cache: &StreamMarkdownCache) -> bool {
 /// `&mut UiState` parameter so the history slice, UI state and agent state
 /// borrow disjoint fields.
 struct HistoryRenderCtx<'a> {
-    hovered: Option<uuid::Uuid>,
     live_tools: &'a std::collections::HashMap<String, LiveToolCall>,
     subagents: &'a std::collections::HashMap<String, SubagentUiState>,
 }
@@ -750,7 +779,6 @@ fn render_history_range(
 
         let user_expanded = ui.expanded_message_ids.contains(&entry.id);
         let thinking_expanded = ui.expanded_thinking_ids.contains(&entry.id);
-        let is_hovered = ctx.hovered == Some(entry.id);
         let tool_fold = ui.tool_fold_of(entry.id, entry.tool_name.as_deref());
         let in_group = group_idx_of[index].is_some_and(|gi| groups[gi].2.expanded);
         let dense_next = (in_group
@@ -777,7 +805,6 @@ fn render_history_range(
                 thinking_expanded,
                 tool_fold,
                 dense_next,
-                is_hovered,
                 ctx.subagents,
                 prev_call_args.as_deref(),
                 worked,
@@ -789,7 +816,6 @@ fn render_history_range(
                 thinking_expanded,
                 tool_fold,
                 dense_next,
-                hovered: is_hovered,
             };
             match ui.chat_cache_get(&entry.id, cache_key) {
                 Some(b) => b,
@@ -801,7 +827,6 @@ fn render_history_range(
                         thinking_expanded,
                         tool_fold,
                         dense_next,
-                        is_hovered,
                         ctx.subagents,
                         prev_call_args.as_deref(),
                         worked,
@@ -913,7 +938,7 @@ fn render_live_tool(
     width: usize,
     fps_frame: usize,
 ) -> Vec<Line<'static>> {
-    let bg = TOOL_PENDING_BG();
+    let bg = BG();
     let tick = fps_frame as u64;
     let icon_color = breathing_color(PRIMARY(), ACCENT(), fps_frame, 0.2);
     let spinner_color = breathing_color(SECONDARY(), PRIMARY(), fps_frame, 0.25);
@@ -995,10 +1020,7 @@ fn render_jump_to_bottom(frame: &mut Frame, chat_area: Rect, state: &mut AppStat
     let rect = Rect::new(x, y, chip_w, 1);
     state.ui.jump_bottom_area = Some(rect);
     // Hover brightens the chip's background so it reads as pressable.
-    let hovered = state
-        .ui
-        .mouse_pos
-        .is_some_and(|(mx, my)| mx >= rect.x && mx < rect.right() && my == rect.y);
+    let hovered = state.ui.pointer_in(rect);
     let style = if hovered {
         Style::default()
             .fg(PRIMARY())
@@ -1119,7 +1141,7 @@ fn empty_state_lines() -> Vec<Line<'static>> {
             sp("  "),
             s("Shift+↑↓", Style::default().fg(FG_DIM())),
             sp(" scroll  "),
-            s("^P", Style::default().fg(FG_DIM())),
+            s("Ctrl+P", Style::default().fg(FG_DIM())),
             sp(" palette  "),
             s("Shift+Tab", Style::default().fg(FG_DIM())),
             sp(" mode"),
@@ -1139,7 +1161,6 @@ fn render_entry_block(
     thinking_expanded: bool,
     tool_fold: Fold,
     dense_next: bool,
-    is_hovered: bool,
     subagents: &std::collections::HashMap<String, SubagentUiState>,
     tool_args: Option<&str>,
     worked_for: Option<f64>,
@@ -1226,19 +1247,14 @@ fn render_entry_block(
         match entry.role {
             agente_core::types::Role::User => {
                 let truncated = entry_is_truncatable(entry) && !user_expanded;
-                (
-                    render_user(entry, chat_width, user_expanded, is_hovered),
-                    truncated,
-                )
+                (render_user(entry, chat_width, user_expanded), truncated)
             }
             agente_core::types::Role::Assistant => {
                 (render_assistant(entry, chat_width, worked_for), false)
             }
             agente_core::types::Role::System => (render_system(entry), false),
             agente_core::types::Role::Tool => (
-                render_tool(
-                    entry, chat_width, tool_fold, is_hovered, dense_next, tool_args,
-                ),
+                render_tool(entry, chat_width, tool_fold, dense_next, tool_args),
                 false,
             ),
         }
@@ -1301,7 +1317,6 @@ fn render_entry_block(
         thinking_expanded,
         tool_fold,
         dense_next,
-        hovered: is_hovered,
         lines,
         plain,
         regions,
@@ -1505,12 +1520,19 @@ fn render_scrollbar(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.chat_scrollbar_thumb_y = area.y + bar_pos;
     state.ui.chat_scrollbar_thumb_height = bar_height;
 
+    // Thumb only, no track: the bar is chrome, not content. It brightens
+    // while hovered or dragged so it reads as grabbable.
+    let active = state.ui.chat_scrollbar_dragging
+        || state
+            .ui
+            .pointer_in(Rect::new(area.x.saturating_sub(1), area.y, 3, area.height));
+    let thumb = if active { FG_MUTED() } else { FG_DIM() };
     let mut scroll_lines: Vec<Line<'static>> = Vec::new();
     for i in 0..area.height {
         let (ch, color) = if i >= bar_pos && i < bar_pos + bar_height {
-            ("┃", FG_DIM())
+            ("┃", thumb)
         } else {
-            ("│", BG_HOVER())
+            (" ", BG())
         };
         scroll_lines.push(Line::from(Span::styled(
             ch,
@@ -1723,7 +1745,6 @@ fn render_group_header_block(
         user_expanded: false,
         thinking_expanded: false,
         tool_fold: Fold::Collapsed,
-        hovered: false,
         dense_next,
         lines,
         plain,
@@ -1749,7 +1770,6 @@ fn render_user(
     entry: &agente_core::types::ChatEntry,
     width: usize,
     expanded: bool,
-    _hovered: bool,
 ) -> Vec<Line<'_>> {
     let mut lines = Vec::new();
     if entry.content.is_empty() {
@@ -2099,7 +2119,9 @@ pub(crate) fn tool_header_parts(
         match p.subject {
             Some((key, style)) => str_at(key)
                 .map(|value| match style {
-                    super::SubjectStyle::Path => truncate_cells(value, max_target_w),
+                    super::SubjectStyle::Path => {
+                        truncate_cells(super::short_path(value), max_target_w)
+                    }
                     super::SubjectStyle::Quoted => {
                         format!("\"{}\"", truncate_cells(value, max_target_w))
                     }
@@ -2116,7 +2138,6 @@ fn render_tool<'a>(
     entry: &'a agente_core::types::ChatEntry,
     width: usize,
     fold: Fold,
-    _hovered: bool,
     dense_next: bool,
     tool_args: Option<&str>,
 ) -> Vec<Line<'a>> {
@@ -2138,11 +2159,7 @@ fn render_tool<'a>(
     let effective_args = tool_args.or(entry.tool_args.as_deref());
     let (verb, subject) = tool_header_parts(tool_name, effective_args, width);
 
-    let tool_bg = if entry.is_error {
-        TOOL_ERROR_BG()
-    } else {
-        TOOL_SUCCESS_BG()
-    };
+    let tool_bg = BG();
     // A single solid diamond in action green (red on failure),
     // then a uniform `Run <verb> <subject>` line in bold near-white.
     let marker_style = Style::default()
@@ -2407,126 +2424,94 @@ fn shell_display(content: &str) -> (Vec<String>, Option<i32>) {
     (display, exit_code)
 }
 
-/// Render a subagent card in the reference grammar:
+/// Subagent card in the transcript grammar — flat canvas, like tool rows:
 ///
 /// ```text
-///  ✓ Explore Task – Quick repo survey
-///    ↳ 2 tool calls · 6.2s
-///
-///  ctrl+x  view subagents
+///  ⧗ Explore  Find every provider retry call site         running · 12.0s
+///    └ Read providers/openai.rs · 2 tools · wt
 /// ```
 ///
 /// The card is anchored by a `ChatEntry` carrying a `subagent_id`; live state
-/// comes from the `SubagentUiState` map. History belongs in the detail modal.
+/// comes from the `SubagentUiState` map. Clicking opens the detail modal,
+/// which is where history lives.
 fn render_subagent(
     entry: &agente_core::types::ChatEntry,
     width: usize,
     ui: Option<&crate::state::SubagentUiState>,
     _expanded: bool,
 ) -> Vec<Line<'static>> {
-    let bg = BG_ELEMENT();
+    use crate::widgets::SubagentStatusKind;
+    let bg = BG();
+    let on = |style: Style| style.bg(bg);
     let status = ui.map(|u| u.status.as_str()).unwrap_or(if entry.is_error {
         "failed"
     } else {
         "completed"
     });
-    let kind = crate::widgets::SubagentStatusKind::from_status(status);
+    let kind = SubagentStatusKind::from_status(status);
     let type_label = capitalize_label(entry.subagent_type.as_deref().unwrap_or("subagent"));
     let description = ui.map(|u| u.description.as_str()).unwrap_or(&entry.content);
 
-    // Row 1: ` ✓ Explore Task – Quick repo survey`.
-    let mut header: Vec<Span<'static>> = Vec::new();
-    if kind == crate::widgets::SubagentStatusKind::Failed {
-        header.push(Span::styled("┃ ", Style::default().fg(ERROR()).bg(bg)));
-    } else {
-        header.push(Span::styled(" ", Style::default().bg(bg)));
-    }
-    header.push(Span::styled(
-        kind.glyph(),
-        Style::default().fg(kind.color()).bg(bg),
-    ));
-    header.push(Span::styled(" ", Style::default().bg(bg)));
-    header.push(Span::styled(
-        format!("{type_label} Task"),
-        Style::default()
-            .fg(FG())
-            .bg(bg)
-            .add_modifier(Modifier::BOLD),
-    ));
+    // One-column inset, aligned with the `◆` of ordinary tool rows.
+    let mut lead = vec![
+        Span::styled(" ", on(Style::default())),
+        Span::styled(kind.glyph(), on(Style::default().fg(kind.color()))),
+        Span::styled(" ", on(Style::default())),
+        Span::styled(
+            type_label,
+            on(Style::default().fg(FG()).add_modifier(Modifier::BOLD)),
+        ),
+    ];
     let first_line = description.lines().next().unwrap_or("");
     if !first_line.is_empty() {
-        header.push(Span::styled(" – ", Style::default().fg(DETAIL()).bg(bg)));
-        header.push(Span::styled(
-            first_line.to_string(),
-            Style::default().fg(FG()).bg(bg),
+        lead.push(Span::styled(
+            format!("  {first_line}"),
+            on(Style::default().fg(FG_MUTED())),
         ));
     }
+    let mut status_text = kind.label().to_string();
+    if let Some(ms) = ui.and_then(|u| u.elapsed_ms()) {
+        status_text.push_str(&format!(" · {}", format_duration(ms)));
+    }
+    let header = crate::widgets::justify(
+        lead,
+        vec![Span::styled(status_text, on(Style::default().fg(FG_DIM())))],
+        width,
+        bg,
+    );
 
-    // Row 2: `   ↳ 2 tool calls · 6.2s`. With no tools yet, fall back to the
-    // live activity line so a thinking child is not a bare header.
-    let mut detail: Vec<Span<'static>> = vec![
-        Span::styled("   ", Style::default().bg(bg)),
-        Span::styled("↳ ", Style::default().fg(FG_MUTED()).bg(bg)),
+    // `└ <current activity> · N tools · wt`. Failures say why in red.
+    let activity_style = if kind == SubagentStatusKind::Failed {
+        Style::default().fg(ERROR())
+    } else {
+        Style::default().fg(FG_MUTED())
+    };
+    let mut detail = vec![
+        Span::styled("   └ ", on(Style::default().fg(FG_DIM()))),
+        Span::styled(
+            subagent_activity(ui, width.saturating_sub(5)),
+            on(activity_style),
+        ),
     ];
-    match ui {
-        Some(ui) if !ui.tool_rows.is_empty() => {
-            let count = ui.tool_rows.len();
+    if let Some(ui) = ui {
+        let count = ui.tool_rows.len();
+        if count > 0 {
             detail.push(Span::styled(
-                format!(
-                    "{count} tool call{} · {}",
-                    if count == 1 { "" } else { "s" },
-                    kind.label()
-                ),
-                Style::default().fg(FG()).bg(bg),
+                format!(" · {count} tool{}", if count == 1 { "" } else { "s" }),
+                on(Style::default().fg(FG_DIM())),
             ));
-            if let Some(ms) = ui.elapsed_ms() {
-                detail.push(Span::styled(" · ", Style::default().fg(DETAIL()).bg(bg)));
-                detail.push(Span::styled(
-                    format_duration(ms),
-                    Style::default().fg(FG_MUTED()).bg(bg),
-                ));
-            }
-            if let Some(wt) = &ui.worktree {
-                detail.push(Span::styled(" · ", Style::default().fg(DETAIL()).bg(bg)));
-                detail.push(Span::styled(
-                    if wt.dirty { "wt*" } else { "wt" },
-                    Style::default().fg(DETAIL()).bg(bg),
-                ));
-            }
         }
-        _ => detail.push(Span::styled(
-            format!("{} · explicit handoff", kind.label()),
-            Style::default().fg(FG_MUTED()).bg(bg),
-        )),
+        if let Some(wt) = &ui.worktree {
+            detail.push(Span::styled(
+                if wt.dirty { " · wt*" } else { " · wt" },
+                on(Style::default().fg(FG_DIM())),
+            ));
+        }
     }
 
-    // Hint row riding under the card.
-    let hint = Line::from(fill_row(
-        vec![
-            Span::styled(" ", Style::default().bg(BG())),
-            Span::styled("ctrl+x", Style::default().fg(FG_MUTED()).bg(BG())),
-            Span::styled("  ", Style::default().bg(BG())),
-            Span::styled("open child session", Style::default().fg(FG_DIM()).bg(BG())),
-        ],
-        width,
-        BG(),
-    ));
-
     vec![
-        Line::from(fill_row(header, width, bg)),
+        Line::from(header),
         Line::from(fill_row(detail, width, bg)),
-        Line::from(fill_row(
-            vec![
-                Span::styled("   ", Style::default().bg(bg)),
-                Span::styled(
-                    subagent_activity(ui, width.saturating_sub(3)),
-                    Style::default().fg(FG_MUTED()).bg(bg),
-                ),
-            ],
-            width,
-            bg,
-        )),
-        hint,
         themed_blank_row(width),
     ]
 }
@@ -2564,7 +2549,7 @@ fn subagent_activity(ui: Option<&crate::state::SubagentUiState>, width: usize) -
     }
     if let Some(row) = ui.tool_rows.last() {
         let (verb, subject) = tool_header_parts(&row.name, Some(&row.args), width);
-        let action = verb.map_or_else(|| "Run".to_string(), |v| format!("Run {v}"));
+        let action = verb.unwrap_or_else(|| row.name.clone());
         let label = if subject.is_empty() {
             action
         } else {
@@ -2652,34 +2637,33 @@ mod tests {
             .collect();
         for width in [1, 3, 20, 60, 100] {
             let lines = render_subagent(&entry, width, Some(&ui), true);
-            assert_eq!(lines.len(), 5, "header + metadata + activity + hint + gap");
+            assert_eq!(lines.len(), 3, "header + activity + gap");
             assert!(lines.iter().all(|line| line.width() <= width));
-            assert!(lines[..2]
-                .iter()
-                .flat_map(|line| &line.spans)
-                .all(|span| span.style.bg == Some(BG_ELEMENT())));
+            assert!(
+                lines[..2]
+                    .iter()
+                    .flat_map(|line| &line.spans)
+                    .all(|span| span.style.bg == Some(BG())),
+                "flat canvas, no band"
+            );
         }
-        // Reference grammar: `✓ Explore Task – desc` then `↳ 10000 tool calls`.
+        // `⧗ Explore  desc ··· running` then `└ <activity> · 10000 tools`.
+        let text = |line: &Line<'static>| -> String {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect()
+        };
         let lines = render_subagent(&entry, 100, Some(&ui), false);
-        let row1: String = lines[0]
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect();
-        assert!(row1.contains("Explore Task"), "row1: {row1:?}");
-        assert!(row1.contains("Explore the project"), "row1: {row1:?}");
-        let row2: String = lines[1]
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect();
-        assert!(row2.contains("↳ 10000 tool calls"), "row2: {row2:?}");
-        let hint: String = lines[3]
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect();
-        assert!(hint.contains("ctrl+x"), "hint: {hint:?}");
+        let row1 = text(&lines[0]);
+        assert!(
+            row1.contains("Explore  Explore the project"),
+            "row1: {row1:?}"
+        );
+        assert!(row1.trim_end().ends_with("running"), "row1: {row1:?}");
+        let row2 = text(&lines[1]);
+        assert!(row2.starts_with("   └ Read"), "row2: {row2:?}");
+        assert!(row2.contains("· 10000 tools"), "row2: {row2:?}");
         assert!(subagent_activity(Some(&ui), 100).contains("file9999"));
         let mut map = std::collections::HashMap::from([("child".into(), ui)]);
         let before = subagent_fingerprint(&map, 100);
@@ -2717,7 +2701,6 @@ mod tests {
     fn click_regions_keep_absolute_offsets_beyond_u16() {
         let history = vec![tool_entry("grep", "found", None)];
         let ctx = HistoryRenderCtx {
-            hovered: None,
             live_tools: &std::collections::HashMap::new(),
             subagents: &std::collections::HashMap::new(),
         };
@@ -2774,7 +2757,6 @@ mod tests {
             false,
             false,
             Fold::Collapsed,
-            false,
             false,
             &HashMap::new(),
             None,
@@ -2849,7 +2831,6 @@ mod tests {
             false,
             Fold::Collapsed,
             false,
-            false,
             &HashMap::new(),
             None,
             None,
@@ -2913,7 +2894,6 @@ mod tests {
             false,
             Fold::Collapsed,
             false,
-            false,
             &subagents,
             None,
             None,
@@ -2924,7 +2904,6 @@ mod tests {
             false,
             false,
             Fold::Collapsed,
-            false,
             false,
             &subagents,
             None,
@@ -2955,7 +2934,6 @@ mod tests {
             false,
             Fold::Collapsed,
             false,
-            false,
             &subagents,
             None,
             None,
@@ -2963,70 +2941,6 @@ mod tests {
         assert!(join(&c) != join(&a));
         // Plain mirror has same row count as the display lines.
         assert_eq!(a.lines.len(), a.plain.len());
-    }
-
-    #[test]
-    fn assistant_hover_keeps_height_and_edges_flush() {
-        use std::collections::HashMap;
-        let subagents = HashMap::new();
-        let render = |content: &str, tool_name: Option<String>, hovered: bool| {
-            let entry = agente_core::types::ChatEntry {
-                id: uuid::Uuid::new_v4(),
-                role: agente_core::types::Role::Assistant,
-                content: content.to_string(),
-                tool_name,
-                tool_args: None,
-                is_error: false,
-                timestamp: chrono::Utc::now(),
-                response_duration: Some(500.0),
-                mode: "Build".to_string(),
-                interrupted: false,
-                reasoning: None,
-                subagent_id: None,
-                subagent_type: None,
-                diff_stats: None,
-            };
-            render_entry_block(
-                &entry,
-                60,
-                false,
-                false,
-                Fold::Collapsed,
-                false,
-                hovered,
-                &subagents,
-                None,
-                None,
-            )
-        };
-        let text = |block: &RenderedChatBlock| -> Vec<String> {
-            block
-                .lines
-                .iter()
-                .map(|l| {
-                    l.spans
-                        .iter()
-                        .map(|s| s.content.as_ref())
-                        .collect::<String>()
-                })
-                .collect()
-        };
-
-        // Normal assistant message.
-        let plain = text(&render("Done.", None, false));
-        let hovered = text(&render("Done.", None, true));
-        // Hovering never changes the block height (no pixel jump). The
-        // borderless design has no hover edges at all — rows are identical.
-        assert_eq!(plain.len(), hovered.len());
-        assert_eq!(plain, hovered);
-        // The block leads with the blank + timestamp rows (no bubble edges).
-        assert!(plain.first().map(|s| s.trim().is_empty()).unwrap_or(false));
-
-        // Pending tool call (no content) — same invariants.
-        let plain = text(&render("", Some("shell".to_string()), false));
-        let hovered = text(&render("", Some("shell".to_string()), true));
-        assert_eq!(plain.len(), hovered.len());
-        assert_eq!(plain, hovered);
     }
 
     #[test]
@@ -3039,7 +2953,6 @@ mod tests {
             thinking_expanded: false,
             tool_fold: Fold::Collapsed,
             dense_next: false,
-            hovered: false,
             lines: Vec::new(),
             plain: Vec::new(),
             regions: Vec::new(),
@@ -3054,8 +2967,7 @@ mod tests {
                     user_expanded: false,
                     thinking_expanded: false,
                     tool_fold: Fold::Collapsed,
-                    dense_next: false,
-                    hovered: false
+                    dense_next: false
                 }
             )
             .is_some());
@@ -3067,8 +2979,7 @@ mod tests {
                     user_expanded: false,
                     thinking_expanded: false,
                     tool_fold: Fold::Expanded,
-                    dense_next: false,
-                    hovered: false
+                    dense_next: false
                 }
             )
             .is_none());
@@ -3080,8 +2991,7 @@ mod tests {
                     user_expanded: false,
                     thinking_expanded: false,
                     tool_fold: Fold::Collapsed,
-                    dense_next: true,
-                    hovered: false
+                    dense_next: true
                 }
             )
             .is_none());
@@ -3093,8 +3003,7 @@ mod tests {
                     user_expanded: false,
                     thinking_expanded: false,
                     tool_fold: Fold::Collapsed,
-                    dense_next: false,
-                    hovered: false
+                    dense_next: false
                 }
             )
             .is_none());
@@ -3183,7 +3092,6 @@ mod tests {
             false,
             Fold::Collapsed,
             false,
-            false,
             &HashMap::new(),
             None,
             None,
@@ -3211,7 +3119,6 @@ mod tests {
             60,
             Fold::Truncated,
             false,
-            false,
             Some(r#"{"command":"cargo build"}"#),
         );
         let header = join_first_line(&lines);
@@ -3223,7 +3130,7 @@ mod tests {
     #[test]
     fn shell_card_header_falls_back_to_tool_name() {
         let entry = tool_entry("shell", "STDOUT:\nok\nEXIT CODE: 0", None);
-        let lines = render_tool(&entry, 60, Fold::Truncated, false, false, None);
+        let lines = render_tool(&entry, 60, Fold::Truncated, false, None);
         assert!(join_first_line(&lines).contains("shell"));
     }
 
@@ -3232,7 +3139,7 @@ mod tests {
     fn edit_card_header_shows_diff_stats() {
         let mut entry = tool_entry("edit_file", "Successfully edited src/lib.rs", None);
         entry.diff_stats = Some((3, 1));
-        let lines = render_tool(&entry, 60, Fold::Collapsed, false, false, None);
+        let lines = render_tool(&entry, 60, Fold::Collapsed, false, None);
         let header = join_first_line(&lines);
         assert!(header.contains("+3"), "header: {header:?}");
         assert!(header.contains("/-1"), "header: {header:?}");
@@ -3304,7 +3211,6 @@ mod tests {
                 false,
                 Fold::Collapsed,
                 false,
-                false,
                 &std::collections::HashMap::new(),
                 None,
                 None,
@@ -3331,7 +3237,7 @@ mod tests {
     #[test]
     fn tool_header_grammar_uses_verb_plus_subject() {
         let read = tool_entry("read_file", "ok", Some(r#"{"path":"src/lib.rs"}"#));
-        let header = join_first_line(&render_tool(&read, 60, Fold::Collapsed, false, true, None));
+        let header = join_first_line(&render_tool(&read, 60, Fold::Collapsed, true, None));
         assert!(header.contains("Run Read src/lib.rs"), "header: {header:?}");
         assert!(!header.contains("read_file"), "raw name leaked: {header:?}");
         assert!(
@@ -3340,7 +3246,7 @@ mod tests {
         );
 
         let grep = tool_entry("grep", "ok", Some(r#"{"query":"retry"}"#));
-        let header = join_first_line(&render_tool(&grep, 60, Fold::Collapsed, false, true, None));
+        let header = join_first_line(&render_tool(&grep, 60, Fold::Collapsed, true, None));
         assert!(
             header.contains("Run Search \"retry\""),
             "header: {header:?}"
@@ -3348,14 +3254,7 @@ mod tests {
 
         // Unknown tools show their raw name as the verb.
         let custom = tool_entry("custom_tool", "ok", None);
-        let header = join_first_line(&render_tool(
-            &custom,
-            60,
-            Fold::Collapsed,
-            false,
-            true,
-            None,
-        ));
+        let header = join_first_line(&render_tool(&custom, 60, Fold::Collapsed, true, None));
         assert!(header.contains("Run custom_tool"), "header: {header:?}");
     }
 
@@ -3364,9 +3263,9 @@ mod tests {
     #[test]
     fn collapsed_tool_card_is_header_only() {
         let entry = tool_entry("grep", "row1\nrow2\nrow3\nrow4", Some(r#"{"query":"x"}"#));
-        let dense = render_tool(&entry, 60, Fold::Collapsed, false, true, None);
+        let dense = render_tool(&entry, 60, Fold::Collapsed, true, None);
         assert_eq!(dense.len(), 1, "header only, no gap: {dense:?}");
-        let lone = render_tool(&entry, 60, Fold::Collapsed, false, false, None);
+        let lone = render_tool(&entry, 60, Fold::Collapsed, false, None);
         assert_eq!(lone.len(), 2, "header + trailing gap row");
         let body: String = dense.iter().map(|l| line_text(l)).collect();
         assert!(!body.contains("row2"), "no body rows when collapsed");
@@ -3377,7 +3276,7 @@ mod tests {
     fn truncated_tool_card_shows_three_rows_and_hint() {
         let body: Vec<String> = (1..=10).map(|i| format!("row {i}")).collect();
         let entry = tool_entry("grep", &body.join("\n"), Some(r#"{"query":"x"}"#));
-        let lines = render_tool(&entry, 60, Fold::Truncated, false, false, None);
+        let lines = render_tool(&entry, 60, Fold::Truncated, false, None);
         let text: Vec<String> = lines.iter().map(|l| line_text(l)).collect();
         // header + 3 preview rows + hint + trailing gap
         assert_eq!(lines.len(), 6, "rows: {text:?}");
@@ -3392,7 +3291,7 @@ mod tests {
 
         // Short results show everything with no hint row.
         let short = tool_entry("grep", "only line", Some(r#"{"query":"x"}"#));
-        let lines = render_tool(&short, 60, Fold::Truncated, false, true, None);
+        let lines = render_tool(&short, 60, Fold::Truncated, true, None);
         assert_eq!(lines.len(), 2, "header + preview row, no hint, no gap");
     }
 
@@ -3402,7 +3301,7 @@ mod tests {
         let body: Vec<String> = (1..=410).map(|i| format!("line {i}")).collect();
         let content = format!("STDOUT:\n{}\nEXIT CODE: 0", body.join("\n"));
         let entry = tool_entry("shell", &content, None);
-        let lines = render_tool(&entry, 80, Fold::Expanded, false, true, None);
+        let lines = render_tool(&entry, 80, Fold::Expanded, true, None);
         let body_text: String = lines
             .iter()
             .map(|l| line_text(l))
@@ -3420,7 +3319,7 @@ mod tests {
 
         // Small results fit entirely: no elision row.
         let small = tool_entry("shell", "STDOUT:\nok\nEXIT CODE: 0", None);
-        let lines = render_tool(&small, 80, Fold::Expanded, false, true, None);
+        let lines = render_tool(&small, 80, Fold::Expanded, true, None);
         let text: String = lines
             .iter()
             .map(|l| line_text(l))
@@ -3686,7 +3585,6 @@ mod tests {
         assert_eq!(collapsed_groups.len(), 1);
         let mut ui = crate::state::UiState::default();
         let ctx = HistoryRenderCtx {
-            hovered: None,
             live_tools: &std::collections::HashMap::new(),
             subagents: &std::collections::HashMap::new(),
         };
@@ -3784,7 +3682,6 @@ mod tests {
             false,
             true,
             Fold::Collapsed,
-            false,
             false,
             &HashMap::new(),
             None,

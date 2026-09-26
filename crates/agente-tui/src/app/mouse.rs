@@ -1,10 +1,11 @@
 //! Mouse and click handling: hover, expand/collapse, copy, drag-select.
 
 use agente_core::types::ClickKind;
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
 
 use super::App;
-use crate::state::{modal_owner, ChatSelection};
+use crate::state::{modal_owner, ChatSelection, ConnectScreen, HitTarget, ListId, ModalOwner};
 use crate::widgets::welcome;
 
 /// Sentinel for live thinking panel (must match widgets/chat.rs).
@@ -12,34 +13,127 @@ const LIVE_THINKING_ID: uuid::Uuid = uuid::Uuid::nil();
 /// Drag threshold in cells before a click becomes a selection.
 const DRAG_THRESHOLD: u16 = 2;
 
+/// True when `(x, y)` lies inside `rect` (a missing rect never hits).
+fn hit(rect: Option<Rect>, x: u16, y: u16) -> bool {
+    rect.is_some_and(|r| r.contains(Position::new(x, y)))
+}
+
 impl App {
-    /// Route a wheel scroll to whichever picker is open (moving its selection)
-    /// instead of scrolling the chat. Returns `false` when no picker is open.
-    fn picker_scroll(&mut self, delta: i32) -> bool {
+    /// The selectable list that currently owns the keyboard, if any.
+    fn active_list(&self) -> Option<ListId> {
+        Some(match modal_owner(&self.state) {
+            ModalOwner::CommandPalette => ListId::CommandPalette,
+            ModalOwner::Subagents => ListId::Subagents,
+            ModalOwner::SlashPicker => ListId::SlashPicker,
+            ModalOwner::AtPicker => ListId::AtPicker,
+            ModalOwner::ModelSelector => ListId::ModelSelector,
+            ModalOwner::ThinkingSelector => ListId::ThinkingSelector,
+            ModalOwner::SessionPicker if self.state.picker.session_picker_browsing => {
+                ListId::FolderBrowser
+            }
+            ModalOwner::SessionPicker => ListId::SessionList,
+            ModalOwner::Connect => ListId::Connect,
+            ModalOwner::Welcome => ListId::Welcome,
+            _ => return None,
+        })
+    }
+
+    /// The selection index backing `list` (`None` when that list has no
+    /// selection right now, e.g. connect is on its key-entry screen).
+    fn list_selection_mut(&mut self, list: ListId) -> Option<&mut usize> {
         let input = &mut self.state.input;
-        let picker = &mut self.state.picker;
-        let selected: &mut usize;
-        if input.show_model_selector {
-            selected = &mut input.model_selector_selected;
-        } else if picker.show_session_picker {
-            selected = &mut picker.session_picker_selected;
-        } else if input.show_at_picker {
-            selected = &mut input.at_picker_selected;
-        } else if input.show_command_palette {
-            selected = &mut input.command_palette_selected;
-        } else if input.show_slash_picker {
-            selected = &mut input.slash_picker_selected;
-        } else if input.show_subagents {
-            selected = &mut input.subagents_selected;
-        } else {
+        Some(match list {
+            ListId::CommandPalette => &mut input.command_palette_selected,
+            ListId::Subagents => &mut input.subagents_selected,
+            ListId::SlashPicker => &mut input.slash_picker_selected,
+            ListId::AtPicker => &mut input.at_picker_selected,
+            ListId::ModelSelector => &mut input.model_selector_selected,
+            ListId::ThinkingSelector => &mut input.thinking_selector_selected,
+            ListId::SessionList => &mut self.state.picker.session_picker_selected,
+            ListId::FolderBrowser => &mut self.state.picker.session_picker_browse_selected,
+            ListId::Welcome => &mut self.state.ui.welcome_selected,
+            ListId::Connect => match &mut self.state.config.connect_screen {
+                ConnectScreen::SelectProvider { selected, .. } => selected,
+                _ => return None,
+            },
+        })
+    }
+
+    /// Route a wheel scroll to whichever list is open (moving its selection)
+    /// instead of scrolling the chat. Returns `false` when no list is open.
+    fn picker_scroll(&mut self, delta: i32) -> bool {
+        let Some(list) = self.active_list().filter(|l| *l != ListId::Welcome) else {
             return false;
-        }
-        if delta < 0 {
-            *selected = selected.saturating_sub(delta.unsigned_abs() as usize);
+        };
+        let Some(selected) = self.list_selection_mut(list) else {
+            return false;
+        };
+        *selected = if delta < 0 {
+            selected.saturating_sub(delta.unsigned_abs() as usize)
         } else {
-            *selected = selected.saturating_add(delta as usize);
-        }
+            selected.saturating_add(delta as usize)
+        };
         true
+    }
+
+    /// Pointer moved onto `hit`: remember it for hover styling, and move a
+    /// list's selection onto the hovered row (hover-to-select).
+    fn hover_hit(&mut self, hit: Option<HitTarget>) {
+        if let Some(HitTarget::Row { list, index }) = hit {
+            if self.active_list() == Some(list) {
+                if let Some(selected) = self.list_selection_mut(list) {
+                    *selected = index;
+                }
+            }
+        }
+        self.state.ui.hovered_hit = hit;
+    }
+
+    /// Click on a registered target. Rows select then confirm exactly like
+    /// Enter, so mouse and keyboard can never disagree about what a row does.
+    fn activate_hit(&mut self, hit: HitTarget) -> anyhow::Result<()> {
+        match hit {
+            HitTarget::Approval(action) => self.handle_approval_action(action)?,
+            HitTarget::DetailTab(tab) => self.state.ui.select_subagent_tab(tab),
+            HitTarget::Row {
+                list: ListId::Welcome,
+                index,
+            } => {
+                self.state.ui.welcome_selected = index;
+                if let Some(cmd) = welcome::action_at(index) {
+                    self.execute_command(cmd)?;
+                }
+            }
+            HitTarget::Row { list, index } => {
+                if self.active_list() != Some(list) {
+                    return Ok(());
+                }
+                if let Some(selected) = self.list_selection_mut(list) {
+                    *selected = index;
+                }
+                self.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))?;
+            }
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Everything the pointer position feeds into paint. A move that leaves
+    /// this unchanged needs no repaint.
+    fn pointer_fingerprint(&self) -> (Option<HitTarget>, Option<uuid::Uuid>, [bool; 3]) {
+        let ui = &self.state.ui;
+        let scrollbar = ui
+            .mouse_pos
+            .is_some_and(|(x, y)| self.is_chat_scrollbar_hit(x, y));
+        (
+            ui.hovered_hit.clone(),
+            ui.hovered_entry_id,
+            [
+                ui.stop_hitbox.is_some_and(|r| ui.pointer_in(r)),
+                ui.jump_bottom_area.is_some_and(|r| ui.pointer_in(r)),
+                scrollbar,
+            ],
+        )
     }
 
     /// Wheel-scroll the plan review modal when it is open and the pointer is
@@ -52,7 +146,7 @@ impl App {
         let Some(area) = self.state.ui.plan_review_area else {
             return false;
         };
-        if !(x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height) {
+        if !hit(Some(area), x, y) {
             return false;
         }
         self.state
@@ -69,7 +163,7 @@ impl App {
         let Some(area) = self.state.ui.subagent_detail_area else {
             return false;
         };
-        if !(x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height) {
+        if !hit(Some(area), x, y) {
             return false;
         }
         self.state
@@ -81,47 +175,51 @@ impl App {
 
 impl App {
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) -> anyhow::Result<()> {
-        // Track pointer for welcome logo / bubble hover
+        let before = self.pointer_fingerprint();
+        let result = self.route_mouse(mouse);
+        if self.pointer_fingerprint() != before {
+            self.state.ui.needs_render = true;
+        }
+        result
+    }
+
+    fn route_mouse(&mut self, mouse: MouseEvent) -> anyhow::Result<()> {
+        let (x, y) = (mouse.column, mouse.row);
         let prev_hover = self.state.ui.hovered_entry_id;
-        self.state.ui.mouse_x = mouse.column;
-        self.state.ui.mouse_y = mouse.row;
-        self.state.ui.mouse_seen = true;
+        let moved = self.state.ui.mouse_pos != Some((x, y));
+        self.state.ui.mouse_pos = Some((x, y));
+
+        // Registered targets (list rows, dialog buttons) sit above every
+        // surface: they hover everywhere and win clicks over the chat.
+        match mouse.kind {
+            MouseEventKind::Moved if moved => {
+                let target = self.state.ui.hits.at(x, y);
+                self.hover_hit(target);
+            }
+            MouseEventKind::Up(MouseButton::Left)
+                if !self.state.ui.drag_selecting
+                    && !self.state.ui.chat_scrollbar_dragging
+                    && !self.state.ui.suppress_click_on_up =>
+            {
+                // Resolve at the press position so release jitter can't
+                // retarget the click onto a neighbouring row.
+                let (px, py) = self.state.ui.mouse_down.unwrap_or((x, y));
+                if let Some(target) = self.state.ui.hits.at(px, py) {
+                    self.state.ui.mouse_down = None;
+                    self.state.ui.selection = None;
+                    return self.activate_hit(target);
+                }
+            }
+            _ => {}
+        }
 
         let owner = modal_owner(&self.state);
         if owner.blocks_chat_mouse() {
             // [stop] in the activity strip must ALWAYS be clickable, even when
             // an approval dialog or modal is open.
             if let MouseEventKind::Up(MouseButton::Left) = mouse.kind {
-                if let Some(hit) = self.state.ui.stop_hitbox {
-                    if mouse.column >= hit.x
-                        && mouse.column < hit.x.saturating_add(hit.width)
-                        && mouse.row >= hit.y
-                        && mouse.row < hit.y.saturating_add(hit.height)
-                    {
-                        self.stop_current_operation();
-                        return Ok(());
-                    }
-                }
-
-                // Approval dialog action buttons (Y allow once, A allow all, N deny, Esc cancel)
-                let hit_action =
-                    self.state
-                        .ui
-                        .approval_hitboxes
-                        .iter()
-                        .find_map(|(action, rect)| {
-                            if mouse.column >= rect.x
-                                && mouse.column < rect.x.saturating_add(rect.width)
-                                && mouse.row >= rect.y
-                                && mouse.row < rect.y.saturating_add(rect.height)
-                            {
-                                Some(action.clone())
-                            } else {
-                                None
-                            }
-                        });
-                if let Some(action) = hit_action {
-                    self.handle_approval_action(action)?;
+                if hit(self.state.ui.stop_hitbox, x, y) {
+                    self.stop_current_operation();
                     return Ok(());
                 }
             }
@@ -139,8 +237,7 @@ impl App {
                         // plan ask, …): the transcript stays visible behind
                         // it, so the wheel keeps scrolling the chat instead
                         // of dying on the overlay.
-                        self.state.ui.chat_auto_scroll = false;
-                        self.state.scroll_up(3);
+                        self.state.glide_by(-3);
                     }
                     self.state.ui.needs_render = true;
                 }
@@ -152,8 +249,7 @@ impl App {
                         || self.plan_review_scroll(1, mouse.column, mouse.row)
                         || self.subagent_detail_scroll(1, mouse.column, mouse.row);
                     if !consumed && owner.wheel_falls_through_to_chat() {
-                        self.state.ui.chat_auto_scroll = false;
-                        self.state.scroll_down(3);
+                        self.state.glide_by(3);
                     }
                     self.state.ui.needs_render = true;
                 }
@@ -166,15 +262,13 @@ impl App {
             MouseEventKind::ScrollUp => {
                 if !self.picker_scroll(-1) && !self.plan_review_scroll(-1, mouse.column, mouse.row)
                 {
-                    self.state.ui.chat_auto_scroll = false;
-                    self.state.scroll_up(3);
+                    self.state.glide_by(-3);
                 }
                 self.state.ui.needs_render = true;
             }
             MouseEventKind::ScrollDown => {
                 if !self.picker_scroll(1) && !self.plan_review_scroll(1, mouse.column, mouse.row) {
-                    self.state.ui.chat_auto_scroll = false;
-                    self.state.scroll_down(3);
+                    self.state.glide_by(3);
                 }
                 self.state.ui.needs_render = true;
             }
@@ -182,20 +276,14 @@ impl App {
                 // Jump-to-bottom chip fires on press (not release) so release
                 // jitter can never convert it into a drag or a stray toggle.
                 // The matching Up is suppressed below.
-                if let Some(area) = self.state.ui.jump_bottom_area {
-                    if mouse.column >= area.x
-                        && mouse.column < area.x.saturating_add(area.width)
-                        && mouse.row >= area.y
-                        && mouse.row < area.y.saturating_add(area.height)
-                    {
-                        self.state.ui.scroll_to_bottom();
-                        self.state.ui.mouse_down = None;
-                        self.state.ui.drag_selecting = false;
-                        self.state.ui.selection = None;
-                        self.state.ui.suppress_click_on_up = true;
-                        self.state.ui.needs_render = true;
-                        return Ok(());
-                    }
+                if hit(self.state.ui.jump_bottom_area, x, y) {
+                    self.state.ui.scroll_to_bottom();
+                    self.state.ui.mouse_down = None;
+                    self.state.ui.drag_selecting = false;
+                    self.state.ui.selection = None;
+                    self.state.ui.suppress_click_on_up = true;
+                    self.state.ui.needs_render = true;
+                    return Ok(());
                 }
                 if self.is_chat_scrollbar_hit(mouse.column, mouse.row) {
                     self.state.ui.chat_scrollbar_dragging = true;
@@ -288,38 +376,23 @@ impl App {
                 self.state.ui.needs_render = true;
             }
             MouseEventKind::Moved => {
-                // Track the pointer for hover highlights on interactive chips
-                // ([stop], jump-to-bottom) — a position change always repaints.
-                let moved = self.state.ui.mouse_pos != Some((mouse.column, mouse.row));
-                self.state.ui.mouse_pos = Some((mouse.column, mouse.row));
                 // Thinking toggle suppressed hover until the next real move so
                 // a layout shift under the cursor does not border a neighbor.
+                // Repaints are decided by `pointer_fingerprint`, not per cell.
                 if self.state.ui.suppress_hover_until_move {
                     self.state.ui.suppress_hover_until_move = false;
                     self.state.ui.hovered_entry_id = None;
                     self.state.ui.needs_render = true;
-                } else if moved {
-                    self.state.ui.needs_render = true;
-                }
-                // Welcome button hover → update selection highlight
-                if self.state.ui.show_welcome_screen {
-                    if let Some(i) = welcome::hit_test(&self.state, mouse.column, mouse.row) {
-                        if self.state.ui.welcome_selected != i {
-                            self.state.ui.welcome_selected = i;
-                            self.state.ui.needs_render = true;
-                        }
-                    }
                 }
                 // Update hover target from click regions (never thinking headers)
                 let hover = self
                     .state
                     .ui
                     .find_click_region(mouse.row)
-                    .filter(|r| !r.is_reasoning && r.kind != ClickKind::Thinking)
+                    .filter(|r| crate::state::is_hover_target(r))
                     .map(|r| r.entry_id);
                 if hover != prev_hover {
                     self.state.ui.hovered_entry_id = hover;
-                    self.state.ui.needs_render = true;
                 }
             }
             _ => {}
@@ -353,6 +426,8 @@ impl App {
             return;
         }
 
+        // Dragging is direct manipulation: drop any eased scroll in flight.
+        self.state.ui.scroll_target = None;
         let track_y = self.state.ui.chat_scrollbar_y;
         let pos = row.saturating_sub(track_y).min(movable);
         let scroll = ((pos as f64 / movable as f64) * max_scroll as f64).round() as usize;
@@ -364,40 +439,16 @@ impl App {
 
     pub(super) fn handle_click(&mut self, x: u16, y: u16) -> anyhow::Result<()> {
         // `[stop]` in the activity strip — cancel the running turn immediately.
-        if let Some(hit) = self.state.ui.stop_hitbox {
-            if x >= hit.x
-                && x < hit.x.saturating_add(hit.width)
-                && y >= hit.y
-                && y < hit.y.saturating_add(hit.height)
-            {
-                self.stop_current_operation();
-                return Ok(());
-            }
+        if hit(self.state.ui.stop_hitbox, x, y) {
+            self.stop_current_operation();
+            return Ok(());
         }
 
         // Jump-to-bottom chip (shown when scrolled up during/after a stream).
-        if let Some(area) = self.state.ui.jump_bottom_area {
-            if x >= area.x
-                && x < area.x.saturating_add(area.width)
-                && y >= area.y
-                && y < area.y.saturating_add(area.height)
-            {
-                self.state.ui.scroll_to_bottom();
-                self.state.ui.needs_render = true;
-                return Ok(());
-            }
-        }
-
-        // Welcome home buttons
-        if self.state.ui.show_welcome_screen {
-            if let Some(i) = welcome::hit_test(&self.state, x, y) {
-                self.state.ui.welcome_selected = i;
-                if let Some(cmd) = welcome::action_at(i) {
-                    self.execute_command(cmd)?;
-                }
-                self.state.ui.needs_render = true;
-                return Ok(());
-            }
+        if hit(self.state.ui.jump_bottom_area, x, y) {
+            self.state.ui.scroll_to_bottom();
+            self.state.ui.needs_render = true;
+            return Ok(());
         }
 
         let Some(region) = self.state.ui.find_click_region(y).cloned() else {
@@ -556,6 +607,75 @@ mod tests {
     use agente_core::config::AppConfig;
     use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
     use ratatui::layout::Rect;
+
+    fn moved(x: u16, y: u16) -> MouseEvent {
+        wheel(MouseEventKind::Moved, x, y)
+    }
+
+    fn open_palette(app: &mut App) -> (ratatui::buffer::Buffer, usize, u16) {
+        app.state.ui.show_welcome_screen = false;
+        app.state.input.show_command_palette = true;
+        let buf = render(app, 80, 30);
+        let commands = crate::command_palette::filter_commands("");
+        let index = commands
+            .iter()
+            .position(|c| *c == crate::command_palette::Command::ShowHelp)
+            .unwrap();
+        let row = find_row(&buf, commands[index].label()).expect("help row painted");
+        (buf, index, row)
+    }
+
+    #[test]
+    fn hovering_a_palette_row_selects_it_and_click_runs_it() {
+        let mut app = test_app();
+        let (_, index, row) = open_palette(&mut app);
+        app.state.input.command_palette_selected = index + 1;
+
+        app.handle_mouse(moved(20, row)).unwrap();
+        assert_eq!(app.state.input.command_palette_selected, index);
+        assert!(app.state.ui.needs_render, "hover change repaints");
+
+        app.handle_mouse(down(20, row)).unwrap();
+        app.handle_mouse(up(20, row)).unwrap();
+        assert!(
+            !app.state.input.show_command_palette,
+            "click confirms like Enter"
+        );
+        let last = app.state.session.chat_history.last().expect("help posted");
+        assert!(last.content.starts_with("Available commands"));
+    }
+
+    #[test]
+    fn slash_picker_paints_over_the_activity_strip() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.agent.state = agente_core::types::AgentState::Executing;
+        app.state.input.input_text = "/".into();
+        app.state.input.show_slash_picker = true;
+        let buf = render(&mut app, 80, 30);
+        let rows: Vec<String> = (0..30)
+            .map(|y| (0..80).map(|x| buf[(x, y)].symbol()).collect())
+            .collect();
+        let header = rows
+            .iter()
+            .position(|r| r.contains("Slash commands"))
+            .unwrap();
+        let composer = rows.iter().position(|r| r.contains('╭')).unwrap();
+        for row in &rows[header..composer] {
+            assert!(!row.contains("stop"), "strip leaked into the picker: {row}");
+        }
+    }
+
+    #[test]
+    fn pointer_moves_within_one_target_do_not_repaint() {
+        let mut app = test_app();
+        let (_, _, row) = open_palette(&mut app);
+        app.handle_mouse(moved(20, row)).unwrap();
+        render(&mut app, 80, 30);
+        app.state.ui.needs_render = false;
+        app.handle_mouse(moved(24, row)).unwrap();
+        assert!(!app.state.ui.needs_render);
+    }
 
     fn test_app() -> App {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -981,8 +1101,10 @@ mod tests {
         app.state
             .agent
             .enqueue_approval(ApprovalSource::Parent, req);
-        app.state.ui.approval_hitboxes =
-            vec![(ApprovalAction::ApproveOnce, Rect::new(10, 5, 17, 1))];
+        app.state.ui.hits.push(
+            Rect::new(10, 5, 17, 1),
+            crate::state::HitTarget::Approval(ApprovalAction::ApproveOnce),
+        );
 
         let click = MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),

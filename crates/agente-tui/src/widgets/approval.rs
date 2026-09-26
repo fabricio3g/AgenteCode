@@ -1,16 +1,17 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::truncate_cells;
-use crate::state::AppState;
+use super::pick::RowState;
+use super::{display_width, truncate_cells};
+use crate::state::{AppState, HitTarget};
 use crate::style::{self, *};
 use crate::widgets::diff_view::DiffView;
+use agente_core::types::ApprovalAction;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
-    state.ui.approval_hitboxes.clear();
     let Some(request) = state.agent.current_approval() else {
         return;
     };
@@ -35,127 +36,112 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         .map(|view| view.rendered_height().clamp(3, 12) as u16)
         .unwrap_or(0);
     let action_rows = if area.width >= 64 { 1 } else { 2 };
-    let desired_height = 7 + action_rows + desired_diff_height;
+    // Border(2) + gap + tool + target + gap + [diff|warning + gap] + actions.
+    let middle = if diff.is_some() {
+        desired_diff_height + 1
+    } else if request.is_dangerous {
+        2
+    } else {
+        0
+    };
+    let desired_height = 6 + middle + action_rows;
     let panel = super::centered_panel(
         area,
         area.width.saturating_sub(4).min(76),
         desired_height.min(area.height.saturating_sub(2)),
     );
-    // Opaque: a bare background `Block` only restyles the cells, so the chat
-    // text underneath used to read straight through the approval card.
-    super::panel_bg(frame, panel);
 
+    // Same card as every modal; the ◆ and the border tint carry the urgency
+    // (red for destructive calls), echoing the activity strip's ◆.
     let accent = if request.is_dangerous {
         ERROR()
     } else {
         PRIMARY()
     };
-
-    // Solid accent rail on the panel's left edge: a frozen bar reads as
-    // "paused on you" without any spinner motion (the activity strip pulses a
-    // ◆ in the same state — one cue, two surfaces).
-    for y in panel.y..panel.y.saturating_add(panel.height) {
-        frame.buffer_mut()[(panel.x, y)]
-            .set_symbol("┃")
-            .set_style(Style::default().fg(accent).bg(BG_PANEL()));
+    let mut title = vec![
+        Span::styled("◆ ", Style::default().fg(accent)),
+        Span::styled(
+            if request.is_dangerous {
+                "Review destructive tool call"
+            } else {
+                "Review tool call"
+            },
+            style::bold(),
+        ),
+    ];
+    // Name the origin when a child raised the request: parent and child
+    // approvals used to be indistinguishable.
+    if let Some(agente_core::agent::ApprovalSource::Subagent { id }) =
+        state.agent.current_approval_source()
+    {
+        let label = state
+            .agent
+            .subagents
+            .get(id)
+            .map(|ui| ui.subagent_type.clone())
+            .unwrap_or_else(|| id.chars().take(8).collect());
+        title.push(Span::styled(format!(" · subagent {label}"), style::dim()));
     }
-
+    let body = super::modal_card_tinted(
+        frame,
+        panel,
+        title,
+        blend_colors(accent, BORDER_RULE(), 0.3),
+    );
     let inner = Rect::new(
-        panel.x.saturating_add(2),
-        panel.y.saturating_add(1),
-        panel.width.saturating_sub(4),
-        panel.height.saturating_sub(2),
+        body.x.saturating_add(1),
+        body.y,
+        body.width.saturating_sub(2),
+        body.height,
     );
     if inner.width == 0 || inner.height == 0 {
         return;
     }
 
-    let title = if request.is_dangerous {
-        "Review destructive tool call"
-    } else {
-        "Review tool call"
-    };
     // Rows are derived against the actions row instead of assuming the panel
     // reached its desired height: a clamped panel (short terminal) must drop
     // the middle rows rather than paint over the action bar — or past the
     // panel bottom, which panics.
     let actions_dy = inner.height.saturating_sub(action_rows);
     let row = |dy: u16| -> Option<Rect> {
-        if dy >= actions_dy {
-            None
-        } else {
-            Some(Rect::new(inner.x, inner.y + dy, inner.width, 1))
-        }
+        (dy < actions_dy).then(|| Rect::new(inner.x, inner.y + dy, inner.width, 1))
     };
-
-    if let Some(row_area) = row(0) {
-        // Name the origin when a child raised the request: parent and child
-        // approvals used to be indistinguishable.
-        let mut title_spans = vec![
-            Span::styled("◆ ", Style::default().fg(accent).bg(BG_PANEL())),
-            Span::styled(
-                title,
-                Style::default()
-                    .fg(FG())
-                    .bg(BG_PANEL())
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ];
-        if let Some(agente_core::agent::ApprovalSource::Subagent { id }) =
-            state.agent.current_approval_source()
-        {
-            let label = state
-                .agent
-                .subagents
-                .get(id)
-                .map(|ui| ui.subagent_type.clone())
-                .unwrap_or_else(|| id.chars().take(8).collect());
-            title_spans.push(Span::styled(
-                format!("   subagent {label}"),
-                style::dim().bg(BG_PANEL()),
-            ));
-        }
-        frame.render_widget(
-            Paragraph::new(Line::from(title_spans)).style(style::panel()),
-            row_area,
-        );
-    }
-
-    if let Some(row_area) = row(2) {
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled("tool  ", style::dim().bg(BG_PANEL())),
-                Span::styled(request.tool_name.clone(), style::accent().bg(BG_PANEL())),
-                Span::styled(
-                    format!(
-                        "  {}",
-                        truncate_cells(
-                            &request.description,
-                            inner.width.saturating_sub(16) as usize
-                        )
-                    ),
-                    style::muted().bg(BG_PANEL()),
-                ),
-            ]))
-            .style(style::panel()),
-            row_area,
-        );
-    }
-
-    if let Some(target) = request_target(request) {
-        if let Some(row_area) = row(3) {
+    let label_w = 8u16;
+    let field = |frame: &mut Frame, dy: u16, label: &str, value: Span<'static>| {
+        if let Some(row_area) = row(dy) {
             frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled("target  ", style::dim().bg(BG_PANEL())),
-                    Span::styled(
-                        truncate_cells(&target, inner.width.saturating_sub(8) as usize),
-                        Style::default().fg(SECONDARY()).bg(BG_PANEL()),
-                    ),
+                    Span::styled(format!("{label:<w$}", w = label_w as usize), style::dim()),
+                    value,
                 ]))
                 .style(style::panel()),
                 row_area,
             );
         }
+    };
+    let value_w = inner.width.saturating_sub(label_w) as usize;
+    field(
+        frame,
+        1,
+        "tool",
+        Span::styled(
+            truncate_cells(
+                &format!("{}  {}", request.tool_name, request.description),
+                value_w,
+            ),
+            style::text(),
+        ),
+    );
+    if let Some(target) = request_target(request) {
+        field(
+            frame,
+            2,
+            "target",
+            Span::styled(
+                truncate_cells(&target, value_w),
+                Style::default().fg(SECONDARY()),
+            ),
+        );
     }
 
     if let Some(view) = &diff {
@@ -163,11 +149,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         if diff_height > 0 {
             frame.render_widget(
                 view,
-                Rect::new(inner.x, inner.y + 5, inner.width, diff_height),
+                Rect::new(inner.x, inner.y + 4, inner.width, diff_height),
             );
         }
     } else if request.is_dangerous {
-        if let Some(row_area) = row(5) {
+        if let Some(row_area) = row(4) {
             frame.render_widget(
                 Paragraph::new("This operation can modify or remove data.")
                     .style(style::error().bg(BG_PANEL())),
@@ -178,75 +164,102 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
 
     let actions_y = inner.y + actions_dy;
 
-    let mut hitboxes = Vec::new();
-    if action_rows == 1 {
-        frame.render_widget(
-            Paragraph::new(action_line(true)).style(style::panel()),
-            Rect::new(inner.x, actions_y, inner.width, 1),
-        );
-        hitboxes.push((
-            agente_core::types::ApprovalAction::ApproveOnce,
-            Rect::new(inner.x, actions_y, 17, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::ApproveAll,
-            Rect::new(inner.x + 17, actions_y, 21, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::Deny,
-            Rect::new(inner.x + 38, actions_y, 8, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::Deny,
-            Rect::new(inner.x + 46, actions_y, 13, 1),
-        ));
+    // Two-row layout moves `Esc cancel` under the buttons on narrow panels.
+    let first_row = if action_rows == 1 {
+        ACTIONS
     } else {
-        frame.render_widget(
-            Paragraph::new(action_line(false)).style(style::panel()),
-            Rect::new(inner.x, actions_y, inner.width, 1),
-        );
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![
-                Span::styled("Esc", style::dim().bg(BG_PANEL())),
-                Span::styled(" cancel", style::muted().bg(BG_PANEL())),
-            ]))
-            .style(style::panel()),
+        &ACTIONS[..3]
+    };
+    render_actions(
+        frame,
+        state,
+        Rect::new(inner.x, actions_y, inner.width, 1),
+        first_row,
+    );
+    if action_rows > 1 {
+        render_actions(
+            frame,
+            state,
             Rect::new(inner.x, actions_y.saturating_add(1), inner.width, 1),
+            &ACTIONS[3..],
         );
-        hitboxes.push((
-            agente_core::types::ApprovalAction::ApproveOnce,
-            Rect::new(inner.x, actions_y, 17, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::ApproveAll,
-            Rect::new(inner.x + 17, actions_y, 21, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::Deny,
-            Rect::new(inner.x + 38, actions_y, 8, 1),
-        ));
-        hitboxes.push((
-            agente_core::types::ApprovalAction::Deny,
-            Rect::new(inner.x, actions_y.saturating_add(1), 13, 1),
-        ));
     }
-    state.ui.approval_hitboxes = hitboxes;
 }
 
-fn action_line(include_escape: bool) -> Line<'static> {
-    let mut spans = vec![
-        Span::styled(" Y ", style::button_primary()),
-        Span::styled(" allow once   ", style::text().bg(BG_PANEL())),
-        Span::styled(" A ", style::button_secondary()),
-        Span::styled(" allow for turn   ", style::text().bg(BG_PANEL())),
-        Span::styled(" N ", style::button_danger()),
-        Span::styled(" deny", style::text().bg(BG_PANEL())),
-    ];
-    if include_escape {
-        spans.push(Span::styled("   Esc", style::dim().bg(BG_PANEL())));
-        spans.push(Span::styled(" cancel", style::muted().bg(BG_PANEL())));
+/// One approval button: key cap, label, and the action it resolves to.
+struct ActionButton {
+    key: &'static str,
+    label: &'static str,
+    action: ApprovalAction,
+    cap: fn() -> Style,
+}
+
+const ACTIONS: &[ActionButton] = &[
+    ActionButton {
+        key: " Y ",
+        label: " allow once",
+        action: ApprovalAction::ApproveOnce,
+        cap: style::button_primary,
+    },
+    ActionButton {
+        key: " A ",
+        label: " allow for turn",
+        action: ApprovalAction::ApproveAll,
+        cap: style::button_secondary,
+    },
+    ActionButton {
+        key: " N ",
+        label: " deny",
+        action: ApprovalAction::Deny,
+        cap: style::button_danger,
+    },
+    // `Esc` resolves to Deny, same as the keyboard.
+    ActionButton {
+        key: "Esc",
+        label: " cancel",
+        action: ApprovalAction::Deny,
+        cap: style::dim,
+    },
+];
+
+/// Paint `buttons` left to right in `row`, registering each one's hit rect
+/// from its drawn width, centered in `row`. The hovered button's label gets
+/// a lifted band.
+fn render_actions(frame: &mut Frame, state: &AppState, row: Rect, buttons: &[ActionButton]) {
+    const GAP: u16 = 3;
+    frame.render_widget(Paragraph::new("").style(style::panel()), row);
+    // Centered like every modal footer.
+    let widths: Vec<u16> = buttons
+        .iter()
+        .map(|b| (display_width(b.key) + display_width(b.label)) as u16)
+        .collect();
+    let total = widths.iter().sum::<u16>() + GAP * (widths.len() as u16).saturating_sub(1);
+    let mut x = row.x + row.width.saturating_sub(total) / 2;
+    for (button, width) in buttons.iter().zip(widths) {
+        let rect = Rect::new(x, row.y, width.min(row.right().saturating_sub(x)), 1);
+        if rect.width == 0 {
+            break;
+        }
+        let target = HitTarget::Approval(button.action.clone());
+        let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
+        let band = RowState::from_flags(false, hovered).bg();
+        let label = if hovered {
+            style::text().bg(band)
+        } else {
+            style::muted().bg(band)
+        };
+        let cap = (button.cap)();
+        let cap = if cap.bg.is_none() { cap.bg(band) } else { cap };
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(button.key, cap),
+                Span::styled(button.label, label),
+            ])),
+            rect,
+        );
+        state.ui.hits.push(rect, target);
+        x = x.saturating_add(width + GAP);
     }
-    Line::from(spans)
 }
 
 fn request_target(request: &agente_core::types::ApprovalRequest) -> Option<String> {

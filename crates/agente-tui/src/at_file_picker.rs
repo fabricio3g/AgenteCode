@@ -3,13 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState};
 use ratatui::Frame;
 
-use crate::state::AppState;
-use crate::style::{self, BG_HOVER, BG_PANEL, FG, FG_MUTED};
+use crate::state::{AppState, ListId};
+use crate::style::{self, BG_PANEL, FG_MUTED};
+use crate::widgets::pick::{pick_list, row_label, PickItem};
 use crate::widgets::{panel_bg, panel_header, s};
 
 const MAX_SCAN: usize = 2000;
@@ -317,44 +317,19 @@ pub fn render_above_input(frame: &mut Frame, area: Rect, state: &AppState) {
     panel_bg(frame, picker);
     let body = panel_header(frame, picker, vec![s("@ files", style::bold())]);
 
-    let visible = body.height as usize;
-    let selected = state
-        .input
-        .at_picker_selected
-        .min(matches.len().saturating_sub(1));
-    let start = selected
-        .saturating_sub(visible.saturating_sub(1))
-        .min(matches.len().saturating_sub(visible));
-    let end = (start + visible).min(matches.len());
-
-    let items: Vec<ListItem> = matches[start..end]
+    let selected = state.input.at_picker_selected;
+    let items = matches
         .iter()
         .enumerate()
-        .map(|(idx, path)| {
-            let sel = start + idx == selected;
-            let bg = if sel { BG_HOVER() } else { BG_PANEL() };
-            let marker = if sel { "› " } else { "  " };
-            let style = if sel {
-                Style::default()
-                    .fg(FG())
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(FG()).bg(bg)
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(marker, style::accent().bg(bg)),
-                Span::styled(path.clone(), style),
-            ]))
-        })
+        .map(|(idx, path)| PickItem::row(vec![s(path.clone(), row_label(idx == selected))]))
         .collect();
-
-    let mut list_state = ListState::default();
-    list_state.select(Some(selected - start));
-    frame.render_stateful_widget(
-        List::new(items).style(Style::default().bg(BG_PANEL())),
+    pick_list(
+        frame,
         body,
-        &mut list_state,
+        &state.ui.hits,
+        ListId::AtPicker,
+        items,
+        selected,
     );
 }
 

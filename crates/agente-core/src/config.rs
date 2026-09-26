@@ -154,6 +154,9 @@ pub struct AppConfig {
     /// Persistent UI theme ("dark" or "light"). Restored on next launch.
     #[serde(default)]
     pub theme: Option<String>,
+    /// Snap instead of animating (eased scrolling, hover fades).
+    #[serde(default)]
+    pub reduce_motion: bool,
     /// Maximum agent tool-loop iterations per turn. Long-horizon tasks can
     /// exceed the old hardcoded cap of 50; default is 500.
     #[serde(default)]
@@ -963,6 +966,7 @@ impl Default for AppConfig {
             auto_approve: AutoApproveConfig::default(),
             default_mode: Some("Build".into()),
             theme: None,
+            reduce_motion: false,
             max_iterations: None,
             default_thinking_level: None,
             discovered_models: HashMap::new(),
@@ -1579,6 +1583,7 @@ impl AppConfig {
             auto_approve: self.auto_approve.clone(),
             default_mode: self.default_mode.clone(),
             theme: self.theme.clone(),
+            reduce_motion: self.reduce_motion,
             default_thinking_level: self.default_thinking_level.clone(),
             discovered_models: self.discovered_models.clone(),
             mcp: self.mcp.clone(),

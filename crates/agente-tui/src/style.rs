@@ -53,7 +53,8 @@ pub mod dark {
     pub const BG: Color = Color::Rgb(0, 0, 0); // #000000
     pub const BG_PANEL: Color = Color::Rgb(24, 24, 28); // #18181c
     pub const BG_ELEMENT: Color = Color::Rgb(44, 46, 50); // #2c2e32
-    pub const BG_HOVER: Color = Color::Rgb(44, 44, 52); // #2c2c34
+    /// Pointer hover: one step above the panel, one below the selection.
+    pub const BG_HOVER: Color = Color::Rgb(34, 34, 40); // #222228
     pub const BG_ACTIVE: Color = Color::Rgb(44, 44, 52); // #2c2c34
 
     // Text colors
@@ -110,15 +111,6 @@ pub mod dark {
     pub const SYNTAX_NUMBER: Color = Color::Rgb(181, 206, 168); // #B5CEA8
     pub const SYNTAX_TYPE: Color = Color::Rgb(78, 201, 176); // #4EC9B0
     pub const SYNTAX_OPERATOR: Color = Color::Rgb(212, 212, 212); // #D4D4D4
-
-    // Tool card backgrounds — flat canvas. Headers render on
-    // BG(); only the active edit-preview line uses BG_ELEMENT. Aliased (not
-    // removed) so existing call sites keep compiling.
-    pub const TOOL_PENDING_BG: Color = BG; // was #202026
-    pub const TOOL_SUCCESS_BG: Color = BG; // was #202622 green-tint
-    pub const TOOL_ERROR_BG: Color = BG; // was #302222 red-tint
-    pub const USER_MESSAGE_BG: Color = BG; // was #1c1c21
-    pub const ASSISTANT_MESSAGE_BG: Color = BG; // was #16161a
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -187,13 +179,6 @@ pub mod light {
     pub const SYNTAX_NUMBER: Color = Color::Rgb(214, 140, 39);
     pub const SYNTAX_TYPE: Color = Color::Rgb(176, 133, 31);
     pub const SYNTAX_OPERATOR: Color = Color::Rgb(49, 135, 149);
-
-    // Tool card backgrounds — flat canvas (same as dark).
-    pub const TOOL_PENDING_BG: Color = BG;
-    pub const TOOL_SUCCESS_BG: Color = BG;
-    pub const TOOL_ERROR_BG: Color = BG;
-    pub const USER_MESSAGE_BG: Color = BG;
-    pub const ASSISTANT_MESSAGE_BG: Color = BG;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -252,11 +237,6 @@ theme_color!(SYNTAX_STRING);
 theme_color!(SYNTAX_NUMBER);
 theme_color!(SYNTAX_TYPE);
 theme_color!(SYNTAX_OPERATOR);
-theme_color!(TOOL_PENDING_BG);
-theme_color!(TOOL_SUCCESS_BG);
-theme_color!(TOOL_ERROR_BG);
-theme_color!(USER_MESSAGE_BG);
-theme_color!(ASSISTANT_MESSAGE_BG);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STYLES - semantic, composable
@@ -346,6 +326,12 @@ pub fn input_text() -> Style {
 }
 pub fn input_cursor() -> Style {
     Style::default().fg(PRIMARY())
+}
+
+/// Background lift for a hovered row on the bare canvas: halfway between the
+/// canvas and `BG_HOVER`, so it reads as "live" without looking selected.
+pub fn hover_tint() -> Color {
+    blend_colors(BG(), BG_HOVER(), 0.5)
 }
 
 // Panel/element styles (background)

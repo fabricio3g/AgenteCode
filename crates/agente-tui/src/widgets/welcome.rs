@@ -9,17 +9,18 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
+use super::pick::{pick_list, row_label, PickItem};
 use crate::command_palette::Command;
-use crate::state::AppState;
+use crate::state::{AppState, ListId};
 use crate::style;
 
 /// Welcome home actions (label, key hint, command).
 pub const WELCOME_ACTIONS: &[(&str, &str, Command)] = &[
-    ("New session", "ctrl+n", Command::NewSession),
+    ("New session", "Ctrl+N", Command::NewSession),
     ("Open project", "", Command::OpenProject),
-    ("Resume session", "ctrl+s", Command::OpenSession),
-    ("Help", "f1", Command::ShowHelp),
-    ("Quit", "ctrl+c", Command::Quit),
+    ("Resume session", "Ctrl+S", Command::OpenSession),
+    ("Help", "F1", Command::ShowHelp),
+    ("Quit", "Ctrl+C", Command::Quit),
 ];
 
 /// Number of quick-action buttons.
@@ -58,7 +59,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     // Hero card: rounded border, narrow side margins, wide cap.
     let card_w = area.width.saturating_sub(6).min(96).min(area.width);
     if card_w < 10 || area.height < 4 {
-        state.ui.welcome_button_rects.clear();
         return;
     }
     let card_h = (content_rows + 2).min(area.height);
@@ -71,33 +71,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     let box_y = area.y + top_pad;
     let panel = Rect::new(card_x, box_y, card_w, card_h);
 
-    // Bordered hero card: opaque surface, then the rounded rule border.
-    let card_block = ratatui::widgets::Block::default()
-        .borders(ratatui::widgets::Borders::ALL)
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(
-            Style::default()
-                .fg(style::BORDER_RULE())
-                .bg(style::BG_PANEL()),
-        )
-        .style(Style::default().bg(style::BG_PANEL()));
-    super::panel_block(frame, panel, card_block);
-    let inner = Rect::new(
-        panel.x.saturating_add(1),
-        panel.y.saturating_add(1),
-        panel.width.saturating_sub(2),
-        panel.height.saturating_sub(2),
-    );
-
+    // Same untitled card chrome as every modal.
+    let inner = super::modal_card(frame, panel, Vec::new());
     if inner.width == 0 || inner.height == 0 {
-        state.ui.welcome_button_rects.clear();
         return;
     }
 
     let panel_bg = style::BG_PANEL();
     let brand_y = inner.y;
-    // Left inset matching the menu's `› `/`  ` prefix, so the title and
-    // detail rows never sit flush against the card border.
+    // Two-column inset shared by the title, detail and menu rows, so nothing
+    // sits flush against the card border.
     let text_x = inner.x + 2.min(inner.width);
     let text_w = inner.width.saturating_sub(2);
 
@@ -106,7 +89,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         .welcome_selected
         .min(action_count().saturating_sub(1));
     state.ui.welcome_selected = selected;
-    state.ui.welcome_button_rects.clear();
 
     // ── Title: theme-foreground wordmark + dim version ──
     let title_spans = vec![
@@ -143,73 +125,25 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     // Menu rows share a measured column with the brand.
     let menu_y = brand_y.saturating_add(1 + detail_rows + 1);
 
-    for (i, (label, hint, _)) in WELCOME_ACTIONS.iter().enumerate() {
-        let row_y = menu_y + i as u16;
-        if row_y >= inner.y + inner.height {
-            break;
-        }
-        let is_sel = i == selected;
-        let band = if is_sel {
-            style::BG_ELEMENT()
-        } else {
-            panel_bg
-        };
-        let (prefix, prefix_style) = if is_sel {
-            (
-                "› ",
-                Style::default()
-                    .fg(style::PRIMARY())
-                    .bg(band)
-                    .add_modifier(Modifier::BOLD),
+    let menu_rows = (inner.y + inner.height).saturating_sub(menu_y);
+    let items = WELCOME_ACTIONS
+        .iter()
+        .enumerate()
+        .map(|(i, (label, hint, _))| {
+            PickItem::row_with_trail(
+                vec![Span::styled(label.to_string(), row_label(i == selected))],
+                vec![Span::styled(hint.to_string(), style::dim())],
             )
-        } else {
-            ("  ", Style::default().fg(style::FG_DIM()).bg(band))
-        };
-        let label_style = Style::default()
-            .fg(if is_sel {
-                style::FG()
-            } else {
-                style::FG_MUTED()
-            })
-            .bg(band)
-            .add_modifier(if is_sel {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            });
-        let mut spans = vec![
-            Span::styled(prefix, prefix_style),
-            Span::styled(label.to_string(), label_style),
-        ];
-        if !hint.is_empty() {
-            let used =
-                2 + crate::widgets::display_width(label) + crate::widgets::display_width(hint);
-            // Stop one cell short of the card border: a hint flush against
-            // the rule reads cramped, so the menu insets the same way.
-            let budget = (text_w as usize).saturating_sub(1);
-            let pad = budget.saturating_sub(used).max(1);
-            spans.push(Span::styled(" ".repeat(pad), Style::default().bg(band)));
-            spans.push(Span::styled(
-                hint.to_string(),
-                Style::default()
-                    .fg(if is_sel {
-                        style::FG_MUTED()
-                    } else {
-                        style::FG_DIM()
-                    })
-                    .bg(band),
-            ));
-        }
-        let spans = crate::widgets::fill_row(spans, text_w as usize, band);
-        frame.render_widget(
-            Paragraph::new(Line::from(spans)),
-            Rect::new(text_x, row_y, text_w, 1),
-        );
-        state
-            .ui
-            .welcome_button_rects
-            .push(Rect::new(text_x, row_y, text_w, 1));
-    }
+        })
+        .collect();
+    pick_list(
+        frame,
+        Rect::new(text_x, menu_y, text_w, menu_rows.min(action_count() as u16)),
+        &state.ui.hits,
+        ListId::Welcome,
+        items,
+        selected,
+    );
 
     // ── Tip line (bottom of the canvas, above the composer) ──
     let tip_y = area.y + area.height.saturating_sub(1);
@@ -223,18 +157,6 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             Rect::new(area.x, tip_y, area.width, 1),
         );
     }
-}
-
-/// Hit-test a cell against the welcome action buttons.
-pub fn hit_test(state: &AppState, x: u16, y: u16) -> Option<usize> {
-    if !state.ui.show_welcome_screen {
-        return None;
-    }
-    state
-        .ui
-        .welcome_button_rects
-        .iter()
-        .position(|r| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height)
 }
 
 #[cfg(test)]
@@ -259,6 +181,12 @@ mod tests {
         s
     }
 
+    fn menu_row(text: &str, needle: &str) -> u16 {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .expect("menu row") as u16
+    }
+
     #[test]
     fn agente_welcome_is_normal_font_box_with_buttons() {
         let mut state = AppState::new(AppConfig::default(), "/tmp/agente".into());
@@ -270,7 +198,7 @@ mod tests {
         assert!(!text.contains("CODE"), "no all-caps CODE");
         assert!(text.contains("New session"));
         assert!(text.contains("Resume session"));
-        assert!(text.contains("ctrl+c"), "key hints on the menu rows");
+        assert!(text.contains("Ctrl+C"), "key hints on the menu rows");
         assert!(
             !text.contains('█') && !text.contains('▀') && !text.contains('▄'),
             "no block letter art"
@@ -280,7 +208,7 @@ mod tests {
             !text.contains("is ready"),
             "the welcome screen must not name the active model"
         );
-        assert_eq!(state.ui.welcome_button_rects.len(), 5);
+        assert!(state.ui.hits.at(10, menu_row(&text, "Quit")).is_some());
     }
 
     #[test]
@@ -292,6 +220,6 @@ mod tests {
         assert!(!text.to_lowercase().contains("connect a provider"));
         assert!(!text.contains("Tip:"));
         assert!(text.contains("New session") && text.contains("Quit"));
-        assert_eq!(state.ui.welcome_button_rects.len(), 5);
+        assert!(state.ui.hits.at(10, menu_row(&text, "Quit")).is_some());
     }
 }

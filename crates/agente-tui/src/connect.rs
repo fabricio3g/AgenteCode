@@ -6,11 +6,12 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::state::{AppState, ConnectScreen};
+use crate::state::{AppState, ConnectScreen, ListId};
 use crate::style::{self, *};
+use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
 use crate::widgets::{
     centered_panel, footer_hints, modal_card, modal_footer, panel_row, s, truncate_cells,
 };
@@ -210,7 +211,7 @@ fn render_provider_list(
 
     // Body row 0 is the gap under the card title.
     if let Some(input_area) = panel_row(body, 1, 1) {
-        render_search_input(frame, input_area, query);
+        search_field(frame, input_area, query, "Search providers");
     }
 
     let Some(list_top) = panel_row(body, 3, 1) else {
@@ -221,43 +222,6 @@ fn render_provider_list(
         ..list_top
     };
 
-    let mut items: Vec<ListItem> = Vec::new();
-    let mut logical_idx = 0usize;
-
-    if !connected.is_empty() {
-        items.push(ListItem::new(Line::from(vec![
-            s(" ", Style::default()),
-            s(
-                "Connected",
-                Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
-            ),
-        ])));
-        for entry in &connected {
-            items.push(provider_row(entry, logical_idx == selected, state));
-            logical_idx += 1;
-        }
-    }
-    if !available.is_empty() {
-        items.push(ListItem::new(Line::from(vec![
-            s(" ", Style::default()),
-            s(
-                "Available",
-                Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
-            ),
-        ])));
-        for entry in &available {
-            items.push(provider_row(entry, logical_idx == selected, state));
-            logical_idx += 1;
-        }
-    }
-
-    let mut list_state = ListState::default();
-    let visual_selected = logical_index_to_visual(&connected, &available, selected);
-    if !items.is_empty() {
-        list_state.select(Some(visual_selected.min(items.len() - 1)));
-    }
-
-    let list = List::new(items);
     if filtered.is_empty() {
         frame.render_widget(
             Paragraph::new(Line::from(vec![
@@ -267,7 +231,26 @@ fn render_provider_list(
             list_area,
         );
     } else {
-        frame.render_stateful_widget(list, list_area, &mut list_state);
+        let mut items = Vec::new();
+        let mut index = 0usize;
+        for (title, section) in [("Connected", &connected), ("Available", &available)] {
+            if section.is_empty() {
+                continue;
+            }
+            items.push(PickItem::Header(title.to_string()));
+            for entry in section.iter() {
+                items.push(provider_item(entry, index == selected, state));
+                index += 1;
+            }
+        }
+        pick_list(
+            frame,
+            list_area,
+            &state.ui.hits,
+            ListId::Connect,
+            items,
+            selected,
+        );
     }
 
     modal_footer(
@@ -275,9 +258,9 @@ fn render_provider_list(
         body,
         footer_hints(
             &[
-                ("↵", "use"),
-                ("^k", "key"),
-                ("del", "disconnect"),
+                ("Enter", "use"),
+                ("Ctrl+K", "key"),
+                ("Del", "disconnect"),
                 ("Esc", "close"),
             ],
             body.width.saturating_sub(2),
@@ -285,99 +268,39 @@ fn render_provider_list(
     );
 }
 
-fn render_search_input(frame: &mut Frame, area: Rect, query: &str) {
-    let line = Line::from(vec![
-        s("▸ ", style::accent()),
-        s(query.to_string(), style::text()),
-        s(
-            "▌",
-            Style::default()
-                .fg(PRIMARY())
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
-}
-
-/// Build a single provider row as a ListItem.
-fn provider_row(entry: &ProviderEntry, is_selected: bool, state: &AppState) -> ListItem<'static> {
+/// `● Name  description ······ badge` — connected providers carry a ✓,
+/// the rest say where their key comes from.
+fn provider_item(entry: &ProviderEntry, is_selected: bool, state: &AppState) -> PickItem {
     let is_connected = state.is_provider_connected(&entry.id);
     let needs_key = !entry.env_key.is_empty();
-
-    let (icon_style, name_style, desc_style, check_style) = if is_selected {
-        (
-            Style::default().fg(PRIMARY()),
-            Style::default().fg(FG()).add_modifier(Modifier::BOLD),
-            Style::default().fg(FG_MUTED()),
-            Style::default().fg(PRIMARY()),
-        )
-    } else if is_connected {
-        (
-            Style::default().fg(SUCCESS()),
-            Style::default().fg(FG()),
-            Style::default().fg(FG_DIM()),
-            Style::default().fg(SUCCESS()),
-        )
+    let icon = if is_connected {
+        s("● ", style::success())
     } else {
-        (
-            Style::default().fg(FG_DIM()),
-            Style::default().fg(FG()),
-            Style::default().fg(FG_DIM()),
-            Style::default().fg(SUCCESS()),
-        )
+        s("○ ", style::dim())
     };
-
-    let icon = if is_connected { "●" } else { "○" };
-
-    // Checkmark for connected providers.
-    let check = if is_connected {
-        s(" ✓", check_style)
-    } else {
-        s("", Style::default())
-    };
-
-    // Badges: env (key from environment), key needed, or nothing when connected.
     let has_env_only = !is_connected
         && needs_key
         && state.provider_has_key(&entry.id)
         && !state.config.config.auth_store.has(&entry.id);
-    let key_indicator = if is_connected {
-        s("", Style::default())
+    let badge = if is_connected {
+        s("✓", style::success())
     } else if has_env_only {
-        s("  env", Style::default().fg(SUCCESS()))
+        s("env", style::success())
     } else if needs_key {
-        s("  key", Style::default().fg(WARNING()))
+        s("key", style::warning())
     } else {
-        s("  local", Style::default().fg(FG_DIM()))
+        s("local", style::dim())
     };
-
-    // Description text (short), from the live catalog when it has this
-    // provider -- 29 of the 43 built-ins had no static blurb at all.
+    // Description from the live catalog when it has this provider -- 29 of
+    // the 43 built-ins had no static blurb at all.
     let description = provider_description(&entry.id, state);
-    let desc_text = if description.is_empty() {
-        String::new()
-    } else {
-        format!("  {description}")
-    };
-
-    let mut spans = vec![
-        s("  ", Style::default()),
-        s(icon, icon_style),
-        s(" ", Style::default()),
-        s(entry.name.clone(), name_style),
-    ];
-
-    if !desc_text.is_empty() && !is_selected {
-        // Keep selected row short so actions stay readable.
-        spans.push(s(desc_text, desc_style));
-    } else if !desc_text.is_empty() {
-        spans.push(s(desc_text, desc_style));
+    let mut lead = vec![icon, s(entry.name.clone(), row_label(is_selected))];
+    if !description.is_empty() {
+        lead.push(s(format!("  {description}"), style::dim()));
     }
-
-    spans.push(check);
-    spans.push(key_indicator);
-
-    ListItem::new(Line::from(spans))
+    // The badge is the row's key fact, so it rides the lead's right edge and
+    // the description is what truncates.
+    PickItem::row_with_trail(lead, vec![badge])
 }
 
 // ── API key input ──────────────────────────────────────────────────────
@@ -415,7 +338,7 @@ fn render_key_input(
         Style::default().fg(FG()).add_modifier(Modifier::BOLD),
     )];
     let description = provider_description(provider, state);
-    if !description.is_empty() && !replace {
+    if !description.is_empty() && !replace && !description.eq_ignore_ascii_case(display_name) {
         title_spans.push(s(
             format!(" · {description}"),
             Style::default().fg(FG_MUTED()),
@@ -444,27 +367,7 @@ fn render_key_input(
     };
 
     let masked_key = "•".repeat(state.config.connect_key_input.chars().count());
-    let key_text = if masked_key.is_empty() {
-        "API key".to_string()
-    } else {
-        truncate_cells(&masked_key, input_area.width.saturating_sub(4) as usize)
-    };
-    let key_style = if state.config.connect_key_input.is_empty() {
-        style::dim()
-    } else {
-        style::text()
-    };
-    let key_line = Line::from(vec![
-        s("▸ ", style::accent()),
-        s(key_text, key_style),
-        s(
-            "▌",
-            Style::default()
-                .fg(PRIMARY())
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(key_line), input_area);
+    search_field(frame, input_area, &masked_key, "Paste API key");
 
     // Error message directly under the input, above the footer.
     if !error.is_empty() {
@@ -486,37 +389,13 @@ fn render_key_input(
         frame,
         body,
         footer_hints(
-            &[("↵", "connect"), ("Esc", "cancel")],
+            &[("Enter", "connect"), ("Esc", "cancel")],
             body.width.saturating_sub(2),
         ),
     );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
-
-/// Map a logical provider index (0-based, headers excluded) to the visual
-/// row index in the flat items list (headers included).
-fn logical_index_to_visual(
-    connected: &[&&ProviderEntry],
-    available: &[&&ProviderEntry],
-    logical: usize,
-) -> usize {
-    let mut visual = 0usize;
-    let mut remaining = logical;
-
-    for section in [connected, available] {
-        if !section.is_empty() {
-            visual += 1; // header
-        }
-        if remaining < section.len() {
-            return visual + remaining;
-        }
-        visual += section.len();
-        remaining -= section.len();
-    }
-
-    visual + remaining
-}
 
 #[cfg(test)]
 mod provider_meta_tests {

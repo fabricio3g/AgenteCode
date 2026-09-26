@@ -6,12 +6,13 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::state::{AppState, DiscoveryStatus, ModelEntry};
+use crate::state::{AppState, DiscoveryStatus, ListId, ModelEntry};
 use crate::style::{self, *};
 use crate::widgets::hints::format_token_count;
+use crate::widgets::pick::{current_mark, pick_list, row_label, search_field, PickItem};
 use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
 
 /// Models matching the free-text query, optionally scoped to one provider.
@@ -170,7 +171,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 Line::from(vec![
                     s("  Press ", Style::default().fg(FG_MUTED())),
                     s(
-                        "^P",
+                        "Ctrl+P",
                         Style::default().fg(PRIMARY()).add_modifier(Modifier::BOLD),
                     ),
                     s(" to open menu → ", Style::default().fg(FG_MUTED())),
@@ -212,7 +213,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                     s("Could not list models", style::text()),
                 ]),
                 Line::from(s(format!("  {error}"), style::dim())),
-                Line::from(s("  /provider  then  ^k  to update key", style::muted())),
+                Line::from(s(
+                    "  /provider  then  Ctrl+K  to update key",
+                    style::muted(),
+                )),
             ]
         } else {
             vec![
@@ -232,9 +236,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         body,
         footer_hints(
             &[
-                ("↑↓", "nav"),
+                ("↑↓", "move"),
                 ("Tab", "provider"),
-                ("^R", "refresh"),
+                ("Ctrl+R", "refresh"),
                 ("Esc", "close"),
             ],
             body.width.saturating_sub(2),
@@ -243,127 +247,60 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 fn render_input(frame: &mut Frame, area: Rect, state: &AppState) {
-    let query = &state.input.model_selector_query;
+    search_field(
+        frame,
+        area,
+        &state.input.model_selector_query,
+        "Filter models",
+    );
 
-    let query_text = if query.is_empty() {
-        "Filter models"
-    } else {
-        query
-    };
-    let query_style = if query.is_empty() {
-        style::dim()
-    } else {
-        style::text()
-    };
-    let mut spans = vec![
-        s("▸ ".to_string(), style::accent()),
-        s(query_text.to_string(), query_style),
-        s(
-            "▌".to_string(),
-            Style::default()
-                .fg(PRIMARY())
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-    ];
-
-    // Provider scope chip, right-aligned. Typing never changes it and cycling
-    // it never changes the query -- they are separate state now.
+    // Provider scope chip, right-aligned on the field. Typing never changes it
+    // and cycling it never changes the query -- they are separate state.
     let chip = match state.input.model_selector_provider.as_deref() {
-        Some(id) => format!("⌥ {}", state.provider_display_name(id)),
-        None => "⌥ all providers".to_string(),
+        Some(id) => format!("⌥ {} ", state.provider_display_name(id)),
+        None => "⌥ all providers ".to_string(),
     };
-    let used: usize = spans
-        .iter()
-        .map(|sp| crate::widgets::display_width(sp.content.as_ref()))
-        .sum();
-    let chip_w = crate::widgets::display_width(&chip);
-    let width = area.width as usize;
-    if used + chip_w + 2 <= width {
-        spans.push(s(" ".repeat(width - used - chip_w), Style::default()));
-        spans.push(s(chip, style::muted()));
+    let chip_w = crate::widgets::display_width(&chip) as u16;
+    let query_w = crate::widgets::display_width(&state.input.model_selector_query) as u16;
+    if query_w + chip_w + 6 <= area.width {
+        frame.render_widget(
+            Paragraph::new(s(chip, style::muted().bg(BG_ELEMENT()))),
+            Rect::new(area.right() - chip_w, area.y, chip_w, 1),
+        );
     }
-
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn render_models(frame: &mut Frame, area: Rect, state: &AppState, models: &[&ModelEntry]) {
-    let mut current_provider = String::new();
-    let mut items: Vec<ListItem> = Vec::new();
-    let mut model_to_visual: Vec<usize> = Vec::new();
-
-    for (actual_index, entry) in models.iter().enumerate() {
-        // Provider header
+    let selected = state.input.model_selector_selected;
+    let mut items = Vec::new();
+    let mut current_provider = "";
+    for (index, entry) in models.iter().enumerate() {
         if entry.provider != current_provider {
-            current_provider = entry.provider.clone();
-            let provider_name = state.get_provider_display_name(&entry.provider);
-            items.push(ListItem::new(Line::from(vec![
-                s("  ".to_string(), Style::default()),
-                s(
-                    provider_name,
-                    Style::default().fg(FG_MUTED()).add_modifier(Modifier::BOLD),
-                ),
-            ])));
+            current_provider = &entry.provider;
+            items.push(PickItem::Header(
+                state.get_provider_display_name(&entry.provider),
+            ));
         }
-
-        // Track visual index for this model
-        model_to_visual.push(items.len());
-
-        let is_selected = actual_index == state.input.model_selector_selected;
         let is_current = entry.model_id == state.config.current_model
             && entry.provider == state.config.current_provider;
-
-        let (prefix_style, text_style) = if is_selected {
-            (
-                Style::default().fg(PRIMARY()),
-                Style::default().fg(FG()).add_modifier(Modifier::BOLD),
-            )
-        } else if is_current {
-            (
-                Style::default().fg(SUCCESS()),
-                Style::default().fg(SUCCESS()),
-            )
-        } else {
-            (Style::default().fg(FG_DIM()), Style::default().fg(FG()))
-        };
-
-        let prefix = if is_selected {
-            "▸ "
-        } else if is_current {
-            "◈ "
-        } else {
-            "  "
-        };
-
-        let mut row = vec![s(prefix.to_string(), prefix_style)];
-        row.push(s(entry.display_name.clone(), text_style));
-
-        // Right-aligned context window (e.g. "200k"), when known.
-        if let Some(window) = entry.context_window {
-            let window_str = format_token_count(window as usize);
-            let name_len = entry.display_name.chars().count();
-            let available = area.width.saturating_sub(2) as usize;
-            let padding = available.saturating_sub(2 + name_len + 1 + window_str.len());
-            if padding > 1 {
-                row.push(s(" ".repeat(padding), Style::default()));
-                row.push(s(
-                    window_str,
-                    Style::default().fg(if is_selected { PRIMARY() } else { FG_DIM() }),
-                ));
-            }
-        }
-
-        items.push(ListItem::new(Line::from(row)));
+        let window = entry
+            .context_window
+            .map(|w| vec![s(format_token_count(w as usize), style::dim())])
+            .unwrap_or_default();
+        items.push(PickItem::row_with_trail(
+            vec![
+                current_mark(is_current),
+                s(entry.display_name.clone(), row_label(index == selected)),
+            ],
+            window,
+        ));
     }
-
-    let mut list_state = ListState::default();
-    if !models.is_empty() && !model_to_visual.is_empty() {
-        let sel = state
-            .input
-            .model_selector_selected
-            .min(model_to_visual.len() - 1);
-        list_state.select(Some(model_to_visual[sel]));
-    }
-
-    let list = List::new(items);
-    frame.render_stateful_widget(list, area, &mut list_state);
+    pick_list(
+        frame,
+        area,
+        &state.ui.hits,
+        ListId::ModelSelector,
+        items,
+        selected,
+    );
 }

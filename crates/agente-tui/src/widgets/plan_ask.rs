@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use super::{modal_card, modal_footer, truncate_cells};
+use super::{footer_hints, modal_card, modal_footer, truncate_cells};
 use crate::state::{AppState, PlanReviewPhase};
 use crate::style;
 use crate::style::*;
@@ -23,7 +23,10 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let width = area.width.saturating_sub(4).min(72);
-    let height = area.height.saturating_sub(2).min(19);
+    // Hug the content: border(2) + gap + "you said" + gap + one row per
+    // question + the active step's options/answer/gap + gap + footer.
+    let content_rows = 1 + 1 + 1 + ask.questions.len() as u16 + 3 + 1 + 1;
+    let height = (content_rows + 2).min(area.height.saturating_sub(2));
     let panel = super::centered_panel(area, width, height);
 
     let (step_i, step_n) = ask.step_display();
@@ -45,7 +48,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let content_x = body.x + 1;
     let content_w = body.width.saturating_sub(2);
 
-    let mut y = body.y;
+    let mut y = body.y + 1;
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("You said: ", Style::default().fg(FG_DIM()).bg(BG_PANEL())),
@@ -112,9 +115,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
                 for (oi, opt) in q.options.iter().enumerate() {
                     let sel = q.selected == Some(oi);
                     let st = if sel {
-                        Style::default().fg(BG()).bg(PRIMARY())
+                        style::accent()
+                            .bg(super::pick::RowState::Selected.bg())
+                            .add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(FG_DIM()).bg(BG_PANEL())
+                        Style::default().fg(FG_MUTED()).bg(BG_PANEL())
                     };
                     spans.push(Span::styled(format!(" {opt} "), st));
                 }
@@ -126,32 +131,16 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
             }
             // Always show free-text escape hatch (even when options exist)
             if y < max_y {
-                let label = if q.options.is_empty() {
-                    "Type your answer: "
+                let placeholder = if q.options.is_empty() {
+                    "Type your answer"
                 } else {
-                    "Or type (if none fit): "
+                    "Or type your own answer"
                 };
-                let (value, dstyle) = if q.free_text.is_empty() {
-                    (
-                        "…if none of the options fit".to_string(),
-                        Style::default().fg(FG_DIM()).bg(BG_PANEL()),
-                    )
-                } else {
-                    (
-                        truncate_cells(
-                            &q.free_text,
-                            content_w.saturating_sub(2 + label.chars().count() as u16) as usize,
-                        ),
-                        Style::default().fg(FG()).bg(BG_PANEL()),
-                    )
-                };
-                frame.render_widget(
-                    Paragraph::new(Line::from(vec![
-                        Span::styled("  ", Style::default().bg(BG_PANEL())),
-                        Span::styled(label, Style::default().fg(FG_MUTED()).bg(BG_PANEL())),
-                        Span::styled(value, dstyle),
-                    ])),
-                    Rect::new(content_x, y, content_w, 1),
+                super::pick::search_field(
+                    frame,
+                    Rect::new(content_x + 2, y, content_w.saturating_sub(2), 1),
+                    &q.free_text,
+                    placeholder,
                 );
                 y = y.saturating_add(1);
             }
@@ -160,31 +149,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         }
     }
 
-    let on_last = ask.at_last_step();
-    let enter_label = if on_last { " submit " } else { " next " };
-    let reask = format!("Re-ask ({}/3)", ask.reask_count.min(3));
+    let reask = format!("re-ask {}/3", ask.reask_count.min(3));
     modal_footer(
         frame,
         body,
-        vec![
-            Span::styled(
-                " Enter ",
-                Style::default()
-                    .fg(BG())
-                    .bg(PRIMARY())
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(enter_label, Style::default().fg(FG()).bg(BG_PANEL())),
-            Span::styled(" ←→ ", Style::default().fg(FG_DIM()).bg(BG_PANEL())),
-            Span::styled("options  ", Style::default().fg(FG_DIM()).bg(BG_PANEL())),
-            Span::styled("type  ", Style::default().fg(FG_MUTED()).bg(BG_PANEL())),
-            Span::styled("freely  ", Style::default().fg(FG_MUTED()).bg(BG_PANEL())),
-            Span::styled(" ^Q ", Style::default().fg(FG()).bg(BG_ELEMENT())),
-            Span::styled(
-                format!(" {reask} "),
-                Style::default().fg(FG()).bg(BG_PANEL()),
-            ),
-            Span::styled(" Esc", Style::default().fg(FG_DIM()).bg(BG_PANEL())),
-        ],
+        footer_hints(
+            &[
+                ("Enter", if ask.at_last_step() { "submit" } else { "next" }),
+                ("←→", "options"),
+                ("Ctrl+Q", &reask),
+                ("Esc", "close"),
+            ],
+            body.width.saturating_sub(2),
+        ),
     );
 }

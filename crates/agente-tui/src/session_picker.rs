@@ -1,12 +1,13 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ratatui::text::Span;
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::state::AppState;
+use crate::state::{AppState, ListId};
 use crate::style::{self, *};
-use crate::widgets::{centered_panel, modal_card, modal_footer, panel_row, truncate_cells};
+use crate::widgets::pick::{pick_list, row_label, search_field, PickItem};
+use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row};
 use agente_core::session;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -42,29 +43,50 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         )],
     );
 
-    // Folder/search input at the top of the card, list below it, and the
-    // navigation hints in the footer row.
-    let Some(folder_area) = panel_row(body, 0, 1) else {
+    // Same rhythm as every modal: gap, search field, gap, list, gap, footer.
+    let Some(folder_area) = panel_row(body, 1, 1) else {
         return;
     };
-    let Some(list_top) = panel_row(body, 1, 1) else {
+    let Some(list_top) = panel_row(body, 3, 1) else {
         return;
     };
     let list_area = Rect {
-        height: body.height.saturating_sub(2),
+        height: body.height.saturating_sub(5),
         ..list_top
     };
 
-    let footer_text = if state.picker.session_picker_browsing {
+    let footer: &[(&str, &str)] = if state.picker.session_picker_browsing {
         if state.picker.session_picker_project_select {
-            "↑↓ navigate · ↵ open dir · Backspace up · Tab select project · Esc close"
+            &[
+                ("↑↓", "move"),
+                ("Enter", "open dir"),
+                ("Backspace", "up"),
+                ("Tab", "select project"),
+                ("Esc", "close"),
+            ]
         } else {
-            "↑↓ navigate · ↵ open dir · Backspace up · Tab/Esc select folder"
+            &[
+                ("↑↓", "move"),
+                ("Enter", "open dir"),
+                ("Backspace", "up"),
+                ("Tab/Esc", "select folder"),
+            ]
         }
     } else if state.picker.session_picker_project_select {
-        "↑↓ navigate · ↵ use folder/session · Tab edit folder · Esc close"
+        &[
+            ("↑↓", "move"),
+            ("Enter", "use folder/session"),
+            ("Tab", "edit folder"),
+            ("Esc", "close"),
+        ]
     } else {
-        "↑↓ navigate · ↵ select · Del delete · Tab switch focus · Esc close"
+        &[
+            ("↑↓", "move"),
+            ("Enter", "select"),
+            ("Del", "delete"),
+            ("Tab", "switch focus"),
+            ("Esc", "close"),
+        ]
     };
 
     if state.picker.session_picker_browsing {
@@ -76,210 +98,130 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     modal_footer(
         frame,
         body,
-        vec![Span::styled(
-            truncate_cells(footer_text, (body.width as usize).saturating_sub(2)),
-            style::dim(),
-        )],
+        footer_hints(footer, body.width.saturating_sub(2)),
     );
 }
 
 fn render_folder_browser(frame: &mut Frame, folder_area: Rect, list_area: Rect, state: &AppState) {
-    let folder_line = Line::from(vec![
-        Span::styled("▸ ", style::input_prompt()),
-        Span::styled(
-            state.picker.session_picker_browse_path.clone(),
-            style::highlight(),
-        ),
-        Span::styled(
-            "▌",
-            Style::default()
-                .fg(PRIMARY())
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-    ]);
-    frame.render_widget(Paragraph::new(folder_line), folder_area);
+    search_field(
+        frame,
+        folder_area,
+        &state.picker.session_picker_browse_path,
+        "Folder path",
+    );
 
     let entries = list_directory(&state.picker.session_picker_browse_path);
-    let mut items: Vec<ListItem> = Vec::new();
-
-    for (i, entry) in entries.iter().enumerate() {
-        let is_selected = i == state.picker.session_picker_browse_selected;
-        let s = if is_selected {
-            style::selected()
-        } else {
-            Style::default().fg(FG())
-        };
-
-        let (icon, icon_style) = if entry.is_dir {
-            ("/ ", Style::default().fg(PRIMARY()))
-        } else {
-            ("· ", Style::default().fg(FG_DIM()))
-        };
-
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(
-                if is_selected { "▸ " } else { "  " }.to_string(),
-                Style::default().fg(PRIMARY()),
-            ),
-            Span::styled(icon, icon_style),
-            Span::styled(entry.name.clone(), s),
-        ])));
-    }
-
     if entries.is_empty() {
-        items.push(ListItem::new(Line::from(Span::styled(
-            "  (empty directory)",
-            style::dim(),
-        ))));
+        frame.render_widget(
+            Paragraph::new(Span::styled("  (empty directory)", style::dim()))
+                .style(Style::default().bg(BG_PANEL())),
+            list_area,
+        );
+        return;
     }
-
-    let mut list_state = ListState::default();
-    if !entries.is_empty() {
-        list_state.select(Some(
-            state
-                .picker
-                .session_picker_browse_selected
-                .min(entries.len() - 1),
-        ));
-    }
-
-    let list = List::new(items).style(Style::default().bg(BG_PANEL()));
-    frame.render_stateful_widget(list, list_area, &mut list_state);
+    let selected = state.picker.session_picker_browse_selected;
+    let items = entries
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            let icon = if entry.is_dir {
+                Span::styled("/ ", style::accent())
+            } else {
+                Span::styled("· ", style::dim())
+            };
+            PickItem::row(vec![
+                icon,
+                Span::styled(entry.name.clone(), row_label(i == selected)),
+            ])
+        })
+        .collect();
+    pick_list(
+        frame,
+        list_area,
+        &state.ui.hits,
+        ListId::FolderBrowser,
+        items,
+        selected,
+    );
 }
 
 fn render_session_list(frame: &mut Frame, folder_area: Rect, list_area: Rect, state: &AppState) {
-    let folder_line = if state.picker.session_picker_folder_active {
-        Line::from(vec![
-            Span::styled("▸ ", style::input_prompt()),
-            Span::styled(
-                state.picker.session_picker_folder_input.clone(),
-                style::highlight(),
-            ),
-            Span::styled(
-                "▌",
-                Style::default()
-                    .fg(PRIMARY())
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ])
+    let picker = &state.picker;
+    if picker.session_picker_folder_active {
+        search_field(
+            frame,
+            folder_area,
+            &picker.session_picker_folder_input,
+            "Folder",
+        );
     } else {
-        let query = &state.picker.session_picker_query;
-        let text = if query.is_empty() {
-            "Search sessions"
-        } else {
-            query
-        };
-        let text_style = if query.is_empty() {
-            style::dim()
-        } else {
-            style::text()
-        };
-        Line::from(vec![
-            Span::styled("⌕ ", style::input_prompt()),
-            Span::styled(text.to_string(), text_style),
-            Span::styled(
-                "▌",
-                Style::default()
-                    .fg(PRIMARY())
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-        ])
-    };
-    frame.render_widget(Paragraph::new(folder_line), folder_area);
+        search_field(
+            frame,
+            folder_area,
+            &picker.session_picker_query,
+            "Search sessions",
+        );
+    }
 
     // Read from state, not the filesystem: this runs on every paint while the
     // picker is open, and re-parsing the whole session index per frame also
     // made the harness scenario render whatever sessions happened to exist on
     // the machine running the tests. `refresh_recent_sessions` keeps it current.
-    let sessions = &state.ui.recent_sessions;
-    let folder = state.picker.session_picker_folder_input.trim();
-    let query = state.picker.session_picker_query.to_lowercase();
+    let folder = picker.session_picker_folder_input.trim();
+    let query = picker.session_picker_query.to_lowercase();
+    let filtered: Vec<&session::SessionMeta> = state
+        .ui
+        .recent_sessions
+        .iter()
+        .filter(|meta| session_matches(meta, folder, &query))
+        .collect();
+    let selected = picker.session_picker_selected;
 
-    let mut items: Vec<ListItem> = Vec::new();
-
-    if state.picker.session_picker_confirm_delete && state.picker.session_picker_selected > 0 {
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(
-                "Delete this session? Del=confirm  Esc/Up/Down=cancel",
-                Style::default().fg(ERROR()).add_modifier(Modifier::BOLD),
-            ),
-        ])));
+    // Row 0 is the "new" action (or the delete confirmation); sessions follow.
+    let first = if picker.session_picker_confirm_delete && selected > 0 {
+        Span::styled(
+            "Delete this session? Del=confirm  Esc/Up/Down=cancel",
+            style::error(),
+        )
+    } else if picker.session_picker_project_select {
+        Span::styled(
+            "+ Use This Folder",
+            style::success().add_modifier(Modifier::BOLD),
+        )
     } else {
-        items.push(ListItem::new(Line::from(Span::styled(
-            if state.picker.session_picker_project_select {
-                "  + Use This Folder"
-            } else {
-                "  + New Session"
-            },
-            Style::default().fg(SUCCESS()).add_modifier(Modifier::BOLD),
-        ))));
+        Span::styled(
+            "+ New Session",
+            style::success().add_modifier(Modifier::BOLD),
+        )
+    };
+    let mut items = vec![PickItem::row(vec![first])];
+    if filtered.is_empty() && (!folder.is_empty() || !query.is_empty()) {
+        items.push(PickItem::Header("No matching sessions".into()));
     }
-
-    let mut filtered_sessions: Vec<&session::SessionMeta> = Vec::new();
-    for s in sessions {
-        if session_matches(s, folder, &query) {
-            filtered_sessions.push(s);
-        }
-    }
-
-    if filtered_sessions.is_empty() && (!folder.is_empty() || !query.is_empty()) {
-        items.push(ListItem::new(Line::from(Span::styled(
-            "  No matching sessions",
-            style::dim(),
-        ))));
-    }
-
-    for (i, s) in filtered_sessions.iter().enumerate() {
-        let idx = i + 1;
-        let is_selected = idx == state.picker.session_picker_selected;
-
-        let time_ago = session::format_time_ago(&s.last_active);
-        let msg_count = if s.message_count == 1 {
-            "1 msg".to_string()
-        } else {
-            format!("{} msgs", s.message_count)
+    for (i, meta) in filtered.iter().enumerate() {
+        let title = crate::widgets::truncate_cells(&meta.label(), 32);
+        let msgs = match meta.message_count {
+            1 => "1 msg".to_string(),
+            n => format!("{n} msgs"),
         };
-
-        let title = s.label();
-        let path_short = shorten_path(&s.project_dir);
-        let available = (list_area.width as usize).saturating_sub(2);
-        let title = crate::widgets::truncate_cells(&title, available.min(32));
-        let metadata = format!(" · {path_short} · {msg_count} · {time_ago}");
-        let metadata = crate::widgets::truncate_cells(
-            &metadata,
-            available.saturating_sub(title.chars().count()),
+        let details = format!(
+            " · {} · {msgs} · {}",
+            shorten_path(&meta.project_dir),
+            session::format_time_ago(&meta.last_active)
         );
-        let row_bg = if is_selected { BG_ACTIVE() } else { BG_PANEL() };
-        let rail = if is_selected { "│ " } else { "  " };
-        let rail_style = Style::default()
-            .fg(if is_selected { BORDER_ACTIVE() } else { row_bg })
-            .bg(row_bg);
-        let title_style = Style::default()
-            .fg(FG())
-            .bg(row_bg)
-            .add_modifier(if is_selected {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            });
-        let meta_style = Style::default().fg(FG_DIM()).bg(row_bg);
-
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(rail, rail_style),
-            Span::styled(title, title_style),
-            Span::styled(metadata, meta_style),
-        ])));
+        items.push(PickItem::row(vec![
+            Span::styled(title, row_label(i + 1 == selected)),
+            Span::styled(details, style::dim()),
+        ]));
     }
-
-    let mut list_state = ListState::default();
-    let total = items.len();
-    if total > 0 {
-        list_state.select(Some(state.picker.session_picker_selected.min(total - 1)));
-    }
-
-    let list = List::new(items).style(Style::default().bg(BG_PANEL()));
-    frame.render_stateful_widget(list, list_area, &mut list_state);
+    pick_list(
+        frame,
+        list_area,
+        &state.ui.hits,
+        ListId::SessionList,
+        items,
+        selected,
+    );
 }
 
 fn session_matches(meta: &session::SessionMeta, folder: &str, query: &str) -> bool {

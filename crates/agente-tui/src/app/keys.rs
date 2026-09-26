@@ -590,7 +590,6 @@ impl App {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                self.state.ui.chat_auto_scroll = false;
                 self.state.scroll_up(1);
             }
             KeyEvent {
@@ -598,8 +597,7 @@ impl App {
                 modifiers: KeyModifiers::CONTROL,
                 ..
             } => {
-                self.state.ui.chat_auto_scroll = false;
-                self.state.scroll_up(5);
+                self.state.glide_by(-5);
             }
             KeyEvent {
                 code: KeyCode::Up,
@@ -620,7 +618,7 @@ impl App {
                 modifiers: KeyModifiers::CONTROL,
                 ..
             } => {
-                self.state.scroll_down(5);
+                self.state.glide_by(5);
             }
             KeyEvent {
                 code: KeyCode::Down,
@@ -635,8 +633,7 @@ impl App {
                 ..
             } => {
                 let page = self.state.ui.chat_visible_height.saturating_sub(2);
-                self.state.ui.chat_auto_scroll = false;
-                self.state.scroll_up(page);
+                self.state.glide_by(-(page as isize));
             }
             KeyEvent {
                 code: KeyCode::PageDown,
@@ -644,7 +641,7 @@ impl App {
                 ..
             } => {
                 let page = self.state.ui.chat_visible_height.saturating_sub(2);
-                self.state.scroll_down(page);
+                self.state.glide_by(page as isize);
             }
             KeyEvent {
                 code: KeyCode::Char('g'),
@@ -658,8 +655,7 @@ impl App {
                 modifiers: KeyModifiers::SHIFT,
                 ..
             } => {
-                self.state.ui.chat_auto_scroll = false;
-                self.state.ui.chat_scroll = 0;
+                self.state.ui.scroll_to_top();
             }
             KeyEvent {
                 code: KeyCode::End,
@@ -788,7 +784,9 @@ impl App {
                                 let on_group_header = self
                                     .state
                                     .ui
-                                    .find_click_region(self.state.ui.mouse_y)
+                                    .find_click_region(
+                                        self.state.ui.mouse_pos.map_or(0, |(_, y)| y),
+                                    )
                                     .is_some_and(|r| {
                                         r.kind == ClickKind::ToolGroup && r.entry_id == hovered
                                     });

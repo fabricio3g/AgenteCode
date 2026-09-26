@@ -12,6 +12,7 @@
 mod agent;
 mod chat_summary;
 mod config;
+mod hits;
 mod input;
 mod picker;
 mod plan_review;
@@ -26,6 +27,7 @@ pub use agent::{
     SubagentUiState,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
+pub use hits::{HitMap, HitTarget, ListId};
 pub use input::{paste_wants_chip, InputState, PastedBlock};
 pub use picker::SessionPickerState;
 pub use plan_review::{
@@ -35,8 +37,8 @@ pub use plan_review::{
 pub use session::SessionState;
 pub use todo::TodoState;
 pub use ui::{
-    ChatCacheKey, ChatFrameSnapshot, ChatPlainLine, ChatSelection, Fold, RenderedChatBlock,
-    StreamMarkdownCache, SubagentDetailTab, UiState,
+    is_hover_target, ChatCacheKey, ChatFrameSnapshot, ChatPlainLine, ChatSelection, Fold,
+    RenderedChatBlock, StreamMarkdownCache, SubagentDetailTab, UiState,
 };
 
 use agente_core::cancellation::AbortController;
@@ -640,6 +642,11 @@ impl AppState {
     /// Scroll chat down
     pub fn scroll_down(&mut self, amount: usize) {
         self.ui.scroll_down(amount);
+    }
+
+    /// Eased chat scroll by `delta` rows (negative = up).
+    pub fn glide_by(&mut self, delta: isize) {
+        self.ui.glide_by(delta);
     }
 
     /// Scroll to bottom of chat

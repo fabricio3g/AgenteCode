@@ -2,20 +2,22 @@
 //! The main agent remains the only author of delegated instructions.
 
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 use super::markdown::{markdown_display_lines, wrap_line};
-use crate::state::{AppState, SubagentDetailTab, SubagentUiState};
+use super::pick::RowState;
+use crate::state::{AppState, HitTarget, SubagentDetailTab, SubagentUiState};
 use crate::style::*;
 use crate::widgets::{
-    centered_panel, footer_hints, modal_footer, panel_bg, panel_row, s, truncate_cells,
+    centered_panel, footer_hints, modal_card_tinted, modal_footer, panel_row, s, truncate_cells,
     SubagentStatusKind,
 };
 
-/// No borders or separate composer: inspect the handoff and return to main.
+/// Same card chrome as every modal: status + type on the border, the task,
+/// tabs, the scrollable view, and the shared footer hints.
 pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     state.ui.subagent_detail_area = None;
     let Some(id) = state.ui.subagent_detail_id.clone() else {
@@ -26,10 +28,9 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     }
     let panel = centered_panel(
         area,
-        area.width.saturating_sub(4).clamp(1, 104),
-        area.height.saturating_sub(6).clamp(1, 28),
+        area.width.saturating_sub(8).clamp(1, 96),
+        area.height.saturating_sub(4).clamp(1, 30),
     );
-    panel_bg(frame, panel);
     let snapshot = state.subagent_registry.get(&id);
     let live = state.agent.subagents.get(&id);
     let anchor = state
@@ -57,9 +58,33 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
         } else {
             SubagentStatusKind::Completed
         });
-    let width = panel.width.saturating_sub(2) as usize;
+    let model = snapshot
+        .as_ref()
+        .map(|s| s.model.as_str())
+        .or_else(|| live.map(|s| s.model.as_str()))
+        .unwrap_or("");
+    let count = live.map(|s| s.tool_rows.len()).unwrap_or(0);
+    let mut meta = format!(
+        " · {} · {count} tool{}",
+        kind.label(),
+        if count == 1 { "" } else { "s" }
+    );
+    if !model.is_empty() {
+        meta.push_str(&format!(" · {model}"));
+    }
+    let body = modal_card_tinted(
+        frame,
+        panel,
+        vec![
+            s(kind.glyph(), Style::default().fg(kind.color())),
+            s(format!(" {sub_type}"), bold()),
+            s(meta, dim()),
+        ],
+        kind.border_color(),
+    );
+    let width = body.width.saturating_sub(2) as usize;
     let paint_row = |frame: &mut Frame, y, line: Line<'static>| {
-        if let Some(row) = panel_row(panel, y, 1) {
+        if let Some(row) = panel_row(body, y, 1) {
             frame.render_widget(
                 Paragraph::new(line).style(Style::default().bg(BG_PANEL())),
                 row,
@@ -68,62 +93,49 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     };
     paint_row(
         frame,
-        0,
-        Line::from(vec![
-            s("‹ main", muted()),
-            s(" / ", dim()),
-            s(sub_type.to_string(), bold()),
-        ]),
+        1,
+        Line::from(s(truncate_cells(description, width), text())),
     );
-    if panel.height < 8 {
+    if body.height < 8 {
         return;
     }
-    paint_row(
-        frame,
-        1,
-        Line::from(s(truncate_cells(description, width), bold())),
-    );
-    let model = snapshot
-        .as_ref()
-        .map(|s| s.model.as_str())
-        .or_else(|| live.map(|s| s.model.as_str()))
-        .unwrap_or("");
-    let count = live.map(|s| s.tool_rows.len()).unwrap_or(0);
-    let mut meta = format!("{} {} · {count} tools", kind.glyph(), kind.label());
-    if !model.is_empty() {
-        meta.push_str(&format!(" · {model}"));
-    }
-    paint_row(
-        frame,
-        2,
-        Line::from(s(truncate_cells(&meta, width), muted())),
-    );
 
+    // Tabs are real buttons: click selects, hover lifts, keys still work.
     let diff_open = state.ui.subagent_diff.is_some();
     let tabs = [
         (SubagentDetailTab::Activity, "1 Activity"),
         (SubagentDetailTab::Handoff, "2 Handoff"),
         (SubagentDetailTab::Result, "3 Result"),
     ];
+    let tab_row_y = body.y + 3;
+    let mut tab_x = body.x + 1;
     let mut tab_spans = Vec::new();
     for (tab, label) in tabs {
         let selected = tab == state.ui.subagent_detail_tab && !diff_open;
+        let target = HitTarget::DetailTab(tab);
+        let hovered = state.ui.hovered_hit.as_ref() == Some(&target);
+        let cell = format!(" {label} ");
+        let width = super::display_width(&cell) as u16;
+        if body.height > 3 && tab_x + width <= body.right() {
+            state
+                .ui
+                .hits
+                .push(Rect::new(tab_x, tab_row_y, width, 1), target);
+        }
+        tab_x += width;
+        let row = RowState::from_flags(selected, hovered);
         tab_spans.push(s(
-            format!(" {label} "),
-            if selected {
-                bold().bg(BG_ELEMENT()).add_modifier(Modifier::UNDERLINED)
-            } else {
-                muted()
+            cell,
+            match row {
+                RowState::Selected => bold().bg(row.bg()),
+                RowState::Hovered => text().bg(row.bg()),
+                RowState::Idle => muted(),
             },
         ));
     }
     if diff_open {
-        tab_spans.push(s(
-            " d Diff ",
-            bold().bg(BG_ELEMENT()).add_modifier(Modifier::UNDERLINED),
-        ));
+        tab_spans.push(s(" d Diff ", bold().bg(RowState::Selected.bg())));
     }
-    paint_row(frame, 4, Line::from(tab_spans));
 
     let content = if let Some(diff) = &state.ui.subagent_diff {
         match diff {
@@ -148,8 +160,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     } else {
         match state.ui.subagent_detail_tab {
             SubagentDetailTab::Handoff => {
-                let mut lines = prose("Main → child · explicit instructions only", width);
-                lines.push(Line::default());
+                let mut lines = Vec::new();
                 if let Some(prompt) = snapshot
                     .as_ref()
                     .map(|s| s.prompt.as_str())
@@ -186,7 +197,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             }
         }
     };
-    let visible = panel.height.saturating_sub(8) as usize;
+    // Body rows: gap, task, gap, tabs, gap, content…, gap, footer.
+    let visible = body.height.saturating_sub(7) as usize;
     let max_scroll = content.len().saturating_sub(visible);
     state.ui.subagent_detail_max_scroll = max_scroll;
     let scroll = if state.ui.subagent_detail_follow {
@@ -196,30 +208,37 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     };
     state.ui.subagent_detail_scroll = scroll;
     state.ui.subagent_detail_area = Some(Rect::new(
-        panel.x + 1,
-        panel.y + 6,
+        body.x + 1,
+        body.y + 5,
         width as u16,
         visible as u16,
     ));
     for (i, line) in content.into_iter().skip(scroll).take(visible).enumerate() {
-        paint_row(frame, 6 + i as u16, line);
+        paint_row(frame, 5 + i as u16, line);
     }
+
+    // Tabs on the left, scroll position (only when it scrolls) on the right.
     let position = if state.ui.subagent_detail_follow {
-        "following · Home to read from top".to_string()
+        "following".to_string()
     } else if max_scroll > 0 {
         format!(
-            "{}–{} / {} · End to follow",
+            "{}–{} of {}",
             scroll + 1,
             (scroll + visible).min(max_scroll + visible),
             max_scroll + visible
         )
     } else {
-        "Main supplies context · child reports back".to_string()
+        String::new()
     };
     paint_row(
         frame,
-        panel.height - 2,
-        Line::from(s(truncate_cells(&position, width), dim())),
+        3,
+        Line::from(super::justify(
+            tab_spans,
+            vec![s(position, dim())],
+            width,
+            BG_PANEL(),
+        )),
     );
     let mut hints = vec![
         (
@@ -227,7 +246,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
             if state.input.show_subagents {
                 "back"
             } else {
-                "main"
+                "close"
             },
         ),
         ("Tab/1–3", "view"),
@@ -240,8 +259,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     }
     modal_footer(
         frame,
-        panel,
-        footer_hints(&hints, panel.width.saturating_sub(2)),
+        body,
+        footer_hints(&hints, body.width.saturating_sub(2)),
     );
 }
 
@@ -270,21 +289,23 @@ fn activity_lines(
         } else {
             SubagentStatusKind::Completed
         };
+        // `✓ List crates/core/src` — glyph carries the status, the verb
+        // reads as the action, the subject stays quiet. One row per call.
         let (verb, subject) =
             super::chat::tool_header_parts(&row.name, Some(&row.args), width.saturating_sub(3));
-        let label = format!(
-            "{} Run {} {}",
-            row_kind.glyph(),
-            verb.as_deref().unwrap_or(""),
-            subject
-        );
-        lines.extend(wrap_line(
-            &Line::from(s(
-                label.trim_end().to_string(),
-                Style::default().fg(row_kind.color()),
-            )),
-            width.max(1),
-        ));
+        let verb = verb.unwrap_or_else(|| row.name.clone());
+        let verb_style = if row_kind == SubagentStatusKind::Failed {
+            Style::default().fg(ERROR())
+        } else {
+            text()
+        };
+        let budget = width.saturating_sub(3 + super::display_width(&verb));
+        lines.push(Line::from(vec![
+            s(row_kind.glyph(), Style::default().fg(row_kind.color())),
+            s(" ", Style::default()),
+            s(verb, verb_style),
+            s(format!(" {}", truncate_cells(&subject, budget)), muted()),
+        ]));
         if show_output {
             if let Some(output) = &row.result {
                 for text in output.lines() {
@@ -364,13 +385,37 @@ mod tests {
     }
 
     #[test]
-    fn detail_shows_breadcrumb_activity_and_navigation() {
+    fn detail_shows_title_activity_and_navigation() {
         let text = draw(&mut state_with_subagent(), 80, 24);
         for expected in [
-            "‹ main", "explore", "Read", "checkout", "Handoff", "Result", "Esc",
+            "explore",
+            "Read",
+            "checkout",
+            "Handoff",
+            "Result",
+            "Esc close",
         ] {
             assert!(text.contains(expected), "missing {expected}: {text}");
         }
+    }
+
+    #[test]
+    fn tabs_are_hit_targets() {
+        let mut state = state_with_subagent();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &mut state)).unwrap();
+        let buf = terminal.backend().buffer();
+        let (x, y) = (0..24)
+            .find_map(|y| {
+                let row: String = (0..80).map(|x| buf[(x, y)].symbol()).collect();
+                row.find("2 Handoff")
+                    .map(|byte| (row[..byte].chars().count() as u16 + 2, y))
+            })
+            .expect("tab row painted");
+        assert_eq!(
+            state.ui.hits.at(x, y),
+            Some(HitTarget::DetailTab(SubagentDetailTab::Handoff))
+        );
     }
 
     #[test]

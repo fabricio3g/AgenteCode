@@ -10,8 +10,9 @@ use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-use crate::state::AppState;
+use crate::state::{AppState, ListId};
 use crate::style::{self, *};
+use crate::widgets::pick::{current_mark, pick_list, row_label, PickItem};
 use crate::widgets::{centered_panel, footer_hints, modal_card, modal_footer, panel_row, s};
 
 /// One-line explanation of what each level costs the model.
@@ -101,51 +102,40 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         );
     } else {
         let active = state.agent.thinking_level.as_str();
-        let selected = state
-            .input
-            .thinking_selector_selected
-            .min(levels.len().saturating_sub(1));
-        let visible = (list_area.height as usize).max(1).min(levels.len());
-        let start = selected
-            .saturating_sub(visible.saturating_sub(1))
-            .min(levels.len().saturating_sub(visible));
-        let lines: Vec<Line<'static>> = levels
+        let selected = state.input.thinking_selector_selected;
+        let items = levels
             .iter()
             .enumerate()
-            .skip(start)
-            .take(visible)
             .map(|(i, level)| {
-                let is_selected = i == selected;
-                let is_active = level == active;
-                let marker = if is_selected { "›" } else { " " };
-                let check = if is_active { "◈" } else { " " };
-                let label_style = if is_selected {
-                    Style::default().fg(FG()).add_modifier(Modifier::BOLD)
-                } else if is_active {
-                    Style::default().fg(PRIMARY())
-                } else {
-                    Style::default().fg(FG_MUTED())
-                };
-                let mut spans = vec![
-                    s(format!(" {marker} "), Style::default().fg(PRIMARY())),
-                    s(format!("{check} "), Style::default().fg(SUCCESS())),
-                    s(level.clone(), label_style),
-                ];
                 let hint = level_hint(level);
-                if !hint.is_empty() {
-                    spans.push(s(format!("  {hint}"), style::dim()));
-                }
-                Line::from(spans)
+                PickItem::row_with_trail(
+                    vec![
+                        current_mark(level == active),
+                        s(level.clone(), row_label(i == selected)),
+                    ],
+                    if hint.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![s(hint, style::dim())]
+                    },
+                )
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines), list_area);
+        pick_list(
+            frame,
+            list_area,
+            &state.ui.hits,
+            ListId::ThinkingSelector,
+            items,
+            selected,
+        );
     }
 
     modal_footer(
         frame,
         body,
         footer_hints(
-            &[("↑↓", "nav"), ("Enter", "apply"), ("Esc", "close")],
+            &[("↑↓", "move"), ("Enter", "apply"), ("Esc", "close")],
             body.width.saturating_sub(2),
         ),
     );

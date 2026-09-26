@@ -1,10 +1,11 @@
 //! Bottom hint bar — static key hints, no live state.
 //!
 //! ```text
-//!  Shift+Tab:mode │ Ctrl+P:commands │ Ctrl+C:quit │ F1:help
+//!  Shift+Tab mode · Ctrl+P commands · Ctrl+C quit · F1 help
 //! ```
 //!
-//! Keys render bright, actions dim. Live state (approval, retry, stalled,
+//! Keys render bright, actions dim; the row hides while the composer has
+//! text. Live state (approval, retry, stalled,
 //! error) intentionally does not appear here: approvals have their floating
 //! card, retry/stalled surface in the streaming footer, errors render as chat
 //! entries and tint the composer border.
@@ -16,7 +17,7 @@ use ratatui::Frame;
 
 use crate::state::AppState;
 use crate::style::*;
-use crate::widgets::truncate_cells;
+use crate::widgets::footer_hints;
 
 const HINTS: &[(&str, &str)] = &[
     ("Shift+Tab", "mode"),
@@ -68,49 +69,25 @@ pub(crate) fn format_token_count(tokens: usize) -> String {
     }
 }
 
-pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, _state: &AppState) {
+pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, state: &AppState) {
     if area.height == 0 || area.width == 0 {
         return;
     }
-
-    let separator = Span::styled(" │ ", Style::default().fg(BORDER_ACTIVE()));
-    let mut hints: Vec<Span<'static>> = Vec::new();
-    for (i, (key, action)) in HINTS.iter().enumerate() {
-        if i > 0 {
-            hints.push(separator.clone());
-        }
-        hints.push(Span::styled(key.to_string(), hint_key()));
-        hints.push(Span::styled(format!(":{action}"), hint_action()));
+    let canvas = Style::default().bg(BG());
+    // Typing is when the hints matter least: the row goes quiet until the
+    // composer is empty again.
+    if !state.input.input_text.is_empty() {
+        frame.render_widget(Paragraph::new("").style(canvas), area);
+        return;
     }
 
-    // Drop whole hints from the end until the row fits — a clipped `help` is
-    // noise, a missing one is just less info.
-    let width = |spans: &[Span<'static>]| -> usize {
-        spans
-            .iter()
-            .map(|sp| crate::widgets::display_width(&sp.content))
-            .sum()
-    };
+    // Same `key action · key action` grammar as every modal footer; middle
+    // hints drop whole when narrow, the trailing `F1 help` stays.
     let max = area.width as usize;
-    // Each hint after the first is three spans: separator, key, action.
-    while width(&hints) + 1 > max && hints.len() > 2 {
-        hints.truncate(hints.len() - 3);
-    }
-    if width(&hints) + 1 > max {
-        // Even the first hint does not fit — clip it rather than overflow.
-        let full = format!("{}:{}", HINTS[0].0, HINTS[0].1);
-        hints.clear();
-        hints.push(Span::styled(
-            truncate_cells(&full, max.saturating_sub(1).max(1)),
-            hint_key(),
-        ));
-    }
+    let mut spans = vec![Span::styled(" ", canvas)];
+    spans.extend(footer_hints(HINTS, area.width.saturating_sub(1)));
 
-    let mut spans = Vec::with_capacity(hints.len() + 3);
-    spans.push(Span::styled(" ", Style::default().bg(BG())));
-    spans.extend(hints);
-
-    // Right-aligned version watermark (the "Beta" corner of the reference).
+    // Right-aligned version watermark.
     let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
     let used: usize = spans
         .iter()
@@ -118,15 +95,11 @@ pub fn render(frame: &mut Frame, area: ratatui::layout::Rect, _state: &AppState)
         .sum();
     let vw = crate::widgets::display_width(&version);
     if used + vw + 1 < max {
-        let pad = max - used - vw;
-        spans.push(Span::styled(" ".repeat(pad), Style::default().bg(BG())));
+        spans.push(Span::styled(" ".repeat(max - used - vw), canvas));
         spans.push(Span::styled(version, Style::default().fg(FG_DIM())));
     }
 
-    frame.render_widget(
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(BG())),
-        area,
-    );
+    frame.render_widget(Paragraph::new(Line::from(spans)).style(canvas), area);
 }
 
 #[cfg(test)]
@@ -192,12 +165,12 @@ mod tests {
         let text: String = (0..80)
             .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
             .collect();
-        assert!(text.contains("Shift+Tab:mode"), "got: {text}");
-        assert!(text.contains("F1:help"), "got: {text}");
+        assert!(text.contains("Shift+Tab mode"), "got: {text}");
+        assert!(text.contains("F1 help"), "got: {text}");
     }
 
     #[test]
-    fn hints_drop_from_the_end_when_narrow() {
+    fn hints_drop_middle_segments_when_narrow() {
         let state = AppState::new(AppConfig::default(), "/tmp/hints-test".to_string());
         let backend = TestBackend::new(24, 1);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -205,7 +178,19 @@ mod tests {
         let text: String = (0..24)
             .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
             .collect();
-        assert!(text.contains("Shift+Tab"), "got: {text}");
-        assert!(!text.contains("F1:help"), "got: {text}");
+        assert!(!text.contains("Ctrl+P"), "got: {text}");
+        assert!(text.contains("F1 help"), "escape hatch stays: {text}");
+    }
+
+    #[test]
+    fn hints_hide_while_typing() {
+        let mut state = AppState::new(AppConfig::default(), "/tmp/hints-test".to_string());
+        state.input.input_text = "draft".into();
+        let mut terminal = Terminal::new(TestBackend::new(80, 1)).unwrap();
+        terminal.draw(|f| render(f, f.area(), &state)).unwrap();
+        let text: String = (0..80)
+            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+            .collect();
+        assert!(text.trim().is_empty(), "got: {text}");
     }
 }

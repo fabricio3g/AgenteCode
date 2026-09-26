@@ -5,6 +5,7 @@ pub mod diff_view;
 pub mod hints;
 pub mod input;
 pub mod markdown;
+pub mod pick;
 pub mod plan_ask;
 pub mod plan_review;
 pub mod subagent_detail;
@@ -83,7 +84,7 @@ impl SubagentStatusKind {
         }
     }
 
-    /// Single-width marker. Reference subagent card: `✓ Explore Task – desc`,
+    /// Single-width marker. Subagent card: `✓ Explore  desc ··· completed`,
     /// running on a spinner-ish glyph, queued on an ellipsis.
     pub fn glyph(self) -> &'static str {
         match self {
@@ -102,6 +103,17 @@ impl SubagentStatusKind {
             Self::Failed => crate::style::ERROR(),
             Self::Cancelled => crate::style::FG_DIM(),
         }
+    }
+
+    /// Edge color for cards about this subagent (detail modal border).
+    pub fn border_color(self) -> ratatui::style::Color {
+        let tint = match self {
+            Self::Running => crate::style::SECONDARY(),
+            Self::Completed => crate::style::SUCCESS(),
+            Self::Failed => crate::style::ERROR(),
+            Self::Queued | Self::Cancelled => crate::style::FG_DIM(),
+        };
+        crate::style::blend_colors(tint, crate::style::BORDER_RULE(), 0.3)
     }
 
     /// Word used by the popup and detail header.
@@ -309,26 +321,43 @@ fn truncate_spans(spans: Vec<Span<'static>>, budget: usize) -> Vec<Span<'static>
 /// [`modal_footer`]. Panels too small for a border fall back to the
 /// borderless [`panel_bg`] + [`panel_header`] sandwich.
 pub fn modal_card(frame: &mut ratatui::Frame, panel: Rect, title: Vec<Span<'static>>) -> Rect {
+    modal_card_tinted(frame, panel, title, crate::style::BORDER_RULE())
+}
+
+/// [`modal_card`] whose border carries a status color (running subagent,
+/// destructive approval, …). The tint is blended toward the quiet rule tone
+/// so it reads as a colored edge, never a bright frame.
+pub fn modal_card_tinted(
+    frame: &mut ratatui::Frame,
+    panel: Rect,
+    title: Vec<Span<'static>>,
+    border: ratatui::style::Color,
+) -> Rect {
     use ratatui::widgets::{Block, BorderType, Borders};
     if panel.width < 10 || panel.height < 4 {
         panel_bg(frame, panel);
         return panel_header(frame, panel, title);
     }
-    let mut titled = vec![s(
-        " ",
-        ratatui::style::Style::default().bg(crate::style::BG_PANEL()),
-    )];
-    titled.extend(title);
-    titled.push(s(
-        " ",
-        ratatui::style::Style::default().bg(crate::style::BG_PANEL()),
-    ));
+    let pad = || {
+        s(
+            " ",
+            ratatui::style::Style::default().bg(crate::style::BG_PANEL()),
+        )
+    };
+    let titled = if title.is_empty() {
+        Vec::new()
+    } else {
+        std::iter::once(pad())
+            .chain(title)
+            .chain(std::iter::once(pad()))
+            .collect()
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(
             ratatui::style::Style::default()
-                .fg(crate::style::BORDER_RULE())
+                .fg(border)
                 .bg(crate::style::BG_PANEL()),
         )
         .style(ratatui::style::Style::default().bg(crate::style::BG_PANEL()))
@@ -627,6 +656,35 @@ pub(crate) fn display_width(s: &str) -> usize {
     s.chars().map(|c| if is_wide_char(c) { 2 } else { 1 }).sum()
 }
 
+/// `lead ········ trail`, exactly `width` cells on `bg`.
+///
+/// The trail keeps a two-cell gap and one cell of right padding. The lead
+/// truncates to make room, down to 12 cells; past that the trail is dropped,
+/// so a label is never squeezed out by its metadata.
+pub fn justify(
+    mut lead: Vec<Span<'static>>,
+    trail: Vec<Span<'static>>,
+    width: usize,
+    bg: ratatui::style::Color,
+) -> Vec<Span<'static>> {
+    const MIN_LEAD: usize = 12;
+    let cells = |spans: &[Span<'static>]| -> usize {
+        spans.iter().map(|sp| display_width(&sp.content)).sum()
+    };
+    let lead_w = cells(&lead);
+    let trail_w = cells(&trail);
+    let lead_budget = width.saturating_sub(trail_w + 3);
+    if trail_w > 0 && lead_budget >= lead_w.min(MIN_LEAD) {
+        if lead_w > lead_budget {
+            lead = fill_row(lead, lead_budget, bg);
+        }
+        let pad = width - lead_w.min(lead_budget) - trail_w - 1;
+        lead.push(s(" ".repeat(pad), ratatui::style::Style::default().bg(bg)));
+        lead.extend(trail);
+    }
+    fill_row(lead, width, bg)
+}
+
 /// Pad `spans` with background spaces out to `width` cells.
 ///
 /// Paragraph only paints graphemes, so a row that stops mid-line leaves the
@@ -745,6 +803,21 @@ pub(crate) fn themed_blank_row(width: usize) -> ratatui::text::Line<'static> {
 
 /// Tool icon lookup populated from the actual ToolRegistry.
 /// Maps tool name -> icon character. Shared by chat cards and the activity strip.
+/// Worktree-relative form of a path inside `.agente/worktrees/<name>/`, so a
+/// subagent's activity reads `crates/foo.rs` instead of a 90-column prefix.
+/// The worktree root itself becomes `.`; other paths pass through.
+pub(crate) fn short_path(path: &str) -> &str {
+    const MARK: &str = "/.agente/worktrees/";
+    let Some(at) = path.find(MARK) else {
+        return path;
+    };
+    let rest = &path[at + MARK.len()..];
+    match rest.find('/') {
+        Some(slash) if slash + 1 < rest.len() => &rest[slash + 1..],
+        _ => ".",
+    }
+}
+
 /// Presentation metadata for a tool card. ONE table keyed first by tool
 /// name (the 14 built-ins, preserving their exact look) and then by
 /// [`agente_core::tools::ToolKind`] for everything else — a new core tool
@@ -1010,7 +1083,15 @@ pub(crate) fn tool_presentation(tool: &str) -> ToolPresentation {
             "result",
             Some(("query", SubjectStyle::Quoted)),
         );
-        put("task", "◆", Some("Task"), None, "Task", "task", None);
+        put(
+            "task",
+            "◆",
+            Some("Task"),
+            None,
+            "Task",
+            "task",
+            Some(("description", SubjectStyle::Pattern)),
+        );
         put(
             "present_plan",
             "◆",
@@ -1049,6 +1130,18 @@ pub(crate) fn tool_icon_for(tool: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_path_strips_worktree_prefixes_only() {
+        let wt = "/home/me/proj/.agente/worktrees/explore-554b35d2";
+        assert_eq!(
+            short_path(&format!("{wt}/crates/core/src")),
+            "crates/core/src"
+        );
+        assert_eq!(short_path(wt), ".");
+        assert_eq!(short_path(&format!("{wt}/")), ".");
+        assert_eq!(short_path("src/main.rs"), "src/main.rs");
+    }
 
     /// True for code points terminals render two columns wide.
     fn is_wide(c: char) -> bool {
