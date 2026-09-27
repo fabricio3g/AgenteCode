@@ -168,3 +168,33 @@ export function migrateBrowserProfile(appDataDir: string, userDataDir: string): 
   }
   return log;
 }
+
+const KEYRING_FILE = 'keyring.json';
+
+/**
+ * The app name the OS keyring knows this install's saved secrets by.
+ *
+ * On Linux, Electron keeps the key that encrypts saved API keys in the
+ * system keyring under the app's name, which changed with the rename
+ * (`chatealm` in development, `Flaxeo Chat` when packaged). Secrets saved
+ * before the rename only decrypt under the old name, so an install that
+ * brought old secrets along keeps using it; a fresh install uses the current
+ * name (null). Decided once and recorded in the data folder.
+ */
+export function keyringAppName(root: string, legacyName: string): string | null {
+  const file = path.join(root, KEYRING_FILE);
+  try {
+    const recorded = JSON.parse(fs.readFileSync(file, 'utf8')) as { name?: unknown };
+    return typeof recorded.name === 'string' && recorded.name ? recorded.name : null;
+  } catch {
+    // Not decided yet.
+  }
+  const name = exists(path.join(root, 'secrets.json')) ? legacyName : null;
+  try {
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ name }, null, 2));
+  } catch {
+    // Unwritable data folder: decide again next start.
+  }
+  return name;
+}

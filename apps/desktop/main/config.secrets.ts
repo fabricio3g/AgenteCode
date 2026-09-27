@@ -137,6 +137,29 @@ export class SecretsManager {
   }
 
   /**
+   * A secret stored encrypted (Chromium's `v10`/`v11` blob) that did not
+   * decrypt: the OS keyring no longer holds its key under this app's name.
+   * Such a value must never be loaded as a key, or the next save would store
+   * the still-encrypted text, encrypted again, and the real key would be lost.
+   */
+  private isUndecryptable(stored: string, decrypted: string): boolean {
+    if (decrypted !== stored || !this.canEncrypt()) return false;
+    try {
+      return /^v1\d/.test(Buffer.from(stored, 'base64').subarray(0, 3).toString('latin1'));
+    } catch {
+      return false;
+    }
+  }
+
+  /** Decrypt a stored secret, or undefined when it cannot be read (see isUndecryptable). */
+  private readableSecret(stored: string, key: string): string | undefined {
+    const decrypted = this.decryptSecret(stored);
+    if (!this.isUndecryptable(stored, decrypted)) return decrypted;
+    console.warn(`[secrets] ${key} could not be decrypted; left untouched on disk`);
+    return undefined;
+  }
+
+  /**
    * Reads secrets from the secrets file.
    * @returns Secrets object or empty object if file doesn't exist
    */
@@ -159,26 +182,19 @@ export class SecretsManager {
    */
   saveApiKeysToSecrets(cfg: AppConfig): void {
     const secrets = this.readSecrets();
-    
-    // Handle LLM providers
-    const providers = cfg?.llm?.providers ?? {};
-    for (const [name, provider] of Object.entries(providers)) {
-      if (provider && typeof provider === 'object' && provider.api_key) {
-        secrets[`llm.providers.${name}.api_key`] = this.encryptSecret(provider.api_key);
-        provider.api_key = '';
-      }
-    }
-
-    // Handle search providers
-    const searchProviders = cfg?.search?.providers ?? {};
-    for (const [name, provider] of Object.entries(searchProviders)) {
-      if (provider && typeof provider === 'object' && provider.api_key) {
-        secrets[`search.providers.${name}.api_key`] = this.encryptSecret(provider.api_key);
-        provider.api_key = '';
-      }
-    }
-
+    this.extractSection(secrets, 'llm.providers', cfg?.llm?.providers);
+    this.extractSection(secrets, 'search.providers', cfg?.search?.providers);
     this.writeSecrets(secrets);
+  }
+
+  /** Move each provider's key from its config entry into `secrets`, encrypted. */
+  private extractSection(secrets: Record<string, string>, prefix: string, providers: Record<string, unknown> | undefined): void {
+    for (const [name, provider] of Object.entries(providers ?? {})) {
+      const entry = provider as { api_key?: string } | null;
+      if (!entry || typeof entry !== 'object' || !entry.api_key) continue;
+      secrets[`${prefix}.${name}.api_key`] = this.encryptSecret(entry.api_key);
+      entry.api_key = '';
+    }
   }
 
   /**
@@ -188,26 +204,19 @@ export class SecretsManager {
    */
   injectApiKeysFromSecrets(cfg: AppConfig): AppConfig {
     const secrets = this.readSecrets();
-    
-    // Handle LLM providers
-    const providers = cfg?.llm?.providers ?? {};
-    for (const name of Object.keys(providers)) {
-      const secretKey = `llm.providers.${name}.api_key`;
-      if (secrets[secretKey] && providers[name]) {
-        providers[name].api_key = this.decryptSecret(secrets[secretKey]);
-      }
-    }
-
-    // Handle search providers
-    const searchProviders = cfg?.search?.providers ?? {};
-    for (const name of Object.keys(searchProviders)) {
-      const secretKey = `search.providers.${name}.api_key`;
-      if (secrets[secretKey] && searchProviders[name] && typeof searchProviders[name] === 'object') {
-        searchProviders[name].api_key = this.decryptSecret(secrets[secretKey]);
-      }
-    }
-
+    this.injectSection(secrets, 'llm.providers', cfg?.llm?.providers);
+    this.injectSection(secrets, 'search.providers', cfg?.search?.providers);
     return cfg;
+  }
+
+  /** Put each provider's readable stored key into its config entry. */
+  private injectSection(secrets: Record<string, string>, prefix: string, providers: Record<string, unknown> | undefined): void {
+    for (const [name, provider] of Object.entries(providers ?? {})) {
+      const secretKey = `${prefix}.${name}.api_key`;
+      if (!secrets[secretKey] || !provider || typeof provider !== 'object') continue;
+      const value = this.readableSecret(secrets[secretKey], secretKey);
+      if (value !== undefined) (provider as { api_key?: string }).api_key = value;
+    }
   }
 
   /**
@@ -219,7 +228,7 @@ export class SecretsManager {
     const secrets = this.readSecrets();
     const ciphertext = secrets[key];
     if (!ciphertext) return undefined;
-    return this.decryptSecret(ciphertext);
+    return this.readableSecret(ciphertext, key);
   }
 
   /**

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { migrateBrowserProfile, migrateDataFolder, mapDataPath, DATA_FOLDER_NAME } from '../../main/data-folder.ts';
+import { keyringAppName, migrateBrowserProfile, migrateDataFolder, mapDataPath, DATA_FOLDER_NAME } from '../../main/data-folder.ts';
 
 function tree(root, files) {
   for (const [rel, body] of Object.entries(files)) {
@@ -87,4 +87,18 @@ test('brings the old browser profile into the new userData folder once', () => {
   assert.ok(fs.existsSync(path.join(userData, 'Preferences')));
   assert.equal(fs.readFileSync(path.join(userData, 'Local State'), 'utf8'), '{}');
   assert.deepEqual(migrateBrowserProfile(appData, userData), []);
+});
+
+test('an install that brought saved secrets keeps the old keyring name, once decided', () => {
+  const withSecrets = fs.mkdtempSync(path.join(os.tmpdir(), 'flx-'));
+  tree(withSecrets, { 'secrets.json': '{}' });
+  assert.equal(keyringAppName(withSecrets, 'chatealm'), 'chatealm');
+  // Recorded: later starts agree even if the legacy name passed changes.
+  assert.equal(keyringAppName(withSecrets, 'other'), 'chatealm');
+
+  const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'flx-'));
+  assert.equal(keyringAppName(fresh, 'chatealm'), null);
+  // Secrets saved later by the new name stay under the new name.
+  tree(fresh, { 'secrets.json': '{}' });
+  assert.equal(keyringAppName(fresh, 'chatealm'), null);
 });

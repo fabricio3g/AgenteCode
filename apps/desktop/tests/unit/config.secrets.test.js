@@ -576,3 +576,39 @@ describe('save/inject round-trip', () => {
     assert.strictEqual(loadedConfig.llm.providers.openai.api_key, 'plaintext-key');
   });
 });
+// ── A key the keyring can no longer decrypt ────────────────────────────────
+
+describe('SecretsManager with an undecryptable secret', () => {
+  beforeEach(createTempDir);
+  afterEach(cleanupTempDir);
+
+  /** Encryption available, but the keyring key for old blobs is gone. */
+  class LostKeyCrypto {
+    isEncryptionAvailable() { return true; }
+    encrypt(plaintext) { return Buffer.from(`v11:new:${plaintext}`).toString('base64'); }
+    decrypt(ciphertext) {
+      const text = Buffer.from(ciphertext, 'base64').toString();
+      return text.startsWith('v11:new:') ? text.slice('v11:new:'.length) : ciphertext;
+    }
+  }
+
+  it('does not load it, so a later save cannot corrupt it', () => {
+    const manager = new SecretsManager(new LostKeyCrypto(), getTestPaths());
+    const oldBlob = Buffer.from('v11 encrypted under the old app name').toString('base64');
+    manager.writeSecrets({
+      'llm.providers.openrouter.api_key': oldBlob,
+      'llm.providers.deepseek.api_key': manager.encryptSecret('sk-readable')
+    });
+    const cfg = { llm: { providers: { openrouter: { api_key: '' }, deepseek: { api_key: '' } } } };
+
+    manager.injectApiKeysFromSecrets(cfg);
+    assert.strictEqual(cfg.llm.providers.openrouter.api_key, '', 'the undecryptable key is not loaded');
+    assert.strictEqual(cfg.llm.providers.deepseek.api_key, 'sk-readable');
+    assert.strictEqual(manager.getSecret('llm.providers.openrouter.api_key'), undefined);
+
+    manager.saveApiKeysToSecrets(cfg);
+    const saved = manager.readSecrets();
+    assert.strictEqual(saved['llm.providers.openrouter.api_key'], oldBlob, 'left untouched on disk');
+    assert.strictEqual(manager.decryptSecret(saved['llm.providers.deepseek.api_key']), 'sk-readable');
+  });
+});
