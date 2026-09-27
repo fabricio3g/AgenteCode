@@ -450,6 +450,26 @@ async fn openrouter_claude_routes_get_explicit_breakpoints() {
     );
 }
 
+/// BYOK: `cost` is OpenRouter's fee; the provider bills the rest, reported
+/// as `cost_details.upstream_inference_cost`. The spend is their sum.
+#[tokio::test]
+async fn openrouter_byok_cost_adds_the_upstream_charge() {
+    let (_, _, _, result) = request_for(
+        "openrouter",
+        ApiFormat::OpenAI,
+        vec![
+            json!({"choices":[{"delta":{"content":"ok"}}]}),
+            json!({"choices":[{"delta":{},"finish_reason":"stop"}],
+               "usage":{"prompt_tokens":1200,"completion_tokens":40,"cost":0.0001,
+                        "cost_details":{"upstream_inference_cost":0.0019}}}),
+        ],
+    )
+    .await;
+    let usage = result.expect("stream completes");
+    let cost = usage.cost_usd.expect("reported");
+    assert!((cost - 0.002).abs() < 1e-12, "{cost}");
+}
+
 #[tokio::test]
 async fn openrouter_reported_cost_reaches_usage() {
     let (_, body, _, result) = request_for(

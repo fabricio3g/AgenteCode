@@ -167,8 +167,16 @@ pub struct AppConfig {
     pub editor: Option<String>,
     #[serde(default)]
     pub auto_approve: AutoApproveConfig,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::mcp::lenient_server_map")]
     pub mcp: HashMap<String, McpConfig>,
+    /// Project `.mcp.json` servers the user allowed to run, as
+    /// [`crate::mcp::approval_key`]s (`<project>::<server>`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approved_mcp_servers: Vec<String>,
+    /// Media kinds opened or attached without asking (`image`, `audio`,
+    /// `video`). Everything else asks first (`/settings`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allow_media: Vec<agente_protocol::AttachmentKind>,
     /// Persistent agent mode (Plan / Build). Used to restore the mode on next launch.
     #[serde(default)]
     pub default_mode: Option<String>,
@@ -1008,6 +1016,8 @@ impl Default for AppConfig {
             smart_compaction: false,
             max_parallel_subagents: None,
             subagent_models: HashMap::new(),
+            approved_mcp_servers: Vec::new(),
+            allow_media: Vec::new(),
             max_iterations: None,
             default_thinking_level: None,
             discovered_models: HashMap::new(),
@@ -1429,6 +1439,14 @@ impl AppConfig {
         }
         // Per-type entries: the workspace wins for the types it names.
         self.subagent_models.extend(other.subagent_models);
+        if !other.allow_media.is_empty() {
+            self.allow_media = other.allow_media;
+        }
+        for key in other.approved_mcp_servers {
+            if !self.approved_mcp_servers.contains(&key) {
+                self.approved_mcp_servers.push(key);
+            }
+        }
         self.auto_approve = other.auto_approve;
         self
     }
@@ -1645,6 +1663,8 @@ impl AppConfig {
             smart_compaction: self.smart_compaction,
             max_parallel_subagents: self.max_parallel_subagents,
             subagent_models: self.subagent_models.clone(),
+            approved_mcp_servers: self.approved_mcp_servers.clone(),
+            allow_media: self.allow_media.clone(),
             default_thinking_level: self.default_thinking_level.clone(),
             discovered_models: self.discovered_models.clone(),
             mcp: self.mcp.clone(),

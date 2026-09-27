@@ -85,6 +85,10 @@ impl Provider for OpenAIProvider {
                     "content": m.content,
                 });
 
+                if m.role == Role::User && !m.attachments.is_empty() {
+                    obj["content"] = serde_json::Value::Array(chat_content_parts(m, model));
+                }
+
                 if let Some(ref tool_calls) = m.tool_calls {
                     obj["tool_calls"] = serde_json::json!(tool_calls);
                 }
@@ -426,7 +430,19 @@ impl Provider for OpenAIProvider {
                 // Hits/writes under every dialect (DeepSeek reports
                 // `prompt_cache_hit_tokens`, not `prompt_tokens_details`).
                 // OpenRouter bills the call itself: `usage.cost` in USD.
-                usage.cost_usd = u.get("cost").and_then(|v| v.as_f64());
+                // With your own provider key (BYOK) `cost` is only
+                // OpenRouter's fee; the provider's charge is reported in
+                // `cost_details.upstream_inference_cost`. Both are paid.
+                let upstream = u
+                    .get("cost_details")
+                    .and_then(|d| d.get("upstream_inference_cost"))
+                    .and_then(|v| v.as_f64())
+                    .filter(|v| v.is_finite() && *v > 0.0)
+                    .unwrap_or(0.0);
+                usage.cost_usd = u
+                    .get("cost")
+                    .and_then(|v| v.as_f64())
+                    .map(|cost| cost + upstream);
                 let (read, write) = super::cache::openai_usage_cache(&json["usage"]);
                 usage.cache_read_tokens = read;
                 usage.cache_creation_tokens = write;
@@ -620,6 +636,10 @@ impl OpenAIProvider {
                     known.cost = cost;
                 }
             }
+            if let Some(modalities) = live_input_modalities(raw) {
+                known.capabilities.vision = modalities.iter().any(|m| m == "image");
+                known.capabilities.input_modalities = modalities;
+            }
             return known;
         }
 
@@ -632,6 +652,10 @@ impl OpenAIProvider {
 
         let mut capabilities = inferred_service_model_capabilities(id);
         capabilities.reasoning = live_reasoning.is_some();
+        if let Some(modalities) = live_input_modalities(raw) {
+            capabilities.vision = modalities.iter().any(|m| m == "image");
+            capabilities.input_modalities = modalities;
+        }
 
         ModelInfo {
             api: super::ModelApi::default(),
@@ -665,6 +689,57 @@ impl OpenAIProvider {
 /// Per-million prices from a live `/models` entry. OpenRouter publishes USD
 /// **per token** as strings (`"pricing": {"prompt": "0.000003", …}`); the
 /// catalog convention is per million tokens.
+/// A user message with media as OpenAI chat content parts: the text, then
+/// `image_url` / `input_audio` / `video_url` / `file` parts (data URLs). Kinds
+/// the model does not accept become a text note.
+fn chat_content_parts(message: &Message, model: &ModelInfo) -> Vec<serde_json::Value> {
+    use crate::media::{AttachmentKind, Encoded};
+    let mut parts = Vec::new();
+    if !message.content.is_empty() {
+        parts.push(serde_json::json!({"type": "text", "text": message.content}));
+    }
+    for encoded in crate::media::encode_for(model, &message.attachments) {
+        match encoded {
+            Encoded::Skipped(note) => parts.push(serde_json::json!({"type": "text", "text": note})),
+            Encoded::Data { attachment, base64 } => {
+                let data_url = format!("data:{};base64,{base64}", attachment.mime);
+                parts.push(match attachment.kind {
+                    AttachmentKind::Image => serde_json::json!({
+                        "type": "image_url", "image_url": {"url": data_url}
+                    }),
+                    AttachmentKind::Audio => serde_json::json!({
+                        "type": "input_audio",
+                        "input_audio": {"data": base64, "format": crate::media::audio_format(&attachment.mime)}
+                    }),
+                    AttachmentKind::Video => serde_json::json!({
+                        "type": "video_url", "video_url": {"url": data_url}
+                    }),
+                    AttachmentKind::Pdf => serde_json::json!({
+                        "type": "file",
+                        "file": {"filename": attachment.name, "file_data": data_url}
+                    }),
+                });
+            }
+        }
+    }
+    parts
+}
+
+/// OpenRouter `/models`: `architecture.input_modalities` (`text`, `image`,
+/// `file`, `audio`, `video`).
+fn live_input_modalities(raw: &serde_json::Value) -> Option<Vec<String>> {
+    let list = raw
+        .get("architecture")
+        .and_then(|a| a.get("input_modalities"))
+        .and_then(|m| m.as_array())?;
+    let modalities: Vec<String> = list
+        .iter()
+        .filter_map(|m| m.as_str())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    (!modalities.is_empty()).then_some(modalities)
+}
+
 fn live_pricing(raw: &serde_json::Value) -> Option<ModelCost> {
     let pricing = raw.get("pricing")?;
     let rate = |key: &str| -> f64 {
@@ -683,6 +758,7 @@ fn live_pricing(raw: &serde_json::Value) -> Option<ModelCost> {
         output: rate("completion"),
         cache_read: rate("input_cache_read"),
         cache_write: rate("input_cache_write"),
+        tiers: Vec::new(),
     };
     cost.is_priced().then_some(cost)
 }
@@ -983,5 +1059,45 @@ mod discovery_tests {
         assert!(registry
             .get_model("openrouter", "vendor/live-reasoner")
             .is_some());
+    }
+
+    #[test]
+    fn media_travels_as_chat_content_parts() {
+        use crate::media::tests::{attachment, test_model};
+        use crate::media::AttachmentKind;
+        let dir = tempfile::tempdir().unwrap();
+        let mut message = crate::types::Message::user("what is in these?");
+        message.attachments = vec![
+            attachment(dir.path(), "shot.png", AttachmentKind::Image, "image/png"),
+            attachment(dir.path(), "talk.wav", AttachmentKind::Audio, "audio/wav"),
+            attachment(dir.path(), "demo.mp4", AttachmentKind::Video, "video/mp4"),
+            attachment(
+                dir.path(),
+                "spec.pdf",
+                AttachmentKind::Pdf,
+                "application/pdf",
+            ),
+        ];
+        let mut model = test_model();
+        model.capabilities.input_modalities = ["text", "image", "audio", "file"]
+            .map(String::from)
+            .to_vec();
+        let parts = super::chat_content_parts(&message, &model);
+        let kinds: Vec<&str> = parts.iter().map(|p| p["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["text", "image_url", "input_audio", "text", "file"]);
+        assert!(parts[1]["image_url"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert_eq!(parts[2]["input_audio"]["format"], "wav");
+        assert!(
+            parts[3]["text"]
+                .as_str()
+                .unwrap()
+                .contains("does not accept video"),
+            "the video becomes a note: {}",
+            parts[3]
+        );
+        assert_eq!(parts[4]["file"]["filename"], "spec.pdf");
     }
 }

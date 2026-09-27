@@ -79,6 +79,15 @@ pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     if size.width == 0 || size.height == 0 {
         return;
     }
+    // Session tabs take the top row once two or more are open.
+    let size = if state.ui.tab_strip.visible() && size.height > 8 {
+        let [strip, rest] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(size);
+        widgets::tabs::render(frame, strip, &state.ui);
+        rest
+    } else {
+        size
+    };
 
     use crate::state::PlanReviewPhase;
 
@@ -90,11 +99,11 @@ pub(crate) fn render_app(frame: &mut ratatui::Frame, state: &mut AppState) {
     let mut input_height = if hide_composer {
         0
     } else {
-        widgets::input::desired_height(
+        (widgets::input::desired_height(
             &state.input.input_text,
             size.width,
             state.agent.message_queue.len(),
-        )
+        ) + u16::from(!state.input.attachments.is_empty()))
         .max(widgets::input::min_height())
     };
     // Layout chrome: chat fills the middle, an activity strip
@@ -299,6 +308,11 @@ fn render_overlays(
             crate::subagent_models::render(frame, content, state)
         }
         crate::state::ModalOwner::Settings => crate::settings::render(frame, content, state),
+        crate::state::ModalOwner::Skills => crate::skills::render(frame, content, state),
+        crate::state::ModalOwner::Mcp => crate::mcp_servers::render(frame, content, state),
+        crate::state::ModalOwner::MediaConsent => {
+            crate::media_consent::render(frame, content, state)
+        }
         crate::state::ModalOwner::MessageActions => {
             crate::message_actions::render(frame, content, state)
         }

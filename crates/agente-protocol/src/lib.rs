@@ -90,6 +90,55 @@ pub struct Message {
     /// Ordered provider-native blocks needed for lossless tool/reasoning replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuation: Option<ProviderContinuation>,
+    /// Media sent with a user message (images, audio, video, PDFs). Each is
+    /// a stored copy on disk; providers encode it at request time, so saved
+    /// sessions carry references, not bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+}
+
+/// What kind of media an attachment is, which decides how each provider
+/// format carries it and which models accept it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AttachmentKind {
+    Image,
+    Audio,
+    Video,
+    Pdf,
+}
+
+impl AttachmentKind {
+    /// models.dev / OpenRouter modality name.
+    pub fn modality(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Audio => "audio",
+            Self::Video => "video",
+            Self::Pdf => "pdf",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Audio => "audio",
+            Self::Video => "video",
+            Self::Pdf => "PDF",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attachment {
+    pub kind: AttachmentKind,
+    /// MIME type (`image/png`, `audio/mpeg`, `video/mp4`, `application/pdf`).
+    pub mime: String,
+    /// Original file name, for display.
+    pub name: String,
+    /// Absolute path of the stored copy.
+    pub path: String,
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +164,7 @@ impl Message {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 }

@@ -22,6 +22,7 @@ pub(crate) mod loop_detection;
 mod progress;
 mod retry;
 
+pub use config::UserInbox;
 pub use discovery::spawn_discovery_task;
 pub use loop_::spawn_chat_task;
 

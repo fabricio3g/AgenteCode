@@ -39,6 +39,7 @@ impl App {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             });
         }
         // Project instructions (AGENTS.md) as a user-message reminder —
@@ -100,7 +101,7 @@ impl App {
         // Bump task id and create a one-shot cancellation controller for this
         // turn. Explicitly abort the previous controller before replacing it;
         // dropping a controller is intentionally not itself cancellation.
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
         self.state.agent.abort_task();
         self.state.cancel_tx.abort();
         let cancel_controller = AbortController::new();
@@ -129,6 +130,7 @@ impl App {
             self.state.config.config.subagent_models.clone(),
             self.state.config.config.smart_compaction,
             self.state.config.config.parallel_subagents(),
+            Arc::clone(&self.state.agent.user_inbox),
         );
         self.state.agent.task_handle = Some(task_handle);
 
@@ -153,22 +155,21 @@ impl App {
                 }
             }
             // Steering cancels any queued follow-up messages
+            self.state.agent.reclaim_inbox();
             self.state.agent.message_queue.clear();
             return false;
         }
 
-        // No steering — drain normal follow-up messages
-        let had_queued = !self.state.agent.message_queue.is_empty();
-        for queued_text in self.state.agent.message_queue.drain(..) {
-            self.state.session.conversation.push(Message {
-                role: Role::User,
-                content: queued_text,
-                tool_calls: None,
-                tool_call_id: None,
-                thinking: None,
-                thinking_signature: None,
-                continuation: None,
-            });
+        // No steering — drain normal follow-up messages (anything the
+        // ended turn never took from its inbox included).
+        self.state.agent.reclaim_inbox();
+        let queued = std::mem::take(&mut self.state.agent.message_queue);
+        let had_queued = !queued.is_empty();
+        for queued in queued {
+            let message = queued.to_message();
+            self.state
+                .add_user_message_with(queued.display, queued.attachments);
+            self.state.session.conversation.push(message);
         }
         if had_queued {
             let _ = self.start_chat_turn();
@@ -191,7 +192,7 @@ impl App {
         let project_dir = self.state.session.project_dir.clone();
         self.state.agent.abort_task();
         self.state.cancel_tx.abort();
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
         let task_id = self.current_task_id;
         let controller = AbortController::new();
         let signal = controller.signal();
@@ -287,11 +288,13 @@ impl App {
                     let expanded =
                         agente_core::extensions::expand_command_template(&custom.template, args);
                     // Inject as a normal user turn so the agent runs the prompt.
-                    self.state.add_user_message(expanded.clone());
                     if !self.state.agent.is_idle() {
-                        self.state.agent.message_queue.push(expanded);
+                        self.state
+                            .agent
+                            .queue_message(crate::state::QueuedMessage::new(expanded));
                         return Ok(());
                     }
+                    self.state.add_user_message(expanded.clone());
                     self.state.session.conversation.push(Message {
                         role: Role::User,
                         content: expanded,
@@ -300,6 +303,46 @@ impl App {
                         thinking: None,
                         thinking_signature: None,
                         continuation: None,
+                        attachments: Vec::new(),
+                    });
+                    return self.start_chat_turn();
+                }
+
+                // Agent Skills: `/name request` loads the skill for this turn.
+                if let Some(skill) =
+                    agente_core::extensions::skills::find(&self.state.session.project_dir, cmd)
+                {
+                    let args = parts.get(1).map(|s| s.trim()).unwrap_or("");
+                    let prompt =
+                        match agente_core::extensions::skills::user_invocation(&skill, args) {
+                            Ok(prompt) => prompt,
+                            Err(e) => {
+                                self.state.add_system_message(format!(
+                                    "Could not read skill {name}: {e}"
+                                ));
+                                return Ok(());
+                            }
+                        };
+                    // The bubble shows what was typed; the model gets the skill.
+                    if !self.state.agent.is_idle() {
+                        self.state
+                            .agent
+                            .queue_message(crate::state::QueuedMessage::with_prompt(
+                                text.trim(),
+                                prompt,
+                            ));
+                        return Ok(());
+                    }
+                    self.state.add_user_message(text.trim().to_string());
+                    self.state.session.conversation.push(Message {
+                        role: Role::User,
+                        content: prompt,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        thinking: None,
+                        thinking_signature: None,
+                        continuation: None,
+                        attachments: Vec::new(),
                     });
                     return self.start_chat_turn();
                 }
@@ -353,25 +396,48 @@ impl App {
             return Ok(());
         }
 
-        // Always show the message in chat history immediately
-        self.state.add_user_message(text.clone());
-
-        if !self.state.agent.is_idle() {
-            // Agent is working — queue as a follow-up message
-            self.state.agent.message_queue.push(text);
-            return Ok(());
+        // Media in the composer goes with this message — if the model can
+        // take it. Otherwise nothing is sent and everything stays put.
+        let attachments = std::mem::take(&mut self.state.input.attachments);
+        if !attachments.is_empty() {
+            let model = self.state.resolve_model(
+                &self.state.config.current_provider,
+                &self.state.config.current_model,
+            );
+            let refused = model
+                .as_ref()
+                .map(|m| agente_core::media::unsupported(m, &attachments))
+                .unwrap_or_default();
+            if !refused.is_empty() {
+                let kinds: Vec<&str> = refused.iter().map(|k| k.label()).collect();
+                let name = model.map(|m| m.name).unwrap_or_default();
+                self.state.add_system_message(format!(
+                    "{name} does not accept {} input — pick another model with /model, or remove it (Backspace on an empty composer).",
+                    kinds.join(" or ")
+                ));
+                self.state.input.attachments = attachments;
+                self.state.input.input_cursor = text.chars().count();
+                self.state.input.input_text = text;
+                return Ok(());
+            }
         }
 
+        if !self.state.agent.is_idle() {
+            // Agent is working — queue it. The bubble appears when it is
+            // actually sent (next step if sent now, else after the turn),
+            // so the transcript keeps its real order.
+            self.state.agent.queue_message(
+                crate::state::QueuedMessage::new(text).with_attachments(attachments),
+            );
+            return Ok(());
+        }
+        self.state
+            .add_user_message_with(text.clone(), attachments.clone());
+
         // Agent is idle — start a new turn
-        self.state.session.conversation.push(Message {
-            role: Role::User,
-            content: text,
-            tool_calls: None,
-            tool_call_id: None,
-            thinking: None,
-            thinking_signature: None,
-            continuation: None,
-        });
+        let mut message = Message::user(text);
+        message.attachments = attachments;
+        self.state.session.conversation.push(message);
 
         self.start_chat_turn()
     }
@@ -491,8 +557,9 @@ impl App {
         self.persistence.save(self.state.to_session_state());
     }
 
-    pub(super) fn queue_all_session_snapshots(&self) {
+    pub(super) fn queue_all_session_snapshots(&mut self) {
         self.queue_session_snapshot();
+        self.queue_background_snapshots();
     }
 
     pub(super) fn reinit_terminal(&mut self) -> anyhow::Result<()> {
@@ -523,7 +590,7 @@ impl App {
 
         // Reject queued events and late sends from the cancelled turn.
         // Aborting its producer does not remove events from the receiver.
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
 
         // 1. Signal cancellation
         self.state.cancel_tx.abort();

@@ -171,6 +171,7 @@ pub fn inferred_service_model_capabilities(model_id: &str) -> ModelCapabilities 
         toolcall: !non_chat.iter().any(|marker| id.contains(marker)),
         vision: id.contains("vision") || id.contains("vl") || id.contains("multimodal"),
         streaming: true,
+        input_modalities: Vec::new(),
     }
 }
 

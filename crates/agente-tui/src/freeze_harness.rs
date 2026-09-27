@@ -193,6 +193,7 @@ fn f2_long_history_stream_paint_budget() {
                 subagent_id: None,
                 subagent_type: None,
                 diff_stats: None,
+                attachments: Vec::new(),
             });
     }
 
@@ -240,6 +241,7 @@ fn done_clears_stream_paint_thrash() {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }],
         tokens: 10,
     });

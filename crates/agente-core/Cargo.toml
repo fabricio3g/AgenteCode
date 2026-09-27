@@ -24,6 +24,7 @@ futures = { workspace = true }
 regex = { workspace = true }
 glob = { workspace = true }
 sha2 = { workspace = true }
+base64 = "0.22"
 dirs = { workspace = true }
 parking_lot = { workspace = true }
 tokio-util = { workspace = true }
@@ -31,6 +32,8 @@ tempfile = { workspace = true }
 similar = { workspace = true }
 processkit = { workspace = true }
 ignore = { workspace = true }
+http = "1"
+rmcp = { version = "3.4", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest", "reqwest"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

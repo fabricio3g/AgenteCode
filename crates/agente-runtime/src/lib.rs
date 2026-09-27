@@ -51,7 +51,7 @@ pub struct RuntimeConfig {
     pub catalog: Option<ModelCatalog>,
     pub permission_engine: SharedPermissionEngine,
     pub approval_broker: ApprovalBroker,
-    pub mcp_manager: Option<Arc<tokio::sync::Mutex<McpManager>>>,
+    pub mcp_manager: Option<Arc<McpManager>>,
     pub subagent_registry: SubagentRegistry,
     /// Per-subagent-type model overrides from the user's config.
     pub subagent_models: agente_core::config::SubagentModels,
@@ -116,7 +116,7 @@ impl RuntimeConfig {
         }
     }
 
-    pub fn with_mcp_manager(mut self, manager: Arc<tokio::sync::Mutex<McpManager>>) -> Self {
+    pub fn with_mcp_manager(mut self, manager: Arc<McpManager>) -> Self {
         self.mcp_manager = Some(manager);
         self
     }
@@ -444,6 +444,7 @@ impl RuntimeHandle {
                         thinking: None,
                         thinking_signature: None,
                         continuation: None,
+                        attachments: Vec::new(),
                     },
                 );
             }
@@ -500,6 +501,7 @@ impl RuntimeHandle {
             self.inner.config.subagent_models.clone(),
             self.inner.config.smart_compaction,
             self.inner.config.max_parallel_subagents,
+            agente_core::agent::UserInbox::default(),
         );
 
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);
@@ -641,6 +643,7 @@ fn ensure_system_prompt(conversation: &mut Vec<Message>, prompt: &str) {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
     );
 }
@@ -777,6 +780,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 

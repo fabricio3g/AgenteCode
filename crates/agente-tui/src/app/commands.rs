@@ -258,6 +258,22 @@ impl App {
                 self.state.input.show_settings = true;
                 self.state.ui.needs_render = true;
             }
+            Command::NewTab => self.open_new_tab(),
+            Command::CloseTab => self.close_tab(self.tabs.active()),
+            Command::NextTab => self.cycle_tab(1),
+            Command::PrevTab => self.cycle_tab(-1),
+            Command::Mcp => {
+                self.state.input.mcp_selected = 0;
+                self.state.input.show_mcp = true;
+                self.state.ui.needs_render = true;
+            }
+            Command::Skills => {
+                self.state.input.skills =
+                    agente_core::extensions::skills::discover(&self.state.session.project_dir);
+                self.state.input.skills_selected = 0;
+                self.state.input.show_skills = true;
+                self.state.ui.needs_render = true;
+            }
             Command::SubagentModels => {
                 let types = crate::subagent_models::subagent_types(&self.state.session.project_dir);
                 self.state.input.open_subagent_models(types);
@@ -336,6 +352,14 @@ impl App {
             .find(|e| e.id == entry_id)
             .map(|e| e.content.clone())
             .unwrap_or_default();
+        let attachments = self
+            .state
+            .session
+            .chat_history
+            .iter()
+            .find(|e| e.id == entry_id)
+            .map(|e| e.attachments.clone())
+            .unwrap_or_default();
         match action {
             MessageAction::Copy => {
                 let _ = self.copy_to_clipboard(&content);
@@ -350,6 +374,7 @@ impl App {
             MessageAction::Revert => match self.state.session.revert_to(entry_id) {
                 Ok(reverted) => {
                     self.put_back_in_composer(reverted.content);
+                    self.state.input.attachments = attachments;
                     let files = match reverted.files_restored {
                         0 => String::new(),
                         1 => " · 1 file edit undone".to_string(),
@@ -375,7 +400,7 @@ impl App {
                 let title = self.state.session.title.clone();
                 // Keep the original resumable, then branch in place.
                 self.flush_state_to_disk();
-                self.current_task_id = self.current_task_id.wrapping_add(1);
+                self.current_task_id = self.next_task_id();
                 self.state.reset_for_new_session();
                 self.state.session.chat_history = chat;
                 self.state.session.conversation = conversation;
@@ -384,6 +409,7 @@ impl App {
                 }
                 self.state.ui.show_welcome_screen = false;
                 self.put_back_in_composer(point.content);
+                self.state.input.attachments = attachments;
                 self.state
                     .ui
                     .show_toast("⎇ Forked into a new session · the original is saved".to_string());

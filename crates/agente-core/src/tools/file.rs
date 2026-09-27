@@ -60,7 +60,7 @@ impl ToolCore for ReadFileTool {
             .path
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'path' parameter".to_string()))?;
 
-        let resolved = super::resolve_project_path(&path, project_dir)?;
+        let resolved = super::resolve_read_path(&path, project_dir)?;
         let resolved_str = resolved.to_string_lossy().to_string();
 
         let metadata = tokio::fs::metadata(&resolved).await.map_err(|e| {
@@ -576,7 +576,7 @@ impl ToolCore for ListDirTool {
             .path
             .ok_or_else(|| ToolError::InvalidArguments("Missing 'path' parameter".to_string()))?;
 
-        let resolved = super::resolve_project_path(&path, project_dir)?;
+        let resolved = super::resolve_read_path(&path, project_dir)?;
         let resolved_str = resolved.to_string_lossy().to_string();
 
         let mut entries = tokio::fs::read_dir(&resolved).await.map_err(|e| {

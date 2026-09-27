@@ -18,14 +18,15 @@ mod input;
 mod picker;
 mod plan_review;
 mod session;
+mod tabs;
 mod todo;
 mod ui;
 
 pub use session::diff_line_counts;
 
 pub use agent::{
-    format_usd, AgentRuntimeState, ApprovalQueue, LiveToolCall, PendingApproval, RetryStatus,
-    Spend, SubagentToolRow, SubagentUiState, WorkMode,
+    format_usd, AgentRuntimeState, ApprovalQueue, LiveToolCall, PendingApproval, QueuedMessage,
+    RetryStatus, Spend, SubagentToolRow, SubagentUiState, WorkMode,
 };
 pub use config::{ConfigState, ConnectScreen, DiscoveryStatus, ModelEntry};
 pub use hits::{HitMap, HitTarget, ListId};
@@ -36,6 +37,7 @@ pub use plan_review::{
     PlanAskState, PlanReviewPhase, PlanReviewState,
 };
 pub use session::SessionState;
+pub use tabs::{tab_label, TabLabel, TabState, TabStatus, TabStrip};
 pub use todo::TodoState;
 pub use ui::{
     is_hover_target, ChatCacheKey, ChatFrameSnapshot, ChatPlainLine, ChatSelection, Fold,
@@ -90,12 +92,13 @@ pub struct AppState {
 /// divider by the chat widget).
 pub const COMPACTION_MARK: &str = "⟲ ";
 
-/// Transcript line for a compaction: `⟲ Context compacted · 182k → 64k ·
+/// Transcript line for a compaction: `⟲ Context compacted · ~182k → ~64k ·
 /// summarized` (or `trimmed`).
 pub fn compaction_notice(before: usize, after: usize, smart: bool) -> String {
     use crate::widgets::hints::format_token_count as k;
     format!(
-        "{COMPACTION_MARK}Context compacted · {} → {} · {}",
+        // The loop's sizes are estimates (it decides before the request).
+        "{COMPACTION_MARK}Context compacted · ~{} → ~{} · {}",
         k(before),
         k(after),
         if smart { "summarized" } else { "trimmed" }
@@ -126,7 +129,7 @@ impl AppState {
                 agent.thinking_level = level.clone();
             }
         }
-        let config = ConfigState::new(app_config);
+        let config = ConfigState::for_project(app_config, &project_dir);
 
         Self {
             agent,
@@ -163,6 +166,7 @@ impl AppState {
         self.agent.steering_queue.clear();
         self.agent.subagents.clear();
         self.agent.total_tokens = 0;
+        self.agent.context_measured = false;
         self.agent.last_turn_prompt_tokens = 0;
         self.agent.last_turn_completion_tokens = 0;
         self.agent.last_turn_cache_read_tokens = 0;
@@ -297,6 +301,7 @@ impl AppState {
         self.agent.shared_permission_engine = permission_engine;
         self.agent.subagents.clear();
         self.agent.total_tokens = 0;
+        self.agent.context_measured = false;
         self.agent.last_turn_prompt_tokens = 0;
         self.agent.last_turn_completion_tokens = 0;
         self.agent.last_turn_cache_read_tokens = 0;
@@ -304,7 +309,15 @@ impl AppState {
         self.agent.spend = Spend::default();
         self.agent.last_response_duration = None;
 
-        self.config = ConfigState::new(app_config);
+        // A new session in the same project keeps its live MCP connections.
+        let keep_mcp = (self.session.project_dir == project_dir
+            && self.config.config.mcp == app_config.mcp
+            && self.config.config.approved_mcp_servers == app_config.approved_mcp_servers)
+            .then(|| std::sync::Arc::clone(&self.config.mcp_manager));
+        self.config = ConfigState::for_project(app_config, &project_dir);
+        if let Some(manager) = keep_mcp {
+            self.config.mcp_manager = manager;
+        }
         self.session = SessionState::new(project_dir);
         self.todo = TodoState::default();
         self.plan_review = PlanReviewState::default();
@@ -319,8 +332,18 @@ impl AppState {
 
     /// Add user message to chat history
     pub fn add_user_message(&mut self, content: String) {
+        self.add_user_message_with(content, Vec::new());
+    }
+
+    /// A sent prompt with media attachments.
+    pub fn add_user_message_with(
+        &mut self,
+        content: String,
+        attachments: Vec<agente_core::media::Attachment>,
+    ) {
         let mode_str = self.agent.mode.to_string();
-        self.session.add_user_message(content, mode_str);
+        self.session
+            .add_user_message_with(content, mode_str, attachments);
         // The prompt rises out of the composer into its bubble: glide to the
         // new bottom while the new block fades in.
         self.ui.glide_to_bottom();
@@ -700,7 +723,12 @@ impl AppState {
     /// Whether any continuous UI animation or active turn needs smooth continuous rendering
     /// The hero's tilde sea is on screen and should keep drifting (a slow
     /// ~15 fps ambient repaint, separate from the fast animation tick).
+    /// The `/mcp` dialog also repaints this way: server statuses change in
+    /// the background while it is open.
     pub fn wants_ambient_paint(&self) -> bool {
+        if self.input.show_mcp {
+            return true;
+        }
         self.ui.show_welcome_screen
             && self.session.chat_history.is_empty()
             && !self.ui.reduce_motion
@@ -772,6 +800,8 @@ pub enum ModalOwner {
     None,
     /// Tool-approval popup — highest priority; nothing may cover it.
     Approval,
+    /// Permission to open/attach an image, audio or video.
+    MediaConsent,
     /// Plan clarify (Ask) card.
     PlanAsk,
     /// Full-screen plan review (Accept / Redo / Comment).
@@ -788,6 +818,10 @@ pub enum ModalOwner {
     SubagentModels,
     /// Preferences dialog (`/settings`).
     Settings,
+    /// Installed agent skills (`/skills`).
+    Skills,
+    /// MCP server status (`/mcp`).
+    Mcp,
     /// Revert / fork / copy for a clicked sent message.
     MessageActions,
     /// Live output of a running tool call.
@@ -860,6 +894,7 @@ impl ModalOwner {
         matches!(
             self,
             Self::Approval
+                | Self::MediaConsent
                 | Self::PlanAsk
                 | Self::Subagents
                 | Self::SubagentDetail
@@ -867,6 +902,8 @@ impl ModalOwner {
                 | Self::ModelSelector
                 | Self::SubagentModels
                 | Self::Settings
+                | Self::Skills
+                | Self::Mcp
                 | Self::MessageActions
                 | Self::ProcessView
                 | Self::ThinkingSelector
@@ -889,6 +926,9 @@ impl ModalOwner {
 pub fn modal_owner(state: &AppState) -> ModalOwner {
     if !state.agent.approval_queue.is_empty() {
         return ModalOwner::Approval;
+    }
+    if state.ui.media_consent.is_some() {
+        return ModalOwner::MediaConsent;
     }
     if state.plan_review.phase == PlanReviewPhase::Asking {
         return ModalOwner::PlanAsk;
@@ -925,6 +965,12 @@ pub fn modal_owner(state: &AppState) -> ModalOwner {
     }
     if state.input.show_settings {
         return ModalOwner::Settings;
+    }
+    if state.input.show_skills {
+        return ModalOwner::Skills;
+    }
+    if state.input.show_mcp {
+        return ModalOwner::Mcp;
     }
     if state.input.show_thinking_selector {
         return ModalOwner::ThinkingSelector;
@@ -997,6 +1043,7 @@ mod tests {
                 subagent_id: None,
                 subagent_type: None,
                 diff_stats: None,
+                attachments: Vec::new(),
             }],
             conversation: vec![],
             file_versions: Default::default(),
@@ -1036,6 +1083,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         }
     }
 

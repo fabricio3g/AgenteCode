@@ -95,7 +95,7 @@ pub struct ConfigState {
     /// Provider registry
     pub provider_registry: Arc<ProviderRegistry>,
     /// MCP manager for external tool servers
-    pub mcp_manager: Arc<tokio::sync::Mutex<McpManager>>,
+    pub mcp_manager: Arc<McpManager>,
     /// Currently selected provider ID
     pub current_provider: String,
     /// Currently selected model ID
@@ -120,6 +120,11 @@ pub struct ConfigState {
 impl ConfigState {
     /// Create new config state from config
     pub fn new(config: AppConfig) -> Self {
+        Self::for_project(config, "")
+    }
+
+    /// [`Self::new`] that also offers the project's `.mcp.json` servers.
+    pub fn for_project(config: AppConfig, project_dir: &str) -> Self {
         let registry = Arc::new(ProviderRegistry::from_config(&config));
 
         // Build connected list from registry providers.
@@ -153,14 +158,16 @@ impl ConfigState {
             config.default_model.clone().unwrap_or_default()
         };
 
-        // Create MCP manager from config
-        let mut mcp_manager = McpManager::new();
-        for (name, mcp_config) in &config.mcp {
-            if mcp_config.enabled {
-                mcp_manager.add_client(name.clone(), mcp_config.clone());
+        // Servers connect in the background once the app runs (`/mcp`).
+        let mcp_arc = Arc::new(if project_dir.is_empty() {
+            let mut manager = McpManager::new();
+            for (name, mcp_config) in &config.mcp {
+                manager.add_client(name.clone(), mcp_config.clone());
             }
-        }
-        let mcp_arc = Arc::new(tokio::sync::Mutex::new(mcp_manager));
+            manager
+        } else {
+            McpManager::from_sources(&config.mcp, project_dir, &config.approved_mcp_servers)
+        });
 
         Self {
             config,

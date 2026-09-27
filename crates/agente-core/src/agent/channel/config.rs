@@ -65,6 +65,11 @@ impl ToolCallOutcome {
 /// terminal events (`Done`/`Cancelled`). Children run against a private channel
 /// that a forwarder re-emits as `Subagent*` events, so the loop itself never
 /// needs to know whether it is the parent or a child.
+/// Messages the user sent while a turn runs ("send now"). The loop takes
+/// them at the next step boundary — after a tool round, or instead of
+/// finishing — so the model sees them without the turn being cancelled.
+pub type UserInbox = Arc<parking_lot::Mutex<Vec<crate::types::Message>>>;
+
 pub(crate) struct AgentRunConfig {
     pub session_id: uuid::Uuid,
     pub task_id: u64,
@@ -85,7 +90,7 @@ pub(crate) struct AgentRunConfig {
     pub permission_engine: SharedPermissionEngine,
     pub cancel_signal: AbortSignal,
     pub approval_broker: ApprovalBroker,
-    pub mcp_manager: Option<Arc<tokio::sync::Mutex<McpManager>>>,
+    pub mcp_manager: Option<Arc<McpManager>>,
     pub subagent_host: Option<SubagentHost>,
     /// Custom `.agente/agents/*.md` roster. Parents load it once per turn and
     /// pass it down so a child's worktree checkout does not re-scan the disk.
@@ -100,6 +105,8 @@ pub(crate) struct AgentRunConfig {
     pub loop_stop_after: u32,
     /// Compact with an LLM summary instead of trimming (user setting).
     pub smart_compaction: bool,
+    /// Mid-turn user messages (parent turns only).
+    pub user_inbox: Option<UserInbox>,
 }
 
 /// Tag an event with its task id and swallow send failures (the TUI may be
@@ -111,6 +118,7 @@ pub(crate) fn send_event(sender: &Sender<AgentTaskEvent>, task_id: u64, event: A
 /// Forward the provider's per-turn usage to the TUI. Subagent turns do not
 /// report their own usage — the parent's usage accounting is the source of
 /// truth for the status bar.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn send_turn_usage(
     sender: &Sender<AgentTaskEvent>,
     task_id: u64,
@@ -119,6 +127,7 @@ pub(crate) fn send_turn_usage(
     last_completion_tokens: &u32,
     total_cache_read_tokens: &u32,
     total_cache_creation_tokens: &u32,
+    last_context_tokens: &u32,
 ) {
     if is_subagent {
         return;
@@ -131,6 +140,7 @@ pub(crate) fn send_turn_usage(
             completion_tokens: *last_completion_tokens,
             cache_read_tokens: *total_cache_read_tokens,
             cache_creation_tokens: *total_cache_creation_tokens,
+            context_tokens: *last_context_tokens,
         },
     );
 }

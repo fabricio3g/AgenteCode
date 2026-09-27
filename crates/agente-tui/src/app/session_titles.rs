@@ -83,7 +83,7 @@ impl App {
                         .apply_session_title(event.session_id, title.clone())
                     {
                         self.queue_all_session_snapshots();
-                    } else {
+                    } else if !self.apply_title_to_background_tab(event.session_id, &title) {
                         self.persistence
                             .update_title(event.session_id, title.clone());
                     }

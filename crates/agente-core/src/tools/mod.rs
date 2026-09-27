@@ -23,6 +23,7 @@ pub mod file;
 pub mod outline;
 pub mod patch;
 pub mod search;
+pub mod skill;
 pub mod subagent;
 pub mod task;
 pub mod web;
@@ -33,8 +34,11 @@ pub use file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 pub use outline::FileOutlineTool;
 pub use patch::ApplyPatchTool;
 pub use search::{FindTool, GrepTool};
+pub use skill::SkillTool;
 pub use subagent::{KillTaskTool, TaskOutputTool, TaskTool};
-pub use task::{parse_plan_ready_output, PresentPlanTool, TodoWriteTool, PLAN_FILE_REL};
+pub use task::{
+    parse_plan_ready_output, plan_file_rel, PresentPlanTool, TodoWriteTool, PLANS_DIR_REL,
+};
 pub use web::{WebFetchTool, WebSearchTool};
 
 const MAX_OUTPUT_LINES: usize = 2000;
@@ -181,6 +185,25 @@ pub fn resolve_project_path(
     }
 
     Ok(canonical_target)
+}
+
+/// [`resolve_project_path`] for the read-only tools, which may also open
+/// files bundled with a discovered skill (a user-level skill lives outside
+/// the project, and its instructions point at its own `scripts/` and
+/// `references/`).
+pub fn resolve_read_path(path: &str, project_dir: &str) -> Result<std::path::PathBuf, ToolError> {
+    resolve_project_path(path, project_dir).or_else(|denied| {
+        let candidate = std::path::Path::new(path);
+        match std::fs::canonicalize(candidate) {
+            Ok(canonical)
+                if candidate.is_absolute()
+                    && crate::extensions::skills::within_skill_dir(project_dir, &canonical) =>
+            {
+                Ok(canonical)
+            }
+            _ => Err(denied),
+        }
+    })
 }
 
 /// Strip Windows verbatim prefixes so canonicalized and normalized paths can
@@ -589,6 +612,7 @@ pub fn known_kind(name: &str) -> Option<ToolKind> {
         "todo_write" => ToolKind::Todo,
         "present_plan" => ToolKind::Plan,
         "task" | "task_output" | "kill_task" => ToolKind::Task,
+        "skill" => ToolKind::Read,
         _ => return None,
     })
 }
@@ -610,6 +634,16 @@ pub trait Tool: Send + Sync {
     /// presentation. Defaults to the conservative catch-all.
     fn kind(&self) -> ToolKind {
         ToolKind::Other
+    }
+
+    /// Permission when no rule or config policy decides, in place of the
+    /// mode default (Build allows, Plan denies). MCP adapters use it to ask
+    /// before tools the server does not mark read-only.
+    fn default_permission(
+        &self,
+        _mode: crate::types::AgentMode,
+    ) -> Option<crate::permissions::Permission> {
+        None
     }
 
     async fn execute(
@@ -859,6 +893,11 @@ impl ToolRegistry {
         )));
         registry.register(Box::new(TaskOutputTool));
         registry.register(Box::new(KillTaskTool));
+        if let Some(skills) =
+            SkillTool::new(crate::extensions::skills::discover(&registry.project_dir))
+        {
+            registry.register(Box::new(skills));
+        }
         registry
     }
 

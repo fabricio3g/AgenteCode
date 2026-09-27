@@ -22,6 +22,10 @@ pub struct ModelCapabilities {
     pub vision: bool,
     #[serde(default)]
     pub streaming: bool,
+    /// Input modalities the model accepts (`text`, `image`, `audio`,
+    /// `video`, `pdf`; OpenRouter says `file` for PDFs). Empty = unknown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_modalities: Vec<String>,
 }
 
 /// models.dev `reasoning_options` entry — authoritative thinking UI/wire metadata.
@@ -88,6 +92,35 @@ pub struct ModelCost {
     pub cache_read: f64,
     #[serde(default)]
     pub cache_write: f64,
+    /// Context-size price tiers (models.dev `tiers`): once a request's
+    /// prompt exceeds a tier's size, the whole call bills at that tier's
+    /// rates (e.g. MiniMax-M3 past 512k, gpt-5.4 past 272k).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tiers: Vec<CostTier>,
+}
+
+/// One context-size price tier.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct CostTier {
+    #[serde(default)]
+    pub input: f64,
+    #[serde(default)]
+    pub output: f64,
+    #[serde(default)]
+    pub cache_read: f64,
+    #[serde(default)]
+    pub cache_write: f64,
+    /// `{ "type": "context", "size": 272000 }`.
+    #[serde(default)]
+    pub tier: TierBound,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct TierBound {
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default)]
+    pub size: u64,
 }
 
 impl ModelCost {
@@ -101,12 +134,26 @@ impl ModelCost {
     /// its own bucket (uncached input, output, cache reads, cache writes).
     /// A catalog without cache rates bills those tokens at the input rate —
     /// an upper bound, never an undercount.
+    ///
+    /// The request's whole prompt (input + cache read + cache write) picks
+    /// the context tier: past a tier's size every bucket bills at its rates.
     pub fn cost_usd(&self, input: u32, output: u32, cache_read: u32, cache_write: u32) -> f64 {
-        let or_input = |rate: f64| if rate > 0.0 { rate } else { self.input };
-        (f64::from(input) * self.input
-            + f64::from(output) * self.output
-            + f64::from(cache_read) * or_input(self.cache_read)
-            + f64::from(cache_write) * or_input(self.cache_write))
+        let prompt = u64::from(input) + u64::from(cache_read) + u64::from(cache_write);
+        let tier = self
+            .tiers
+            .iter()
+            .filter(|t| t.tier.kind.is_empty() || t.tier.kind == "context")
+            .filter(|t| t.tier.size > 0 && prompt > t.tier.size)
+            .max_by_key(|t| t.tier.size);
+        let (rate_in, rate_out, rate_read, rate_write) = match tier {
+            Some(t) => (t.input, t.output, t.cache_read, t.cache_write),
+            None => (self.input, self.output, self.cache_read, self.cache_write),
+        };
+        let or_input = |rate: f64| if rate > 0.0 { rate } else { rate_in };
+        (f64::from(input) * rate_in
+            + f64::from(output) * rate_out
+            + f64::from(cache_read) * or_input(rate_read)
+            + f64::from(cache_write) * or_input(rate_write))
             / 1_000_000.0
     }
 }
@@ -461,6 +508,15 @@ impl RawModel {
             if let Some(r) = self.reasoning {
                 caps.reasoning = r;
             }
+            if caps.input_modalities.is_empty() {
+                if let Some(modalities) = &self.modalities {
+                    caps.input_modalities = modalities
+                        .input
+                        .iter()
+                        .map(|m| m.to_ascii_lowercase())
+                        .collect();
+                }
+            }
             caps
         } else {
             let modalities = self.modalities.unwrap_or_default();
@@ -475,6 +531,11 @@ impl RawModel {
                 toolcall: self.tool_call.unwrap_or(false),
                 vision,
                 streaming: true,
+                input_modalities: modalities
+                    .input
+                    .iter()
+                    .map(|m| m.to_ascii_lowercase())
+                    .collect(),
             }
         };
 
@@ -770,11 +831,29 @@ mod tests {
             output: 8.0,
             cache_read: 0.2,
             cache_write: 0.0,
+            tiers: Vec::new(),
         };
         // 1M uncached in, 0.5M out, 2M cache reads, 1M writes at input rate.
         let usd = cost.cost_usd(1_000_000, 500_000, 2_000_000, 1_000_000);
         assert!((usd - (2.0 + 4.0 + 0.4 + 2.0)).abs() < 1e-9, "{usd}");
         assert!(!super::ModelCost::default().is_priced());
+    }
+
+    #[test]
+    fn long_prompts_bill_at_the_models_dev_context_tier() {
+        // MiniMax-M3 as models.dev lists it.
+        let cost: super::ModelCost = serde_json::from_value(serde_json::json!({
+            "input": 0.3, "output": 1.2, "cache_read": 0.06,
+            "tiers": [{"input": 0.6, "output": 2.4, "cache_read": 0.12,
+                       "tier": {"type": "context", "size": 512000}}],
+            "context_over_200k": {"input": 0.6}
+        }))
+        .unwrap();
+        let short = cost.cost_usd(100_000, 1_000_000, 0, 0);
+        assert!((short - (0.03 + 1.2)).abs() < 1e-9, "{short}");
+        // 600k prompt (cached mostly): past 512k, everything at tier rates.
+        let long = cost.cost_usd(100_000, 1_000_000, 500_000, 0);
+        assert!((long - (0.06 + 2.4 + 0.06)).abs() < 1e-9, "{long}");
     }
 
     use super::*;

@@ -46,7 +46,11 @@ impl ResponsesProvider {
                     continue;
                 }
             }
-            if !message.content.is_empty() {
+            if message.role == Role::User && !message.attachments.is_empty() {
+                input.push(
+                    json!({"role": "user", "content": response_content_parts(message, model)}),
+                );
+            } else if !message.content.is_empty() {
                 input.push(json!({
                     "role": match message.role { Role::System => "system", Role::User => "user", _ => "assistant" },
                     "content": message.content,
@@ -415,4 +419,32 @@ impl Provider for ResponsesProvider {
             .list_models()
             .await
     }
+}
+
+/// A user message with media for the Responses API: `input_text`, then
+/// `input_image` / `input_file` (data URLs). Audio and video, and kinds the
+/// model does not accept, become a text note.
+fn response_content_parts(message: &Message, model: &ModelInfo) -> Vec<Value> {
+    use crate::media::{AttachmentKind, Encoded};
+    let mut parts = Vec::new();
+    if !message.content.is_empty() {
+        parts.push(json!({"type": "input_text", "text": message.content}));
+    }
+    for encoded in crate::media::encode_for(model, &message.attachments) {
+        parts.push(match encoded {
+            Encoded::Skipped(note) => json!({"type": "input_text", "text": note}),
+            Encoded::Data { attachment, base64 } => {
+                let data_url = format!("data:{};base64,{base64}", attachment.mime);
+                match attachment.kind {
+                    AttachmentKind::Image => json!({"type": "input_image", "image_url": data_url}),
+                    AttachmentKind::Pdf => json!({"type": "input_file",
+                        "filename": attachment.name, "file_data": data_url}),
+                    AttachmentKind::Audio | AttachmentKind::Video => json!({"type": "input_text",
+                        "text": format!("[{} attachment {} not sent: the Responses API has no {} input]",
+                            attachment.kind.label(), attachment.name, attachment.kind.label())}),
+                }
+            }
+        });
+    }
+    parts
 }

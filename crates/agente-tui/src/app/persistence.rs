@@ -244,15 +244,21 @@ impl App {
     /// `None` for an empty session (nothing worth resuming).
     pub fn resume_hint(&self) -> Option<String> {
         let session = &self.state.session;
+        let others = self.background_resume_hints();
         if session.chat_history.is_empty() {
-            return None;
+            return (!others.is_empty())
+                .then(|| format!("Sessions saved from your tabs:\n{}", others.join("\n")));
         }
         let first_prompt = agente_core::session::first_user_prompt(&session.chat_history);
         let label = agente_core::session::session_label(&session.title, &first_prompt);
-        Some(format!(
+        let mut hint = format!(
             "Session saved · {label}\nResume with: agente --resume {}",
             session.session_id
-        ))
+        );
+        if !others.is_empty() {
+            hint.push_str(&format!("\nOther tabs:\n{}", others.join("\n")));
+        }
+        Some(hint)
     }
 }
 

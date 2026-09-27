@@ -13,10 +13,12 @@ mod chat_turn;
 mod commands;
 mod health;
 mod keys;
+mod media;
 mod mouse;
 mod persistence;
 mod render;
 mod session_titles;
+mod tabs;
 mod util;
 
 pub(crate) use health::{stuck_soft_warn_secs, stuck_timeout_secs, LoopHealth};
@@ -44,6 +46,16 @@ use std::sync::Arc;
 
 use crate::state::AppState;
 
+/// Connect the session's MCP servers in the background (needs a runtime
+/// context).
+pub(crate) fn spawn_mcp_connect(state: &AppState) {
+    let manager = Arc::clone(&state.config.mcp_manager);
+    if manager.is_empty() {
+        return;
+    }
+    tokio::spawn(async move { manager.connect_all().await });
+}
+
 pub struct App {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
     pub(crate) state: AppState,
@@ -58,6 +70,8 @@ pub struct App {
     /// UI. Shared by the parent task and any subagents it spawns.
     approval_broker: ApprovalBroker,
     pub(crate) current_task_id: u64,
+    /// Open session tabs (the active one's data is `state`).
+    pub(crate) tabs: tabs::Tabs,
     /// Main-loop health (tick counters, slow-frame tracking, heartbeat).
     pub(crate) health: LoopHealth,
     /// Cached `format!("{:?}", agent.state)` label for health logging. The
@@ -122,14 +136,9 @@ impl App {
         for provider in &state.config.connected_providers {
             spawn_discovery_task(agent_tx.clone(), provider.clone(), registry.clone());
         }
-        // Spawn MCP background connection (inside runtime context)
-        let mcp_manager = Arc::clone(&state.config.mcp_manager);
-        tokio::spawn(async move {
-            let mut manager = mcp_manager.lock().await;
-            if let Err(e) = manager.connect_all().await {
-                tracing::warn!("MCP background connect failed: {}", e);
-            }
-        });
+        // MCP servers connect in the background, each on its own; turns use
+        // whichever are ready.
+        spawn_mcp_connect(&state);
         drop(_guard);
 
         let app = Self {
@@ -143,6 +152,7 @@ impl App {
             title_requests_started: HashSet::new(),
             approval_broker,
             current_task_id: 0,
+            tabs: tabs::Tabs::default(),
             health: LoopHealth::default(),
             agent_state_label: String::new(),
             agent_state_label_source: None,
@@ -204,6 +214,7 @@ impl App {
             title_requests_started: HashSet::new(),
             approval_broker,
             current_task_id: 0,
+            tabs: tabs::Tabs::default(),
             health: LoopHealth::default(),
             agent_state_label: String::new(),
             agent_state_label_source: None,
@@ -241,7 +252,7 @@ impl App {
                 .to_string(),
         );
         self.state.cancel_tx.abort();
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
         self.state.agent.force_reset_to_idle();
         self.state.ui.needs_render = true;
     }
@@ -334,6 +345,7 @@ impl App {
             self.state.ui.needs_render = false;
 
             let paint_start = std::time::Instant::now();
+            self.refresh_tab_strip();
             {
                 let state = &mut self.state;
                 state.tick_fps();

@@ -400,7 +400,14 @@ pub fn capability_for_parent_mode(
 pub fn is_read_only_tool(name: &str) -> bool {
     matches!(
         name,
-        "read_file" | "file_outline" | "list_dir" | "grep" | "find" | "web_search" | "web_fetch"
+        "read_file"
+            | "file_outline"
+            | "list_dir"
+            | "grep"
+            | "find"
+            | "web_search"
+            | "web_fetch"
+            | "skill"
     )
 }
 

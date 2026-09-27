@@ -8,6 +8,7 @@ pub mod extensions;
 pub mod llm;
 pub mod lsp;
 pub mod mcp;
+pub mod media;
 pub mod permissions;
 pub mod providers;
 pub mod session;

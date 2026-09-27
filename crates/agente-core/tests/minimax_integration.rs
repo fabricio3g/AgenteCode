@@ -71,6 +71,7 @@ async fn test_minimax_streaming() {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
         agente_core::types::Message {
             role: agente_core::types::Role::User,
@@ -80,6 +81,7 @@ async fn test_minimax_streaming() {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
     ];
 

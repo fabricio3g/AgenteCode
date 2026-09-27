@@ -403,6 +403,10 @@ pub struct UiState {
 
     /// Interactive regions painted last frame (list rows, dialog buttons).
     pub hits: super::hits::HitMap,
+    /// Open session tabs, as the strip draws them (refreshed by the app).
+    pub tab_strip: super::TabStrip,
+    /// An image/audio/video waiting for the user's permission to open or attach.
+    pub media_consent: Option<crate::media_consent::MediaRequest>,
     /// Hit target under the pointer, for hover highlights on buttons.
     pub hovered_hit: Option<super::hits::HitTarget>,
 
@@ -506,6 +510,8 @@ pub struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
+            tab_strip: super::TabStrip::default(),
+            media_consent: None,
             diff_peek: None,
             plan_review_area: None,
             subagent_detail_area: None,

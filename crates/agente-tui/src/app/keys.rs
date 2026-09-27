@@ -69,6 +69,10 @@ impl App {
         if normalized.is_empty() {
             return;
         }
+        // A dropped or pasted image/audio/video/PDF path attaches the file.
+        if self.attach_pasted_path(&normalized) {
+            return;
+        }
         // A big paste is held out of the composer behind a one-line chip; the
         // payload is spliced back in at submit. Pasting a file used to dump the
         // whole thing into an 8-row box.
@@ -173,6 +177,9 @@ impl App {
             | ModalOwner::SubagentDetail
             | ModalOwner::SubagentModels
             | ModalOwner::Settings
+            | ModalOwner::Skills
+            | ModalOwner::Mcp
+            | ModalOwner::MediaConsent
             | ModalOwner::MessageActions
             | ModalOwner::ProcessView
             | ModalOwner::ThinkingSelector => {}
@@ -228,6 +235,18 @@ impl App {
         let anchor = self.state.input.at_picker_anchor;
         let cursor = self.state.input.input_cursor;
         let chars: Vec<char> = self.state.input.input_text.chars().collect();
+        // `@` on an image/audio/video/PDF attaches the file instead of
+        // pasting its bytes into the prompt as text.
+        let full = std::path::Path::new(&self.state.session.project_dir).join(&path);
+        if let Some(request) = Self::media_request_for_path(&full, false) {
+            let before: String = chars[..anchor.min(chars.len())].iter().collect();
+            let after: String = chars[cursor.min(chars.len())..].iter().collect();
+            self.state.input.input_cursor = before.chars().count();
+            self.state.input.input_text = format!("{before}{after}");
+            self.state.input.close_at_picker();
+            self.request_media(request);
+            return;
+        }
         // Replace from `@` through cursor with `@path`
         let before: String = chars[..anchor.min(chars.len())].iter().collect();
         let after: String = chars[cursor.min(chars.len())..].iter().collect();
@@ -333,9 +352,13 @@ impl App {
                 code: KeyCode::Char('v'),
                 ..
             } => {
-                match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
+                match crate::clipboard::paste() {
                     Ok(text) if !text.is_empty() => self.insert_owned_paste(&text),
-                    Ok(_) => {}
+                    // No text: maybe a screenshot.
+                    Ok(_) => {
+                        self.attach_clipboard_image();
+                    }
+                    Err(_) if self.attach_clipboard_image() => {}
                     Err(error) => {
                         tracing::debug!(%error, "clipboard read failed");
                         self.state
@@ -458,6 +481,18 @@ impl App {
                 self.handle_settings_key(key)?;
                 return Ok(true);
             }
+            ModalOwner::Skills => {
+                self.handle_skills_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::Mcp => {
+                self.handle_mcp_key(key)?;
+                return Ok(true);
+            }
+            ModalOwner::MediaConsent => {
+                self.handle_media_consent_key(key);
+                return Ok(true);
+            }
             ModalOwner::MessageActions => {
                 self.handle_message_actions_key(key)?;
                 return Ok(true);
@@ -484,6 +519,24 @@ impl App {
         }
         if self.handle_modal_key(key)? {
             return Ok(());
+        }
+
+        // Session tabs: F2 opens one, Ctrl+PgUp/PgDn switch (Alt stays free
+        // for typing and Ctrl+T is the thinking picker).
+        match (key.code, key.modifiers) {
+            (KeyCode::F(2), KeyModifiers::NONE) => {
+                self.open_new_tab();
+                return Ok(());
+            }
+            (KeyCode::PageDown, KeyModifiers::CONTROL) => {
+                self.cycle_tab(1);
+                return Ok(());
+            }
+            (KeyCode::PageUp, KeyModifiers::CONTROL) => {
+                self.cycle_tab(-1);
+                return Ok(());
+            }
+            _ => {}
         }
 
         // Every Ctrl+Tab spelling toggles Plan/Build mode. Handle it before
@@ -624,6 +677,15 @@ impl App {
                 modifiers: KeyModifiers::NONE,
                 ..
             } => {
+                // An empty composer pulls the last queued message back to
+                // edit before stepping into history.
+                if self.state.input.input_text.is_empty() {
+                    if let Some(queued) = self.state.agent.pop_unsent() {
+                        self.state.input.input_cursor = queued.display.chars().count();
+                        self.state.input.input_text = queued.display;
+                        return Ok(());
+                    }
+                }
                 self.state.history_up();
             }
             KeyEvent {
@@ -704,6 +766,19 @@ impl App {
                     self.state.input.input_cursor += 1;
                 }
                 self.refresh_at_picker_from_input();
+            }
+            KeyEvent {
+                code: KeyCode::Backspace,
+                ..
+            } if self.state.input.input_text.is_empty()
+                && !self.state.input.attachments.is_empty() =>
+            {
+                // An empty composer drops its last attachment.
+                if let Some(removed) = self.state.input.attachments.pop() {
+                    self.state
+                        .ui
+                        .show_toast(format!("Removed {}", removed.name));
+                }
             }
             KeyEvent {
                 code: KeyCode::Backspace,
@@ -823,6 +898,21 @@ impl App {
                     }
                 }
                 if self.state.input.input_text.is_empty()
+                    && !self.state.agent.is_idle()
+                    && self.state.agent.has_unsent_queue()
+                {
+                    // Enter again: the queue goes to the running turn now
+                    // (it joins at the next step, nothing is cancelled).
+                    let sent = self.state.agent.send_queue_now();
+                    self.state.ui.show_toast(format!(
+                        "↗ Sending {} at the next step",
+                        if sent == 1 {
+                            "1 message".to_string()
+                        } else {
+                            format!("{sent} messages")
+                        }
+                    ));
+                } else if self.state.input.input_text.is_empty()
                     && (!self.state.agent.streaming_text.is_empty()
                         || !self.state.agent.reasoning_text.is_empty())
                     && self.state.agent.state == AgentState::StreamingResponse
@@ -1282,6 +1372,17 @@ impl App {
                             .show_toast("Change this while the agent is idle".to_string());
                     }
                 }
+                Setting::MediaImages | Setting::MediaAudio | Setting::MediaVideo => {
+                    if let Some(kind) = SETTINGS[selected].media_kind() {
+                        let allow = &mut self.state.config.config.allow_media;
+                        if let Some(at) = allow.iter().position(|k| *k == kind) {
+                            allow.remove(at);
+                        } else {
+                            allow.push(kind);
+                        }
+                        self.state.persist_config();
+                    }
+                }
                 Setting::Theme => {
                     self.execute_command(crate::command_palette::Command::ToggleTheme)?
                 }
@@ -1289,6 +1390,98 @@ impl App {
                     self.execute_command(crate::command_palette::Command::SubagentModels)?;
                 }
             },
+            _ => {}
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Keys for `/mcp`: move, Enter approves / enables / reconnects the row,
+    /// `d` turns it off, Esc closes. Approvals and on/off persist.
+    fn handle_mcp_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        use crate::mcp_servers::{primary_action, McpAction};
+        use agente_core::mcp::ServerSource;
+        let manager = std::sync::Arc::clone(&self.state.config.mcp_manager);
+        let servers = manager.snapshots();
+        let last = servers.len().saturating_sub(1);
+        let selected = self.state.input.mcp_selected.min(last);
+        let server = servers.get(selected);
+        let project = self.state.session.project_dir.clone();
+        match key.code {
+            KeyCode::Esc => self.state.input.show_mcp = false,
+            KeyCode::Up => self.state.input.mcp_selected = selected.saturating_sub(1),
+            KeyCode::Down => self.state.input.mcp_selected = (selected + 1).min(last),
+            KeyCode::Enter => {
+                if let Some(server) = server {
+                    let config = &mut self.state.config.config;
+                    match primary_action(server) {
+                        McpAction::Approve => {
+                            let approval = agente_core::mcp::approval_key(&project, &server.name);
+                            if !config.approved_mcp_servers.contains(&approval) {
+                                config.approved_mcp_servers.push(approval);
+                            }
+                            self.state.persist_config();
+                        }
+                        McpAction::Enable => {
+                            if let Some(entry) = config.mcp.get_mut(&server.name) {
+                                entry.enabled = true;
+                                self.state.persist_config();
+                            }
+                        }
+                        McpAction::Reconnect => {}
+                    }
+                    let name = server.name.clone();
+                    self.runtime
+                        .spawn(async move { manager.reconnect(&name).await });
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                if let Some(server) = server {
+                    manager.disable(&server.name);
+                    let config = &mut self.state.config.config;
+                    match server.source {
+                        ServerSource::Config => {
+                            if let Some(entry) = config.mcp.get_mut(&server.name) {
+                                entry.enabled = false;
+                            }
+                        }
+                        ServerSource::ProjectFile => {
+                            let approval = agente_core::mcp::approval_key(&project, &server.name);
+                            config.approved_mcp_servers.retain(|k| *k != approval);
+                        }
+                    }
+                    self.state.persist_config();
+                }
+            }
+            _ => {}
+        }
+        self.state.ui.needs_render = true;
+        Ok(())
+    }
+
+    /// Keys for `/skills`: move, Enter puts `/name ` in the composer to run
+    /// the skill (with an optional request after it), Esc closes.
+    fn handle_skills_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        let count = self.state.input.skills.len();
+        let selected = self
+            .state
+            .input
+            .skills_selected
+            .min(count.saturating_sub(1));
+        match key.code {
+            KeyCode::Esc => self.state.input.show_skills = false,
+            KeyCode::Up => self.state.input.skills_selected = selected.saturating_sub(1),
+            KeyCode::Down => {
+                self.state.input.skills_selected = (selected + 1).min(count.saturating_sub(1))
+            }
+            KeyCode::Enter => {
+                if let Some(skill) = self.state.input.skills.get(selected) {
+                    let text = format!("/{} ", skill.name);
+                    self.state.input.show_skills = false;
+                    self.state.input.input_cursor = text.chars().count();
+                    self.state.input.input_text = text;
+                }
+            }
             _ => {}
         }
         self.state.ui.needs_render = true;
@@ -1549,15 +1742,23 @@ impl App {
                 } else {
                     &self.state.input.input_text
                 };
+                // Text after the command word (`/skill-name request`,
+                // `/diff path`) is a typed command, not a pick: submit it.
+                let has_args = query.trim_end().contains(char::is_whitespace);
                 let commands = command_palette::filter_commands(query);
-                if let Some(cmd) = commands.get(self.state.input.slash_picker_selected) {
-                    self.state.input.show_slash_picker = false;
-                    self.state.input.input_text.clear();
-                    self.state.input.input_cursor = 0;
-                    self.execute_command(*cmd)?;
-                } else {
-                    // No selection, just submit the text as normal
-                    self.state.input.show_slash_picker = false;
+                match commands.get(self.state.input.slash_picker_selected) {
+                    Some(cmd) if !has_args => {
+                        self.state.input.show_slash_picker = false;
+                        self.state.input.input_text.clear();
+                        self.state.input.input_cursor = 0;
+                        self.execute_command(*cmd)?;
+                    }
+                    _ => {
+                        // No pick (custom command, skill, arguments): submit
+                        // the text as typed.
+                        self.state.input.show_slash_picker = false;
+                        return self.handle_key(key);
+                    }
                 }
             }
             KeyEvent {
@@ -2011,7 +2212,7 @@ impl App {
             .pending
             .as_ref()
             .map(|p| p.path.clone())
-            .unwrap_or_else(|| ".agente/plan.md".into());
+            .unwrap_or_else(|| agente_core::tools::PLANS_DIR_REL.into());
         self.state.plan_review.clear();
         self.state
             .agent
@@ -2024,8 +2225,8 @@ impl App {
         );
         self.state
             .add_system_message("Plan accepted · switched to Build".to_string());
-        self.state.add_user_message(msg.clone());
         if self.state.agent.is_idle() {
+            self.state.add_user_message(msg.clone());
             self.state
                 .session
                 .conversation
@@ -2037,10 +2238,13 @@ impl App {
                     thinking: None,
                     thinking_signature: None,
                     continuation: None,
+                    attachments: Vec::new(),
                 });
             self.start_chat_turn()?;
         } else {
-            self.state.agent.message_queue.push(msg);
+            self.state
+                .agent
+                .queue_message(crate::state::QueuedMessage::new(msg));
         }
         Ok(())
     }
@@ -2079,11 +2283,13 @@ impl App {
         self.state
             .agent
             .set_mode(agente_core::types::AgentMode::Plan);
-        self.state.add_user_message(feedback.clone());
         if !self.state.agent.is_idle() {
-            self.state.agent.message_queue.push(feedback);
+            self.state
+                .agent
+                .queue_message(crate::state::QueuedMessage::new(feedback));
             return Ok(());
         }
+        self.state.add_user_message(feedback.clone());
         self.state
             .session
             .conversation
@@ -2095,6 +2301,7 @@ impl App {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             });
         self.start_chat_turn()
     }
@@ -2667,7 +2874,7 @@ impl App {
         // Persist the outgoing session so it stays resumable from the picker,
         // then replace it in place with a fresh session identity.
         self.flush_state_to_disk();
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
         self.state.reset_for_new_session();
         // Straight to work: the hero steps aside and every key goes to the
         // composer; the empty chat eases in so the switch reads as intended.
@@ -2686,8 +2893,13 @@ impl App {
         project_dir: String,
         config: agente_core::config::AppConfig,
     ) {
-        self.current_task_id = self.current_task_id.wrapping_add(1);
+        self.current_task_id = self.next_task_id();
+        let before = std::sync::Arc::clone(&self.state.config.mcp_manager);
         self.state.reset_for_project(project_dir, config);
+        if !std::sync::Arc::ptr_eq(&before, &self.state.config.mcp_manager) {
+            let _guard = self.runtime.enter();
+            super::spawn_mcp_connect(&self.state);
+        }
     }
 
     /// Welcome button keys. Returns true when the key was handled (do not route further).
@@ -2745,6 +2957,270 @@ mod tests {
         App::new_for_test(AppConfig::default(), "/tmp/key-test".to_string(), runtime).unwrap()
     }
 
+    #[test]
+    fn typed_skill_command_loads_the_skill_for_the_turn() {
+        let project = tempfile::tempdir().unwrap();
+        let dir = project.path().join(".agente/skills/zq-lint");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("SKILL.md"),
+            "---\nname: zq-lint\ndescription: Lint things\n---\nRun the linter twice.",
+        )
+        .unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut app = App::new_for_test(
+            AppConfig::default(),
+            project.path().to_string_lossy().into_owned(),
+            runtime,
+        )
+        .unwrap();
+        app.state.ui.show_welcome_screen = false;
+        for c in "/zq-lint check src".chars() {
+            app.handle_key(key(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        }
+        // The turn spawns its task on the ambient runtime.
+        let ambient = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = ambient.enter();
+        let _ = app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE));
+
+        let bubble = app
+            .state
+            .session
+            .chat_history
+            .iter()
+            .rev()
+            .find(|e| e.role == types::Role::User)
+            .expect("user bubble");
+        assert_eq!(
+            bubble.content, "/zq-lint check src",
+            "the bubble shows what was typed"
+        );
+        let sent = app
+            .state
+            .session
+            .conversation
+            .iter()
+            .rev()
+            .find(|m| m.role == types::Role::User)
+            .expect("user turn");
+        assert!(
+            sent.content.starts_with("<skill_content name=\"zq-lint\">"),
+            "{}",
+            sent.content
+        );
+        assert!(sent.content.contains("Run the linter twice."));
+        assert!(sent.content.ends_with("check src"));
+    }
+
+    #[test]
+    fn dropped_media_asks_attaches_and_travels_with_the_message() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.config.current_provider = "stub".into();
+        app.state.config.current_model = "stub-text".into();
+        let dir = tempfile::tempdir().unwrap();
+        let shot = dir.path().join("my shot.png");
+        std::fs::write(&shot, b"not really a png").unwrap();
+
+        // A terminal drop pastes the (quoted) path.
+        app.insert_paste(&format!("'{}'", shot.display()));
+        let asked = app
+            .state
+            .ui
+            .media_consent
+            .clone()
+            .expect("images ask first");
+        assert_eq!(asked.name, "my shot.png");
+        assert!(
+            app.state.input.input_text.is_empty(),
+            "the path is not typed in"
+        );
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.ui.media_consent.is_none());
+        assert_eq!(app.state.input.attachments.len(), 1);
+        assert!(std::path::Path::new(&app.state.input.attachments[0].path).exists());
+
+        // A text-only model: nothing is sent, the attachment stays.
+        for c in "what is this".chars() {
+            app.handle_key(key(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        }
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.session.conversation.is_empty());
+        assert_eq!(app.state.input.attachments.len(), 1);
+        assert_eq!(app.state.input.input_text, "what is this");
+
+        // A vision model takes it.
+        app.state.config.current_model = "stub-vision".into();
+        let ambient = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = ambient.enter();
+        let _ = app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.state.input.attachments.is_empty());
+        let sent = app
+            .state
+            .session
+            .conversation
+            .iter()
+            .rev()
+            .find(|m| m.role == types::Role::User)
+            .expect("sent");
+        assert_eq!(sent.content, "what is this");
+        assert_eq!(sent.attachments.len(), 1);
+        let bubble = app.state.session.chat_history.last().unwrap();
+        assert_eq!(bubble.attachments.len(), 1, "the bubble shows it too");
+    }
+
+    #[test]
+    fn always_allow_skips_the_question_next_time() {
+        let mut app = test_app();
+        let dir = tempfile::tempdir().unwrap();
+        let clip = dir.path().join("clip.mp4");
+        std::fs::write(&clip, b"video").unwrap();
+        app.insert_paste(&clip.to_string_lossy());
+        app.handle_key(key(KeyCode::Char('a'), KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(
+            app.state.config.config.allow_media,
+            [agente_core::media::AttachmentKind::Video]
+        );
+        app.state.input.attachments.clear();
+        app.insert_paste(&clip.to_string_lossy());
+        assert!(app.state.ui.media_consent.is_none(), "no question now");
+        assert_eq!(app.state.input.attachments.len(), 1);
+        // Esc on a question declines.
+        let png = dir.path().join("x.png");
+        std::fs::write(&png, b"png").unwrap();
+        app.insert_paste(&png.to_string_lossy());
+        app.handle_key(key(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.input.attachments.len(), 1, "declined");
+    }
+
+    #[test]
+    fn enter_queues_and_enter_again_sends_now() {
+        let mut app = test_app();
+        app.state.ui.show_welcome_screen = false;
+        app.state.config.current_provider = "stub".into();
+        app.state.agent.state = AgentState::Executing;
+        let enter = |app: &mut App| {
+            app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+                .unwrap()
+        };
+        for c in "run the tests".chars() {
+            app.handle_key(key(KeyCode::Char(c), KeyModifiers::NONE))
+                .unwrap();
+        }
+        enter(&mut app);
+        assert_eq!(app.state.agent.message_queue.len(), 1, "queued");
+        assert!(
+            app.state.session.chat_history.is_empty(),
+            "no bubble before it is sent"
+        );
+
+        // Up on an empty composer edits it; Enter re-queues.
+        app.handle_key(key(KeyCode::Up, KeyModifiers::NONE))
+            .unwrap();
+        assert_eq!(app.state.input.input_text, "run the tests");
+        assert!(app.state.agent.message_queue.is_empty());
+        enter(&mut app);
+
+        // Enter again on the empty composer: hand it to the running turn.
+        enter(&mut app);
+        assert!(app.state.agent.message_queue[0].sending);
+        let inbox: Vec<String> = app
+            .state
+            .agent
+            .user_inbox
+            .lock()
+            .iter()
+            .map(|m| m.content.clone())
+            .collect();
+        assert_eq!(inbox, ["run the tests"]);
+
+        // The loop takes it: now it is a bubble.
+        app.inject_agent_event(agente_core::agent::AgentEvent::UserMessagesInjected {
+            messages: vec!["run the tests".into()],
+        });
+        app.process_agent_events();
+        assert!(app.state.agent.message_queue.is_empty());
+        assert_eq!(
+            app.state.session.chat_history.last().unwrap().content,
+            "run the tests"
+        );
+    }
+
+    #[test]
+    fn mcp_dialog_enables_and_turns_off_servers() {
+        let mut config = AppConfig::default();
+        config.mcp.insert(
+            "docs".into(),
+            agente_core::mcp::McpConfig {
+                command: vec!["true".into()],
+                enabled: false,
+                ..Default::default()
+            },
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut app = App::new_for_test(config, "/tmp/mcp-key-test".into(), runtime).unwrap();
+        app.execute_command(crate::command_palette::Command::Mcp)
+            .unwrap();
+        assert_eq!(
+            crate::state::modal_owner(&app.state),
+            crate::state::ModalOwner::Mcp
+        );
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.state.config.config.mcp["docs"].enabled, "Enter enables");
+        app.handle_key(key(KeyCode::Char('d'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(
+            !app.state.config.config.mcp["docs"].enabled,
+            "d turns it off"
+        );
+        assert_eq!(
+            app.state.config.mcp_manager.snapshots()[0].status,
+            agente_core::mcp::ServerStatus::Disabled
+        );
+        app.handle_key(key(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.state.input.show_mcp);
+    }
+
+    #[test]
+    fn skills_dialog_enter_puts_the_command_in_the_composer() {
+        let mut app = test_app();
+        app.state.input.show_skills = true;
+        app.state.input.skills = vec![agente_core::extensions::Skill {
+            name: "pdf".into(),
+            description: "PDFs".into(),
+            source: "/s/pdf/SKILL.md".into(),
+            dir: "/s/pdf".into(),
+            scope: agente_core::extensions::SkillScope::User,
+            model_invocable: true,
+            compatibility: None,
+        }];
+        app.handle_key(key(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.state.input.show_skills);
+        assert_eq!(app.state.input.input_text, "/pdf ");
+        assert_eq!(app.state.input.input_cursor, 5);
+    }
+
     fn chat_entry(content: &str) -> ChatEntry {
         ChatEntry {
             id: uuid::Uuid::new_v4(),
@@ -2761,6 +3237,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -2895,6 +3372,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         };
         app.state.add_user_message("first".into());
         app.state.session.conversation.push(user("first"));
@@ -2936,6 +3414,7 @@ mod tests {
             cache_read_tokens: 0,
             cache_creation_tokens: 0,
             cost_usd: Some(cost),
+            cost_estimated: false,
             subagent_id: subagent_id.map(str::to_string),
         };
         app.inject_agent_event(call(0.004, Some("child")));
@@ -2971,7 +3450,7 @@ mod tests {
         let last = app.state.session.chat_history.last().unwrap();
         assert_eq!(
             last.content,
-            "⟲ Context compacted · 182k → 64k · summarized"
+            "⟲ Context compacted · ~182k → ~64k · summarized"
         );
     }
 

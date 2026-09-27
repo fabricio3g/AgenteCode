@@ -72,14 +72,16 @@ fn status_segments(state: &AppState) -> Vec<Vec<Span<'static>>> {
         };
         segments.push(vec![on_bg(label.to_string(), PRIMARY())]);
     } else if let Some((used, limit)) = context_ratio(state) {
-        segments.push(context_meter(used, limit));
+        let estimated = !state.agent.context_measured && used > 0;
+        segments.push(context_meter(used, limit, estimated));
     }
     segments
 }
 
 /// `━━━━━━━━ 61k / 262k`: an 8-cell fill meter plus the numbers. Muted
 /// normally, amber past 70%, red past 85% — where auto-compaction starts.
-fn context_meter(used: usize, limit: usize) -> Vec<Span<'static>> {
+/// `~61k` when the size is our estimate rather than the provider's count.
+fn context_meter(used: usize, limit: usize, estimated: bool) -> Vec<Span<'static>> {
     const CELLS: usize = 8;
     let ratio = used as f64 / limit.max(1) as f64;
     let color = if ratio >= 0.85 {
@@ -98,7 +100,8 @@ fn context_meter(used: usize, limit: usize) -> Vec<Span<'static>> {
         ),
         Span::styled(
             format!(
-                " {} / {}",
+                " {}{} / {}",
+                if estimated { "~" } else { "" },
                 format_token_count(used),
                 format_token_count(limit)
             ),
@@ -205,11 +208,19 @@ mod tests {
         let text = |spans: Vec<Span<'static>>| -> String {
             spans.iter().map(|s| s.content.as_ref()).collect()
         };
-        let meter = context_meter(used, limit);
+        let meter = context_meter(used, limit, false);
         assert_eq!(text(meter.clone()), "━━━━━━━━ 9.5k / 200k");
+        assert_eq!(
+            text(context_meter(used, limit, true)),
+            "━━━━━━━━ ~9.5k / 200k",
+            "an estimate says so"
+        );
         assert_eq!(meter[2].style.fg, Some(FG_MUTED()));
         // Past the 85% auto-compact line the meter turns red.
-        assert_eq!(context_meter(180_000, limit)[0].style.fg, Some(ERROR()));
+        assert_eq!(
+            context_meter(180_000, limit, false)[0].style.fg,
+            Some(ERROR())
+        );
     }
 
     #[test]

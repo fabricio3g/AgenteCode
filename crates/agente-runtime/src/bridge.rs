@@ -223,12 +223,15 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
             }
         }
         // Per-call spend is a TUI meter; headless clients keep `Usage`.
-        AgentEvent::CallUsage { .. } | AgentEvent::CompactionStarted { .. } => return None,
+        AgentEvent::CallUsage { .. }
+        | AgentEvent::CompactionStarted { .. }
+        | AgentEvent::UserMessagesInjected { .. } => return None,
         AgentEvent::TurnUsage {
             prompt_tokens,
             completion_tokens,
             cache_read_tokens,
             cache_creation_tokens,
+            ..
         } => RuntimeEvent::Usage {
             usage: Usage {
                 prompt_tokens,
@@ -356,6 +359,7 @@ fn commit_conversation(
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }));
     }
     replace_conversation(inner, session_id, conversation)
@@ -514,6 +518,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -526,6 +531,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 

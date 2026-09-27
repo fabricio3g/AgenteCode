@@ -153,13 +153,15 @@ pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
         PermissionRule::new("tool:list_dir", Permission::Allow),
         PermissionRule::new("tool:grep", Permission::Allow),
         PermissionRule::new("tool:todo_write", Permission::Allow),
+        // Loading a skill only reads its instructions.
+        PermissionRule::new("tool:skill", Permission::Allow),
         // Subagent orchestration is safe in Plan mode: the host coerces every
         // child to read-only tools, so spawning research children is the
         // intended way to explore before presenting a plan.
         PermissionRule::new("tool:task", Permission::Allow),
         PermissionRule::new("tool:task_output", Permission::Allow),
         PermissionRule::new("tool:kill_task", Permission::Allow),
-        // Present finished plan for Accept / Redo / Comment (writes only .agente/plan.md)
+        // Present finished plan for Accept / Redo / Comment (writes only under .agente/plans/)
         PermissionRule::new("tool:present_plan", Permission::Allow),
         // Mutating operations are denied in Plan mode. Switch to Build mode to edit.
         PermissionRule::with_description("file:write", Permission::Deny, "Write to files"),
@@ -180,6 +182,8 @@ pub fn build_mode_default_rules() -> Vec<PermissionRule> {
         PermissionRule::new("tool:list_dir", Permission::Allow),
         PermissionRule::new("tool:grep", Permission::Allow),
         PermissionRule::new("tool:todo_write", Permission::Allow),
+        // Loading a skill only reads its instructions.
+        PermissionRule::new("tool:skill", Permission::Allow),
         PermissionRule::new("tool:present_plan", Permission::Allow),
         // Hosted subagent lifecycle is always allowed; child capability modes
         // (not the parent mode) constrain what a child may do.
@@ -409,8 +413,19 @@ impl PermissionEngine {
     /// filesystem facts inline (I/O happens under the caller's lock — prefer
     /// [`PermissionEngine::check_tool_with_facts`] on hot paths).
     pub fn check_tool(&self, tool_name: &str, args: &serde_json::Value) -> Permission {
+        self.check_tool_or(tool_name, args, None)
+    }
+
+    /// [`Self::check_tool`] with the tool's own fallback permission
+    /// ([`crate::tools::Tool::default_permission`]).
+    pub fn check_tool_or(
+        &self,
+        tool_name: &str,
+        args: &serde_json::Value,
+        tool_default: Option<Permission>,
+    ) -> Permission {
         let facts = collect_fs_facts(tool_name, args, self.project_dir.as_deref());
-        self.check_tool_with_facts(tool_name, args, &facts)
+        self.check_tool_with_default(tool_name, args, &facts, tool_default)
     }
 
     /// Check permission for a tool call using facts collected before locking.
@@ -420,7 +435,7 @@ impl PermissionEngine {
     /// 2. Explicit deny rules; nothing below can override them.
     /// 3. Fine-grained config policy for this tool and its arguments.
     /// 4. Remaining rules, first match wins.
-    /// 5. Mode default.
+    /// 5. The tool's own default (MCP hints), else the mode default.
     ///
     /// Automatic approval only upgrades a final `Ask` to `Allow`; it can never
     /// turn a `Deny` (mode prohibition or explicit rule) into an allow.
@@ -429,6 +444,18 @@ impl PermissionEngine {
         tool_name: &str,
         args: &serde_json::Value,
         facts: &ToolFsFacts,
+    ) -> Permission {
+        self.check_tool_with_default(tool_name, args, facts, None)
+    }
+
+    /// [`Self::check_tool_with_facts`] where the tool supplies its own
+    /// fallback (step 5) instead of the mode default.
+    pub fn check_tool_with_default(
+        &self,
+        tool_name: &str,
+        args: &serde_json::Value,
+        facts: &ToolFsFacts,
+        tool_default: Option<Permission>,
     ) -> Permission {
         if self.mode == AgentMode::Plan
             && crate::tools::known_kind(tool_name).is_some_and(|kind| kind.mutates_project())
@@ -454,6 +481,7 @@ impl PermissionEngine {
                 .find(|rule| rule.matches(&action))
                 .map(|rule| rule.permission)
         })
+        .or(tool_default)
         .unwrap_or(match self.mode {
             AgentMode::Plan => Permission::Deny,
             AgentMode::Build => Permission::Allow,

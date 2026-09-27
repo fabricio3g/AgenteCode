@@ -59,7 +59,7 @@ pub struct ExternalAgentRuntime {
     tool_registry: Arc<AsyncRwLock<ToolRegistry>>,
     permission_engine: SharedPermissionEngine,
     change_tracker: Arc<Mutex<ChangeTracker>>,
-    mcp_managers: Arc<Mutex<Vec<Arc<Mutex<McpManager>>>>>,
+    mcp_managers: Arc<Mutex<Vec<Arc<McpManager>>>>,
 }
 
 impl ExternalAgentRuntime {
@@ -83,36 +83,17 @@ impl ExternalAgentRuntime {
             std::mem::take(&mut *managers)
         };
         for manager in old_managers {
-            let _ = manager.lock().await.disconnect_all().await;
+            manager.disconnect_all();
         }
 
         let mut manager = McpManager::new();
         for (name, config) in configs {
-            if config.enabled {
-                manager.add_client(name, config);
-            }
+            manager.add_client(name, config);
         }
-
-        let _ = manager.connect_all().await;
-        let connected = manager
-            .get_connected_clients()
-            .into_iter()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-
-        let manager = Arc::new(Mutex::new(manager));
-        let mcp_tools = {
-            let guard = manager.lock().await;
-            guard.get_all_tools()
-        };
-
-        let adapters = mcp_tools
-            .into_iter()
-            .map(|tool| {
-                Box::new(McpToolAdapter::from_mcp_tool(tool, Arc::clone(&manager)))
-                    as Box<dyn crate::tools::Tool>
-            })
-            .collect();
+        manager.connect_all().await;
+        let connected = manager.get_connected_clients();
+        let manager = Arc::new(manager);
+        let adapters = McpToolAdapter::all(&manager);
 
         let mut registry = ToolRegistry::new(self.project_dir.clone());
         registry.register_mcp_adapters(adapters);
@@ -173,7 +154,12 @@ impl ExternalAgentRuntime {
                         .permission_engine
                         .read()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    engine.check_tool(&tool_name, &args)
+                    let tool_default = self.tool_registry.try_read().ok().and_then(|registry| {
+                        registry
+                            .get(&tool_name)
+                            .and_then(|tool| tool.default_permission(engine.mode))
+                    });
+                    engine.check_tool_or(&tool_name, &args, tool_default)
                 };
 
                 ExternalToolReview {
@@ -313,12 +299,18 @@ impl ExternalAgentRuntime {
             };
         }
 
+        let tool_default = self
+            .tool_registry
+            .read()
+            .await
+            .get(&tool_name)
+            .and_then(|tool| tool.default_permission(mode));
         let permission = {
             let engine = self
                 .permission_engine
                 .read()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            engine.check_tool(&tool_name, &args)
+            engine.check_tool_or(&tool_name, &args, tool_default)
         };
 
         match permission {

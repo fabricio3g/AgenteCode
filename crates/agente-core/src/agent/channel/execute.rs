@@ -86,7 +86,10 @@ pub(crate) async fn prepare_tool_call(
         let engine = permission_engine
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        engine.check_tool_with_facts(tool_name, &args, &facts)
+        let tool_default = tool_registry
+            .get(tool_name)
+            .and_then(|tool| tool.default_permission(engine.mode));
+        engine.check_tool_with_default(tool_name, &args, &facts, tool_default)
     };
 
     match permission {

@@ -122,7 +122,7 @@ impl ToolCore for GrepTool {
             .build()
             .map_err(|e| ToolError::InvalidArguments(format!("Invalid regex: {e}")))?;
 
-        let resolved = super::resolve_project_path(path, project_dir)?;
+        let resolved = super::resolve_read_path(path, project_dir)?;
         let include_glob = glob::Pattern::new(glob)
             .map_err(|e| ToolError::InvalidArguments(format!("Invalid glob pattern: {e}")))?;
 
@@ -314,7 +314,7 @@ impl ToolCore for FindTool {
         let path = args.path.as_deref().unwrap_or(".");
         let limit = args.limit.unwrap_or(200).clamp(1, MAX_FIND_RESULTS);
 
-        let resolved = super::resolve_project_path(path, project_dir)?;
+        let resolved = super::resolve_read_path(path, project_dir)?;
         let matcher = glob::Pattern::new(&pattern)
             .map_err(|e| ToolError::InvalidArguments(format!("Invalid glob pattern: {e}")))?;
 

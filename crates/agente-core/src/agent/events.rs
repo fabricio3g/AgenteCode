@@ -106,10 +106,20 @@ pub enum AgentEvent {
     /// `conversation` is omitted — `Done`/`Cancelled` still carry the full
     /// transcript; this is informational only.
     TurnUsage {
+        /// Uncached input of the last call (providers report cache reads and
+        /// writes separately).
         prompt_tokens: u32,
         completion_tokens: u32,
         cache_read_tokens: u32,
         cache_creation_tokens: u32,
+        /// Full prompt size of the last request — uncached + cache read +
+        /// cache write — i.e. the real context in use. 0 when unreported.
+        context_tokens: u32,
+    },
+    /// Messages the user sent mid-turn were handed to the model (at a step
+    /// boundary). The TUI moves them from the queue preview into the chat.
+    UserMessagesInjected {
+        messages: Vec<String>,
     },
     /// One model call finished: its own token buckets and what it cost.
     /// Emitted per call by every loop — subagents included, forwarded up to
@@ -121,6 +131,9 @@ pub enum AgentEvent {
         cache_read_tokens: u32,
         cache_creation_tokens: u32,
         cost_usd: Option<f64>,
+        /// `cost_usd` is our catalog-price estimate, not the provider's
+        /// own charge (which only some providers report).
+        cost_estimated: bool,
         /// The subagent whose loop made the call (`None` = the main agent).
         /// Set by the forwarder; nested children keep their own id.
         subagent_id: Option<String>,

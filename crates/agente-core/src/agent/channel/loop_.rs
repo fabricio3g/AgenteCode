@@ -48,11 +48,12 @@ pub fn spawn_chat_task(
     permission_engine: SharedPermissionEngine,
     cancel_signal: AbortSignal,
     approval_broker: ApprovalBroker,
-    mcp_manager: Option<Arc<tokio::sync::Mutex<crate::mcp::client::McpManager>>>,
+    mcp_manager: Option<Arc<crate::mcp::client::McpManager>>,
     subagent_registry: crate::subagent::SubagentRegistry,
     subagent_models: crate::config::SubagentModels,
     smart_compaction: bool,
     max_parallel_subagents: usize,
+    user_inbox: super::config::UserInbox,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
@@ -110,6 +111,7 @@ pub fn spawn_chat_task(
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction,
+            user_inbox: Some(user_inbox),
         };
         // A panic inside the loop must not kill the spawned task silently:
         // without a terminal event the TUI would hang "running" until the
@@ -206,38 +208,16 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         loop_nudge_after,
         loop_stop_after,
         smart_compaction,
+        user_inbox,
     } = cfg;
 
     let mut tool_registry = ToolRegistry::with_agents(&project_dir, &custom_agents);
 
-    // Register MCP tools if available
+    // MCP tools of every server that is ready now; servers still connecting
+    // join on a later turn (a slow server never delays this one).
     if let Some(manager) = &mcp_manager {
-        let mgr = tokio::select! {
-            mgr = manager.lock() => mgr,
-            _ = cancel_signal.wait_aborted() => {
-                send_event(
-                    &sender,
-                    task_id,
-                    AgentEvent::Cancelled {
-                        conversation: conversation.clone(),
-                        tokens: 0,
-                        partial_text: String::new(),
-                    },
-                );
-                return Ok(());
-            }
-        };
-        let mcp_tools = mgr.get_all_tools();
-        let adapters: Vec<Box<dyn crate::tools::Tool>> = mcp_tools
-            .into_iter()
-            .map(|t| {
-                Box::new(crate::mcp::McpToolAdapter::from_mcp_tool(
-                    t,
-                    Arc::clone(manager),
-                )) as Box<dyn crate::tools::Tool>
-            })
-            .collect();
-        tool_registry.register_mcp_adapters(adapters);
+        manager.refresh_stale_tools().await;
+        tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all(manager));
     }
 
     // Children get a pruned registry containing only tools their capability and
@@ -293,6 +273,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     thinking: None,
                     thinking_signature: None,
                     continuation: None,
+                    attachments: Vec::new(),
                 },
             );
         }
@@ -305,6 +286,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     let mut total_cache_read_tokens: u32 = 0;
     let mut total_cache_creation_tokens: u32 = 0;
     let mut last_prompt_tokens: u32 = 0;
+    let mut last_context_tokens: u32 = 0;
     let mut last_completion_tokens: u32 = 0;
     let mut retry_attempt = 0u32;
     // Consecutive empty completions this turn (see the empty-response retry).
@@ -344,6 +326,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 &last_completion_tokens,
                 &total_cache_read_tokens,
                 &total_cache_creation_tokens,
+                &last_context_tokens,
             );
             send_event(
                 &sender,
@@ -355,6 +338,26 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 },
             );
             return Ok(());
+        }
+
+        // Messages the user sent mid-turn join here, after a complete tool
+        // round (tool results followed by user text is valid everywhere).
+        if let Some(inbox) = &user_inbox {
+            let arrived: Vec<Message> = std::mem::take(&mut *inbox.lock());
+            if !arrived.is_empty() {
+                let texts: Vec<String> = arrived.iter().map(|m| m.content.clone()).collect();
+                for message in arrived {
+                    running_tokens = running_tokens.saturating_add(
+                        crate::context::estimate_message_tokens(std::slice::from_ref(&message)),
+                    );
+                    messages.push(message);
+                }
+                send_event(
+                    &sender,
+                    task_id,
+                    AgentEvent::UserMessagesInjected { messages: texts },
+                );
+            }
         }
 
         tracing::info!(
@@ -471,6 +474,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                             &last_completion_tokens,
                             &total_cache_read_tokens,
                             &total_cache_creation_tokens,
+                            &last_context_tokens,
                         );
                         send_event(
                             &sender,
@@ -635,6 +639,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                                 total_cache_creation_tokens = total_cache_creation_tokens
                                     .saturating_add(usage.cache_creation_tokens);
                                 last_prompt_tokens = usage.prompt_tokens;
+                                last_context_tokens = usage
+                                    .prompt_tokens
+                                    .saturating_add(usage.cache_read_tokens)
+                                    .saturating_add(usage.cache_creation_tokens);
                                 last_completion_tokens = usage.completion_tokens;
                                 send_event(&sender, task_id, AgentEvent::CallUsage {
                                     prompt_tokens: usage.prompt_tokens,
@@ -653,6 +661,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                                             )
                                         })
                                     }),
+                                    cost_estimated: usage.cost_usd.is_none(),
                                     subagent_id: None,
                                 });
                                 stream_stop_reason = stop_reason;
@@ -677,6 +686,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         &last_completion_tokens,
                         &total_cache_read_tokens,
                         &total_cache_creation_tokens,
+                        &last_context_tokens,
                     );
                     send_event(
                         &sender,
@@ -775,6 +785,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                         &last_completion_tokens,
                         &total_cache_read_tokens,
                         &total_cache_creation_tokens,
+                        &last_context_tokens,
                     );
                     send_event(
                         &sender,
@@ -811,6 +822,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             &last_completion_tokens,
             &total_cache_read_tokens,
             &total_cache_creation_tokens,
+            &last_context_tokens,
         );
 
         // An empty completion (no text, no tool calls) means the turn
@@ -873,6 +885,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 thinking: reasoning,
                 thinking_signature,
                 continuation,
+                attachments: Vec::new(),
             };
             running_tokens = running_tokens.saturating_add(
                 crate::context::estimate_message_tokens(std::slice::from_ref(&assistant_message)),
@@ -881,6 +894,17 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             if !response_text.is_empty() {
                 send_event(&sender, task_id, AgentEvent::AssistantText(response_text));
             }
+        }
+
+        // The user sent something while this reply streamed: answer it in
+        // the same turn instead of finishing.
+        if tool_calls.is_empty()
+            && !cancel_signal.is_aborted()
+            && user_inbox
+                .as_ref()
+                .is_some_and(|inbox| !inbox.lock().is_empty())
+        {
+            continue;
         }
 
         if tool_calls.is_empty() {
@@ -893,6 +917,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 &last_completion_tokens,
                 &total_cache_read_tokens,
                 &total_cache_creation_tokens,
+                &last_context_tokens,
             );
             send_event(
                 &sender,
@@ -916,6 +941,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 &last_completion_tokens,
                 &total_cache_read_tokens,
                 &total_cache_creation_tokens,
+                &last_context_tokens,
             );
             send_event(
                 &sender,
@@ -965,6 +991,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     thinking: None,
                     thinking_signature: None,
                     continuation: None,
+                    attachments: Vec::new(),
                 };
                 running_tokens = running_tokens.saturating_add(
                     crate::context::estimate_message_tokens(std::slice::from_ref(&tool_message)),
@@ -999,6 +1026,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 &last_completion_tokens,
                 &total_cache_read_tokens,
                 &total_cache_creation_tokens,
+                &last_context_tokens,
             );
             send_event(
                 &sender,
@@ -1040,6 +1068,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             };
             running_tokens = running_tokens.saturating_add(
                 crate::context::estimate_message_tokens(std::slice::from_ref(&tool_message)),
@@ -1063,6 +1092,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             };
             running_tokens = running_tokens.saturating_add(
                 crate::context::estimate_message_tokens(std::slice::from_ref(&nudge_message)),
@@ -1089,6 +1119,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         &last_completion_tokens,
         &total_cache_read_tokens,
         &total_cache_creation_tokens,
+        &last_context_tokens,
     );
     send_event(
         &sender,
@@ -1320,6 +1351,137 @@ mod tests {
         }
     }
 
+    /// First call: the user "sends now" while the reply streams. Second
+    /// call: must see that message, in the same turn.
+    struct MidTurnProvider {
+        info: crate::providers::ProviderInfo,
+        inbox: super::super::config::UserInbox,
+        seen: std::sync::Mutex<Vec<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::Provider for MidTurnProvider {
+        fn info(&self) -> &crate::providers::ProviderInfo {
+            &self.info
+        }
+
+        async fn stream_completion(
+            &self,
+            messages: &[Message],
+            _tools: Option<&[crate::types::ToolDefinition]>,
+            _model: &crate::providers::ModelInfo,
+            sender: tokio::sync::mpsc::Sender<crate::llm::StreamEvent>,
+            _context: crate::providers::RequestContext,
+        ) -> Result<crate::llm::Usage, crate::llm::LlmError> {
+            let call = {
+                let mut seen = self.seen.lock().unwrap();
+                seen.push(messages.iter().map(|m| m.content.clone()).collect());
+                seen.len()
+            };
+            if call == 1 {
+                self.inbox
+                    .lock()
+                    .push(Message::user("also update the docs"));
+            }
+            let text = if call == 1 {
+                "first answer"
+            } else {
+                "docs updated"
+            };
+            sender
+                .send(crate::llm::StreamEvent::TextDelta(text.to_string()))
+                .await
+                .ok();
+            sender
+                .send(crate::llm::StreamEvent::Done {
+                    usage: crate::llm::Usage::default(),
+                    stop_reason: crate::llm::StopReason::Stop,
+                })
+                .await
+                .ok();
+            Ok(crate::llm::Usage::default())
+        }
+
+        async fn list_models(
+            &self,
+        ) -> Result<Vec<crate::providers::ModelInfo>, crate::llm::LlmError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn messages_sent_mid_turn_join_the_same_turn() {
+        use crate::cancellation::AbortController;
+        use crate::permissions::{shared_permission_engine, ApprovalBroker};
+        use crate::types::AgentMode;
+
+        let inbox = super::super::config::UserInbox::default();
+        let registry = Arc::new(ProviderRegistry::new());
+        let provider = Arc::new(MidTurnProvider {
+            info: crate::providers::ProviderInfo {
+                id: "test-overflow".into(),
+                models: vec![overflow_test_model()],
+                ..Default::default()
+            },
+            inbox: Arc::clone(&inbox),
+            seen: std::sync::Mutex::new(Vec::new()),
+        });
+        registry.register("test-overflow", provider.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config = AgentRunConfig {
+            session_id: uuid::Uuid::new_v4(),
+            task_id: 1,
+            sender: tx,
+            messages: vec![Message::user("fix the parser")],
+            provider_id: "test-overflow".into(),
+            model: "stub-model".into(),
+            thinking_level: "off".into(),
+            project_dir: ".".into(),
+            max_iterations: Some(5),
+            registry,
+            catalog: None,
+            permission_engine: shared_permission_engine(AgentMode::Build),
+            cancel_signal: AbortController::new().signal(),
+            approval_broker: ApprovalBroker::new(),
+            mcp_manager: None,
+            subagent_host: None,
+            custom_agents: Vec::new(),
+            tool_policy: None,
+            is_subagent: false,
+            depth: 0,
+            loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
+            loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
+            smart_compaction: false,
+            user_inbox: Some(Arc::clone(&inbox)),
+        };
+        run_agent_loop(config).await.expect("turn completes");
+
+        let seen = provider.seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "the turn went on instead of finishing");
+        assert_eq!(
+            seen[1][seen[1].len() - 2..],
+            [
+                "first answer".to_string(),
+                "also update the docs".to_string()
+            ],
+            "the message joins after the reply it arrived during"
+        );
+        assert!(inbox.lock().is_empty(), "taken from the inbox");
+        let events: Vec<AgentTaskEvent> = rx.try_iter().collect();
+        assert!(events.iter().any(|e| matches!(
+            &e.event,
+            AgentEvent::UserMessagesInjected { messages } if messages == &["also update the docs"]
+        )));
+        let done = events
+            .iter()
+            .find_map(|e| match &e.event {
+                AgentEvent::Done { conversation, .. } => Some(conversation.clone()),
+                _ => None,
+            })
+            .expect("Done");
+        assert_eq!(done.last().unwrap().content, "docs updated");
+    }
+
     fn overflow_test_model() -> crate::providers::ModelInfo {
         let mut model = reasoning_model();
         model.id = "stub-model".to_string();
@@ -1350,6 +1512,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::Tool,
@@ -1359,6 +1522,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
         ]
     }
@@ -1401,6 +1565,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }];
         for i in 0..5 {
             messages.extend(tool_result_message(&format!("c{i}"), 100));
@@ -1413,6 +1578,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         });
         let estimate = crate::context::estimate_message_tokens(&messages);
         assert!(
@@ -1446,6 +1612,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            user_inbox: None,
         };
         run_agent_loop(config).await.expect("turn recovers");
 
@@ -1522,6 +1689,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            user_inbox: None,
         };
         run_agent_loop(config)
             .await
@@ -1670,6 +1838,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             }],
             provider_id: "test-grind".to_string(),
             model: "stub-model".to_string(),
@@ -1690,6 +1859,7 @@ mod tests {
             loop_nudge_after: DEFAULT_LOOP_NUDGE_AFTER,
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
+            user_inbox: None,
         };
         (dir, rx, provider, config)
     }

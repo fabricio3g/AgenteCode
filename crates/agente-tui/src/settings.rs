@@ -18,6 +18,10 @@ pub enum Setting {
     ParallelSubagents,
     ReduceMotion,
     AutoApprove,
+    /// Open/attach images without asking.
+    MediaImages,
+    MediaAudio,
+    MediaVideo,
     Theme,
     SubagentModels,
 }
@@ -27,6 +31,9 @@ pub const SETTINGS: &[Setting] = &[
     Setting::ParallelSubagents,
     Setting::ReduceMotion,
     Setting::AutoApprove,
+    Setting::MediaImages,
+    Setting::MediaAudio,
+    Setting::MediaVideo,
     Setting::Theme,
     Setting::SubagentModels,
 ];
@@ -38,8 +45,22 @@ impl Setting {
             Self::ParallelSubagents => "Parallel subagents",
             Self::ReduceMotion => "Reduce motion",
             Self::AutoApprove => "Always approve tool calls",
+            Self::MediaImages => "Images",
+            Self::MediaAudio => "Audio",
+            Self::MediaVideo => "Video",
             Self::Theme => "Theme",
             Self::SubagentModels => "Subagent models",
+        }
+    }
+
+    /// The media kind a permission row controls.
+    pub fn media_kind(self) -> Option<agente_core::media::AttachmentKind> {
+        use agente_core::media::AttachmentKind;
+        match self {
+            Self::MediaImages => Some(AttachmentKind::Image),
+            Self::MediaAudio => Some(AttachmentKind::Audio),
+            Self::MediaVideo => Some(AttachmentKind::Video),
+            _ => None,
         }
     }
 
@@ -60,6 +81,12 @@ impl Setting {
             ),
             Self::ReduceMotion => on_off(state.ui.reduce_motion, "on", "off"),
             Self::AutoApprove => on_off(state.agent.auto_approve_persistent, "on", "off"),
+            Self::MediaImages | Self::MediaAudio | Self::MediaVideo => on_off(
+                self.media_kind()
+                    .is_some_and(|kind| state.config.config.allow_media.contains(&kind)),
+                "open without asking",
+                "ask first",
+            ),
             Self::Theme => (
                 match crate::style::current_theme() {
                     crate::style::Theme::Dark => "dark",

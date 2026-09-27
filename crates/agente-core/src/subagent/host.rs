@@ -77,7 +77,7 @@ pub struct SubagentHostConfig {
     pub catalog: Option<ModelCatalog>,
     pub permission_engine: SharedPermissionEngine,
     pub approval_broker: ApprovalBroker,
-    pub mcp_manager: Option<Arc<tokio::sync::Mutex<crate::mcp::client::McpManager>>>,
+    pub mcp_manager: Option<Arc<crate::mcp::client::McpManager>>,
     pub project_dir: String,
     pub model: String,
     pub thinking_level: String,
@@ -765,6 +765,7 @@ impl SubagentHost {
                         thinking: None,
                         thinking_signature: None,
                         continuation: None,
+                        attachments: Vec::new(),
                     },
                 );
                 conv.push(Message {
@@ -775,6 +776,7 @@ impl SubagentHost {
                     thinking: None,
                     thinking_signature: None,
                     continuation: None,
+                    attachments: Vec::new(),
                 });
                 conv
             }
@@ -918,6 +920,7 @@ impl SubagentHost {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             // Children always trim: they are short-lived and cheap.
             smart_compaction: false,
+            user_inbox: None,
         };
         let thread_name = format!("agente-subagent-{child_id}");
         let error_sender = child_tx;
@@ -1305,6 +1308,7 @@ fn forward_child_events(
                 cache_read_tokens,
                 cache_creation_tokens,
                 cost_usd,
+                cost_estimated,
                 subagent_id: nested,
             } => send(AgentEvent::CallUsage {
                 prompt_tokens,
@@ -1312,12 +1316,14 @@ fn forward_child_events(
                 cache_read_tokens,
                 cache_creation_tokens,
                 cost_usd,
+                cost_estimated,
                 subagent_id: nested.or_else(|| Some(subagent_id.clone())),
             }),
             // Not relevant from a child loop.
             AgentEvent::Thinking
             | AgentEvent::ReasoningDelta(_)
             | AgentEvent::TurnUsage { .. }
+            | AgentEvent::UserMessagesInjected { .. }
             | AgentEvent::Retry { .. }
             | AgentEvent::ModelsDiscovered { .. }
             | AgentEvent::ModelDiscoveryFailed { .. }

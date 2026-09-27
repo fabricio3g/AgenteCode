@@ -23,6 +23,8 @@ pub enum ListId {
     ThinkingSelector,
     SubagentModels,
     Settings,
+    Skills,
+    Mcp,
     MessageActions,
     SessionList,
     FolderBrowser,
@@ -33,6 +35,12 @@ pub enum ListId {
 /// Something interactive the pointer can land on.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HitTarget {
+    /// A session tab in the strip (switch to it).
+    Tab(usize),
+    /// A tab's close mark.
+    TabClose(usize),
+    /// The strip's `+`.
+    NewTab,
     /// Row `index` (logical, not visual) of a selectable list.
     Row { list: ListId, index: usize },
     /// An approval dialog action button.

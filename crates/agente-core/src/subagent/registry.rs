@@ -572,6 +572,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             });
         }
         let bounded = bound_conversation(msgs);

@@ -123,6 +123,7 @@ impl SessionState {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             });
         }
         had_notices
@@ -130,6 +131,16 @@ impl SessionState {
 
     /// Add a user message to the chat history
     pub fn add_user_message(&mut self, content: String, mode: String) {
+        self.add_user_message_with(content, mode, Vec::new());
+    }
+
+    /// A sent prompt with its media (shown under the bubble text).
+    pub fn add_user_message_with(
+        &mut self,
+        content: String,
+        mode: String,
+        attachments: Vec<agente_core::media::Attachment>,
+    ) {
         let id = Uuid::new_v4();
         self.checkpoints.insert(id, self.undo_stack.len());
         self.chat_history.push(ChatEntry {
@@ -147,6 +158,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments,
         });
     }
 
@@ -229,6 +241,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -255,6 +268,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -281,6 +295,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -301,6 +316,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -328,6 +344,7 @@ impl SessionState {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -356,6 +373,7 @@ impl SessionState {
             subagent_id: Some(subagent_id),
             subagent_type: Some(subagent_type),
             diff_stats: None,
+            attachments: Vec::new(),
         });
     }
 
@@ -632,6 +650,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         };
 
         session.add_user_message("first".into(), "Build".into());
@@ -745,6 +764,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::Assistant,
@@ -761,6 +781,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::Tool,
@@ -770,6 +791,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::User,
@@ -779,6 +801,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::Assistant,
@@ -788,6 +811,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
         ];
         let strategy = CompactionStrategy {

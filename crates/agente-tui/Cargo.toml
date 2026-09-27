@@ -19,6 +19,7 @@ ratatui = { workspace = true }
 crossterm = { workspace = true }
 dirs = { workspace = true }
 arboard = { workspace = true }
+png = "0.17"
 regex = { workspace = true }
 sha2 = { workspace = true }
 similar = { workspace = true }

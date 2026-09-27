@@ -18,6 +18,9 @@
 - **Keyboard-first TUI** — command palette, slash commands, `@`-file mentions, saved sessions, plan/build modes
 - **Robust agent core** — parallel tool execution, subagents with approval routing, compaction, prompt caching
 - **10 providers** — popular, local and custom OpenAI-compatible endpoints, with per-project config
+- **Agent Skills** — drop `SKILL.md` folders in `.agente/skills`, `.agents/skills` or `.claude/skills`; the agent loads the matching one on its own, or run it with `/skill-name`
+- **Images, audio, video, PDFs** — drop a file, paste a screenshot (Ctrl+V) or `@` a media file; sent in each provider's native format to models that accept it, asking first (configurable in `/settings`)
+- **MCP servers** — stdio and Streamable HTTP via the official Rust SDK; reads `agente.json` and the project's `.mcp.json`; `/mcp` shows status
 - **ACP + headless** — embed via the Agent Client Protocol, or run `--no-tui` in CI/pipes
 - **Safe by default** — approval cards with real diffs, plan mode, undo/redo, secret redaction
 
@@ -32,6 +35,36 @@ cargo build --release
 
 Connect a provider on first run with `/provider`, pick a model with `/model`.
 
+### Skills
+
+A skill is a folder with a `SKILL.md` ([Agent Skills](https://agentskills.io/specification) format):
+
+```markdown
+---
+name: release-notes
+description: Draft release notes from merged PRs. Use when the user asks for a changelog or release notes.
+---
+1. Run `scripts/collect.sh <tag>` …
+```
+
+Put it in `<project>/.agente/skills/` (or `.agents/skills/`, `.claude/skills/`; user-wide under `~/.agente/skills/`).
+The model sees every skill's name and description and loads the full instructions when a task matches;
+`/skills` lists them and `/release-notes <request>` runs one directly. `disable-model-invocation: true`
+keeps a skill manual-only.
+
+### MCP servers
+
+```json
+{ "mcp": {
+    "docs":   { "command": ["npx", "-y", "@acme/docs-mcp"] },
+    "sentry": { "type": "http", "url": "https://mcp.sentry.dev/mcp",
+                "headers": { "Authorization": "Bearer $SENTRY_TOKEN" } } } }
+```
+
+Servers connect in the background; `/mcp` shows their status, reconnects and turns them off.
+Tools the server marks read-only run without asking (and in plan mode); the rest ask first unless
+the server has `"trust": true`. Servers from a project's `.mcp.json` run only after you approve them in `/mcp`.
+
 On Linux, `packaging/linux/install-desktop.sh` adds an **Agente Code** launcher
 with its icon to your app menu (per-user, no root).
 
@@ -40,7 +73,9 @@ with its icon to your app menu (per-user, no root).
 | `Ctrl+P` | Command palette |
 | `Ctrl+C` | Quit |
 | `Tab` | Autocomplete slash commands |
-| `Shift+Tab` | Toggle plan / build mode |
+| `Shift+Tab` | Cycle plan / build / auto mode |
+| `F2` | New tab (sessions keep running in the background) |
+| `Ctrl+PgUp` / `Ctrl+PgDn` | Switch tabs |
 | `Esc` | Interrupt the running turn |
 | `?` / `F1` | Help overlay |
 

@@ -70,6 +70,15 @@ pub struct InputState {
     pub show_settings: bool,
     pub settings_selected: usize,
 
+    // Skills dialog (/skills); the list is read from disk when it opens.
+    pub show_skills: bool,
+    pub skills_selected: usize,
+    pub skills: Vec<agente_core::extensions::Skill>,
+
+    // MCP servers dialog (/mcp); rows are read live from the manager.
+    pub show_mcp: bool,
+    pub mcp_selected: usize,
+
     // Subagent models dialog (/subagent-models)
     pub show_subagent_models: bool,
     pub subagent_models_selected: usize,
@@ -84,6 +93,9 @@ pub struct InputState {
 
     /// Large pastes held out of `input_text`, keyed by their placeholder.
     pub pasted_blocks: Vec<PastedBlock>,
+
+    /// Media attached to the message being written (chips above the text).
+    pub attachments: Vec<agente_core::media::Attachment>,
 
     // Thinking-level selector (Ctrl+T / /thinking)
     /// Show the reasoning-effort picker for the current model.
@@ -114,19 +126,25 @@ pub struct PastedBlock {
     pub id: usize,
     pub text: String,
     pub lines: usize,
+    pub chars: usize,
 }
 
 impl PastedBlock {
     /// The token that stands in for this block inside `input_text`.
+    /// `[#1 +12 lines]`, or `[#2 +58 chars]` for a one-line paste.
     pub fn placeholder(&self) -> String {
-        format!("[#{} +{} lines]", self.id, self.lines)
+        if self.lines > 1 {
+            format!("[#{} +{} lines]", self.id, self.lines)
+        } else {
+            format!("[#{} +{} chars]", self.id, self.chars)
+        }
     }
 }
 
-/// A paste at or above either bound collapses into a chip. Below both, it is
-/// spliced inline where the user can still see and edit it.
-pub const PASTE_CHIP_MIN_LINES: usize = 4;
-pub const PASTE_CHIP_MIN_CHARS: usize = 400;
+/// A paste at or above either bound collapses into a chip. Below both (a
+/// word, a short name) it is spliced inline where it can still be edited.
+pub const PASTE_CHIP_MIN_LINES: usize = 2;
+pub const PASTE_CHIP_MIN_CHARS: usize = 20;
 
 /// Whether a paste is large enough to be held out of the composer.
 pub fn paste_wants_chip(text: &str) -> bool {
@@ -138,18 +156,20 @@ impl InputState {
     ///
     /// Paste placeholders are expanded here -- the single choke point every
     /// submission passes through -- so nothing downstream needs to know chips
-    /// exist. History stores the compact form, which is what the user typed.
+    /// exist. History keeps the expanded text: the chips' payloads are gone
+    /// after sending, so a recalled `[#2 +58 chars]` would point at nothing.
     pub fn submit_input(&mut self) -> Option<String> {
         if self.input_text.trim().is_empty() {
-            return None;
+            // Media alone is a message too.
+            return (!self.attachments.is_empty()).then(String::new);
         }
         let compact = self.input_text.trim().to_string();
-        if !self.input_history.contains(&compact) {
-            self.input_history.push(compact.clone());
+        let expanded = self.expand_pasted(&compact);
+        if !self.input_history.contains(&expanded) {
+            self.input_history.push(expanded.clone());
         }
         self.input_history_index = self.input_history.len();
 
-        let expanded = self.expand_pasted(&compact);
         self.input_text.clear();
         self.input_cursor = 0;
         self.pasted_blocks.clear();
@@ -167,9 +187,13 @@ impl InputState {
 
     /// Register a large paste and return the placeholder to insert in its place.
     pub fn stash_paste(&mut self, text: &str) -> String {
+        // Next id past the highest in use: after a chip is deleted, a new
+        // paste must not reuse a live chip's number.
+        let id = self.pasted_blocks.iter().map(|b| b.id).max().unwrap_or(0) + 1;
         let block = PastedBlock {
-            id: self.pasted_blocks.len() + 1,
+            id,
             lines: text.lines().count().max(1),
+            chars: text.chars().count(),
             text: text.to_string(),
         };
         let placeholder = block.placeholder();
@@ -310,13 +334,27 @@ mod paste_tests {
 
     /// Small pastes stay inline where they can be read and edited.
     #[test]
-    fn a_small_paste_is_not_collapsed() {
-        assert!(!paste_wants_chip("one\ntwo"));
-        assert!(!paste_wants_chip(
-            "a single long-ish line but under the cap"
-        ));
-        assert!(paste_wants_chip("a\nb\nc\nd"));
+    fn only_a_word_or_short_name_stays_inline() {
+        assert!(!paste_wants_chip("main.rs"), "short pastes stay editable");
+        assert!(paste_wants_chip("one\ntwo"), "any multi-line paste");
+        assert!(paste_wants_chip("a single line of twenty or more"));
         assert!(paste_wants_chip(&"x".repeat(PASTE_CHIP_MIN_CHARS)));
+    }
+
+    #[test]
+    fn chips_count_lines_or_chars_and_never_reuse_a_number() {
+        let mut input = InputState::default();
+        assert_eq!(
+            input.stash_paste("fn main() {}\nfn two() {}"),
+            "[#1 +2 lines]"
+        );
+        assert_eq!(input.stash_paste("a one-line paste here"), "[#2 +21 chars]");
+        input.pasted_blocks.retain(|b| b.id != 1);
+        assert_eq!(
+            input.stash_paste("another single line!"),
+            "[#3 +20 chars]",
+            "#2 is still in the draft"
+        );
     }
 
     /// Backspace removes a chip whole; a partially-chewed placeholder would be

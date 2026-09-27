@@ -22,6 +22,7 @@ pub fn fork_subagent_context(child_system_prompt: &str, child_prompt: &str) -> V
         thinking: None,
         thinking_signature: None,
         continuation: None,
+        attachments: Vec::new(),
     })
     .collect()
 }

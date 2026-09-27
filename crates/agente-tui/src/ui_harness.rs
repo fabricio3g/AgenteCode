@@ -111,6 +111,7 @@ fn entry(role: Role, content: &str) -> ChatEntry {
         subagent_id: None,
         subagent_type: None,
         diff_stats: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -418,8 +419,8 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
             seed_conversation(s);
             s.agent.state = AgentState::Executing;
             s.agent.message_queue = vec![
-                "then run the tests".into(),
-                "and update the changelog".into(),
+                crate::state::QueuedMessage::new("then run the tests"),
+                crate::state::QueuedMessage::new("and update the changelog"),
             ];
         }),
         ("approval_shell", |s| {
@@ -1417,4 +1418,41 @@ fn hovered_prompt_lifts_and_offers_its_actions() {
     let hovered = text(&buf, row);
     assert!(hovered.contains("revert · fork · copy"), "{hovered}");
     assert!(hovered.contains("Implement the plan"), "text never covered");
+}
+
+#[test]
+fn hovered_tool_card_has_no_hole_at_a_blank_output_line() {
+    let mut state = base_state();
+    state.session.chat_history.push(tool_entry(
+        "shell",
+        r#"{"command":"sed -n 1,5p src/track.c"}"#,
+        "b->tz = tz / l;\n\n}",
+    ));
+    let id = state.session.chat_history.last().unwrap().id;
+    state.ui.tool_fold.insert(id, Fold::Expanded);
+    state.ui.hovered_entry_id = Some(id);
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("test terminal");
+    terminal
+        .draw(|frame| crate::app::render_app(frame, &mut state))
+        .expect("draw");
+    let buf = terminal.backend().buffer().clone();
+    let row_of = |needle: &str| {
+        (0..24)
+            .find(|&y| {
+                let text: String = (0..80).map(|x| buf[(x, y)].symbol()).collect();
+                text.contains(needle)
+            })
+            .unwrap_or_else(|| panic!("{needle} painted"))
+    };
+    let first = row_of("b->tz = tz / l;");
+    let collapse = row_of("collapse");
+    let hover = crate::style::BG_HOVER();
+    for y in first..=collapse {
+        assert_eq!(buf[(40, y)].bg, hover, "row {y} of the card is tinted");
+    }
+    assert_ne!(
+        buf[(40, collapse + 1)].bg,
+        hover,
+        "the gap after the card stays bare"
+    );
 }

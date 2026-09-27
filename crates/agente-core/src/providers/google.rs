@@ -112,6 +112,17 @@ impl GoogleProvider {
                 if let Some(replay) = replay {
                     parts = replay;
                 } else {
+                    if message.role == Role::User {
+                        // Gemini takes every media kind as inline data.
+                        for encoded in crate::media::encode_for(model, &message.attachments) {
+                            parts.push(match encoded {
+                                crate::media::Encoded::Skipped(note) => json!({"text": note}),
+                                crate::media::Encoded::Data { attachment, base64 } => json!({
+                                    "inlineData": {"mimeType": attachment.mime, "data": base64}
+                                }),
+                            });
+                        }
+                    }
                     if !message.content.is_empty() {
                         parts.push(json!({"text": message.content}));
                     }

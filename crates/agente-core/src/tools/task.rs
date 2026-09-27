@@ -11,8 +11,28 @@ use super::{
     ToolExecutionContext, ToolExecutionMode, ToolKind, ToolRenderInfo,
 };
 
-/// Relative path where plans are stored under the project.
-pub const PLAN_FILE_REL: &str = ".agente/plan.md";
+/// Where a project keeps its plans: one file per plan, so plans from other
+/// sessions and tabs never overwrite each other.
+pub const PLANS_DIR_REL: &str = ".agente/plans";
+
+/// `.agente/plans/2026-09-27-add-image-input.md` — dated and named after the
+/// title. A revision (same title, same day) updates its own file; a new plan
+/// gets a new one.
+pub fn plan_file_rel(title: &str) -> String {
+    let mut slug = String::new();
+    for c in title.chars().flat_map(char::to_lowercase) {
+        if c.is_alphanumeric() {
+            slug.push(c);
+        } else if !slug.ends_with('-') && !slug.is_empty() {
+            slug.push('-');
+        }
+    }
+    let slug: String = slug.trim_end_matches('-').chars().take(48).collect();
+    let slug = slug.trim_end_matches('-');
+    let slug = if slug.is_empty() { "plan" } else { slug };
+    let date = chrono::Local::now().format("%Y-%m-%d");
+    format!("{PLANS_DIR_REL}/{date}-{slug}.md")
+}
 
 #[derive(Default)]
 pub struct TodoWriteTool;
@@ -96,8 +116,8 @@ impl ToolCore for TodoWriteTool {
     }
 }
 
-/// Present a finished plan to the user (Plan mode). Writes `.agente/plan.md`
-/// and signals the TUI to open the Accept / Redo / Comment card.
+/// Present a finished plan to the user (Plan mode). Writes the plan to its own
+/// file under `.agente/plans/` and signals the TUI to open the Accept / Redo / Comment card.
 #[derive(Default)]
 pub struct PresentPlanTool;
 
@@ -138,7 +158,7 @@ impl ToolCore for PresentPlanTool {
     }
 
     fn description(&self) -> &str {
-        "Present a finished implementation plan for user review. Call this when the plan is complete. Writes `.agente/plan.md` and waits for Accept / Redo / Comment. Do not implement code after calling this — wait for acceptance."
+        "Present a finished implementation plan for user review. Call this when the plan is complete. Saves it to its own file under `.agente/plans/` (a revision keeps the same title) and waits for Accept / Redo / Comment. Do not implement code after calling this — wait for acceptance."
     }
 
     fn execution_mode(&self) -> ToolExecutionMode {
@@ -174,7 +194,8 @@ impl ToolCore for PresentPlanTool {
             format!("# {title}\n\n{markdown}\n")
         };
 
-        let path = Path::new(project_dir).join(PLAN_FILE_REL);
+        let rel = plan_file_rel(title);
+        let path = Path::new(project_dir).join(&rel);
         let path_str = path.to_string_lossy().to_string();
         let body_for_write = body.clone();
         with_file_mutation_queue(
@@ -194,7 +215,7 @@ impl ToolCore for PresentPlanTool {
 
         // Structured trailer for the TUI (PlanReady). Keep human-readable head for chat.
         Ok(format!(
-            "Plan ready for review: {title}\nSaved to {PLAN_FILE_REL}\n\n__PLAN_READY__\n{PLAN_FILE_REL}\n__PLAN_TITLE__\n{title}\n__PLAN_BODY__\n{body}"
+            "Plan ready for review: {title}\nSaved to {rel}\n\n__PLAN_READY__\n{rel}\n__PLAN_TITLE__\n{title}\n__PLAN_BODY__\n{body}"
         ))
     }
 }
@@ -251,11 +272,27 @@ mod tests {
             .unwrap();
         assert!(out.contains("__PLAN_READY__"));
         let (p, t, b) = parse_plan_ready_output(&out).unwrap();
-        assert_eq!(p, ".agente/plan.md");
+        assert_eq!(p, plan_file_rel("T"));
+        assert!(
+            p.starts_with(".agente/plans/") && p.ends_with("-t.md"),
+            "{p}"
+        );
         assert_eq!(t, "T");
         assert!(b.contains("## Steps"));
-        let written = std::fs::read_to_string(dir.join(PLAN_FILE_REL)).unwrap();
+        let written = std::fs::read_to_string(dir.join(&p)).unwrap();
         assert!(written.contains("## Steps"));
+
+        // Another plan in the same project keeps its own file.
+        let other = tool
+            .execute(
+                json!({"title": "Add image input", "markdown": "steps"}),
+                &root,
+            )
+            .await
+            .unwrap();
+        let (other_path, _, _) = parse_plan_ready_output(&other).unwrap();
+        assert!(other_path.ends_with("-add-image-input.md"), "{other_path}");
+        assert!(dir.join(&p).exists(), "the first plan is untouched");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

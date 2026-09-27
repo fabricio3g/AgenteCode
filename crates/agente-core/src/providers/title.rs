@@ -34,6 +34,7 @@ pub async fn generate_session_title(
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
         Message {
             role: Role::User,
@@ -45,6 +46,7 @@ pub async fn generate_session_title(
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
     ];
 

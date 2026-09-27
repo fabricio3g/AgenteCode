@@ -11,6 +11,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::extensions::skills;
 use crate::llm::{LlmClient, LlmError};
 use crate::types::{Message, Role};
 
@@ -169,6 +170,7 @@ pub fn build_summarization_messages(
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
         Message {
             role: Role::User,
@@ -178,6 +180,7 @@ pub fn build_summarization_messages(
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
     ]
 }
@@ -524,7 +527,7 @@ impl ContextCompactor {
         let mut result = system_msgs;
         result.push(summary_message(&summary_text));
         result.extend(recent);
-        result = normalize_tool_messages(result);
+        result = carry_skills(&messages, normalize_tool_messages(result));
 
         let compressed_tokens = self.estimate_tokens(&result);
         let tokens_saved = original_tokens.saturating_sub(compressed_tokens);
@@ -580,7 +583,7 @@ impl ContextCompactor {
 
         let mut result = compacted_older;
         result.extend(recent);
-        result = normalize_tool_messages(result);
+        result = carry_skills(&messages, normalize_tool_messages(result));
 
         let compressed_tokens = self.estimate_tokens(&result);
 
@@ -648,9 +651,22 @@ impl ContextCompactor {
     }
 
     fn find_largest_message(&self, messages: &[Message], forced: bool) -> Option<usize> {
+        // Loaded skills are durable guidance: never shrink their block, nor
+        // the assistant call whose loss would orphan (and drop) the result.
+        let skill_calls: HashSet<&str> = messages
+            .iter()
+            .filter(|m| carries_skill(m))
+            .filter_map(|m| m.tool_call_id.as_deref())
+            .collect();
         messages
             .iter()
             .enumerate()
+            .filter(|(_, m)| !carries_skill(m))
+            .filter(|(_, m)| {
+                !m.tool_calls
+                    .as_ref()
+                    .is_some_and(|calls| calls.iter().any(|c| skill_calls.contains(c.id.as_str())))
+            })
             // Tool results are the bulk of an over-limit transcript, but the
             // default path leaves them intact; only a forced compaction (the
             // estimate already proved wrong) truncates them.
@@ -695,6 +711,19 @@ impl ContextCompactor {
     }
 
     fn compress_user_message(&self, message: &mut Message) {
+        // Old media is the heaviest part of a user turn: keep a note of it.
+        if !message.attachments.is_empty() {
+            let names: Vec<String> = message
+                .attachments
+                .drain(..)
+                .map(|a| format!("{} {}", a.kind.label(), a.name))
+                .collect();
+            message.content.push_str(&format!(
+                "\n[attachments removed by compaction: {}]",
+                names.join(", ")
+            ));
+            return;
+        }
         // For user messages, truncate more aggressively
         let max_lines = 15;
         let lines: Vec<&str> = message.content.lines().collect();
@@ -824,12 +853,63 @@ pub fn normalize_tool_messages_tracked(messages: Vec<Message>) -> (Vec<Message>,
                     thinking: None,
                     thinking_signature: None,
                     continuation: None,
+                    attachments: Vec::new(),
                 });
             }
         }
     }
 
     (output, changed)
+}
+
+fn carries_skill(message: &Message) -> bool {
+    message.content.contains(skills::SKILL_OPEN)
+}
+
+/// Heading of the message that re-attaches skills a compaction dropped.
+pub const CARRIED_SKILLS_HEADING: &str = "Skills loaded earlier in this session remain in effect:";
+
+/// Re-attach every skill block that was in `before` but did not survive
+/// compaction whole (dropped, summarized away, or truncated), as one user
+/// message after the system prompt and any summary. Losing a skill mid-task
+/// silently degrades the agent, so its instructions always outlive trimming.
+fn carry_skills(before: &[Message], mut after: Vec<Message>) -> Vec<Message> {
+    let mut lost: Vec<(String, String)> = Vec::new();
+    for message in before.iter().filter(|m| carries_skill(m)) {
+        for (name, block) in skills::skill_blocks(&message.content) {
+            lost.retain(|(n, _)| *n != name);
+            lost.push((name, block));
+        }
+    }
+    lost.retain(|(_, block)| !after.iter().any(|m| m.content.contains(block.as_str())));
+    if lost.is_empty() {
+        return after;
+    }
+    let blocks: Vec<String> = lost.into_iter().map(|(_, block)| block).collect();
+    let mut at = after
+        .iter()
+        .take_while(|m| matches!(m.role, Role::System))
+        .count();
+    if after
+        .get(at)
+        .is_some_and(|m| m.content.starts_with("[Conversation summary]"))
+    {
+        at += 1;
+    }
+    after.insert(
+        at,
+        Message {
+            role: Role::User,
+            content: format!("{CARRIED_SKILLS_HEADING}\n\n{}", blocks.join("\n\n")),
+            tool_calls: None,
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+            attachments: Vec::new(),
+        },
+    );
+    after
 }
 
 /// Build a message that carries a compaction summary into the conversation.
@@ -842,6 +922,7 @@ fn summary_message(content: &str) -> Message {
         thinking: None,
         thinking_signature: None,
         continuation: None,
+        attachments: Vec::new(),
     }
 }
 
@@ -868,6 +949,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -891,6 +973,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }];
         messages.extend(ids.iter().map(|id| Message {
             role: Role::Tool,
@@ -900,6 +983,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }));
         messages
     }
@@ -1004,6 +1088,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             Message {
                 role: Role::Tool,
@@ -1013,6 +1098,7 @@ mod tests {
                 thinking: None,
                 thinking_signature: None,
                 continuation: None,
+                attachments: Vec::new(),
             },
             create_message(Role::User, "latest question"),
             create_message(Role::Assistant, "latest answer"),
@@ -1040,6 +1126,106 @@ mod tests {
                 .any(|m| m.content.contains("Tool output truncated")),
             "old tool output must be truncated"
         );
+    }
+
+    fn call(id: &str, tool: &str) -> Message {
+        Message {
+            role: Role::Assistant,
+            content: String::new(),
+            tool_calls: Some(vec![ToolCall {
+                id: id.to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: tool.to_string(),
+                    arguments: "{}".to_string(),
+                },
+            }]),
+            tool_call_id: None,
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+            attachments: Vec::new(),
+        }
+    }
+
+    fn result(id: &str, content: String) -> Message {
+        Message {
+            role: Role::Tool,
+            content,
+            tool_calls: None,
+            tool_call_id: Some(id.to_string()),
+            thinking: None,
+            thinking_signature: None,
+            continuation: None,
+            attachments: Vec::new(),
+        }
+    }
+
+    fn skill_block(name: &str, lines: usize) -> String {
+        let body: String = (0..lines).map(|i| format!("step {i}\n")).collect();
+        format!(
+            "{}{name}\">\n{body}{}",
+            skills::SKILL_OPEN,
+            skills::SKILL_CLOSE
+        )
+    }
+
+    #[test]
+    fn forced_compaction_never_truncates_a_loaded_skill() {
+        let compactor = ContextCompactor::new(CompactionStrategy {
+            max_tokens: 4_000,
+            keep_recent: 2,
+            summarize_threshold: 0.9,
+            target_reduction: 0.5,
+            reserve_tokens: 256,
+            keep_recent_tokens: 200,
+        });
+        let skill = skill_block("review", 300);
+        let grep: String = (0..400).map(|i| format!("src/f{i}.rs:1:x\n")).collect();
+        let messages = vec![
+            call("s1", "skill"),
+            result("s1", skill.clone()),
+            call("g1", "grep"),
+            result("g1", grep),
+            create_message(Role::User, "latest question"),
+            create_message(Role::Assistant, "latest answer"),
+        ];
+        let forced = compactor.compact_forced(messages);
+        assert!(
+            forced.messages.iter().any(|m| m.content == skill),
+            "the skill result survives whole"
+        );
+        assert!(
+            forced
+                .messages
+                .iter()
+                .any(|m| m.content.contains("Tool output truncated")),
+            "other tool output still shrinks"
+        );
+    }
+
+    #[test]
+    fn skills_dropped_by_compaction_are_carried_forward() {
+        let skill = skill_block("pdf", 3);
+        let before = vec![
+            create_message(Role::System, "system"),
+            create_message(Role::User, &format!("{skill}\n\nfix the form")),
+            create_message(Role::Assistant, "done"),
+            create_message(Role::User, "next"),
+        ];
+        let after = vec![
+            create_message(Role::System, "system"),
+            summary_message("earlier work"),
+            create_message(Role::User, "next"),
+        ];
+        let carried = carry_skills(&before, after);
+        assert_eq!(carried.len(), 4);
+        assert!(carried[1].content.starts_with("[Conversation summary]"));
+        assert!(carried[2].content.starts_with(CARRIED_SKILLS_HEADING));
+        assert!(carried[2].content.contains(&skill));
+        // Idempotent: a second pass finds the block present.
+        let again = carry_skills(&carried, carried.clone());
+        assert_eq!(again.len(), carried.len());
     }
 
     #[test]
@@ -1076,6 +1262,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         };
         let mut messages = vec![orphan];
         messages.extend(tool_exchange(&["complete"]));

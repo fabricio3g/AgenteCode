@@ -125,6 +125,9 @@ pub struct ChatEntry {
     /// the collapsed card header can show a `+N/-M` badge.
     #[serde(default)]
     pub diff_stats: Option<(usize, usize)>,
+    /// Media sent with a user message (shown under the bubble text).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<agente_protocol::Attachment>,
 }
 
 fn default_mode() -> String {

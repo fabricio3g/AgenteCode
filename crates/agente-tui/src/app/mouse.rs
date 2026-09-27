@@ -31,6 +31,8 @@ impl App {
             ModalOwner::ThinkingSelector => ListId::ThinkingSelector,
             ModalOwner::SubagentModels => ListId::SubagentModels,
             ModalOwner::Settings => ListId::Settings,
+            ModalOwner::Skills => ListId::Skills,
+            ModalOwner::Mcp => ListId::Mcp,
             ModalOwner::MessageActions => ListId::MessageActions,
             ModalOwner::SessionPicker if self.state.picker.session_picker_browsing => {
                 ListId::FolderBrowser
@@ -55,6 +57,8 @@ impl App {
             ListId::ThinkingSelector => &mut input.thinking_selector_selected,
             ListId::SubagentModels => &mut input.subagent_models_selected,
             ListId::Settings => &mut input.settings_selected,
+            ListId::Skills => &mut input.skills_selected,
+            ListId::Mcp => &mut input.mcp_selected,
             ListId::MessageActions => &mut input.message_actions_selected,
             ListId::SessionList => &mut self.state.picker.session_picker_selected,
             ListId::FolderBrowser => &mut self.state.picker.session_picker_browse_selected,
@@ -101,6 +105,9 @@ impl App {
     fn activate_hit(&mut self, hit: HitTarget) -> anyhow::Result<()> {
         match hit {
             HitTarget::Approval(action) => self.handle_approval_action(action)?,
+            HitTarget::Tab(index) => self.switch_tab(index),
+            HitTarget::TabClose(index) => self.close_tab(index),
+            HitTarget::NewTab => self.open_new_tab(),
             HitTarget::DetailTab(tab) => self.state.ui.select_subagent_tab(tab),
             // Scrollbars act on press (see `route_mouse`), not on release.
             HitTarget::Scrollbar(_) => {}
@@ -586,6 +593,13 @@ impl App {
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| path.clone());
+                // Images, audio and video ask before they open.
+                if let Some(request) =
+                    Self::media_request_for_path(std::path::Path::new(path.as_str()), true)
+                {
+                    self.request_media(request);
+                    return Ok(());
+                }
                 open_asset_in_viewer(path.as_str());
                 self.state.ui.show_toast(format!("Opened {display_name}"));
                 self.state.ui.needs_render = true;
@@ -612,13 +626,12 @@ impl App {
     }
 
     pub(super) fn copy_to_clipboard(&self, text: &str) -> anyhow::Result<()> {
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_text(text)?;
+        crate::clipboard::copy(text)?;
         Ok(())
     }
 }
 
-fn open_asset_in_viewer(path: &str) {
+pub(super) fn open_asset_in_viewer(path: &str) {
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("cmd")
@@ -801,6 +814,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -820,6 +834,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         }
     }
 

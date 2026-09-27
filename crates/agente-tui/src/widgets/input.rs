@@ -113,29 +113,80 @@ pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
         .map(|_| state.agent.thinking_level.trim().to_string())
         .filter(|level| !level.is_empty() && level != agente_core::thinking::THINKING_OFF);
 
-    let fits = |text: &str| crate::widgets::display_width(text) <= width;
+    // Padding (` name · level `) and one border dash before the corner.
+    let room = width.saturating_sub(3);
+    let fits = |text: &str| crate::widgets::display_width(text) <= room;
     // Degrade gracefully: drop the thinking level, then truncate the model.
-    let with_thinking = thinking
+    let level = thinking
         .as_ref()
-        .map(|level| format!("{model} ({level})"))
-        .unwrap_or_else(|| model.clone());
-    let model_text = if fits(&with_thinking) {
-        with_thinking
+        .map(|level| format!(" · {level}"))
+        .filter(|level| fits(&format!("{model}{level}")));
+    let model_text = if fits(&model) {
+        model
     } else {
-        truncate_cells(&model, width)
+        truncate_cells(&model, room)
     };
-    let show_approval = approval.is_some_and(|label| fits(&format!("{model_text}{label}")));
+    let used = format!("{model_text}{}", level.as_deref().unwrap_or(""));
+    let show_approval = approval.is_some_and(|label| fits(&format!("{used}{label}")));
 
     let mut spans: Vec<Span<'static>> = Vec::new();
-    if !model_text.is_empty() {
-        spans.push(Span::styled(
-            model_text,
-            Style::default().fg(FG_MUTED()).bg(bg),
-        ));
+    if model_text.is_empty() {
+        return spans;
+    }
+    spans.push(Span::styled(" ", Style::default().bg(bg)));
+    spans.push(Span::styled(
+        model_text,
+        Style::default().fg(FG_MUTED()).bg(bg),
+    ));
+    if let Some(level) = level {
+        spans.push(Span::styled(level, Style::default().fg(FG_DIM()).bg(bg)));
     }
     if show_approval {
         spans.push(Span::styled(
             approval.unwrap_or_default(),
+            Style::default().fg(FG_DIM()).bg(bg),
+        ));
+    }
+    spans.push(Span::styled(" ", Style::default().bg(bg)));
+    spans.push(Span::styled(
+        "─",
+        Style::default().fg(border_color(state)).bg(bg),
+    ));
+    spans
+}
+
+/// The glyph for an attachment kind (single-width).
+pub fn attachment_glyph(kind: agente_core::media::AttachmentKind) -> &'static str {
+    use agente_core::media::AttachmentKind;
+    match kind {
+        AttachmentKind::Image => "◰",
+        AttachmentKind::Audio => "♪",
+        AttachmentKind::Video => "▶",
+        AttachmentKind::Pdf => "▤",
+    }
+}
+
+/// ` ◰ shot.png 240 KB  ♪ talk.mp3 1.2 MB` — shared by the composer and the
+/// sent bubble.
+pub fn attachment_chips(
+    attachments: &[agente_core::media::Attachment],
+    bg: ratatui::style::Color,
+) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::styled(" ", Style::default().bg(bg))];
+    for (i, attachment) in attachments.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ", Style::default().bg(bg)));
+        }
+        spans.push(Span::styled(
+            format!("{} ", attachment_glyph(attachment.kind)),
+            Style::default().fg(PRIMARY()).bg(bg),
+        ));
+        spans.push(Span::styled(
+            truncate_cells(&attachment.name, 28),
+            Style::default().fg(FG_MUTED()).bg(bg),
+        ));
+        spans.push(Span::styled(
+            format!(" {}", agente_core::media::human_bytes(attachment.bytes)),
             Style::default().fg(FG_DIM()).bg(bg),
         ));
     }
@@ -253,7 +304,7 @@ fn style_paste_chips(text: &str, bg: ratatui::style::Color) -> Vec<Span<'static>
     spans
 }
 
-/// Shape check for `[#<id> +<n> lines]`.
+/// Shape check for `[#<id> +<n> lines]` / `[#<id> +<n> chars]`.
 fn is_paste_placeholder(token: &str) -> bool {
     let Some(inner) = token.strip_prefix("[#").and_then(|t| t.strip_suffix(']')) else {
         return false;
@@ -261,10 +312,10 @@ fn is_paste_placeholder(token: &str) -> bool {
     let Some((id, rest)) = inner.split_once(' ') else {
         return false;
     };
-    let Some(count) = rest
-        .strip_prefix('+')
-        .and_then(|r| r.strip_suffix(" lines"))
-    else {
+    let Some(count) = rest.strip_prefix('+').and_then(|r| {
+        r.strip_suffix(" lines")
+            .or_else(|| r.strip_suffix(" chars"))
+    }) else {
         return false;
     };
     !id.is_empty()
@@ -316,27 +367,69 @@ fn render_body(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Queued follow-up preview: dim rows above the prompt so the user can
-    // always see what will run after the current turn. Display-only.
+    // Queued messages: dim rows above the prompt. `»` waits for the turn
+    // to end; `↗ … sending…` was handed to the running turn and joins at
+    // its next step. The last row says how to act on the queue.
+    // Attached media: one row of chips above everything else.
+    if !state.input.attachments.is_empty() {
+        let row_width = area.width.saturating_sub(2) as usize;
+        let hint = if text.is_empty() {
+            vec![Span::styled(
+                "⌫ remove ",
+                Style::default().fg(FG_DIM()).bg(bg),
+            )]
+        } else {
+            Vec::new()
+        };
+        lines.push(Line::from(crate::widgets::justify(
+            attachment_chips(&state.input.attachments, bg),
+            hint,
+            row_width,
+            bg,
+        )));
+    }
+
     let queue = &state.agent.message_queue;
     let preview_rows = queued_preview_rows(queue.len());
     if preview_rows > 0 {
         let shown = preview_rows;
-        for (i, msg) in queue.iter().take(shown).enumerate() {
+        let row_width = area.width.saturating_sub(2) as usize;
+        let hint = (is_running && state.agent.has_unsent_queue() && text.is_empty())
+            .then_some("↵ send now · ↑ edit");
+        for (i, queued) in queue.iter().take(shown).enumerate() {
+            let last = i + 1 == shown;
             let overflow = queue.len().saturating_sub(shown);
-            let mut label = crate::widgets::truncate_cells(msg, available_width.saturating_sub(12));
-            if i + 1 == shown && overflow > 0 {
-                label = crate::widgets::truncate_cells(
-                    &format!("{label} … +{overflow} more"),
-                    available_width.saturating_sub(12),
-                );
+            let mut label = queued.display.lines().next().unwrap_or("").to_string();
+            if last && overflow > 0 {
+                label = format!("{label} … +{overflow} more");
             }
-            lines.push(Line::from(vec![
+            let (mark, mark_color) = if queued.sending {
+                ("↗", PRIMARY())
+            } else {
+                ("»", SECONDARY())
+            };
+            let mut lead = vec![
                 Span::styled(" ", Style::default().bg(bg)),
-                Span::styled("»", Style::default().fg(SECONDARY()).bg(bg)),
+                Span::styled(mark, Style::default().fg(mark_color).bg(bg)),
                 Span::styled(" ", Style::default().bg(bg)),
                 Span::styled(label, Style::default().fg(FG_DIM()).bg(bg)),
-            ]));
+            ];
+            if queued.sending {
+                lead.push(Span::styled(
+                    " · sending…",
+                    Style::default().fg(FG_DIM()).bg(bg),
+                ));
+            }
+            let trail = match hint {
+                Some(hint) if last => vec![Span::styled(
+                    format!("{hint} "),
+                    Style::default().fg(FG_DIM()).bg(bg),
+                )],
+                _ => Vec::new(),
+            };
+            lines.push(Line::from(crate::widgets::justify(
+                lead, trail, row_width, bg,
+            )));
         }
     }
 

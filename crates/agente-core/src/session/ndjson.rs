@@ -229,6 +229,7 @@ mod tests {
                 subagent_id: None,
                 subagent_type: None,
                 diff_stats: None,
+                attachments: Vec::new(),
             },
         };
 

@@ -11,6 +11,7 @@ pub mod plan_review;
 pub mod process_view;
 pub mod scrollbar;
 pub mod subagent_detail;
+pub mod tabs;
 pub mod welcome;
 
 use ratatui::text::Span;
@@ -1093,6 +1094,15 @@ pub(crate) fn tool_presentation(tool: &str) -> ToolPresentation {
             "Task",
             "task",
             Some(("description", SubjectStyle::Pattern)),
+        );
+        put(
+            "skill",
+            "◆",
+            Some("Skill"),
+            None,
+            "Skill",
+            "skill",
+            Some(("name", SubjectStyle::Pattern)),
         );
         put(
             "present_plan",

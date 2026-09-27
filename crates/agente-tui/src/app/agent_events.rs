@@ -23,758 +23,776 @@ impl App {
                 break;
             };
             processed += 1;
-            // Discovery events use task_id 0; chat events must match the
-            // current turn, otherwise they belong to a stale/canceled task.
-            // Subagent events are exempt: background subagents legitimately
-            // outlive the parent turn that spawned them.
-            let is_subagent_event = matches!(
-                task_event.event,
-                AgentEvent::SubagentStarted { .. }
-                    | AgentEvent::SubagentText { .. }
-                    | AgentEvent::SubagentToolCallStart { .. }
-                    | AgentEvent::SubagentToolCallProgress { .. }
-                    | AgentEvent::SubagentToolCallResult { .. }
-                    | AgentEvent::SubagentDone { .. }
-                    | AgentEvent::SubagentCompletedNotice { .. }
-                    | AgentEvent::GenerationProgress { subagent_id: Some(_), .. }
-                    // Child-origin effects carry their source, so a late one
-                    // from a previous turn is attributed, not confused with
-                    // the parent's own events.
-                    | AgentEvent::FileChange { subagent_id: Some(_), .. }
-                    | AgentEvent::TodoUpdate { subagent_id: Some(_), .. }
-                    // A child's own approval is tagged with its origin.
-                    | AgentEvent::ApprovalRequested {
-                        source: agente_core::agent::ApprovalSource::Subagent { .. },
-                        ..
-                    }
-            );
-            if task_event.task_id != 0
-                && task_event.task_id != self.current_task_id
-                && !is_subagent_event
-            {
-                tracing::debug!(task_id = task_event.task_id, "Ignoring stale agent event");
-                continue;
-            }
-            let event = task_event.event;
-            // Keep the stuck-guard clock fresh on every event so silent turns
-            // (no thinking_start_time) still force-reset after STUCK_TIMEOUT.
-            self.state.agent.mark_agent_event();
-            // Any loop event after compaction started (bar the heartbeat
-            // that keeps a slow summary alive) means it is over.
-            if !matches!(
-                &event,
-                AgentEvent::CompactionStarted { .. } | AgentEvent::ToolHeartbeat { .. }
-            ) {
-                self.state.agent.compacting = None;
-            }
-            // Streaming updates use the existing 33 ms animation paint cadence.
-            // Marking every delta urgent bypasses that limiter and starves input
-            // under bursts. Lifecycle changes still paint immediately.
-            if !matches!(
-                &event,
-                AgentEvent::TextDelta(_)
-                    | AgentEvent::ReasoningDelta(_)
-                    | AgentEvent::ToolCallProgress { .. }
-                    | AgentEvent::SubagentText { .. }
-                    | AgentEvent::ToolHeartbeat { .. }
-                    | AgentEvent::SubagentToolCallProgress { .. }
-                    | AgentEvent::GenerationProgress { .. }
-            ) {
-                self.state.ui.needs_render = true;
-            }
-            match event {
-                AgentEvent::Thinking => {
-                    self.state.agent.preparing_tool = None;
-                    if self.state.agent.thinking_start_time.is_none() {
-                        self.state.agent.thinking_start_time = Some(chrono::Utc::now());
-                    }
-                    self.state.agent.streaming_text.clear();
-                    self.state.agent.reasoning_text.clear();
-                    self.state.agent.state = AgentState::StreamingResponse;
-                }
-                AgentEvent::AssistantText(text) => {
-                    self.state.agent.retry_status = None;
-                    self.state.agent.streaming_text.clear();
-                    self.state.add_assistant_message(text);
-                    self.state.agent.state = AgentState::Executing;
-                }
-                AgentEvent::TextDelta(delta) => {
-                    self.state.agent.retry_status = None;
-                    self.state.agent.streaming_text.push_str(&delta);
-                }
-                AgentEvent::ReasoningDelta(delta) => {
-                    self.state.agent.retry_status = None;
-                    self.state.agent.reasoning_text.push_str(&delta);
-                }
-                AgentEvent::GenerationProgress {
-                    subagent_id,
-                    tool_name,
+            self.route_agent_event(task_event);
+        }
+        processed == MAX_AGENT_EVENTS_PER_TICK
+    }
+
+    /// Apply one event to the tab whose state is in `self.state` (the
+    /// active tab, or a background tab swapped in by `route_agent_event`).
+    pub(super) fn apply_agent_event(&mut self, task_event: agente_core::agent::AgentTaskEvent) {
+        // Discovery events use task_id 0; chat events must match the
+        // current turn, otherwise they belong to a stale/canceled task.
+        // Subagent events are exempt: background subagents legitimately
+        // outlive the parent turn that spawned them.
+        let is_subagent_event = matches!(
+            task_event.event,
+            AgentEvent::SubagentStarted { .. }
+                | AgentEvent::SubagentText { .. }
+                | AgentEvent::SubagentToolCallStart { .. }
+                | AgentEvent::SubagentToolCallProgress { .. }
+                | AgentEvent::SubagentToolCallResult { .. }
+                | AgentEvent::SubagentDone { .. }
+                | AgentEvent::SubagentCompletedNotice { .. }
+                | AgentEvent::GenerationProgress { subagent_id: Some(_), .. }
+                // Child-origin effects carry their source, so a late one
+                // from a previous turn is attributed, not confused with
+                // the parent's own events.
+                | AgentEvent::FileChange { subagent_id: Some(_), .. }
+                | AgentEvent::TodoUpdate { subagent_id: Some(_), .. }
+                // A child's own approval is tagged with its origin.
+                | AgentEvent::ApprovalRequested {
+                    source: agente_core::agent::ApprovalSource::Subagent { .. },
                     ..
-                } => {
-                    if let Some(id) = subagent_id {
-                        let child = self.subagent_card_or_placeholder(&id);
-                        child.preparing_tool = tool_name;
-                    } else {
-                        self.state.agent.preparing_tool = tool_name;
-                        self.state.agent.retry_status = None;
-                    }
                 }
-                AgentEvent::Retry {
+        );
+        if task_event.task_id != 0
+            && task_event.task_id != self.current_task_id
+            && !is_subagent_event
+        {
+            tracing::debug!(task_id = task_event.task_id, "Ignoring stale agent event");
+            return;
+        }
+        let event = task_event.event;
+        // Keep the stuck-guard clock fresh on every event so silent turns
+        // (no thinking_start_time) still force-reset after STUCK_TIMEOUT.
+        self.state.agent.mark_agent_event();
+        // Any loop event after compaction started (bar the heartbeat
+        // that keeps a slow summary alive) means it is over.
+        if !matches!(
+            &event,
+            AgentEvent::CompactionStarted { .. } | AgentEvent::ToolHeartbeat { .. }
+        ) {
+            self.state.agent.compacting = None;
+        }
+        // Streaming updates use the existing 33 ms animation paint cadence.
+        // Marking every delta urgent bypasses that limiter and starves input
+        // under bursts. Lifecycle changes still paint immediately.
+        if !matches!(
+            &event,
+            AgentEvent::TextDelta(_)
+                | AgentEvent::ReasoningDelta(_)
+                | AgentEvent::ToolCallProgress { .. }
+                | AgentEvent::SubagentText { .. }
+                | AgentEvent::ToolHeartbeat { .. }
+                | AgentEvent::SubagentToolCallProgress { .. }
+                | AgentEvent::GenerationProgress { .. }
+        ) {
+            self.state.ui.needs_render = true;
+        }
+        match event {
+            AgentEvent::Thinking => {
+                self.state.agent.preparing_tool = None;
+                if self.state.agent.thinking_start_time.is_none() {
+                    self.state.agent.thinking_start_time = Some(chrono::Utc::now());
+                }
+                self.state.agent.streaming_text.clear();
+                self.state.agent.reasoning_text.clear();
+                self.state.agent.state = AgentState::StreamingResponse;
+            }
+            AgentEvent::AssistantText(text) => {
+                self.state.agent.retry_status = None;
+                self.state.agent.streaming_text.clear();
+                self.state.add_assistant_message(text);
+                self.state.agent.state = AgentState::Executing;
+            }
+            AgentEvent::TextDelta(delta) => {
+                self.state.agent.retry_status = None;
+                self.state.agent.streaming_text.push_str(&delta);
+            }
+            AgentEvent::ReasoningDelta(delta) => {
+                self.state.agent.retry_status = None;
+                self.state.agent.reasoning_text.push_str(&delta);
+            }
+            AgentEvent::GenerationProgress {
+                subagent_id,
+                tool_name,
+                ..
+            } => {
+                if let Some(id) = subagent_id {
+                    let child = self.subagent_card_or_placeholder(&id);
+                    child.preparing_tool = tool_name;
+                } else {
+                    self.state.agent.preparing_tool = tool_name;
+                    self.state.agent.retry_status = None;
+                }
+            }
+            AgentEvent::Retry {
+                attempt,
+                max_attempts,
+                delay_ms,
+            } => {
+                self.state.agent.retry_status = Some(crate::state::RetryStatus {
                     attempt,
                     max_attempts,
                     delay_ms,
-                } => {
-                    self.state.agent.retry_status = Some(crate::state::RetryStatus {
-                        attempt,
-                        max_attempts,
-                        delay_ms,
-                    });
+                });
+            }
+            AgentEvent::ToolCallStart { id, name, args } => {
+                self.state.agent.preparing_tool = None;
+                self.state.agent.current_tool_start = Some(std::time::Instant::now());
+                let direct = id.starts_with("direct-");
+                self.state
+                    .agent
+                    .start_live_tool(id, name.clone(), args.clone(), direct);
+                if !direct && name != "todo_write" {
+                    self.state.add_tool_call(name, args);
                 }
-                AgentEvent::ToolCallStart { id, name, args } => {
-                    self.state.agent.preparing_tool = None;
-                    self.state.agent.current_tool_start = Some(std::time::Instant::now());
-                    let direct = id.starts_with("direct-");
-                    self.state
-                        .agent
-                        .start_live_tool(id, name.clone(), args.clone(), direct);
-                    if !direct && name != "todo_write" {
-                        self.state.add_tool_call(name, args);
-                    }
+            }
+            AgentEvent::ToolCallProgress { id, chunk } => {
+                self.state.agent.append_live_tool_output(&id, &chunk);
+            }
+            AgentEvent::ToolHeartbeat { .. } => {
+                // Liveness only — the stuck-guard clock was already
+                // refreshed above; nothing to render.
+            }
+            AgentEvent::ToolCallResult {
+                id,
+                name,
+                result,
+                is_error,
+            } => {
+                let live = self.state.agent.finish_live_tool(&id);
+                // Watching this call? Keep its final output on screen.
+                if let Some(view) = self
+                    .state
+                    .ui
+                    .process_view
+                    .as_mut()
+                    .filter(|view| view.call_id == id)
+                {
+                    view.finished = live.clone();
                 }
-                AgentEvent::ToolCallProgress { id, chunk } => {
-                    self.state.agent.append_live_tool_output(&id, &chunk);
-                }
-                AgentEvent::ToolHeartbeat { .. } => {
-                    // Liveness only — the stuck-guard clock was already
-                    // refreshed above; nothing to render.
-                }
-                AgentEvent::ToolCallResult {
-                    id,
-                    name,
-                    result,
-                    is_error,
-                } => {
-                    let live = self.state.agent.finish_live_tool(&id);
-                    // Watching this call? Keep its final output on screen.
-                    if let Some(view) = self
-                        .state
-                        .ui
-                        .process_view
-                        .as_mut()
-                        .filter(|view| view.call_id == id)
-                    {
-                        view.finished = live.clone();
-                    }
-                    let duration_ms = self
-                        .state
-                        .agent
-                        .current_tool_start
-                        .take()
-                        .map(|t| t.elapsed().as_millis() as f64);
-                    if live.as_ref().map(|call| call.direct).unwrap_or(false) {
-                        let command = live
-                            .as_ref()
-                            .and_then(|call| {
-                                serde_json::from_str::<serde_json::Value>(&call.args)
-                                    .ok()
-                                    .and_then(|args| {
-                                        args.get("command")
-                                            .and_then(|value| value.as_str())
-                                            .map(str::to_string)
-                                    })
-                            })
-                            .unwrap_or_else(|| "shell".to_string());
-                        let display = if result.trim().is_empty() {
-                            "(no output)".to_string()
-                        } else {
-                            result.trim().to_string()
-                        };
-                        self.state
-                            .add_system_message(format!("$ {command}\n{display}"));
-                        self.state.agent.clear_stream_buffers();
-                        self.state.agent.clear_approvals();
-                        self.state.agent.end_parent_turn();
-                        self.queue_session_snapshot();
-                        self.drain_queues_and_continue();
-                        continue;
-                    }
-                    // present_plan → store the plan but do NOT open the
-                    // actionable card while the agent is still running. It is
-                    // promoted to Review on the terminal event (Done/Error/
-                    // Cancelled), so a live agent never shows a review card it
-                    // could keep mutating under.
-                    if !is_error && name == "present_plan" {
-                        if let Some((path, title, body)) =
-                            agente_core::tools::parse_plan_ready_output(&result)
-                        {
-                            self.state.plan_review.store_plan(path, title, body);
-                            self.state.ui.show_welcome_screen = false;
-                        }
-                    }
-                    // Strip machine trailer from chat display
-                    let result = if result.is_empty() {
-                        live.map(|call| call.output).unwrap_or(result)
+                let duration_ms = self
+                    .state
+                    .agent
+                    .current_tool_start
+                    .take()
+                    .map(|t| t.elapsed().as_millis() as f64);
+                if live.as_ref().map(|call| call.direct).unwrap_or(false) {
+                    let command = live
+                        .as_ref()
+                        .and_then(|call| {
+                            serde_json::from_str::<serde_json::Value>(&call.args)
+                                .ok()
+                                .and_then(|args| {
+                                    args.get("command")
+                                        .and_then(|value| value.as_str())
+                                        .map(str::to_string)
+                                })
+                        })
+                        .unwrap_or_else(|| "shell".to_string());
+                    let display = if result.trim().is_empty() {
+                        "(no output)".to_string()
                     } else {
-                        result
+                        result.trim().to_string()
                     };
-                    let display = if name == "present_plan" {
-                        result
-                            .split("\n__PLAN_READY__\n")
-                            .next()
-                            .unwrap_or(&result)
-                            .trim()
-                            .to_string()
-                    } else {
-                        result
-                    };
-                    if name != "todo_write" || is_error {
-                        self.state
-                            .add_tool_result(&name, display, is_error, duration_ms);
-                    }
-                }
-                AgentEvent::FileChange {
-                    subagent_id,
-                    path,
-                    diff_summary: _,
-                    before,
-                    after,
-                } => {
-                    // An isolated child's checkout is a different workspace:
-                    // keep its edits out of the parent's tracked files and
-                    // undo stack. Only shared-root children count as parent
-                    // changes, and an unknown child is treated as isolated.
-                    if let Some(id) = subagent_id {
-                        if !self.subagent_shares_parent_workspace(&id) {
-                            continue;
-                        }
-                    }
-                    // Stamp the finished write/edit card with this edit's
-                    // +A/-B collapsed header before the
-                    // stats update the session change summary.
-                    let stats = crate::state::diff_line_counts(before.as_deref(), after.as_deref());
-                    self.state.track_file_change(&path, before, after);
-                    if let Some(stats) = stats {
-                        self.state.stamp_tool_diff_stats(stats);
-                    }
-                }
-                AgentEvent::TodoUpdate { subagent_id, todos } => {
-                    // A child's plan is not the parent's plan.
-                    if subagent_id.is_none() {
-                        self.state.todo.todos.update(todos);
-                        self.state.refresh_plan_in_chat();
-                    }
-                }
-                AgentEvent::Done {
-                    conversation,
-                    tokens: _,
-                } => {
-                    // Refresh `total_tokens` from the new transcript so the
-                    // status bar reflects the *real* context size after this
-                    // turn (and any auto-compact that ran inside it).
                     self.state
-                        .agent
-                        .recompute_total_from_conversation(&conversation);
-                    self.state.session.conversation = conversation;
-                    // Flush background-child completion notices queued
-                    // mid-turn: the replace above would otherwise clobber a
-                    // direct push, and the model must see them next turn.
-                    let had_notices = self.state.session.drain_notices();
-                    // Commit any leftover streamed answer before clearing.
-                    if !self.state.agent.streaming_text.is_empty() {
-                        let text = self.state.agent.streaming_text.clone();
-                        self.state.agent.streaming_text.clear();
-                        self.state.add_assistant_message(text);
-                    } else {
-                        self.state.flush_live_reasoning();
-                    }
+                        .add_system_message(format!("$ {command}\n{display}"));
                     self.state.agent.clear_stream_buffers();
-                    self.state
-                        .agent
-                        .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
+                    self.state.agent.clear_approvals();
                     self.state.agent.end_parent_turn();
-                    self.state.plan_review.promote();
-                    self.state.persist_config();
                     self.queue_session_snapshot();
-                    self.maybe_spawn_session_title();
-
-                    let started = self.drain_queues_and_continue();
-                    // A background child finished during the turn: resume the
-                    // model so it consumes the result now instead of waiting
-                    // for the next user message.
-                    if had_notices && !started {
-                        let _ = self.start_chat_turn();
-                    }
+                    self.drain_queues_and_continue();
+                    return;
                 }
-                AgentEvent::Cancelled {
-                    conversation,
-                    tokens: _,
-                    partial_text,
-                } => {
-                    if !partial_text.is_empty() {
-                        self.state.agent.streaming_text = partial_text;
-                        self.state.add_interrupted_message();
-                    } else {
-                        self.state.flush_live_reasoning();
-                    }
-                    self.state
-                        .agent
-                        .recompute_total_from_conversation(&conversation);
-                    self.state.session.conversation = conversation;
-                    let had_notices = self.state.session.drain_notices();
-                    self.state.agent.clear_stream_buffers();
-                    self.state
-                        .agent
-                        .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
-                    self.state.agent.end_parent_turn();
-                    self.state.plan_review.promote();
-                    self.state.persist_config();
-                    self.queue_session_snapshot();
-
-                    let started = self.drain_queues_and_continue();
-                    if had_notices && !started {
-                        let _ = self.start_chat_turn();
-                    }
-                }
-                AgentEvent::CompactionStarted { smart } => {
-                    self.state.agent.compacting = Some(smart);
-                }
-                AgentEvent::ContextCompacted {
-                    summary: _,
-                    compacted_conversation,
-                    tokens_before,
-                    tokens_after,
-                    smart,
-                } => {
-                    // Auto-compact shrinks the in-flight transcript. Replace
-                    // the persisted transcript immediately and refresh the
-                    // meter so it stops showing the pre-compact size before
-                    // the turn finishes. The transcript gets one quiet divider;
-                    // the checkpoint itself lives in the model's context.
-                    self.state.session.conversation = compacted_conversation.clone();
-                    self.state
-                        .agent
-                        .recompute_total_from_conversation(&compacted_conversation);
-                    self.state
-                        .add_system_message(crate::state::compaction_notice(
-                            tokens_before as usize,
-                            tokens_after as usize,
-                            smart,
-                        ));
-                }
-                AgentEvent::CallUsage {
-                    prompt_tokens,
-                    completion_tokens,
-                    cache_read_tokens,
-                    cache_creation_tokens,
-                    cost_usd,
-                    subagent_id,
-                } => {
-                    let record = |spend: &mut crate::state::Spend| {
-                        spend.record(
-                            prompt_tokens,
-                            completion_tokens,
-                            cache_read_tokens,
-                            cache_creation_tokens,
-                            cost_usd,
-                        )
-                    };
-                    // The session pays for everything; a child also keeps its
-                    // own tally for its card.
-                    record(&mut self.state.agent.spend);
-                    if let Some(child) = subagent_id
-                        .as_deref()
-                        .and_then(|id| self.state.agent.subagents.get_mut(id))
+                // present_plan → store the plan but do NOT open the
+                // actionable card while the agent is still running. It is
+                // promoted to Review on the terminal event (Done/Error/
+                // Cancelled), so a live agent never shows a review card it
+                // could keep mutating under.
+                if !is_error && name == "present_plan" {
+                    if let Some((path, title, body)) =
+                        agente_core::tools::parse_plan_ready_output(&result)
                     {
-                        record(&mut child.spend);
+                        self.state.plan_review.store_plan(path, title, body);
+                        self.state.ui.show_welcome_screen = false;
                     }
-                    self.state.ui.needs_render = true;
                 }
-                AgentEvent::TurnUsage {
-                    prompt_tokens,
-                    completion_tokens,
-                    cache_read_tokens,
-                    cache_creation_tokens,
-                } => {
-                    self.state.agent.record_turn_usage(
+                // Strip machine trailer from chat display
+                let result = if result.is_empty() {
+                    live.map(|call| call.output).unwrap_or(result)
+                } else {
+                    result
+                };
+                let display = if name == "present_plan" {
+                    result
+                        .split("\n__PLAN_READY__\n")
+                        .next()
+                        .unwrap_or(&result)
+                        .trim()
+                        .to_string()
+                } else {
+                    result
+                };
+                if name != "todo_write" || is_error {
+                    self.state
+                        .add_tool_result(&name, display, is_error, duration_ms);
+                }
+            }
+            AgentEvent::FileChange {
+                subagent_id,
+                path,
+                diff_summary: _,
+                before,
+                after,
+            } => {
+                // An isolated child's checkout is a different workspace:
+                // keep its edits out of the parent's tracked files and
+                // undo stack. Only shared-root children count as parent
+                // changes, and an unknown child is treated as isolated.
+                if let Some(id) = subagent_id {
+                    if !self.subagent_shares_parent_workspace(&id) {
+                        return;
+                    }
+                }
+                // Stamp the finished write/edit card with this edit's
+                // +A/-B collapsed header before the
+                // stats update the session change summary.
+                let stats = crate::state::diff_line_counts(before.as_deref(), after.as_deref());
+                self.state.track_file_change(&path, before, after);
+                if let Some(stats) = stats {
+                    self.state.stamp_tool_diff_stats(stats);
+                }
+            }
+            AgentEvent::TodoUpdate { subagent_id, todos } => {
+                // A child's plan is not the parent's plan.
+                if subagent_id.is_none() {
+                    self.state.todo.todos.update(todos);
+                    self.state.refresh_plan_in_chat();
+                }
+            }
+            AgentEvent::Done {
+                conversation,
+                tokens: _,
+            } => {
+                // Keep the provider-measured context (plus the reply); fall
+                // back to the estimate only when nothing was reported.
+                self.state.agent.settle_context_after_turn(&conversation);
+                self.state.session.conversation = conversation;
+                // Flush background-child completion notices queued
+                // mid-turn: the replace above would otherwise clobber a
+                // direct push, and the model must see them next turn.
+                let had_notices = self.state.session.drain_notices();
+                // Commit any leftover streamed answer before clearing.
+                if !self.state.agent.streaming_text.is_empty() {
+                    let text = self.state.agent.streaming_text.clone();
+                    self.state.agent.streaming_text.clear();
+                    self.state.add_assistant_message(text);
+                } else {
+                    self.state.flush_live_reasoning();
+                }
+                self.state.agent.clear_stream_buffers();
+                self.state
+                    .agent
+                    .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
+                self.state.agent.end_parent_turn();
+                self.state.plan_review.promote();
+                self.state.persist_config();
+                self.queue_session_snapshot();
+                self.maybe_spawn_session_title();
+
+                let started = self.drain_queues_and_continue();
+                // A background child finished during the turn: resume the
+                // model so it consumes the result now instead of waiting
+                // for the next user message.
+                if had_notices && !started {
+                    let _ = self.start_chat_turn();
+                }
+            }
+            AgentEvent::Cancelled {
+                conversation,
+                tokens: _,
+                partial_text,
+            } => {
+                if !partial_text.is_empty() {
+                    self.state.agent.streaming_text = partial_text;
+                    self.state.add_interrupted_message();
+                } else {
+                    self.state.flush_live_reasoning();
+                }
+                self.state
+                    .agent
+                    .recompute_total_from_conversation(&conversation);
+                self.state.session.conversation = conversation;
+                let had_notices = self.state.session.drain_notices();
+                self.state.agent.clear_stream_buffers();
+                self.state
+                    .agent
+                    .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
+                self.state.agent.end_parent_turn();
+                self.state.plan_review.promote();
+                self.state.persist_config();
+                self.queue_session_snapshot();
+
+                let started = self.drain_queues_and_continue();
+                if had_notices && !started {
+                    let _ = self.start_chat_turn();
+                }
+            }
+            AgentEvent::CompactionStarted { smart } => {
+                self.state.agent.compacting = Some(smart);
+            }
+            AgentEvent::ContextCompacted {
+                summary: _,
+                compacted_conversation,
+                tokens_before,
+                tokens_after,
+                smart,
+            } => {
+                // Auto-compact shrinks the in-flight transcript. Replace
+                // the persisted transcript immediately and refresh the
+                // meter so it stops showing the pre-compact size before
+                // the turn finishes. The transcript gets one quiet divider;
+                // the checkpoint itself lives in the model's context.
+                self.state.session.conversation = compacted_conversation.clone();
+                self.state
+                    .agent
+                    .recompute_total_from_conversation(&compacted_conversation);
+                self.state
+                    .add_system_message(crate::state::compaction_notice(
+                        tokens_before as usize,
+                        tokens_after as usize,
+                        smart,
+                    ));
+            }
+            AgentEvent::UserMessagesInjected { messages } => {
+                // The model now has them: they become chat bubbles here, in
+                // the order they actually entered the conversation.
+                for message in self.state.agent.take_injected(messages.len()) {
+                    self.state
+                        .add_user_message_with(message.display, message.attachments);
+                }
+            }
+            AgentEvent::CallUsage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                cost_usd,
+                cost_estimated,
+                subagent_id,
+            } => {
+                let record = |spend: &mut crate::state::Spend| {
+                    spend.record(
                         prompt_tokens,
                         completion_tokens,
                         cache_read_tokens,
                         cache_creation_tokens,
+                        cost_usd,
                     );
-                    // The provider's prompt-token count is the true context
-                    // size of the last request. Adopt it when reported so the
-                    // header tracks the turn live instead of freezing until
-                    // Done; fall back to the local estimate when the provider
-                    // reports no usage.
-                    if prompt_tokens > 0 {
-                        self.state.agent.total_tokens = prompt_tokens;
+                    if cost_usd.is_some() && cost_estimated {
+                        spend.estimated_calls += 1;
                     }
+                };
+                // The session pays for everything; a child also keeps its
+                // own tally for its card.
+                record(&mut self.state.agent.spend);
+                if let Some(child) = subagent_id
+                    .as_deref()
+                    .and_then(|id| self.state.agent.subagents.get_mut(id))
+                {
+                    record(&mut child.spend);
                 }
-                AgentEvent::Error {
-                    message: msg,
-                    conversation,
-                } => {
-                    // The loop's failure transcript includes tool work it
-                    // already executed; adopt it so a follow-up turn resumes
-                    // with the call and result, not the pre-turn snapshot.
-                    if !conversation.is_empty() {
-                        self.state
-                            .agent
-                            .recompute_total_from_conversation(&conversation);
-                        self.state.session.conversation = conversation;
-                    }
-                    let mode_str = self.state.agent.current_turn_mode.to_string();
-                    let reasoning = self.state.take_reasoning();
-                    let partial = std::mem::take(&mut self.state.agent.streaming_text);
-                    let content = if partial.trim().is_empty() {
-                        format!("Error: {msg}")
-                    } else {
-                        format!("{partial}\n\nError: {msg}")
-                    };
-                    self.state.session.chat_history.push(types::ChatEntry {
-                        id: uuid::Uuid::new_v4(),
-                        role: Role::Assistant,
-                        content,
-                        tool_name: None,
-                        tool_args: None,
-                        is_error: true,
-                        timestamp: chrono::Utc::now(),
-                        response_duration: None,
-                        mode: mode_str,
-                        interrupted: !partial.trim().is_empty(),
-                        reasoning,
-                        subagent_id: None,
-                        subagent_type: None,
-                        diff_stats: None,
-                    });
-                    self.state.agent.clear_stream_buffers();
+                self.state.ui.needs_render = true;
+            }
+            AgentEvent::TurnUsage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                context_tokens,
+            } => {
+                self.state.agent.record_turn_usage(
+                    prompt_tokens,
+                    completion_tokens,
+                    cache_read_tokens,
+                    cache_creation_tokens,
+                );
+                // The provider's count of the last request's whole prompt
+                // (uncached + cached) is the true context size. Adopt it when
+                // reported so the meter tracks the turn live; keep the local
+                // estimate when the provider reports no usage.
+                self.state.agent.record_context(if context_tokens > 0 {
+                    context_tokens
+                } else {
+                    prompt_tokens
+                });
+            }
+            AgentEvent::Error {
+                message: msg,
+                conversation,
+            } => {
+                // The loop's failure transcript includes tool work it
+                // already executed; adopt it so a follow-up turn resumes
+                // with the call and result, not the pre-turn snapshot.
+                if !conversation.is_empty() {
                     self.state
                         .agent
-                        .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
-                    self.state.agent.end_parent_turn();
-                    self.state.plan_review.promote();
-                    self.queue_session_snapshot();
+                        .recompute_total_from_conversation(&conversation);
+                    self.state.session.conversation = conversation;
+                }
+                let mode_str = self.state.agent.current_turn_mode.to_string();
+                let reasoning = self.state.take_reasoning();
+                let partial = std::mem::take(&mut self.state.agent.streaming_text);
+                let content = if partial.trim().is_empty() {
+                    format!("Error: {msg}")
+                } else {
+                    format!("{partial}\n\nError: {msg}")
+                };
+                self.state.session.chat_history.push(types::ChatEntry {
+                    id: uuid::Uuid::new_v4(),
+                    role: Role::Assistant,
+                    content,
+                    tool_name: None,
+                    tool_args: None,
+                    is_error: true,
+                    timestamp: chrono::Utc::now(),
+                    response_duration: None,
+                    mode: mode_str,
+                    interrupted: !partial.trim().is_empty(),
+                    reasoning,
+                    subagent_id: None,
+                    subagent_type: None,
+                    diff_stats: None,
+                    attachments: Vec::new(),
+                });
+                self.state.agent.clear_stream_buffers();
+                self.state
+                    .agent
+                    .remove_approvals_from(&agente_core::agent::ApprovalSource::Parent);
+                self.state.agent.end_parent_turn();
+                self.state.plan_review.promote();
+                self.queue_session_snapshot();
 
-                    self.drain_queues_and_continue();
-                }
-                AgentEvent::ModelCatalogUpdated { result } => match result {
-                    Ok(catalog) => {
-                        self.state.config.update_model_catalog(&catalog);
-                        self.state.clamp_thinking_level_for_current_model();
-                        if self.state.input.show_thinking_selector {
-                            self.open_thinking_selector();
-                        }
-                        self.state.ui.show_toast("Model metadata refreshed");
-                    }
-                    Err(error) => {
-                        self.state.config.catalog_refresh_status =
-                            crate::state::DiscoveryStatus::Failed(error.clone());
-                        self.state.ui.show_toast(error);
-                    }
-                },
-                AgentEvent::ModelsDiscovered { provider, models } => {
-                    if !self.state.config.is_provider_connected(&provider) {
-                        continue;
-                    }
-                    tracing::info!(
-                        provider = %provider,
-                        model_count = models.len(),
-                        "Models discovered"
-                    );
-                    self.state.set_discovered_models(&provider, models.clone());
-                    self.state.input.model_selector_selected = 0;
+                self.drain_queues_and_continue();
+            }
+            AgentEvent::ModelCatalogUpdated { result } => match result {
+                Ok(catalog) => {
+                    self.state.config.update_model_catalog(&catalog);
                     self.state.clamp_thinking_level_for_current_model();
-                    self.state.ui.show_toast(format!(
-                        "{}: {} models refreshed",
-                        provider,
-                        models.len()
-                    ));
-                    // Only set current provider if none is selected yet (avoids race at startup)
-                    if self.state.config.current_provider.is_empty() {
-                        self.state.config.current_provider = provider.clone();
+                    if self.state.input.show_thinking_selector {
+                        self.open_thinking_selector();
                     }
-                    let pending = self.state.config.pending_after_connect.as_deref()
-                        == Some(provider.as_str());
-                    if pending {
-                        self.state.config.pending_after_connect = None;
-                    }
-                    // Open model picker after explicit connect/activate, or when
-                    // current model is empty for this provider.
-                    if pending || self.state.config.current_model.is_empty() {
-                        self.refresh_model_selection_after_discovery(&provider);
-                    }
-                    self.state.persist_config();
+                    self.state.ui.show_toast("Model metadata refreshed");
                 }
-                AgentEvent::ModelDiscoveryFailed { provider, error } => {
-                    if !self.state.config.is_provider_connected(&provider) {
-                        continue;
+                Err(error) => {
+                    self.state.config.catalog_refresh_status =
+                        crate::state::DiscoveryStatus::Failed(error.clone());
+                    self.state.ui.show_toast(error);
+                }
+            },
+            AgentEvent::ModelsDiscovered { provider, models } => {
+                if !self.state.config.is_provider_connected(&provider) {
+                    return;
+                }
+                tracing::info!(
+                    provider = %provider,
+                    model_count = models.len(),
+                    "Models discovered"
+                );
+                self.state.set_discovered_models(&provider, models.clone());
+                self.state.input.model_selector_selected = 0;
+                self.state.clamp_thinking_level_for_current_model();
+                self.state.ui.show_toast(format!(
+                    "{}: {} models refreshed",
+                    provider,
+                    models.len()
+                ));
+                // Only set current provider if none is selected yet (avoids race at startup)
+                if self.state.config.current_provider.is_empty() {
+                    self.state.config.current_provider = provider.clone();
+                }
+                let pending =
+                    self.state.config.pending_after_connect.as_deref() == Some(provider.as_str());
+                if pending {
+                    self.state.config.pending_after_connect = None;
+                }
+                // Open model picker after explicit connect/activate, or when
+                // current model is empty for this provider.
+                if pending || self.state.config.current_model.is_empty() {
+                    self.refresh_model_selection_after_discovery(&provider);
+                }
+                self.state.persist_config();
+            }
+            AgentEvent::ModelDiscoveryFailed { provider, error } => {
+                if !self.state.config.is_provider_connected(&provider) {
+                    return;
+                }
+                self.state.set_discovery_failed(&provider, error.clone());
+                self.state.ui.show_toast(format!("{provider}: {error}"));
+                let pending =
+                    self.state.config.pending_after_connect.as_deref() == Some(provider.as_str());
+                if pending {
+                    self.state.config.pending_after_connect = None;
+                    // Offer to fix the key instead of an empty model modal.
+                    let auth_fail = {
+                        let lower = error.to_lowercase();
+                        lower.contains("401")
+                            || lower.contains("403")
+                            || lower.contains("unauthorized")
+                            || lower.contains("api key")
+                            || lower.contains("authentication")
+                    };
+                    if auth_fail {
+                        // Demote until a good key is provided.
+                        self.state.disconnect_provider(&provider, false);
                     }
-                    self.state.set_discovery_failed(&provider, error.clone());
-                    self.state.ui.show_toast(format!("{provider}: {error}"));
-                    let pending = self.state.config.pending_after_connect.as_deref()
-                        == Some(provider.as_str());
-                    if pending {
-                        self.state.config.pending_after_connect = None;
-                        // Offer to fix the key instead of an empty model modal.
-                        let auth_fail = {
-                            let lower = error.to_lowercase();
-                            lower.contains("401")
-                                || lower.contains("403")
-                                || lower.contains("unauthorized")
-                                || lower.contains("api key")
-                                || lower.contains("authentication")
-                        };
-                        if auth_fail {
-                            // Demote until a good key is provided.
-                            self.state.disconnect_provider(&provider, false);
+                    self.state
+                        .open_enter_key(&provider, String::new(), true, error);
+                }
+                if self.state.config.current_provider.is_empty() {
+                    self.state.config.current_provider = provider.clone();
+                }
+            }
+            AgentEvent::ApprovalRequested { source, request } => {
+                self.state.agent.enqueue_approval(source, request);
+            }
+            AgentEvent::SubagentStarted {
+                id,
+                subagent_type,
+                description,
+            } => {
+                // Card status mirrors the registry snapshot so a queued
+                // spawn reads pending, not running. A re-sent Started
+                // (dequeue launch) refreshes the existing card without
+                // duplicating its chat entry.
+                let snapshot = self.state.subagent_registry.get(&id);
+                let status = snapshot
+                    .as_ref()
+                    .map(|snap| snap.status.as_str().to_string())
+                    .unwrap_or_else(|| "running".to_string());
+                let meta = snapshot.as_ref().map(|snap| {
+                    (
+                        snap.model.clone(),
+                        Some(snap.started_at),
+                        snap.worktree.clone(),
+                    )
+                });
+                if let Some(card) = self.state.agent.subagents.get_mut(&id) {
+                    card.subagent_type = subagent_type.clone();
+                    card.description = description.clone();
+                    card.status = status;
+                    if let Some((model, started_at, worktree)) = meta {
+                        if !model.is_empty() {
+                            card.model = model;
                         }
-                        self.state
-                            .open_enter_key(&provider, String::new(), true, error);
-                    }
-                    if self.state.config.current_provider.is_empty() {
-                        self.state.config.current_provider = provider.clone();
-                    }
-                }
-                AgentEvent::ApprovalRequested { source, request } => {
-                    self.state.agent.enqueue_approval(source, request);
-                }
-                AgentEvent::SubagentStarted {
-                    id,
-                    subagent_type,
-                    description,
-                } => {
-                    // Card status mirrors the registry snapshot so a queued
-                    // spawn reads pending, not running. A re-sent Started
-                    // (dequeue launch) refreshes the existing card without
-                    // duplicating its chat entry.
-                    let snapshot = self.state.subagent_registry.get(&id);
-                    let status = snapshot
-                        .as_ref()
-                        .map(|snap| snap.status.as_str().to_string())
-                        .unwrap_or_else(|| "running".to_string());
-                    let meta = snapshot.as_ref().map(|snap| {
-                        (
-                            snap.model.clone(),
-                            Some(snap.started_at),
-                            snap.worktree.clone(),
-                        )
-                    });
-                    if let Some(card) = self.state.agent.subagents.get_mut(&id) {
-                        card.subagent_type = subagent_type.clone();
-                        card.description = description.clone();
-                        card.status = status;
-                        if let Some((model, started_at, worktree)) = meta {
-                            if !model.is_empty() {
-                                card.model = model;
-                            }
-                            if card.started_at.is_none() {
-                                card.started_at = started_at;
-                            }
-                            card.worktree = worktree;
+                        if card.started_at.is_none() {
+                            card.started_at = started_at;
                         }
-                    } else {
-                        let (model, started_at, worktree) =
-                            meta.unwrap_or((String::new(), None, None));
-                        self.state.agent.subagents.insert(
-                            id.clone(),
-                            crate::state::SubagentUiState {
-                                id: id.clone(),
-                                subagent_type: subagent_type.clone(),
-                                description: description.clone(),
-                                status,
-                                model,
-                                started_at,
-                                worktree,
-                                ..Default::default()
-                            },
-                        );
-                        self.state.session.add_subagent_entry(
-                            id.clone(),
-                            subagent_type.clone(),
-                            description.clone(),
-                        );
+                        card.worktree = worktree;
                     }
-                    tracing::info!(
-                        subagent_id = %id,
-                        subagent_type = %subagent_type,
-                        "Subagent started"
+                } else {
+                    let (model, started_at, worktree) = meta.unwrap_or((String::new(), None, None));
+                    self.state.agent.subagents.insert(
+                        id.clone(),
+                        crate::state::SubagentUiState {
+                            id: id.clone(),
+                            subagent_type: subagent_type.clone(),
+                            description: description.clone(),
+                            status,
+                            model,
+                            started_at,
+                            worktree,
+                            ..Default::default()
+                        },
+                    );
+                    self.state.session.add_subagent_entry(
+                        id.clone(),
+                        subagent_type.clone(),
+                        description.clone(),
                     );
                 }
-                AgentEvent::SubagentText { id, text } => {
-                    // Core caps the forwarded stream; cap again here so a
-                    // placeholder card built before the cap still stays bounded.
-                    const MAX_STREAM_BYTES: usize = 256 * 1024;
-                    let card = self.subagent_card_or_placeholder(&id);
-                    if card.streaming_text.len() < MAX_STREAM_BYTES {
-                        card.streaming_text.push_str(&text);
-                    }
+                tracing::info!(
+                    subagent_id = %id,
+                    subagent_type = %subagent_type,
+                    "Subagent started"
+                );
+            }
+            AgentEvent::SubagentText { id, text } => {
+                // Core caps the forwarded stream; cap again here so a
+                // placeholder card built before the cap still stays bounded.
+                const MAX_STREAM_BYTES: usize = 256 * 1024;
+                let card = self.subagent_card_or_placeholder(&id);
+                if card.streaming_text.len() < MAX_STREAM_BYTES {
+                    card.streaming_text.push_str(&text);
                 }
-                AgentEvent::SubagentToolCallStart {
-                    id,
+            }
+            AgentEvent::SubagentToolCallStart {
+                id,
+                call_id,
+                name,
+                args,
+            } => {
+                let card = self.subagent_card_or_placeholder(&id);
+                card.preparing_tool = None;
+                card.tool_rows.push(crate::state::SubagentToolRow {
                     call_id,
                     name,
                     args,
-                } => {
-                    let card = self.subagent_card_or_placeholder(&id);
-                    card.preparing_tool = None;
-                    card.tool_rows.push(crate::state::SubagentToolRow {
-                        call_id,
-                        name,
-                        args,
-                        result: None,
-                        is_error: false,
-                        finished: false,
-                    });
-                }
-                AgentEvent::SubagentToolCallProgress { id, call_id, chunk } => {
-                    if let Some(row) = self
-                        .subagent_card_or_placeholder(&id)
-                        .tool_rows
-                        .iter_mut()
-                        .rev()
-                        .find(|row| row.call_id == call_id)
-                    {
-                        let result = row.result.get_or_insert_with(String::new);
-                        const MAX_SUBAGENT_TOOL_OUTPUT: usize = 16 * 1024;
-                        let remaining = MAX_SUBAGENT_TOOL_OUTPUT.saturating_sub(result.len());
-                        let end = chunk
-                            .char_indices()
-                            .map(|(index, _)| index)
-                            .chain(std::iter::once(chunk.len()))
-                            .take_while(|index| *index <= remaining)
-                            .last()
-                            .unwrap_or(0);
-                        result.push_str(&chunk[..end]);
-                    }
-                }
-                AgentEvent::SubagentToolCallResult {
-                    id,
-                    call_id,
-                    name,
-                    result,
-                    is_error,
-                } => {
-                    if let Some(row) = self
-                        .subagent_card_or_placeholder(&id)
-                        .tool_rows
-                        .iter_mut()
-                        .rev()
-                        .find(|r| r.call_id == call_id || (call_id.is_empty() && r.name == name))
-                    {
-                        row.result = Some(result);
-                        row.is_error = is_error;
-                        row.finished = true;
-                    }
-                }
-                AgentEvent::SubagentDone {
-                    id,
-                    summary,
-                    is_error,
-                } => {
-                    self.state.agent.remove_approvals_from(
-                        &agente_core::agent::ApprovalSource::Subagent { id: id.clone() },
-                    );
-                    let status = match (
-                        is_error,
-                        self.state
-                            .agent
-                            .subagents
-                            .get(&id)
-                            .map(|s| s.status.as_str()),
-                    ) {
-                        (true, Some("cancelled")) => "cancelled",
-                        (true, _) => "failed",
-                        (false, _) => "completed",
-                    };
-                    let registry_snapshot = self.state.subagent_registry.get(&id);
-                    let card = self.subagent_card_or_placeholder(&id);
-                    card.status = status.to_string();
-                    card.summary = Some(summary.clone());
-                    card.finished_at = Some(chrono::Utc::now());
-                    if let Some(snap) = registry_snapshot {
-                        card.worktree = snap.worktree.clone();
-                        if card.model.is_empty() {
-                            card.model = snap.model.clone();
-                        }
-                    }
-                    if let Some(entry) = self
-                        .state
-                        .session
-                        .chat_history
-                        .iter_mut()
-                        .find(|e| e.subagent_id.as_deref() == Some(id.as_str()))
-                    {
-                        entry.is_error = is_error;
-                        entry.content = summary.clone();
-                    }
-                    // Don't yank the view if the user scrolled up mid-stream.
-                    self.state.ui.follow_bottom_if_pinned();
-                    tracing::info!(
-                        subagent_id = %id,
-                        status = status,
-                        "Subagent finished"
-                    );
-                }
-                AgentEvent::SubagentCompletedNotice {
-                    id,
-                    subagent_type,
-                    status,
-                    summary,
-                } => {
-                    // Push completion notice: the background child finished
-                    // with no waiter, so the model learns the outcome without
-                    // polling `task_output`.
-                    let text = agente_core::subagent::completion_notice_text(
-                        &id,
-                        &subagent_type,
-                        &status,
-                        &summary,
-                    );
-                    // Visible done-row. Bypass the `AppState` helper: it
-                    // forces auto-scroll, which would yank a user reading
-                    // history for every background completion.
-                    let mode_str = self.state.agent.current_turn_mode.to_string();
-                    self.state
-                        .session
-                        .add_assistant_message(text.clone(), mode_str, None, None);
-                    self.state.ui.follow_bottom_if_pinned();
-                    // Model-facing injection. A running turn's terminal event
-                    // replaces the conversation wholesale, so a direct push
-                    // now would be clobbered — queue for the turn boundary.
-                    // Idle: the transcript is stable, push immediately.
-                    let turn_running = !matches!(
-                        self.state.agent.state,
-                        AgentState::Idle | AgentState::Error(_)
-                    );
-                    if turn_running {
-                        self.state.session.queue_notice(text);
-                    } else {
-                        self.state
-                            .session
-                            .conversation
-                            .push(agente_core::types::Message {
-                                role: Role::User,
-                                content: text,
-                                tool_calls: None,
-                                tool_call_id: None,
-                                thinking: None,
-                                thinking_signature: None,
-                                continuation: None,
-                            });
-                        // A background child finished with the parent idle:
-                        // resume the model so it consumes the result instead
-                        // of leaving it unread until the next user message.
-                        let _ = self.start_chat_turn();
-                    }
-                    tracing::info!(
-                        subagent_id = %id,
-                        status = %status,
-                        "Subagent completion notice injected"
-                    );
+                    result: None,
+                    is_error: false,
+                    finished: false,
+                });
+            }
+            AgentEvent::SubagentToolCallProgress { id, call_id, chunk } => {
+                if let Some(row) = self
+                    .subagent_card_or_placeholder(&id)
+                    .tool_rows
+                    .iter_mut()
+                    .rev()
+                    .find(|row| row.call_id == call_id)
+                {
+                    let result = row.result.get_or_insert_with(String::new);
+                    const MAX_SUBAGENT_TOOL_OUTPUT: usize = 16 * 1024;
+                    let remaining = MAX_SUBAGENT_TOOL_OUTPUT.saturating_sub(result.len());
+                    let end = chunk
+                        .char_indices()
+                        .map(|(index, _)| index)
+                        .chain(std::iter::once(chunk.len()))
+                        .take_while(|index| *index <= remaining)
+                        .last()
+                        .unwrap_or(0);
+                    result.push_str(&chunk[..end]);
                 }
             }
+            AgentEvent::SubagentToolCallResult {
+                id,
+                call_id,
+                name,
+                result,
+                is_error,
+            } => {
+                if let Some(row) = self
+                    .subagent_card_or_placeholder(&id)
+                    .tool_rows
+                    .iter_mut()
+                    .rev()
+                    .find(|r| r.call_id == call_id || (call_id.is_empty() && r.name == name))
+                {
+                    row.result = Some(result);
+                    row.is_error = is_error;
+                    row.finished = true;
+                }
+            }
+            AgentEvent::SubagentDone {
+                id,
+                summary,
+                is_error,
+            } => {
+                self.state.agent.remove_approvals_from(
+                    &agente_core::agent::ApprovalSource::Subagent { id: id.clone() },
+                );
+                let status = match (
+                    is_error,
+                    self.state
+                        .agent
+                        .subagents
+                        .get(&id)
+                        .map(|s| s.status.as_str()),
+                ) {
+                    (true, Some("cancelled")) => "cancelled",
+                    (true, _) => "failed",
+                    (false, _) => "completed",
+                };
+                let registry_snapshot = self.state.subagent_registry.get(&id);
+                let card = self.subagent_card_or_placeholder(&id);
+                card.status = status.to_string();
+                card.summary = Some(summary.clone());
+                card.finished_at = Some(chrono::Utc::now());
+                if let Some(snap) = registry_snapshot {
+                    card.worktree = snap.worktree.clone();
+                    if card.model.is_empty() {
+                        card.model = snap.model.clone();
+                    }
+                }
+                if let Some(entry) = self
+                    .state
+                    .session
+                    .chat_history
+                    .iter_mut()
+                    .find(|e| e.subagent_id.as_deref() == Some(id.as_str()))
+                {
+                    entry.is_error = is_error;
+                    entry.content = summary.clone();
+                }
+                // Don't yank the view if the user scrolled up mid-stream.
+                self.state.ui.follow_bottom_if_pinned();
+                tracing::info!(
+                    subagent_id = %id,
+                    status = status,
+                    "Subagent finished"
+                );
+            }
+            AgentEvent::SubagentCompletedNotice {
+                id,
+                subagent_type,
+                status,
+                summary,
+            } => {
+                // Push completion notice: the background child finished
+                // with no waiter, so the model learns the outcome without
+                // polling `task_output`.
+                let text = agente_core::subagent::completion_notice_text(
+                    &id,
+                    &subagent_type,
+                    &status,
+                    &summary,
+                );
+                // Visible done-row. Bypass the `AppState` helper: it
+                // forces auto-scroll, which would yank a user reading
+                // history for every background completion.
+                let mode_str = self.state.agent.current_turn_mode.to_string();
+                self.state
+                    .session
+                    .add_assistant_message(text.clone(), mode_str, None, None);
+                self.state.ui.follow_bottom_if_pinned();
+                // Model-facing injection. A running turn's terminal event
+                // replaces the conversation wholesale, so a direct push
+                // now would be clobbered — queue for the turn boundary.
+                // Idle: the transcript is stable, push immediately.
+                let turn_running = !matches!(
+                    self.state.agent.state,
+                    AgentState::Idle | AgentState::Error(_)
+                );
+                if turn_running {
+                    self.state.session.queue_notice(text);
+                } else {
+                    self.state
+                        .session
+                        .conversation
+                        .push(agente_core::types::Message {
+                            role: Role::User,
+                            content: text,
+                            tool_calls: None,
+                            tool_call_id: None,
+                            thinking: None,
+                            thinking_signature: None,
+                            continuation: None,
+                            attachments: Vec::new(),
+                        });
+                    // A background child finished with the parent idle:
+                    // resume the model so it consumes the result instead
+                    // of leaving it unread until the next user message.
+                    let _ = self.start_chat_turn();
+                }
+                tracing::info!(
+                    subagent_id = %id,
+                    status = %status,
+                    "Subagent completion notice injected"
+                );
+            }
         }
-        processed == MAX_AGENT_EVENTS_PER_TICK
     }
 
     /// True when a child's edits land in the parent workspace and may be
@@ -1325,6 +1343,7 @@ mod tests {
                         thinking: None,
                         thinking_signature: None,
                         continuation: None,
+                        attachments: Vec::new(),
                     }],
                 },
             })
@@ -1388,6 +1407,7 @@ mod tests {
                     completion_tokens: 200,
                     cache_read_tokens: 0,
                     cache_creation_tokens: 0,
+                    context_tokens: 48_000,
                 },
             })
             .unwrap();
@@ -1404,11 +1424,29 @@ mod tests {
                     completion_tokens: 0,
                     cache_read_tokens: 0,
                     cache_creation_tokens: 0,
+                    context_tokens: 0,
                 },
             })
             .unwrap();
         app.process_agent_events();
         assert_eq!(app.state.agent.total_tokens, 48_000);
+
+        // A mostly cached request: the meter shows the whole prompt, not
+        // just its uncached tail (the old readout said "342 / 1M").
+        app.agent_tx
+            .send(AgentTaskEvent {
+                task_id: 0,
+                event: AgentEvent::TurnUsage {
+                    prompt_tokens: 342,
+                    completion_tokens: 90,
+                    cache_read_tokens: 89_000,
+                    cache_creation_tokens: 0,
+                    context_tokens: 89_342,
+                },
+            })
+            .unwrap();
+        app.process_agent_events();
+        assert_eq!(app.state.agent.total_tokens, 89_342);
     }
 
     /// A cancellation terminal must settle the phase even with a real task

@@ -61,6 +61,10 @@ impl MessagesProvider {
                         }
                     }
                 }
+                if message.role == Role::User {
+                    // Media first, then the text (Anthropic's recommended order).
+                    content.extend(anthropic_media_blocks(message, model));
+                }
                 if !message.content.is_empty() {
                     content.push(json!({"type": "text", "text": message.content}));
                 }
@@ -138,6 +142,30 @@ struct MessageStream {
     usage: Usage,
     stop: Option<StopReason>,
     complete: bool,
+}
+
+/// `image` / `document` blocks for a user message's attachments. Audio and
+/// video have no Messages-API block, so they (and anything the model does
+/// not accept) become a text note.
+fn anthropic_media_blocks(message: &Message, model: &ModelInfo) -> Vec<Value> {
+    use crate::media::{AttachmentKind, Encoded};
+    crate::media::encode_for(model, &message.attachments)
+        .into_iter()
+        .map(|encoded| match encoded {
+            Encoded::Skipped(note) => json!({"type": "text", "text": note}),
+            Encoded::Data { attachment, base64 } => match attachment.kind {
+                AttachmentKind::Image => json!({"type": "image", "source": {
+                    "type": "base64", "media_type": attachment.mime, "data": base64}}),
+                AttachmentKind::Pdf => json!({"type": "document", "source": {
+                    "type": "base64", "media_type": "application/pdf", "data": base64}}),
+                AttachmentKind::Audio | AttachmentKind::Video => {
+                    json!({"type": "text", "text": format!(
+                    "[{} attachment {} not sent: the Anthropic Messages API has no {} input]",
+                    attachment.kind.label(), attachment.name, attachment.kind.label())})
+                }
+            },
+        })
+        .collect()
 }
 
 fn append_text(object: &mut Value, field: &str, delta: &str) {
@@ -393,6 +421,35 @@ mod signature_tests {
         assert_eq!(
             signature_delta(&json!({"type":"text_delta","signature":"not a signature delta"})),
             None
+        );
+    }
+
+    #[test]
+    fn anthropic_gets_image_and_document_blocks_and_notes_for_the_rest() {
+        use crate::media::tests::{attachment, test_model};
+        use crate::media::AttachmentKind;
+        let dir = tempfile::tempdir().unwrap();
+        let mut message = Message::user("review");
+        message.attachments = vec![
+            attachment(dir.path(), "ui.png", AttachmentKind::Image, "image/png"),
+            attachment(
+                dir.path(),
+                "spec.pdf",
+                AttachmentKind::Pdf,
+                "application/pdf",
+            ),
+            attachment(dir.path(), "call.mp3", AttachmentKind::Audio, "audio/mpeg"),
+        ];
+        let mut model = test_model();
+        model.capabilities.input_modalities =
+            ["text", "image", "pdf", "audio"].map(String::from).to_vec();
+        let blocks = anthropic_media_blocks(&message, &model);
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        assert_eq!(blocks[1]["type"], "document");
+        assert_eq!(
+            blocks[2]["type"], "text",
+            "no audio block in the Messages API"
         );
     }
 }

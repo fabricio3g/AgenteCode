@@ -134,15 +134,60 @@ impl WorkMode {
     }
 }
 
+/// A message waiting for the running turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedMessage {
+    /// What the chat bubble shows (`/skill-name request`).
+    pub display: String,
+    /// What the model receives (the skill block + request).
+    pub prompt: String,
+    /// Media sent with it.
+    pub attachments: Vec<agente_core::media::Attachment>,
+    /// Handed to the running turn; shown as "sending…" until the loop
+    /// takes it.
+    pub sending: bool,
+}
+
+impl QueuedMessage {
+    pub fn new(text: impl Into<String>) -> Self {
+        let text = text.into();
+        Self::with_prompt(text.clone(), text)
+    }
+
+    pub fn with_prompt(display: impl Into<String>, prompt: impl Into<String>) -> Self {
+        Self {
+            display: display.into(),
+            prompt: prompt.into(),
+            attachments: Vec::new(),
+            sending: false,
+        }
+    }
+
+    pub fn with_attachments(mut self, attachments: Vec<agente_core::media::Attachment>) -> Self {
+        self.attachments = attachments;
+        self
+    }
+
+    /// The conversation message the model receives.
+    pub fn to_message(&self) -> Message {
+        let mut message = Message::user(self.prompt.clone());
+        message.attachments = self.attachments.clone();
+        message
+    }
+}
+
 /// What the session's model calls cost, summed per call from
 /// `AgentEvent::CallUsage` (parent and subagents alike).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spend {
-    /// USD over the calls the catalog could price.
+    /// USD over the calls that had a price.
     pub cost_usd: f64,
-    /// Calls with a known price.
+    /// Calls with a price (provider-reported or catalog).
     pub priced_calls: u32,
-    /// Calls on models without catalog pricing (free/unknown).
+    /// Priced calls whose price is our catalog estimate, not the provider's
+    /// own charge.
+    pub estimated_calls: u32,
+    /// Calls with no price at all (unknown model pricing).
     pub unpriced_calls: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
@@ -172,24 +217,42 @@ impl Spend {
         }
     }
 
-    /// Share of prompt tokens served from the provider cache, once any
-    /// prompt has been sent.
+    /// Share of prompt tokens served from the provider cache — only once
+    /// the provider has reported any cache activity. A provider that never
+    /// reports cache fields has an unknown rate, not a 0% one.
     pub fn cache_hit_rate(&self) -> Option<f64> {
-        let prompt = self.input_tokens + self.cache_read_tokens + self.cache_write_tokens;
-        (prompt > 0).then(|| self.cache_read_tokens as f64 / prompt as f64)
+        let cached = self.cache_read_tokens + self.cache_write_tokens;
+        let prompt = self.input_tokens + cached;
+        (prompt > 0 && cached > 0).then(|| self.cache_read_tokens as f64 / prompt as f64)
     }
 
-    /// `$0.042` once any call had a price.
+    /// `$0.042` once any call had a price: `~` when part of it is our
+    /// catalog estimate, `+` when some calls could not be priced, `free`
+    /// when the provider charged nothing.
     pub fn cost_label(&self) -> Option<String> {
-        (self.priced_calls > 0).then(|| format_usd(self.cost_usd))
+        if self.priced_calls == 0 {
+            return None;
+        }
+        let mut label = if self.cost_usd <= 0.0 {
+            "free".to_string()
+        } else if self.estimated_calls > 0 {
+            format!("~{}", format_usd(self.cost_usd))
+        } else {
+            format_usd(self.cost_usd)
+        };
+        if self.unpriced_calls > 0 {
+            label.push('+');
+        }
+        Some(label)
     }
 
-    /// Header label: `$0.042 · 82% cached`. `None` before the first call.
+    /// Status label: `$0.042 · 82% cached`. `None` before the first call.
+    /// The rate is floored, so `100%` means every prompt token was cached.
     pub fn label(&self) -> Option<String> {
         let cost = self.cost_label();
         let cache = self
             .cache_hit_rate()
-            .map(|rate| format!("{:.0}% cached", rate * 100.0));
+            .map(|rate| format!("{:.0}% cached", (rate * 100.0).floor()));
         match (cost, cache) {
             (Some(cost), Some(cache)) => Some(format!("{cost} · {cache}")),
             (Some(one), None) | (None, Some(one)) => Some(one),
@@ -200,7 +263,9 @@ impl Spend {
 
 /// `$0.004` below a cent, `$0.42` / `$12.30` above.
 pub fn format_usd(usd: f64) -> String {
-    if usd > 0.0 && usd < 0.01 {
+    if usd > 0.0 && usd < 0.001 {
+        "<$0.001".to_string()
+    } else if usd > 0.0 && usd < 0.01 {
         format!("${usd:.3}")
     } else {
         format!("${usd:.2}")
@@ -333,6 +398,10 @@ pub struct AgentRuntimeState {
     /// `ContextCompacted` events and after `/compact` so the status bar always
     /// reflects the *real* context, not the historical cumulative sum.
     pub total_tokens: u32,
+    /// `total_tokens` came from the provider (the last request's whole
+    /// prompt) rather than the local characters÷4 estimate, which misses the
+    /// tool schemas. The meter marks estimates with `~`.
+    pub context_measured: bool,
     /// Most recent turn's prompt tokens (used for cost). May include cached
     /// tokens reported by the provider.
     pub last_turn_prompt_tokens: u32,
@@ -365,8 +434,12 @@ pub struct AgentRuntimeState {
     /// Shared permission engine handle. The TUI keeps this live so mid-turn
     /// toggles propagate to the running chat task.
     pub shared_permission_engine: SharedPermissionEngine,
-    /// Messages queued while the agent is working (processed after current turn)
-    pub message_queue: Vec<String>,
+    /// Messages queued while the agent is working. They run after the turn,
+    /// or sooner when the user sends them now (`send_queue_now`).
+    pub message_queue: Vec<QueuedMessage>,
+    /// Shared with the running turn: messages sent now wait here until the
+    /// loop takes them at its next step.
+    pub user_inbox: agente_core::agent::UserInbox,
     /// Steering commands that should take effect as soon as possible
     /// (e.g. /stop, /cancel, !bash commands)
     pub steering_queue: Vec<String>,
@@ -400,6 +473,7 @@ impl Default for AgentRuntimeState {
             auto_approve_runtime: false,
             auto_mode: false,
             total_tokens: 0,
+            context_measured: false,
             last_turn_prompt_tokens: 0,
             last_turn_completion_tokens: 0,
             last_turn_cache_read_tokens: 0,
@@ -414,6 +488,7 @@ impl Default for AgentRuntimeState {
             last_response_duration: None,
             shared_permission_engine: shared_permission_engine(AgentMode::Build),
             message_queue: Vec::new(),
+            user_inbox: agente_core::agent::UserInbox::default(),
             steering_queue: Vec::new(),
             subagents: HashMap::new(),
             live_tool_calls: HashMap::new(),
@@ -663,6 +738,83 @@ impl AgentRuntimeState {
     /// not a stale cumulative sum.
     pub fn recompute_total_from_conversation(&mut self, conversation: &[Message]) {
         self.total_tokens = estimate_message_tokens(conversation) as u32;
+        self.context_measured = false;
+    }
+
+    /// Adopt the provider's size of the last request's whole prompt.
+    pub fn record_context(&mut self, context_tokens: u32) {
+        if context_tokens > 0 {
+            self.total_tokens = context_tokens;
+            self.context_measured = true;
+        }
+    }
+
+    /// Context once a turn ends: the last request's measured prompt plus the
+    /// reply it produced (both are in the next request); the estimate only
+    /// when the provider reported nothing.
+    pub fn settle_context_after_turn(&mut self, conversation: &[Message]) {
+        if self.context_measured {
+            self.total_tokens = self
+                .total_tokens
+                .saturating_add(self.last_turn_completion_tokens);
+        } else {
+            self.recompute_total_from_conversation(conversation);
+        }
+    }
+
+    /// Queue a message for after the running turn (no chat bubble yet —
+    /// it appears when it is actually sent).
+    pub fn queue_message(&mut self, message: QueuedMessage) {
+        self.message_queue.push(message);
+    }
+
+    /// Hand every waiting queued message to the running turn, which takes
+    /// them at its next step. Returns how many were sent.
+    pub fn send_queue_now(&mut self) -> usize {
+        let mut inbox = self.user_inbox.lock();
+        let mut sent = 0;
+        for message in self.message_queue.iter_mut().filter(|m| !m.sending) {
+            message.sending = true;
+            inbox.push(message.to_message());
+            sent += 1;
+        }
+        sent
+    }
+
+    /// The loop took `count` sent messages: drop them from the queue and
+    /// return them for the chat, in order.
+    pub fn take_injected(&mut self, count: usize) -> Vec<QueuedMessage> {
+        let mut taken = Vec::new();
+        self.message_queue.retain(|message| {
+            if message.sending && taken.len() < count {
+                taken.push(message.clone());
+                false
+            } else {
+                true
+            }
+        });
+        taken
+    }
+
+    /// The turn ended: anything still waiting in the inbox goes back to
+    /// being an ordinary queued message (it runs as the next turn).
+    pub fn reclaim_inbox(&mut self) {
+        self.user_inbox.lock().clear();
+        for message in &mut self.message_queue {
+            message.sending = false;
+        }
+    }
+
+    /// Up on an empty composer: the last not-yet-sent message comes back
+    /// for editing.
+    pub fn pop_unsent(&mut self) -> Option<QueuedMessage> {
+        let index = self.message_queue.iter().rposition(|m| !m.sending)?;
+        Some(self.message_queue.remove(index))
+    }
+
+    /// Whether Enter on an empty composer would send something now.
+    pub fn has_unsent_queue(&self) -> bool {
+        self.message_queue.iter().any(|m| !m.sending)
     }
 
     /// Record the per-turn usage from the provider's `StreamEvent::Done`.
@@ -752,14 +904,37 @@ mod tests {
         assert_eq!(spend.label().as_deref(), Some("$0.007 · 85% cached"));
         spend.record(0, 0, 0, 0, None);
         assert_eq!(spend.unpriced_calls, 1);
+        assert_eq!(
+            spend.label().as_deref(),
+            Some("$0.007+ · 85% cached"),
+            "+ = some calls had no price"
+        );
         assert_eq!(super::format_usd(12.3), "$12.30");
+        assert_eq!(super::format_usd(0.0004), "<$0.001", "never a fake $0.000");
+    }
 
-        let free = {
-            let mut s = super::Spend::default();
-            s.record(100, 10, 0, 0, None);
-            s
-        };
-        assert_eq!(free.label().as_deref(), Some("0% cached"), "no fake $0.00");
+    #[test]
+    fn spend_labels_only_claim_what_was_reported() {
+        // No price and no cache fields: nothing to claim at all.
+        let mut unknown = super::Spend::default();
+        unknown.record(100, 10, 0, 0, None);
+        assert_eq!(unknown.label(), None, "no fake $0.00 or 0% cached");
+
+        // The provider charged nothing: that is a real price.
+        let mut free = super::Spend::default();
+        free.record(342, 90, 89_000, 0, Some(0.0));
+        assert_eq!(free.label().as_deref(), Some("free · 99% cached"));
+
+        // Catalog estimate instead of the provider's charge.
+        let mut estimated = super::Spend::default();
+        estimated.record(1_000, 100, 0, 0, Some(0.02));
+        estimated.estimated_calls = 1;
+        assert_eq!(estimated.label().as_deref(), Some("~$0.02"));
+
+        // 100% only when every prompt token really came from the cache.
+        let mut all = super::Spend::default();
+        all.record(0, 5, 1_000, 0, Some(0.001));
+        assert_eq!(all.label().as_deref(), Some("$0.001 · 100% cached"));
     }
 
     use super::*;
@@ -774,6 +949,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 

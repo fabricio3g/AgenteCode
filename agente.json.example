@@ -103,8 +103,9 @@
   },
   "mcp": {
     "_comment": "MCP servers extend the agent with external tools. Uncomment servers you need.",
-    "_comment_local": "Local MCP servers run as subprocesses on your machine.",
-    "_comment_remote": "Remote MCP servers connect over HTTP/SSE. Some require OAuth.",
+    "_comment_local": "Local MCP servers run as subprocesses on your machine. `command` may be a list, or a string plus `args` (the .mcp.json shape).",
+    "_comment_remote": "Remote MCP servers use Streamable HTTP (`type`: remote/http + `url`, optional `headers`). $VARS expand from the environment.",
+    "_comment_approval": "Tools the server marks read-only run without approval and in plan mode; others ask unless `trust: true`. `timeout` is per call, in ms.",
 
     "filesystem": {
       "type": "local",

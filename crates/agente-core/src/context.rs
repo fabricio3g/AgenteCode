@@ -120,6 +120,7 @@ impl ContextManager {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }];
 
         messages.extend(self.messages.clone());
@@ -153,7 +154,12 @@ pub fn estimate_message_tokens(messages: &[crate::types::Message]) -> usize {
                         .sum::<usize>()
                 })
                 .unwrap_or(0);
-            m.content.len() / 4 + tool_tokens
+            let media: usize = m
+                .attachments
+                .iter()
+                .map(crate::media::estimated_tokens)
+                .sum();
+            m.content.len() / 4 + tool_tokens + media
         })
         .sum()
 }
@@ -231,6 +237,7 @@ pub fn inject_project_reminder(messages: &mut Vec<crate::types::Message>, projec
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         },
     );
 }
@@ -254,7 +261,7 @@ pub fn plan_mode_restriction(allowed: &[String], blocked: &[String]) -> String {
         "\n\nIMPORTANT: You are in PLAN mode. You must NOT make any code changes. \
          Use only {allowed_text}. Do NOT use {blocked_text}. \
          When the plan is ready, call present_plan(title, markdown) once — that writes \
-         `.agente/plan.md` and shows the user Accept / Redo / Comment. \
+         its own file under `.agente/plans/` and shows the user Accept / Redo / Comment. \
          Do not implement the plan until the user Accepts."
     )
 }
@@ -302,6 +309,7 @@ mod prompt_budget_tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }];
         inject_project_reminder(&mut messages, dir.to_str().unwrap());
         assert_eq!(messages.len(), 2);
@@ -368,6 +376,15 @@ fn render_tool_list(tools: &[crate::types::ToolDefinition]) -> String {
             let first_line = t.description.lines().next().unwrap_or("");
             out.push_str(&format!("\n- {} — {}", t.name, first_line));
         }
+    }
+    if tools
+        .iter()
+        .any(|t| t.name == crate::extensions::skills::SKILL_TOOL)
+    {
+        out.push_str(
+            "\n\nSkills: the `skill` tool's description lists the installed skills. When a \
+             request matches one, load it before starting and follow its instructions.",
+        );
     }
     out
 }
@@ -478,6 +495,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -551,6 +569,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
             continuation: None,
+            attachments: Vec::new(),
         }];
         let tool_est = estimate_message_tokens(&with_tool);
         // name len/4 + args len/4 + 10 flat overhead.

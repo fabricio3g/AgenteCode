@@ -510,14 +510,23 @@ fn paint_hover_tint(frame: &mut Frame, area: Rect, state: &AppState) {
             paint_prompt_hover(buf, area, top, bottom, ease);
             continue;
         }
-        for y in top..=bottom {
-            let blank = (area.x..area.right()).all(|x| {
+        // Skip only the blank rows around the card (its trailing gap row):
+        // an empty line *inside* the output must stay tinted, or the card
+        // shows a hole.
+        let blank = |buf: &ratatui::buffer::Buffer, y: u16| {
+            (area.x..area.right()).all(|x| {
                 buf.cell((x, y))
                     .is_none_or(|c| c.symbol().trim().is_empty())
-            });
-            if blank {
-                continue;
-            }
+            })
+        };
+        let Some(first) = (top..=bottom).find(|&y| !blank(buf, y)) else {
+            continue;
+        };
+        let last = (top..=bottom)
+            .rev()
+            .find(|&y| !blank(buf, y))
+            .unwrap_or(first);
+        for y in first..=last {
             for x in area.x..area.right() {
                 if let Some(cell) = buf.cell_mut((x, y)) {
                     if cell.bg == canvas {
@@ -1910,7 +1919,7 @@ fn render_user(
     expanded: bool,
 ) -> Vec<Line<'_>> {
     let mut lines = Vec::new();
-    if entry.content.is_empty() {
+    if entry.content.is_empty() && entry.attachments.is_empty() {
         return lines;
     }
 
@@ -1955,7 +1964,7 @@ fn render_user(
             }
         }
     }
-    if wrapped_content.is_empty() {
+    if wrapped_content.is_empty() && entry.attachments.is_empty() {
         wrapped_content.push(String::new());
     }
 
@@ -1987,6 +1996,20 @@ fn render_user(
             vec![Span::styled(format!("▸ +{hidden} lines"), hint_style)],
             Vec::new(),
         ));
+    }
+    if !entry.attachments.is_empty() {
+        // Media under the text (or alone, carrying the time).
+        let mut chips = crate::widgets::input::attachment_chips(&entry.attachments, bg);
+        chips.remove(0);
+        let trail = if wrapped_content.is_empty() {
+            vec![Span::styled(
+                format_time_am_pm(entry.timestamp),
+                timestamp().bg(bg),
+            )]
+        } else {
+            Vec::new()
+        };
+        lines.push(row(chips, trail));
     }
     lines.push(row(Vec::new(), Vec::new())); // padding inside the card
     lines.push(themed_blank_row(width)); // matching gap below
@@ -2167,7 +2190,7 @@ fn format_time_am_pm(ts: chrono::DateTime<chrono::Utc>) -> String {
 
 fn render_system(entry: &agente_core::types::ChatEntry, width: usize) -> Vec<Line<'_>> {
     // Compaction notices read as a quiet divider across the transcript:
-    // `── ⟲ Context compacted · 182k → 64k · summarized ────────`.
+    // `── ⟲ Context compacted · ~182k → ~64k · summarized ────────`.
     if let Some(notice) = entry.content.strip_prefix(crate::state::COMPACTION_MARK) {
         let label = format!(" ⟲ {notice} ");
         let lead = 2usize;
@@ -2892,6 +2915,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         };
         let width = 60;
         let block = render_entry_block(
@@ -2965,6 +2989,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         };
         let width = 100;
         let block = render_entry_block(
@@ -3028,6 +3053,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         };
         let subagents = HashMap::new();
         let a = render_entry_block(
@@ -3197,6 +3223,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -3225,6 +3252,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         };
         // 16 cols forces the ~20-col header onto two visual rows; the
         // collapsed preview adds the third.
@@ -3818,6 +3846,7 @@ mod tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         };
         let block = render_entry_block(
             &entry,
@@ -3957,6 +3986,7 @@ mod snapshot_tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
         state.session.chat_history.push(ChatEntry {
             id: uuid::Uuid::new_v4(),
@@ -3973,6 +4003,7 @@ mod snapshot_tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
         state.session.chat_history.push(ChatEntry {
             id: uuid::Uuid::new_v4(),
@@ -3989,6 +4020,7 @@ mod snapshot_tests {
             subagent_id: None,
             subagent_type: None,
             diff_stats: None,
+            attachments: Vec::new(),
         });
 
         let backend = TestBackend::new(60, 20);

@@ -81,7 +81,7 @@ impl InspectorServer {
                             "current_provider": state.config.current_provider,
                             "current_model": state.config.current_model,
                             "chat_history_len": state.session.chat_history.len(),
-                            "message_queue": state.agent.message_queue,
+                            "message_queue": state.agent.message_queue.iter().map(|m| m.display.as_str()).collect::<Vec<_>>(),
                             "modified_files": state.session.modified_files,
                             "todo_count": state.todo.count(),
                             "subagents_count": state.agent.subagents.len(),
@@ -355,6 +355,7 @@ fn dispatch_actor_action(
                     subagent_id: None,
                     subagent_type: None,
                     diff_stats: None,
+                    attachments: Vec::new(),
                 });
             }
             state.agent.finish_live_tool("tool-1");
@@ -402,6 +403,7 @@ fn dispatch_actor_action(
                 subagent_id: None,
                 subagent_type: None,
                 diff_stats: None,
+                attachments: Vec::new(),
             });
         }
         "toggle_plan_mode" => {
@@ -523,6 +525,7 @@ fn dispatch_actor_action(
                                 subagent_id: None,
                                 subagent_type: None,
                                 diff_stats: None,
+                                attachments: Vec::new(),
                             });
                         }
                         _ => {}
@@ -628,6 +631,7 @@ fn dispatch_actor_action(
                                     subagent_id: None,
                                     subagent_type: None,
                                     diff_stats: None,
+                                    attachments: Vec::new(),
                                 });
                             }
                         }
