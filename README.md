@@ -134,6 +134,7 @@ Servers connect in the background and a slow one never delays a turn. Tools a se
 | `crates/agente-tui` | The terminal UI: state, widgets, dialogs, key and mouse routing |
 | `crates/agente-cli` | The `agente` binary (TUI, headless, ACP) |
 | `crates/agente-{acp,runtime,session,protocol,node}` | Editor embedding, persistence, shared types, Node/Electron bindings |
+| `apps/desktop` | **Agente Desktop**, the Electron app: chat, local models, artifacts, voice and the Code section ([its README](apps/desktop/README.md)) |
 
 Per project, Agente keeps its data in `.agente/`: saved plans (`plans/`), subagent worktrees, custom commands, agents and skills.
 
@@ -144,6 +145,8 @@ cargo check                     # must stay at zero warnings
 cargo test --workspace
 cargo clippy --workspace --all-targets
 ```
+
+Agente Desktop has its own toolchain; run `npm install` and `npm run dev` inside `apps/desktop`. CI runs the Rust and Desktop jobs only when their folders change.
 
 [AGENTS.md](AGENTS.md) documents the architecture, the design decisions behind the UI and the full keyboard map — read it before a larger change.
 
