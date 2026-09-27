@@ -66,6 +66,7 @@ jobs:
             cmake \
             ninja-build \
             git \
+            libssl-dev \
             libvulkan-dev \
             glslang-tools \
             pkg-config
@@ -96,6 +97,15 @@ jobs:
           NATIVE_RUNTIME_BACKENDS: ${{ vars.NATIVE_RUNTIME_BACKENDS }}
           LLAMA_CPP_REF: ${{ vars.LLAMA_CPP_REF || 'master' }}
           WHISPER_CPP_REF: ${{ vars.WHISPER_CPP_REF || 'master' }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build and bundle the Agente runtime
+        run: npm run build:agente
 
       - name: Build Electron app
         run: npm run build:main && npm run build:renderer && npx electron-builder --publish=never

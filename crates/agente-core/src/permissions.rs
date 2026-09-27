@@ -487,7 +487,21 @@ impl PermissionEngine {
             AgentMode::Build => Permission::Allow,
         });
 
-        if decision == Permission::Ask && self.auto_approve_all {
+        // Auto-approve never waves through a destructive shell command: it
+        // still asks, whatever the mode.
+        let confirm_destructive = self
+            .auto_approve_config
+            .as_ref()
+            .is_none_or(|config| config.confirm_destructive);
+        let destructive = confirm_destructive
+            && tool_name == "shell"
+            && args
+                .get("command")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(is_destructive_command);
+        if destructive && decision == Permission::Allow {
+            Permission::Ask
+        } else if decision == Permission::Ask && self.auto_approve_all && !destructive {
             Permission::Allow
         } else {
             decision
@@ -565,6 +579,28 @@ pub fn is_dangerous_command(cmd: &str) -> bool {
     }
 
     false
+}
+
+/// Commands that destroy data or history and are hard or impossible to undo:
+/// recursive `rm`, `mkfs`, `git push --force` (not `--force-with-lease`),
+/// `DROP TABLE` / `DROP DATABASE`, and the classic fork bomb. These always
+/// need a person's yes, even in auto mode.
+pub fn is_destructive_command(cmd: &str) -> bool {
+    let lower = cmd.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let recursive_rm = words.windows(2).any(|pair| {
+        pair[0].trim_start_matches(['(', ';', '&', '|']) == "rm"
+            && pair[1].starts_with('-')
+            && (pair[1] == "--recursive" || (!pair[1].starts_with("--") && pair[1].contains('r')))
+    });
+    let force_push =
+        lower.contains("git push") && words.iter().any(|word| *word == "--force" || *word == "-f");
+    recursive_rm
+        || force_push
+        || words.iter().any(|word| word.starts_with("mkfs"))
+        || lower.contains("drop table")
+        || lower.contains("drop database")
+        || lower.replace(' ', "").contains(":(){:|:&};:")
 }
 
 /// True when a command chains or substitutes other commands. Safe-command
@@ -854,6 +890,16 @@ mod tests {
 
         assert_eq!(engine.check_tool("shell", &args), Permission::Ask);
 
+        // Auto mode still asks before a destructive command…
+        engine.set_auto_approve(true);
+        assert_eq!(engine.check_tool("shell", &args), Permission::Ask);
+
+        // …unless the user turned that off.
+        let config = AutoApproveConfig {
+            confirm_destructive: false,
+            ..AutoApproveConfig::default()
+        };
+        let mut engine = PermissionEngine::from_config(AgentMode::Build, &config);
         engine.set_auto_approve(true);
         assert_eq!(engine.check_tool("shell", &args), Permission::Allow);
     }
@@ -1023,5 +1069,43 @@ mod tests {
         assert_eq!(broker.pending_count(), 0);
         let got3 = rt.block_on(async { rx3.await.ok() });
         assert_eq!(got3, None);
+    }
+
+    #[test]
+    fn destructive_commands_always_ask_even_in_auto_mode() {
+        for command in [
+            "rm -rf build",
+            "rm -fr /tmp/x",
+            "cd x && rm -r dir",
+            "git push origin main --force",
+            "git push -f",
+            "mkfs.ext4 /dev/sdb1",
+            "psql -c 'DROP TABLE users'",
+            ":(){ :|:& };:",
+        ] {
+            assert!(is_destructive_command(command), "{command}");
+        }
+        for command in [
+            "git push --force-with-lease",
+            "rm file.txt",
+            "cargo test",
+            "grep -r TODO src",
+            "git status",
+        ] {
+            assert!(!is_destructive_command(command), "{command}");
+        }
+
+        let mut engine = PermissionEngine::new(AgentMode::Build);
+        engine.set_auto_approve(true);
+        let args = |command: &str| serde_json::json!({ "command": command });
+        assert_eq!(
+            engine.check_tool("shell", &args("rm -rf build")),
+            Permission::Ask
+        );
+        assert_eq!(
+            engine.check_tool("shell", &args("git push --force")),
+            Permission::Ask
+        );
+        assert_eq!(engine.check_tool("shell", &args("ls")), Permission::Allow);
     }
 }

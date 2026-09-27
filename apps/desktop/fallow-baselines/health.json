@@ -21,6 +21,11 @@
         "count": 1
       }
     },
+    "main/agente/desktop-tools-mcp.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
     "main/agente/extensions/extension-runner.ts": {
       "complexity_high": {
         "count": 1
@@ -2171,6 +2176,7 @@
     "main/web-crawler.ts:complexity",
     "main/data-folder.ts:high impact",
     "scripts/smoke-search-scrape.mjs:untested risk",
+    "main/agente/desktop-tools-mcp.ts:untested risk",
     "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "main/browser-panel.ts:high impact",
     "renderer/src/lib/utils/stream-reveal.ts:untested risk",

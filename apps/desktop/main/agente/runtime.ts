@@ -168,7 +168,7 @@ export function resolveTransport(providerName: string, modelOverride?: string, t
 }
 
 /** Local models see images only with a vision projector loaded; API models by id. */
-function transportSeesImages(transport: AgenteTransport): boolean {
+export function transportSeesImages(transport: AgenteTransport): boolean {
   if (transport.providerName === 'local') {
     const cfg = loadConfigFromDisk() as { llm?: { local?: { mmproj_path?: string } } };
     return !!cfg.llm?.local?.mmproj_path;

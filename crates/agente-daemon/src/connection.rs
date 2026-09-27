@@ -79,7 +79,19 @@ where
         }
         match rpc::classify(&line) {
             Ok(Incoming::Request { id, method, params }) => {
-                let reply = match connection.handle(&method, params) {
+                let outcome = if method == "runtime.configure" {
+                    // Waits for the MCP servers the patch names, so the next
+                    // turn already sees their tools.
+                    connection
+                        .runtime
+                        .configure_and_connect(params)
+                        .await
+                        .map(|()| json!({ "ok": true }))
+                        .map_err(runtime_failure)
+                } else {
+                    connection.handle(&method, params)
+                };
+                let reply = match outcome {
                     Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
                     Err((code, message)) => error_reply(id, code, &message),
                 };
@@ -220,10 +232,6 @@ impl Connection {
                 "server": "agente",
                 "version": env!("CARGO_PKG_VERSION"),
             })),
-            "runtime.configure" => {
-                runtime.configure(params).map_err(runtime_failure)?;
-                Ok(json!({ "ok": true }))
-            }
             "session.list" => to_json(runtime.session_infos()),
             "session.get" => {
                 let SessionParams { session_id } = parse(params)?;

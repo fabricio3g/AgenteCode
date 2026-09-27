@@ -102,6 +102,9 @@ pub struct AutoApproveConfig {
     pub write_new_files: bool,
     pub safe_commands: Vec<String>,
     pub max_auto_edit_lines: usize,
+    /// Destructive shell commands (recursive rm, force push, mkfs, DROP
+    /// TABLE…) still ask in auto mode.
+    pub confirm_destructive: bool,
 }
 
 impl Default for AutoApproveConfig {
@@ -122,6 +125,7 @@ impl Default for AutoApproveConfig {
                 "dir".into(),
             ],
             max_auto_edit_lines: 10,
+            confirm_destructive: true,
         }
     }
 }

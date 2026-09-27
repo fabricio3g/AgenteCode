@@ -20,7 +20,11 @@ const UI_TOOL_NAMES: Record<string, string> = {
   todo_write: 'todo'
 };
 
+/** Desktop's own tools come back through MCP as desktop_<name>. */
+const DESKTOP_TOOL_PREFIX = 'desktop_';
+
 export function uiToolName(name: string): string {
+  if (name.startsWith(DESKTOP_TOOL_PREFIX)) return name.slice(DESKTOP_TOOL_PREFIX.length);
   return UI_TOOL_NAMES[name] ?? name;
 }
 

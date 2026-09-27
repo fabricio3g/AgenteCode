@@ -15,7 +15,9 @@ import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
 import type { AgenteClient } from '../agente-client.ts';
 import { emitCodeAgentEvent } from './event-bridge.ts';
-import { resolveContextWindow, resolveTransport } from './runtime.ts';
+import { resolveContextWindow, resolveTransport, transportSeesImages } from './runtime.ts';
+import { createBrowserTools } from './tools/browser.ts';
+import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode } from '../../shared/agente-protocol.gen.ts';
@@ -43,6 +45,25 @@ type ChatState = {
 const chats = new Map<string, ChatState>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
+let desktopTools: Promise<DesktopToolServer> | null = null;
+/** The chat that sent the latest message: whose model screenshots are for. */
+let activeChat: ChatState | null = null;
+
+/**
+ * Serve Desktop-only tools (the in-app browser) to the runtime as the MCP
+ * server `desktop`: they show up in the loop as desktop_browser_open, …
+ */
+async function registerDesktopTools(client: AgenteClient): Promise<void> {
+  desktopTools ??= serveDesktopTools(
+    createBrowserTools({
+      canSeeImages: () => !!activeChat && transportSeesImages(resolveTransport(activeChat.provider, activeChat.model, activeChat.thinkingLevel))
+    })
+  );
+  const server = await desktopTools;
+  await client.request('runtime.configure', {
+    mcp: { desktop: { type: 'http', url: server.url, headers: { Authorization: `Bearer ${server.token}` } } }
+  });
+}
 
 /** The monorepo root, found upward from this module (development builds). */
 function findRepoRoot(start: string): string | undefined {
@@ -69,6 +90,9 @@ async function connect(): Promise<AgenteClient> {
     listening = client;
     client.onNotification((method, params) => {
       if (method === 'event') route(params as RuntimeEventEnvelope);
+    });
+    await registerDesktopTools(client).catch((error: unknown) => {
+      console.warn(`[agente] desktop tools unavailable: ${error instanceof Error ? error.message : String(error)}`);
     });
   }
   return client;
@@ -189,6 +213,7 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
   try {
     const client = await connect();
+    activeChat = chat;
     const provider = providerEntry(chat);
     if (!provider.model) return { ok: false, error: 'No model selected — pick one in the Model Hub first.' };
     await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
@@ -325,6 +350,9 @@ function disposeAllSessions(): void {
   daemon?.stop();
   daemon = null;
   listening = null;
+  activeChat = null;
+  void desktopTools?.then((server) => server.close());
+  desktopTools = null;
 }
 
 /** `agente.engine: "rust"` in the config selects this engine for Code chats. */

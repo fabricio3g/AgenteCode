@@ -238,6 +238,9 @@ struct LiveSettings {
     smart_compaction: bool,
     max_parallel_subagents: usize,
     subagent_models: agente_core::config::SubagentModels,
+    /// MCP servers from the config (`mcp`), including tools a client serves
+    /// itself (Agente Desktop's browser tools). `None`: the runtime's own.
+    mcp_manager: Option<Arc<McpManager>>,
 }
 
 impl LiveSettings {
@@ -254,6 +257,7 @@ impl LiveSettings {
             smart_compaction: config.smart_compaction,
             max_parallel_subagents: config.max_parallel_subagents,
             subagent_models: config.subagent_models.clone(),
+            mcp_manager: None,
         }
     }
 
@@ -284,6 +288,7 @@ impl LiveSettings {
             smart_compaction: rebuilt.smart_compaction,
             max_parallel_subagents: rebuilt.max_parallel_subagents,
             subagent_models: rebuilt.subagent_models,
+            mcp_manager: previous.mcp_manager.clone(),
             app_config,
             client_providers,
         }
@@ -806,7 +811,9 @@ impl RuntimeHandle {
             context.engine.clone(),
             cancel.signal(),
             self.inner.config.approval_broker.clone(),
-            self.inner.config.mcp_manager.clone(),
+            live.mcp_manager
+                .clone()
+                .or_else(|| self.inner.config.mcp_manager.clone()),
             self.inner.config.subagent_registry.clone(),
             live.subagent_models.clone(),
             live.smart_compaction,
@@ -894,10 +901,27 @@ impl RuntimeHandle {
     /// replaced by id, every other key it names replaces the current value.
     /// Keys loaded from `~/.agente/auth.json` are kept.
     pub fn configure(&self, patch: serde_json::Value) -> Result<(), RuntimeError> {
+        if let Some(manager) = self.configure_inner(patch)? {
+            // Connect in the background when a runtime is around; otherwise
+            // the servers connect on the next configure_and_connect.
+            if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+                runtime.spawn(async move { manager.connect_all().await });
+            }
+        }
+        Ok(())
+    }
+
+    /// Apply a patch; returns the MCP manager built from it, if it named
+    /// `mcp`, still to be connected.
+    fn configure_inner(
+        &self,
+        patch: serde_json::Value,
+    ) -> Result<Option<Arc<McpManager>>, RuntimeError> {
         let invalid = |message: String| RuntimeError::Config(message);
         let serde_json::Value::Object(patch) = patch else {
             return Err(invalid("configure expects a JSON object".into()));
         };
+        let patch_mcp = patch.contains_key("mcp");
         let mut live = self
             .inner
             .live
@@ -925,7 +949,32 @@ impl RuntimeHandle {
         }
         let app_config: AppConfig =
             serde_json::from_value(merged).map_err(|error| invalid(error.to_string()))?;
-        *live = LiveSettings::from_app_config(app_config, client_providers, &live);
+        let mut next = LiveSettings::from_app_config(app_config, client_providers, &live);
+        let mut added = None;
+        if patch_mcp {
+            let mut manager = McpManager::new();
+            for (name, server) in &next.app_config.mcp {
+                manager.add_client(name.clone(), server.clone());
+            }
+            let manager = Arc::new(manager);
+            if let Some(old) = next.mcp_manager.replace(Arc::clone(&manager)) {
+                old.disconnect_all();
+            }
+            added = Some(manager);
+        }
+        *live = next;
+        Ok(added)
+    }
+
+    /// Like [`Self::configure`], and waits until MCP servers the patch named
+    /// are connected, so the next turn already has their tools.
+    pub async fn configure_and_connect(
+        &self,
+        patch: serde_json::Value,
+    ) -> Result<(), RuntimeError> {
+        if let Some(manager) = self.configure_inner(patch)? {
+            manager.connect_all().await;
+        }
         Ok(())
     }
 
@@ -2060,5 +2109,28 @@ mod tests {
             .map(|m| m.content.as_str())
             .collect();
         assert_eq!(users, vec!["first", "second"]);
+    }
+
+    #[tokio::test]
+    async fn configure_can_add_mcp_servers_a_client_serves() {
+        let handle = RuntimeSupervisor::start(test_config());
+        assert!(handle.inner.live().mcp_manager.is_none());
+        // Nothing listens on port 9: connecting fails, configuring does not.
+        handle
+            .configure_and_connect(serde_json::json!({
+                "mcp": { "desktop": { "type": "http", "url": "http://127.0.0.1:9/mcp" } }
+            }))
+            .await
+            .unwrap();
+        let manager = handle.inner.live().mcp_manager.expect("manager built");
+        assert!(manager.tools().is_empty());
+        // Settings that do not name mcp keep the manager.
+        handle
+            .configure(serde_json::json!({ "smart_compaction": true }))
+            .unwrap();
+        assert!(Arc::ptr_eq(
+            &manager,
+            &handle.inner.live().mcp_manager.unwrap()
+        ));
     }
 }
