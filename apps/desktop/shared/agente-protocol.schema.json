@@ -1128,6 +1128,17 @@
             "null"
           ]
         },
+        "prompt": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Message"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The new message (attachments included) to add to the session's saved conversation, so a client need not send the whole conversation back. Ignored when `conversation` is given."
+        },
         "provider": {
           "type": [
             "string",
@@ -1137,6 +1148,13 @@
         "session_id": {
           "format": "uuid",
           "type": "string"
+        },
+        "system_prompt": {
+          "description": "Replaces the runtime's system prompt for a session that has none yet.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "thinking_level": {
           "type": [
@@ -1196,10 +1214,11 @@
       ]
     },
     "TurnMode": {
-      "description": "Plan (read-only) or build (can change files and run commands).",
+      "description": "Plan (read-only), build (can change files and run commands, asking for risky ones) or auto (build with every call approved).",
       "enum": [
         "plan",
-        "build"
+        "build",
+        "auto"
       ],
       "type": "string"
     },

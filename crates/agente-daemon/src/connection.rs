@@ -138,6 +138,7 @@ fn runtime_failure(error: RuntimeError) -> Failure {
     let code = match error {
         RuntimeError::SessionBusy(_) => BUSY,
         RuntimeError::NotAllowed(_) => NOT_ALLOWED,
+        RuntimeError::Config(_) => rpc::INVALID_PARAMS,
         _ => rpc::INTERNAL_ERROR,
     };
     (code, error.to_string())
@@ -219,6 +220,10 @@ impl Connection {
                 "server": "agente",
                 "version": env!("CARGO_PKG_VERSION"),
             })),
+            "runtime.configure" => {
+                runtime.configure(params).map_err(runtime_failure)?;
+                Ok(json!({ "ok": true }))
+            }
             "session.list" => to_json(runtime.session_infos()),
             "session.get" => {
                 let SessionParams { session_id } = parse(params)?;

@@ -316,10 +316,10 @@ fn run_non_interactive(
                 "warning: headless auto-approve is ON — shell commands and file writes run \
                  without approval prompts; pass --no-auto-approve to disable"
             );
-            if let Ok(mut engine) = runtime_config.permission_engine.write() {
-                engine.set_auto_approve(true);
-            }
         }
+        // Auto-approve applies to build turns; a plan turn is read-only anyway.
+        let mode = (auto_approve && runtime_config.mode == agente_core::types::AgentMode::Build)
+            .then_some(agente_protocol::TurnMode::Auto);
         let runtime_handle = RuntimeSupervisor::start(runtime_config);
         let session_id = SessionId::new();
         let mut turn = runtime_handle.start_turn(StartTurn {
@@ -328,6 +328,7 @@ fn run_non_interactive(
             provider: None,
             model: None,
             thinking_level: None,
+            mode,
             ..StartTurn::default()
         })?;
 

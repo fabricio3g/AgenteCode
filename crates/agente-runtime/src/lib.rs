@@ -54,7 +54,6 @@ pub struct RuntimeConfig {
     pub max_iterations: u32,
     pub provider_registry: Arc<ProviderRegistry>,
     pub catalog: Option<ModelCatalog>,
-    pub permission_engine: SharedPermissionEngine,
     /// Auto-approve rules, for the engines of sessions in other projects.
     pub auto_approve: AutoApproveConfig,
     pub approval_broker: ApprovalBroker,
@@ -71,6 +70,9 @@ pub struct RuntimeConfig {
     /// so sessions survive process restarts. `None` keeps the runtime purely
     /// in-memory (`from_app_config` leaves it unset — persistence is opt-in).
     pub session_store: Option<SessionStore>,
+    /// The config the settings above came from; `configure` updates a copy
+    /// of it and rebuilds them.
+    pub app_config: AppConfig,
 }
 
 impl RuntimeConfig {
@@ -108,11 +110,6 @@ impl RuntimeConfig {
             max_iterations: app_config.max_iterations(),
             provider_registry: Arc::new(ProviderRegistry::from_config(app_config)),
             catalog: app_config.catalog.clone(),
-            permission_engine: shared_permission_engine_with_config(
-                mode,
-                &app_config.auto_approve,
-                &project_dir,
-            ),
             auto_approve: app_config.auto_approve.clone(),
             approval_broker: ApprovalBroker::new(),
             mcp_manager: None,
@@ -121,6 +118,7 @@ impl RuntimeConfig {
             smart_compaction: app_config.smart_compaction,
             max_parallel_subagents: app_config.parallel_subagents(),
             session_store: None,
+            app_config: app_config.clone(),
         }
     }
 
@@ -177,6 +175,7 @@ impl RuntimeSupervisor {
             );
         }
         let (events, _) = broadcast::channel(BROADCAST_CAPACITY);
+        let live = LiveSettings::from_config(&config);
         RuntimeHandle {
             inner: Arc::new(RuntimeInner {
                 config,
@@ -189,6 +188,7 @@ impl RuntimeSupervisor {
                 system_prompts: Mutex::new(HashMap::new()),
                 events,
                 edits: Mutex::new(edits::EditLog::default()),
+                live: RwLock::new(live),
             }),
         }
     }
@@ -217,6 +217,77 @@ struct RuntimeInner {
     events: broadcast::Sender<RuntimeEventEnvelope>,
     /// Undo/redo of each session's file edits.
     edits: Mutex<edits::EditLog>,
+    live: RwLock<LiveSettings>,
+}
+
+/// Settings a client can change while the runtime runs (`configure`):
+/// providers and their keys, defaults, and loop limits. Each turn reads a
+/// copy when it starts; running turns keep theirs.
+#[derive(Clone)]
+struct LiveSettings {
+    app_config: AppConfig,
+    /// Providers that arrived through `configure`: registered even when the
+    /// curated allowlist does not name them.
+    client_providers: std::collections::BTreeSet<String>,
+    provider_registry: Arc<ProviderRegistry>,
+    catalog: Option<ModelCatalog>,
+    default_provider: String,
+    default_model: String,
+    default_thinking_level: String,
+    max_iterations: u32,
+    smart_compaction: bool,
+    max_parallel_subagents: usize,
+    subagent_models: agente_core::config::SubagentModels,
+}
+
+impl LiveSettings {
+    fn from_config(config: &RuntimeConfig) -> Self {
+        Self {
+            app_config: config.app_config.clone(),
+            client_providers: Default::default(),
+            provider_registry: Arc::clone(&config.provider_registry),
+            catalog: config.catalog.clone(),
+            default_provider: config.default_provider.clone(),
+            default_model: config.default_model.clone(),
+            default_thinking_level: config.default_thinking_level.clone(),
+            max_iterations: config.max_iterations,
+            smart_compaction: config.smart_compaction,
+            max_parallel_subagents: config.max_parallel_subagents,
+            subagent_models: config.subagent_models.clone(),
+        }
+    }
+
+    /// Rebuild everything from an updated app config, keeping what the
+    /// config cannot carry (keys loaded from auth.json, the model catalog).
+    fn from_app_config(
+        mut app_config: AppConfig,
+        client_providers: std::collections::BTreeSet<String>,
+        previous: &LiveSettings,
+    ) -> Self {
+        app_config.auth_store = previous.app_config.auth_store.clone();
+        app_config.catalog = previous.app_config.catalog.clone();
+        let rebuilt = RuntimeConfig::from_app_config(&app_config, "");
+        for id in &client_providers {
+            if let Some(provider) = app_config.provider.get(id) {
+                rebuilt
+                    .provider_registry
+                    .register_client_provider(id, provider, &app_config);
+            }
+        }
+        Self {
+            provider_registry: Arc::clone(&rebuilt.provider_registry),
+            catalog: previous.catalog.clone(),
+            default_provider: rebuilt.default_provider,
+            default_model: rebuilt.default_model,
+            default_thinking_level: rebuilt.default_thinking_level,
+            max_iterations: rebuilt.max_iterations,
+            smart_compaction: rebuilt.smart_compaction,
+            max_parallel_subagents: rebuilt.max_parallel_subagents,
+            subagent_models: rebuilt.subagent_models,
+            app_config,
+            client_providers,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -276,17 +347,22 @@ fn chat_message_count(conversation: &[Message]) -> usize {
 }
 
 /// The mode a turn may use: what it asked for (or the session's default),
-/// capped by trust. Anyone but the owner is read-only.
-fn effective_mode(requested: Option<TurnMode>, default: AgentMode, trust: Trust) -> AgentMode {
-    let wanted = match requested {
-        Some(TurnMode::Plan) => AgentMode::Plan,
-        Some(TurnMode::Build) => AgentMode::Build,
-        None => default,
-    };
+/// capped by trust. Anyone but the owner is read-only. The flag says whether
+/// every call is approved without asking (`auto`); `None` keeps the session's
+/// current setting.
+fn effective_mode(
+    requested: Option<TurnMode>,
+    default: AgentMode,
+    trust: Trust,
+) -> (AgentMode, Option<bool>) {
     if trust < Trust::Owner {
-        AgentMode::Plan
-    } else {
-        wanted
+        return (AgentMode::Plan, Some(false));
+    }
+    match requested {
+        Some(TurnMode::Plan) => (AgentMode::Plan, Some(false)),
+        Some(TurnMode::Build) => (AgentMode::Build, Some(false)),
+        Some(TurnMode::Auto) => (AgentMode::Build, Some(true)),
+        None => (default, None),
     }
 }
 
@@ -361,15 +437,13 @@ impl RuntimeInner {
                 return context.clone();
             }
         }
-        let engine = if wanted == self.config.project_dir {
-            self.config.permission_engine.clone()
-        } else {
-            shared_permission_engine_with_config(
-                self.config.mode,
-                &self.config.auto_approve,
-                wanted,
-            )
-        };
+        // Each session has its own engine: its mode, auto-approve and
+        // approve-all grants never leak into another session.
+        let engine = shared_permission_engine_with_config(
+            self.config.mode,
+            &self.config.auto_approve,
+            wanted,
+        );
         let context = SessionContext {
             project_dir: wanted.to_string(),
             engine,
@@ -404,6 +478,13 @@ impl RuntimeInner {
         if let Err(error) = store.write_meta(&meta) {
             tracing::warn!(session = %session_id, %error, "session metadata not saved");
         }
+    }
+
+    fn live(&self) -> LiveSettings {
+        self.live
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     fn lock_edits(&self) -> std::sync::MutexGuard<'_, edits::EditLog> {
@@ -519,6 +600,8 @@ pub enum RuntimeError {
     Edits(String),
     #[error("{0}")]
     NotAllowed(String),
+    #[error("invalid configuration: {0}")]
+    Config(String),
 }
 
 pub struct TurnHandle {
@@ -594,7 +677,9 @@ impl RuntimeHandle {
         // its persisted conversation and revision.
         let existing = self.inner.lookup_session(session_id);
         let mut conversation = if start.conversation.is_empty() {
-            existing.conversation.clone()
+            let mut conversation = existing.conversation.clone();
+            conversation.extend(start.prompt);
+            conversation
         } else {
             start.conversation
         };
@@ -605,19 +690,25 @@ impl RuntimeHandle {
             .origin
             .as_ref()
             .map_or(Trust::Owner, |origin| origin.trust);
-        let mode = effective_mode(start.mode, self.inner.config.mode, trust);
-        context
-            .engine
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .set_mode(mode);
+        let (mode, auto_approve) = effective_mode(start.mode, self.inner.config.mode, trust);
+        {
+            let mut engine = context
+                .engine
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            engine.set_mode(mode);
+            if let Some(auto_approve) = auto_approve {
+                engine.set_auto_approve(auto_approve);
+            }
+        }
         if let Some(profile) = start.profile.as_deref() {
             tracing::debug!(%session_id, profile, "turn profile requested");
         }
-        ensure_system_prompt(
-            &mut conversation,
-            &self.inner.cached_system_prompt(&context.project_dir),
-        );
+        let system_prompt = match start.system_prompt {
+            Some(prompt) => prompt,
+            None => self.inner.cached_system_prompt(&context.project_dir),
+        };
+        ensure_system_prompt(&mut conversation, &system_prompt);
         // Project instructions (AGENTS.md) as a user-message reminder;
         // idempotent, so it also re-attaches after compaction dropped it.
         if !agente_core::context::conversation_has_reminder(
@@ -660,15 +751,15 @@ impl RuntimeHandle {
             self.inner.persist_snapshot(&snapshot);
         }
 
+        let live = self.inner.live();
+
         let provider = start
             .provider
-            .unwrap_or_else(|| self.inner.config.default_provider.clone());
-        let model = start
-            .model
-            .unwrap_or_else(|| self.inner.config.default_model.clone());
+            .unwrap_or_else(|| live.default_provider.clone());
+        let model = start.model.unwrap_or_else(|| live.default_model.clone());
         let thinking = start
             .thinking_level
-            .unwrap_or_else(|| self.inner.config.default_thinking_level.clone());
+            .unwrap_or_else(|| live.default_thinking_level.clone());
         {
             let (provider, model, thinking) = (provider.clone(), model.clone(), thinking.clone());
             let profile = start.profile.clone();
@@ -709,17 +800,17 @@ impl RuntimeHandle {
             model,
             thinking,
             context.project_dir.clone(),
-            self.inner.config.max_iterations,
-            Arc::clone(&self.inner.config.provider_registry),
-            self.inner.config.catalog.clone(),
+            live.max_iterations,
+            Arc::clone(&live.provider_registry),
+            live.catalog.clone(),
             context.engine.clone(),
             cancel.signal(),
             self.inner.config.approval_broker.clone(),
             self.inner.config.mcp_manager.clone(),
             self.inner.config.subagent_registry.clone(),
-            self.inner.config.subagent_models.clone(),
-            self.inner.config.smart_compaction,
-            self.inner.config.max_parallel_subagents,
+            live.subagent_models.clone(),
+            live.smart_compaction,
+            live.max_parallel_subagents,
             inbox,
         );
 
@@ -796,6 +887,46 @@ impl RuntimeHandle {
     /// session snapshot.
     pub fn subscribe(&self) -> broadcast::Receiver<RuntimeEventEnvelope> {
         self.inner.events.subscribe()
+    }
+
+    /// Change settings for turns that start from now on. `patch` is a partial
+    /// app config (`agente.json` shape): `provider` entries are added or
+    /// replaced by id, every other key it names replaces the current value.
+    /// Keys loaded from `~/.agente/auth.json` are kept.
+    pub fn configure(&self, patch: serde_json::Value) -> Result<(), RuntimeError> {
+        let invalid = |message: String| RuntimeError::Config(message);
+        let serde_json::Value::Object(patch) = patch else {
+            return Err(invalid("configure expects a JSON object".into()));
+        };
+        let mut live = self
+            .inner
+            .live
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut merged =
+            serde_json::to_value(&live.app_config).map_err(|error| invalid(error.to_string()))?;
+        let mut client_providers = live.client_providers.clone();
+        if let Some(serde_json::Value::Object(providers)) = patch.get("provider") {
+            client_providers.extend(providers.keys().cloned());
+        }
+        for (key, value) in patch {
+            match (key.as_str(), value, merged.get_mut(&key)) {
+                (
+                    "provider",
+                    serde_json::Value::Object(providers),
+                    Some(serde_json::Value::Object(current)),
+                ) => {
+                    current.extend(providers);
+                }
+                (_, value, _) => {
+                    merged[key.as_str()] = value;
+                }
+            }
+        }
+        let app_config: AppConfig =
+            serde_json::from_value(merged).map_err(|error| invalid(error.to_string()))?;
+        *live = LiveSettings::from_app_config(app_config, client_providers, &live);
+        Ok(())
     }
 
     /// Every session this runtime knows: in memory, and saved in its store.
@@ -1602,18 +1733,24 @@ mod tests {
         use agente_protocol::{Trust, TurnMode};
         assert_eq!(
             effective_mode(Some(TurnMode::Build), AgentMode::Plan, Trust::Owner),
-            AgentMode::Build
+            (AgentMode::Build, Some(false))
+        );
+        assert_eq!(
+            effective_mode(Some(TurnMode::Auto), AgentMode::Plan, Trust::Owner),
+            (AgentMode::Build, Some(true))
         );
         assert_eq!(
             effective_mode(None, AgentMode::Build, Trust::Owner),
-            AgentMode::Build
+            (AgentMode::Build, None)
         );
         for trust in [Trust::Trusted, Trust::Public] {
-            assert_eq!(
-                effective_mode(Some(TurnMode::Build), AgentMode::Build, trust),
-                AgentMode::Plan,
-                "{trust:?} must never build"
-            );
+            for requested in [Some(TurnMode::Build), Some(TurnMode::Auto), None] {
+                assert_eq!(
+                    effective_mode(requested, AgentMode::Build, trust),
+                    (AgentMode::Plan, Some(false)),
+                    "{trust:?} must never build"
+                );
+            }
         }
     }
 
@@ -1622,18 +1759,16 @@ mod tests {
         let handle = RuntimeSupervisor::start(test_config());
         let home = handle.inner.session_context(SessionId::new(), None);
         assert_eq!(home.project_dir, "D:/proj");
-        assert!(Arc::ptr_eq(
-            &home.engine,
-            &handle.inner.config.permission_engine
-        ));
+        let other_home = handle.inner.session_context(SessionId::new(), None);
+        assert!(
+            !Arc::ptr_eq(&home.engine, &other_home.engine),
+            "sessions in one project still get their own engine"
+        );
 
         let session = SessionId::new();
         let other = handle.inner.session_context(session, Some("D:/other"));
         assert_eq!(other.project_dir, "D:/other");
-        assert!(!Arc::ptr_eq(
-            &other.engine,
-            &handle.inner.config.permission_engine
-        ));
+        assert!(!Arc::ptr_eq(&other.engine, &home.engine));
         // The same session keeps its context when a later turn names no project.
         let again = handle.inner.session_context(session, None);
         assert!(Arc::ptr_eq(&other.engine, &again.engine));
@@ -1848,5 +1983,78 @@ mod tests {
         assert_eq!(run.outcome().await.unwrap().status, TurnStatus::Completed);
         assert!(handle.session_snapshot(session_id).conversation.is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn configure_adds_a_provider_and_changes_the_defaults() {
+        let handle = RuntimeSupervisor::start(test_config());
+        handle
+            .configure(serde_json::json!({
+                "provider": {
+                    "local-llama": {
+                        "name": "Local llama.cpp",
+                        "api_format": "openai",
+                        "options": { "base_url": "http://127.0.0.1:11435/v1", "api_key": "k" },
+                        "models": { "qwen3-8b": { "name": "Qwen3 8B" } }
+                    }
+                },
+                "default_provider": "local-llama",
+                "default_model": "qwen3-8b",
+                "smart_compaction": true
+            }))
+            .unwrap();
+        let live = handle.inner.live();
+        assert_eq!(live.default_provider, "local-llama");
+        assert_eq!(live.default_model, "qwen3-8b");
+        assert!(live.smart_compaction);
+        assert!(live.provider_registry.get("local-llama").is_some());
+
+        // A later patch adds to the providers instead of replacing them.
+        handle
+            .configure(serde_json::json!({ "provider": { "other": { "api_format": "openai" } } }))
+            .unwrap();
+        let live = handle.inner.live();
+        assert!(live.app_config.provider.contains_key("local-llama"));
+        assert!(live.app_config.provider.contains_key("other"));
+        assert_eq!(live.default_provider, "local-llama", "untouched keys stay");
+
+        assert!(matches!(
+            handle.configure(serde_json::json!([1])),
+            Err(RuntimeError::Config(_))
+        ));
+        assert!(matches!(
+            handle.configure(serde_json::json!({ "smart_compaction": "yes" })),
+            Err(RuntimeError::Config(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_prompt_is_appended_and_a_session_can_bring_its_own_system_prompt() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let session_id = SessionId::new();
+        let start = |prompt: &str, system: Option<&str>| StartTurn {
+            session_id,
+            prompt: Some(Message::user(prompt)),
+            system_prompt: system.map(str::to_string),
+            // Unknown provider fails fast, before any network access.
+            provider: Some("definitely-not-a-provider".into()),
+            ..StartTurn::default()
+        };
+        let mut first = handle
+            .start_turn(start("first", Some("You are the Code section.")))
+            .unwrap();
+        let _ = first.outcome().await;
+        let mut second = handle.start_turn(start("second", None)).unwrap();
+        let _ = second.outcome().await;
+
+        let conversation = handle.session_snapshot(session_id).conversation;
+        assert_eq!(conversation[0].role, Role::System);
+        assert_eq!(conversation[0].content, "You are the Code section.");
+        let users: Vec<_> = conversation
+            .iter()
+            .filter(|m| m.role == Role::User)
+            .map(|m| m.content.as_str())
+            .collect();
+        assert_eq!(users, vec!["first", "second"]);
     }
 }

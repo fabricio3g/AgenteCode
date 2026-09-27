@@ -314,6 +314,19 @@ impl ProviderRegistry {
         registry
     }
 
+    /// Register a provider a client handed over at runtime (Agente Desktop's
+    /// own endpoints and keys, local llama.cpp servers). The curated
+    /// allowlist gates what Agente Code offers by itself; it does not apply to
+    /// providers a client brings, which take the generic path.
+    pub fn register_client_provider(
+        &self,
+        id: &str,
+        provider_config: &crate::config::ProviderConfig,
+        app_config: &crate::config::AppConfig,
+    ) {
+        self.register_from_config(id, provider_config, app_config);
+    }
+
     fn register_from_config(
         &self,
         id: &str,

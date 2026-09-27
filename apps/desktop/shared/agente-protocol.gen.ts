@@ -275,8 +275,12 @@ export interface StartTurn {
   profile?: string | null;
   /** Project folder for this session, when it differs from the runtime's. */
   project_dir?: string | null;
+  /** The new message (attachments included) to add to the session's saved conversation, so a client need not send the whole conversation back. Ignored when `conversation` is given. */
+  prompt?: Message | null;
   provider?: string | null;
   session_id: string;
+  /** Replaces the runtime's system prompt for a session that has none yet. */
+  system_prompt?: string | null;
   thinking_level?: string | null;
 }
 
@@ -292,8 +296,8 @@ export type Trust =
   | "trusted"
   | "owner";
 
-/** Plan (read-only) or build (can change files and run commands). */
-export type TurnMode = "plan" | "build";
+/** Plan (read-only), build (can change files and run commands, asking for risky ones) or auto (build with every call approved). */
+export type TurnMode = "plan" | "build" | "auto";
 
 export interface TurnOutcome {
   error?: string | null;

@@ -208,12 +208,14 @@ impl Default for Origin {
     }
 }
 
-/// Plan (read-only) or build (can change files and run commands).
+/// Plan (read-only), build (can change files and run commands, asking for
+/// risky ones) or auto (build with every call approved).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnMode {
     Plan,
     Build,
+    Auto,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -238,6 +240,14 @@ pub struct StartTurn {
     /// Project folder for this session, when it differs from the runtime's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_dir: Option<String>,
+    /// The new message (attachments included) to add to the session's saved
+    /// conversation, so a client need not send the whole conversation back.
+    /// Ignored when `conversation` is given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<Message>,
+    /// Replaces the runtime's system prompt for a session that has none yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
