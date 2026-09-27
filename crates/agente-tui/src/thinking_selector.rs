@@ -174,6 +174,8 @@ mod tests {
     #[test]
     fn empty_levels_explain_inside_the_dialog() {
         let mut state = state();
+        // The default config now names a model; this case is "none chosen".
+        state.config.current_model.clear();
         let text = shot(&mut state, 80, 24);
         assert!(text.contains("No model selected"), "{text}");
         assert!(
@@ -198,6 +200,8 @@ mod tests {
     #[test]
     fn empty_catalog_has_room_for_all_explanation_lines() {
         let mut state = state();
+        // The default config now names a model; this case is "none chosen".
+        state.config.current_model.clear();
         let text = shot(&mut state, 80, 10);
         assert!(text.contains("No model selected"), "{text}");
         assert!(text.contains("Select a model first (/model)."), "{text}");

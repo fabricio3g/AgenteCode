@@ -29,8 +29,10 @@ jobs:
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The TUI tests drive a real crossterm terminal; runners have no TTY,
+      # so give them a pseudo-terminal.
       - name: Test
-        run: cargo test --workspace
+        run: script -qec "cargo test --workspace" /dev/null
 
   release-build:
     name: release build

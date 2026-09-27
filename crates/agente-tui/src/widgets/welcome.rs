@@ -350,6 +350,9 @@ mod tests {
     #[test]
     fn first_run_hero_keeps_connection_guidance_in_the_composer() {
         let mut state = AppState::new(AppConfig::default(), "/tmp/agente".into());
+        // First run: nothing connected yet (the default config names one).
+        state.config.current_provider.clear();
+        state.config.current_model.clear();
         state.ui.show_welcome_screen = true;
         let text = shot(&mut state, 80, 24);
         assert!(text.contains("Agente"), "wordmark rendered");

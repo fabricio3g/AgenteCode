@@ -1574,7 +1574,12 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        App::new_for_test(AppConfig::default(), dir.to_string(), runtime).unwrap()
+        let mut app = App::new_for_test(AppConfig::default(), dir.to_string(), runtime).unwrap();
+        // No model, so an idle notice is recorded without resuming a turn
+        // (tests that want the resume set one and drive it in a runtime).
+        app.state.config.current_provider.clear();
+        app.state.config.current_model.clear();
+        app
     }
 
     /// A re-sent Started (dequeue launch) refreshes the card status without
