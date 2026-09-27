@@ -198,6 +198,49 @@ struct SubscribeParams {
 }
 
 #[derive(Deserialize)]
+struct ProjectParams {
+    project_dir: String,
+}
+
+#[derive(Deserialize)]
+struct ProcessParams {
+    project_dir: String,
+    id: String,
+    #[serde(default)]
+    tail_chars: Option<usize>,
+}
+
+/// A background process as clients list it.
+fn process_json(process: &agente_core::tools::processes::BackgroundProcess) -> Value {
+    use agente_core::tools::processes::ProcessStatus;
+    let (status, exit_code) = match process.status() {
+        ProcessStatus::Running => ("running", None),
+        ProcessStatus::Exited(code) => ("exited", code),
+        ProcessStatus::Stopped => ("stopped", None),
+    };
+    json!({
+        "id": process.id,
+        "command": process.command,
+        "project_dir": process.project_dir,
+        "started_at": process.started_at,
+        "status": status,
+        "exit_code": exit_code,
+        "urls": process.urls(),
+    })
+}
+
+fn find_process(
+    params: &ProcessParams,
+) -> Result<std::sync::Arc<agente_core::tools::processes::BackgroundProcess>, Failure> {
+    agente_core::tools::processes::find(&params.project_dir, &params.id).ok_or_else(|| {
+        (
+            rpc::INVALID_PARAMS,
+            format!("no background process {}", params.id),
+        )
+    })
+}
+
+#[derive(Deserialize)]
 struct ClientStateParams {
     session_id: SessionId,
     client: String,
@@ -323,6 +366,23 @@ impl Connection {
                     .save_client_state(session_id, &client, state, title)
                     .map_err(runtime_failure)?;
                 Ok(json!({ "ok": true }))
+            }
+            "processes.list" => {
+                let ProjectParams { project_dir } = parse(params)?;
+                let list = agente_core::tools::processes::list(&project_dir);
+                Ok(Value::Array(
+                    list.iter().map(|process| process_json(process)).collect(),
+                ))
+            }
+            "processes.output" => {
+                let params: ProcessParams = parse(params)?;
+                let process = find_process(&params)?;
+                Ok(json!({ "output": process.output(params.tail_chars.unwrap_or(64 * 1024)) }))
+            }
+            "processes.stop" => {
+                let params: ProcessParams = parse(params)?;
+                let process = find_process(&params)?;
+                Ok(json!({ "stopped": agente_core::tools::processes::stop(&process) }))
             }
             _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
         }

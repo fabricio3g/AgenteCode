@@ -18,6 +18,7 @@ import { emitCodeAgentEvent } from './event-bridge.ts';
 import { resolveContextWindow, resolveTransport, transportSeesImages } from './runtime.ts';
 import { createBrowserTools } from './tools/browser.ts';
 import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
+import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
 import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode } from '../../shared/agente-protocol.gen.ts';
@@ -46,6 +47,12 @@ const chats = new Map<string, ChatState>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
+
+/** Dev servers the runtime runs for Rust-engine chats, for the Processes pane. */
+export const rustProcesses = new RustProcessBridge(
+  () => (daemon ? connect() : null),
+  () => [...chats.values()].map((chat) => ({ chatId: chat.chatId, projectRoot: chat.projectRoot }))
+);
 /** The chat that sent the latest message: whose model screenshots are for. */
 let activeChat: ChatState | null = null;
 
@@ -102,26 +109,33 @@ function emit(event: CodeAgentEvent): void {
   emitCodeAgentEvent(null, event);
 }
 
+function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type: 'checkpoint_finalized' }>): void {
+  chat.checkpoints.push({
+    turnIndex: event.turnIndex,
+    createdAt: Date.now(),
+    fileCount: event.files.length,
+    additions: event.files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: event.files.reduce((sum, file) => sum + file.deletions, 0),
+    files: event.files.map((file) => file.path)
+  });
+}
+
+/** The turn ended: send the next queued follow-up, if any. */
+function continueWithFollowUp(chat: ChatState): void {
+  chat.turnId = null;
+  const next = chat.followUps.shift();
+  if (next !== undefined) void prompt(chat.chatId, next);
+}
+
 function route(envelope: RuntimeEventEnvelope): void {
   const chat = [...chats.values()].find((state) => state.sessionId === envelope.session_id);
   if (!chat) return;
   for (const event of chat.translator.translate(envelope)) {
-    if (event.type === 'checkpoint_finalized') {
-      chat.checkpoints.push({
-        turnIndex: event.turnIndex,
-        createdAt: Date.now(),
-        fileCount: event.files.length,
-        additions: event.files.reduce((sum, file) => sum + file.additions, 0),
-        deletions: event.files.reduce((sum, file) => sum + file.deletions, 0),
-        files: event.files.map((file) => file.path)
-      });
-    }
+    if (event.type === 'checkpoint_finalized') recordCheckpoint(chat, event);
     emit(event);
-    if (event.type === 'agent_end') {
-      chat.turnId = null;
-      const next = chat.followUps.shift();
-      if (next !== undefined) void prompt(chat.chatId, next);
-    }
+    // A command may have left a server running in the background.
+    if (event.type === 'tool_end') rustProcesses.nudge();
+    if (event.type === 'agent_end') continueWithFollowUp(chat);
   }
 }
 
@@ -351,6 +365,7 @@ function disposeAllSessions(): void {
   daemon = null;
   listening = null;
   activeChat = null;
+  rustProcesses.dispose();
   void desktopTools?.then((server) => server.close());
   desktopTools = null;
 }

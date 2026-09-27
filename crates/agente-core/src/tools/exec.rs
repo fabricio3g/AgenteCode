@@ -23,6 +23,11 @@ pub struct ShellArgs {
     /// Timeout in milliseconds (default: 120000, max: 600000)
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    /// Keep running after this call returns (dev servers, watchers): the call
+    /// returns a process id and the first output; read more with
+    /// process_output, stop it with process_stop. Ignores timeout_ms.
+    #[serde(default)]
+    pub background: Option<bool>,
 }
 
 #[derive(Default)]
@@ -78,14 +83,14 @@ enum EscapeState {
 
 /// Incrementally remove terminal control sequences without corrupting UTF-8
 /// when either construct is split across pipe reads.
-struct TerminalOutputSanitizer {
+pub(super) struct TerminalOutputSanitizer {
     state: EscapeState,
     pending_utf8: Vec<u8>,
     pending_cr: bool,
 }
 
 impl TerminalOutputSanitizer {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             state: EscapeState::Ground,
             pending_utf8: Vec::new(),
@@ -93,7 +98,7 @@ impl TerminalOutputSanitizer {
         }
     }
 
-    fn push(&mut self, bytes: &[u8]) -> String {
+    pub(super) fn push(&mut self, bytes: &[u8]) -> String {
         let mut clean = Vec::with_capacity(bytes.len());
         for &byte in bytes {
             if self.pending_cr {
@@ -142,7 +147,7 @@ impl TerminalOutputSanitizer {
         self.decode(clean)
     }
 
-    fn finish(&mut self) -> String {
+    pub(super) fn finish(&mut self) -> String {
         let mut clean = Vec::new();
         if self.pending_cr {
             clean.push(b'\n');
@@ -357,6 +362,9 @@ async fn run_shell(
     if context.cancellation.is_aborted() {
         return Err(ToolError::ExecutionError("Command cancelled".into()));
     }
+    if args.background == Some(true) {
+        return super::processes::start_and_report(&command, project_dir).await;
+    }
 
     let (sender, mut receiver) = mpsc::channel::<OutputChunk>(64);
     // Raw byte tees feed duplex pipes; the duplex read ends are drained by the
@@ -558,7 +566,7 @@ impl ToolCore for ShellTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command in the project directory. Returns stdout, stderr, and exit code."
+        "Execute a shell command in the project directory. Returns stdout, stderr, and exit code. For anything that keeps running (dev servers, watchers, `npm run dev`), set background: true — the call returns right away with a process id and the first output."
     }
 
     async fn run(

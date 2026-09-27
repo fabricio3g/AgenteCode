@@ -30,6 +30,7 @@ pub mod web;
 
 // Re-export tool implementations
 pub use exec::ShellTool;
+pub mod processes;
 pub use file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
 pub use outline::FileOutlineTool;
 pub use patch::ApplyPatchTool;
@@ -605,7 +606,8 @@ pub fn known_kind(name: &str) -> Option<ToolKind> {
         "file_outline" => ToolKind::Read,
         "write_file" => ToolKind::Write,
         "edit_file" | "apply_patch" => ToolKind::Edit,
-        "shell" => ToolKind::Execute,
+        "shell" | "process_stop" => ToolKind::Execute,
+        "process_list" | "process_output" => ToolKind::Read,
         "grep" | "find" => ToolKind::Search,
         "list_dir" => ToolKind::List,
         "web_search" | "web_fetch" => ToolKind::Web,
@@ -876,6 +878,9 @@ impl ToolRegistry {
             project_dir: project_dir.into(),
         };
         registry.register_typed::<ShellTool>();
+        registry.register_typed::<processes::ProcessListTool>();
+        registry.register_typed::<processes::ProcessOutputTool>();
+        registry.register_typed::<processes::ProcessStopTool>();
         registry.register_typed::<ReadFileTool>();
         registry.register_typed::<WriteFileTool>();
         registry.register_typed::<EditFileTool>();

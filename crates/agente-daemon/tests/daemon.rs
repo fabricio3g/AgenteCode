@@ -169,3 +169,57 @@ async fn bad_requests_are_answered_and_the_connection_survives() {
     assert_eq!(listed["result"], json!([]));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn background_processes_are_listed_read_and_stopped_per_project() {
+    let (runtime, dir) = runtime("processes");
+    let project = dir.to_string_lossy().to_string();
+    let mut client = Client::connect(&runtime);
+    let session_id = agente_protocol::SessionId::new().to_string();
+    let (_, notes) = client
+        .request(
+            "turn.exec",
+            json!({ "session_id": session_id, "tool": "shell",
+                    "arguments": { "command": "echo server up at http://localhost:7777; sleep 30", "background": true } }),
+        )
+        .await;
+    client.until(notes, |m| m["method"] == "turn.outcome").await;
+
+    let (listed, _) = client
+        .request("processes.list", json!({ "project_dir": project }))
+        .await;
+    let list = listed["result"].as_array().unwrap();
+    assert_eq!(list.len(), 1, "{listed}");
+    assert_eq!(list[0]["status"], "running");
+    assert_eq!(list[0]["urls"], json!(["http://localhost:7777"]));
+    let id = list[0]["id"].as_str().unwrap().to_string();
+
+    let (output, _) = client
+        .request(
+            "processes.output",
+            json!({ "project_dir": project, "id": id }),
+        )
+        .await;
+    assert!(output["result"]["output"]
+        .as_str()
+        .unwrap()
+        .contains("server up"));
+
+    let (other, _) = client
+        .request("processes.list", json!({ "project_dir": "/elsewhere" }))
+        .await;
+    assert_eq!(other["result"], json!([]));
+
+    let (stopped, _) = client
+        .request(
+            "processes.stop",
+            json!({ "project_dir": project, "id": id }),
+        )
+        .await;
+    assert_eq!(stopped["result"]["stopped"], true);
+    let (after, _) = client
+        .request("processes.list", json!({ "project_dir": project }))
+        .await;
+    assert_eq!(after["result"][0]["status"], "stopped");
+    let _ = std::fs::remove_dir_all(dir);
+}

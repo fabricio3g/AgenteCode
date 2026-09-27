@@ -84,6 +84,11 @@
         "count": 3
       }
     },
+    "main/agente/rust-processes.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "main/agente/sessions/session-tree.ts": {
       "complexity_critical": {
         "count": 1
@@ -2058,6 +2063,11 @@
         "count": 1
       }
     },
+    "tests/unit/agente-rust-processes.test.js": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "tests/unit/chat-db.test.js": {
       "crap_moderate": {
         "count": 1
@@ -2117,8 +2127,8 @@
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
     "renderer/src/lib/stores/app-store-local-model.ts:high impact",
+    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
     "main/agente/changes.ts:untested risk",
     "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/chat/document-surface.ts:high impact",
@@ -2165,6 +2175,7 @@
     "main/utils/logger.ts:high impact",
     "renderer/src/lib/services/agent-parsing.ts:high impact",
     "renderer/src/lib/components/ui/Select.svelte:complexity",
+    "main/agente/rust-processes.ts:high impact",
     "main/whisper-server.ts:high impact",
     "main/rag-engine.ts:high impact",
     "main/link-scorer.ts:untested risk",

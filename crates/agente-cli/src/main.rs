@@ -225,7 +225,9 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(2);
             }
         }
-        app.run()?;
+        let ran = app.run();
+        agente_core::tools::processes::stop_all();
+        ran?;
         // The terminal is restored by now: say how to come back.
         if let Some(hint) = app.resume_hint() {
             println!("\n{hint}\n");
@@ -273,10 +275,13 @@ fn run_serve(
         }
         let handle = RuntimeSupervisor::start(runtime_config);
         eprintln!("agente serving on {}", socket.display());
-        agente_daemon::serve_unix(handle, &socket, async {
+        let served = agente_daemon::serve_unix(handle, &socket, async {
             let _ = tokio::signal::ctrl_c().await;
         })
-        .await?;
+        .await;
+        // Dev servers and watchers started in the background end with us.
+        agente_core::tools::processes::stop_all();
+        served?;
         Ok::<(), anyhow::Error>(())
     })
 }
