@@ -266,6 +266,10 @@ pub struct Usage {
     pub completion_tokens: u32,
     pub cache_read_tokens: u32,
     pub cache_creation_tokens: u32,
+    /// Full prompt size of the last request (uncached + cache read + cache
+    /// write): the context in use. 0 when unreported.
+    #[serde(default)]
+    pub context_tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -308,6 +312,11 @@ pub enum RuntimeEvent {
         description: String,
         is_dangerous: bool,
         file_path: Option<String>,
+        /// The file as it is and as the edit would leave it, for a diff.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        old_content: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        new_content: Option<String>,
         /// The subagent asking, when it is not the turn's own loop.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         child_run_id: Option<RunId>,
@@ -343,9 +352,25 @@ pub enum RuntimeEvent {
         summary: String,
         is_error: bool,
     },
+    /// A background subagent ended; the parent should be told (it joins the
+    /// conversation now, or after the running turn).
+    ChildCompletedNotice {
+        run_id: RunId,
+        kind: String,
+        status: String,
+        summary: String,
+    },
     ContextCompacted {
         summary: String,
         revision: u64,
+        /// Estimated context before and after.
+        #[serde(default)]
+        tokens_before: u32,
+        #[serde(default)]
+        tokens_after: u32,
+        /// Summarized by the model rather than trimmed.
+        #[serde(default)]
+        smart: bool,
     },
     Usage {
         usage: Usage,

@@ -190,6 +190,7 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::UserMessagesInjected { .. }
         | RuntimeEvent::CompactionStarted { .. }
         | RuntimeEvent::GenerationProgress { .. }
+        | RuntimeEvent::ChildCompletedNotice { .. }
         | RuntimeEvent::Diagnostic { .. } => return None,
     };
     Some(update)
@@ -407,10 +408,15 @@ mod tests {
                 is_dangerous: false,
                 file_path: None,
                 child_run_id: None,
+                old_content: None,
+                new_content: None,
             },
             RuntimeEvent::ContextCompacted {
                 summary: "s".into(),
                 revision: 1,
+                tokens_before: 0,
+                tokens_after: 0,
+                smart: false,
             },
             RuntimeEvent::Usage {
                 usage: agente_protocol::Usage::default(),

@@ -894,6 +894,8 @@ impl RuntimeHandle {
         }
         let snapshot = self.inner.lookup_session(session_id);
         let before = snapshot.conversation.len();
+        let tokens_before =
+            agente_core::context::estimate_message_tokens(&snapshot.conversation) as u32;
         let result = agente_core::context::ContextCompactor::new(
             agente_core::context::CompactionStrategy::default(),
         )
@@ -902,6 +904,7 @@ impl RuntimeHandle {
             return Ok(self.inner.lookup_session(session_id));
         }
         let after = result.messages.len();
+        let tokens_saved = result.summary.tokens_saved as u32;
         let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
         let envelope = self.envelope(
             session_id,
@@ -910,6 +913,9 @@ impl RuntimeHandle {
             RuntimeEvent::ContextCompacted {
                 summary: format!("{} messages compacted", before.saturating_sub(after)),
                 revision,
+                tokens_before,
+                tokens_after: tokens_before.saturating_sub(tokens_saved),
+                smart: false,
             },
         );
         self.inner.publish(&envelope);

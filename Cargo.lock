@@ -107,6 +107,7 @@ dependencies = [
  "agente-core",
  "agente-protocol",
  "agente-session",
+ "anyhow",
  "chrono",
  "serde_json",
  "thiserror 1.0.69",

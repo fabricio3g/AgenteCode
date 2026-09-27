@@ -417,6 +417,19 @@
             "is_dangerous": {
               "type": "boolean"
             },
+            "new_content": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "old_content": {
+              "description": "The file as it is and as the edit would leave it, for a diff.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "request_id": {
               "type": "string"
             },
@@ -614,14 +627,64 @@
           "type": "object"
         },
         {
+          "description": "A background subagent ended; the parent should be told (it joins the conversation now, or after the running turn).",
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "run_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "child_completed_notice"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "run_id",
+            "status",
+            "summary",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "revision": {
               "format": "uint64",
               "minimum": 0.0,
               "type": "integer"
             },
+            "smart": {
+              "default": false,
+              "description": "Summarized by the model rather than trimmed.",
+              "type": "boolean"
+            },
             "summary": {
               "type": "string"
+            },
+            "tokens_after": {
+              "default": 0,
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "tokens_before": {
+              "default": 0,
+              "description": "Estimated context before and after.",
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
             },
             "type": {
               "enum": [
@@ -1200,6 +1263,13 @@
           "type": "integer"
         },
         "completion_tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "context_tokens": {
+          "default": 0,
+          "description": "Full prompt size of the last request (uncached + cache read + cache write): the context in use. 0 when unreported.",
           "format": "uint32",
           "minimum": 0.0,
           "type": "integer"

@@ -111,6 +111,9 @@ export type RuntimeEvent =
     description: string;
     file_path?: string | null;
     is_dangerous: boolean;
+    new_content?: string | null;
+    /** The file as it is and as the edit would leave it, for a diff. */
+    old_content?: string | null;
     request_id: string;
     source: string;
     tool_args: string;
@@ -154,9 +157,22 @@ export type RuntimeEvent =
     summary: string;
     type: "child_finished";
   }
+  /** A background subagent ended; the parent should be told (it joins the conversation now, or after the running turn). */
+  | {
+    kind: string;
+    run_id: string;
+    status: string;
+    summary: string;
+    type: "child_completed_notice";
+  }
   | {
     revision: number;
+    /** Summarized by the model rather than trimmed. */
+    smart?: boolean;
     summary: string;
+    tokens_after?: number;
+    /** Estimated context before and after. */
+    tokens_before?: number;
     type: "context_compacted";
   }
   | {
@@ -294,6 +310,8 @@ export interface Usage {
   cache_creation_tokens: number;
   cache_read_tokens: number;
   completion_tokens: number;
+  /** Full prompt size of the last request (uncached + cache read + cache write): the context in use. 0 when unreported. */
+  context_tokens?: number;
   prompt_tokens: number;
 }
 

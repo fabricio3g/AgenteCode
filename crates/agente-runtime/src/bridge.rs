@@ -134,14 +134,22 @@ pub(crate) fn forward_legacy_events(
             AgentEvent::ContextCompacted {
                 summary,
                 compacted_conversation,
-                ..
+                tokens_before,
+                tokens_after,
+                smart,
             } => {
                 let revision = replace_conversation(
                     &inner,
                     session_id,
                     compat::conversation_from_core(compacted_conversation),
                 );
-                forwarder.emit(RuntimeEvent::ContextCompacted { summary, revision });
+                forwarder.emit(RuntimeEvent::ContextCompacted {
+                    summary,
+                    revision,
+                    tokens_before,
+                    tokens_after,
+                    smart,
+                });
             }
             event => {
                 if let Some((event, parent)) = map_event(&inner, event) {
@@ -251,6 +259,7 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
                 completion_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
+                context_tokens: 0,
             },
             cost_usd,
             cost_estimated,
@@ -272,13 +281,14 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             completion_tokens,
             cache_read_tokens,
             cache_creation_tokens,
-            ..
+            context_tokens,
         } => RuntimeEvent::Usage {
             usage: Usage {
                 prompt_tokens,
                 completion_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
+                context_tokens,
             },
         },
         AgentEvent::Retry {
@@ -298,7 +308,9 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
         },
         AgentEvent::ModelCatalogUpdated { result } => RuntimeEvent::Diagnostic {
             message: match result {
-                Ok(catalog) => format!("model metadata refreshed: {} models", catalog.model_count()),
+                Ok(catalog) => {
+                    format!("model metadata refreshed: {} models", catalog.model_count())
+                }
                 Err(error) => error,
             },
         },
@@ -317,6 +329,8 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             description: request.description,
             is_dangerous: request.is_dangerous,
             file_path: request.file_path,
+            old_content: request.old_content,
+            new_content: request.new_content,
         },
         AgentEvent::SubagentStarted {
             id,
@@ -366,6 +380,17 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
             finished: true,
             is_error,
         },
+        AgentEvent::SubagentCompletedNotice {
+            id,
+            subagent_type,
+            status,
+            summary,
+        } => RuntimeEvent::ChildCompletedNotice {
+            run_id: inner.child_id(&id),
+            kind: subagent_type,
+            status,
+            summary,
+        },
         AgentEvent::SubagentDone {
             id,
             summary,
@@ -378,10 +403,6 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, O
         AgentEvent::Done { .. }
         | AgentEvent::Cancelled { .. }
         | AgentEvent::ContextCompacted { .. }
-        // Push completion notices are a TUI-turn concern (parent
-        // conversation injection); headless consumers already observe the
-        // terminal state via ChildFinished above.
-        | AgentEvent::SubagentCompletedNotice { .. }
         | AgentEvent::Error { .. } => return None,
     };
     Some((mapped, from_child))

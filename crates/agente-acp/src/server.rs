@@ -1158,6 +1158,8 @@ mod tests {
                     is_dangerous: false,
                     file_path: None,
                     child_run_id: None,
+                    old_content: None,
+                    new_content: None,
                 },
             ))
             .await
@@ -1229,6 +1231,8 @@ mod tests {
                     is_dangerous: false,
                     file_path: Some("x.rs".into()),
                     child_run_id: None,
+                    old_content: None,
+                    new_content: None,
                 },
             ))
             .await
