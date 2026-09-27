@@ -32,7 +32,7 @@ use agente_core::AbortController;
 use agente_protocol::{
     ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, Role, RunId, RuntimeEvent,
     RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust, TurnId,
-    TurnMode, TurnOutcome, UserInput, PROTOCOL_VERSION,
+    TurnMode, TurnOutcome, TurnStatus, UserInput, PROTOCOL_VERSION,
 };
 use agente_session::{SessionMeta, SessionStore, SessionStoreError};
 use chrono::Utc;
@@ -517,6 +517,8 @@ pub enum RuntimeError {
     Store(String),
     #[error("{0}")]
     Edits(String),
+    #[error("{0}")]
+    NotAllowed(String),
 }
 
 pub struct TurnHandle {
@@ -912,6 +914,132 @@ impl RuntimeHandle {
         );
         self.inner.publish(&envelope);
         Ok(self.inner.lookup_session(session_id))
+    }
+
+    /// Run one tool the user asked for directly (the TUI's `!command`),
+    /// outside the model loop: no model call, no approval prompt, and the
+    /// conversation is left as it is. It occupies the session like a turn, so
+    /// `cancel` stops it and no turn can start meanwhile. Owner only.
+    pub fn exec_tool(
+        &self,
+        session_id: SessionId,
+        tool: &str,
+        arguments: serde_json::Value,
+        trust: Trust,
+    ) -> Result<TurnHandle, RuntimeError> {
+        if trust < Trust::Owner {
+            return Err(RuntimeError::NotAllowed(format!(
+                "only the owner can run {tool} directly"
+            )));
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return Err(RuntimeError::MissingExecutor);
+        }
+        let turn_id = TurnId::new();
+        let (event_tx, event_rx) = mpsc::channel(EVENT_CAPACITY);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        let cancel = AbortController::new();
+        {
+            let mut turns = self.inner.lock_turns();
+            if turns
+                .values()
+                .any(|control| control.session_id == session_id)
+            {
+                return Err(RuntimeError::SessionBusy(session_id));
+            }
+            turns.insert(
+                turn_id,
+                TurnControl {
+                    cancel: cancel.clone(),
+                    inbox: UserInbox::default(),
+                    events: event_tx.clone(),
+                    session_id,
+                },
+            );
+        }
+        let project_dir = self.inner.session_context(session_id, None).project_dir;
+        let inner = Arc::clone(&self.inner);
+        let tool = tool.to_string();
+        let call_id = format!("direct-{turn_id}");
+        tokio::spawn(async move {
+            let emit = |event: RuntimeEvent| {
+                let envelope = inner.envelope(session_id, turn_id, None, event);
+                inner.publish(&envelope);
+                // A client that stopped reading must not stall the tool.
+                let _ = event_tx.try_send(envelope);
+            };
+            emit(RuntimeEvent::TurnStarted);
+            emit(RuntimeEvent::ToolProposed {
+                id: call_id.clone(),
+                name: tool.clone(),
+                arguments: arguments.to_string(),
+            });
+            let progress_inner = Arc::clone(&inner);
+            let progress_tx = event_tx.clone();
+            let progress_id = call_id.clone();
+            let context = agente_core::tools::ToolExecutionContext::new(cancel.signal())
+                .with_progress(move |progress| {
+                    let chunk = match progress.stream {
+                        agente_core::tools::ToolOutputStream::Stdout => progress.content,
+                        agente_core::tools::ToolOutputStream::Stderr => {
+                            format!("[stderr] {}", progress.content)
+                        }
+                    };
+                    let envelope = progress_inner.envelope(
+                        session_id,
+                        turn_id,
+                        None,
+                        RuntimeEvent::ToolProgress {
+                            id: progress_id.clone(),
+                            chunk,
+                        },
+                    );
+                    progress_inner.publish(&envelope);
+                    let _ = progress_tx.try_send(envelope);
+                });
+            let result = agente_core::tools::ToolRegistry::new(&project_dir)
+                .execute_with_context(&tool, arguments, context)
+                .await;
+            let (content, is_error) = match result {
+                Ok(content) => (content, false),
+                Err(error) => (format!("Error: {error}"), true),
+            };
+            emit(RuntimeEvent::ToolResult {
+                id: call_id,
+                name: tool,
+                content: content.clone(),
+                is_error,
+            });
+            let revision = inner.lookup_session(session_id).revision;
+            let cancelled = cancel.signal().is_aborted();
+            emit(if cancelled {
+                RuntimeEvent::TurnCancelled {
+                    revision,
+                    partial_text: content,
+                }
+            } else {
+                RuntimeEvent::TurnFinished { revision }
+            });
+            inner.lock_turns().remove(&turn_id);
+            let _ = outcome_tx.send(TurnOutcome {
+                turn_id,
+                session_id,
+                status: if cancelled {
+                    TurnStatus::Cancelled
+                } else {
+                    TurnStatus::Completed
+                },
+                revision,
+                tokens: 0,
+                error: None,
+            });
+        });
+        Ok(TurnHandle {
+            turn_id,
+            session_id,
+            events: event_rx,
+            outcome: Some(outcome_rx),
+        })
     }
 
     /// Restore the files the session's last turn changed. Refused while a
@@ -1665,6 +1793,54 @@ mod tests {
         let meta = handle.session_meta(session_id).unwrap();
         assert_eq!(meta.info.title, "Release notes");
         assert_eq!(meta.clients["tui"], serde_json::json!({"x": 1}));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn exec_tool_runs_a_direct_command_without_touching_the_conversation() {
+        let dir = std::env::temp_dir().join(format!("agente-exec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let handle = RuntimeSupervisor::start(RuntimeConfig::from_app_config(
+            &AppConfig::default(),
+            dir.to_string_lossy().to_string(),
+        ));
+        let session_id = SessionId::new();
+
+        assert!(matches!(
+            handle.exec_tool(
+                session_id,
+                "shell",
+                serde_json::json!({"command": "echo hi"}),
+                Trust::Public
+            ),
+            Err(RuntimeError::NotAllowed(_))
+        ));
+
+        let mut run = handle
+            .exec_tool(
+                session_id,
+                "shell",
+                serde_json::json!({"command": "echo hi"}),
+                Trust::Owner,
+            )
+            .expect("owner can run a command");
+        let mut result = None;
+        while let Some(envelope) = run.recv().await {
+            if let RuntimeEvent::ToolResult {
+                content, is_error, ..
+            } = &envelope.event
+            {
+                result = Some((content.clone(), *is_error));
+            }
+            if envelope.event.is_terminal() {
+                break;
+            }
+        }
+        let (content, is_error) = result.expect("a tool result");
+        assert!(!is_error, "{content}");
+        assert!(content.contains("hi"), "{content}");
+        assert_eq!(run.outcome().await.unwrap().status, TurnStatus::Completed);
+        assert!(handle.session_snapshot(session_id).conversation.is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
