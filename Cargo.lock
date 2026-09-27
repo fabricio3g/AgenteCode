@@ -28,6 +28,7 @@ version = "0.0.1"
 dependencies = [
  "agente-acp",
  "agente-core",
+ "agente-daemon",
  "agente-protocol",
  "agente-runtime",
  "agente-tui",
@@ -74,6 +75,21 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "agente-daemon"
+version = "0.0.1"
+dependencies = [
+ "agente-acp",
+ "agente-core",
+ "agente-protocol",
+ "agente-runtime",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

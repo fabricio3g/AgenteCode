@@ -8,15 +8,15 @@
 
 use serde_json::Value;
 
-pub(crate) const PARSE_ERROR: i32 = -32700;
-pub(crate) const INVALID_REQUEST: i32 = -32600;
-pub(crate) const METHOD_NOT_FOUND: i32 = -32601;
-pub(crate) const INVALID_PARAMS: i32 = -32602;
-pub(crate) const INTERNAL_ERROR: i32 = -32603;
+pub const PARSE_ERROR: i32 = -32700;
+pub const INVALID_REQUEST: i32 = -32600;
+pub const METHOD_NOT_FOUND: i32 = -32601;
+pub const INVALID_PARAMS: i32 = -32602;
+pub const INTERNAL_ERROR: i32 = -32603;
 
 /// Why a line could not be turned into any JSON-RPC message.
 #[derive(Debug)]
-pub(crate) enum FrameError {
+pub enum FrameError {
     /// The line is not valid JSON at all (`-32700`, id `null`).
     Parse(serde_json::Error),
     /// Valid JSON but not a single JSON-RPC message object (`-32600`, id `null`).
@@ -28,7 +28,7 @@ pub(crate) enum FrameError {
 
 /// One inbound line, classified per the ACP transport.
 #[derive(Debug)]
-pub(crate) enum Incoming {
+pub enum Incoming {
     Request {
         id: Value,
         method: String,
@@ -45,7 +45,7 @@ pub(crate) enum Incoming {
     },
 }
 
-pub(crate) fn classify(line: &str) -> Result<Incoming, FrameError> {
+pub fn classify(line: &str) -> Result<Incoming, FrameError> {
     let value: Value = serde_json::from_str(line).map_err(FrameError::Parse)?;
     let object = value.as_object().ok_or(FrameError::NotAMessage)?;
 

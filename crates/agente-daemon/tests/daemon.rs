@@ -1,0 +1,171 @@
+//! Two clients on one runtime, over in-memory pipes: what Desktop and an
+//! attached terminal do over the real socket.
+
+use std::time::Duration;
+
+use agente_core::config::AppConfig;
+use agente_daemon::serve_connection;
+use agente_runtime::{RuntimeConfig, RuntimeHandle, RuntimeSupervisor};
+use serde_json::{json, Value};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines};
+
+struct Client {
+    writer: tokio::io::WriteHalf<DuplexStream>,
+    lines: Lines<BufReader<tokio::io::ReadHalf<DuplexStream>>>,
+    next_id: u64,
+}
+
+impl Client {
+    fn connect(runtime: &RuntimeHandle) -> Self {
+        let (client_side, server_side) = tokio::io::duplex(64 * 1024);
+        let (server_read, server_write) = tokio::io::split(server_side);
+        tokio::spawn(serve_connection(runtime.clone(), server_read, server_write));
+        let (read, writer) = tokio::io::split(client_side);
+        Self {
+            writer,
+            lines: BufReader::new(read).lines(),
+            next_id: 0,
+        }
+    }
+
+    async fn send_raw(&mut self, line: &str) {
+        self.writer.write_all(line.as_bytes()).await.unwrap();
+        self.writer.write_all(b"\n").await.unwrap();
+    }
+
+    async fn next(&mut self) -> Value {
+        let line = tokio::time::timeout(Duration::from_secs(10), self.lines.next_line())
+            .await
+            .expect("a message within 10s")
+            .unwrap()
+            .expect("connection open");
+        serde_json::from_str(&line).unwrap()
+    }
+
+    /// Send a request and return its response, keeping notifications that
+    /// arrive first.
+    async fn request(&mut self, method: &str, params: Value) -> (Value, Vec<Value>) {
+        self.next_id += 1;
+        let id = self.next_id;
+        let message = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        self.send_raw(&message.to_string()).await;
+        let mut notes = Vec::new();
+        loop {
+            let message = self.next().await;
+            if message["id"] == json!(id) {
+                return (message, notes);
+            }
+            notes.push(message);
+        }
+    }
+
+    /// Notifications until one `pred` accepts (inclusive).
+    async fn until(&mut self, mut seen: Vec<Value>, pred: impl Fn(&Value) -> bool) -> Vec<Value> {
+        if seen.iter().any(&pred) {
+            return seen;
+        }
+        loop {
+            let message = self.next().await;
+            let done = pred(&message);
+            seen.push(message);
+            if done {
+                return seen;
+            }
+        }
+    }
+}
+
+fn runtime(tag: &str) -> (RuntimeHandle, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("agente-daemon-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let config = RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy());
+    (RuntimeSupervisor::start(config), dir)
+}
+
+fn event_type(message: &Value) -> Option<&str> {
+    (message["method"] == "event")
+        .then(|| message["params"]["event"]["type"].as_str())
+        .flatten()
+}
+
+#[tokio::test]
+async fn a_started_command_streams_to_its_client_and_to_subscribers() {
+    let (runtime, dir) = runtime("stream");
+    let mut desktop = Client::connect(&runtime);
+    let mut watcher = Client::connect(&runtime);
+
+    let (hello, _) = desktop.request("initialize", json!({})).await;
+    assert_eq!(hello["result"]["server"], "agente");
+    assert_eq!(
+        hello["result"]["protocol_version"],
+        agente_protocol::PROTOCOL_VERSION
+    );
+
+    let (subscribed, _) = watcher.request("events.subscribe", Value::Null).await;
+    assert_eq!(subscribed["result"]["ok"], true);
+
+    let session_id = agente_protocol::SessionId::new().to_string();
+    let (started, notes) = desktop
+        .request(
+            "turn.exec",
+            json!({ "session_id": session_id, "tool": "shell", "arguments": { "command": "echo daemon-ok" } }),
+        )
+        .await;
+    let turn_id = started["result"]["turn_id"]
+        .as_str()
+        .expect("turn id")
+        .to_string();
+
+    // The client that started it: every event, then the outcome.
+    let seen = desktop
+        .until(notes, |m| m["method"] == "turn.outcome")
+        .await;
+    let result = seen
+        .iter()
+        .find(|m| event_type(m) == Some("tool_result"))
+        .expect("tool result event");
+    assert!(result["params"]["event"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("daemon-ok"));
+    assert!(seen.iter().any(|m| event_type(m) == Some("turn_finished")));
+    let outcome = seen.iter().find(|m| m["method"] == "turn.outcome").unwrap();
+    assert_eq!(outcome["params"]["status"], "completed");
+    let finished = seen
+        .iter()
+        .filter(|m| event_type(m) == Some("turn_finished"))
+        .count();
+    assert_eq!(finished, 1, "own turns are not sent twice");
+
+    // Another client watching sees the same turn.
+    let watched = watcher
+        .until(Vec::new(), |m| event_type(m) == Some("turn_finished"))
+        .await;
+    assert!(watched
+        .iter()
+        .all(|m| m["params"]["turn_id"] == json!(turn_id)));
+    assert!(watched.iter().any(|m| event_type(m) == Some("tool_result")));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn bad_requests_are_answered_and_the_connection_survives() {
+    let (runtime, dir) = runtime("errors");
+    let mut client = Client::connect(&runtime);
+
+    client.send_raw("{ not json").await;
+    let parse = client.next().await;
+    assert_eq!(parse["error"]["code"], -32700);
+
+    let (unknown, _) = client.request("no.such.method", json!({})).await;
+    assert_eq!(unknown["error"]["code"], -32601);
+
+    let (bad_params, _) = client
+        .request("session.delete", json!({ "session_id": 7 }))
+        .await;
+    assert_eq!(bad_params["error"]["code"], -32602);
+
+    let (listed, _) = client.request("session.list", Value::Null).await;
+    assert_eq!(listed["result"], json!([]));
+    let _ = std::fs::remove_dir_all(dir);
+}

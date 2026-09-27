@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use agente_core::config::AppConfig;
@@ -9,11 +9,15 @@ mod logging;
 #[derive(Parser)]
 #[command(name = "agente")]
 #[command(about = "Agente — terminal-native AI coding agent")]
+#[command(subcommand_precedence_over_arg = true)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     #[arg()]
     prompt: Option<String>,
 
-    #[arg(short, long, default_value = ".")]
+    #[arg(short, long, default_value = ".", global = true)]
     project_dir: String,
 
     #[arg(short, long)]
@@ -58,6 +62,20 @@ struct Cli {
         help = "Headless only: require approval prompts instead of auto-approving tools"
     )]
     no_auto_approve: bool,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Serve the runtime on a local socket, for Agente Desktop and other
+    /// clients. Sessions are kept in ~/.agente/store.
+    Serve {
+        /// Socket path (default: $XDG_RUNTIME_DIR/agente/agente.sock)
+        #[arg(long)]
+        socket: Option<std::path::PathBuf>,
+        /// Only report whether a daemon is serving, then exit.
+        #[arg(long)]
+        status: bool,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -183,6 +201,10 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if let Some(Command::Serve { socket, status }) = cli.command {
+        return run_serve(&project_dir, config, socket, status);
+    }
+
     if cli.acp_stdio {
         run_acp_stdio(&project_dir, config)?;
         return Ok(());
@@ -211,6 +233,52 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn run_serve(
+    project_dir: &str,
+    config: AppConfig,
+    socket: Option<std::path::PathBuf>,
+    status: bool,
+) -> anyhow::Result<()> {
+    use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
+
+    let socket = socket.unwrap_or_else(agente_daemon::default_socket_path);
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.block_on(async move {
+        if status {
+            let serving = agente_daemon::is_serving(&socket).await;
+            println!(
+                "{} {}",
+                if serving {
+                    "serving on"
+                } else {
+                    "not serving on"
+                },
+                socket.display()
+            );
+            std::process::exit(if serving { 0 } else { 1 });
+        }
+        if agente_daemon::is_serving(&socket).await {
+            anyhow::bail!("agente is already serving on {}", socket.display());
+        }
+        let runtime_config = RuntimeConfig::from_app_config(&config, project_dir)
+            .with_user_store()
+            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?;
+        if let Some(store) = runtime_config.session_store.as_ref() {
+            let report = agente_runtime::import::import_legacy_sessions(store);
+            if report.imported > 0 || report.failed > 0 {
+                tracing::info!(?report, "imported TUI sessions into the store");
+            }
+        }
+        let handle = RuntimeSupervisor::start(runtime_config);
+        eprintln!("agente serving on {}", socket.display());
+        agente_daemon::serve_unix(handle, &socket, async {
+            let _ = tokio::signal::ctrl_c().await;
+        })
+        .await?;
+        Ok::<(), anyhow::Error>(())
+    })
 }
 
 fn run_non_interactive(
