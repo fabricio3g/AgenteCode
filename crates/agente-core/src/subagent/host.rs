@@ -956,20 +956,9 @@ impl SubagentHost {
             });
         }
 
-        if background || completion_rx.is_none() {
-            // Background spawns and dequeued launches run detached: the
-            // outcome flows through `task_output`, the completion notice,
-            // or a later poll — never through this return value.
-            SubagentResult {
-                id: id.clone(),
-                status: SubagentStatus::Running,
-                summary: coercion_note(coerced_to_read_only),
-                resume_from_hint: Some(id),
-                is_error: false,
-            }
-        } else {
+        let foreground = if background { None } else { completion_rx };
+        if let Some(mut completion) = foreground {
             // Foreground: wait for the child to finish (or parent cancel).
-            let mut completion = completion_rx.expect("foreground launch holds a waiter");
             loop {
                 tokio::select! {
                     _ = completion.changed() => {
@@ -1010,6 +999,17 @@ impl SubagentHost {
                     snap.status,
                     SubagentStatus::Failed | SubagentStatus::Cancelled
                 ),
+            }
+        } else {
+            // Background spawns and dequeued launches run detached: the
+            // outcome flows through `task_output`, the completion notice,
+            // or a later poll — never through this return value.
+            SubagentResult {
+                id: id.clone(),
+                status: SubagentStatus::Running,
+                summary: coercion_note(coerced_to_read_only),
+                resume_from_hint: Some(id),
+                is_error: false,
             }
         }
     }

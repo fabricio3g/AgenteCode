@@ -3,7 +3,7 @@ use std::sync::{mpsc, Arc};
 
 use agente_core::agent::{AgentEvent, AgentTaskEvent, ApprovalSource};
 use agente_protocol::{
-    Message, Role, RuntimeEvent, RuntimeEventEnvelope, SessionId, SessionSnapshot, TurnId,
+    Message, RunId, RuntimeEvent, RuntimeEventEnvelope, SessionId, SessionSnapshot, TurnId,
     TurnOutcome, TurnStatus, Usage,
 };
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
@@ -129,8 +129,8 @@ pub(crate) fn forward_legacy_events(
                 forwarder.emit(RuntimeEvent::ContextCompacted { summary, revision });
             }
             event => {
-                if let Some(event) = map_event(&inner, event) {
-                    forwarder.emit(event);
+                if let Some((event, parent)) = map_event(&inner, event) {
+                    forwarder.emit_from(event, parent);
                 }
             }
         }
@@ -170,8 +170,18 @@ pub(crate) fn forward_legacy_events(
     }
 }
 
-fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
-    Some(match event {
+/// The protocol event for a core event, and the subagent it came from
+/// (`None` = the turn's own loop). `None` overall = not forwarded.
+fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<(RuntimeEvent, Option<RunId>)> {
+    let child = |id: &Option<String>| id.as_deref().map(|id| inner.child_id(id));
+    let from_child = match &event {
+        AgentEvent::FileChange { subagent_id, .. }
+        | AgentEvent::TodoUpdate { subagent_id, .. }
+        | AgentEvent::CallUsage { subagent_id, .. }
+        | AgentEvent::GenerationProgress { subagent_id, .. } => child(subagent_id),
+        _ => None,
+    };
+    let mapped = match event {
         AgentEvent::Thinking => RuntimeEvent::Thinking,
         AgentEvent::TextDelta(text) => RuntimeEvent::AssistantDelta { text },
         AgentEvent::ReasoningDelta(text) => RuntimeEvent::ReasoningDelta { text },
@@ -194,38 +204,53 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
             content: result,
             is_error,
         },
+        // A child's changes and todos carry its run id (`parent_run_id`), so
+        // clients never mistake its checkout or plan for the session's.
         AgentEvent::FileChange {
-            subagent_id,
             path,
             diff_summary,
             before,
             after,
-        } => {
-            // A child's checkout is not this session's workspace: never report
-            // its changes as session file changes.
-            if subagent_id.is_some() {
-                return None;
-            }
-            RuntimeEvent::FileChanged {
-                path,
-                summary: diff_summary,
-                before,
-                after,
-            }
+            ..
+        } => RuntimeEvent::FileChanged {
+            path,
+            summary: diff_summary,
+            before,
+            after,
+        },
+        AgentEvent::TodoUpdate { todos, .. } => RuntimeEvent::TodoChanged {
+            todos: serde_json::to_value(todos).unwrap_or(serde_json::Value::Null),
+        },
+        AgentEvent::CallUsage {
+            prompt_tokens,
+            completion_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            cost_usd,
+            cost_estimated,
+            ..
+        } => RuntimeEvent::CallUsage {
+            usage: Usage {
+                prompt_tokens,
+                completion_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+            },
+            cost_usd,
+            cost_estimated,
+        },
+        AgentEvent::CompactionStarted { smart } => RuntimeEvent::CompactionStarted { smart },
+        AgentEvent::UserMessagesInjected { messages } => {
+            RuntimeEvent::UserMessagesInjected { messages }
         }
-        AgentEvent::TodoUpdate { subagent_id, todos } => {
-            // A child's todo list is not the session's plan; ignore it.
-            if subagent_id.is_some() {
-                return None;
-            }
-            RuntimeEvent::TodoChanged {
-                todos: serde_json::to_value(todos).unwrap_or(serde_json::Value::Null),
-            }
-        }
-        // Per-call spend is a TUI meter; headless clients keep `Usage`.
-        AgentEvent::CallUsage { .. }
-        | AgentEvent::CompactionStarted { .. }
-        | AgentEvent::UserMessagesInjected { .. } => return None,
+        AgentEvent::GenerationProgress {
+            output_bytes,
+            tool_name,
+            ..
+        } => RuntimeEvent::GenerationProgress {
+            output_bytes: output_bytes as u64,
+            tool_name,
+        },
         AgentEvent::TurnUsage {
             prompt_tokens,
             completion_tokens,
@@ -263,6 +288,10 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
         },
         AgentEvent::ApprovalRequested { source, request } => RuntimeEvent::ApprovalRequested {
             request_id: request.request_id,
+            child_run_id: match &source {
+                ApprovalSource::Parent => None,
+                ApprovalSource::Subagent { id } => Some(inner.child_id(id)),
+            },
             source: match source {
                 ApprovalSource::Parent => "parent".to_string(),
                 ApprovalSource::Subagent { id } => format!("subagent:{id}"),
@@ -333,15 +362,13 @@ fn map_event(inner: &RuntimeInner, event: AgentEvent) -> Option<RuntimeEvent> {
         AgentEvent::Done { .. }
         | AgentEvent::Cancelled { .. }
         | AgentEvent::ContextCompacted { .. }
-        // Display-only telemetry; the runtime protocol has no progress
-        // shape, and liveness already flows via ToolHeartbeat.
-        | AgentEvent::GenerationProgress { .. }
         // Push completion notices are a TUI-turn concern (parent
         // conversation injection); headless consumers already observe the
         // terminal state via ChildFinished above.
         | AgentEvent::SubagentCompletedNotice { .. }
         | AgentEvent::Error { .. } => return None,
-    })
+    };
+    Some((mapped, from_child))
 }
 
 fn commit_conversation(
@@ -350,17 +377,10 @@ fn commit_conversation(
     turn_id: TurnId,
     mut conversation: Vec<Message>,
 ) -> u64 {
+    // Steering that arrived too late for the loop to read is still the
+    // user's input: keep it in the session.
     if let Some(control) = inner.lock_turns().get(&turn_id) {
-        conversation.extend(control.steering.iter().map(|input| Message {
-            role: Role::User,
-            content: input.content.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-            thinking: None,
-            thinking_signature: None,
-            continuation: None,
-            attachments: Vec::new(),
-        }));
+        conversation.extend(std::mem::take(&mut *control.inbox.lock()));
     }
     replace_conversation(inner, session_id, conversation)
 }
@@ -419,6 +439,10 @@ impl EventForwarder {
     }
 
     fn emit(&mut self, event: RuntimeEvent) {
+        self.emit_from(event, None);
+    }
+
+    fn emit_from(&mut self, event: RuntimeEvent, parent: Option<RunId>) {
         // Deltas buffered during a channel-full window must never be delivered
         // after a newer non-delta event: flush them first, unconditionally,
         // before any non-delta send (even when the channel has space again).
@@ -432,7 +456,10 @@ impl EventForwarder {
         }
         let envelope = self
             .inner
-            .envelope(self.session_id, self.turn_id, None, event);
+            .envelope(self.session_id, self.turn_id, parent, event);
+        // Runtime-wide subscribers get every event as it happens; only the
+        // turn's own channel coalesces deltas while its client is behind.
+        self.inner.publish(&envelope);
         match self.sender.try_send(envelope) {
             Ok(()) => {}
             Err(tokio_mpsc::error::TrySendError::Closed(_)) => {}
@@ -451,12 +478,14 @@ impl EventForwarder {
                         buffer.push_str(TRUNCATION_MARKER);
                     }
                 }
+                // Liveness ticks are worthless late: drop rather than block.
+                RuntimeEvent::GenerationProgress { .. } => {}
                 // Deltas were already flushed above, so the send can only be
                 // waiting on a full channel, never on stale buffered content.
                 event => {
-                    let envelope = self
-                        .inner
-                        .envelope(self.session_id, self.turn_id, None, event);
+                    let envelope =
+                        self.inner
+                            .envelope(self.session_id, self.turn_id, parent, event);
                     let _ = self.sender.blocking_send(envelope);
                 }
             },
@@ -501,7 +530,7 @@ mod tests {
     use super::*;
     use crate::{RuntimeConfig, RuntimeSupervisor, TurnControl};
     use agente_core::AbortController;
-    use agente_protocol::UserInput;
+    use agente_protocol::Role;
 
     fn test_inner() -> Arc<RuntimeInner> {
         let config =
@@ -550,9 +579,11 @@ mod tests {
             turn_id,
             TurnControl {
                 cancel: AbortController::new(),
-                steering: vec![UserInput {
-                    content: "queued steering".to_string(),
-                }],
+                inbox: {
+                    let inbox = agente_core::agent::UserInbox::default();
+                    inbox.lock().push(Message::user("queued steering"));
+                    inbox
+                },
                 events,
                 session_id,
             },
@@ -790,5 +821,74 @@ mod tests {
             .position(|event| event == "tool_result")
             .expect("tool result must be delivered");
         assert!(delta_pos < result_pos, "ordering violated: {order:?}");
+    }
+
+    #[tokio::test]
+    async fn subscribers_see_child_spend_tagged_with_its_run() {
+        let inner = test_inner();
+        let mut attached = inner.events.subscribe();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let (tx_env, mut rx_env) = tokio_mpsc::channel(64);
+        let (outcome_tx, outcome_rx) = oneshot::channel();
+        inner.lock_turns().insert(
+            turn_id,
+            TurnControl {
+                cancel: AbortController::new(),
+                inbox: agente_core::agent::UserInbox::default(),
+                events: tx_env.clone(),
+                session_id,
+            },
+        );
+
+        let (legacy_tx, legacy_rx) = std::sync::mpsc::channel();
+        let usage = |subagent_id: Option<&str>| AgentEvent::CallUsage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            cache_read_tokens: 0,
+            cache_creation_tokens: 0,
+            cost_usd: Some(0.01),
+            cost_estimated: true,
+            subagent_id: subagent_id.map(str::to_string),
+        };
+        legacy_tx.send(task_event(usage(None))).unwrap();
+        legacy_tx.send(task_event(usage(Some("child-1")))).unwrap();
+        legacy_tx
+            .send(task_event(AgentEvent::UserMessagesInjected {
+                messages: vec!["more".into()],
+            }))
+            .unwrap();
+        legacy_tx
+            .send(task_event(AgentEvent::Done {
+                conversation: vec![core_assistant_message("answer")],
+                tokens: 15,
+            }))
+            .unwrap();
+        drop(legacy_tx);
+
+        let inner2 = Arc::clone(&inner);
+        tokio::task::spawn_blocking(move || {
+            forward_legacy_events(inner2, session_id, turn_id, legacy_rx, tx_env, outcome_tx);
+        });
+        assert_eq!(outcome_rx.await.unwrap().status, TurnStatus::Completed);
+
+        let mut seen = Vec::new();
+        while let Ok(envelope) = attached.try_recv() {
+            seen.push(envelope);
+        }
+        let spends: Vec<_> = seen
+            .iter()
+            .filter(|e| matches!(e.event, RuntimeEvent::CallUsage { .. }))
+            .collect();
+        assert_eq!(spends.len(), 2);
+        assert_eq!(spends[0].parent_run_id, None);
+        assert_eq!(spends[1].parent_run_id, Some(inner.child_id("child-1")));
+        assert!(seen
+            .iter()
+            .any(|e| matches!(&e.event, RuntimeEvent::UserMessagesInjected { messages } if messages == &["more"])));
+        assert!(seen
+            .iter()
+            .any(|e| matches!(e.event, RuntimeEvent::TurnFinished { .. })));
+        while rx_env.recv().await.is_some() {}
     }
 }

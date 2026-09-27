@@ -142,7 +142,7 @@ impl App {
     /// and the turn is not auto-started. Returns true when a follow-up turn
     /// was started.
     pub(super) fn drain_queues_and_continue(&mut self) -> bool {
-        let steering: Vec<String> = self.state.agent.steering_queue.drain(..).collect();
+        let steering: Vec<String> = std::mem::take(&mut self.state.agent.steering_queue);
         if !steering.is_empty() {
             // Process steering commands
             for cmd in steering {

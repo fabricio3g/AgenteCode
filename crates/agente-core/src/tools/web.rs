@@ -49,7 +49,11 @@ fn is_forbidden_host(url: &reqwest::Url) -> bool {
     {
         return true;
     }
-    if let Ok(ip) = host.parse::<IpAddr>() {
+    // `host_str()` keeps the brackets of an IPv6 literal (`[::1]`), which
+    // neither parses as an address nor resolves, so it would slip through as
+    // "no internal address found".
+    let literal = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = literal.parse::<IpAddr>() {
         return is_forbidden_ip(ip);
     }
     // Resolve and refuse when any address is internal (a public name can

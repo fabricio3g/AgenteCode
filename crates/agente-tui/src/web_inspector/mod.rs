@@ -612,28 +612,26 @@ fn dispatch_actor_action(
                         KeyCode::F(1) => {
                             state.ui.show_help = !state.ui.show_help;
                         }
-                        KeyCode::Enter => {
-                            if !state.input.input_text.is_empty() {
-                                let content = std::mem::take(&mut state.input.input_text);
-                                state.input.input_cursor = 0;
-                                state.session.chat_history.push(ChatEntry {
-                                    id: uuid::Uuid::new_v4(),
-                                    role: Role::User,
-                                    content,
-                                    tool_name: None,
-                                    tool_args: None,
-                                    is_error: false,
-                                    timestamp: chrono::Utc::now(),
-                                    response_duration: None,
-                                    mode: format!("{:?}", state.agent.mode),
-                                    interrupted: false,
-                                    reasoning: None,
-                                    subagent_id: None,
-                                    subagent_type: None,
-                                    diff_stats: None,
-                                    attachments: Vec::new(),
-                                });
-                            }
+                        KeyCode::Enter if !state.input.input_text.is_empty() => {
+                            let content = std::mem::take(&mut state.input.input_text);
+                            state.input.input_cursor = 0;
+                            state.session.chat_history.push(ChatEntry {
+                                id: uuid::Uuid::new_v4(),
+                                role: Role::User,
+                                content,
+                                tool_name: None,
+                                tool_args: None,
+                                is_error: false,
+                                timestamp: chrono::Utc::now(),
+                                response_duration: None,
+                                mode: format!("{:?}", state.agent.mode),
+                                interrupted: false,
+                                reasoning: None,
+                                subagent_id: None,
+                                subagent_type: None,
+                                diff_stats: None,
+                                attachments: Vec::new(),
+                            });
                         }
                         _ => {}
                     }

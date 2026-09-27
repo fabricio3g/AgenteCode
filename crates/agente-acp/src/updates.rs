@@ -186,6 +186,10 @@ pub(crate) fn update_for_event(event: &RuntimeEvent) -> Option<Value> {
         | RuntimeEvent::Usage { .. }
         | RuntimeEvent::Retry { .. }
         | RuntimeEvent::SteeringQueued
+        | RuntimeEvent::CallUsage { .. }
+        | RuntimeEvent::UserMessagesInjected { .. }
+        | RuntimeEvent::CompactionStarted { .. }
+        | RuntimeEvent::GenerationProgress { .. }
         | RuntimeEvent::Diagnostic { .. } => return None,
     };
     Some(update)
@@ -402,6 +406,7 @@ mod tests {
                 description: "d".into(),
                 is_dangerous: false,
                 file_path: None,
+                child_run_id: None,
             },
             RuntimeEvent::ContextCompacted {
                 summary: "s".into(),

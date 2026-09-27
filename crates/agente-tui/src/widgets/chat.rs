@@ -303,7 +303,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     }
 
     let mut live_tools: Vec<_> = state.agent.live_tool_calls.iter().collect();
-    live_tools.sort_by(|(left, _), (right, _)| left.cmp(right));
+    live_tools.sort_by_key(|(left, _)| *left);
     for (call_id, call) in live_tools {
         // Each running row is a click target: it opens the live output view.
         let start = history_height + lines.len();

@@ -1,14 +1,17 @@
 //! Stable, dependency-light contracts shared by every Agente client.
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub const PROTOCOL_VERSION: u16 = 1;
+/// 2: turn options (profile, mode, origin, project), steering without
+/// cancelling, per-call spend, compaction and generation progress events.
+pub const PROTOCOL_VERSION: u16 = 2;
 
 macro_rules! id_type {
     ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
         #[serde(transparent)]
         pub struct $name(Uuid);
 
@@ -52,7 +55,7 @@ id_type!(SessionId);
 id_type!(TurnId);
 id_type!(RunId);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
@@ -61,13 +64,13 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
     pub id: String,
     #[serde(rename = "type", default)]
@@ -75,7 +78,7 @@ pub struct ToolCall {
     pub function: FunctionCall,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -99,7 +102,7 @@ pub struct Message {
 
 /// What kind of media an attachment is, which decides how each provider
 /// format carries it and which models accept it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AttachmentKind {
     Image,
@@ -129,7 +132,7 @@ impl AttachmentKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Attachment {
     pub kind: AttachmentKind,
     /// MIME type (`image/png`, `audio/mpeg`, `video/mp4`, `application/pdf`).
@@ -141,7 +144,7 @@ pub struct Attachment {
     pub bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProviderContinuation {
     pub provider_id: String,
     pub model_id: String,
@@ -169,7 +172,51 @@ impl Message {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// How much a turn's origin is trusted. A turn can never do more than its
+/// least-trusted origin allows; handoffs between bots keep the lowest level.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Trust {
+    /// Anyone in a public room: answers only, no tools that change anything.
+    Public,
+    /// An allow-listed person: chat, search and artifacts, no shell or files.
+    Trusted,
+    /// The person who runs this Agente.
+    #[default]
+    Owner,
+}
+
+/// Where a turn came from: a client (tui, desktop, web) or a bot channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Origin {
+    pub channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender: Option<String>,
+    #[serde(default)]
+    pub trust: Trust,
+}
+
+impl Default for Origin {
+    fn default() -> Self {
+        Self {
+            channel: "local".to_string(),
+            sender: None,
+            trust: Trust::Owner,
+        }
+    }
+}
+
+/// Plan (read-only) or build (can change files and run commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnMode {
+    Plan,
+    Build,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct StartTurn {
     pub session_id: SessionId,
     #[serde(default)]
@@ -180,14 +227,25 @@ pub struct StartTurn {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
+    /// Profile (a bot or a client preset) whose prompt, tools and model apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// Mode for this turn; the session keeps it until another turn sets one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<TurnMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
+    /// Project folder for this session, when it differs from the runtime's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct UserInput {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalDecisionKind {
     ApproveOnce,
@@ -196,13 +254,13 @@ pub enum ApprovalDecisionKind {
     Cancel,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ApprovalDecision {
     pub request_id: String,
     pub decision: ApprovalDecisionKind,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -210,7 +268,7 @@ pub struct Usage {
     pub cache_creation_tokens: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuntimeEvent {
     TurnStarted,
@@ -250,6 +308,9 @@ pub enum RuntimeEvent {
         description: String,
         is_dangerous: bool,
         file_path: Option<String>,
+        /// The subagent asking, when it is not the turn's own loop.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        child_run_id: Option<RunId>,
     },
     FileChanged {
         path: String,
@@ -289,6 +350,28 @@ pub enum RuntimeEvent {
     Usage {
         usage: Usage,
     },
+    /// One model call finished (the envelope's `parent_run_id` names the
+    /// subagent that made it). Summing these gives the session's real spend.
+    CallUsage {
+        usage: Usage,
+        /// `None` when no price is known for the model.
+        cost_usd: Option<f64>,
+        /// The cost is a catalog-price estimate, not the provider's charge.
+        cost_estimated: bool,
+    },
+    /// Messages sent with `steer` joined the running turn.
+    UserMessagesInjected {
+        messages: Vec<String>,
+    },
+    CompactionStarted {
+        /// Summarized by the model rather than trimmed.
+        smart: bool,
+    },
+    /// Output streamed so far in the current model call, for liveness.
+    GenerationProgress {
+        output_bytes: u64,
+        tool_name: Option<String>,
+    },
     Retry {
         attempt: u32,
         max_attempts: u32,
@@ -319,7 +402,7 @@ impl RuntimeEvent {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RuntimeEventEnvelope {
     pub protocol_version: u16,
     pub sequence: u64,
@@ -331,7 +414,7 @@ pub struct RuntimeEventEnvelope {
     pub event: RuntimeEvent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStatus {
     Completed,
@@ -339,7 +422,7 @@ pub enum TurnStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TurnOutcome {
     pub turn_id: TurnId,
     pub session_id: SessionId,
@@ -350,14 +433,14 @@ pub struct TurnOutcome {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SessionSnapshot {
     pub session_id: SessionId,
     pub revision: u64,
     pub conversation: Vec<Message>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChildSnapshot {
     pub run_id: RunId,
     pub status: String,

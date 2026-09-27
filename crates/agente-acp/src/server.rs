@@ -282,6 +282,7 @@ async fn handle_prompt(state: &Arc<ServerState>, id: Value, params: Value) -> Re
         provider: optional_string(&params, "provider"),
         model: optional_string(&params, "model"),
         thinking_level: optional_string(&params, "thinkingLevel"),
+        ..StartTurn::default()
     };
     let turn = match state.runtime.start_turn(start) {
         Ok(turn) => turn,
@@ -524,7 +525,12 @@ async fn pump_turn(
             )
             .await;
         }
-        if let Some(update) = updates::update_for_event(&envelope.event) {
+        // A subagent's file changes, plan and spend are not the session's.
+        let from_child = envelope.parent_run_id.is_some();
+        if let Some(update) = (!from_child)
+            .then(|| updates::update_for_event(&envelope.event))
+            .flatten()
+        {
             let params = updates::session_update_params(envelope.session_id, update);
             if state
                 .send_notification("session/update", params)
@@ -1151,6 +1157,7 @@ mod tests {
                     description: "run tests".into(),
                     is_dangerous: false,
                     file_path: None,
+                    child_run_id: None,
                 },
             ))
             .await
@@ -1221,6 +1228,7 @@ mod tests {
                     description: "write".into(),
                     is_dangerous: false,
                     file_path: Some("x.rs".into()),
+                    child_run_id: None,
                 },
             ))
             .await

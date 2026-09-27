@@ -8,6 +8,7 @@ description = "Versioned domain and wire protocol for the Agente runtime"
 
 [dependencies]
 chrono = { workspace = true }
+schemars = { workspace = true, features = ["chrono", "uuid1"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }

@@ -260,6 +260,7 @@ fn run_non_interactive(
             provider: None,
             model: None,
             thinking_level: None,
+            ..StartTurn::default()
         })?;
 
         let mut final_text = String::new();

@@ -250,7 +250,11 @@ async fn responses_routes_effort_and_replays_encrypted_reasoning_with_call_id() 
         "{\"path\":\"src\"}"
     );
     let provider = responses::ResponsesProvider::from_info(info("http://unused".into()));
-    let replay = provider.request_body(&[message.clone()], None, &model(ApiFormat::Responses));
+    let replay = provider.request_body(
+        std::slice::from_ref(&message),
+        None,
+        &model(ApiFormat::Responses),
+    );
     assert_eq!(replay["input"][0]["encrypted_content"], "opaque");
     assert_eq!(replay["input"][1]["call_id"], "call_real");
     assert!(replay["input"][1].get("id").is_none());

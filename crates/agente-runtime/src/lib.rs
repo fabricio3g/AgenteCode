@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
+use agente_core::agent::UserInbox;
 use agente_core::catalog::ModelCatalog;
-use agente_core::config::AppConfig;
+use agente_core::config::{AppConfig, AutoApproveConfig};
 use agente_core::mcp::client::McpManager;
 use agente_core::permissions::{
     shared_permission_engine_with_config, ApprovalBroker, SharedPermissionEngine,
@@ -28,15 +29,17 @@ use agente_core::types::{AgentMode, ApprovalAction};
 use agente_core::AbortController;
 use agente_protocol::{
     ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, RunId, RuntimeEvent,
-    RuntimeEventEnvelope, SessionId, SessionSnapshot, StartTurn, TurnId, TurnOutcome, UserInput,
-    PROTOCOL_VERSION,
+    RuntimeEventEnvelope, SessionId, SessionSnapshot, StartTurn, Trust, TurnId, TurnMode,
+    TurnOutcome, UserInput, PROTOCOL_VERSION,
 };
 use agente_session::{SessionStore, SessionStoreError};
 use chrono::Utc;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 const EVENT_CAPACITY: usize = 1_024;
+/// Events kept for subscribers that fall behind before they see `Lagged`.
+const BROADCAST_CAPACITY: usize = 4_096;
 
 #[derive(Clone)]
 pub struct RuntimeConfig {
@@ -50,6 +53,8 @@ pub struct RuntimeConfig {
     pub provider_registry: Arc<ProviderRegistry>,
     pub catalog: Option<ModelCatalog>,
     pub permission_engine: SharedPermissionEngine,
+    /// Auto-approve rules, for the engines of sessions in other projects.
+    pub auto_approve: AutoApproveConfig,
     pub approval_broker: ApprovalBroker,
     pub mcp_manager: Option<Arc<McpManager>>,
     pub subagent_registry: SubagentRegistry,
@@ -106,6 +111,7 @@ impl RuntimeConfig {
                 &app_config.auto_approve,
                 &project_dir,
             ),
+            auto_approve: app_config.auto_approve.clone(),
             approval_broker: ApprovalBroker::new(),
             mcp_manager: None,
             subagent_registry: SubagentRegistry::new(),
@@ -159,15 +165,18 @@ impl RuntimeSupervisor {
                 "session persistence enabled"
             );
         }
+        let (events, _) = broadcast::channel(BROADCAST_CAPACITY);
         RuntimeHandle {
             inner: Arc::new(RuntimeInner {
                 config,
                 sessions: RwLock::new(HashMap::new()),
+                contexts: Mutex::new(HashMap::new()),
                 turns: Mutex::new(HashMap::new()),
                 child_ids: Mutex::new(HashMap::new()),
                 sequence: AtomicU64::new(0),
                 task_sequence: AtomicU64::new(0),
-                system_prompt: Mutex::new(None),
+                system_prompts: Mutex::new(HashMap::new()),
+                events,
             }),
         }
     }
@@ -181,14 +190,40 @@ pub struct RuntimeHandle {
 struct RuntimeInner {
     config: RuntimeConfig,
     sessions: RwLock<HashMap<SessionId, SessionSnapshot>>,
+    /// Per-session project folder and permissions (mode, approve-all grants).
+    contexts: Mutex<HashMap<SessionId, SessionContext>>,
     turns: Mutex<HashMap<TurnId, TurnControl>>,
     child_ids: Mutex<HashMap<String, RunId>>,
     sequence: AtomicU64,
     task_sequence: AtomicU64,
-    /// Executor system prompt built once per supervisor (the project dir is
-    /// fixed for the runtime's lifetime and MCP tools never appear in this
-    /// prompt — the legacy loop registers MCP adapters on its own registry).
-    system_prompt: Mutex<Option<String>>,
+    /// Executor system prompt per project folder, built once each (MCP tools
+    /// never appear in it — the legacy loop registers MCP adapters on its
+    /// own registry).
+    system_prompts: Mutex<HashMap<String, String>>,
+    /// Every event of every turn, for clients that attach to the runtime
+    /// rather than to one turn (a daemon, a second window).
+    events: broadcast::Sender<RuntimeEventEnvelope>,
+}
+
+#[derive(Clone)]
+struct SessionContext {
+    project_dir: String,
+    engine: SharedPermissionEngine,
+}
+
+/// The mode a turn may use: what it asked for (or the session's default),
+/// capped by trust. Anyone but the owner is read-only.
+fn effective_mode(requested: Option<TurnMode>, default: AgentMode, trust: Trust) -> AgentMode {
+    let wanted = match requested {
+        Some(TurnMode::Plan) => AgentMode::Plan,
+        Some(TurnMode::Build) => AgentMode::Build,
+        None => default,
+    };
+    if trust < Trust::Owner {
+        AgentMode::Plan
+    } else {
+        wanted
+    }
 }
 
 impl RuntimeInner {
@@ -230,22 +265,58 @@ impl RuntimeInner {
         });
     }
 
-    fn cached_system_prompt(&self) -> String {
+    fn cached_system_prompt(&self, project_dir: &str) -> String {
         let mut cache = self
-            .system_prompt
+            .system_prompts
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(prompt) = cache.as_ref() {
+        if let Some(prompt) = cache.get(project_dir) {
             return prompt.clone();
         }
-        let registry = agente_core::tools::ToolRegistry::new(&self.config.project_dir);
+        let registry = agente_core::tools::ToolRegistry::new(project_dir);
         let prompt = agente_core::context::executor_system_prompt_with_tools(
-            &self.config.project_dir,
+            project_dir,
             "",
             &registry.definitions(),
         );
-        *cache = Some(prompt.clone());
+        cache.insert(project_dir.to_string(), prompt.clone());
         prompt
+    }
+
+    /// The session's project and permission engine, set up on first use.
+    /// The runtime's own project keeps the shared engine; another project
+    /// gets its own, so its approvals and mode never leak across projects.
+    fn session_context(&self, session_id: SessionId, project_dir: Option<&str>) -> SessionContext {
+        let mut contexts = self
+            .contexts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let wanted = project_dir.unwrap_or(&self.config.project_dir);
+        if let Some(context) = contexts.get(&session_id) {
+            if project_dir.is_none() || context.project_dir == wanted {
+                return context.clone();
+            }
+        }
+        let engine = if wanted == self.config.project_dir {
+            self.config.permission_engine.clone()
+        } else {
+            shared_permission_engine_with_config(
+                self.config.mode,
+                &self.config.auto_approve,
+                wanted,
+            )
+        };
+        let context = SessionContext {
+            project_dir: wanted.to_string(),
+            engine,
+        };
+        contexts.insert(session_id, context.clone());
+        context
+    }
+
+    /// Send to runtime-wide subscribers. No subscribers is not an error.
+    fn publish(&self, envelope: &RuntimeEventEnvelope) {
+        let _ = self.events.send(envelope.clone());
     }
 
     /// In-memory snapshot for `session_id`, falling back to a durable recovery
@@ -329,7 +400,9 @@ impl RuntimeInner {
 
 struct TurnControl {
     cancel: AbortController,
-    steering: Vec<UserInput>,
+    /// Steering input the running loop picks up at its next step; whatever
+    /// is still here when the turn ends is committed as user messages.
+    inbox: UserInbox,
     events: mpsc::Sender<RuntimeEventEnvelope>,
     session_id: SessionId,
 }
@@ -386,6 +459,7 @@ impl RuntimeHandle {
         let (event_tx, event_rx) = mpsc::channel(EVENT_CAPACITY);
         let (outcome_tx, outcome_rx) = oneshot::channel();
         let cancel = AbortController::new();
+        let inbox = UserInbox::default();
 
         // One active parent turn per session. The reservation is inserted
         // under the same lock as the check so two concurrent starts cannot
@@ -403,7 +477,7 @@ impl RuntimeHandle {
                 turn_id,
                 TurnControl {
                     cancel: cancel.clone(),
-                    steering: Vec::new(),
+                    inbox: Arc::clone(&inbox),
                     events: event_tx.clone(),
                     session_id,
                 },
@@ -420,15 +494,32 @@ impl RuntimeHandle {
         } else {
             start.conversation
         };
-        ensure_system_prompt(&mut conversation, &self.inner.cached_system_prompt());
+        let context = self
+            .inner
+            .session_context(session_id, start.project_dir.as_deref());
+        let trust = start
+            .origin
+            .as_ref()
+            .map_or(Trust::Owner, |origin| origin.trust);
+        let mode = effective_mode(start.mode, self.inner.config.mode, trust);
+        context
+            .engine
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_mode(mode);
+        if let Some(profile) = start.profile.as_deref() {
+            tracing::debug!(%session_id, profile, "turn profile requested");
+        }
+        ensure_system_prompt(
+            &mut conversation,
+            &self.inner.cached_system_prompt(&context.project_dir),
+        );
         // Project instructions (AGENTS.md) as a user-message reminder;
         // idempotent, so it also re-attaches after compaction dropped it.
         if !agente_core::context::conversation_has_reminder(
             conversation.iter().map(|m| m.content.as_str()),
         ) {
-            if let Some(reminder) =
-                agente_core::context::agents_md_reminder(&self.inner.config.project_dir)
-            {
+            if let Some(reminder) = agente_core::context::agents_md_reminder(&context.project_dir) {
                 let insert_at = conversation
                     .iter()
                     .position(|m| m.role == agente_protocol::Role::System)
@@ -489,11 +580,11 @@ impl RuntimeHandle {
             provider,
             model,
             thinking,
-            self.inner.config.project_dir.clone(),
+            context.project_dir.clone(),
             self.inner.config.max_iterations,
             Arc::clone(&self.inner.config.provider_registry),
             self.inner.config.catalog.clone(),
-            self.inner.config.permission_engine.clone(),
+            context.engine.clone(),
             cancel.signal(),
             self.inner.config.approval_broker.clone(),
             self.inner.config.mcp_manager.clone(),
@@ -501,10 +592,11 @@ impl RuntimeHandle {
             self.inner.config.subagent_models.clone(),
             self.inner.config.smart_compaction,
             self.inner.config.max_parallel_subagents,
-            agente_core::agent::UserInbox::default(),
+            inbox,
         );
 
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);
+        self.inner.publish(&started);
         if event_tx.try_send(started).is_err() {
             // Release the reservation: the caller never receives a handle.
             self.inner.lock_turns().remove(&turn_id);
@@ -549,25 +641,33 @@ impl RuntimeHandle {
             .respond(&decision.request_id, action)
     }
 
-    /// Queue steering input into the authoritative session and stop the current
-    /// turn at its next cancellation point. The client starts the follow-up turn.
+    /// Hand input to the running turn: the loop reads it at its next step
+    /// (after a tool round, or right after the reply it is streaming) and
+    /// answers it in the same turn. Nothing is cancelled.
     pub fn steer(&self, turn_id: TurnId, input: UserInput) -> bool {
-        let mut turns = self.inner.lock_turns();
-        let Some(control) = turns.get_mut(&turn_id) else {
+        let turns = self.inner.lock_turns();
+        let Some(control) = turns.get(&turn_id) else {
             return false;
         };
-        control.steering.push(input);
+        control.inbox.lock().push(Message::user(input.content));
         let envelope = self.envelope(
             control.session_id,
             turn_id,
             None,
             RuntimeEvent::SteeringQueued,
         );
+        self.inner.publish(&envelope);
         if let Err(error) = control.events.try_send(envelope) {
             tracing::debug!(%error, "steering notification dropped: event stream closed or full");
         }
-        control.cancel.abort();
         true
+    }
+
+    /// Every event of every turn from now on. A receiver that falls more than
+    /// a few thousand events behind gets `Lagged` and should re-read the
+    /// session snapshot.
+    pub fn subscribe(&self) -> broadcast::Receiver<RuntimeEventEnvelope> {
+        self.inner.events.subscribe()
     }
 
     pub fn session_snapshot(&self, session_id: SessionId) -> SessionSnapshot {
@@ -702,8 +802,8 @@ mod tests {
     #[test]
     fn system_prompt_is_cached_across_calls() {
         let handle = RuntimeSupervisor::start(test_config());
-        let first = handle.inner.cached_system_prompt();
-        let second = handle.inner.cached_system_prompt();
+        let first = handle.inner.cached_system_prompt("D:/proj");
+        let second = handle.inner.cached_system_prompt("D:/proj");
         assert_eq!(first, second);
         assert!(first.contains("tool"), "prompt should list tools");
     }
@@ -807,12 +907,13 @@ mod tests {
             turn_id,
             TurnControl {
                 cancel: AbortController::new(),
-                steering: steering
-                    .iter()
-                    .map(|text| UserInput {
-                        content: (*text).to_string(),
-                    })
-                    .collect(),
+                inbox: {
+                    let inbox = UserInbox::default();
+                    inbox
+                        .lock()
+                        .extend(steering.iter().map(|text| Message::user(*text)));
+                    inbox
+                },
                 events: event_tx.clone(),
                 session_id,
             },
@@ -986,8 +1087,7 @@ mod tests {
             // Unknown providers fail fast in the agent loop before any network
             // access, keeping this test offline and deterministic.
             provider: Some("definitely-not-a-provider".to_string()),
-            model: None,
-            thinking_level: None,
+            ..StartTurn::default()
         };
         let mut turn = handle.start_turn(start).expect("turn starts");
 
@@ -1032,8 +1132,7 @@ mod tests {
             conversation: Vec::new(),
             // Unknown provider fails fast before any network access.
             provider: Some("definitely-not-a-provider".to_string()),
-            model: None,
-            thinking_level: None,
+            ..StartTurn::default()
         };
 
         let mut first = handle
@@ -1058,5 +1157,88 @@ mod tests {
         let _resumed = handle
             .start_turn(start(session_id))
             .expect("session starts a new turn after the first finishes");
+    }
+
+    #[test]
+    fn trust_below_owner_is_read_only() {
+        use agente_protocol::{Trust, TurnMode};
+        assert_eq!(
+            effective_mode(Some(TurnMode::Build), AgentMode::Plan, Trust::Owner),
+            AgentMode::Build
+        );
+        assert_eq!(
+            effective_mode(None, AgentMode::Build, Trust::Owner),
+            AgentMode::Build
+        );
+        for trust in [Trust::Trusted, Trust::Public] {
+            assert_eq!(
+                effective_mode(Some(TurnMode::Build), AgentMode::Build, trust),
+                AgentMode::Plan,
+                "{trust:?} must never build"
+            );
+        }
+    }
+
+    #[test]
+    fn sessions_in_other_projects_get_their_own_permissions() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let home = handle.inner.session_context(SessionId::new(), None);
+        assert_eq!(home.project_dir, "D:/proj");
+        assert!(Arc::ptr_eq(
+            &home.engine,
+            &handle.inner.config.permission_engine
+        ));
+
+        let session = SessionId::new();
+        let other = handle.inner.session_context(session, Some("D:/other"));
+        assert_eq!(other.project_dir, "D:/other");
+        assert!(!Arc::ptr_eq(
+            &other.engine,
+            &handle.inner.config.permission_engine
+        ));
+        // The same session keeps its context when a later turn names no project.
+        let again = handle.inner.session_context(session, None);
+        assert!(Arc::ptr_eq(&other.engine, &again.engine));
+    }
+
+    #[tokio::test]
+    async fn steering_joins_the_running_turn_without_cancelling_it() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let mut attached = handle.subscribe();
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let cancel = AbortController::new();
+        let inbox = UserInbox::default();
+        let (events, mut turn_events) = mpsc::channel(8);
+        handle.inner.lock_turns().insert(
+            turn_id,
+            TurnControl {
+                cancel: cancel.clone(),
+                inbox: Arc::clone(&inbox),
+                events,
+                session_id,
+            },
+        );
+
+        assert!(handle.steer(
+            turn_id,
+            UserInput {
+                content: "also check the tests".into()
+            }
+        ));
+
+        assert!(!cancel.signal().is_aborted(), "steering must not cancel");
+        assert_eq!(contents_of(&inbox.lock()), vec!["also check the tests"]);
+        let own = turn_events.recv().await.expect("turn channel event");
+        assert!(matches!(own.event, RuntimeEvent::SteeringQueued));
+        let broadcast = attached.recv().await.expect("runtime-wide event");
+        assert!(matches!(broadcast.event, RuntimeEvent::SteeringQueued));
+        assert_eq!(broadcast.turn_id, turn_id);
+        assert!(!handle.steer(
+            TurnId::new(),
+            UserInput {
+                content: "x".into()
+            }
+        ));
     }
 }
