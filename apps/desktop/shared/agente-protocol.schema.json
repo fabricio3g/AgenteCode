@@ -1,0 +1,1173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ApprovalDecision": {
+      "properties": {
+        "decision": {
+          "$ref": "#/definitions/ApprovalDecisionKind"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "request_id"
+      ],
+      "type": "object"
+    },
+    "ApprovalDecisionKind": {
+      "enum": [
+        "approve_once",
+        "approve_all",
+        "deny",
+        "cancel"
+      ],
+      "type": "string"
+    },
+    "Attachment": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/definitions/AttachmentKind"
+        },
+        "mime": {
+          "description": "MIME type (`image/png`, `audio/mpeg`, `video/mp4`, `application/pdf`).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Original file name, for display.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Absolute path of the stored copy.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes",
+        "kind",
+        "mime",
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "AttachmentKind": {
+      "description": "What kind of media an attachment is, which decides how each provider format carries it and which models accept it.",
+      "enum": [
+        "image",
+        "audio",
+        "video",
+        "pdf"
+      ],
+      "type": "string"
+    },
+    "ChildSnapshot": {
+      "properties": {
+        "run_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "type": "object"
+    },
+    "FunctionCall": {
+      "properties": {
+        "arguments": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "name"
+      ],
+      "type": "object"
+    },
+    "Message": {
+      "properties": {
+        "attachments": {
+          "description": "Media sent with a user message (images, audio, video, PDFs). Each is a stored copy on disk; providers encode it at request time, so saved sessions carry references, not bytes.",
+          "items": {
+            "$ref": "#/definitions/Attachment"
+          },
+          "type": "array"
+        },
+        "content": {
+          "type": "string"
+        },
+        "continuation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ProviderContinuation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Ordered provider-native blocks needed for lossless tool/reasoning replay."
+        },
+        "role": {
+          "$ref": "#/definitions/Role"
+        },
+        "thinking": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thinking_signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_call_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_calls": {
+          "items": {
+            "$ref": "#/definitions/ToolCall"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "content",
+        "role"
+      ],
+      "type": "object"
+    },
+    "Origin": {
+      "description": "Where a turn came from: a client (tui, desktop, web) or a bot channel.",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "sender": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trust": {
+          "$ref": "#/definitions/Trust",
+          "default": "owner"
+        }
+      },
+      "required": [
+        "channel"
+      ],
+      "type": "object"
+    },
+    "ProviderContinuation": {
+      "properties": {
+        "blocks": {
+          "items": true,
+          "type": "array"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "provider_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "blocks",
+        "model_id",
+        "provider_id"
+      ],
+      "type": "object"
+    },
+    "Role": {
+      "enum": [
+        "system",
+        "user",
+        "assistant",
+        "tool"
+      ],
+      "type": "string"
+    },
+    "RuntimeEvent": {
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "turn_started"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "thinking"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "assistant_delta"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "reasoning_delta"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "assistant_message"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "arguments": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "tool_proposed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "arguments",
+            "id",
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "chunk": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "tool_progress"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "chunk",
+            "id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "tool_heartbeat"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "is_error": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "tool_result"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "id",
+            "is_error",
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "child_run_id": {
+              "description": "The subagent asking, when it is not the turn's own loop.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "file_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "is_dangerous": {
+              "type": "boolean"
+            },
+            "request_id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "tool_args": {
+              "type": "string"
+            },
+            "tool_name": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "approval_requested"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "description",
+            "is_dangerous",
+            "request_id",
+            "source",
+            "tool_args",
+            "tool_name",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "after": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "before": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "file_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "summary",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "todos": true,
+            "type": {
+              "enum": [
+                "todo_changed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "todos",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "run_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "child_started"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "description",
+            "kind",
+            "run_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "run_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "child_delta"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id",
+            "text",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            },
+            "finished": {
+              "type": "boolean"
+            },
+            "is_error": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "run_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "child_tool"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "call_id",
+            "content",
+            "finished",
+            "is_error",
+            "name",
+            "run_id",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "is_error": {
+              "type": "boolean"
+            },
+            "run_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "child_finished"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "is_error",
+            "run_id",
+            "summary",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "revision": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "context_compacted"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "revision",
+            "summary",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "usage"
+              ],
+              "type": "string"
+            },
+            "usage": {
+              "$ref": "#/definitions/Usage"
+            }
+          },
+          "required": [
+            "type",
+            "usage"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "One model call finished (the envelope's `parent_run_id` names the subagent that made it). Summing these gives the session's real spend.",
+          "properties": {
+            "cost_estimated": {
+              "description": "The cost is a catalog-price estimate, not the provider's charge.",
+              "type": "boolean"
+            },
+            "cost_usd": {
+              "description": "`None` when no price is known for the model.",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "call_usage"
+              ],
+              "type": "string"
+            },
+            "usage": {
+              "$ref": "#/definitions/Usage"
+            }
+          },
+          "required": [
+            "cost_estimated",
+            "type",
+            "usage"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Messages sent with `steer` joined the running turn.",
+          "properties": {
+            "messages": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": [
+                "user_messages_injected"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "messages",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "smart": {
+              "description": "Summarized by the model rather than trimmed.",
+              "type": "boolean"
+            },
+            "type": {
+              "enum": [
+                "compaction_started"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "smart",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Output streamed so far in the current model call, for liveness.",
+          "properties": {
+            "output_bytes": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "tool_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "generation_progress"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "output_bytes",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "attempt": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "delay_ms": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "max_attempts": {
+              "format": "uint32",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "retry"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "attempt",
+            "delay_ms",
+            "max_attempts",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "steering_queued"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "diagnostic"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "message",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "revision": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "turn_finished"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "revision",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "partial_text": {
+              "type": "string"
+            },
+            "revision": {
+              "format": "uint64",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": {
+              "enum": [
+                "turn_cancelled"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "partial_text",
+            "revision",
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "turn_failed"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "message",
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RuntimeEventEnvelope": {
+      "properties": {
+        "event": {
+          "$ref": "#/definitions/RuntimeEvent"
+        },
+        "parent_run_id": {
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol_version": {
+          "format": "uint16",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "turn_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "protocol_version",
+        "sequence",
+        "session_id",
+        "timestamp",
+        "turn_id"
+      ],
+      "type": "object"
+    },
+    "SessionSnapshot": {
+      "properties": {
+        "conversation": {
+          "items": {
+            "$ref": "#/definitions/Message"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation",
+        "revision",
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "StartTurn": {
+      "properties": {
+        "conversation": {
+          "default": [],
+          "items": {
+            "$ref": "#/definitions/Message"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Mode for this turn; the session keeps it until another turn sets one."
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "profile": {
+          "description": "Profile (a bot or a client preset) whose prompt, tools and model apply.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project_dir": {
+          "description": "Project folder for this session, when it differs from the runtime's.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "thinking_level": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "ToolCall": {
+      "properties": {
+        "function": {
+          "$ref": "#/definitions/FunctionCall"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "required": [
+        "function",
+        "id"
+      ],
+      "type": "object"
+    },
+    "Trust": {
+      "description": "How much a turn's origin is trusted. A turn can never do more than its least-trusted origin allows; handoffs between bots keep the lowest level.",
+      "oneOf": [
+        {
+          "description": "Anyone in a public room: answers only, no tools that change anything.",
+          "enum": [
+            "public"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "An allow-listed person: chat, search and artifacts, no shell or files.",
+          "enum": [
+            "trusted"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "The person who runs this Agente.",
+          "enum": [
+            "owner"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    "TurnMode": {
+      "description": "Plan (read-only) or build (can change files and run commands).",
+      "enum": [
+        "plan",
+        "build"
+      ],
+      "type": "string"
+    },
+    "TurnOutcome": {
+      "properties": {
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/TurnStatus"
+        },
+        "tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "turn_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "session_id",
+        "status",
+        "tokens",
+        "turn_id"
+      ],
+      "type": "object"
+    },
+    "TurnStatus": {
+      "enum": [
+        "completed",
+        "cancelled",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "Usage": {
+      "properties": {
+        "cache_creation_tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "cache_read_tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "completion_tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "prompt_tokens": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cache_creation_tokens",
+        "cache_read_tokens",
+        "completion_tokens",
+        "prompt_tokens"
+      ],
+      "type": "object"
+    },
+    "UserInput": {
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Agente runtime protocol v2",
+  "title": "AgenteProtocol"
+}

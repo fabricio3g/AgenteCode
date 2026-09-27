@@ -3,7 +3,8 @@
   "entry": [
     "main/index.ts",
     "main/tts-worker.ts",
-    "renderer/src/main.ts"
+    "renderer/src/main.ts",
+    "shared/agente-protocol.gen.ts"
   ],
   "ignorePatterns": [
     "dist/**",

@@ -39,6 +39,9 @@ jobs:
       - name: Install renderer deps
         run: npm ci --prefix renderer
 
+      - name: Protocol types match the Rust schema
+        run: node scripts/gen-protocol-types.mjs --check
+
       - name: Run renderer type check
         run: npm run check
 

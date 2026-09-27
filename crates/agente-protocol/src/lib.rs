@@ -447,6 +447,28 @@ pub struct ChildSnapshot {
     pub summary: Option<String>,
 }
 
+/// JSON Schema of every type a client sends or receives, as one document
+/// (`definitions` keyed by type name). Desktop turns it into TypeScript types
+/// (`apps/desktop/shared/agente-protocol.schema.json` → `.gen.ts`); a test
+/// keeps the committed copy in step with this crate.
+pub fn protocol_schema() -> serde_json::Value {
+    let mut generator = schemars::gen::SchemaSettings::draft07().into_generator();
+    generator.subschema_for::<StartTurn>();
+    generator.subschema_for::<UserInput>();
+    generator.subschema_for::<ApprovalDecision>();
+    generator.subschema_for::<RuntimeEventEnvelope>();
+    generator.subschema_for::<TurnOutcome>();
+    generator.subschema_for::<SessionSnapshot>();
+    generator.subschema_for::<ChildSnapshot>();
+    let definitions = generator.take_definitions();
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "AgenteProtocol",
+        "description": format!("Agente runtime protocol v{PROTOCOL_VERSION}"),
+        "definitions": definitions,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,5 +488,24 @@ mod tests {
         let decoded: RuntimeEventEnvelope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded.sequence, 7);
         assert_eq!(decoded.protocol_version, PROTOCOL_VERSION);
+    }
+
+    /// The schema Desktop generates its types from must match this crate.
+    /// Refresh it with `UPDATE_PROTOCOL_SCHEMA=1 cargo test -p agente-protocol`.
+    #[test]
+    fn committed_schema_is_current() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/shared/agente-protocol.schema.json");
+        let current = serde_json::to_string_pretty(&protocol_schema()).unwrap() + "\n";
+        if std::env::var_os("UPDATE_PROTOCOL_SCHEMA").is_some() {
+            std::fs::write(&path, &current).unwrap();
+        }
+        let committed = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            committed == current,
+            "{} is stale: run UPDATE_PROTOCOL_SCHEMA=1 cargo test -p agente-protocol, \
+             then npm run gen:protocol in apps/desktop",
+            path.display()
+        );
     }
 }

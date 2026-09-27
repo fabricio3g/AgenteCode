@@ -21,6 +21,7 @@
     "build:native-runtimes": "node scripts/build-native-runtimes.mjs",
     "build": "npm run build:main && npm run build:renderer && electron-builder",
     "start": "npx electron .",
+    "gen:protocol": "node scripts/gen-protocol-types.mjs",
     "check": "cd renderer && npx svelte-check --tsconfig ./tsconfig.json",
     "onboarding:reset": "node scripts/reset-onboarding.mjs",
     "fallow:summary": "npx fallow --summary",
