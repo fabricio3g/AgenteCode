@@ -2007,7 +2007,11 @@ mod tests {
         assert_eq!(live.default_provider, "local-llama");
         assert_eq!(live.default_model, "qwen3-8b");
         assert!(live.smart_compaction);
-        assert!(live.provider_registry.get("local-llama").is_some());
+        let local = live
+            .provider_registry
+            .get("local-llama")
+            .expect("registered");
+        assert_eq!(local.info().base_url, "http://127.0.0.1:11435/v1");
 
         // A later patch adds to the providers instead of replacing them.
         handle

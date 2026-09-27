@@ -84,7 +84,7 @@ import { registerWorkspaceHandlers } from './ipc/workspace-handlers.ts';
 import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
 import { registerBrowserAgentHandlers } from './ipc/browser-agent-handlers.ts';
 import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-workspace-handlers.ts';
-import { registerAgenteHandlers, disposeAllSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
+import { registerAgenteHandlers, disposeAgenteSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 

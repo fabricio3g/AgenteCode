@@ -51,7 +51,7 @@ const FALLBACK_CONTEXT_WINDOW = 32_768;
  * Resolve the active model's context window: local runtime config first,
  * then a provider metadata lookup, then a conservative fallback.
  */
-async function resolveContextWindow(transport: AgenteTransport): Promise<number> {
+export async function resolveContextWindow(transport: AgenteTransport): Promise<number> {
   const cfg = loadConfigFromDisk() as { llm?: Record<string, any> };
   const llm = cfg.llm ?? {};
   if (transport.providerName === 'local') {

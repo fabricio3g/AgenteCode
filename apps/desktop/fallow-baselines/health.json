@@ -1,5 +1,15 @@
 {
   "finding_counts": {
+    "main/agente-client.ts": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "main/agente-daemon.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "main/agente/changes.ts": {
       "crap_critical": {
         "count": 3
@@ -54,6 +64,19 @@
       },
       "crap_moderate": {
         "count": 1
+      }
+    },
+    "main/agente/rust-engine.ts": {
+      "crap_moderate": {
+        "count": 5
+      }
+    },
+    "main/agente/rust-events.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
       }
     },
     "main/agente/sessions/session-tree.ts": {
@@ -143,11 +166,6 @@
         "count": 1
       }
     },
-    "main/config.secrets.ts": {
-      "crap_moderate": {
-        "count": 2
-      }
-    },
     "main/content-summarizer.ts": {
       "complexity_critical": {
         "count": 1
@@ -163,10 +181,10 @@
       }
     },
     "main/data-folder.ts": {
-      "complexity_high": {
+      "complexity_moderate": {
         "count": 1
       },
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -2052,115 +2070,116 @@
     "renderer/src/lib/ui/components/Select.svelte:untested risk",
     "renderer/src/lib/services/agent-llm.ts:high impact",
     "renderer/src/lib/services/agent-artifact.ts:high impact",
-    "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/utils/preview-builder.ts:high impact",
-    "renderer/src/lib/services/runtime.ts:high impact",
-    "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "main/agente/tools/builtins.ts:dead code",
+    "renderer/src/lib/services/runtime.ts:high impact",
+    "renderer/src/lib/services/chat-api.ts:high impact",
     "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
-    "main/runtime-resolver.ts:high impact",
-    "renderer/src/lib/stores/app.svelte.ts:complexity",
+    "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "renderer/src/lib/models/model-fit.ts:high impact",
+    "main/runtime-resolver.ts:high impact",
     "renderer/src/lib/services/agent-message-context.ts:high impact",
-    "renderer/src/lib/services/agent-flow.ts:high impact",
-    "renderer/src/lib/ui/message-utils.ts:high impact",
-    "shared/deck.ts:high impact",
-    "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
-    "renderer/src/lib/services/character-card.ts:high impact",
     "main/whisper-resolver.ts:high impact",
+    "shared/deck.ts:high impact",
+    "renderer/src/lib/ui/message-utils.ts:high impact",
+    "renderer/src/lib/services/agent-flow.ts:high impact",
     "main/search-providers/providers.ts:high impact",
+    "renderer/src/lib/services/character-card.ts:high impact",
+    "renderer/src/lib/stores/app.svelte.ts:complexity",
+    "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
     "renderer/src/lib/ui/components/Chart.svelte:untested risk",
+    "main/providers/helpers.ts:high impact",
     "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
     "main/agente/llm/stream-fn.ts:high impact",
-    "main/providers/helpers.ts:high impact",
     "renderer/src/lib/services/agent-provider.ts:dead code",
     "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "renderer/src/lib/features/code/code-run.ts:high impact",
     "renderer/src/lib/services/artifact-model.ts:high impact",
-    "renderer/src/lib/services/generated-documents.ts:high impact",
-    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
     "main/search-providers/shared.ts:high impact",
+    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
+    "renderer/src/lib/services/generated-documents.ts:high impact",
     "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
+    "main/search-providers/aggregator/engines.ts:untested risk",
     "renderer/src/lib/services/llama-releases.ts:dead code",
+    "main/chat-ipc.ts:high impact",
     "renderer/src/lib/services/research-pipeline.ts:high impact",
-    "renderer/src/lib/utils/tool-ui.ts:high impact",
+    "renderer/src/lib/services/agent-run-finish.ts:complexity",
     "main/agente/extensions/builtin.ts:dead code",
+    "renderer/src/lib/utils/tool-ui.ts:high impact",
+    "renderer/src/lib/services/agent-run-context.ts:high impact",
+    "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
     "renderer/src/lib/stores/app-context-budget.ts:high impact",
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
-    "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
-    "main/chat-ipc.ts:high impact",
-    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
-    "main/search-providers/aggregator/engines.ts:untested risk",
-    "renderer/src/lib/services/agent-run-context.ts:high impact",
-    "renderer/src/lib/services/agent-run-finish.ts:complexity",
+    "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
+    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "main/agente/changes.ts:untested risk",
+    "renderer/src/lib/services/agent-evidence.ts:high impact",
+    "renderer/src/lib/features/chat/document-surface.ts:high impact",
+    "renderer/src/lib/services/agent-run-plan.ts:complexity",
     "renderer/src/lib/components/settings/UnifiedSettingsPanel.svelte:untested risk",
     "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
-    "renderer/src/lib/services/agent-run-plan.ts:complexity",
-    "shared/work-product.ts:high impact",
-    "renderer/src/lib/features/chat/document-surface.ts:high impact",
     "renderer/src/lib/services/agent-home-stream.ts:complexity",
     "renderer/src/lib/features/chat/composer/mic-probe.ts:high impact",
-    "renderer/src/lib/utils/storage.ts:high impact",
-    "renderer/src/lib/services/agent-tool-result.ts:high impact",
-    "main/agente/runtime.ts:high impact",
     "main/llama-runtime.ts:high impact",
     "main/sandbox.ts:dead code",
+    "renderer/src/lib/utils/storage.ts:high impact",
     "main/document-markdown.ts:untested risk",
     "renderer/src/lib/utils/code-copy.ts:dead code",
-    "main/process-manager.ts:complexity",
+    "main/agente/runtime.ts:high impact",
     "renderer/src/lib/services/kokoro-tts.ts:dead code",
     "renderer/src/lib/utils/local-models.ts:high impact",
+    "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/providers/connection-test.ts:untested risk",
-    "renderer/src/lib/utils/markdown.ts:complexity",
     "renderer/src/lib/services/agent-content.ts:high impact",
+    "renderer/src/lib/utils/markdown.ts:complexity",
     "renderer/src/lib/ui/context.ts:high impact",
+    "main/process-manager.ts:complexity",
     "renderer/src/lib/ui/prompt.ts:untested risk",
-    "renderer/src/lib/stores/models.svelte.ts:high impact",
     "main/stt-engine.ts:untested risk",
     "main/browser-actions.ts:high impact",
+    "renderer/src/lib/stores/models.svelte.ts:high impact",
+    "main/web-scraper.ts:high impact",
+    "main/search-providers/aggregator/options.ts:untested risk",
+    "main/instances.ts:untested risk",
     "renderer/src/lib/i18n/index.ts:high impact",
     "main/generated-documents.ts:complexity",
-    "main/instances.ts:untested risk",
-    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "shared/agent-core/agent-loop.ts:complexity",
     "renderer/src/lib/utils/id.ts:high impact",
-    "main/web-scraper.ts:high impact",
     "renderer/src/lib/services/agent-model-call.ts:complexity",
-    "main/providers/openai-core.ts:high impact",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
-    "main/search-providers/aggregator/options.ts:untested risk",
-    "renderer/src/lib/utils/errors.ts:high impact",
+    "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
+    "main/providers/openai-core.ts:high impact",
     "main/content-summarizer.ts:untested risk",
+    "renderer/src/lib/utils/errors.ts:high impact",
     "main/browser-format.ts:high impact",
     "main/system-info.ts:high impact",
     "renderer/src/lib/features/chat/viewers/xlsx-model.ts:high impact",
     "main/search-engine.ts:complexity",
-    "renderer/src/lib/services/agent-parsing.ts:high impact",
     "main/utils/logger.ts:high impact",
+    "renderer/src/lib/services/agent-parsing.ts:high impact",
     "renderer/src/lib/components/ui/Select.svelte:complexity",
-    "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
-    "main/rag-engine.ts:high impact",
     "main/whisper-server.ts:high impact",
+    "main/rag-engine.ts:high impact",
     "main/link-scorer.ts:untested risk",
-    "main/runtime-config-resolver.ts:high impact",
-    "main/data-folder.ts:high impact",
+    "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:high impact",
     "main/model-download.ts:complexity",
+    "main/runtime-config-resolver.ts:high impact",
+    "main/agente/rust-events.ts:untested risk",
     "main/web-crawler.ts:complexity",
+    "main/data-folder.ts:high impact",
     "scripts/smoke-search-scrape.mjs:untested risk",
     "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "main/browser-panel.ts:high impact",
     "renderer/src/lib/utils/stream-reveal.ts:untested risk",
     "scripts/smoke-provider-models.mjs:untested risk",
     "renderer/src/lib/utils/chart-data.ts:complexity",
-    "main/chat-db.ts:complexity",
     "renderer/src/lib/ui/parser.ts:complexity",
     "main/live-data/quotes.ts:untested risk",
     "main/terminal.ts:untested risk",
+    "main/chat-db.ts:complexity",
     "scripts/bench-agent-stability.mjs:complexity",
     "renderer/src/lib/services/ocr.ts:complexity"
   ]

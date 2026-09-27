@@ -28,9 +28,9 @@ macro_rules! models {
 /// Provider configuration options
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderOptions {
-    #[serde(rename = "apiKey", default)]
+    #[serde(rename = "apiKey", alias = "api_key", default)]
     pub api_key: Option<String>,
-    #[serde(rename = "baseURL", default)]
+    #[serde(rename = "baseURL", alias = "base_url", default)]
     pub base_url: Option<String>,
     #[serde(rename = "enterpriseUrl", default)]
     pub enterprise_url: Option<String>,

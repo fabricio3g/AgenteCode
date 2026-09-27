@@ -16,6 +16,6 @@ test('IPC entry exports the agent shutdown function used by before-quit', async 
     logLevel: 'silent'
   });
   const output = result.outputFiles[0].text;
-  assert.match(output, /function disposeAllSessions\(/);
-  assert.match(output, /disposeAllSessions as disposeAllAgenteSessions/, 'shutdown export was erased from the bundle');
+  assert.match(output, /function disposeAgenteSessions\(/);
+  assert.match(output, /disposeAgenteSessions as disposeAllAgenteSessions/, 'shutdown export was erased from the bundle');
 });
