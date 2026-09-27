@@ -116,7 +116,7 @@ export type RunAgentTaskArgs = {
    * the core engine (#12).
    */
   quietActivity?: boolean;
-  /** chat = simple research agent; code = Flaxeo Agent; work = full sandbox; search = search tools */
+  /** chat = simple research agent; code = Agente; work = full sandbox; search = search tools */
   agentProfile?: 'chat' | 'code' | 'search' | 'work';
   searchMode?: 'search' | 'deep' | 'max';
   reasoningLevel?: ReasoningLevel | null;

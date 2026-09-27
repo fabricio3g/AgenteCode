@@ -1,8 +1,8 @@
 /**
- * Where Flaxeo Chat keeps its data, and the one-time move from the old
- * "Chatea" folders into it.
+ * Where Agente keeps its data, and the one-time move from the old
+ * "Flaxeo Chat" and "Chatea" folders into it.
  *
- *   Flaxeo Chat/
+ *   Agente/
  *     engines/llama.cpp/<build>/     engines/whisper.cpp/<build>/
  *     models/chat/   models/speech/   models/voices/
  *     downloads/     cache/           config.json, downloads.json
@@ -17,7 +17,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DATA_FOLDER_NAME = 'Flaxeo Chat';
+export const DATA_FOLDER_NAME = 'Agente';
+
+/** Env overrides for the data folder, newest name first. */
+const HOME_OVERRIDES = ['AGENTE_HOME', 'FLAXEO_HOME', 'TALAMOLM_HOME'];
+
+function homeOverride(): string {
+  for (const name of HOME_OVERRIDES) {
+    const value = String(process.env[name] || '').trim();
+    if (value) return value;
+  }
+  return '';
+}
 
 /** Old layout → new layout, relative to the data folder, most specific first. */
 const LAYOUT_MOVES: Array<[string[], string[]]> = [
@@ -32,12 +43,12 @@ const LAYOUT_MOVES: Array<[string[], string[]]> = [
 const PATH_FILES = ['config.json', 'downloads.json'];
 
 export function dataRoot(appDataDir: string): string {
-  const override = String(process.env.FLAXEO_HOME || process.env.TALAMOLM_HOME || '').trim();
-  return override || path.join(appDataDir, DATA_FOLDER_NAME);
+  return homeOverride() || path.join(appDataDir, DATA_FOLDER_NAME);
 }
 
 function oldRoots(appDataDir: string, homeDir: string): string[] {
   return [
+    path.join(appDataDir, 'Flaxeo Chat'),
     path.join(appDataDir, 'Chatea'),
     path.join(appDataDir, 'Chatea LM'),
     path.join(homeDir, '.chatealm')
@@ -100,7 +111,7 @@ function rewriteStrings(value: unknown, map: (s: string) => string): unknown {
  */
 export function migrateDataFolder(appDataDir: string, homeDir: string): string[] {
   const log: string[] = [];
-  if (process.env.FLAXEO_HOME || process.env.TALAMOLM_HOME) return log;
+  if (homeOverride()) return log;
   const root = dataRoot(appDataDir);
   const roots = oldRoots(appDataDir, homeDir);
 
@@ -135,6 +146,25 @@ export function migrateDataFolder(appDataDir: string, homeDir: string): string[]
     }
   } catch (err) {
     log.push(`migration stopped: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return log;
+}
+
+/**
+ * The browser profile (local storage, IndexedDB, caches) lives in Electron's
+ * userData, which follows the app name. When the name changed, bring the old
+ * profile along so settings kept in local storage survive.
+ */
+export function migrateBrowserProfile(appDataDir: string, userDataDir: string): string[] {
+  const log: string[] = [];
+  if (exists(path.join(userDataDir, 'Local Storage'))) return log;
+  try {
+    const legacy = ['chatealm', 'Flaxeo Chat']
+      .map((name) => path.join(appDataDir, name))
+      .find((dir) => dir !== userDataDir && exists(path.join(dir, 'Local Storage')));
+    if (legacy) moveInto(legacy, userDataDir, log);
+  } catch (err) {
+    log.push(`profile move stopped: ${err instanceof Error ? err.message : String(err)}`);
   }
   return log;
 }

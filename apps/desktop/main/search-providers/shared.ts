@@ -277,7 +277,7 @@ export function providerPriority(provider: string): number {
 export function providerDisplayName(provider: string): string {
   const names: Record<string, string> = {
     tavily: 'Tavily',
-    aggregator: 'Flaxeo Chat Aggregator',
+    aggregator: 'Agente Aggregator',
     brave: 'Brave Search',
     searxng: 'SearXNG',
     exa: 'Exa',

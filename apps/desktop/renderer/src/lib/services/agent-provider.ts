@@ -9,7 +9,7 @@ import type {
 } from '$lib/types/chat';
 import type { RunAgentTaskArgs, AgentTaskResult } from '$lib/services/agent-types';
 import { runAgentTask } from '$lib/services/agent';
-import { getFlaxeoCodeSystemPrompt } from '$lib/services/agent-prompts';
+import { getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
 
 export interface CodeAgentAdapter {
   readonly instance: CodeAgentInstance;
@@ -35,7 +35,7 @@ const LEGACY_PROVIDER_TO_INSTANCE: Record<string, CodeAgentInstanceId> = {
   'chatea-agent': 'chatea-agent',
   'flaxeo-agent': 'chatea-agent',
   flaxeo: 'chatea-agent',
-  pi: 'chatea-agent' // Pi-inspired built-in path is Flaxeo Agent
+  pi: 'chatea-agent' // the built-in path is Agente
 };
 
 /** Built-in code profile. Unknown ids fall back here (never to the chat-only `chatea`). */
@@ -75,7 +75,7 @@ function createChateaDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
     id: 'chatea',
     driverKind: 'chatea',
-    displayName: 'Flaxeo Chat Agent (Local)',
+    displayName: 'Agente Chat (Local)',
     detail: 'Local-model agent (Chat mode only)',
     status: 'ready',
     accentColor: 'var(--primary)'
@@ -83,7 +83,7 @@ function createChateaDriver(): CodeAgentDriverDefinition {
   return {
     driver: {
       driverKind: 'chatea',
-      displayName: 'Flaxeo Chat Agent (Local)',
+      displayName: 'Agente Chat (Local)',
       detail: 'Built-in local-model agent for Chat mode',
       supportsMultipleInstances: false
     },
@@ -93,15 +93,15 @@ function createChateaDriver(): CodeAgentDriverDefinition {
 }
 
 /**
- * Flaxeo Agent — built-in coding agent (Pi-inspired).
+ * Agente — built-in coding agent.
  * Uses the in-process tool loop (runAgentTask), not an external CLI binary.
  * Instance id stays `chatea-agent` for session/DB compatibility.
  */
-function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
+function createBuiltinAgentDriver(): CodeAgentDriverDefinition {
   const instance = defaultInstance({
     id: 'chatea-agent',
     driverKind: 'chatea-agent',
-    displayName: 'Flaxeo Agent',
+    displayName: 'Agente',
     detail: 'Built-in coding agent · Pi-inspired',
     status: 'ready',
     accentColor: 'var(--primary)'
@@ -109,7 +109,7 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
   return {
     driver: {
       driverKind: 'chatea-agent',
-      displayName: 'Flaxeo Agent',
+      displayName: 'Agente',
       detail: 'Built-in coding agent for Code projects',
       supportsMultipleInstances: false
     },
@@ -120,7 +120,7 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
       async (args) => {
         if (!args.workspaceRoot) {
           return {
-            content: 'Open a Code project folder first so Flaxeo Agent can work on real files.',
+            content: 'Open a Code project folder first so Agente can work on real files.',
             reasoning: '',
             steps: [],
             artifact: null,
@@ -131,7 +131,7 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
             error: 'No workspace root'
           };
         }
-        const flaxeoPrompt = getFlaxeoCodeSystemPrompt();
+        const agentePrompt = getAgenteCodeSystemPrompt();
         return runAgentTask({
           ...args,
           executionMode: 'workspace',
@@ -141,7 +141,7 @@ function createFlaxeoAgentDriver(): CodeAgentDriverDefinition {
           maxIterations: args.maxIterations ?? 28,
           maxToolCalls: args.maxToolCalls ?? 80,
           maxTimeMs: args.maxTimeMs ?? 8 * 60 * 1000,
-          systemPrompt: [flaxeoPrompt, args.systemPrompt].filter(Boolean).join('\n\n'),
+          systemPrompt: [agentePrompt, args.systemPrompt].filter(Boolean).join('\n\n'),
         });
       },
     ),
@@ -202,7 +202,7 @@ export function getCodeAgentDriverRegistry(): CodeAgentDriverRegistry {
     driverRegistry = {
       agente: createAgenteDriver(),
       chatea: createChateaDriver(),
-      'chatea-agent': createFlaxeoAgentDriver()
+      'chatea-agent': createBuiltinAgentDriver()
     };
   }
   return driverRegistry;
@@ -286,7 +286,7 @@ export function getProviderRegistry(): ProviderRegistry {
 
 export function listCodeAgentProviders(): CodeAgentProvider[] {
   // Instance ids are unique by construction now that `pi` is an alias rather
-  // than a duplicate registry entry; prefer Flaxeo Agent first.
+  // than a duplicate registry entry; prefer Agente first.
   const list = Object.values(getCodeAgentInstanceRegistry()).map(adapterToProvider);
   list.sort((a, b) => {
     if (a.id === 'chatea-agent') return -1;

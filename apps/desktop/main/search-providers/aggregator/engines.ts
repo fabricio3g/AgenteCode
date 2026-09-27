@@ -137,7 +137,7 @@ async function searchSemanticScholar(query: string, maxResults: number, options:
 /** PubMed via NCBI E-utilities: search for ids, then fetch their summaries. */
 async function searchPubMed(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const base = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
-  const tool = 'tool=FlaxeoChat';
+  const tool = 'tool=AgenteDesktop';
   const search = await fetchAggregatorJson(`${base}/esearch.fcgi?db=pubmed&retmode=json&sort=relevance&retmax=${Math.min(maxResults, 20)}&term=${encodeURIComponent(query)}&${tool}`, requestOptions('pubmed', options));
   const ids = ((search?.esearchresult as Record<string, unknown> | undefined)?.idlist as string[] | undefined) ?? [];
   if (!ids.length) return [];

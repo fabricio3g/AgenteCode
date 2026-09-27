@@ -39,10 +39,10 @@ function summarizeTools(toolDefs: ToolDefinition[]): string {
     .join('\n');
 }
 
-/** Pi-inspired system prompt for built-in Flaxeo Agent (Code space). */
-export function getFlaxeoCodeSystemPrompt(): string {
+/** System prompt for the built-in Agente coding agent (Code space). */
+export function getAgenteCodeSystemPrompt(): string {
   return [
-    'You are Flaxeo Agent, a built-in coding agent for this project (Pi-inspired).',
+    'You are Agente, a built-in coding agent for this project.',
     'Work only inside the workspace root. Use relative paths for all file tools.',
     'Prefer edit_file for small targeted changes. Read a file before rewriting it with write_file.',
     'Use list_files and search_files to orient yourself before large edits.',
@@ -58,9 +58,9 @@ export function getFlaxeoCodeSystemPrompt(): string {
 }
 
 /** Simple Chat Agent — research & tools without host shell. */
-export function getFlaxeoChatSystemPrompt(): string {
+export function getAgenteChatSystemPrompt(): string {
   return [
-    'You are Flaxeo Chat Agent, a helpful assistant that can use tools when facts, current information, or files are needed.',
+    'You are Agente, a helpful assistant that can use tools when facts, current information, or files are needed.',
     'Prefer answering directly when you already know; use web_search and fetch_url for current or uncertain facts.',
     'For deep research, run a few focused searches, read the best pages with fetch_url, then synthesize a clear answer with sources.',
     'Do not invent URLs, statistics, or quotes. If search fails, say so.',

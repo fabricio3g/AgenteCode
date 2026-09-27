@@ -6,9 +6,9 @@ import {
   resolveCodeAgentInstance
 } from '$lib/services/agent-provider';
 import { CODE_AGENT_TOOL_NAMES, getToolDefinitions } from '$lib/services/agent-tooling';
-import { getFlaxeoCodeSystemPrompt } from '$lib/services/agent-prompts';
+import { getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
 
-describe('Flaxeo Agent (built-in code)', () => {
+describe('Agente (built-in code)', () => {
   it('normalizes aliases to chatea-agent instance', () => {
     expect(normalizeCodeAgentInstanceId('flaxeo-agent')).toBe('chatea-agent');
     expect(normalizeCodeAgentInstanceId('flaxeo')).toBe('chatea-agent');
@@ -16,19 +16,19 @@ describe('Flaxeo Agent (built-in code)', () => {
     expect(normalizeCodeAgentInstanceId('chatea-agent')).toBe('chatea-agent');
   });
 
-  it('exposes Flaxeo Agent as ready default coding provider', () => {
+  it('exposes Agente as ready default coding provider', () => {
     const providers = listCodeAgentProviders();
-    const flaxeo = providers.find((p) => p.id === 'chatea-agent');
-    expect(flaxeo).toBeTruthy();
-    expect(flaxeo!.label).toBe('Flaxeo Agent');
-    expect(flaxeo!.status).toBe('ready');
-    expect(flaxeo!.detail.toLowerCase()).toContain('pi');
+    const builtin = providers.find((p) => p.id === 'chatea-agent');
+    expect(builtin).toBeTruthy();
+    expect(builtin!.label).toBe('Agente');
+    expect(builtin!.status).toBe('ready');
+    expect(builtin!.detail.toLowerCase()).toContain('pi');
     expect(providers[0].id).toBe('chatea-agent');
   });
 
-  it('resolves adapter with Flaxeo branding', () => {
+  it('resolves adapter with Agente branding', () => {
     const adapter = resolveCodeAgentInstance('flaxeo-agent');
-    expect(adapter.instance.displayName).toBe('Flaxeo Agent');
+    expect(adapter.instance.displayName).toBe('Agente');
     expect(adapter.instance.driverKind).toBe('chatea-agent');
   });
 
@@ -79,8 +79,8 @@ describe('Flaxeo Agent (built-in code)', () => {
   });
 
   it('has a Pi-inspired system prompt', () => {
-    const prompt = getFlaxeoCodeSystemPrompt();
-    expect(prompt).toContain('Flaxeo Agent');
+    const prompt = getAgenteCodeSystemPrompt();
+    expect(prompt).toContain('You are Agente');
     expect(prompt.toLowerCase()).toMatch(/edit_file|bash|workspace|diagnostic|web_search/);
   });
 });

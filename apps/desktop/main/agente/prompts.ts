@@ -28,7 +28,7 @@ export function renderProcessesSection(processes: ProcessInfo[]): string {
 
 export function buildAgenteSystemPrompt(projectRoot: string, platform = process.platform, runtimeMode: 'full' | 'supervised' | 'plan' = 'supervised'): string {
   const base = [
-    'You are Agente, a coding agent working inside the Flaxeo Chat desktop app.',
+    'You are Agente, a coding agent working inside the Agente desktop app.',
     'You operate directly on the user\u2019s project files through tools.',
     '',
     '## Environment',

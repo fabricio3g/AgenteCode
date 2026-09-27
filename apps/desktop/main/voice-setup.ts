@@ -8,6 +8,7 @@
  * elsewhere whisper-server borrows the llama.cpp GPU backend (whisper-server.ts).
  */
 
+import { APP_USER_AGENT } from '../shared/brand.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
@@ -96,7 +97,7 @@ export function voiceSetupPlan(requested?: string): VoiceSetupPlan {
 export async function findWhisperRuntimeAsset(): Promise<{ url: string; name: string; tag: string } | null> {
   const patterns = assetCandidates();
   if (!patterns.length) return null;
-  const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'FlaxeoChat' } });
+  const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': APP_USER_AGENT } });
   if (!res.ok) throw new Error(`Could not list whisper.cpp releases (HTTP ${res.status})`);
   const releases = await res.json() as Release[];
   for (const pattern of patterns) {

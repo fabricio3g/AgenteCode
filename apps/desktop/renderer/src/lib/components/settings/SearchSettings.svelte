@@ -36,7 +36,7 @@
    */
   const SEARCH_PROVIDERS: SearchProviderItem[] = [
     { id: 'auto', label: 'Auto' },
-    { id: 'aggregator', label: 'Flaxeo Aggregator' },
+    { id: 'aggregator', label: 'Agente Aggregator' },
     { id: 'tavily', label: 'Tavily', needsKey: true, keyUrl: 'https://app.tavily.com' },
     { id: 'exa', label: 'Exa', needsKey: true, keyUrl: 'https://dashboard.exa.ai' },
     { id: 'brave', label: 'Brave Search', needsKey: true, keyUrl: 'https://api-dashboard.search.brave.com' },

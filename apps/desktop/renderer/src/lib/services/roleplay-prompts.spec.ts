@@ -55,7 +55,7 @@ describe('buildRoleplaySystemPrompt', () => {
     const prompt = buildRoleplaySystemPrompt({ characters: [card()] });
     expect(prompt).toContain('Aiko');
     expect(prompt).toContain("Write Aiko's next reply");
-    expect(prompt).not.toContain('Flaxeo Chat');
+    expect(prompt).not.toContain('normal assistant style');
     expect(prompt).not.toContain('<chart');
   });
 

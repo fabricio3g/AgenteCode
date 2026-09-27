@@ -301,7 +301,7 @@ export function htmlReport(
   });
 }
 
-/** "Flaxeo · 2026-09-24" — who made it and when, nothing louder. */
+/** "Agente · 2026-09-24" — who made it and when, nothing louder. */
 function reportMeta(report: ReportDocument): string {
   return [report.author || ARTIFACT_BRAND, report.date].filter(Boolean).join(' · ');
 }

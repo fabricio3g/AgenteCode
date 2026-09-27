@@ -6,7 +6,7 @@ import { providerCandidates, providerDisplayName, providerHasCredentials } from 
 describe('search aggregator provider', () => {
   it('is available without credentials', () => {
     assert.equal(providerHasCredentials('aggregator', {}), true);
-    assert.equal(providerDisplayName('aggregator'), 'Flaxeo Chat Aggregator');
+    assert.equal(providerDisplayName('aggregator'), 'Agente Aggregator');
   });
 
   it('is included in auto provider candidates', () => {

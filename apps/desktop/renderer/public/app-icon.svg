@@ -1,5 +1,8 @@
-<svg width="468" height="468" viewBox="0 0 468 468" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="8" y="8" width="452" height="452" rx="26" fill="white" stroke="black" stroke-width="16"/>
-<path d="M182.951 10L274.925 96.2257C277.189 98.3485 276.993 102 274.514 103.867L189.889 167.611C187.962 169.062 187.346 171.683 188.425 173.841L210.564 218.119C211.892 220.774 210.627 223.995 207.848 225.037L144.444 248.813C140.768 250.192 140.042 255.076 143.16 257.464L187.804 291.66C190.288 293.562 190.434 297.253 188.109 299.346L12 457.843" stroke="black" stroke-width="18"/>
-<path d="M279.261 320.601L349.086 410.892M323.805 262.815H411.688M284.077 205.029L369.552 134" stroke="black" stroke-width="18" stroke-linecap="round"/>
+<svg width="120" height="120" xmlns="http://www.w3.org/2000/svg">
+    <defs/>
+    <path fill="#111317" stroke="#23262d" stroke-width="1.5" d="M 28 1 L 92 1 C 106.91169 1 119 13.088312 119 28 L 119 92 C 119 106.91169 106.91169 119 92 119 L 28 119 C 13.088312 119 1 106.91169 1 92 L 1 28 C 1 13.088312 13.088312 1 28 1 Z"/>
+    <g transform="matrix(0.78 0 0 0.78 13.2 13.2)">
+        <path fill="#f2f2f3" stroke="none" d="M 22 98 L 50 22 L 70 22 L 98 98 L 79 98 L 60 44 L 41 98 Z"/>
+        <path fill="none" stroke="#e5a445" stroke-width="9" stroke-linecap="round" d="M 36 77 C 44 67 52 67 60 73 C 68 79 76 79 84 69"/>
+    </g>
 </svg>

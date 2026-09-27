@@ -7,6 +7,7 @@ import { registerIpcHandlers } from './ipc-handlers.ts';
 import { stopAllInstances } from './instances.ts';
 import { initTts } from './tts-engine.ts';
 import { moduleDirname } from './module-env.ts';
+import { APP_NAME } from '../shared/brand.ts';
 import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
@@ -27,7 +28,6 @@ const RENDERER_PROD_PATH = path.join(moduleDir, '..', 'renderer', 'dist', 'index
 const APP_ICON_PATH = IS_DEV
   ? path.join(moduleDir, '..', '..', 'renderer', 'public', 'app-icon.png')
   : path.join(moduleDir, '..', 'renderer', 'dist', 'app-icon.png');
-const APP_NAME = 'Flaxeo Chat';
 
 let tray = null;
 

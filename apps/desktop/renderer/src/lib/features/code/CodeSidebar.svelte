@@ -6,7 +6,7 @@
   Every project row has a hover "+" (new conversation) and a "…" menu that a
   right-click also opens: New conversation, Rename, Show in folder, Copy path,
   Locate folder (when it went missing) and Delete project. Deleting a project
-  removes it and its conversations from Flaxeo; the folder on disk is never
+  removes it and its conversations from Agente; the folder on disk is never
   touched. Conversation rows are the shared SessionRow (rename, export,
   delete, live status).
 -->

@@ -53,7 +53,7 @@ describe('roleplay prompt wiring', () => {
     expect(prompt).toContain('Sarcastic but kind.');
     expect(prompt).toContain('The cafe is closing.');
     expect(prompt).toContain("Write Aiko's next reply");
-    expect(prompt).not.toContain('Flaxeo Chat');
+    expect(prompt).not.toContain('normal assistant style');
   });
 
   it('binds the current empty roleplay chat instead of creating another', async () => {

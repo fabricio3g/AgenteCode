@@ -1,6 +1,6 @@
-# Chatea
+# Agente Desktop
 
-AI Chat Assistant built with Electron, Svelte, and TypeScript.
+The desktop app of the Agente family: chat, local models, artifacts, voice and the Code section. Built with Electron, Svelte and TypeScript. It lives in `apps/desktop` of the Agente monorepo; run the commands below from this folder.
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full documentation.
 
 ### Static Analysis With Fallow
 
-Chatea uses [Fallow](https://docs.fallow.tools/cli/audit) as its codebase truth layer for dead code, duplication, and complexity review.
+Agente Desktop uses [Fallow](https://docs.fallow.tools/cli/audit) as its codebase truth layer for dead code, duplication, and complexity review.
 
 - Run `npm run fallow:summary` for a quick overview.
 - Run `npm run fallow:audit` before opening a PR.

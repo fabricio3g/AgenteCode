@@ -1,4 +1,5 @@
 // HTTP-based search provider implementations
+import { APP_USER_AGENT } from '../../shared/brand.ts';
 import {
   fetchWithRetry, normalizeSearchItem, parseSearchResultsFromText,
   normalizeWhitespace, cleanText, compactSearchContext,
@@ -105,7 +106,7 @@ export async function searchExa(query: string, maxResults: number, options: Reco
 export async function searchJina(query: string, maxResults: number, options: Record<string, unknown>): Promise<SearchResult[]> {
   const baseUrl = String(options?.jina_base_url || 'https://s.jina.ai').replace(/\/+$/, '');
   const url = `${baseUrl}/${encodeURIComponent(query)}`;
-  const headers: Record<string, string> = { Accept: 'text/plain', 'User-Agent': 'FlaxeoChat/1.0' };
+  const headers: Record<string, string> = { Accept: 'text/plain', 'User-Agent': APP_USER_AGENT };
   if (options?.jina_api_key) {
     headers.Authorization = `Bearer ${options.jina_api_key as string}`;
   }

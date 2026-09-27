@@ -2,7 +2,7 @@ import type { AgentStep } from '$lib/types/chat';
 import type { ToolDefinition } from '$lib/services/chat-api';
 import { getAllArtifacts, getEnabledArtifactIds } from '$lib/services/artifact-registry';
 
-/** Pi-inspired coding tools (Flaxeo Agent code profile) + web + diagnostics. */
+/** Pi-inspired coding tools (Agente code profile) + web + diagnostics. */
 export const CODE_AGENT_TOOL_NAMES = new Set([
   'read_file',
   'write_file',

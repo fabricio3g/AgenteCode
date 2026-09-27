@@ -1,5 +1,5 @@
 /**
- * Main configuration module for Flaxeo Chat.
+ * Main configuration module for Agente.
  * 
  * This module orchestrates config loading, saving, and management.
  * It integrates:

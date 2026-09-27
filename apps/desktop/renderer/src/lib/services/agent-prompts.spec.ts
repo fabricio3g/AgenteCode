@@ -4,7 +4,7 @@ import {
   buildDirectSystemPrompt,
   buildResearchFinalAnswerContract,
   buildResearchReportInstruction,
-  getFlaxeoChatSystemPrompt,
+  getAgenteChatSystemPrompt,
   getNativeSystemPrompt,
   getXmlSystemPrompt
 } from '$lib/services/agent-prompts';
@@ -183,7 +183,7 @@ describe('agent-prompts', () => {
   });
 
   it('chat prompt mandates calling artifact tools instead of describing deliverables', () => {
-    const prompt = getFlaxeoChatSystemPrompt();
+    const prompt = getAgenteChatSystemPrompt();
 
     expect(prompt).toContain('DELIVERABLES');
     expect(prompt).toContain('call the matching create_* tool');

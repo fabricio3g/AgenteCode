@@ -1,8 +1,8 @@
 {
-  "name": "chatealm",
+  "name": "agente-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Flaxeo Chat – AI Chat Assistant (Electron)",
+  "description": "Agente Desktop – local AI workspace (Electron)",
   "type": "module",
   "main": "dist-electron/main/index.cjs",
   "scripts": {
@@ -88,8 +88,8 @@
     "wait-on": "^8.0.2"
   },
   "build": {
-    "appId": "com.chatea.lm",
-    "productName": "Flaxeo Chat",
+    "appId": "dev.agente.desktop",
+    "productName": "Agente",
     "directories": {
       "output": "dist-electron",
       "buildResources": "build"

@@ -1,4 +1,4 @@
-// The cloud providers Flaxeo supports, shared by main and the renderer.
+// The cloud providers Agente supports, shared by main and the renderer.
 //
 // Only services whose terms let a person use their own key from a
 // third-party app stay here. OpenAI, Anthropic, Gemini, Groq, Mistral,

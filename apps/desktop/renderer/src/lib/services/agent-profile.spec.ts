@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHAT_AGENT_TOOL_NAMES, CODE_AGENT_TOOL_NAMES, getToolDefinitions } from '$lib/services/agent-tooling';
-import { getFlaxeoChatSystemPrompt, getFlaxeoCodeSystemPrompt } from '$lib/services/agent-prompts';
+import { getAgenteChatSystemPrompt, getAgenteCodeSystemPrompt } from '$lib/services/agent-prompts';
 
 describe('agent profiles', () => {
   it('chat profile excludes host shell and diagnostics', () => {
@@ -36,8 +36,8 @@ describe('agent profiles', () => {
   });
 
   it('prompts are profile-specific', () => {
-    expect(getFlaxeoChatSystemPrompt()).toContain('Chat Agent');
-    expect(getFlaxeoChatSystemPrompt().toLowerCase()).toContain('shell');
-    expect(getFlaxeoCodeSystemPrompt()).toContain('Flaxeo Agent');
+    expect(getAgenteChatSystemPrompt()).toContain('You are Agente');
+    expect(getAgenteChatSystemPrompt().toLowerCase()).toContain('shell');
+    expect(getAgenteCodeSystemPrompt()).toContain('coding agent');
   });
 });

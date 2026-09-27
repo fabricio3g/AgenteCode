@@ -1,3 +1,4 @@
+import { APP_USER_AGENT } from '../shared/brand.ts';
 import { BrowserWindow } from 'electron';
 import { LOCAL_GGUF_CATALOG, TTS_MODEL_CATALOG, WHISPER_QUALITY_CATALOG } from './config.ts';
 import { EMBEDDING_MODEL_CATALOG } from './rag/embedding-catalog.ts';
@@ -77,7 +78,7 @@ async function fetchPageContent(url: string, options: Record<string, unknown> = 
 
     const readerUrl = buildJinaReaderUrl(url, 'https://r.jina.ai');
     if (!readerUrl) return null;
-    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': 'FlaxeoChat/1.0' };
+    const headers: Record<string, string> = { Accept: 'text/plain', 'X-Return-Format': 'markdown', 'User-Agent': APP_USER_AGENT };
     if (options.jina_api_key) {
       headers.Authorization = `Bearer ${options.jina_api_key as string}`;
     }

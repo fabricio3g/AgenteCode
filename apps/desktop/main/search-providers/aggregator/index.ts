@@ -170,7 +170,7 @@ export function getAggregatorCatalog() {
 export async function probeAggregatorEngines(
   engineIds: unknown,
   options: Record<string, unknown> = {},
-  query = 'Flaxeo search test',
+  query = 'Agente search test',
 ): Promise<AggregatorDiagnostics> {
   const probeOptions = { ...options, aggregator_engines: normalizeAggregatorEngines(engineIds, options), aggregator_deadline_ms: 12_000 };
   await searchAggregator(query, 1, probeOptions);

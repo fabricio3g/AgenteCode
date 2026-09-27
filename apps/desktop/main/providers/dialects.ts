@@ -4,6 +4,7 @@
 // shape, base-URL normalization, extra headers, capability levels — lives
 // here as data, so adding a provider is a row, not a class.
 
+import { APP_NAME, APP_REPO_URL } from '../../shared/brand.ts';
 import type { ReasoningCapabilities } from './base.ts';
 
 export interface Dialect {
@@ -105,7 +106,7 @@ export const DIALECTS: Dialect[] = [
     matchHosts: ['openrouter.ai'],
     keyCheckPath: '/key',
     headers() {
-      return { 'HTTP-Referer': 'https://github.com/fabricio3g/Flaxeo-Chat', 'X-Title': 'Flaxeo Chat' };
+      return { 'HTTP-Referer': APP_REPO_URL, 'X-Title': APP_NAME };
     },
     reasoningBody(level) {
       if (!level) return {};

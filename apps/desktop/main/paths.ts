@@ -17,7 +17,7 @@ export function getAppPaths() {
   // Lazy import - Electron is only available inside Electron runtime
   const { app } = nodeRequire('electron');
   
-  // Flaxeo Chat/ in the OS app-data folder; data-folder.ts moves old installs here.
+  // Agente/ in the OS app-data folder; data-folder.ts moves old installs here.
   const appData = dataRoot(app.getPath('appData'));
 
   const isDev = !app.isPackaged;

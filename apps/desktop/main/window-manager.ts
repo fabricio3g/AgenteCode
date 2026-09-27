@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog, nativeImage } from 'electron';
+import { APP_NAME } from '../shared/brand.ts';
 
 let mainWindow: BrowserWindow | null = null;
 type ActiveWorkState = { active: boolean; reasons: string[] };
@@ -49,7 +50,7 @@ export async function requestMainWindowClose() {
     defaultId: 0,
     cancelId: 0,
     noLink: true,
-    title: 'Quit Flaxeo Chat?',
+    title: `Quit ${APP_NAME}?`,
     message: 'Work is still in progress.',
     detail: `${reasonText}\n\nIf you quit now, in-progress work may be interrupted.`
   });

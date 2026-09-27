@@ -17,13 +17,13 @@ import { compactText } from '$lib/services/agent-evidence';
 import { isResearchProductPath, resolveResearchMode } from '$lib/services/research-pipeline';
 import {
   getNativeSystemPrompt, getXmlSystemPrompt, buildDirectSystemPrompt, buildCurrentRequestReminder,
-  getFlaxeoCodeSystemPrompt, getFlaxeoChatSystemPrompt
+  getAgenteCodeSystemPrompt, getAgenteChatSystemPrompt
 } from '$lib/services/agent-prompts';
 import { DEFAULT_PROVIDER_ID } from '$shared/providers';
 
 const DEFAULT_MAX_ITERATIONS = 14;
 const LOCAL_DEFAULT_MAX_ITERATIONS = 10;
-/** Flaxeo Agent (code) needs more room than chat sandbox agents. */
+/** Agente (code) needs more room than chat sandbox agents. */
 const CODE_MAX_ITERATIONS = 28;
 const CODE_LOCAL_MAX_ITERATIONS = 18;
 const CODE_MAX_TIME_MS = 8 * 60 * 1000;
@@ -126,7 +126,7 @@ function defaultToolCalls(profile: { code: boolean; chat: boolean }, maxIteratio
 function modeNote(plan: { isCodeProfile: boolean; isChatProfile: boolean; executionMode: string }, workspaceRoot?: string): string {
   if (plan.isCodeProfile || (plan.executionMode === 'workspace' && !plan.isChatProfile)) {
     return [
-      plan.isCodeProfile ? getFlaxeoCodeSystemPrompt() : '',
+      plan.isCodeProfile ? getAgenteCodeSystemPrompt() : '',
       `You are attached to a real workspace folder at ${workspaceRoot || 'the project root'}.`,
       'Files and bash commands run on the host filesystem, confined to the workspace root.',
       '',
@@ -147,7 +147,7 @@ function modeNote(plan: { isCodeProfile: boolean; isChatProfile: boolean; execut
   }
   if (plan.isChatProfile) {
     return [
-      getFlaxeoChatSystemPrompt(),
+      getAgenteChatSystemPrompt(),
       'You are in chat sandbox mode. Files exist only inside this conversation unless the user exports them.',
     ].join('\n');
   }

@@ -1,6 +1,6 @@
 /**
  * How a model's license reads in the model hub. "Open" means permissive with
- * no use restrictions (Apache, MIT, BSD, ISC, CC0) — the licenses Flaxeo Chat
+ * no use restrictions (Apache, MIT, BSD, ISC, CC0) — the licenses Agente
  * prefers and highlights. Everything else keeps its own name.
  */
 

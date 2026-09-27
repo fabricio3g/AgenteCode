@@ -1,4 +1,4 @@
-// Flaxeo Chat - OCR Engine (Tesseract.js + PDF.js)
+// Agente - OCR Engine (Tesseract.js + PDF.js)
 // Ported from legacy web/components/ocr.js
 
 interface OcrResult {

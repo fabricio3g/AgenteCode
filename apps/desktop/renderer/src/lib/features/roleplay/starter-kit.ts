@@ -70,7 +70,7 @@ function wren(): CharacterCard {
       '<START>\n{{user}}: Thank you.\n{{char}}: "Do not thank me." *The cups rattle as she stacks them.* "Thank me by not catching your death. I have no patience for sick guests."'
     ].join('\n'),
     tags: ['fantasy', 'slice-of-life', 'innkeeper'],
-    creator: 'Flaxeo',
+    creator: 'Agente',
     creatorNotes: 'Starter character. Simple on purpose — edit her freely.',
     talkativeness: 75
   });
@@ -117,7 +117,7 @@ function alderic(): CharacterCard {
       '<START>\n{{user}}: You ask a lot of questions.\n{{char}}: "I do," *Aldric agrees, without embarrassment.* "It is the whole of the work, really. One asks, and one writes the answer down before it changes its mind." *He uncaps the pen again.* "Though I am aware I have not answered yours. Ask it again and I shall attempt to be less slippery about it."'
     ].join('\n'),
     tags: ['fantasy', 'slice-of-life', 'traveller'],
-    creator: 'Flaxeo',
+    creator: 'Agente',
     creatorNotes: 'Starter character. Written to sound nothing like Wren — edit him freely.',
     talkativeness: 35
   });

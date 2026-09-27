@@ -1,3 +1,5 @@
+import { APP_REPO_URL, APP_USER_AGENT } from '../../../shared/brand.ts';
+
 export type AggregatorEngineCategory = 'recommended' | 'general' | 'research' | 'self_hosted' | 'api';
 export type AggregatorEngineTransport = 'json' | 'xml';
 export type AggregatorEngineStability = 'stable' | 'beta' | 'experimental';
@@ -77,7 +79,7 @@ export const SUPPORTED_AGGREGATOR_ENGINES: AggregatorEngineId[] =
   AGGREGATOR_ENGINE_CATALOG.map((item) => item.id);
 
 /** Identifies the app and how to reach its maintainers, as Wikimedia and Crossref ask. */
-export const AGGREGATOR_USER_AGENT = 'FlaxeoChat/1.0 (+https://github.com/fabricio3g/Flaxeo-Chat)';
+export const AGGREGATOR_USER_AGENT = `${APP_USER_AGENT} (+${APP_REPO_URL})`;
 export const AGGREGATOR_CONCURRENCY = 4;
 export const AGGREGATOR_DEADLINE_MS = 12_000;
 export const AGGREGATOR_FAILURE_THRESHOLD = 3;

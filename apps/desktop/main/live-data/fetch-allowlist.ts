@@ -1,4 +1,6 @@
 /** Allowlisted hosts for live-data tools (SSRF-safe). */
+import { APP_USER_AGENT } from '../../shared/brand.ts';
+
 const ALLOWED_HOSTS = new Set([
   'api.open-meteo.com',
   'geocoding-api.open-meteo.com',
@@ -32,7 +34,7 @@ export async function fetchLiveJson(urlString: string, timeoutMs = 12000): Promi
   try {
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'application/json', 'User-Agent': 'FlaxeoChat/1.0 (live-data)' },
+      headers: { Accept: 'application/json', 'User-Agent': `${APP_USER_AGENT} (live-data)` },
       signal: controller.signal
     });
     if (!res.ok) {
@@ -51,7 +53,7 @@ export async function fetchLiveText(urlString: string, timeoutMs = 12000): Promi
   try {
     const res = await fetch(url.toString(), {
       method: 'GET',
-      headers: { Accept: 'text/csv,text/plain,*/*', 'User-Agent': 'FlaxeoChat/1.0 (live-data)' },
+      headers: { Accept: 'text/csv,text/plain,*/*', 'User-Agent': `${APP_USER_AGENT} (live-data)` },
       signal: controller.signal
     });
     if (!res.ok) {

@@ -94,7 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
 
   // App info
-  appName: 'Flaxeo Chat',
+  appName: 'Agente', // mirrors shared/brand.ts
 
   // Platform info
   platform: process.platform,

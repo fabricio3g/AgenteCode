@@ -9,7 +9,7 @@ privileged code.
 
 An extension is a `setup(pi)` factory receiving a capability object — the
 same shape as [pi (badlogic/pi-mono)](https://github.com/earendil-works/pi),
-so the future external loader (`~/.flaxeo/agente/extensions/*.ts` via jiti)
+so the future external loader (`~/.agente/extensions/*.ts` via jiti)
 will load identical definitions with zero changes.
 
 ```ts
@@ -107,7 +107,7 @@ changes apply to sessions started afterwards.
 
 ## Roadmap
 
-- External loading from `~/.flaxeo/agente/extensions/` and
+- External loading from `~/.agente/extensions/` and
   `<workspace>/.agente/extensions/` (jiti, pi-style discovery).
 - Per-project extension sets.
 - Commands surfaced in the composer UI.

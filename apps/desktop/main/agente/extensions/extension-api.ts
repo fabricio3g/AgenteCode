@@ -2,7 +2,7 @@
 // pi-shaped: an extension is a `setup(pi)` factory receiving a capability
 // object. Tools, hooks and commands registered here are indistinguishable
 // from the built-ins — the built-ins themselves are plain AgentTools, not
-// privileged code. When external loading (~/.flaxeo/agente/extensions)
+// privileged code. When external loading (~/.agente/extensions)
 // lands, the same definitions load from disk unchanged.
 
 import type { AgentMessage, ToolResult } from '../../../shared/agent-core/types.ts';

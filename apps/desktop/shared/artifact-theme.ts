@@ -4,7 +4,9 @@
 // Generated files leave the app, so they can't use the app's CSS tokens; the
 // concrete colors live here, once.
 
-export const ARTIFACT_BRAND = 'Flaxeo Chat';
+import { APP_NAME } from './brand.ts';
+
+export const ARTIFACT_BRAND = APP_NAME;
 
 export type ArtifactAccent = 'slate' | 'blue' | 'green' | 'amber' | 'rose' | 'violet';
 export type ArtifactTheme = 'light' | 'dark';

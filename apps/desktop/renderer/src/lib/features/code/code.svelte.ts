@@ -172,7 +172,7 @@ class CodeStore {
   }
 
   /**
-   * Delete a project from Flaxeo: every conversation in it (and the engine's
+   * Delete a project from Agente: every conversation in it (and the engine's
    * logs and checkpoints for them), then the project itself. The folder on
    * disk is never touched.
    */
