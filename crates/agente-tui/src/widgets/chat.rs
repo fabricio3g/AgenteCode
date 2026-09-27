@@ -2178,10 +2178,16 @@ fn assistant_timestamp_row(width: usize, ts: chrono::DateTime<chrono::Utc>) -> L
     ])
 }
 
-/// `8:19 AM` in the terminal's local timezone.
+/// `8:19 AM` in the terminal's local timezone (UTC under test, so rendered
+/// snapshots are the same on every machine).
 fn format_time_am_pm(ts: chrono::DateTime<chrono::Utc>) -> String {
-    let local = ts.with_timezone(&chrono::Local);
-    let s = local.format("%I:%M %p").to_string();
+    #[cfg(not(test))]
+    let s = ts
+        .with_timezone(&chrono::Local)
+        .format("%I:%M %p")
+        .to_string();
+    #[cfg(test)]
+    let s = ts.format("%I:%M %p").to_string();
     match s.strip_prefix('0') {
         Some(trimmed) => trimmed.to_string(),
         None => s,

@@ -252,9 +252,13 @@ mod tests {
         // Narrow: the status wins the row; hints give way whole.
         let narrow = row(24);
         assert!(!narrow.contains("Ctrl+P"), "got: {narrow}");
+        // What the status holds depends on the model catalog on this machine
+        // (context size or just the mode), so compare against the wide row:
+        // the narrow row still ends with the same status.
+        let tail = narrow.split_whitespace().last().unwrap_or_default();
         assert!(
-            narrow.trim_end().ends_with("128k"),
-            "status stays: {narrow}"
+            !tail.is_empty() && wide.trim_end().ends_with(tail),
+            "status stays: {narrow} (wide: {wide})"
         );
     }
 
