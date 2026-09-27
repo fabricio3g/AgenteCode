@@ -415,6 +415,8 @@ pub enum RuntimeError {
     EventStreamClosed,
     #[error("session {0} already has an active turn")]
     SessionBusy(SessionId),
+    #[error("session store: {0}")]
+    Store(String),
 }
 
 pub struct TurnHandle {
@@ -670,6 +672,77 @@ impl RuntimeHandle {
         self.inner.events.subscribe()
     }
 
+    /// Every session this runtime knows: in memory, and saved in its store.
+    pub fn list_sessions(&self) -> Vec<SessionId> {
+        let mut ids: Vec<SessionId> = self.inner.read_sessions().keys().copied().collect();
+        if let Some(store) = &self.inner.config.session_store {
+            match store.list_sessions() {
+                Ok(saved) => ids.extend(saved),
+                Err(error) => tracing::warn!(%error, "listing saved sessions failed"),
+            }
+        }
+        ids.sort_by_key(|id| id.as_uuid());
+        ids.dedup();
+        ids
+    }
+
+    /// Forget a session, in memory and on disk. Refused while a turn runs.
+    pub fn delete_session(&self, session_id: SessionId) -> Result<bool, RuntimeError> {
+        if self.is_busy(session_id) {
+            return Err(RuntimeError::SessionBusy(session_id));
+        }
+        let mut existed = self.inner.write_sessions().remove(&session_id).is_some();
+        self.inner
+            .contexts
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&session_id);
+        if let Some(store) = &self.inner.config.session_store {
+            existed |= store
+                .delete(session_id)
+                .map_err(|error| RuntimeError::Store(error.to_string()))?;
+        }
+        Ok(existed)
+    }
+
+    /// Shrink the session's conversation now (trimming older turns, keeping
+    /// recent ones), like the automatic compaction between model calls.
+    /// Refused while a turn runs. Returns the new snapshot.
+    pub fn compact(&self, session_id: SessionId) -> Result<SessionSnapshot, RuntimeError> {
+        if self.is_busy(session_id) {
+            return Err(RuntimeError::SessionBusy(session_id));
+        }
+        let snapshot = self.inner.lookup_session(session_id);
+        let before = snapshot.conversation.len();
+        let result = agente_core::context::ContextCompactor::new(
+            agente_core::context::CompactionStrategy::default(),
+        )
+        .compact_forced(snapshot.conversation);
+        if result.messages.len() == before && result.summary.tokens_saved == 0 {
+            return Ok(self.inner.lookup_session(session_id));
+        }
+        let after = result.messages.len();
+        let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
+        let envelope = self.envelope(
+            session_id,
+            TurnId::new(),
+            None,
+            RuntimeEvent::ContextCompacted {
+                summary: format!("{} messages compacted", before.saturating_sub(after)),
+                revision,
+            },
+        );
+        self.inner.publish(&envelope);
+        Ok(self.inner.lookup_session(session_id))
+    }
+
+    fn is_busy(&self, session_id: SessionId) -> bool {
+        self.inner
+            .lock_turns()
+            .values()
+            .any(|control| control.session_id == session_id)
+    }
+
     pub fn session_snapshot(&self, session_id: SessionId) -> SessionSnapshot {
         self.inner.lookup_session(session_id)
     }
@@ -869,6 +942,12 @@ mod tests {
             .with_persistence_dir(root.clone())
             .expect("store opens in a fresh tempdir");
         (config, root)
+    }
+
+    fn persistent_config_at(root: &Path) -> RuntimeConfig {
+        test_config()
+            .with_persistence_dir(root.to_path_buf())
+            .expect("store reopens")
     }
 
     fn core_assistant_message(content: &str) -> agente_core::types::Message {
@@ -1239,6 +1318,88 @@ mod tests {
             UserInput {
                 content: "x".into()
             }
+        ));
+    }
+
+    #[test]
+    fn list_and_delete_cover_memory_and_disk() {
+        let (config, dir) = persistent_config("list-delete");
+        let handle = RuntimeSupervisor::start(config);
+        let session_id = SessionId::new();
+        let snapshot = SessionSnapshot {
+            session_id,
+            revision: 1,
+            conversation: vec![Message::user("hello")],
+        };
+        handle
+            .inner
+            .write_sessions()
+            .insert(session_id, snapshot.clone());
+        handle.inner.persist_snapshot(&snapshot);
+
+        let restarted = RuntimeSupervisor::start(persistent_config_at(&dir));
+        assert_eq!(restarted.list_sessions(), vec![session_id]);
+
+        // A running turn blocks deletion.
+        restarted.inner.lock_turns().insert(
+            TurnId::new(),
+            TurnControl {
+                cancel: AbortController::new(),
+                inbox: UserInbox::default(),
+                events: mpsc::channel(1).0,
+                session_id,
+            },
+        );
+        assert!(matches!(
+            restarted.delete_session(session_id),
+            Err(RuntimeError::SessionBusy(_))
+        ));
+        restarted.inner.lock_turns().clear();
+
+        assert!(restarted.delete_session(session_id).unwrap());
+        assert!(restarted.list_sessions().is_empty());
+        assert!(RuntimeSupervisor::start(persistent_config_at(&dir))
+            .list_sessions()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn compact_shrinks_a_long_conversation_and_bumps_the_revision() {
+        let handle = RuntimeSupervisor::start(test_config());
+        let mut attached = handle.subscribe();
+        let session_id = SessionId::new();
+        let long = "lorem ipsum dolor sit amet ".repeat(400);
+        let conversation = (0..40)
+            .map(|i| {
+                if i % 2 == 0 {
+                    Message::user(format!("{i} {long}"))
+                } else {
+                    let mut reply = Message::user(format!("{i} {long}"));
+                    reply.role = Role::Assistant;
+                    reply
+                }
+            })
+            .collect::<Vec<_>>();
+        handle.inner.write_sessions().insert(
+            session_id,
+            SessionSnapshot {
+                session_id,
+                revision: 3,
+                conversation,
+            },
+        );
+
+        let compacted = handle.compact(session_id).unwrap();
+        assert!(
+            compacted.conversation.len() < 40,
+            "{}",
+            compacted.conversation.len()
+        );
+        assert_eq!(compacted.revision, 4);
+        assert!(matches!(
+            attached.try_recv().map(|e| e.event),
+            Ok(RuntimeEvent::ContextCompacted { revision: 4, .. })
         ));
     }
 }

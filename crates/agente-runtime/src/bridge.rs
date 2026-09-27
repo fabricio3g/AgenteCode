@@ -385,7 +385,7 @@ fn commit_conversation(
     replace_conversation(inner, session_id, conversation)
 }
 
-fn replace_conversation(
+pub(crate) fn replace_conversation(
     inner: &RuntimeInner,
     session_id: SessionId,
     conversation: Vec<Message>,

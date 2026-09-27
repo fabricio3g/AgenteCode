@@ -32,6 +32,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use agente_protocol::{Message, SessionId, SessionSnapshot, PROTOCOL_VERSION};
+
+/// Oldest protocol version whose stored sessions this store still reads.
+/// Versions since then only added fields, so older records load as-is.
+const OLDEST_READABLE_VERSION: u16 = 1;
+
+fn readable(version: u16) -> bool {
+    (OLDEST_READABLE_VERSION..=PROTOCOL_VERSION).contains(&version)
+}
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -108,7 +116,7 @@ impl SessionStore {
     /// use and never fsyncs. Durability comes from [`SessionStore::flush`],
     /// [`SessionStore::durable_flush`], or [`SessionStore::append_durable`].
     pub fn append(&self, record: &SessionEventRecord) -> Result<(), SessionStoreError> {
-        if record.protocol_version != PROTOCOL_VERSION {
+        if !readable(record.protocol_version) {
             return Err(SessionStoreError::UnsupportedVersion(
                 record.protocol_version,
             ));
@@ -236,7 +244,7 @@ impl SessionStore {
         let mut recovered = if self.snapshot_path(session_id).exists() {
             let file = fs::File::open(self.snapshot_path(session_id))?;
             let stored: StoredSnapshot = serde_json::from_reader(file)?;
-            if stored.protocol_version != PROTOCOL_VERSION {
+            if !readable(stored.protocol_version) {
                 return Err(SessionStoreError::UnsupportedVersion(
                     stored.protocol_version,
                 ));
@@ -285,14 +293,14 @@ impl SessionStore {
                 continue;
             }
             match serde_json::from_slice::<SessionEventRecord>(payload) {
-                Ok(record) if record.protocol_version == PROTOCOL_VERSION && terminated => {
+                Ok(record) if readable(record.protocol_version) && terminated => {
                     if record.sequence > recovered.last_sequence {
                         apply_event(&mut recovered.snapshot, record.event);
                         recovered.last_sequence = record.sequence;
                     }
                     last_good_offset = scanned_bytes;
                 }
-                Ok(record) if record.protocol_version != PROTOCOL_VERSION => {
+                Ok(record) if !readable(record.protocol_version) => {
                     tracing::warn!(
                         session = %session_id,
                         offset = scanned_bytes,
@@ -370,6 +378,21 @@ impl SessionStore {
         ids.sort_by_key(|id| id.as_uuid());
         ids.dedup();
         Ok(ids)
+    }
+
+    /// Remove a session's snapshot and event log. Missing files are fine;
+    /// returns whether anything was on disk.
+    pub fn delete(&self, session_id: SessionId) -> Result<bool, SessionStoreError> {
+        self.logs.lock().unwrap().remove(&session_id);
+        let mut removed = false;
+        for path in [self.snapshot_path(session_id), self.log_path(session_id)] {
+            match fs::remove_file(&path) {
+                Ok(()) => removed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(removed)
     }
 
     fn log_path(&self, session_id: SessionId) -> PathBuf {
@@ -494,6 +517,31 @@ mod tests {
         let recovered = reopened.recover(session_id).unwrap();
         assert_eq!(recovered.snapshot.conversation.len(), 2);
         assert_eq!(recovered.last_sequence, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sessions_saved_by_older_protocol_versions_still_recover() {
+        let root = test_root("older-version");
+        let store = SessionStore::open(&root).unwrap();
+        let session_id = SessionId::new();
+        let mut old = record(session_id, 1, "from v1");
+        old.protocol_version = 1;
+        store.append_durable(&old).unwrap();
+        let recovered = store.recover(session_id).unwrap();
+        assert_eq!(recovered.snapshot.conversation.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn delete_removes_snapshot_and_log() {
+        let root = test_root("delete");
+        let store = SessionStore::open(&root).unwrap();
+        let session_id = SessionId::new();
+        store.append_durable(&record(session_id, 1, "x")).unwrap();
+        assert!(store.delete(session_id).unwrap());
+        assert!(store.list_sessions().unwrap().is_empty());
+        assert!(!store.delete(session_id).unwrap(), "already gone");
         fs::remove_dir_all(root).unwrap();
     }
 
