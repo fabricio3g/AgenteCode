@@ -440,6 +440,32 @@ pub struct SessionSnapshot {
     pub conversation: Vec<Message>,
 }
 
+/// What a session list shows: one per saved session, whatever client made it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionInfo {
+    pub session_id: SessionId,
+    /// Short generated label; empty until one is made.
+    #[serde(default)]
+    pub title: String,
+    /// First user message, trimmed: the fallback label.
+    #[serde(default)]
+    pub first_prompt: String,
+    pub project_dir: String,
+    pub created_at: DateTime<Utc>,
+    pub last_active: DateTime<Utc>,
+    #[serde(default)]
+    pub message_count: usize,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub thinking_level: String,
+    /// The bot or client preset the session belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ChildSnapshot {
     pub run_id: RunId,
@@ -460,6 +486,7 @@ pub fn protocol_schema() -> serde_json::Value {
     generator.subschema_for::<TurnOutcome>();
     generator.subschema_for::<SessionSnapshot>();
     generator.subschema_for::<ChildSnapshot>();
+    generator.subschema_for::<SessionInfo>();
     let definitions = generator.take_definitions();
     serde_json::json!({
         "$schema": "http://json-schema.org/draft-07/schema#",

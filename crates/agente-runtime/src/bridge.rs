@@ -399,6 +399,7 @@ pub(crate) fn replace_conversation(
         revision,
         conversation,
     };
+    let count = crate::chat_message_count(&snapshot.conversation);
     sessions.insert(session_id, snapshot.clone());
     // Persist while still holding the sessions write lock. Commits are
     // per-turn (low frequency), the fsync window on the small snapshot file is
@@ -407,6 +408,12 @@ pub(crate) fn replace_conversation(
     // `persist_snapshot`, never propagated — a failed write must not fail the
     // turn.
     inner.persist_snapshot(&snapshot);
+    drop(sessions);
+    let project_dir = inner.session_context(session_id, None).project_dir;
+    inner.update_meta(session_id, &project_dir, |info| {
+        info.message_count = count;
+        info.last_active = chrono::Utc::now();
+    });
     revision
 }
 

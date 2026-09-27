@@ -23,7 +23,7 @@
 //! and is not designed to run concurrently with appends.
 
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -31,7 +31,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use agente_protocol::{Message, SessionId, SessionSnapshot, PROTOCOL_VERSION};
+use agente_protocol::{Message, SessionId, SessionInfo, SessionSnapshot, PROTOCOL_VERSION};
 
 /// Oldest protocol version whose stored sessions this store still reads.
 /// Versions since then only added fields, so older records load as-is.
@@ -46,6 +46,7 @@ use thiserror::Error;
 
 const LOG_SUFFIX: &str = ".events.ndjson";
 const SNAPSHOT_SUFFIX: &str = ".snapshot.json";
+const META_SUFFIX: &str = ".meta.json";
 const LOG_BUFFER_CAPACITY: usize = 64 * 1024;
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -88,6 +89,23 @@ struct StoredSnapshot {
 pub struct RecoveredSession {
     pub snapshot: SessionSnapshot,
     pub last_sequence: u64,
+}
+
+/// A session's list entry plus what each client keeps about it (the TUI's
+/// on-screen transcript and file versions, Desktop's view state…), keyed by
+/// client name. The runtime never interprets a client's value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionMeta {
+    pub info: SessionInfo,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clients: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredMeta {
+    protocol_version: u16,
+    #[serde(flatten)]
+    meta: SessionMeta,
 }
 
 #[derive(Debug, Clone)]
@@ -202,10 +220,15 @@ impl SessionStore {
             last_sequence,
             snapshot: snapshot.clone(),
         };
-        let target = self.snapshot_path(snapshot.session_id);
+        self.write_atomic(&self.snapshot_path(snapshot.session_id), &stored)
+    }
+
+    /// Write `value` as JSON to `target` through a synced temp file, so a
+    /// crash leaves either the old file or the new one, never half of one.
+    fn write_atomic(&self, target: &Path, value: &impl Serialize) -> Result<(), SessionStoreError> {
+        let name = target.file_name().unwrap_or_default().to_string_lossy();
         let temporary = self.root.join(format!(
-            "{}{SNAPSHOT_SUFFIX}.tmp-{}-{}",
-            snapshot.session_id,
+            "{name}.tmp-{}-{}",
             std::process::id(),
             TEMP_COUNTER.fetch_add(1, Ordering::Relaxed),
         ));
@@ -215,16 +238,62 @@ impl SessionStore {
                 .truncate(true)
                 .write(true)
                 .open(&temporary)?;
-            serde_json::to_writer(&mut file, &stored)?;
+            serde_json::to_writer(&mut file, value)?;
             file.flush()?;
             file.sync_data()?;
-            rename_replace(&temporary, &target)?;
+            rename_replace(&temporary, target)?;
             Ok(())
         })();
         if outcome.is_err() {
             let _ = fs::remove_file(&temporary);
         }
         outcome
+    }
+
+    pub fn write_meta(&self, meta: &SessionMeta) -> Result<(), SessionStoreError> {
+        let stored = StoredMeta {
+            protocol_version: PROTOCOL_VERSION,
+            meta: meta.clone(),
+        };
+        self.write_atomic(&self.meta_path(meta.info.session_id), &stored)
+    }
+
+    /// The session's list entry and client state, if it has been saved.
+    pub fn read_meta(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<SessionMeta>, SessionStoreError> {
+        let path = self.meta_path(session_id);
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        let stored: StoredMeta = serde_json::from_reader(BufReader::new(file))?;
+        if !readable(stored.protocol_version) {
+            return Err(SessionStoreError::UnsupportedVersion(
+                stored.protocol_version,
+            ));
+        }
+        Ok(Some(stored.meta))
+    }
+
+    /// Every saved session's list entry, most recently active first. Sessions
+    /// without one (saved before metadata existed) are skipped; unreadable
+    /// entries are logged and skipped so one bad file never hides the rest.
+    pub fn list_infos(&self) -> Result<Vec<SessionInfo>, SessionStoreError> {
+        let mut infos = Vec::new();
+        for session_id in self.list_sessions()? {
+            match self.read_meta(session_id) {
+                Ok(Some(meta)) => infos.push(meta.info),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(session = %session_id, %error, "unreadable session metadata")
+                }
+            }
+        }
+        infos.sort_by_key(|info| std::cmp::Reverse(info.last_active));
+        Ok(infos)
     }
 
     /// Rebuild a session from its snapshot plus the event log.
@@ -368,7 +437,8 @@ impl SessionStore {
             let name = name.to_string_lossy();
             let id_text = name
                 .strip_suffix(SNAPSHOT_SUFFIX)
-                .or_else(|| name.strip_suffix(LOG_SUFFIX));
+                .or_else(|| name.strip_suffix(LOG_SUFFIX))
+                .or_else(|| name.strip_suffix(META_SUFFIX));
             if let Some(id_text) = id_text {
                 if let Ok(id) = SessionId::from_str(id_text) {
                     ids.push(id);
@@ -385,7 +455,11 @@ impl SessionStore {
     pub fn delete(&self, session_id: SessionId) -> Result<bool, SessionStoreError> {
         self.logs.lock().unwrap().remove(&session_id);
         let mut removed = false;
-        for path in [self.snapshot_path(session_id), self.log_path(session_id)] {
+        for path in [
+            self.snapshot_path(session_id),
+            self.log_path(session_id),
+            self.meta_path(session_id),
+        ] {
             match fs::remove_file(&path) {
                 Ok(()) => removed = true,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -397,6 +471,10 @@ impl SessionStore {
 
     fn log_path(&self, session_id: SessionId) -> PathBuf {
         self.root.join(format!("{session_id}{LOG_SUFFIX}"))
+    }
+
+    fn meta_path(&self, session_id: SessionId) -> PathBuf {
+        self.root.join(format!("{session_id}{META_SUFFIX}"))
     }
 
     fn snapshot_path(&self, session_id: SessionId) -> PathBuf {
@@ -530,6 +608,53 @@ mod tests {
         store.append_durable(&old).unwrap();
         let recovered = store.recover(session_id).unwrap();
         assert_eq!(recovered.snapshot.conversation.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn meta_round_trips_and_lists_newest_first() {
+        let root = test_root("meta");
+        let store = SessionStore::open(&root).unwrap();
+        let info = |minutes: i64| SessionInfo {
+            session_id: SessionId::new(),
+            title: format!("t{minutes}"),
+            first_prompt: String::new(),
+            project_dir: "/p".into(),
+            created_at: Utc::now(),
+            last_active: Utc::now() + chrono::Duration::minutes(minutes),
+            message_count: 2,
+            provider: "p".into(),
+            model: "m".into(),
+            thinking_level: "off".into(),
+            profile: None,
+        };
+        let older = SessionMeta {
+            info: info(0),
+            clients: BTreeMap::new(),
+        };
+        let mut newer = SessionMeta {
+            info: info(5),
+            clients: BTreeMap::new(),
+        };
+        newer
+            .clients
+            .insert("tui".into(), serde_json::json!({ "chat_history": [] }));
+        store.write_meta(&older).unwrap();
+        store.write_meta(&newer).unwrap();
+
+        assert_eq!(
+            store.read_meta(newer.info.session_id).unwrap(),
+            Some(newer.clone())
+        );
+        let titles: Vec<_> = store
+            .list_infos()
+            .unwrap()
+            .into_iter()
+            .map(|i| i.title)
+            .collect();
+        assert_eq!(titles, vec!["t5", "t0"]);
+        assert!(store.delete(older.info.session_id).unwrap());
+        assert_eq!(store.read_meta(older.info.session_id).unwrap(), None);
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -10,6 +10,7 @@
 
 mod bridge;
 mod compat;
+pub mod import;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,11 +29,11 @@ use agente_core::subagent::SubagentRegistry;
 use agente_core::types::{AgentMode, ApprovalAction};
 use agente_core::AbortController;
 use agente_protocol::{
-    ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, RunId, RuntimeEvent,
-    RuntimeEventEnvelope, SessionId, SessionSnapshot, StartTurn, Trust, TurnId, TurnMode,
-    TurnOutcome, UserInput, PROTOCOL_VERSION,
+    ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, Role, RunId, RuntimeEvent,
+    RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust, TurnId,
+    TurnMode, TurnOutcome, UserInput, PROTOCOL_VERSION,
 };
-use agente_session::{SessionStore, SessionStoreError};
+use agente_session::{SessionMeta, SessionStore, SessionStoreError};
 use chrono::Utc;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -144,6 +145,15 @@ impl RuntimeConfig {
         Ok(self.with_session_store(store))
     }
 
+    /// Persist in the user-wide store (`~/.agente/store`, or under
+    /// `AGENTE_CONFIG_DIR`): one place for every project, client and bot.
+    pub fn with_user_store(self) -> Result<Self, SessionStoreError> {
+        let root = AppConfig::config_dir()
+            .unwrap_or_else(|| PathBuf::from(".agente"))
+            .join("store");
+        self.with_persistence_dir(root)
+    }
+
     /// Enable persistence under `{project_dir}/.agente/sessions` — the
     /// standard location. Opt-in: [`RuntimeConfig::from_app_config`] never
     /// calls this.
@@ -209,6 +219,56 @@ struct RuntimeInner {
 struct SessionContext {
     project_dir: String,
     engine: SharedPermissionEngine,
+}
+
+fn new_info(session_id: SessionId, project_dir: &str) -> SessionInfo {
+    let now = Utc::now();
+    SessionInfo {
+        session_id,
+        title: String::new(),
+        first_prompt: String::new(),
+        project_dir: project_dir.to_string(),
+        created_at: now,
+        last_active: now,
+        message_count: 0,
+        provider: String::new(),
+        model: String::new(),
+        thinking_level: String::new(),
+        profile: None,
+    }
+}
+
+/// The first thing the user asked, flattened and trimmed to a list label.
+/// Injected reminders (project instructions) are not the user's words.
+fn first_prompt(conversation: &[Message]) -> String {
+    const MAX_CHARS: usize = 60;
+    let Some(message) = conversation.iter().find(|m| {
+        m.role == Role::User
+            && !m.content.trim().is_empty()
+            && !m
+                .content
+                .contains(agente_core::context::PROJECT_REMINDER_MARKER)
+    }) else {
+        return String::new();
+    };
+    let flat = message
+        .content
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if flat.chars().count() <= MAX_CHARS {
+        return flat;
+    }
+    let cut: String = flat.chars().take(MAX_CHARS - 1).collect();
+    format!("{}…", cut.trim_end())
+}
+
+/// User and assistant messages: what a person would count as the chat.
+fn chat_message_count(conversation: &[Message]) -> usize {
+    conversation
+        .iter()
+        .filter(|m| matches!(m.role, Role::User | Role::Assistant))
+        .count()
 }
 
 /// The mode a turn may use: what it asked for (or the session's default),
@@ -312,6 +372,34 @@ impl RuntimeInner {
         };
         contexts.insert(session_id, context.clone());
         context
+    }
+
+    /// Update the session's saved list entry (creating it on first use).
+    /// Failures are logged: metadata never fails a turn.
+    fn update_meta(
+        &self,
+        session_id: SessionId,
+        project_dir: &str,
+        change: impl FnOnce(&mut SessionInfo),
+    ) {
+        let Some(store) = self.config.session_store.as_ref() else {
+            return;
+        };
+        let mut meta = match store.read_meta(session_id) {
+            Ok(Some(meta)) => meta,
+            Ok(None) => SessionMeta {
+                info: new_info(session_id, project_dir),
+                clients: Default::default(),
+            },
+            Err(error) => {
+                tracing::warn!(session = %session_id, %error, "session metadata unreadable; not updated");
+                return;
+            }
+        };
+        change(&mut meta.info);
+        if let Err(error) = store.write_meta(&meta) {
+            tracing::warn!(session = %session_id, %error, "session metadata not saved");
+        }
     }
 
     /// Send to runtime-wide subscribers. No subscribers is not an error.
@@ -567,6 +655,27 @@ impl RuntimeHandle {
         let thinking = start
             .thinking_level
             .unwrap_or_else(|| self.inner.config.default_thinking_level.clone());
+        {
+            let (provider, model, thinking) = (provider.clone(), model.clone(), thinking.clone());
+            let profile = start.profile.clone();
+            let prompt = first_prompt(&conversation);
+            let count = chat_message_count(&conversation);
+            self.inner
+                .update_meta(session_id, &context.project_dir, |info| {
+                    info.project_dir = context.project_dir.clone();
+                    info.provider = provider;
+                    info.model = model;
+                    info.thinking_level = thinking;
+                    if profile.is_some() {
+                        info.profile = profile;
+                    }
+                    if info.first_prompt.is_empty() {
+                        info.first_prompt = prompt;
+                    }
+                    info.message_count = count;
+                    info.last_active = Utc::now();
+                });
+        }
         let task_id = self
             .inner
             .task_sequence
@@ -684,6 +793,59 @@ impl RuntimeHandle {
         ids.sort_by_key(|id| id.as_uuid());
         ids.dedup();
         ids
+    }
+
+    /// Saved sessions' list entries, most recently active first.
+    pub fn session_infos(&self) -> Vec<SessionInfo> {
+        let Some(store) = &self.inner.config.session_store else {
+            return Vec::new();
+        };
+        store.list_infos().unwrap_or_else(|error| {
+            tracing::warn!(%error, "listing session infos failed");
+            Vec::new()
+        })
+    }
+
+    /// A saved session's list entry and what each client keeps about it.
+    pub fn session_meta(&self, session_id: SessionId) -> Option<SessionMeta> {
+        self.inner
+            .config
+            .session_store
+            .as_ref()?
+            .read_meta(session_id)
+            .ok()
+            .flatten()
+    }
+
+    /// Save what one client keeps about a session (its view of it), and
+    /// optionally a new title. Needs a store.
+    pub fn save_client_state(
+        &self,
+        session_id: SessionId,
+        client: &str,
+        state: serde_json::Value,
+        title: Option<String>,
+    ) -> Result<(), RuntimeError> {
+        let store = self
+            .inner
+            .config
+            .session_store
+            .as_ref()
+            .ok_or_else(|| RuntimeError::Store("persistence is off".into()))?;
+        let mut meta = store
+            .read_meta(session_id)
+            .map_err(|error| RuntimeError::Store(error.to_string()))?
+            .unwrap_or_else(|| SessionMeta {
+                info: new_info(session_id, &self.inner.config.project_dir),
+                clients: Default::default(),
+            });
+        meta.clients.insert(client.to_string(), state);
+        if let Some(title) = title {
+            meta.info.title = title;
+        }
+        store
+            .write_meta(&meta)
+            .map_err(|error| RuntimeError::Store(error.to_string()))
     }
 
     /// Forget a session, in memory and on disk. Refused while a turn runs.
@@ -1401,5 +1563,45 @@ mod tests {
             attached.try_recv().map(|e| e.event),
             Ok(RuntimeEvent::ContextCompacted { revision: 4, .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn a_turn_saves_the_session_list_entry() {
+        let (config, dir) = persistent_config("meta");
+        let handle = RuntimeSupervisor::start(config);
+        let session_id = SessionId::new();
+        let mut turn = handle
+            .start_turn(StartTurn {
+                session_id,
+                conversation: vec![Message::user("  summarize   the release notes  ")],
+                // Unknown provider fails fast, before any network access.
+                provider: Some("definitely-not-a-provider".into()),
+                profile: Some("colina".into()),
+                ..StartTurn::default()
+            })
+            .expect("turn starts");
+        let _ = turn.outcome().await;
+
+        let infos = handle.session_infos();
+        assert_eq!(infos.len(), 1);
+        let info = &infos[0];
+        assert_eq!(info.session_id, session_id);
+        assert_eq!(info.first_prompt, "summarize the release notes");
+        assert_eq!(info.provider, "definitely-not-a-provider");
+        assert_eq!(info.profile.as_deref(), Some("colina"));
+        assert_eq!(info.project_dir, "D:/proj");
+
+        handle
+            .save_client_state(
+                session_id,
+                "tui",
+                serde_json::json!({"x": 1}),
+                Some("Release notes".into()),
+            )
+            .unwrap();
+        let meta = handle.session_meta(session_id).unwrap();
+        assert_eq!(meta.info.title, "Release notes");
+        assert_eq!(meta.clients["tui"], serde_json::json!({"x": 1}));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

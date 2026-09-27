@@ -225,6 +225,24 @@ export interface RuntimeEventEnvelope {
   turn_id: string;
 }
 
+/** What a session list shows: one per saved session, whatever client made it. */
+export interface SessionInfo {
+  created_at: string;
+  /** First user message, trimmed: the fallback label. */
+  first_prompt?: string;
+  last_active: string;
+  message_count?: number;
+  model?: string;
+  /** The bot or client preset the session belongs to. */
+  profile?: string | null;
+  project_dir: string;
+  provider?: string;
+  session_id: string;
+  thinking_level?: string;
+  /** Short generated label; empty until one is made. */
+  title?: string;
+}
+
 export interface SessionSnapshot {
   conversation: Message[];
   revision: number;

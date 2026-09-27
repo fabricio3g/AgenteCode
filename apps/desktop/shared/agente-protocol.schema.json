@@ -928,6 +928,68 @@
       ],
       "type": "object"
     },
+    "SessionInfo": {
+      "description": "What a session list shows: one per saved session, whatever client made it.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "first_prompt": {
+          "default": "",
+          "description": "First user message, trimmed: the fallback label.",
+          "type": "string"
+        },
+        "last_active": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "message_count": {
+          "default": 0,
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "model": {
+          "default": "",
+          "type": "string"
+        },
+        "profile": {
+          "description": "The bot or client preset the session belongs to.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project_dir": {
+          "type": "string"
+        },
+        "provider": {
+          "default": "",
+          "type": "string"
+        },
+        "session_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "thinking_level": {
+          "default": "",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "description": "Short generated label; empty until one is made.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "last_active",
+        "project_dir",
+        "session_id"
+      ],
+      "type": "object"
+    },
     "SessionSnapshot": {
       "properties": {
         "conversation": {
