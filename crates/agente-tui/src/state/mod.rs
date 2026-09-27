@@ -108,6 +108,8 @@ pub fn compaction_notice(before: usize, after: usize, smart: bool) -> String {
 impl AppState {
     /// Create a new AppState with default values
     pub fn new(app_config: agente_core::config::AppConfig, project_dir: String) -> Self {
+        #[cfg(test)]
+        crate::test_support::sandbox_user_state();
         let cancel_tx = AbortController::new();
         let project_dir = agente_core::util::normalize_project_dir(project_dir);
         let work_mode = WorkMode::parse(app_config.default_mode.as_deref());

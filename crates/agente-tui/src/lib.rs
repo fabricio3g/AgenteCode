@@ -23,6 +23,8 @@ pub mod state;
 pub mod style;
 pub mod subagent_models;
 pub mod syntax_highlight;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod thinking_selector;
 #[cfg(test)]
 mod ui_harness;

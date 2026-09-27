@@ -169,14 +169,7 @@ impl App {
     /// store. Idempotent and process-wide, so parallel tests all agree.
     #[cfg(test)]
     fn sandbox_user_state() {
-        use std::sync::Once;
-        static ONCE: Once = Once::new();
-        ONCE.call_once(|| {
-            let root = std::env::temp_dir().join(format!("agente-test-{}", std::process::id()));
-            let _ = std::fs::create_dir_all(root.join("sessions"));
-            std::env::set_var("AGENTE_CONFIG_DIR", &root);
-            std::env::set_var("AGENTE_SESSIONS_DIR", root.join("sessions"));
-        });
+        crate::test_support::sandbox_user_state();
     }
 
     /// Test-only constructor: same `App` (and therefore the same real key

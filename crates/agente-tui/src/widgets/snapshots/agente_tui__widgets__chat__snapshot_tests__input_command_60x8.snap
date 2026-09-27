@@ -12,7 +12,7 @@ Buffer {
         "│                                                          │",
         "│                                                          │",
         "│                                                          │",
-        "╰───────────────────────────────────────── DeepSeek Flash ─╯",
+        "╰──────────────────────────────────────────────────────────╯",
     ],
     styles: [
         x: 0, y: 0, fg: Rgb(138, 190, 183), bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
@@ -32,7 +32,5 @@ Buffer {
         x: 59, y: 5, fg: Rgb(138, 190, 183), bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
         x: 1, y: 6, fg: Reset, bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
         x: 59, y: 6, fg: Rgb(138, 190, 183), bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
-        x: 43, y: 7, fg: Rgb(154, 154, 162), bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
-        x: 57, y: 7, fg: Rgb(138, 190, 183), bg: Rgb(24, 24, 28), underline: Reset, modifier: NONE,
     ]
 }
