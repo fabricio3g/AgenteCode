@@ -1,15 +1,19 @@
-name: CI
+name: Desktop
 
 on:
   pull_request:
+    paths: ['apps/desktop/**', '.github/workflows/desktop.yml']
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+    paths: ['apps/desktop/**', '.github/workflows/desktop.yml']
 
 jobs:
   check:
     name: Type Check
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
 
     steps:
       - name: Checkout
@@ -26,8 +30,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            package-lock.json
-            renderer/package-lock.json
+            apps/desktop/package-lock.json
+            apps/desktop/renderer/package-lock.json
 
       - name: Install root deps
         run: npm ci

@@ -1,9 +1,11 @@
-name: CI
+name: Rust
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
+    paths: ['crates/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/rust.yml']
   pull_request:
+    paths: ['crates/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/rust.yml']
 
 env:
   CARGO_TERM_COLOR: always
