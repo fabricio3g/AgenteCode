@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  check:
+    name: Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # README requires Node 22+ for the native module rebuilds; the
+          # previous pin of 20 meant CI was verifying a configuration the app
+          # is never built or run in.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install renderer deps
+        run: npm ci --prefix renderer
+
+      - name: Run renderer type check
+        run: npm run check
+
+      - name: Run main-process tests
+        run: npm test
+
+      - name: Run renderer tests
+        run: npm test --prefix renderer
+
+      - name: Run Fallow audit
+        if: github.event_name == 'pull_request'
+        run: |
+          # `fallow --base main` needs a ref it can resolve. checkout@v4 fetches
+          # the full history (fetch-depth: 0) but leaves the PR base as a
+          # remote-tracking ref only, so a bare `main` does not resolve and the
+          # audit aborted with "could not determine changed files for base ref".
+          git branch -f "$GITHUB_BASE_REF" "origin/$GITHUB_BASE_REF"
+          npm run fallow:audit

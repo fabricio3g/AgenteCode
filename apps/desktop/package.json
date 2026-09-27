@@ -1,0 +1,154 @@
+{
+  "name": "chatealm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flaxeo Chat – AI Chat Assistant (Electron)",
+  "type": "module",
+  "main": "dist-electron/main/index.cjs",
+  "scripts": {
+    "postinstall": "patch-package && (npm run rebuild:native || exit 0)",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3 -w sherpa-onnx-node -w node-pty",
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\" \"npm run dev:electron\"",
+    "dev:renderer": "cd renderer && npx vite --port 5173",
+    "dev:main": "concurrently -k -n main,tts -c blue,magenta \"npm run build:main:watch\" \"npm run build:tts:watch\"",
+    "build:main:watch": "node scripts/build-bundles.mjs main --watch",
+    "build:tts:watch": "node scripts/build-bundles.mjs tts --watch",
+    "build:tts": "node scripts/build-bundles.mjs tts --minify",
+    "dev:electron": "wait-on http://localhost:5173 dist-electron/main/index.cjs dist-electron/main/tts-worker.cjs && npx electron . --no-sandbox",
+    "prebuild": "npm run rebuild:native",
+    "build:main": "node scripts/build-bundles.mjs main tts --minify",
+    "build:renderer": "cd renderer && npx vite build",
+    "build:native-runtimes": "node scripts/build-native-runtimes.mjs",
+    "build": "npm run build:main && npm run build:renderer && electron-builder",
+    "start": "npx electron .",
+    "check": "cd renderer && npx svelte-check --tsconfig ./tsconfig.json",
+    "onboarding:reset": "node scripts/reset-onboarding.mjs",
+    "fallow:summary": "npx fallow --summary",
+    "fallow:dead-code": "npx fallow dead-code",
+    "fallow:dupes": "npx fallow dupes",
+    "fallow:health": "npx fallow health",
+    "fallow:audit": "npx fallow audit --base main --dead-code-baseline fallow-baselines/dead-code.json --health-baseline fallow-baselines/health.json --dupes-baseline fallow-baselines/dupes.json",
+    "fallow:fix:dry-run": "npx fallow fix --dry-run",
+    "test:crawler": "node --test tests/crawler/*.test.js",
+    "test:scraper": "npx tsx --test tests/unit/web-scraper.test.js",
+    "smoke:search": "npx tsx scripts/smoke-search-scrape.mjs",
+    "smoke:deepseek": "npx tsx scripts/smoke-deepseek-flash.mjs",
+    "smoke:doc": "npx tsx scripts/smoke-doc-scrape.mjs",
+    "smoke:live-data": "node scripts/smoke-live-data.mjs",
+    "smoke:models": "npx tsx scripts/smoke-provider-models.mjs",
+    "bench:agent": "node scripts/bench-agent-stability.mjs",
+    "probe:sqlite": "npx electron scripts/probe-sqlite-electron.cjs",
+    "test": "npx tsx --test tests/**/*.test.js",
+    "build:cities": "node scripts/build-cities.mjs"
+  },
+  "dependencies": {
+    "@lancedb/lancedb": "^0.27.2",
+    "@mozilla/readability": "^0.6.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "apache-arrow": "^18.1.0",
+    "better-sqlite3": "^12.9.0",
+    "diff": "^9.0.0",
+    "docx": "^9.6.1",
+    "exceljs": "^4.4.0",
+    "extract-zip": "^2.0.1",
+    "jszip": "^3.10.1",
+    "kokoro-js": "^1.2.1",
+    "linkedom": "^0.18.12",
+    "lucide-svelte": "^1.0.1",
+    "mammoth": "^1.8.0",
+    "node-pty": "^1.1.0",
+    "openai": "^6.49.0",
+    "pdf-parse": "^1.1.1",
+    "pptxgenjs": "^3.12.0",
+    "svelte-i18n": "^4.0.1",
+    "tar": "^7.5.13",
+    "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@lancedb/lancedb-win32-x64-msvc": "^0.27.2",
+    "puppeteer": "^23.0.0",
+    "sherpa-onnx-node": "^1.12.40",
+    "sherpa-onnx-win-x64": "1.12.29"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.1.1",
+    "@electron/rebuild": "^4.0.4",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "all-the-cities": "^3.1.0",
+    "concurrently": "^9.1.0",
+    "cross-env": "^10.1.0",
+    "electron": "^41.3.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.27.7",
+    "fallow": "^2.64.0",
+    "patch-package": "^8.0.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "wait-on": "^8.0.2"
+  },
+  "build": {
+    "appId": "com.chatea.lm",
+    "productName": "Flaxeo Chat",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "main/**/*",
+      "preload/**/*",
+      "renderer/dist/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/apache-arrow/**/*",
+      "node_modules/@lancedb/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/node-pty/**/*",
+      "node_modules/kokoro-js/voices/**/*",
+      "resources/bin/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../models",
+        "to": "models",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../resources/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Education"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns"
+    }
+  }
+}

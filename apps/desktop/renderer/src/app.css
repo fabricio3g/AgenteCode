@@ -1,0 +1,2478 @@
+@import 'katex/dist/katex.min.css';
+@import 'highlight.js/styles/github.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Flaxeo-aligned design tokens (monochrome) ─────────────────────────── */
+:root {
+  --font-sans: 'Inter Variable', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-serif: 'Source Serif 4', 'Source Serif Pro', 'Noto Serif', Georgia, Cambria, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --text-base: 14px;
+  --text-sm: 13px;
+  --text-xs: 12px;
+  --leading-base: 1.5;
+  color-scheme: light;
+
+  /* Canonical (Flaxeo / shadcn-style) */
+  --radius: 0.625rem;
+  /* Radius tension: pills stay for entry points; utility inputs go
+     sharp so controls read as controls, not as more chrome. */
+  --radius-input: 6px;
+  /* One background — see the note in `.dark`. Fills are alpha overlays so they
+     work on top of it rather than being separate greys. */
+  --background: #ffffff;
+  --foreground: #0d0d0d;
+  --card: #ffffff;
+  --card-foreground: #0d0d0d;
+  --popover: #ffffff;
+  --popover-foreground: #0d0d0d;
+  --primary: #0d0d0d;
+  --primary-foreground: #ffffff;
+  --secondary: rgb(0 0 0 / 0.05);
+  --secondary-foreground: #0d0d0d;
+  --muted: rgb(0 0 0 / 0.04);
+  --muted-foreground: #6b6b6b;
+  --accent: rgb(0 0 0 / 0.06);
+  --accent-foreground: #0d0d0d;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: rgb(0 0 0 / 0.07);
+  --input: rgb(0 0 0 / 0.1);
+  --ring: rgb(0 0 0 / 0.2);
+  --sidebar: var(--background);
+  --sidebar-foreground: #0d0d0d;
+  --sidebar-primary: #0d0d0d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(0 0 0 / 0.05);
+  --sidebar-accent-foreground: #0d0d0d;
+  --sidebar-border: rgb(0 0 0 / 0.07);
+  --sidebar-ring: rgb(0 0 0 / 0.2);
+  --surface-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  --surface-shadow-focus: 0 1px 3px rgb(0 0 0 / 0.08);
+  /* Motion matches the reference surface: a single standard curve for hover and
+     colour changes, and a decelerating curve for things that enter. */
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Expo-out: fast attack, long settle — the smooth-UI signature curve. */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-fast: 150ms;
+  --motion-normal: 200ms;
+  --motion-smooth: 280ms;
+  --motion-dialog: 300ms;
+
+  /* Compatibility aliases (legacy Chatea vars) */
+  --surface: var(--card);
+  --surface-hover: rgb(0 0 0 / 0.05);
+  --surface-active: rgb(0 0 0 / 0.09);
+  --surface-overlay: var(--popover);
+  --text: var(--foreground);
+  --text-secondary: #525252;
+  --text-tertiary: #6b6b6b;
+  --text-muted: var(--muted-foreground);
+  --text-inverse: var(--primary-foreground);
+  --border-hover: rgb(0 0 0 / 0.14);
+  --border-active: rgb(0 0 0 / 0.2);
+  /* Internal dividers inside an already-bordered surface. Full --border on every
+     seam turns a panel into a grid of lines. */
+  --border-subtle: rgb(0 0 0 / 0.04);
+  --border-inverse: rgb(0 0 0 / 0.15);
+  --primary-hover: #171717;
+  --primary-fg: var(--primary-foreground);
+  --accent-hover: #e8e8e8;
+  --accent-fg: var(--accent-foreground);
+  --accent-soft: rgb(0 0 0 / 0.05);
+
+  /* Semantic (keep for app states; monochrome info) */
+  --success: #16a34a;
+  --success-bg: rgb(22 163 74 / 0.08);
+  --success-border: rgb(22 163 74 / 0.18);
+  --warning: #ca8a04;
+  --warning-bg: rgb(202 138 4 / 0.08);
+  --warning-border: rgb(202 138 4 / 0.18);
+  --error: #dc2626;
+  --error-bg: rgb(220 38 38 / 0.08);
+  --error-border: rgb(220 38 38 / 0.18);
+  --info: var(--foreground);
+  --info-bg: rgb(0 0 0 / 0.04);
+  --info-border: rgb(0 0 0 / 0.1);
+
+  /* The single brand accent (one shade off the reference orange): the only warmth in
+     the grayscale. Borders, focus moments, status badges — never body text.
+     `-strong` variants clear 4.5:1 where the accent touches small type. */
+  --brand-accent: #e76d1f;
+  --brand-accent-strong: #b34a0e;
+
+  /* Work/agent — monochrome (no blue) */
+  --work-accent: var(--primary);
+  --work-accent-strong: var(--primary-hover);
+  --work-accent-soft: var(--accent-soft);
+  --work-accent-border: var(--border);
+  --work-glint: rgb(0 0 0 / 0.04);
+
+  /* Layout */
+  --user-bubble: rgb(0 0 0 / 0.05);
+  --user-bubble-text: var(--foreground);
+  --user-bubble-border: transparent;
+  /* The composer is a white card on the page, separated by its ring rather
+     than by a grey fill. */
+  --composer-surface: var(--card);
+  --composer-ring: var(--border);
+  /* The one orange moment: focus lands in the composer. */
+  --composer-ring-focus: rgb(231 109 31 / 0.55);
+  --chat-bg: var(--background);
+  --titlebar-bg: var(--sidebar);
+  --sidebar-bg: var(--sidebar);
+  --panel-bg: var(--card);
+  --panel-border: var(--border-hover);
+  --overlay: rgb(0 0 0 / 0.35);
+
+  /* Artifacts — borderless surface contrast (not boxed chrome) */
+  --artifact-surface: color-mix(in srgb, var(--surface) 88%, var(--chat-bg));
+  --artifact-surface-strong: color-mix(in srgb, var(--surface) 96%, var(--foreground) 4%);
+  --artifact-surface-hover: color-mix(in srgb, var(--surface-hover) 85%, var(--chat-bg));
+  --artifact-elev: 0 1px 2px rgb(0 0 0 / 0.04);
+  --artifact-radius: var(--radius-md);
+  --artifact-focus: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+
+  /*
+   * Chart series colours. These are read with `getComputedStyle` and passed to d3
+   * as concrete values, because d3's `.attr()` writes SVG presentation attributes
+   * and those never substitute `var()`. Named accents used by info cards and
+   * dashboards resolve against the same palette so a chart and a metric strip in
+   * the same answer agree.
+   */
+  --chart-1: #2563eb;
+  --chart-2: #059669;
+  --chart-3: #d97706;
+  --chart-4: #dc2626;
+  --chart-5: #7c3aed;
+  --chart-6: #0891b2;
+  /* Text drawn on top of a filled slice, so it tracks the fill, not the theme. */
+  --chart-label-on-fill: #ffffff;
+
+  --accent-sky: var(--chart-6);
+  --accent-green: var(--chart-2);
+  --accent-amber: var(--chart-3);
+  --accent-red: var(--chart-4);
+  --accent-violet: var(--chart-5);
+
+  /* Radius scale (from --radius) */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
+
+  /* Thread geometry. The message column and the composer share one width so
+     they line up as a single column, and the composer is a full pill. */
+  --thread-width: 48rem;
+  /*
+   * Width of blocks rendered inside an assistant turn — charts, artifacts, the
+   * research widget, the file-changes card.
+   *
+   * `100%`, not `--thread-width`: these already sit inside the message content
+   * box, which is the column minus the scroller's padding, so an absolute width
+   * here would overflow on narrow windows. They previously each picked their
+   * own cap (42rem, 46rem) against 48rem prose, giving one turn up to three
+   * different right edges. One dial if blocks should ever inset from prose.
+   */
+  --inline-block-width: 100%;
+  --thread-top-pad: 4rem;
+  /* A rounded card, not a pill: the shell is two rows tall now, and a 2rem
+     corner on that height reads as a lozenge. */
+  --composer-radius: 1.5rem;
+  /* A large corner everywhere except the bottom-right, which tucks in to point
+     the bubble at its author. */
+  --bubble-radius: 1.5rem;
+  --bubble-tail-radius: var(--radius-lg);
+
+  /* Shadows — light only, quiet */
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-md: 0 1px 3px rgb(0 0 0 / 0.08);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.08);
+  --shadow-xl: 0 12px 32px rgb(0 0 0 / 0.1);
+
+  /* Neutral badges (was blue-tinted) */
+  --accent-red-bg: #fef2f2;
+  --accent-red-text: #991b1b;
+  --accent-blue-bg: #f0f0f0;
+  --accent-blue-text: #404040;
+  --accent-green-bg: #f0fdf4;
+  --accent-green-text: #166534;
+  --accent-yellow-bg: #fefce8;
+  --accent-yellow-text: #854d0e;
+
+  /* Stacking order — one ladder instead of ad-hoc z-[40] … z-[500] literals */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-float: 60;
+  /* Side drawers (LLM settings, search) sit over the page, under dialogs. */
+  --z-drawer: 200;
+  /* Dialogs: modal-layer.ts adds the stack depth, so nested ones sit on top. */
+  --z-modal: 300;
+  --z-confirm: 600;
+  /* Anything anchored to a control must float above the layer it opened from. */
+  --z-menu: 700;
+  --z-tooltip: 800;
+  --z-toast: 900;
+
+  /* Code */
+  --code-terminal-bg: #0a0a0a;
+  --code-terminal-text: #d4d4d4;
+  --code-terminal-prompt: #16a34a;
+  --code-terminal-dim: #6b7280;
+  --code-terminal-error: #ef4444;
+  --code-terminal-warn: #f59e0b;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /*
+   * One background. Every surface — page, sidebar, cards, dialogs, popovers —
+   * is the same colour; separation comes from spacing and shadow, not from a
+   * ladder of greys stacked on each other and outlined in hairlines.
+   *
+   * Interaction states are alpha overlays (see --surface-hover below) rather
+   * than named surface colours, so they read correctly on top of anything.
+   */
+  --background: #141414;
+  --foreground: #ffffff;
+  --card: #141414;
+  --card-foreground: #ffffff;
+  --popover: #141414;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #0d0d0d;
+  --secondary: rgb(255 255 255 / 0.06);
+  --secondary-foreground: #ffffff;
+  --muted: rgb(255 255 255 / 0.05);
+  --muted-foreground: #9a9a9a;
+  --accent: rgb(255 255 255 / 0.08);
+  --accent-foreground: #ffffff;
+  --destructive: #f87171;
+  --destructive-foreground: #ffffff;
+  /* Hairlines are a last resort now — barely there, and only where two regions
+     genuinely need separating. */
+  --border: rgb(255 255 255 / 0.07);
+  --input: rgb(255 255 255 / 0.1);
+  --ring: rgb(255 255 255 / 0.24);
+  --sidebar: #141414;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #0d0d0d;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.07);
+  --sidebar-ring: rgb(255 255 255 / 0.24);
+  --surface-shadow: none;
+  /* A transparent shadow rather than `none`: this token is composed into a
+     comma-separated box-shadow list, and `none` is only legal on its own —
+     it would invalidate the whole declaration and drop the focus ring. */
+  --surface-shadow-focus: 0 0 #0000;
+
+  /* Aliases */
+  --surface: var(--card);
+  /* Translucent, so they layer on the single background instead of being a
+     third and fourth grey to keep in sync with it. */
+  --surface-hover: rgb(255 255 255 / 0.06);
+  --surface-active: rgb(255 255 255 / 0.1);
+  --surface-overlay: var(--popover);
+  --text: var(--foreground);
+  --text-secondary: #a3a3a3;
+  --text-tertiary: #9a9a9a;
+  --text-muted: var(--muted-foreground);
+  --text-inverse: var(--primary-foreground);
+  --border-hover: rgb(255 255 255 / 0.14);
+  --border-active: rgb(255 255 255 / 0.2);
+  --border-subtle: rgb(255 255 255 / 0.04);
+  --border-inverse: rgb(255 255 255 / 0.3);
+  --primary-hover: #e5e5e5;
+  --primary-fg: var(--primary-foreground);
+  --accent-hover: #333333;
+  --accent-fg: var(--accent-foreground);
+  --accent-soft: rgb(255 255 255 / 0.06);
+
+  --success: #4ade80;
+  --success-bg: rgb(74 222 128 / 0.1);
+  --success-border: rgb(74 222 128 / 0.2);
+  --warning: #facc15;
+  --warning-bg: rgb(250 204 21 / 0.1);
+  --warning-border: rgb(250 204 21 / 0.2);
+  --error: #f87171;
+  --error-bg: rgb(248 113 113 / 0.1);
+  --error-border: rgb(248 113 113 / 0.2);
+  --info: var(--foreground);
+  --info-bg: rgb(255 255 255 / 0.06);
+  --info-border: rgb(255 255 255 / 0.12);
+
+  --work-accent: var(--primary);
+  --work-accent-strong: var(--primary-hover);
+  --work-accent-soft: var(--accent-soft);
+  --work-accent-border: var(--border);
+  --work-glint: rgb(255 255 255 / 0.06);
+
+  --brand-accent: #f08a4a;
+  --brand-accent-strong: #f5a06b;
+
+  --user-bubble: rgb(255 255 255 / 0.06);
+  --user-bubble-text: var(--foreground);
+  --user-bubble-border: transparent;
+  /* Dark's equivalent of the white card: the panel colour, not a tint. */
+  --composer-surface: var(--card);
+  --composer-ring: var(--border);
+  --composer-ring-focus: rgb(240 138 74 / 0.6);
+  --chat-bg: var(--background);
+  --titlebar-bg: var(--sidebar);
+  --sidebar-bg: var(--sidebar);
+  --panel-bg: var(--card);
+  --panel-border: var(--border-hover);
+  --overlay: rgb(0 0 0 / 0.55);
+
+  /* Artifacts — slightly lifted surface vs chat bg in dark */
+  --artifact-surface: color-mix(in srgb, var(--surface) 92%, #ffffff 6%);
+  --artifact-surface-strong: color-mix(in srgb, var(--surface) 88%, #ffffff 10%);
+  --artifact-surface-hover: color-mix(in srgb, var(--surface-hover) 90%, #ffffff 8%);
+  --artifact-elev: none;
+  --artifact-radius: var(--radius-md);
+  --artifact-focus: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
+
+  /* Lifted for contrast against the near-black surface. See the light-mode note. */
+  --chart-1: #60a5fa;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --chart-label-on-fill: #0b0b0b;
+
+  /* A transparent shadow, not `none`. These tokens get composed into shadow
+     lists (`inset 0 0 0 1px var(--border), var(--shadow-xs)`), and `none` is
+     only legal on its own — it invalidates the whole declaration, silently
+     dropping the ring alongside it. */
+  --shadow-xs: 0 0 #0000;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.35);
+  --shadow-xl: 0 16px 40px rgb(0 0 0 / 0.4);
+
+  --accent-red-bg: rgb(248 113 113 / 0.1);
+  --accent-red-text: #fca5a5;
+  --accent-blue-bg: rgb(255 255 255 / 0.06);
+  --accent-blue-text: #d4d4d4;
+  --accent-green-bg: rgb(74 222 128 / 0.1);
+  --accent-green-text: #86efac;
+  --accent-yellow-bg: rgb(250 204 21 / 0.1);
+  --accent-yellow-text: #fde047;
+
+  --code-terminal-bg: #0a0a0a;
+  --code-terminal-text: #d4d4d4;
+  --code-terminal-prompt: #4ade80;
+  --code-terminal-dim: #737373;
+  --code-terminal-error: #f87171;
+  --code-terminal-warn: #fbbf24;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+html {
+  color-scheme: light;
+}
+
+/* ─── Theme reveal (View Transitions) ──────────────────────────────────── */
+/* The new snapshot expands as a circle from the theme toggle; the old one
+   sits still beneath it. No cross-fade blur — one shape, one move. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: vt-circle-reveal 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(root) {
+  z-index: -1;
+}
+@keyframes vt-circle-reveal {
+  from {
+    clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--vt-r, 140vmax) at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background: var(--background);
+  color: var(--foreground);
+  line-height: var(--leading-base);
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+textarea {
+  field-sizing: content;
+}
+
+@supports not (field-sizing: content) {
+  textarea {
+    overflow-y: auto;
+  }
+}
+
+/* Quiet scrollbars (Flaxeo) — reveal on hover */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: var(--radius-full);
+}
+
+*:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in oklch, var(--muted-foreground) 50%, transparent);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+  }
+
+  *:hover {
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+  }
+}
+
+.surface-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--surface-shadow);
+}
+
+/* Electron drag regions */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ─── aui-* utilities (ported from Flaxeo) ──────────────────────────────── */
+.aui-composer {
+  /* A rounded card on its own surface, held by a hairline ring rather than a
+     border so the radius stays clean at any height. Now that the controls sit
+     on their own row the shell is a two-line card, not a pill. */
+  border: 0;
+  border-radius: var(--composer-radius);
+  background: var(--composer-surface);
+  box-shadow: inset 0 0 0 1px var(--composer-ring);
+  transition:
+    box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+/*
+ * Focus tightens the ring and leaves the fill alone. Swapping the background
+ * to --surface-active darkened the shell from #f5f5f5 to #e8e8e8 the moment
+ * the caret landed, so the composer was one colour at rest and another while
+ * you were actually using it.
+ */
+.aui-composer:focus-within {
+  box-shadow:
+    inset 0 0 0 1px var(--composer-ring-focus),
+    var(--surface-shadow-focus);
+}
+
+.aui-dialog-backdrop {
+  background-color: var(--overlay);
+}
+
+/* ─── Selectors / menus / modals (assistant-ui quiet chrome) ─────────────── */
+/*
+ * Pill variant, for the controls that sit inside the composer. They read as
+ * chips on the composer surface rather than as buttons on the page.
+ */
+.aui-select-trigger.aui-pill,
+.aui-btn.aui-pill {
+  height: 2.25rem;
+  border-radius: var(--radius-full);
+  border: 0;
+  background: var(--muted);
+  padding: 0 0.75rem;
+}
+
+.aui-select-trigger.aui-pill:hover,
+.aui-btn.aui-pill:hover {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+
+.aui-select-trigger.aui-pill[aria-expanded='true'],
+.aui-select-trigger.aui-pill.is-active {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+
+.aui-select-trigger {
+  display: inline-flex;
+  height: 2rem;
+  align-items: center;
+  gap: 0.25rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 0 0.625rem;
+  /* --text-secondary over --muted-foreground: 7.5:1 against the composer
+     surface instead of 5.2:1, which is what made these read as disabled. */
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-select-trigger:hover,
+.aui-select-trigger[aria-expanded='true'] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.aui-select-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
+}
+
+.aui-menu {
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.875rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 8px 24px -6px rgb(0 0 0 / 0.12);
+  padding: 0.3125rem;
+  /* Above code/activity drawers and composer chrome */
+  z-index: 100;
+}
+
+.dark .aui-menu {
+  border-color: var(--border);
+  box-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.5);
+}
+
+/* A quiet row: foreground text, soft hover fill, a check for the current choice. */
+.aui-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.625rem;
+  border: none;
+  border-radius: 0.5625rem;
+  background: transparent;
+  padding: 0.4375rem 0.625rem;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-menu-item > svg:first-child {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.aui-menu-item:hover,
+.aui-menu-item:focus-visible {
+  background: var(--muted);
+  outline: none;
+}
+
+.aui-menu-item.is-danger,
+.aui-menu-item.is-danger:hover {
+  color: var(--error);
+}
+
+.aui-menu-item.is-danger:hover {
+  background: var(--error-bg);
+}
+
+.aui-menu-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.aui-menu-item:disabled:hover {
+  background: transparent;
+}
+
+.aui-menu-item.is-active {
+  font-weight: 500;
+}
+
+.aui-menu-item-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.0625rem;
+}
+
+.aui-menu-item-hint {
+  color: var(--muted-foreground);
+  font-size: 0.71875rem;
+  font-weight: 400;
+}
+
+.aui-menu-check {
+  flex-shrink: 0;
+  color: var(--foreground);
+}
+
+.aui-menu-divider {
+  height: 1px;
+  margin: 0.3125rem 0.375rem;
+  background: var(--border-subtle);
+}
+
+.aui-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  /* Pill track, so the selected item can be a pill inside it. */
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  padding: 3px;
+}
+
+.aui-segmented.aui-segmented-fill {
+  display: flex;
+  width: 100%;
+}
+
+.aui-segmented.aui-segmented-fill .aui-segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+}
+
+.aui-segmented-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-segmented-item:hover:not(.is-active) {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+/* The selected tab is a raised pill on the track, not an inverted slab. Filling
+   it with --primary made a black (or, in dark, white) block that outweighed the
+   content it was labelling. */
+.aui-segmented-item.is-active {
+  background: var(--surface-active);
+  color: var(--foreground);
+}
+
+/* Slightly more visible selects for Code composer (not transparent “missing CSS”) */
+.aui-select-trigger.aui-select-solid {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.aui-select-trigger.aui-select-solid:hover,
+.aui-select-trigger.aui-select-solid[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--muted) 70%, var(--foreground) 6%);
+}
+
+.aui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+  /* Pushes the page back so the dialog is unambiguously the focused layer. */
+  backdrop-filter: blur(4px);
+  padding: 1rem;
+}
+
+.aui-modal-surface {
+  position: relative;
+  display: flex;
+  max-height: min(92vh, 100%);
+  width: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+  /* Lifted by shadow alone — on a single background an outline just draws a box
+     around something the elevation already separates. */
+  border-radius: var(--radius-2xl);
+  background: var(--popover);
+  box-shadow: var(--shadow-xl);
+  color: var(--foreground);
+}
+
+.dark .aui-modal-surface {
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.4);
+}
+
+.aui-modal-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem 0.5rem;
+}
+
+.aui-modal-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.aui-modal-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  /* Even padding: the header now carries its own rule, so the body no longer
+     has to fake separation with an asymmetric top inset. */
+  padding: 1.25rem;
+}
+
+.aui-modal-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 1.25rem 1.125rem;
+}
+
+.aui-btn {
+  display: inline-flex;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.aui-btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.aui-btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.aui-btn-ghost {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.aui-btn-ghost:hover:not(:disabled) {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.aui-btn-secondary {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.aui-btn-secondary:hover:not(:disabled) {
+  background: var(--surface-active);
+}
+
+.aui-btn-danger {
+  background: var(--error);
+  color: #fff;
+}
+
+.aui-btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.aui-input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-input);
+  background: var(--muted);
+  padding: 0.5rem 0.75rem;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-input:focus,
+.aui-input:focus-within {
+  border-color: var(--ring);
+  background: var(--background);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
+}
+
+.aui-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.aui-card-quiet {
+  border: none;
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-card-quiet:hover {
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+
+.aui-scroll-header {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  --aui-header-fade-from: var(--background);
+}
+
+.aui-scroll-header--popover {
+  --aui-header-fade-from: var(--popover);
+}
+
+.aui-scroll-header__fade {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: 1.5rem;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    var(--aui-header-fade-from) 0%,
+    color-mix(in srgb, var(--aui-header-fade-from) 55%, transparent) 45%,
+    transparent 100%
+  );
+}
+
+.aui-scroll-header--compact .aui-scroll-header__fade {
+  height: 1rem;
+}
+
+.aui-icon-button {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted-foreground);
+  /* Circular, so a bare icon reads as its own target and the hover fill lands
+     as a disc instead of a rounded rectangle competing with nearby panels. */
+  border-radius: var(--radius-full);
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-icon-button:hover {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+
+.aui-icon-button:focus,
+.aui-icon-button:focus-visible,
+.aui-icon-button:active {
+  outline: none;
+  box-shadow: none;
+}
+
+.aui-icon-button svg {
+  pointer-events: none;
+}
+
+.aui-field {
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-field:focus-visible,
+.aui-field:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
+}
+
+.aui-status-badge {
+  font-variant-numeric: tabular-nums;
+}
+
+.aui-float-panel {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 8px 24px rgb(0 0 0 / 0.08);
+}
+
+.dark .aui-float-panel {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.2),
+    0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* ─── assistant-ui patterns (ported) ─────────────────────────────────────── */
+/* Shimmer overlay for running labels — pair with .aui-shimmer-host on the wrapper */
+.aui-shimmer-host {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+
+.aui-shimmer {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--foreground) 55%, transparent) 45%,
+    transparent 90%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: aui-shimmer-sweep 2.4s ease-in-out infinite;
+}
+
+@keyframes aui-shimmer-sweep {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Tool call rows (ToolCallRow) */
+.aui-tool-fallback-root {
+  width: 100%;
+}
+
+.aui-tool-fallback-trigger {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  transform-origin: left center;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+}
+
+.aui-tool-fallback-trigger:hover {
+  color: var(--foreground);
+}
+
+.aui-tool-fallback-trigger:active {
+  transform: scale(0.98);
+}
+
+.aui-tool-fallback-trigger-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.aui-tool-fallback-trigger-icon.is-running {
+  animation: aui-spin 0.6s linear infinite;
+}
+
+.aui-tool-fallback-duration {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.aui-tool-fallback-chevron {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  transition: transform 200ms var(--motion-ease);
+}
+
+.aui-tool-fallback-chevron.is-closed {
+  transform: rotate(-90deg);
+}
+
+.aui-tool-fallback-label-cancelled {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.aui-tool-fallback-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.5rem 1.5rem;
+  font-size: 0.875rem;
+}
+
+.aui-tool-fallback-args-value,
+.aui-tool-fallback-result-content {
+  margin: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  color: color-mix(in srgb, var(--foreground) 90%, transparent);
+  padding: 0.625rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.aui-tool-fallback-result-header,
+.aui-tool-fallback-error-header {
+  margin: 0 0 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.aui-tool-fallback-error-header {
+  font-weight: 600;
+}
+
+.aui-tool-fallback-error-reason {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.aui-tool-fallback-approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.aui-tool-fallback-approval-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
+}
+
+.aui-tool-fallback-approval-btn:hover {
+  background: var(--muted);
+}
+
+.aui-tool-fallback-approval-btn.primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.aui-tool-fallback-approval-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.aui-tool-fallback-terminal {
+  margin: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--code-terminal-bg);
+  color: var(--code-terminal-text);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 20rem;
+  overflow: auto;
+}
+
+/* Tool group (ActivityDrawer) */
+.aui-tool-group-root {
+  width: 100%;
+  margin: 0.25rem 0;
+}
+
+.aui-tool-group-root[data-variant='outline'] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 0;
+}
+
+.aui-tool-group-root[data-variant='muted'] {
+  border: 1px solid color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  padding: 0.75rem 0;
+}
+
+.aui-tool-group-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.aui-tool-group-trigger:hover {
+  color: var(--foreground);
+}
+
+.aui-tool-group-trigger-label {
+  flex: 1;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.aui-tool-group-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.aui-tool-group-summary {
+  padding: 0.35rem 1rem 0;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* Reasoning */
+.aui-reasoning-root {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.aui-reasoning-root[data-variant='outline'] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.5rem 0.75rem;
+}
+
+.aui-reasoning-root[data-variant='muted'] {
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  padding: 0.5rem 0.75rem;
+}
+
+.aui-reasoning-trigger {
+  display: flex;
+  max-width: 75%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
+}
+
+.aui-reasoning-trigger:hover {
+  color: var(--foreground);
+}
+
+.aui-reasoning-trigger:active {
+  transform: scale(0.98);
+}
+
+.aui-reasoning-content {
+  position: relative;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  overflow: hidden;
+}
+
+.aui-reasoning-text {
+  position: relative;
+  z-index: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 0.5rem 0 0.5rem 1.5rem;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.aui-reasoning-fade {
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 0;
+  z-index: 10;
+  height: 2rem;
+}
+
+.aui-reasoning-fade.top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--background), transparent);
+}
+
+.aui-reasoning-fade.bottom {
+  bottom: 0;
+  background: linear-gradient(to top, var(--background), transparent);
+}
+
+.aui-reasoning-root[data-variant='muted'] .aui-reasoning-fade.top {
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--muted) 50%, transparent), transparent);
+}
+
+.aui-reasoning-root[data-variant='muted'] .aui-reasoning-fade.bottom {
+  background: linear-gradient(to top, color-mix(in srgb, var(--muted) 50%, transparent), transparent);
+}
+
+.aui-reasoning-root[data-variant='outline'] .aui-reasoning-fade.top {
+  background: linear-gradient(to bottom, var(--background), transparent);
+}
+
+@keyframes aui-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Chain-of-thought stack spacing */
+.aui-cot-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-shimmer {
+    animation: none !important;
+    display: none;
+  }
+  .aui-tool-fallback-trigger-icon.is-running {
+    animation: none;
+  }
+  .aui-tool-fallback-chevron {
+    transition: none;
+  }
+}
+
+/* ─── Utility classes ─────────────────────────────────── */
+
+.chateaui-card {
+  background: var(--chateaui-card-bg, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.chateaui-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.modal-backdrop {
+  will-change: opacity;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-surface {
+  will-change: transform, opacity;
+}
+
+.chateaui-card-interactive {
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.chateaui-card-interactive:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+}
+
+.chateaui-pill {
+  background: var(--chateaui-pill-bg, var(--surface));
+  border: 1px solid var(--chateaui-pill-border, var(--border));
+  border-style: var(--chateaui-pill-border-style, solid);
+  border-radius: var(--radius-full);
+}
+
+.chateaui-muted-pill {
+  background: var(--chateaui-muted-pill-bg, var(--surface-hover));
+  border: 1px solid var(--chateaui-muted-pill-border, var(--border));
+  border-radius: var(--radius-full);
+}
+
+.chateaui-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.chateaui-segment {
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 5px 10px;
+  color: var(--text-tertiary);
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.chateaui-segment:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.chateaui-segment.is-active {
+  background: var(--background);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+}
+
+.chateaui-button-primary {
+  background: var(--primary);
+  color: var(--primary-fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform 0.1s ease;
+}
+
+.chateaui-button-primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--border-hover);
+}
+
+.chateaui-button-primary:active {
+  transform: scale(0.98);
+}
+
+.chateaui-button-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
+  transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
+
+.chateaui-button-secondary:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+}
+
+.chateaui-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  color: var(--text-tertiary);
+  transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
+
+.chateaui-icon-button:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.chateaui-field {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chateaui-field:focus,
+.chateaui-field:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
+}
+
+.chateaui-menu {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+@keyframes chateaui-loader-dots {
+  33% {
+    background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;
+  }
+  50% {
+    background-size: calc(100% / 3) 100%, calc(100% / 3) 0%, calc(100% / 3) 100%;
+  }
+  66% {
+    background-size: calc(100% / 3) 100%, calc(100% / 3) 100%, calc(100% / 3) 0%;
+  }
+}
+
+.chateaui-message-loading-container {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  height: 32px;
+  padding: 8px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+}
+
+.chateaui-message-loading {
+  width: 24px;
+  aspect-ratio: 4;
+  --_g: no-repeat radial-gradient(circle closest-side, var(--text-tertiary) 90%, transparent 90%);
+  background: var(--_g) 0% 50%, var(--_g) 50% 50%, var(--_g) 100% 50%;
+  background-size: calc(100% / 3) 100%;
+  animation: chateaui-loader-dots 750ms infinite linear;
+}
+
+.chateaui-shimmer-text {
+  display: inline-block;
+  background-image:
+    linear-gradient(90deg, transparent calc(50% - 44px), var(--text) 50%, transparent calc(50% + 44px)),
+    linear-gradient(var(--text-secondary), var(--text-secondary));
+  background-size: 250% 100%, auto;
+  background-repeat: no-repeat, padding-box;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: chateaui-loader-shimmer 2s linear infinite;
+}
+
+@keyframes chateaui-loader-shimmer {
+  0% { background-position: 100% center; }
+  100% { background-position: 0% center; }
+}
+
+/*
+ * `width: 100%` is load-bearing. Without it this stack is a shrink-to-fit flex
+ * item that sizes to the bubble's own max-content, which makes the bubble's
+ * `max-width: 90%` below cyclic: the cap resolves against the text width it is
+ * supposed to be constraining, so the bubble ends up permanently 10% narrower
+ * than its own contents and every message wraps. A definite width makes the 90%
+ * mean what it reads as — 90% of the message column.
+ */
+.user-message-stack {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/*
+ * Inline title rename. Shared by the sidebar and the search modal so the two
+ * renames are identical by construction rather than by coincidence.
+ */
+.chat-rename-input {
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 0 10px;
+  outline: none;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.chat-rename-input:focus {
+  border-color: var(--border-hover);
+}
+
+.chateaui-user-bubble {
+  width: fit-content;
+  min-width: 0;
+  max-width: 90%;
+  /*
+   * `break-word`, not `anywhere`: `anywhere` also lowers the box's min-content
+   * size to a single character, so any over-tight container shreds words instead
+   * of overflowing once. `break-word` still rescues unbreakable URLs.
+   */
+  overflow-wrap: break-word;
+  padding: 0.75rem 1rem;
+  background: var(--user-bubble);
+  color: var(--user-bubble-text);
+  border: 0;
+  border-radius: var(--bubble-radius) var(--bubble-radius) var(--bubble-tail-radius)
+    var(--bubble-radius);
+}
+
+.user-attachments-row {
+  display: flex;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.user-attachments-row .document-surface {
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.user-attachments-row :where(.attachment-strip) {
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-xs);
+}
+
+/* ─── End utility classes ────────────────────────────── */
+
+/* ─── Collapsed sidebar ─────────────────────────────── */
+.collapsed-btn {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.collapsed-btn:hover {
+  background: var(--surface-hover);
+}
+
+.collapsed-btn svg {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsed-btn:hover svg {
+  transform: rotate(-8deg);
+}
+/* ─── End collapsed sidebar ──────────────────────────── */
+
+/* ─── Message action bar (T3-style ghost row under bubbles) ───────────── */
+.message-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-top: 0.375rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
+}
+.message-action-bar.visible,
+.group\/msg:focus-within .message-action-bar {
+  opacity: 1;
+  visibility: visible;
+}
+
+.msg-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+.msg-action-btn:hover {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+.msg-action-btn:active {
+  opacity: 0.85;
+}
+.msg-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.msg-action-btn:disabled:hover {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+.msg-action-btn.danger:hover {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
+}
+
+.msg-action-btn.copied {
+  color: var(--success);
+}
+
+.msg-action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  line-height: 1.5rem;
+}
+
+.assistant-footer {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--motion-fast) var(--motion-ease), visibility var(--motion-fast) var(--motion-ease);
+  margin-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.assistant-footer.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.footer-info-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.footer-model-name {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.footer-tools-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  line-height: 1.5rem;
+}
+
+@property --work-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes work-spin {
+  to { --work-angle: 360deg; }
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+.work-composer {
+  border-color: var(--work-accent-border);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.work-composer-generating {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent !important;
+  animation: work-spin 6s linear infinite;
+}
+
+/* Glass-style sweeping light border — replaces solid pulse */
+.work-composer-generating::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 25px;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--work-angle),
+    transparent 30%,
+    var(--work-glint) 50%,
+    var(--work-accent-border) 62%,
+    var(--work-accent) 70%,
+    var(--work-accent-border) 78%,
+    var(--work-glint) 88%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.markdown-body {
+  contain: layout style;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: inherit;
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+
+/* Research modes (Search / Deep / Max): APA-style reports need more air */
+.markdown-body.is-research {
+  line-height: 1.74;
+  font-size: 0.96rem;
+}
+
+.markdown-body.is-research p,
+.markdown-body.is-research ul,
+.markdown-body.is-research ol,
+.markdown-body.is-research blockquote,
+.markdown-body.is-research table {
+  margin: 0 0 1.05em;
+}
+
+.markdown-body.is-research h1,
+.markdown-body.is-research h2,
+.markdown-body.is-research h3,
+.markdown-body.is-research h4,
+.markdown-body.is-research h5,
+.markdown-body.is-research h6 {
+  margin: 1.85rem 0 0.75rem;
+  line-height: 1.35;
+}
+
+.markdown-body.is-research h1:first-child,
+.markdown-body.is-research h2:first-child {
+  margin-top: 0;
+}
+
+.markdown-body.is-research li + li {
+  margin-top: 0.35em;
+}
+
+.markdown-body.is-research hr {
+  margin: 2rem 0;
+}
+
+.markdown-body.is-research blockquote {
+  margin: 1.15em 0;
+  padding-left: 1rem;
+}
+
+.markdown-body > :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  contain: layout;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Streaming splits assistant markdown into .stream-settled + .stream-tail (see
+ * `splitStreamingMarkdown`). `display: contents` keeps the wrappers out of the box
+ * tree, so blocks either side of the seam collapse their margins exactly as they
+ * would in one flat body — no double gap at the join, no trailing gap at the end.
+ * Selectors still see the wrappers though, so the three child-scoped rules above
+ * have to reach through them.
+ */
+.markdown-body > :where(.stream-settled, .stream-tail) {
+  display: contents;
+}
+
+.markdown-body
+  > :where(.stream-settled, .stream-tail)
+  > :where(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4, h5, h6) {
+  contain: layout;
+}
+
+.markdown-body > :where(.stream-settled, .stream-tail):first-child > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :where(.stream-settled, .stream-tail):last-child > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p,
+.markdown-body ul,
+.markdown-body ol,
+.markdown-body blockquote,
+.markdown-body pre,
+.markdown-body table {
+  margin: 0 0 1rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.25rem;
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  padding: 1rem;
+  background: var(--surface);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.dark .markdown-body pre {
+  background: var(--surface);
+}
+
+/* ── Code block wrapper ──
+   One card in the composer's language: white surface, hairline ring, generous
+   corner. It used to paint the wrapper with --code-terminal-bg while the <pre>
+   inside stayed on --surface, so every block rendered as a dark header strip
+   welded to a light body. */
+.markdown-body .code-block-wrapper {
+  border-radius: var(--radius-xl);
+  border: 0;
+  overflow: hidden;
+  margin: 0.75rem 0;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--composer-ring);
+}
+
+.markdown-body .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.875rem;
+  background: transparent;
+  border-bottom: 1px solid var(--composer-ring);
+}
+
+/* The block owns the surface; the <pre> just holds the text. */
+.markdown-body .code-block-wrapper pre {
+  background: transparent;
+  padding: 0.875rem;
+}
+
+/* A quiet caption, not a badge — the pill competed with the code beneath it. */
+.markdown-body .code-lang {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.dark .markdown-body .code-lang {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.markdown-body .code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.15s ease, transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.code-block-wrapper:hover .code-copy-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.markdown-body .code-copy-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.markdown-body .code-copy-btn.copied {
+  color: var(--success);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.markdown-body code:not(pre code) {
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.4rem;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 0.84em;
+  border: 1px solid var(--border);
+}
+
+.dark .markdown-body code:not(pre code) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.markdown-body a {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  transition: border-color 0.15s ease;
+}
+
+.markdown-body a:hover {
+  border-color: var(--text);
+}
+
+.markdown-body blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.dark .markdown-body blockquote {
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.selected-text-message-bubble {
+  display: inline-flex;
+  width: fit-content;
+  max-width: min(46rem, 90%);
+  margin-bottom: 0.75rem;
+  align-items: flex-start;
+  gap: 0.55rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 0.25rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selected-text-message-bubble:hover {
+  color: var(--text-secondary);
+}
+
+.selected-text-message-icon {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.selected-text-message-markdown {
+  min-width: 0;
+  flex: 1;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: currentColor;
+  font-size: 0.9em;
+  line-height: 1.45;
+}
+
+.selected-text-message-markdown > :first-child {
+  margin-top: 0;
+}
+
+.selected-text-message-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* Markdown headings */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.5rem 0 0.5rem;
+  color: inherit;
+  letter-spacing: -0.01em;
+}
+.markdown-body h1 { font-size: 1.5rem; font-weight: 700; }
+.markdown-body h2 { font-size: 1.25rem; }
+.markdown-body h3 { font-size: 1.1rem; }
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 1rem; }
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+/* Markdown tables */
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.dark .markdown-body table {
+  border-color: var(--border);
+}
+.markdown-body th {
+  background: var(--surface-hover);
+  padding: 0.6rem 0.875rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border);
+}
+.dark .markdown-body th {
+  background: var(--surface-hover);
+  border-color: var(--border);
+}
+.markdown-body td {
+  padding: 0.55rem 0.875rem;
+  border-bottom: 1px solid var(--border);
+}
+.dark .markdown-body td {
+  border-color: var(--border);
+}
+.markdown-body tr:last-child td {
+  border-bottom: none;
+}
+.markdown-body tr:hover td {
+  background: var(--surface-hover);
+}
+.dark .markdown-body tr:hover td {
+  background: var(--surface-hover);
+}
+
+/* Nested lists */
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+.markdown-body li p {
+  margin-bottom: 0.25rem;
+}
+
+/* Task list checkboxes */
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.4rem;
+  accent-color: var(--primary);
+}
+
+/* KaTeX display equations */
+.markdown-body .katex-display {
+  overflow-y: hidden;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0.25rem 0;
+  margin: 0.5em 0;
+}
+.markdown-body .katex-display > .katex {
+  white-space: nowrap;
+}
+.markdown-body .katex {
+  font-size: 1.05em;
+}
+.markdown-body .katex-error {
+  display: inline-block;
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 4px;
+  padding: 0.125rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  cursor: help;
+}
+
+/*
+ * Stream cursor. It hangs off the *last block* of the live tail, not off the tail
+ * container: `::after` on a container whose children are block-level `<p>`/`<pre>`
+ * forms an anonymous block, so the caret rendered on its own line below the text
+ * instead of trailing the last word. Inside the block it is an ordinary inline box.
+ *
+ * There is deliberately no `will-change` here. It used to sit on the container and
+ * promoted the whole markdown body to a compositing layer for the entire stream,
+ * re-rasterising it on every DOM write. The caret is a 1s opacity loop on two
+ * pixels — it does not need a layer.
+ */
+.stream-caret > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--primary);
+  opacity: 0.7;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: streamCaretPulse 1s ease-in-out infinite;
+}
+@keyframes streamCaretPulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.2; }
+}
+
+/* Text shimmer for "Thinking" label */
+@keyframes textShimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+.text-shimmer {
+  background: linear-gradient(to right, var(--text-muted) 40%, var(--text) 60%, var(--text-muted) 80%);
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textShimmer 3s linear infinite;
+}
+
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--border);
+  border-radius: var(--radius-full);
+  height: 6px;
+}
+.dark input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--border);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  margin-top: -5px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+input[type="range"]:hover::-webkit-slider-thumb,
+input[type="range"]:focus::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input[type="range"]::-moz-range-track {
+  background: var(--border);
+  border-radius: var(--radius-full);
+  height: 6px;
+}
+.dark input[type="range"]::-moz-range-track {
+  background: var(--border);
+}
+input[type="range"]::-moz-range-thumb {
+  border: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+}
+
+@keyframes thinPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.3;
+  }
+}
+
+.loader-pulse {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: thinPulse 1.5s ease-in-out infinite;
+}
+
+/* ── Dark-mode hljs overrides ───────────────────────────────────────────── */
+/* The github.min.css import handles light mode. These override for dark. */
+.dark .hljs { color: #c9d1d9; }
+.dark .hljs-doctag, .dark .hljs-keyword, .dark .hljs-meta .hljs-keyword, .dark .hljs-template-tag, .dark .hljs-template-variable, .dark .hljs-type, .dark .hljs-variable.language_ { color: #ff7b72; }
+.dark .hljs-title, .dark .hljs-title.class_, .dark .hljs-title.class_.inherited__, .dark .hljs-title.function_ { color: #d2a8ff; }
+.dark .hljs-attr, .dark .hljs-attribute, .dark .hljs-literal, .dark .hljs-meta, .dark .hljs-number, .dark .hljs-operator, .dark .hljs-variable, .dark .hljs-selector-attr, .dark .hljs-selector-class, .dark .hljs-selector-id { color: #79c0ff; }
+.dark .hljs-regexp, .dark .hljs-string, .dark .hljs-meta .hljs-string { color: #a5d6ff; }
+.dark .hljs-built_in, .dark .hljs-symbol { color: #ffa657; }
+.dark .hljs-comment, .dark .hljs-code, .dark .hljs-formula { color: #8b949e; }
+.dark .hljs-name, .dark .hljs-quote, .dark .hljs-selector-pseudo, .dark .hljs-selector-tag { color: #7ee787; }
+.dark .hljs-subst { color: #c9d1d9; }
+.dark .hljs-section { color: #1f6feb; font-weight: 700; }
+.dark .hljs-bullet { color: #f2cc60; }
+.dark .hljs-emphasis { color: #c9d1d9; font-style: italic; }
+.dark .hljs-strong { color: #c9d1d9; font-weight: 700; }
+.dark .hljs-addition { color: #aff5b4; background-color: #033a16; }
+.dark .hljs-deletion { color: #ffdcd7; background-color: #67060c; }
+
+/* ── Dark mode scrollbar ───────────────────────────────────────────── */
+.dark * {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 38%, transparent) transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 34%, transparent);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 46%, transparent);
+}
+
+/* ── Scroll entry animations ───────────────────────────────────────────── */
+@keyframes scroll-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scroll-animate {
+  opacity: 0;
+  animation: scroll-fade-in 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.scroll-animate-delay-1 { animation-delay: 80ms; }
+.scroll-animate-delay-2 { animation-delay: 160ms; }
+.scroll-animate-delay-3 { animation-delay: 240ms; }
+.scroll-animate-delay-4 { animation-delay: 320ms; }
+.scroll-animate-delay-5 { animation-delay: 400ms; }
+
+/* Ambient gradient disabled — Flaxeo calm flat chrome */
+.ambient-gradient {
+  display: none;
+}
+
+/* ── Reduced-motion / mobile: kill decorative continuous animations ─── */
+@media (prefers-reduced-motion: reduce), (max-width: 768px), (pointer: coarse) {
+  .ambient-gradient { animation: none !important; display: none; }
+  .text-shimmer, .startup-loading-text.text-shimmer {
+    animation: none !important;
+    background: none;
+    -webkit-text-fill-color: var(--text-muted);
+  }
+  .startup-dots-layer { animation: none !important; }
+  .chateaui-shimmer-text { animation: none !important; }
+  .chateaui-message-loading { animation: none !important; }
+  .loader-pulse { animation: none !important; }
+  .scroll-animate { animation: none !important; opacity: 1; }
+  .work-composer-generating { animation: none !important; }
+
+  /*
+   * Matches the caret's real selector. The old rule here was `.stream-caret::after`,
+   * which stopped matching once the caret moved onto the tail's last block. This
+   * block also used to miss the per-chunk `streamFadeIn` entirely, because that
+   * selector lived in a component `<style>` and Svelte name-mangled it — so
+   * reduced-motion users still got the opacity flicker. There is nothing per-chunk
+   * left to animate now.
+   */
+  .stream-caret > :last-child::after { animation: none !important; opacity: 0.7; }
+}
+
+/*
+ * Office fonts, mapped to look-alikes the machine already has, so documents
+ * and decks that name them don't fall back to a default serif. The real font
+ * wins when it is installed.
+ */
+@font-face { font-family: 'Aptos'; src: local('Aptos'), local('Segoe UI'), local('Inter'), local('Helvetica Neue'), local('Liberation Sans'), local('Arial'), local('DejaVu Sans'); }
+@font-face { font-family: 'Aptos Display'; src: local('Aptos Display'), local('Segoe UI'), local('Inter'), local('Helvetica Neue'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Calibri'; src: local('Calibri'), local('Carlito'), local('Segoe UI'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Calibri Light'; src: local('Calibri Light'), local('Carlito'), local('Liberation Sans'), local('Arial'); }
+@font-face { font-family: 'Cambria'; src: local('Cambria'), local('Caladea'), local('Liberation Serif'), local('Georgia'); }
+
+/* ── Icons ──────────────────────────────────────────────────────────────
+   Lucide at 1.5px: lighter at the 14–16px sizes the app uses. The 12px and
+   smaller icons keep a touch more weight so they don't go hairline. */
+svg.lucide {
+  stroke-width: 1.5;
+  transition:
+    translate 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    rotate 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    scale 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+svg.lucide:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
+  stroke-width: 1.75;
+}
+
+/* Hover motion: a small, meaningful nudge per icon — fast and quiet. Uses the
+   individual transform properties so Tailwind's rotate-180 etc. still apply. */
+:is(button, a, [role='menuitem'], [role='tab'], label):not(:disabled):hover {
+  & svg:is(.lucide-plus, .lucide-x) { rotate: 90deg; }
+  & svg:is(.lucide-settings, .lucide-settings-2, .lucide-cog, .lucide-sun) { rotate: 45deg; }
+  & svg:is(.lucide-refresh-cw, .lucide-rotate-cw, .lucide-refresh-ccw, .lucide-rotate-ccw, .lucide-repeat) { rotate: 120deg; }
+  & svg:is(.lucide-arrow-up, .lucide-send, .lucide-house, .lucide-home, .lucide-upload, .lucide-chevron-up) { translate: 0 -1.5px; }
+  & svg:is(.lucide-arrow-down, .lucide-download, .lucide-chevron-down) { translate: 0 1.5px; }
+  & svg:is(.lucide-arrow-left, .lucide-chevron-left, .lucide-undo-2) { translate: -1.5px 0; }
+  & svg:is(.lucide-arrow-right, .lucide-chevron-right, .lucide-redo-2) { translate: 1.5px 0; }
+  & svg:is(.lucide-external-link, .lucide-arrow-up-right, .lucide-square-arrow-out-up-right) { translate: 1px -1px; }
+  & svg:is(.lucide-trash, .lucide-trash-2, .lucide-paperclip, .lucide-pencil, .lucide-pen, .lucide-pen-line, .lucide-square-pen, .lucide-moon) { rotate: -12deg; }
+  & svg:is(.lucide-search, .lucide-globe, .lucide-globe-2, .lucide-earth) { rotate: 15deg; }
+  & svg:is(.lucide-copy, .lucide-mic, .lucide-brain, .lucide-sparkles, .lucide-star, .lucide-heart, .lucide-bell, .lucide-thumbs-up, .lucide-thumbs-down, .lucide-maximize, .lucide-maximize-2, .lucide-expand, .lucide-volume-2, .lucide-play) { scale: 1.12; }
+  & svg:is(.lucide-minimize, .lucide-minimize-2, .lucide-shrink) { scale: 0.88; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  svg.lucide { transition: none; }
+  :is(button, a, [role='menuitem'], [role='tab'], label):hover svg.lucide { translate: none; rotate: none; scale: none; }
+}

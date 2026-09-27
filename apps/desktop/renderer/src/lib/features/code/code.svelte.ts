@@ -1,0 +1,752 @@
+import { appStore } from '$lib/stores/app.svelte';
+import { approvalsStore } from '$lib/stores/approvals.svelte';
+import {
+  loadCodeProjectsFromDb,
+  saveCodeProjectToDb,
+  deleteCodeProjectFromDb,
+  loadAppConfig
+} from '$lib/utils/storage';
+import { invoke } from '$lib/services/bridge';
+import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
+import { createId } from '$lib/utils/id';
+import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
+import type { ChatSession, CodeProject, CodeTimelineEntry } from '$lib/types/chat';
+import type { AgenteCheckpointSummary, CodeAgentEvent } from '$shared/agente-protocol';
+import { applyCodeAgentEvent, createCodeRunState, type CodeRunState } from './code-run';
+import {
+  startCodeAgentSession,
+  promptCodeAgent,
+  steerCodeAgent,
+  followUpCodeAgent,
+  abortCodeAgent,
+  compactCodeAgent,
+  setCodeAgentRuntimeMode,
+  respondToCodeAgentApproval,
+  listCodeAgentCheckpoints,
+  rollbackCodeAgent,
+  deleteCodeAgentSessionData,
+  listLiveCodeAgentChats,
+  setAgenteModel
+} from './code-ipc';
+import { subscribeToCodeAgentEvents } from './code-events.svelte';
+
+interface AgenteRun extends CodeRunState {
+  chatId: string;
+  running: boolean;
+  /** Stable transcript target; queued user inputs can follow this message. */
+  assistantMessageId?: string;
+  checkpoints: AgenteCheckpointSummary[];
+  /**
+   * Input handed to the engine but not yet consumed by a turn (steers and
+   * follow-ups). Approximate — the engine drains asynchronously — but it
+   * answers "did my message land?" while the run is live.
+   */
+  queuedCount: number;
+}
+
+/**
+ * Code space store.
+ *
+ * Owns everything specific to the Code tab's agent experience: the project
+ * list, folder expansion, and the live run state per conversation. Chat
+ * storage stays in AppStore (chats ARE the persistence substrate) — this
+ * store only reads `appStore.chats` and appends messages through small,
+ * explicit mutations, so no agent state leaks back into AppStore.
+ *
+ * Turn contract (pi-style): a running agent is steered, never restarted.
+ * `send()` starts a run or steers; `followUp()` queues for when it would
+ * stop. Every user-visible input lands in the transcript.
+ */
+/** Remembers the last runtime mode picked, for new conversations. */
+const DEFAULT_MODE_KEY = 'flaxeo.code.defaultMode';
+
+class CodeStore {
+  projects = $state<CodeProject[]>([]);
+  loading = $state(false);
+  loaded = $state(false);
+  /** Project folders expanded in the sidebar tree (remembered across launches). */
+  expandedProjects = $state<Record<string, boolean>>(readExpanded());
+  /** Projects whose folder was not found on disk at the last check. */
+  missingProjects = $state<Record<string, boolean>>({});
+  activeProjectId = $state<string | null>(null);
+
+  /** Live runs keyed by chatId. */
+  runs = $state<Record<string, AgenteRun>>({});
+  /** engine session id per chat (also mirrored into chat.codeAgent.sessionId) */
+  #sessionIds = new Map<string, string>();
+  /** Approvals the engine settled itself (abort, shutdown) — do not answer them again. */
+  #engineSettled = new Set<string>();
+  #repairedInterrupted = false;
+  #unsubEvents: (() => void) | null = null;
+
+  constructor() {
+    // Deleted conversations must not leave run state behind (unbounded growth)
+    // nor a live engine session pointing at a chat that no longer exists.
+    appStore.onChatDeleted((chatId, chat) => {
+      if (this.runs[chatId]?.running) void abortCodeAgent(chatId).catch(() => {});
+      this.evictChat(chatId, { force: true });
+      // The engine's log and checkpoints belong to the conversation: they go
+      // with it. Project files are never touched.
+      if (chat?.codeAgent || chat?.projectId) {
+        const sessionId = chat.codeAgent?.sessionId;
+        void deleteCodeAgentSessionData({ chatIds: [chatId], sessionIds: sessionId ? [sessionId] : [] }).catch(() => {});
+      }
+    });
+    $effect.root(() => {
+      $effect(() => writeExpanded(this.expandedProjects));
+    });
+  }
+
+  async load(): Promise<void> {
+    if (this.loading) return;
+    this.loading = true;
+    try {
+      this.projects = sortByActivity(await loadCodeProjectsFromDb());
+      this.loaded = true;
+    } finally {
+      this.loading = false;
+    }
+    void this.checkFolders();
+    void this.#repairInterrupted();
+  }
+
+  /**
+   * A run the app was closed in the middle of is saved as "streaming" and
+   * would otherwise look live forever (and turn the next message into a
+   * steer to a session that no longer exists). Runs the engine still has —
+   * a renderer reload keeps them going — are left alone.
+   */
+  async #repairInterrupted(): Promise<void> {
+    if (this.#repairedInterrupted) return;
+    this.#repairedInterrupted = true;
+    const live = new Set(await listLiveCodeAgentChats().catch(() => [] as string[]));
+    for (const chat of appStore.visibleCodeChats) {
+      if (live.has(chat.id)) continue;
+      const stuck = chat.messages.filter((message) => message.role === 'assistant' && message.status === 'streaming');
+      if (!stuck.length) continue;
+      for (const message of stuck) {
+        message.status = 'idle';
+        message.done = true;
+        message.metadata = { ...message.metadata, codeStopReason: 'aborted', codeNote: 'interrupted' };
+        for (const step of message.agentSteps ?? []) {
+          if (step.status === 'running' || step.status === 'awaiting_approval') step.status = 'error';
+        }
+      }
+      this.evictChat(chat.id, { force: true });
+      appStore.markChatDirty(chat.id);
+    }
+    appStore.persist();
+  }
+
+  /** Flag projects whose folder moved or was deleted outside the app. */
+  async checkFolders(): Promise<void> {
+    const entries = await Promise.all(
+      this.projects.map(async (project) => [project.id, !(await pathExists(project.rootPath).catch(() => true))] as const)
+    );
+    this.missingProjects = Object.fromEntries(entries.filter(([, missing]) => missing));
+  }
+
+  async addProject(): Promise<CodeProject | null> {
+    const rootPath = (await pickWorkspaceFolder()) || null;
+    if (!rootPath) return null;
+    // The same folder twice is one project: select the one that exists.
+    const existing = this.projects.find((project) => samePath(project.rootPath, rootPath));
+    if (existing) {
+      this.activeProjectId = existing.id;
+      this.expandedProjects[existing.id] = true;
+      return existing;
+    }
+    const project: CodeProject = {
+      id: createId('proj'),
+      rootPath,
+      rootName: folderName(rootPath),
+      icon: null,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await saveCodeProjectToDb(project);
+    await this.load();
+    this.activeProjectId = project.id;
+    this.expandedProjects[project.id] = true;
+    return project;
+  }
+
+  /**
+   * Delete a project from Flaxeo: every conversation in it (and the engine's
+   * logs and checkpoints for them), then the project itself. The folder on
+   * disk is never touched.
+   */
+  async deleteProject(projectId: string): Promise<void> {
+    const conversations = appStore.chats.filter((chat) => chat.projectId === projectId);
+    for (const chat of conversations) {
+      if (this.runs[chat.id]?.running) await abortCodeAgent(chat.id).catch(() => {});
+      appStore.deleteChat(chat.id, { silent: true });
+    }
+    await deleteCodeProjectFromDb(projectId);
+    if (this.activeProjectId === projectId) this.activeProjectId = null;
+    delete this.expandedProjects[projectId];
+    await this.load();
+  }
+
+  /** Display name only; the folder keeps its name. */
+  async renameProject(projectId: string, name: string): Promise<void> {
+    const project = this.projectById(projectId);
+    const trimmed = name.trim();
+    if (!project || !trimmed || trimmed === project.rootName) return;
+    await saveCodeProjectToDb({ ...project, rootName: trimmed, updatedAt: project.updatedAt });
+    await this.load();
+  }
+
+  /** Point a project whose folder moved at its new location. */
+  async locateProject(projectId: string): Promise<void> {
+    const project = this.projectById(projectId);
+    if (!project) return;
+    const rootPath = await pickWorkspaceFolder();
+    if (!rootPath) return;
+    await saveCodeProjectToDb({ ...project, rootPath, updatedAt: Date.now() });
+    await this.load();
+  }
+
+  /** Open the project folder in the system file manager. */
+  async revealProject(projectId: string): Promise<void> {
+    const project = this.projectById(projectId);
+    if (project) await invoke('open_workspace_file', { absolutePath: project.rootPath });
+  }
+
+  /** Conversations whose project no longer exists (older builds orphaned them). */
+  get unlinkedConversations(): ChatSession[] {
+    if (!this.loaded) return [];
+    const known = new Set(this.projects.map((project) => project.id));
+    return appStore.visibleCodeChats.filter((chat) => !chat.projectId || !known.has(chat.projectId));
+  }
+
+  /** Move a project to the top of the list when something happens in it. */
+  #touchProject(projectId: string | null | undefined): void {
+    const project = this.projectById(projectId ?? null);
+    if (!project) return;
+    project.updatedAt = Date.now();
+    this.projects = sortByActivity(this.projects);
+    void saveCodeProjectToDb({ ...project });
+  }
+
+  toggleExpanded(projectId: string): void {
+    this.expandedProjects[projectId] = !this.expandedProjects[projectId];
+  }
+
+  projectById(projectId: string | null): CodeProject | null {
+    if (!projectId) return null;
+    return this.projects.find((p) => p.id === projectId) ?? null;
+  }
+
+  /** Conversations linked to a project, newest activity first. Code space only. */
+  sessionsFor(projectId: string): ChatSession[] {
+    return appStore.visibleCodeChats
+      .filter((chat) => chat.projectId === projectId)
+      .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+  }
+
+  /**
+   * Create a fresh code conversation inside a project. The chat is a normal
+   * code-space session tagged with the project and the agente driver meta the
+   * engine attaches to when it starts.
+   *
+   * The projectId/codeAgent writes MUST go through the reactive proxy from
+   * `appStore.chats` — createChat() returns the raw pre-proxy object, and a
+   * raw-target write never notifies subscribers, leaving the sidebar tree
+   * and the surface blind to the new conversation.
+   */
+  /**
+   * The mode new conversations start in: the last one picked, full-auto
+   * until then (approvals stay one click away in the composer).
+   */
+  get defaultMode(): 'full' | 'supervised' | 'plan' {
+    try {
+      const saved = localStorage.getItem(DEFAULT_MODE_KEY);
+      if (saved === 'full' || saved === 'supervised' || saved === 'plan') return saved;
+    } catch {
+      // Blocked storage: fall through to the default.
+    }
+    return 'full';
+  }
+
+  newConversation(project: CodeProject): ChatSession {
+    const created = appStore.createChat('code');
+    const chat = appStore.chats.find((c) => c.id === created.id);
+    if (!chat) return created;
+    chat.projectId = project.id;
+    chat.codeAgent = {
+      instanceId: 'agente',
+      driverKind: 'agente',
+      substrate: 'native',
+      runtimeMode: this.defaultMode,
+      updatedAt: Date.now()
+    };
+    this.activeProjectId = project.id;
+    this.expandedProjects[project.id] = true;
+    appStore.persist();
+    return chat;
+  }
+
+  openConversation(chatId: string): void {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (chat?.projectId) this.activeProjectId = chat.projectId;
+    appStore.selectChat(chatId);
+  }
+
+  // ── Model readiness ─────────────────────────────────────────────────
+
+  /**
+   * True when the current app-wide model selection can actually run. Mirrors
+   * Home's composer guard so both spaces refuse to send into a void: local
+   * needs a loaded model, API needs a key AND a model id.
+   */
+  get modelReady(): boolean {
+    if (appStore.backendMode === 'local') {
+      return !!(appStore.selectedLocalModelPath && appStore.localModelActive);
+    }
+    const provider = appStore.activeProvider;
+    return !!(provider && (provider.has_api_key || provider.api_key) && provider.model);
+  }
+
+  /** Resolve provider/model from app config the same way the chat pipeline does. */
+  async #resolveProviderModel(): Promise<{ provider: string; model: string }> {
+    const config = await loadAppConfig();
+    if (config.llm?.backend_mode === 'local' || !config.llm?.provider) {
+      return { provider: 'local', model: config.llm?.local?.model || '' };
+    }
+    const name = config.llm.provider;
+    const entry = config.llm.providers?.[name];
+    return { provider: name, model: entry?.model || '' };
+  }
+
+  // ── Live runs ────────────────────────────────────────────────────────
+
+  runFor(chatId: string | null | undefined): AgenteRun | null {
+    if (!chatId) return null;
+    return this.runs[chatId] ?? null;
+  }
+
+  /**
+   * Drop cached run/session state for a chat. Live runs are kept unless
+   * `force` is set — chat deletion aborts the engine first, and the late
+   * `agent_end` of a deleted chat must not re-materialize its run.
+   */
+  evictChat(chatId: string, options: { force?: boolean } = {}): void {
+    if (!options.force && this.runs[chatId]?.running) return;
+    if (this.runs[chatId]) {
+      const next = { ...this.runs };
+      delete next[chatId];
+      this.runs = next;
+    }
+    this.#sessionIds.delete(chatId);
+  }
+
+  /** True once an engine session has been started for this chat. */
+  hasSession(chatId: string): boolean {
+    return this.#sessionIds.has(chatId);
+  }
+
+  #requireRun(chatId: string): AgenteRun {
+    if (!this.runs[chatId]) {
+      // Recover once from the persisted transcript, not from its tail: a steer
+      // or follow-up may be the last message when live state is lost on reload.
+      const chat = appStore.chats.find((c) => c.id === chatId);
+      const assistant = chat?.messages.slice().reverse().find((message) => message.role === 'assistant' && message.status === 'streaming');
+      this.runs[chatId] = {
+        chatId,
+        running: !!assistant,
+        assistantMessageId: assistant?.id,
+        checkpoints: [],
+        queuedCount: 0,
+        ...createCodeRunState(),
+        content: assistant?.content || '',
+        timeline: restoreTimeline(assistant),
+        todos: assistant?.metadata?.codeTodos?.map((todo) => ({ ...todo })) ?? [],
+        reasoning: assistant?.reasoning || '',
+        reasoningRaw: assistant?.reasoning || '',
+        steps: assistant?.agentSteps?.map((step) => ({ ...step })) || []
+      };
+    }
+    return this.runs[chatId]!;
+  }
+
+  #ensureEventSubscription(): void {
+    if (this.#unsubEvents) return;
+    this.#unsubEvents = subscribeToCodeAgentEvents('*', (event) => this.#handleEvent(event));
+  }
+
+  #handleEvent(event: CodeAgentEvent): void {
+    let run = this.runs[event.chatId];
+    if (!run) {
+      // Post-reload or out-of-order pushes used to vanish when the run map had
+      // not been populated yet. Materialize a run for chats we know about so
+      // deltas have somewhere to land; ignore events for unknown chats.
+      if (!appStore.chats.some((chat) => chat.id === event.chatId)) return;
+      run = this.#requireRun(event.chatId);
+    }
+    const chat = appStore.chats.find((c) => c.id === event.chatId);
+    if (!chat) return;
+
+    applyCodeAgentEvent(run, event);
+    if (event.type === 'agent_start') {
+      // A follow-up's agent_start belongs to the same transcript turn — bind
+      // the run to the streaming assistant message even when the run state
+      // was re-created without one (post-reload recovery).
+      run.assistantMessageId ??= chat.messages.slice().reverse().find((message) => message.role === 'assistant' && message.status === 'streaming')?.id;
+      run.running = true;
+      run.queuedCount = 0;
+    }
+    if (event.type === 'steer_acknowledged' && event.accepted) {
+      // Authoritative receipt replaces the local approximation: the engine
+      // tells us exactly how many steers are still queued.
+      run.queuedCount = event.queuedCount ?? Math.max(0, run.queuedCount - 1);
+    }
+    if (run.done) run.running = false;
+    if (event.type === 'agent_end') {
+      run.queuedCount = 0;
+      void this.refreshCheckpoints(event.chatId);
+    }
+    if (event.type === 'approval_resolved') {
+      // Settled by the engine (Stop, shutdown) or echoing our own answer: in
+      // both cases the buttons must go and nothing must be sent back.
+      if (approvalsStore.items.some((item) => item.id === event.requestId)) {
+        this.#engineSettled.add(event.requestId);
+        approvalsStore.resolve(event.requestId, event.decision === 'allow');
+      }
+    }
+    if (event.type === 'agent_end' || event.type === 'error') {
+      for (const pending of approvalsStore.forChat(event.chatId)) this.#engineSettled.add(pending.id);
+      approvalsStore.clearForChat(event.chatId);
+    }
+    this.#flushToMessage(event.chatId, run);
+
+    if (event.type === 'approval_request') {
+      void (async () => {
+        const isPlan = event.kind === 'plan';
+        // Resolve cwd from the event's own chat — the sidebar's active
+        // project may belong to a different conversation.
+        const chat = appStore.chats.find((c) => c.id === event.chatId);
+        const project = this.projectById(chat?.projectId ?? null);
+        const allow = await approvalsStore.request({
+          id: event.requestId,
+          chatId: event.chatId,
+          command: isPlan
+            ? `Approve plan — ${summarizeArgs(event.args) || event.toolName}`
+            : `${event.toolName} ${summarizeArgs(event.args)}`.trim(),
+          cwd: project?.rootPath || 'project'
+        });
+        if (this.#engineSettled.delete(event.requestId)) return;
+        await respondToCodeAgentApproval(event.chatId, event.requestId, allow ? 'allow' : 'deny').catch(() => {});
+      })();
+    }
+  }
+
+  /** Mirror run state into the streaming assistant message of the chat. */
+  #flushToMessage(chatId: string, run: AgenteRun): void {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat) return;
+    const message = chat.messages.find((message) => message.id === run.assistantMessageId);
+    if (!message || message.role !== 'assistant' || message.status !== 'streaming') return;
+    message.content = run.content;
+    message.reasoning = run.reasoning || undefined;
+    message.agentSteps = run.steps.map((step) => ({ ...step }));
+    message.metadata = { ...message.metadata, codeTimeline: run.timeline.map((entry) => ({ ...entry })) };
+    if (run.done) {
+      message.status = run.error ? 'error' : 'idle';
+      message.done = true;
+      const elapsed = run.startedAt ? (run.endedAt ?? Date.now()) - run.startedAt : undefined;
+      message.metadata = {
+        ...message.metadata,
+        ...(run.todos.length ? { codeTodos: run.todos.map((todo) => ({ ...todo })) } : {}),
+        ...(elapsed ? { codeElapsedMs: elapsed } : {}),
+        ...(run.hitTurnLimit ? { codeHitTurnLimit: true } : {})
+      };
+      // The reason belongs on the message — the transcript renders it, not
+      // just a generic "failed" card.
+      if (run.error) {
+        message.metadata = { ...message.metadata, error: true, errorMessage: run.error };
+        if (!message.content) message.content = run.error;
+      } else if (run.stopReason) {
+        message.metadata = { ...message.metadata, codeStopReason: run.stopReason };
+      }
+      appStore.markChatDirty(chatId);
+      appStore.persist();
+    }
+  }
+
+  /** Append a user message to a chat transcript (no assistant placeholder). */
+  #appendUserTurn(chat: ChatSession, text: string): void {
+    chat.messages.push({
+      id: createId('msg'),
+      role: 'user',
+      content: text,
+      createdAt: Date.now()
+    });
+    if (isDefaultChatTitle(chat.title)) {
+      chat.title = text.slice(0, 60);
+    }
+    chat.updatedAt = Date.now();
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+  }
+
+  /** Push the user turn plus the streaming assistant placeholder for a run. */
+  #appendTurnPair(chat: ChatSession, text: string): void {
+    this.#appendUserTurn(chat, text);
+    const assistantMessageId = createId('msg');
+    this.#requireRun(chat.id).assistantMessageId = assistantMessageId;
+    chat.messages.push({
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      createdAt: Date.now(),
+      status: 'streaming',
+      mode: 'agent',
+      agentSteps: []
+    });
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+  }
+
+  /**
+   * Start (or resume) the engine session for a chat and send the prompt.
+   * While a run is active the prompt becomes a steer — course correction,
+   * recorded in the transcript like any other user turn.
+   * The assistant placeholder message streams live from code_agent_event.
+   */
+  async send(chatId: string, text: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project || !text.trim()) return;
+
+    const run = this.#requireRun(chatId);
+    if (run.running) {
+      await this.steer(chatId, text);
+      return;
+    }
+
+    // Keep the last usage report visible between runs — the next turn
+    // refreshes it; it should not blank while the first reply streams.
+    const previousUsage = run.usage;
+    Object.assign(run, createCodeRunState(), {
+      running: true,
+      assistantMessageId: undefined,
+      error: undefined,
+      stopReason: undefined,
+      queuedCount: 0,
+      checkpoints: run.checkpoints,
+      usage: previousUsage
+    });
+    this.#ensureEventSubscription();
+
+    if (this.#sessionIds.has(chatId)) {
+      // The picker may have changed since the session started (possibly while
+      // another conversation was on screen): run with what it shows now.
+      const { provider, model } = await this.#resolveProviderModel();
+      if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
+    } else {
+      try {
+        const { provider, model } = await this.#resolveProviderModel();
+        if (!model) {
+          throw new Error('No model selected — pick one in the Model Hub first.');
+        }
+        const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
+        const resumeSessionId = chat.codeAgent?.sessionId || undefined;
+        const { sessionId } = await startCodeAgentSession({
+          chatId,
+          projectRoot: project.rootPath,
+          provider,
+          model,
+          runtimeMode,
+          resumeSessionId,
+          ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
+        });
+        this.#sessionIds.set(chatId, sessionId);
+        if (chat.codeAgent) {
+          chat.codeAgent.sessionId = sessionId;
+          chat.codeAgent.updatedAt = Date.now();
+        }
+      } catch (err: unknown) {
+        const messageText = err instanceof Error ? err.message : String(err);
+        run.running = false;
+        run.done = true;
+        run.error = messageText;
+        // A failed start is still a turn: show what was asked and why it
+        // failed instead of swallowing both.
+        this.#appendTurnPair(chat, text);
+        this.#flushToMessage(chatId, run);
+        return;
+      }
+    }
+
+    this.#appendTurnPair(chat, text);
+    this.#touchProject(project.id);
+
+    try {
+      const result = await promptCodeAgent(chatId, text);
+      if (result.ok) return;
+      run.error = result.error || 'Failed to start the coding agent.';
+    } catch (err: unknown) {
+      run.error = err instanceof Error ? err.message : String(err);
+    }
+    run.running = false;
+    run.done = true;
+    run.queuedCount = 0;
+    this.#flushToMessage(chatId, run);
+  }
+
+  /**
+   * Course-correct mid-run: records the message in the transcript and hands
+   * it to the engine, which injects it after the current tool batch.
+   */
+  async steer(chatId: string, text: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat || !text.trim()) return;
+    this.#appendUserTurn(chat, text);
+    const run = this.#requireRun(chatId);
+    run.queuedCount += 1;
+    try {
+      const result = await steerCodeAgent(chatId, text);
+      if (!result.ok) this.#rollbackQueued(run);
+    } catch {
+      this.#rollbackQueued(run);
+    }
+  }
+
+  /** Queue input that runs only when the agent would otherwise stop. */
+  async followUp(chatId: string, text: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (!chat || !text.trim()) return;
+    const run = this.#requireRun(chatId);
+    if (!run.running) {
+      await this.send(chatId, text);
+      return;
+    }
+    this.#appendUserTurn(chat, text);
+    run.queuedCount += 1;
+    try {
+      const result = await followUpCodeAgent(chatId, text);
+      if (!result.ok) this.#rollbackQueued(run);
+    } catch {
+      this.#rollbackQueued(run);
+    }
+  }
+
+  /** Undo a queued-count bump when the engine never accepted the input. */
+  #rollbackQueued(run: AgenteRun): void {
+    run.queuedCount = Math.max(0, run.queuedCount - 1);
+  }
+
+  async stop(chatId: string): Promise<void> {
+    await abortCodeAgent(chatId);
+  }
+
+  async setMode(chatId: string, mode: 'full' | 'supervised' | 'plan'): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    if (chat?.codeAgent) {
+      chat.codeAgent.runtimeMode = mode;
+      chat.codeAgent.updatedAt = Date.now();
+    }
+    try {
+      localStorage.setItem(DEFAULT_MODE_KEY, mode);
+    } catch {
+      // Blocked storage: the choice applies to this conversation only.
+    }
+    await setCodeAgentRuntimeMode(chatId, mode);
+  }
+
+  async compact(chatId: string): Promise<{ ok: boolean; error?: string }> {
+    return compactCodeAgent(chatId);
+  }
+
+  async refreshCheckpoints(chatId: string): Promise<void> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const run = this.#requireRun(chatId);
+    run.checkpoints = await listCodeAgentCheckpoints(chatId, chat?.codeAgent?.sessionId).catch(() => []);
+  }
+
+  /**
+   * Put the project's files back to how they were before `turnIndex`, after
+   * the user confirmed. The transcript keeps a note so the conversation shows
+   * what happened; the result says which files changed.
+   */
+  async restoreCheckpoint(chatId: string, turnIndex: number): Promise<{ ok: boolean; files: string[]; error?: string }> {
+    const chat = appStore.chats.find((c) => c.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project) return { ok: false, files: [], error: 'No project for this conversation' };
+    const result = await rollbackCodeAgent(chatId, turnIndex, {
+      sessionId: chat.codeAgent?.sessionId,
+      projectRoot: project.rootPath
+    }).catch((err: unknown) => ({ ok: false as const, error: err instanceof Error ? err.message : String(err), files: [] }));
+    if (result.ok) {
+      chat.messages.push({
+        id: createId('msg'),
+        role: 'assistant',
+        content: '',
+        createdAt: Date.now(),
+        done: true,
+        status: 'idle',
+        metadata: { codeNote: `restore:${result.files?.length ?? 0}` }
+      });
+      appStore.markChatDirty(chatId);
+      appStore.persist();
+    }
+    await this.refreshCheckpoints(chatId);
+    return { ok: !!result.ok, files: result.files ?? [], error: result.error };
+  }
+}
+
+const EXPANDED_KEY = 'flaxeo.code.expandedProjects';
+
+function readExpanded(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeExpanded(value: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify(value));
+  } catch {
+    // Blocked storage: expansion lasts for this session only.
+  }
+}
+
+function sortByActivity(projects: CodeProject[]): CodeProject[] {
+  return [...projects].sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+}
+
+function folderName(rootPath: string): string {
+  const segments = rootPath.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || rootPath;
+}
+
+function samePath(a: string, b: string): boolean {
+  const norm = (value: string) => value.replace(/[\\/]+$/, '').replace(/\\/g, '/');
+  return norm(a) === norm(b);
+}
+
+/** A saved run's order of text and steps; older messages get steps, then text. */
+function restoreTimeline(message: ChatSession['messages'][number] | undefined): CodeTimelineEntry[] {
+  if (!message) return [];
+  const saved = message.metadata?.codeTimeline;
+  if (Array.isArray(saved) && saved.length) return saved.map((entry) => ({ ...entry }));
+  const entries: CodeTimelineEntry[] = (message.agentSteps ?? []).map((step) => ({ kind: 'step', id: step.id }));
+  if (message.content) entries.push({ kind: 'text', text: message.content });
+  return entries;
+}
+
+function summarizeArgs(args: unknown): string {
+  if (args && typeof args === 'object') {
+    const record = args as Record<string, unknown>;
+    if (typeof record.command === 'string') return record.command;
+    if (typeof record.path === 'string') return record.path;
+  }
+  return '';
+}
+
+export const codeStore = new CodeStore();

@@ -1,0 +1,142 @@
+<svelte:options runes={true} />
+
+<!--
+  Cast picker: toggle characters into an ordered scene cast.
+
+  Shared by scene setup and the mid-chat cast editor so a roster is chosen the
+  same way everywhere. Selection order is speaking order — the first member is
+  the primary.
+-->
+
+<script lang="ts">
+  import { Check } from 'lucide-svelte';
+  import { charactersStore } from './characters.svelte';
+
+  interface Props {
+    /** Selected character ids, in speaking order. */
+    value: string[];
+    onchange: (ids: string[]) => void;
+    emptyHint?: string;
+  }
+
+  let {
+    value,
+    onchange,
+    emptyHint = 'No characters yet. Create or import one from the Characters tab first.'
+  }: Props = $props();
+
+  function toggle(id: string) {
+    onchange(value.includes(id) ? value.filter((entry) => entry !== id) : [...value, id]);
+  }
+</script>
+
+{#if !charactersStore.characters.length}
+  <p class="rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-muted-foreground">
+    {emptyHint}
+  </p>
+{:else}
+  <div class="cast-grid">
+    {#each charactersStore.characters as card (card.id)}
+      {@const order = value.indexOf(card.id)}
+      <button
+        type="button"
+        class="cast-option {order >= 0 ? 'is-on' : ''}"
+        onclick={() => toggle(card.id)}
+        aria-pressed={order >= 0}
+      >
+        <span class="cast-avatar">
+          {#if card.avatar}
+            <img src={card.avatar} alt={card.name} />
+          {:else}
+            <span>{card.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
+          {/if}
+          {#if order >= 0}
+            <span class="cast-check"><Check class="size-2.5" /></span>
+          {/if}
+        </span>
+        <span class="min-w-0 flex-1 truncate text-left text-[12px] text-foreground">{card.name}</span>
+        {#if order >= 0}
+          <span class="cast-order">{order + 1}</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+{/if}
+
+<style>
+  .cast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.375rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    padding: 0.125rem;
+  }
+
+  .cast-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3125rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    cursor: pointer;
+    transition:
+      border-color var(--motion-fast) var(--motion-ease),
+      background-color var(--motion-fast) var(--motion-ease);
+  }
+
+  .cast-option:hover {
+    background: var(--surface-hover);
+  }
+
+  .cast-option.is-on {
+    border-color: var(--border-hover);
+    background: var(--surface-active);
+  }
+
+  .cast-avatar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    overflow: visible;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+
+  .cast-avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+  }
+
+  .cast-check {
+    position: absolute;
+    right: -0.1875rem;
+    bottom: -0.1875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .cast-order {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

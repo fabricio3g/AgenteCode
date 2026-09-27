@@ -1,0 +1,34 @@
+import type { IpcMain } from 'electron';
+
+type ModelHandlerDeps = {
+  ipcMain: IpcMain;
+  getLocalModels: () => unknown;
+  getGgufMetadata: (filePath: string) => unknown;
+  deleteLocalModel: (path: string) => unknown;
+  getModelsDirPath: () => unknown;
+  getIndexedModels: () => unknown;
+  refreshModelIndex: () => unknown;
+  invalidateModelCache: (path: string) => unknown;
+  importLocalModel: (args: unknown) => unknown;
+};
+
+export function registerModelManagementHandlers({
+  ipcMain,
+  getLocalModels,
+  getGgufMetadata,
+  deleteLocalModel,
+  getModelsDirPath,
+  getIndexedModels,
+  refreshModelIndex,
+  invalidateModelCache,
+  importLocalModel,
+}: ModelHandlerDeps): void {
+  ipcMain.handle('get_local_models', () => getLocalModels());
+  ipcMain.handle('get_gguf_metadata', (_e, { filePath }) => getGgufMetadata(filePath));
+  ipcMain.handle('delete_local_model', (_e, { path }) => deleteLocalModel(path));
+  ipcMain.handle('get_models_dir_path', () => getModelsDirPath());
+  ipcMain.handle('get_indexed_models', () => getIndexedModels());
+  ipcMain.handle('refresh_model_index', () => refreshModelIndex());
+  ipcMain.handle('invalidate_model_cache', (_e, { path }) => invalidateModelCache(path));
+  ipcMain.handle('import_local_model', (_e, args) => importLocalModel(args));
+}
