@@ -35,8 +35,23 @@ pub(crate) fn forward_legacy_events(
     tracing::info!(%session_id, %turn_id, "Forwarding agent turn events");
     let mut forwarder = EventForwarder::new(Arc::clone(&inner), session_id, turn_id, sender);
     let mut terminal_outcome = None;
+    let mut turn_edits = Vec::new();
 
     while let Ok(task_event) = receiver.recv() {
+        if let AgentEvent::FileChange {
+            subagent_id: None,
+            path,
+            before,
+            after,
+            ..
+        } = &task_event.event
+        {
+            turn_edits.push(crate::edits::FileEdit {
+                path: path.clone(),
+                before: before.clone(),
+                after: after.clone(),
+            });
+        }
         match task_event.event {
             AgentEvent::Done {
                 conversation,
@@ -160,6 +175,7 @@ pub(crate) fn forward_legacy_events(
     }
 
     forwarder.flush();
+    inner.lock_edits().end_turn(session_id, turn_edits);
     inner.lock_turns().remove(&turn_id);
     inner.prune_finished_children();
     if let Some(outcome) = terminal_outcome {

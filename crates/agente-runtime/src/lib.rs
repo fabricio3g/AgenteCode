@@ -10,6 +10,7 @@
 
 mod bridge;
 mod compat;
+mod edits;
 pub mod import;
 
 use std::collections::HashMap;
@@ -187,6 +188,7 @@ impl RuntimeSupervisor {
                 task_sequence: AtomicU64::new(0),
                 system_prompts: Mutex::new(HashMap::new()),
                 events,
+                edits: Mutex::new(edits::EditLog::default()),
             }),
         }
     }
@@ -213,6 +215,8 @@ struct RuntimeInner {
     /// Every event of every turn, for clients that attach to the runtime
     /// rather than to one turn (a daemon, a second window).
     events: broadcast::Sender<RuntimeEventEnvelope>,
+    /// Undo/redo of each session's file edits.
+    edits: Mutex<edits::EditLog>,
 }
 
 #[derive(Clone)]
@@ -402,6 +406,12 @@ impl RuntimeInner {
         }
     }
 
+    fn lock_edits(&self) -> std::sync::MutexGuard<'_, edits::EditLog> {
+        self.edits
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Send to runtime-wide subscribers. No subscribers is not an error.
     fn publish(&self, envelope: &RuntimeEventEnvelope) {
         let _ = self.events.send(envelope.clone());
@@ -505,6 +515,8 @@ pub enum RuntimeError {
     SessionBusy(SessionId),
     #[error("session store: {0}")]
     Store(String),
+    #[error("{0}")]
+    Edits(String),
 }
 
 pub struct TurnHandle {
@@ -676,6 +688,9 @@ impl RuntimeHandle {
                     info.last_active = Utc::now();
                 });
         }
+        self.inner
+            .lock_edits()
+            .begin_turn(session_id, conversation.len());
         let task_id = self
             .inner
             .task_sequence
@@ -854,6 +869,7 @@ impl RuntimeHandle {
             return Err(RuntimeError::SessionBusy(session_id));
         }
         let mut existed = self.inner.write_sessions().remove(&session_id).is_some();
+        self.inner.lock_edits().forget(session_id);
         self.inner
             .contexts
             .lock()
@@ -896,6 +912,53 @@ impl RuntimeHandle {
         );
         self.inner.publish(&envelope);
         Ok(self.inner.lookup_session(session_id))
+    }
+
+    /// Restore the files the session's last turn changed. Refused while a
+    /// turn runs, or when a file changed since (it is never overwritten).
+    /// Returns the restored paths.
+    pub fn undo(&self, session_id: SessionId) -> Result<Vec<String>, RuntimeError> {
+        self.edit_files(session_id, |log, project| log.undo(session_id, project))
+    }
+
+    /// Re-apply the edits the last undo took back.
+    pub fn redo(&self, session_id: SessionId) -> Result<Vec<String>, RuntimeError> {
+        self.edit_files(session_id, |log, project| log.redo(session_id, project))
+    }
+
+    /// Go back to before `conversation_index` (a user message): undo the file
+    /// edits of every turn from there on and drop those messages. Returns how
+    /// many turns' edits were reverted.
+    pub fn rewind(
+        &self,
+        session_id: SessionId,
+        conversation_index: usize,
+    ) -> Result<usize, RuntimeError> {
+        if self.is_busy(session_id) {
+            return Err(RuntimeError::SessionBusy(session_id));
+        }
+        let project_dir = self.inner.session_context(session_id, None).project_dir;
+        let reverted = self
+            .inner
+            .lock_edits()
+            .rewind(session_id, conversation_index, &project_dir)
+            .map_err(RuntimeError::Edits)?;
+        let mut conversation = self.inner.lookup_session(session_id).conversation;
+        conversation.truncate(conversation_index);
+        bridge::replace_conversation(&self.inner, session_id, conversation);
+        Ok(reverted)
+    }
+
+    fn edit_files(
+        &self,
+        session_id: SessionId,
+        change: impl FnOnce(&mut edits::EditLog, &str) -> Result<Vec<String>, String>,
+    ) -> Result<Vec<String>, RuntimeError> {
+        if self.is_busy(session_id) {
+            return Err(RuntimeError::SessionBusy(session_id));
+        }
+        let project_dir = self.inner.session_context(session_id, None).project_dir;
+        change(&mut self.inner.lock_edits(), &project_dir).map_err(RuntimeError::Edits)
     }
 
     fn is_busy(&self, session_id: SessionId) -> bool {
