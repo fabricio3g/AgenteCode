@@ -7,8 +7,10 @@
 
 import { chmodSync, copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = new URL('..', import.meta.url).pathname;
+// fileURLToPath, not URL.pathname: on Windows the latter is "/D:/…".
+const root = fileURLToPath(new URL('..', import.meta.url));
 const exe = process.platform === 'win32' ? 'agente.exe' : 'agente';
 const source = path.resolve(root, '..', '..', 'target', 'release', exe);
 const target = path.join(root, 'resources', 'bin', exe);
