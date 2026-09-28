@@ -93,7 +93,7 @@ pub(crate) struct ChatParams {
     thinking_level: Option<String>,
 }
 
-fn bot_failure(error: BotError) -> Failure {
+pub(crate) fn bot_failure(error: BotError) -> Failure {
     let code = match error {
         BotError::Io(_) | BotError::Config { .. } => rpc::INTERNAL_ERROR,
         _ => rpc::INVALID_PARAMS,

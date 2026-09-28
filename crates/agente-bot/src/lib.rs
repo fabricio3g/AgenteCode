@@ -15,6 +15,7 @@
 
 mod memory;
 mod prompt;
+mod routines;
 
 use std::path::{Path, PathBuf};
 
@@ -22,6 +23,7 @@ use serde::{Deserialize, Serialize};
 
 pub use memory::MemoryEdit;
 pub use prompt::persona_prompt;
+pub use routines::{NewRoutine, Routine, RoutineRun, Schedule};
 
 /// The bot every install starts with.
 pub const DEFAULT_BOT: &str = "colina";
@@ -119,6 +121,8 @@ pub enum BotError {
     },
     #[error("{0}")]
     Memory(String),
+    #[error("{0}")]
+    Routine(String),
     #[error("bot.toml of @{handle}: {message}")]
     Config { handle: String, message: String },
     #[error(transparent)]
@@ -129,6 +133,9 @@ pub enum BotError {
 struct BotState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
+    /// When each routine last ran, by routine id.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    routines: std::collections::BTreeMap<String, RoutineRun>,
 }
 
 pub struct BotStore {
@@ -277,9 +284,7 @@ impl BotStore {
     pub fn set_session_id(&self, handle: &str, session_id: &str) -> Result<(), BotError> {
         let mut state = self.read_state(handle)?;
         state.session_id = Some(session_id.to_string());
-        let text = serde_json::to_string_pretty(&state).map_err(std::io::Error::other)?;
-        std::fs::write(self.dir(handle).join("state.json"), text)?;
-        Ok(())
+        self.write_state(handle, &state)
     }
 
     /// The folder the bot's tools work in (created on first use).
@@ -305,6 +310,12 @@ impl BotStore {
             &self.read_doc(handle, Doc::Memory)?,
             &teammates,
         ))
+    }
+
+    fn write_state(&self, handle: &str, state: &BotState) -> Result<(), BotError> {
+        let text = serde_json::to_string_pretty(state).map_err(std::io::Error::other)?;
+        std::fs::write(self.dir(handle).join("state.json"), text)?;
+        Ok(())
     }
 
     fn read_state(&self, handle: &str) -> Result<BotState, BotError> {
@@ -362,7 +373,7 @@ pub fn valid_handle(handle: &str) -> bool {
 }
 
 /// A handle from a title: "Code Reviewer" → "code-reviewer".
-fn slug(title: &str) -> String {
+pub(crate) fn slug(title: &str) -> String {
     let mut out = String::new();
     for c in title.trim().to_lowercase().chars() {
         if c.is_ascii_alphanumeric() {

@@ -53,6 +53,8 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 dirs = "5"
 # bot.toml (MIT/Apache-2.0).
 toml = "0.8"
+# Bot routine schedules (MIT/Apache-2.0).
+cron = "0.17"
 arboard = "3"
 parking_lot = "0.12"
 tokio-util = { version = "0.7", features = ["io", "rt"] }

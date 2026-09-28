@@ -147,7 +147,7 @@ pub(crate) fn parse<T: DeserializeOwned>(params: Value) -> Result<T, Failure> {
     serde_json::from_value(params).map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))
 }
 
-fn runtime_failure(error: RuntimeError) -> Failure {
+pub(crate) fn runtime_failure(error: RuntimeError) -> Failure {
     let code = match error {
         RuntimeError::SessionBusy(_) => BUSY,
         RuntimeError::NotAllowed(_) => NOT_ALLOWED,
@@ -392,6 +392,18 @@ impl Connection {
                 Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
             }
             bots if bots.starts_with("bots.") => crate::bots::handle(&self.bots, method, params),
+            "routines.run_now" => {
+                let service = Service {
+                    runtime: self.runtime.clone(),
+                    bots: Arc::clone(&self.bots),
+                };
+                let turn = crate::routines::run_now(&service, params)?;
+                let session_id = turn.session_id();
+                Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
+            }
+            routines if routines.starts_with("routines.") => {
+                crate::routines::handle(&self.bots, method, params)
+            }
             _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
         }
     }

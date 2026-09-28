@@ -7,9 +7,11 @@
 mod bot_tools;
 mod bots;
 mod connection;
+mod routines;
 
 pub use bots::BotProfiles;
 pub use connection::serve_connection;
+pub use routines::spawn_scheduler;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

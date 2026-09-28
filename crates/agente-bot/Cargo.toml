@@ -7,6 +7,8 @@ license.workspace = true
 description = "Agente Bot: the roster of named bots (Colina first), their files and memory"
 
 [dependencies]
+chrono = { workspace = true }
+cron = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
