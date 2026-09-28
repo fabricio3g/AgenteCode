@@ -72,6 +72,7 @@ jobs:
             git \
             libvulkan-dev \
             glslang-tools \
+            glslc \
             pkg-config
 
       - name: Install Windows native build dependencies

@@ -86,7 +86,9 @@ function backendFlags(backend) {
 }
 
 function cmakeGeneratorArgs() {
-  if (process.platform === 'win32') return ['-G', 'Visual Studio 17 2022', '-A', ARCH === 'arm64' ? 'ARM64' : 'x64'];
+  // No -G: CMake picks the newest Visual Studio installed (runner images
+  // move on; CMAKE_GENERATOR still overrides).
+  if (process.platform === 'win32') return ['-A', ARCH === 'arm64' ? 'ARM64' : 'x64'];
   return [];
 }
 
