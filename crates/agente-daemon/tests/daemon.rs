@@ -75,6 +75,13 @@ impl Client {
     }
 }
 
+/// Prints a local URL, then keeps running (sh on Unix, cmd.exe on Windows).
+#[cfg(unix)]
+const LONG_RUNNING_SERVER: &str = "echo server up at http://localhost:7777; sleep 30";
+#[cfg(windows)]
+const LONG_RUNNING_SERVER: &str =
+    "echo server up at http://localhost:7777 & ping -n 30 127.0.0.1 > nul";
+
 fn runtime(tag: &str) -> (Service, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("agente-daemon-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -186,7 +193,7 @@ async fn background_processes_are_listed_read_and_stopped_per_project() {
         .request(
             "turn.exec",
             json!({ "session_id": session_id, "tool": "shell",
-                    "arguments": { "command": "echo server up at http://localhost:7777; sleep 30", "background": true } }),
+                    "arguments": { "command": LONG_RUNNING_SERVER, "background": true } }),
         )
         .await;
     client.until(notes, |m| m["method"] == "turn.outcome").await;
@@ -299,10 +306,22 @@ async fn agente_serve_answers_on_its_local_socket() {
 
     #[cfg(unix)]
     let stream = tokio::net::UnixStream::connect(&path).await.unwrap();
+    // A pipe client retries while the server is between instances
+    // (ERROR_PIPE_BUSY), as Node's net.connect does for Desktop.
     #[cfg(windows)]
-    let stream = tokio::net::windows::named_pipe::ClientOptions::new()
-        .open(path.as_os_str())
-        .unwrap();
+    let stream = {
+        let mut attempt = 0;
+        loop {
+            match tokio::net::windows::named_pipe::ClientOptions::new().open(path.as_os_str()) {
+                Ok(stream) => break stream,
+                Err(error) if error.raw_os_error() == Some(231) && attempt < 50 => {
+                    attempt += 1;
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+    };
     let (read, mut write) = tokio::io::split(stream);
     write
         .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n")
