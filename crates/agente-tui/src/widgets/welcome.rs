@@ -114,7 +114,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!("  v{}", env!("CARGO_PKG_VERSION")),
+            format!("  v{}", shown_version()),
             Style::default().fg(style::FG_DIM()).bg(panel_bg),
         ),
     ];
@@ -360,5 +360,15 @@ mod tests {
         assert!(!text.contains("Tip:"));
         assert!(text.contains("New session") && text.contains("Quit"));
         assert!(state.ui.hits.at(10, menu_row(&text, "Quit")).is_some());
+    }
+}
+
+/// The version on the welcome panel. Tests show a fixed one so a release
+/// bump doesn't rewrite every screen snapshot.
+fn shown_version() -> &'static str {
+    if cfg!(test) {
+        "0.0.0"
+    } else {
+        env!("CARGO_PKG_VERSION")
     }
 }

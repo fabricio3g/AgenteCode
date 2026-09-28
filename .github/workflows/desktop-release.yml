@@ -70,7 +70,6 @@ jobs:
             cmake \
             ninja-build \
             git \
-            libssl-dev \
             libvulkan-dev \
             glslang-tools \
             pkg-config
@@ -88,7 +87,9 @@ jobs:
         with:
           cuda: '12.6.3'
           method: network
-          sub-packages: ${{ matrix.name == 'windows' && 'nvcc_12.6 cudart_12.6 cublas_12.6 cublas_dev_12.6' || 'nvcc_cu12.6 cudart_cu12.6 cublas_cu12.6 cublas_dev_cu12.6' }}
+          # JSON arrays of bare names; the action adds the CUDA version.
+          sub-packages: ${{ matrix.name == 'windows' && '["nvcc", "cudart", "cublas", "cublas_dev"]' || '["nvcc", "cudart", "cudart-dev"]' }}
+          non-cuda-sub-packages: ${{ matrix.name == 'windows' && '[]' || '["libcublas", "libcublas-dev"]' }}
 
       - name: Build bundled native runtimes
         run: npm run build:native-runtimes

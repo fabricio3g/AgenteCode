@@ -1368,6 +1368,34 @@ mod tests {
         assert_eq!(new_content, "say \"goodbye\" world");
     }
 
+    /// Every tool Plan mode advertises must also pass the permission engine,
+    /// or the model is offered a tool that then fails ("not allowed in current
+    /// mode"). `find` was advertised but had no Plan rule.
+    #[test]
+    fn plan_mode_tools_pass_the_permission_engine() {
+        use crate::permissions::{Permission, PermissionEngine, ToolFsFacts};
+        use crate::types::AgentMode;
+        let registry = ToolRegistry::new(".");
+        let engine = PermissionEngine::new(AgentMode::Plan);
+        let args = serde_json::json!({});
+        let denied: Vec<String> = registry
+            .definitions_for_mode(AgentMode::Plan)
+            .into_iter()
+            .map(|definition| definition.name)
+            .filter(|name| {
+                let tool_default = registry
+                    .get(name)
+                    .and_then(|tool| tool.default_permission(AgentMode::Plan));
+                engine.check_tool_with_default(name, &args, &ToolFsFacts::default(), tool_default)
+                    == Permission::Deny
+            })
+            .collect();
+        assert!(
+            denied.is_empty(),
+            "offered in Plan mode but denied: {denied:?}"
+        );
+    }
+
     #[tokio::test]
     async fn file_outline_registered_and_allowed_in_plan() {
         let registry = ToolRegistry::new(".");

@@ -152,7 +152,15 @@ pub fn plan_mode_default_rules() -> Vec<PermissionRule> {
         PermissionRule::new("tool:read_file", Permission::Allow),
         PermissionRule::new("tool:list_dir", Permission::Allow),
         PermissionRule::new("tool:grep", Permission::Allow),
+        PermissionRule::new("tool:find", Permission::Allow),
+        PermissionRule::new("tool:file_outline", Permission::Allow),
         PermissionRule::new("tool:todo_write", Permission::Allow),
+        // Looking things up changes nothing: web reads, and the output of
+        // background processes started earlier in Build mode.
+        PermissionRule::new("tool:web_fetch", Permission::Allow),
+        PermissionRule::new("tool:web_search", Permission::Allow),
+        PermissionRule::new("tool:process_list", Permission::Allow),
+        PermissionRule::new("tool:process_output", Permission::Allow),
         // Loading a skill only reads its instructions.
         PermissionRule::new("tool:skill", Permission::Allow),
         // Subagent orchestration is safe in Plan mode: the host coerces every
