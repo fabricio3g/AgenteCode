@@ -7,7 +7,7 @@ use agente_tui::App;
 mod logging;
 
 #[derive(Parser)]
-#[command(name = "agente")]
+#[command(name = "agente", version)]
 #[command(about = "Agente — terminal-native AI coding agent")]
 #[command(subcommand_precedence_over_arg = true)]
 struct Cli {
