@@ -57,6 +57,11 @@ fn turn_elapsed(state: &AppState) -> Option<String> {
     })
 }
 
+/// Seconds without an event before the row says the model is quiet.
+const QUIET_SECS: u64 = 15;
+/// Seconds of silence before that becomes a warning.
+const SILENT_WARN_SECS: u64 = 60;
+
 pub fn visible_height(state: &AppState) -> u16 {
     if active(state) {
         1
@@ -105,12 +110,27 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut AppState) {
     } else if let Some(secs) = state
         .agent
         .secs_since_last_agent_event()
-        .filter(|&s| s >= 15)
+        .filter(|&s| s >= QUIET_SECS)
     {
-        (
-            format!("No activity for {secs}s"),
-            Style::default().fg(WARNING()),
-        )
+        // Silence is usually a model working before it streams (building a
+        // large tool call, reasoning it doesn't show); a dead connection
+        // fails on its own after the stream idle timeout (90 s). So say
+        // "waiting" first, and warn only when it has gone on for a while.
+        let waiting = state.agent.preparing_tool.as_deref().map_or_else(
+            || "Waiting for the model…".to_string(),
+            |name| format!("Preparing {name}…"),
+        );
+        if secs >= SILENT_WARN_SECS {
+            (
+                format!("No response for {secs}s"),
+                Style::default().fg(WARNING()),
+            )
+        } else {
+            (
+                format!("{waiting} {secs}s"),
+                Style::default().fg(FG_MUTED()),
+            )
+        }
     } else {
         let running_children = state.subagent_registry.running_count();
         let phase = if running_children > 0 && matches!(state.agent.state, AgentState::Idle) {
