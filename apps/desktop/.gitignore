@@ -13,8 +13,6 @@ web-browser/
 resources/bin/**
 !resources/bin/.gitkeep
 .native-cache/
-.native-src/
-.native-build/
 .claude/
 .qwen/
 .fallow/

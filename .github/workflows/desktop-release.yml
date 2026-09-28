@@ -61,51 +61,17 @@ jobs:
           npm pkg set author.email="ci@local.invalid"
           npm pkg set "build.linux.maintainer=Agente <ci@local.invalid>"
 
-      - name: Install Linux native build dependencies
-        if: matrix.name == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            cmake \
-            ninja-build \
-            git \
-            libvulkan-dev \
-            glslang-tools \
-            glslc \
-            spirv-headers \
-            pkg-config
-
-      - name: Install Windows native build dependencies
-        if: matrix.name == 'windows'
-        shell: pwsh
-        run: |
-          choco install cmake ninja vulkan-sdk -y --no-progress
-          # The SDK installer doesn't reach later steps' environment: point them at it.
-          $sdk = Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $sdk) { throw 'Vulkan SDK not found under C:\VulkanSDK' }
-          "VULKAN_SDK=$($sdk.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
-          "$($sdk.FullName)\Bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
-
-
-      - name: Install CUDA toolkit
-        if: matrix.name == 'linux' || matrix.name == 'windows'
-        uses: Jimver/cuda-toolkit@v0.2.21
-        with:
-          cuda: '12.6.3'
-          method: network
-          # JSON arrays of bare names; the action adds the CUDA version.
-          sub-packages: ${{ matrix.name == 'windows' && '["nvcc", "cudart", "cublas", "cublas_dev"]' || '["nvcc", "cudart", "cudart-dev"]' }}
-          non-cuda-sub-packages: ${{ matrix.name == 'windows' && '[]' || '["libcublas", "libcublas-dev"]' }}
-
-      - name: Build bundled native runtimes
-        run: npm run build:native-runtimes
+      - name: Fetch bundled llama.cpp and whisper.cpp
+        # Prebuilt binaries from the upstream GitHub releases, checksum-verified
+        # (see scripts/fetch-native-runtimes.mjs); nothing is compiled here.
+        run: npm run fetch:native-runtimes
         env:
           NATIVE_RUNTIME_PLATFORM: ${{ matrix.name }}
           NATIVE_RUNTIME_ARCH: ${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}
           NATIVE_RUNTIME_BACKENDS: ${{ vars.NATIVE_RUNTIME_BACKENDS }}
-          LLAMA_CPP_REF: ${{ vars.LLAMA_CPP_REF || 'master' }}
-          WHISPER_CPP_REF: ${{ vars.WHISPER_CPP_REF || 'master' }}
+          LLAMA_CPP_TAG: ${{ vars.LLAMA_CPP_TAG }}
+          WHISPER_CPP_TAG: ${{ vars.WHISPER_CPP_TAG }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
