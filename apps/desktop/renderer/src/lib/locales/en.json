@@ -238,9 +238,6 @@
     "modeSupervisedHint": "Edits, writes and commands ask for approval",
     "modeFullHint": "Tools run without approval prompts",
     "startConversation": "Start a conversation with Agente on this project.",
-    "extensions": "Extensions",
-    "noExtensions": "No extensions installed.",
-    "extensionsHint": "Changes apply to new conversations. Third-party extensions will load from ~/.agente/extensions.",
     "composerRegion": "Agente task composer",
     "modeSelector": "Agent mode",
     "modePlan": "Plan first",
@@ -298,18 +295,7 @@
       "keys": "↑↓ to choose · Tab to complete · Enter to run · Esc to close",
       "nothingToCompact": "Nothing to compact yet — send a message first."
     },
-    "modeTitle": "Mode",
-    "ext": {
-      "enabledCount": "{n} of {total} on",
-      "gitTools": {
-        "name": "Git tools",
-        "description": "Lets the agent read git status and diffs (read-only)."
-      },
-      "safetyRails": {
-        "name": "Safety rails",
-        "description": "Blocks destructive commands (force push, rm -rf, fork bombs) before they run."
-      }
-    }
+    "modeTitle": "Mode"
   },
   "searchModal": {
     "inMessages": "In messages",

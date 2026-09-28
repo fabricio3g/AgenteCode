@@ -238,9 +238,6 @@
     "modeSupervisedHint": "編集・書き込み・コマンドは承認が必要",
     "modeFullHint": "ツールは承認なしで実行",
     "startConversation": "このプロジェクトで Agente との会話を始めましょう。",
-    "extensions": "拡張機能",
-    "noExtensions": "拡張機能はありません。",
-    "extensionsHint": "変更は新しい会話に適用されます。サードパーティ拡張は ~/.agente/extensions から読み込まれます。",
     "composerRegion": "Agente タスク入力",
     "modeSelector": "エージェントモード",
     "modePlan": "まず計画",
@@ -298,18 +295,7 @@
       "keys": "↑↓ で選択 · Tab で補完 · Enter で実行 · Esc で閉じる",
       "nothingToCompact": "まだ圧縮するものがありません。先にメッセージを送ってください。"
     },
-    "modeTitle": "モード",
-    "ext": {
-      "enabledCount": "{total} 件中 {n} 件オン",
-      "gitTools": {
-        "name": "Git ツール",
-        "description": "エージェントが git の状態と差分を読めるようにします（読み取り専用）。"
-      },
-      "safetyRails": {
-        "name": "セーフティレール",
-        "description": "破壊的なコマンド（force push、rm -rf、fork bomb）を実行前にブロックします。"
-      }
-    }
+    "modeTitle": "モード"
   },
   "searchModal": {
     "inMessages": "メッセージ内",

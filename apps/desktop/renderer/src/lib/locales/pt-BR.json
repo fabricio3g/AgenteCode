@@ -238,9 +238,6 @@
     "modeSupervisedHint": "Edições, escritas e comandos pedem aprovação",
     "modeFullHint": "Ferramentas executam sem pedido de aprovação",
     "startConversation": "Comece uma conversa com o Agente neste projeto.",
-    "extensions": "Extensões",
-    "noExtensions": "Nenhuma extensão instalada.",
-    "extensionsHint": "As alterações valem para novas conversas. Extensões de terceiros carregarão de ~/.agente/extensions.",
     "composerRegion": "Editor de tarefas do Agente",
     "modeSelector": "Modo do agente",
     "modePlan": "Planejar primeiro",
@@ -298,18 +295,7 @@
       "keys": "↑↓ para escolher · Tab completa · Enter executa · Esc fecha",
       "nothingToCompact": "Ainda não há nada para compactar: envie uma mensagem primeiro."
     },
-    "modeTitle": "Modo",
-    "ext": {
-      "enabledCount": "{n} de {total} ativas",
-      "gitTools": {
-        "name": "Ferramentas do Git",
-        "description": "Permite ao agente ler o status e os diffs do git (somente leitura)."
-      },
-      "safetyRails": {
-        "name": "Proteções de segurança",
-        "description": "Bloqueia comandos destrutivos (force push, rm -rf, fork bombs) antes de rodarem."
-      }
-    }
+    "modeTitle": "Modo"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",

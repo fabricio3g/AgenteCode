@@ -531,12 +531,7 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     return { ok: true };
   },
   'agente_list_checkpoints': () => [{ turnIndex: 1, createdAt: Date.now(), fileCount: 1, additions: 1, deletions: 1, files: ['src/index.ts'] }],
-  'agente_rollback': () => ({ ok: true, restored: 1, files: ['src/index.ts'] }),
-  'agente_list_extensions': () => [
-    { id: 'git-tools', name: 'Git Tools', description: 'Adds git_status and git_diff tools (read-only).', enabled: true, defaultEnabled: true },
-    { id: 'safety-rails', name: 'Safety Rails', description: 'Blocks destructive commands before execution.', enabled: true, defaultEnabled: true }
-  ],
-  'agente_set_extension_enabled': () => ({ ok: true })
+  'agente_rollback': () => ({ ok: true, restored: 1, files: ['src/index.ts'] })
 };
 
 function installMockElectron(): void {

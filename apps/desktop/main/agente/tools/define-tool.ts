@@ -3,7 +3,6 @@
 // renderer's artifact registry, so a future external loader can accept
 // identical definitions.
 
-import path from 'node:path';
 import { z } from 'zod';
 import type { AgentTool, ToolExecContext, ToolResult } from '../../../shared/agent-core/types.ts';
 
@@ -48,19 +47,4 @@ export function defineTool<T extends z.ZodType>(input: ToolDefinitionInput<T>): 
       return input.execute(parsed.data, ctx, toolCallId);
     }
   };
-}
-
-/**
- * Resolve a model-supplied path inside the project root. Absolute paths are
- * accepted only when they live under the root; `..` walks and symlinked
- * escapes are rejected. This is the boundary every filesystem tool goes
- * through — never `path.resolve` directly.
- */
-export function resolveInRoot(projectRoot: string, relative: string): string {
-  const root = path.resolve(projectRoot);
-  const abs = path.isAbsolute(relative) ? path.resolve(relative) : path.resolve(root, relative);
-  if (abs !== root && !abs.startsWith(root + path.sep)) {
-    throw new Error(`Path "${relative}" escapes the project root`);
-  }
-  return abs;
 }

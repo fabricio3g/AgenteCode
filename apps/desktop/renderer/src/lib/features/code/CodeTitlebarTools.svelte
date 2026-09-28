@@ -21,7 +21,6 @@
   import type { ChatSession, CodeProject } from '$lib/types/chat';
   import { codeStore } from './code.svelte';
   import { codeWorkspace } from './workspace.svelte';
-  import CodeExtensionsPanel from './CodeExtensionsPanel.svelte';
 
   let { chat, project }: { chat: ChatSession; project: CodeProject | null } = $props();
 
@@ -114,7 +113,6 @@
       {/each}
     </Menu>
   {/if}
-  <CodeExtensionsPanel />
   <span class="mx-1.5 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
 </div>
 

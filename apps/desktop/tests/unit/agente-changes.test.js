@@ -56,26 +56,11 @@ describe('changes in a git repository', () => {
 });
 
 describe('changes outside git', () => {
-  it('compares against the oldest checkpoint snapshot', async () => {
+  it('has nothing to compare against', async () => {
     const root = tempDir();
-    const checkpoints = tempDir();
-    fs.mkdirSync(path.join(checkpoints, '1', 'before'), { recursive: true });
-    fs.mkdirSync(path.join(checkpoints, '2', 'before'), { recursive: true });
-    fs.writeFileSync(path.join(checkpoints, '1', 'before', 'a.txt'), 'original\n');
-    fs.writeFileSync(path.join(checkpoints, '2', 'before', 'a.txt'), 'after turn 1\n');
-    fs.writeFileSync(path.join(checkpoints, '2', 'before', 'c.txt.absent'), '');
-    fs.writeFileSync(path.join(root, 'a.txt'), 'after turn 2\n');
-    fs.writeFileSync(path.join(root, 'c.txt'), 'made in turn 2\n');
-
-    const list = await listChanges(root, checkpoints);
-    assert.equal(list.source, 'checkpoints');
-    assert.deepEqual(list.files.map((f) => [f.path, f.kind]), [['a.txt', 'modified'], ['c.txt', 'created']]);
-    assert.equal((await fileDiff(root, 'a.txt', checkpoints)).before, 'original\n');
-
-    await revertFile(root, 'a.txt', checkpoints);
-    await revertFile(root, 'c.txt', checkpoints);
-    assert.equal(fs.readFileSync(path.join(root, 'a.txt'), 'utf8'), 'original\n');
-    assert.equal(fs.existsSync(path.join(root, 'c.txt')), false);
+    fs.writeFileSync(path.join(root, 'a.txt'), 'text\n');
+    assert.deepEqual(await listChanges(root), { source: 'none', files: [] });
+    await assert.rejects(() => revertFile(root, 'a.txt'), /No earlier version/);
   });
 
   it('refuses paths outside the project', async () => {

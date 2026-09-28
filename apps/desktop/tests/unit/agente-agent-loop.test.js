@@ -1,12 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import fs from 'node:fs';
 
 import { runAgentLoop } from '../../shared/agent-core/agent-loop.ts';
 import { Agent } from '../../shared/agent-core/agent.ts';
-import { defineTool, resolveInRoot } from '../../main/agente/tools/define-tool.ts';
+import { defineTool } from '../../main/agente/tools/define-tool.ts';
 import { z } from 'zod';
 
 function fakeStreamFn(responses) {
@@ -267,13 +264,5 @@ describe('defineTool validation', () => {
     const result = await tool.execute('call1', { n: 'not-a-number' }, { signal: new AbortController().signal });
     assert.ok(result.isError);
     assert.match(result.content, /Invalid arguments/);
-  });
-
-  it('blocks path escapes outside the project root', () => {
-    const root = fs.mkdtempSync(path.join(tmpdir(), 'agente-root-'));
-    assert.throws(() => resolveInRoot(root, '../outside.txt'), /escapes the project root/);
-    assert.throws(() => resolveInRoot(root, '/etc/passwd'), /escapes the project root/);
-    assert.strictEqual(resolveInRoot(root, 'src/a.ts'), path.resolve(root, 'src/a.ts'));
-    fs.rmSync(root, { recursive: true, force: true });
   });
 });

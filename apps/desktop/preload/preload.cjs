@@ -52,7 +52,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_steer', 'agente_follow_up', 'agente_abort',
   'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
-  'agente_list_extensions', 'agente_set_extension_enabled', 'agente_delete_session_data', 'agente_live_chats',
+  'agente_delete_session_data', 'agente_live_chats',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
   'agente_changes', 'agente_file_diff', 'agente_revert_file'

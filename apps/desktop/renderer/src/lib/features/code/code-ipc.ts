@@ -52,23 +52,6 @@ export function rollbackCodeAgent(
   return invoke('agente_rollback', { chatId, turnIndex, ...options });
 }
 
-export interface AgenteExtensionInfo {
-  id: string;
-  name: string;
-  description: string;
-  icon?: string;
-  enabled: boolean;
-  defaultEnabled: boolean;
-}
-
-export function listAgenteExtensions(): Promise<AgenteExtensionInfo[]> {
-  return invoke('agente_list_extensions', {});
-}
-
-export function setAgenteExtensionEnabled(extensionId: string, enabled: boolean): Promise<{ ok: boolean }> {
-  return invoke('agente_set_extension_enabled', { extensionId, enabled });
-}
-
 /** Chats whose engine run is still going (a renderer reload does not stop it). */
 export function listLiveCodeAgentChats(): Promise<string[]> {
   return invoke('agente_live_chats', {});

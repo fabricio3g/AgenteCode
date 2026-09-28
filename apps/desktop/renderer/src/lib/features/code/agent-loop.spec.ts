@@ -11,7 +11,6 @@ import type {
   AgentTool,
   AssistantMessage
 } from '$shared/agent-core/types';
-import { normalizeTodos } from '../../../../../main/agente/tools/todo';
 
 function makeTool(name = 'echo'): AgentTool {
   return {
@@ -212,39 +211,5 @@ describe('isTransientStreamError', () => {
     ['invalid_request_error: bad schema', false]
   ])('%s → %s', (message, expected) => {
     expect(isTransientStreamError(message)).toBe(expected);
-  });
-});
-
-describe('normalizeTodos', () => {
-  it('trims content and preserves order', () => {
-    expect(normalizeTodos([
-      { content: '  read files ', status: 'completed' },
-      { content: 'edit', status: 'in_progress' }
-    ])).toEqual([
-      { content: 'read files', status: 'completed' },
-      { content: 'edit', status: 'in_progress' }
-    ]);
-  });
-
-  it('rejects empty content', () => {
-    expect(() => normalizeTodos([{ content: '   ', status: 'pending' }])).toThrow(/non-empty/);
-  });
-
-  it('rejects duplicates', () => {
-    expect(() => normalizeTodos([
-      { content: 'same', status: 'pending' },
-      { content: 'same', status: 'completed' }
-    ])).toThrow(/duplicate/);
-  });
-
-  it('allows at most one in_progress', () => {
-    expect(() => normalizeTodos([
-      { content: 'a', status: 'in_progress' },
-      { content: 'b', status: 'in_progress' }
-    ])).toThrow(/at most one/);
-  });
-
-  it('rejects unknown statuses', () => {
-    expect(() => normalizeTodos([{ content: 'a', status: 'done' }])).toThrow(/pending \| in_progress \| completed/);
   });
 });

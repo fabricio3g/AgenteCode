@@ -4,7 +4,6 @@ import { BrowserWindow, type IpcMain } from 'electron';
 import { createTerminal, killAllTerminals, killTerminal, resizeTerminal, writeTerminal } from '../terminal.ts';
 import { processRegistry, type ProcessEvent } from '../agente/processes.ts';
 import { fileDiff, listChanges, revertFile } from '../agente/changes.ts';
-import { checkpointDirFor } from '../agente/runtime.ts';
 import { rustProcesses } from '../agente/rust-engine.ts';
 import { isRustProcessId } from '../agente/rust-processes.ts';
 
@@ -14,7 +13,7 @@ function broadcast(event: ProcessEvent): void {
   }
 }
 
-type ChangesArgs = { chatId: string; projectRoot: string; sessionId?: string };
+type ChangesArgs = { chatId: string; projectRoot: string };
 
 export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
   processRegistry.onEvent(broadcast);
@@ -42,14 +41,14 @@ export function registerCodeWorkspaceHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('agente_process_clear', (_e, args: { chatId?: string }) => processRegistry.prune(args?.chatId));
 
   ipcMain.handle('agente_changes', (_e, args: ChangesArgs) =>
-    listChanges(args.projectRoot, checkpointDirFor(args.chatId, args.sessionId))
+    listChanges(args.projectRoot)
   );
   ipcMain.handle('agente_file_diff', (_e, args: ChangesArgs & { path: string }) =>
-    fileDiff(args.projectRoot, args.path, checkpointDirFor(args.chatId, args.sessionId))
+    fileDiff(args.projectRoot, args.path)
   );
   ipcMain.handle('agente_revert_file', async (_e, args: ChangesArgs & { path: string }) => {
     try {
-      await revertFile(args.projectRoot, args.path, checkpointDirFor(args.chatId, args.sessionId));
+      await revertFile(args.projectRoot, args.path);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: (error as Error).message };

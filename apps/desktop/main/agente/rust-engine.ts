@@ -1,21 +1,19 @@
 // ── Code section on the Rust runtime ───────────────────────────────────
-// The same surface as runtime.ts (the TypeScript engine), backed by the Rust
-// runtime (`agente serve`): each Code chat is a runtime session, Desktop's
-// providers are handed over with runtime.configure, and the runtime's events
-// are translated back into the CodeAgentEvent stream the UI already renders.
-// Selected with `agente.engine: "rust"` in the config (see agente-handlers).
+// Every Code chat runs on the Rust runtime (`agente serve`): each chat is a
+// runtime session, Desktop's providers are handed over with
+// runtime.configure, and the runtime's events are translated back into the
+// CodeAgentEvent stream the UI renders.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfigFromDisk } from '../config.ts';
 import { resolveApiKey } from '../chat-ipc.ts';
 import { getAppPaths } from '../paths.ts';
 import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
 import type { AgenteClient } from '../agente-client.ts';
 import { emitCodeAgentEvent } from './event-bridge.ts';
-import { resolveContextWindow, resolveTransport, transportSeesImages } from './runtime.ts';
+import { resolveContextWindow, resolveTransport, transportSeesImages } from './transport.ts';
 import { createBrowserTools } from './tools/browser.ts';
 import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
 import { RustProcessBridge } from './rust-processes.ts';
@@ -63,7 +61,7 @@ let activeChat: ChatState | null = null;
 async function registerDesktopTools(client: AgenteClient): Promise<void> {
   desktopTools ??= serveDesktopTools(
     createBrowserTools({
-      canSeeImages: () => !!activeChat && transportSeesImages(resolveTransport(activeChat.provider, activeChat.model, activeChat.thinkingLevel))
+      canSeeImages: () => !!activeChat && transportSeesImages(resolveTransport(activeChat.provider, activeChat.model))
     })
   );
   const server = await desktopTools;
@@ -143,7 +141,7 @@ const TURN_MODES: Record<AgenteRuntimeMode, TurnMode> = { full: 'auto', supervis
 
 /** Desktop's provider for a chat, as a provider entry for runtime.configure. */
 function providerEntry(chat: ChatState): { id: string; config: Record<string, unknown>; model: string } {
-  const transport = resolveTransport(chat.provider, chat.model, chat.thinkingLevel);
+  const transport = resolveTransport(chat.provider, chat.model);
   const id = `desktop-${transport.providerName}`;
   const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName) || undefined;
   return {
@@ -174,7 +172,7 @@ function storeImages(images: Array<{ data: string; mimeType: string }> | undefin
 }
 
 function refreshContextWindow(chat: ChatState): void {
-  void resolveContextWindow(resolveTransport(chat.provider, chat.model, chat.thinkingLevel))
+  void resolveContextWindow(resolveTransport(chat.provider, chat.model))
     .then((window) => {
       chat.contextWindow = window;
     })
@@ -349,9 +347,7 @@ function sessionIdsToDelete(args: { chatIds?: string[]; sessionIds?: string[] })
 
 async function deleteSessionData(args: { chatIds?: string[]; sessionIds?: string[] }): Promise<{ ok: boolean; removed: number }> {
   const ids = sessionIdsToDelete(args);
-  // Only talk to the runtime when it is in use: deleting TypeScript-engine
-  // chats must not start it.
-  if (!ids.length || (!daemon && !rustEngineSelected())) return { ok: true, removed: 0 };
+  if (!ids.length) return { ok: true, removed: 0 };
   const client = await connect();
   const results = await Promise.all(
     ids.map((id) => client.request<{ deleted: boolean }>('session.delete', { session_id: id }).catch(() => ({ deleted: false })))
@@ -370,13 +366,7 @@ function disposeAllSessions(): void {
   desktopTools = null;
 }
 
-/** `agente.engine: "rust"` in the config selects this engine for Code chats. */
-function rustEngineSelected(): boolean {
-  const cfg = loadConfigFromDisk() as { agente?: { engine?: string } };
-  return cfg.agente?.engine === 'rust';
-}
-
-/** The Rust-backed engine, with the same calls as the TypeScript one. */
+/** The engine behind every Code chat. */
 export const rustEngine = {
   startSession,
   prompt,
@@ -391,6 +381,5 @@ export const rustEngine = {
   rollback,
   liveChatIds,
   deleteSessionData,
-  disposeAllSessions,
-  selected: rustEngineSelected
+  disposeAllSessions
 };
