@@ -295,6 +295,16 @@ fn paint_tilde_sea(buf: &mut Buffer, area: Rect, card: Rect, state: &AppState) {
     }
 }
 
+/// The version on the welcome panel. Tests show a fixed one so a release
+/// bump doesn't rewrite every screen snapshot.
+fn shown_version() -> &'static str {
+    if cfg!(test) {
+        "0.0.0"
+    } else {
+        env!("CARGO_PKG_VERSION")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,15 +370,5 @@ mod tests {
         assert!(!text.contains("Tip:"));
         assert!(text.contains("New session") && text.contains("Quit"));
         assert!(state.ui.hits.at(10, menu_row(&text, "Quit")).is_some());
-    }
-}
-
-/// The version on the welcome panel. Tests show a fixed one so a release
-/// bump doesn't rewrite every screen snapshot.
-fn shown_version() -> &'static str {
-    if cfg!(test) {
-        "0.0.0"
-    } else {
-        env!("CARGO_PKG_VERSION")
     }
 }
