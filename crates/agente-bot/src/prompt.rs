@@ -30,12 +30,12 @@ pub fn persona_prompt(
     );
     section(
         &mut out,
-        "YOUR MEMORY (one note per line)",
+        "YOUR MEMORY (one note per line; change it with memory_update)",
         memory,
         "Empty.",
     );
     if !teammates.is_empty() {
-        out.push_str("\nYOUR TEAMMATES:\n");
+        out.push_str("\nYOUR TEAMMATES (hand one a task with message_bot):\n");
         for teammate in teammates {
             out.push_str(&format!(
                 "- @{} — {}",
@@ -92,7 +92,8 @@ mod tests {
         let prompt = persona_prompt(&bot("ada", "Ada", ""), "", "", "", &[]);
         assert!(prompt.starts_with("You are Ada (@ada).\n"));
         assert!(prompt.contains("ABOUT THE PERSON YOU WORK FOR:\nNothing yet."));
-        assert!(prompt.contains("YOUR MEMORY (one note per line):\nEmpty."));
+        assert!(prompt
+            .contains("YOUR MEMORY (one note per line; change it with memory_update):\nEmpty."));
         assert!(!prompt.contains("TEAMMATES"));
     }
 

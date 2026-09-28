@@ -4,24 +4,62 @@
 //! Every bot has one permanent session. `bots.chat` runs a turn there, in the
 //! bot's own workspace folder, on the bot's pinned model when it has one.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use agente_bot::{BotConfig, BotError, BotStore, Doc, NewBot};
-use agente_protocol::{Message, SessionId, StartTurn, TurnMode};
-use agente_runtime::ProfileSource;
+use agente_core::tools::Tool;
+use agente_protocol::{Message, Origin, SessionId, StartTurn, TurnMode};
+use agente_runtime::{ProfileSource, ProfileTurn, RuntimeHandle};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::connection::{parse, Failure};
+use crate::bot_tools::{MemoryUpdateTool, MessageBotTool, HANDOFF_CHANNEL};
 use agente_acp::rpc;
 
-/// Personas for the runtime, straight from the bot files: an edit to a
-/// bot's memory is in its very next turn.
-pub struct BotProfiles(pub Arc<BotStore>);
+/// What the runtime asks about bots: their personas (straight from the bot
+/// files, so a memory edit is in the very next turn) and their own tools.
+pub struct BotProfiles {
+    store: Arc<BotStore>,
+    /// Set once the runtime is running: handoffs start turns on it.
+    runtime: OnceLock<RuntimeHandle>,
+}
+
+impl BotProfiles {
+    pub fn new(store: Arc<BotStore>) -> Self {
+        Self {
+            store,
+            runtime: OnceLock::new(),
+        }
+    }
+
+    /// Hand over the runtime these profiles belong to (enables `message_bot`).
+    pub fn attach(&self, runtime: RuntimeHandle) {
+        let _ = self.runtime.set(runtime);
+    }
+}
 
 impl ProfileSource for BotProfiles {
     fn persona(&self, profile: &str) -> Option<String> {
-        self.0.persona(profile).ok()
+        self.store.persona(profile).ok()
+    }
+
+    fn tools(&self, profile: &str, turn: &ProfileTurn) -> Vec<Box<dyn Tool>> {
+        let mut tools: Vec<Box<dyn Tool>> = vec![Box::new(MemoryUpdateTool::new(
+            Arc::clone(&self.store),
+            profile,
+        ))];
+        // A bot answering a handoff can't hand work on: no loops, no chains.
+        let answering_a_bot = turn.origin.channel == HANDOFF_CHANNEL;
+        if let (false, Some(runtime)) = (answering_a_bot, self.runtime.get()) {
+            tools.push(Box::new(MessageBotTool::new(
+                Arc::clone(&self.store),
+                runtime.clone(),
+                profile,
+                turn,
+            )));
+        }
+        tools
     }
 }
 
@@ -126,35 +164,57 @@ pub(crate) fn chat_turn(store: &BotStore, params: Value) -> Result<StartTurn, Fa
         model,
         thinking_level,
     } = parse(params)?;
-    let bot = store.get(&handle).map_err(bot_failure)?;
+    let fallback = ClientModel {
+        provider,
+        model,
+        thinking_level,
+    };
+    bot_turn(store, &handle, text, fallback, None).map_err(bot_failure)
+}
+
+/// The model a client (or the bot handing work over) is using.
+#[derive(Default)]
+pub(crate) struct ClientModel {
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+}
+
+/// A turn in `handle`'s permanent session and workspace, on its pinned model
+/// when it has one and on `fallback` otherwise.
+pub(crate) fn bot_turn(
+    store: &BotStore,
+    handle: &str,
+    text: String,
+    fallback: ClientModel,
+    origin: Option<Origin>,
+) -> Result<StartTurn, BotError> {
+    let bot = store.get(handle)?;
     let session_id = match store
-        .session_id(&handle)
-        .map_err(bot_failure)?
+        .session_id(handle)?
         .and_then(|id| id.parse::<SessionId>().ok())
     {
         Some(id) => id,
         None => {
             let id = SessionId::new();
-            store
-                .set_session_id(&handle, &id.to_string())
-                .map_err(bot_failure)?;
+            store.set_session_id(handle, &id.to_string())?;
             id
         }
     };
-    let workspace = store.workspace(&handle).map_err(bot_failure)?;
-    // A pinned model wins; otherwise whatever the client is using.
+    let workspace = store.workspace(handle)?;
     let (provider, model) = match bot.config.model {
         Some(pin) => (Some(pin.provider), Some(pin.model)),
-        None => (provider, model),
+        None => (fallback.provider, fallback.model),
     };
     Ok(StartTurn {
         session_id,
         prompt: Some(Message::user(text)),
         provider,
         model,
-        thinking_level,
+        thinking_level: fallback.thinking_level,
         profile: Some(bot.handle),
         mode: Some(TurnMode::Build),
+        origin,
         project_dir: Some(workspace.to_string_lossy().to_string()),
         ..StartTurn::default()
     })

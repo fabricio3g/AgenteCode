@@ -921,6 +921,7 @@ impl SubagentHost {
             // Children always trim: they are short-lived and cheap.
             smart_compaction: false,
             user_inbox: None,
+            extra_tools: Vec::new(),
         };
         let thread_name = format!("agente-subagent-{child_id}");
         let error_sender = child_tx;

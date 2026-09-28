@@ -54,6 +54,7 @@ pub fn spawn_chat_task(
     smart_compaction: bool,
     max_parallel_subagents: usize,
     user_inbox: super::config::UserInbox,
+    extra_tools: Vec<Box<dyn crate::tools::Tool>>,
 ) -> tokio::task::JoinHandle<()> {
     tracing::info!(%session_id, task_id, provider = %provider_id, model = %model, "Spawning chat task");
     tokio::spawn(async move {
@@ -112,6 +113,7 @@ pub fn spawn_chat_task(
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction,
             user_inbox: Some(user_inbox),
+            extra_tools,
         };
         // A panic inside the loop must not kill the spawned task silently:
         // without a terminal event the TUI would hang "running" until the
@@ -209,6 +211,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
         loop_stop_after,
         smart_compaction,
         user_inbox,
+        extra_tools,
     } = cfg;
 
     let mut tool_registry = ToolRegistry::with_agents(&project_dir, &custom_agents);
@@ -218,6 +221,9 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     if let Some(manager) = &mcp_manager {
         manager.refresh_stale_tools().await;
         tool_registry.register_mcp_adapters(crate::mcp::McpToolAdapter::all(manager));
+    }
+    for tool in extra_tools {
+        tool_registry.register(tool);
     }
 
     // Children get a pruned registry containing only tools their capability and
@@ -1453,6 +1459,7 @@ mod tests {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
             user_inbox: Some(Arc::clone(&inbox)),
+            extra_tools: Vec::new(),
         };
         run_agent_loop(config).await.expect("turn completes");
 
@@ -1613,6 +1620,7 @@ mod tests {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
             user_inbox: None,
+            extra_tools: Vec::new(),
         };
         run_agent_loop(config).await.expect("turn recovers");
 
@@ -1690,6 +1698,7 @@ mod tests {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
             user_inbox: None,
+            extra_tools: Vec::new(),
         };
         run_agent_loop(config)
             .await
@@ -1860,6 +1869,7 @@ mod tests {
             loop_stop_after: DEFAULT_LOOP_STOP_AFTER,
             smart_compaction: false,
             user_inbox: None,
+            extra_tools: Vec::new(),
         };
         (dir, rx, provider, config)
     }

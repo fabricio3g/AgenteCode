@@ -30,9 +30,9 @@ use agente_core::subagent::SubagentRegistry;
 use agente_core::types::{AgentMode, ApprovalAction};
 use agente_core::AbortController;
 use agente_protocol::{
-    ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, Role, RunId, RuntimeEvent,
-    RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust, TurnId,
-    TurnMode, TurnOutcome, TurnStatus, UserInput, PROTOCOL_VERSION,
+    ApprovalDecision, ApprovalDecisionKind, ChildSnapshot, Message, Origin, Role, RunId,
+    RuntimeEvent, RuntimeEventEnvelope, SessionId, SessionInfo, SessionSnapshot, StartTurn, Trust,
+    TurnId, TurnMode, TurnOutcome, TurnStatus, UserInput, PROTOCOL_VERSION,
 };
 use agente_session::{SessionMeta, SessionStore, SessionStoreError};
 use chrono::Utc;
@@ -49,6 +49,21 @@ pub trait ProfileSource: Send + Sync {
     /// Who `profile` is (see `agente_core::context::bot_system_prompt`), or
     /// `None` when there is no such profile.
     fn persona(&self, profile: &str) -> Option<String>;
+
+    /// Tools only this profile's turns get (a bot's memory and handoffs).
+    fn tools(&self, _profile: &str, _turn: &ProfileTurn) -> Vec<Box<dyn agente_core::tools::Tool>> {
+        Vec::new()
+    }
+}
+
+/// The turn a profile's tools are made for.
+#[derive(Debug, Clone)]
+pub struct ProfileTurn {
+    /// Who started it (a handoff from another bot says so here).
+    pub origin: Origin,
+    pub provider: String,
+    pub model: String,
+    pub thinking_level: String,
 }
 
 #[derive(Clone)]
@@ -729,6 +744,7 @@ impl RuntimeHandle {
             }
             persona
         });
+        let has_persona = persona.is_some();
         match (start.system_prompt, persona) {
             (Some(prompt), _) => ensure_system_prompt(&mut conversation, &prompt),
             // A bot's persona holds its memory: rebuilt every turn, so an
@@ -798,6 +814,22 @@ impl RuntimeHandle {
         let thinking = start
             .thinking_level
             .unwrap_or_else(|| live.default_thinking_level.clone());
+        let extra_tools = match (
+            has_persona,
+            start.profile.as_deref(),
+            &self.inner.config.profile_source,
+        ) {
+            (true, Some(profile), Some(source)) => source.tools(
+                profile,
+                &ProfileTurn {
+                    origin: start.origin.clone().unwrap_or_default(),
+                    provider: provider.clone(),
+                    model: model.clone(),
+                    thinking_level: thinking.clone(),
+                },
+            ),
+            _ => Vec::new(),
+        };
         {
             let (provider, model, thinking) = (provider.clone(), model.clone(), thinking.clone());
             let profile = start.profile.clone();
@@ -852,6 +884,7 @@ impl RuntimeHandle {
             live.smart_compaction,
             live.max_parallel_subagents,
             inbox,
+            extra_tools,
         );
 
         let started = self.envelope(session_id, turn_id, None, RuntimeEvent::TurnStarted);

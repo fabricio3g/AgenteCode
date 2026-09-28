@@ -79,12 +79,12 @@ fn runtime(tag: &str) -> (Service, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("agente-daemon-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let bots = std::sync::Arc::new(agente_bot::BotStore::open(dir.join("bots")).unwrap());
+    let profiles = std::sync::Arc::new(BotProfiles::new(bots.clone()));
     let config = RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy())
-        .with_profile_source(std::sync::Arc::new(BotProfiles(bots.clone())));
-    let service = Service {
-        runtime: RuntimeSupervisor::start(config),
-        bots,
-    };
+        .with_profile_source(profiles.clone());
+    let runtime = RuntimeSupervisor::start(config);
+    profiles.attach(runtime.clone());
+    let service = Service { runtime, bots };
     (service, dir)
 }
 

@@ -4,6 +4,7 @@
 //! runtime over a Unix socket that only this user can open, with JSON-RPC 2.0
 //! one message per line (see [`serve_connection`] for the methods).
 
+mod bot_tools;
 mod bots;
 mod connection;
 

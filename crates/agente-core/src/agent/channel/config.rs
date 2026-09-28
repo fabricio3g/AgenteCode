@@ -107,6 +107,9 @@ pub(crate) struct AgentRunConfig {
     pub smart_compaction: bool,
     /// Mid-turn user messages (parent turns only).
     pub user_inbox: Option<UserInbox>,
+    /// Tools the host adds for this turn only (a bot's memory and handoff
+    /// tools). Children never inherit them.
+    pub extra_tools: Vec<Box<dyn crate::tools::Tool>>,
 }
 
 /// Tag an event with its task id and swallow send failures (the TUI may be
