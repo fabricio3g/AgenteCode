@@ -36,7 +36,37 @@
 
 ## Install
 
-Requirements: **Rust 1.88+** and, on Linux, the OpenSSL development headers (`libssl-dev` / `openssl-devel`).
+**Linux** (x86_64 and arm64), Agente Code into `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh
+```
+
+With Agente Desktop too (AppImage plus an app menu entry):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh -s -- --desktop
+```
+
+Other options: `--desktop-only`, `--version v0.2.0`, `--dir ~/bin`.
+
+**Windows** (x64, PowerShell), Agente Code into `%LOCALAPPDATA%\Agente\bin`, added to your PATH:
+
+```powershell
+irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1 | iex
+```
+
+With Agente Desktop too (runs its installer):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1))) -Desktop
+```
+
+Both scripts verify the download against the release's `SHA256SUMS`. Every file is also on the [Releases](https://github.com/fabricio3g/AgenteCode/releases) page.
+
+### From source
+
+Requirements: **Rust 1.88+**.
 
 ```bash
 git clone https://github.com/fabricio3g/AgenteCode
