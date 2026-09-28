@@ -391,7 +391,9 @@ impl Connection {
                 let turn = runtime.start_turn(start).map_err(runtime_failure)?;
                 Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
             }
-            bots if bots.starts_with("bots.") => crate::bots::handle(&self.bots, method, params),
+            bots if bots.starts_with("bots.") => {
+                crate::bots::handle(&self.bots, runtime, method, params)
+            }
             "routines.run_now" => {
                 let service = Service {
                     runtime: self.runtime.clone(),

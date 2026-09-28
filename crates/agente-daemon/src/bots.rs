@@ -101,27 +101,44 @@ pub(crate) fn bot_failure(error: BotError) -> Failure {
     (code, error.to_string())
 }
 
-fn with_session(store: &BotStore, bot: &agente_bot::Bot) -> Result<Value, Failure> {
+/// A bot as clients see it: its settings, its chat session, and whether it
+/// is working on something right now.
+fn with_session(
+    store: &BotStore,
+    runtime: &RuntimeHandle,
+    bot: &agente_bot::Bot,
+) -> Result<Value, Failure> {
     let mut value = serde_json::to_value(bot).map_err(|e| (rpc::INTERNAL_ERROR, e.to_string()))?;
-    value["session_id"] = json!(store.session_id(&bot.handle).map_err(bot_failure)?);
+    let session_id = store.session_id(&bot.handle).map_err(bot_failure)?;
+    let working = session_id
+        .as_deref()
+        .and_then(|id| id.parse::<SessionId>().ok())
+        .is_some_and(|id| runtime.is_busy(id));
+    value["session_id"] = json!(session_id);
+    value["working"] = json!(working);
     Ok(value)
 }
 
 /// `bots.*` requests other than `bots.chat` (which starts a turn).
-pub(crate) fn handle(store: &BotStore, method: &str, params: Value) -> Result<Value, Failure> {
+pub(crate) fn handle(
+    store: &BotStore,
+    runtime: &RuntimeHandle,
+    method: &str,
+    params: Value,
+) -> Result<Value, Failure> {
     match method {
         "bots.list" => {
             let bots = store.list().map_err(bot_failure)?;
             Ok(Value::Array(
                 bots.iter()
-                    .map(|bot| with_session(store, bot))
+                    .map(|bot| with_session(store, runtime, bot))
                     .collect::<Result<_, _>>()?,
             ))
         }
         "bots.get" => {
             let HandleParams { handle } = parse(params)?;
             let bot = store.get(&handle).map_err(bot_failure)?;
-            let mut value = with_session(store, &bot)?;
+            let mut value = with_session(store, runtime, &bot)?;
             for (key, doc) in [
                 ("soul", Doc::Soul),
                 ("user", Doc::User),
@@ -134,17 +151,35 @@ pub(crate) fn handle(store: &BotStore, method: &str, params: Value) -> Result<Va
         "bots.create" => {
             let new: NewBot = parse(params)?;
             let bot = store.create(new).map_err(bot_failure)?;
-            with_session(store, &bot)
+            with_session(store, runtime, &bot)
         }
         "bots.update" => {
             let UpdateParams { handle, config } = parse(params)?;
             let bot = store.update(&handle, config).map_err(bot_failure)?;
-            with_session(store, &bot)
+            with_session(store, runtime, &bot)
         }
         "bots.delete" => {
             let HandleParams { handle } = parse(params)?;
             store.delete(&handle).map_err(bot_failure)?;
             Ok(json!({ "deleted": true }))
+        }
+        // `/new` in a bot's chat: the bot keeps its one conversation, shortened
+        // (its memory carries what matters), instead of starting over.
+        "bots.compact" => {
+            let HandleParams { handle } = parse(params)?;
+            let session_id = store
+                .session_id(&handle)
+                .map_err(bot_failure)?
+                .and_then(|id| id.parse::<SessionId>().ok());
+            match session_id {
+                Some(id) => {
+                    let snapshot = runtime
+                        .compact(id)
+                        .map_err(crate::connection::runtime_failure)?;
+                    Ok(json!({ "messages": snapshot.conversation.len() }))
+                }
+                None => Ok(json!({ "messages": 0 })),
+            }
         }
         "bots.write_doc" => {
             let DocParams { handle, doc, text } = parse(params)?;
@@ -262,28 +297,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
-    fn colina_cannot_be_deleted_over_the_socket() {
+    #[tokio::test]
+    async fn colina_cannot_be_deleted_and_the_roster_says_who_is_working() {
+        use agente_core::config::AppConfig;
+        use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
+
         let dir = std::env::temp_dir().join(format!("agente-bots-del-{}", std::process::id()));
-        let store = BotStore::open(&dir).unwrap();
-        let (code, message) =
-            handle(&store, "bots.delete", json!({ "handle": "colina" })).unwrap_err();
+        let store = BotStore::open(dir.join("bots")).unwrap();
+        let runtime = RuntimeSupervisor::start(RuntimeConfig::from_app_config(
+            &AppConfig::default(),
+            dir.to_string_lossy(),
+        ));
+        let call = |method: &str, params: Value| handle(&store, &runtime, method, params);
+
+        let (code, message) = call("bots.delete", json!({ "handle": "colina" })).unwrap_err();
         assert_eq!(code, rpc::INVALID_PARAMS);
         assert!(message.contains("built in"));
-        let created = handle(
-            &store,
+        let created = call(
             "bots.create",
             json!({ "title": "Scout", "role": "research" }),
         )
         .unwrap();
         assert_eq!(created["handle"], "scout");
+        assert_eq!(created["working"], false);
+        let list = call("bots.list", Value::Null).unwrap();
+        assert_eq!(list.as_array().unwrap().len(), 2);
+
+        // A turn in Colina's session makes her "working" until it ends.
+        let start = chat_turn(
+            &store,
+            json!({ "handle": "colina", "text": "hi", "provider": "definitely-not-a-provider" }),
+        )
+        .unwrap();
+        let mut turn = runtime.start_turn(start).unwrap();
         assert_eq!(
-            handle(&store, "bots.list", Value::Null)
-                .unwrap()
-                .as_array()
-                .unwrap()
-                .len(),
-            2
+            call("bots.get", json!({ "handle": "colina" })).unwrap()["working"],
+            true
+        );
+        let _ = turn.outcome().await;
+        assert_eq!(
+            call("bots.get", json!({ "handle": "colina" })).unwrap()["working"],
+            false
         );
         let _ = std::fs::remove_dir_all(dir);
     }

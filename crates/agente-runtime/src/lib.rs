@@ -1341,7 +1341,8 @@ impl RuntimeHandle {
         change(&mut self.inner.lock_edits(), &project_dir).map_err(RuntimeError::Edits)
     }
 
-    fn is_busy(&self, session_id: SessionId) -> bool {
+    /// Whether a turn is running in the session.
+    pub fn is_busy(&self, session_id: SessionId) -> bool {
         self.inner
             .lock_turns()
             .values()
