@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use agente_core::config::AppConfig;
-use agente_daemon::serve_connection;
-use agente_runtime::{RuntimeConfig, RuntimeHandle, RuntimeSupervisor};
+use agente_daemon::{serve_connection, BotProfiles, Service};
+use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines};
 
@@ -16,10 +16,10 @@ struct Client {
 }
 
 impl Client {
-    fn connect(runtime: &RuntimeHandle) -> Self {
+    fn connect(service: &Service) -> Self {
         let (client_side, server_side) = tokio::io::duplex(64 * 1024);
         let (server_read, server_write) = tokio::io::split(server_side);
-        tokio::spawn(serve_connection(runtime.clone(), server_read, server_write));
+        tokio::spawn(serve_connection(service.clone(), server_read, server_write));
         let (read, writer) = tokio::io::split(client_side);
         Self {
             writer,
@@ -75,11 +75,17 @@ impl Client {
     }
 }
 
-fn runtime(tag: &str) -> (RuntimeHandle, std::path::PathBuf) {
+fn runtime(tag: &str) -> (Service, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("agente-daemon-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let config = RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy());
-    (RuntimeSupervisor::start(config), dir)
+    let bots = std::sync::Arc::new(agente_bot::BotStore::open(dir.join("bots")).unwrap());
+    let config = RuntimeConfig::from_app_config(&AppConfig::default(), dir.to_string_lossy())
+        .with_profile_source(std::sync::Arc::new(BotProfiles(bots.clone())));
+    let service = Service {
+        runtime: RuntimeSupervisor::start(config),
+        bots,
+    };
+    (service, dir)
 }
 
 fn event_type(message: &Value) -> Option<&str> {
@@ -221,5 +227,44 @@ async fn background_processes_are_listed_read_and_stopped_per_project() {
         .request("processes.list", json!({ "project_dir": project }))
         .await;
     assert_eq!(after["result"][0]["status"], "stopped");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn colina_chats_in_one_permanent_session_with_her_persona() {
+    let (service, dir) = runtime("bots");
+    let mut client = Client::connect(&service);
+
+    let (list, _) = client.request("bots.list", json!({})).await;
+    assert_eq!(list["result"][0]["handle"], "colina");
+    assert_eq!(list["result"][0]["session_id"], Value::Null);
+
+    // An unknown provider fails fast, before any network access.
+    let chat =
+        json!({ "handle": "colina", "text": "hello", "provider": "definitely-not-a-provider" });
+    let (first, notes) = client.request("bots.chat", chat.clone()).await;
+    let session_id = first["result"]["session_id"].clone();
+    assert!(session_id.is_string(), "{first}");
+    client.until(notes, |m| m["method"] == "turn.outcome").await;
+    let (second, notes) = client.request("bots.chat", chat).await;
+    assert_eq!(second["result"]["session_id"], session_id, "{second}");
+    client.until(notes, |m| m["method"] == "turn.outcome").await;
+
+    let (session, _) = client
+        .request("session.get", json!({ "session_id": session_id }))
+        .await;
+    let system = session["result"]["snapshot"]["conversation"][0]["content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(system.starts_with("You are Colina (@colina)"), "{system}");
+
+    let (refused, _) = client
+        .request("bots.delete", json!({ "handle": "colina" }))
+        .await;
+    assert!(refused["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("built in"));
     let _ = std::fs::remove_dir_all(dir);
 }

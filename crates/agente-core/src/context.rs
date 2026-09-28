@@ -399,6 +399,32 @@ pub fn executor_system_prompt_with_tools(
     memory_context: &str,
     tools: &[crate::types::ToolDefinition],
 ) -> String {
+    let identity = format!("You are Agente, an expert coding agent working in: {project_dir}");
+    system_prompt_for(&identity, memory_context, tools)
+}
+
+/// A named bot's system prompt: its persona (who it is, what it remembers,
+/// its teammates) in place of the default identity, then the same working
+/// method, safety rules and tool list as every agent.
+pub fn bot_system_prompt(
+    persona: &str,
+    project_dir: &str,
+    tools: &[crate::types::ToolDefinition],
+) -> String {
+    let identity = format!(
+        "{}
+
+You work in: {project_dir}",
+        persona.trim_end()
+    );
+    system_prompt_for(&identity, "", tools)
+}
+
+fn system_prompt_for(
+    identity: &str,
+    memory_context: &str,
+    tools: &[crate::types::ToolDefinition],
+) -> String {
     let memory_section = if memory_context.is_empty() {
         String::new()
     } else {
@@ -411,7 +437,7 @@ pub fn executor_system_prompt_with_tools(
     };
 
     format!(
-        r#"You are Agente, an expert coding agent working in: {}
+        r#"{}
 
 {}{}
 
@@ -475,7 +501,7 @@ RESPONSE FORMAT:
 - Prefer short paragraphs and lists. Use tables only for compact comparisons;
   avoid HTML and prose-heavy tables. Do not repeat tool logs in the final answer.
 - Final message: what changed, what was verified, and any follow-ups."#,
-        project_dir,
+        identity,
         memory_section,
         render_tool_list(tools)
     )
@@ -505,6 +531,19 @@ mod tests {
             description: format!("{name} does work."),
             parameters: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn a_bot_prompt_leads_with_its_persona() {
+        let prompt = bot_system_prompt(
+            "You are Colina (@colina).\n",
+            "/bots/colina",
+            &[def("read_file")],
+        );
+        assert!(prompt.starts_with("You are Colina (@colina).\n\nYou work in: /bots/colina\n"));
+        assert!(!prompt.contains("You are Agente"));
+        assert!(prompt.contains("WORKING METHOD:"));
+        assert!(prompt.contains("- read_file"));
     }
 
     #[test]

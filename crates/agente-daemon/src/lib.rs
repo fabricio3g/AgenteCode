@@ -4,14 +4,25 @@
 //! runtime over a Unix socket that only this user can open, with JSON-RPC 2.0
 //! one message per line (see [`serve_connection`] for the methods).
 
+mod bots;
 mod connection;
 
+pub use bots::BotProfiles;
 pub use connection::serve_connection;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use agente_bot::BotStore;
 use agente_runtime::RuntimeHandle;
 use thiserror::Error;
+
+/// What a daemon serves: the runtime, and the bots that run on it.
+#[derive(Clone)]
+pub struct Service {
+    pub runtime: RuntimeHandle,
+    pub bots: Arc<BotStore>,
+}
 
 #[derive(Debug, Error)]
 pub enum ServeError {
@@ -55,17 +66,17 @@ pub async fn is_serving(path: &Path) -> bool {
 /// socket. A stale socket file (no daemon behind it) is replaced; a live one
 /// is an error, so two daemons never share a path.
 pub async fn serve_unix(
-    runtime: RuntimeHandle,
+    service: Service,
     path: &Path,
     shutdown: impl std::future::Future<Output = ()>,
 ) -> Result<(), ServeError> {
     #[cfg(unix)]
     {
-        unix::serve(runtime, path, shutdown).await
+        unix::serve(service, path, shutdown).await
     }
     #[cfg(not(unix))]
     {
-        let _ = (runtime, path, shutdown);
+        let _ = (service, path, shutdown);
         Err(ServeError::Unsupported)
     }
 }
@@ -75,13 +86,12 @@ mod unix {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     use std::path::Path;
 
-    use agente_runtime::RuntimeHandle;
     use tokio::net::UnixListener;
 
-    use super::{is_serving, serve_connection, ServeError};
+    use super::{is_serving, serve_connection, ServeError, Service};
 
     pub(super) async fn serve(
-        runtime: RuntimeHandle,
+        service: Service,
         path: &Path,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> Result<(), ServeError> {
@@ -119,10 +129,10 @@ mod unix {
                             continue;
                         }
                     };
-                    let runtime = runtime.clone();
+                    let service = service.clone();
                     tokio::spawn(async move {
                         let (reader, writer) = stream.into_split();
-                        if let Err(error) = serve_connection(runtime, reader, writer).await {
+                        if let Err(error) = serve_connection(service, reader, writer).await {
                             tracing::debug!(%error, "client connection ended");
                         }
                     });

@@ -10,7 +10,10 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use agente_acp::rpc::{self, FrameError, Incoming};
+use agente_bot::BotStore;
 use agente_protocol::{ApprovalDecision, SessionId, StartTurn, Trust, TurnId, UserInput};
+
+use crate::Service;
 use agente_runtime::{RuntimeError, RuntimeHandle, TurnHandle};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -27,10 +30,11 @@ const BUSY: i32 = -32001;
 /// The caller may not do this.
 const NOT_ALLOWED: i32 = -32003;
 
-type Failure = (i32, String);
+pub(crate) type Failure = (i32, String);
 
 struct Connection {
     runtime: RuntimeHandle,
+    bots: Arc<BotStore>,
     outbox: mpsc::Sender<Value>,
     /// Turns started here: their events come from the turn's own channel, so
     /// the subscription must not send them a second time.
@@ -39,11 +43,7 @@ struct Connection {
 }
 
 /// Serve one client until it disconnects.
-pub async fn serve_connection<R, W>(
-    runtime: RuntimeHandle,
-    reader: R,
-    writer: W,
-) -> std::io::Result<()>
+pub async fn serve_connection<R, W>(service: Service, reader: R, writer: W) -> std::io::Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -61,7 +61,8 @@ where
     });
 
     let connection = Arc::new(Connection {
-        runtime,
+        runtime: service.runtime,
+        bots: service.bots,
         outbox,
         own_turns: Mutex::new(HashSet::new()),
         subscription: Mutex::new(None),
@@ -142,7 +143,7 @@ fn notification(method: &str, params: Value) -> Value {
     json!({ "jsonrpc": "2.0", "method": method, "params": params })
 }
 
-fn parse<T: DeserializeOwned>(params: Value) -> Result<T, Failure> {
+pub(crate) fn parse<T: DeserializeOwned>(params: Value) -> Result<T, Failure> {
     serde_json::from_value(params).map_err(|error| (rpc::INVALID_PARAMS, error.to_string()))
 }
 
@@ -384,6 +385,13 @@ impl Connection {
                 let process = find_process(&params)?;
                 Ok(json!({ "stopped": agente_core::tools::processes::stop(&process) }))
             }
+            "bots.chat" => {
+                let start = crate::bots::chat_turn(&self.bots, params)?;
+                let session_id = start.session_id;
+                let turn = runtime.start_turn(start).map_err(runtime_failure)?;
+                Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
+            }
+            bots if bots.starts_with("bots.") => crate::bots::handle(&self.bots, method, params),
             _ => Err((rpc::METHOD_NOT_FOUND, format!("unknown method {method}"))),
         }
     }

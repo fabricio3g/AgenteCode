@@ -5,6 +5,7 @@ members = [
     "crates/agente-runtime",
     "crates/agente-acp",
     "crates/agente-daemon",
+    "crates/agente-bot",
     "crates/agente-core",
     "crates/agente-tui",
     "crates/agente-cli",
@@ -17,7 +18,7 @@ version = "0.2.0"
 edition = "2021"
 authors = ["Agente Contributors"]
 license = "MIT"
-repository = "https://github.com/fabricio3g/Agente"
+repository = "https://github.com/fabricio3g/AgenteCode"
 
 # Zero-warning policy, enforced structurally: dead code is an error, the rest
 # of rustc/clippy warns. Every crate inherits via `[lints] workspace = true`.
@@ -50,6 +51,8 @@ sha2 = "0.10"
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }
 dirs = "5"
+# bot.toml (MIT/Apache-2.0).
+toml = "0.8"
 arboard = "3"
 parking_lot = "0.12"
 tokio-util = { version = "0.7", features = ["io", "rt"] }
@@ -68,6 +71,7 @@ agente-core = { path = "crates/agente-core" }
 agente-protocol = { path = "crates/agente-protocol" }
 agente-session = { path = "crates/agente-session" }
 agente-runtime = { path = "crates/agente-runtime" }
+agente-bot = { path = "crates/agente-bot" }
 agente-acp = { path = "crates/agente-acp" }
 agente-daemon = { path = "crates/agente-daemon" }
 agente-tui = { path = "crates/agente-tui" }

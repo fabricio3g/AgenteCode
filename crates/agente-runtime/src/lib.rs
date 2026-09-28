@@ -43,6 +43,14 @@ const EVENT_CAPACITY: usize = 1_024;
 /// Events kept for subscribers that fall behind before they see `Lagged`.
 const BROADCAST_CAPACITY: usize = 4_096;
 
+/// Where a turn's `profile` gets its persona. The daemon backs this with the
+/// bot store; without one, a profile is only recorded on the session.
+pub trait ProfileSource: Send + Sync {
+    /// Who `profile` is (see `agente_core::context::bot_system_prompt`), or
+    /// `None` when there is no such profile.
+    fn persona(&self, profile: &str) -> Option<String>;
+}
+
 #[derive(Clone)]
 pub struct RuntimeConfig {
     pub project_dir: String,
@@ -73,6 +81,8 @@ pub struct RuntimeConfig {
     /// The config the settings above came from; `configure` updates a copy
     /// of it and rebuilds them.
     pub app_config: AppConfig,
+    /// Personas for turns that name a profile (a bot).
+    pub profile_source: Option<Arc<dyn ProfileSource>>,
 }
 
 impl RuntimeConfig {
@@ -119,7 +129,13 @@ impl RuntimeConfig {
             max_parallel_subagents: app_config.parallel_subagents(),
             session_store: None,
             app_config: app_config.clone(),
+            profile_source: None,
         }
+    }
+
+    pub fn with_profile_source(mut self, source: Arc<dyn ProfileSource>) -> Self {
+        self.profile_source = Some(source);
+        self
     }
 
     pub fn with_mcp_manager(mut self, manager: Arc<McpManager>) -> Self {
@@ -706,14 +722,31 @@ impl RuntimeHandle {
                 engine.set_auto_approve(auto_approve);
             }
         }
-        if let Some(profile) = start.profile.as_deref() {
-            tracing::debug!(%session_id, profile, "turn profile requested");
+        let persona = start.profile.as_deref().and_then(|profile| {
+            let persona = self.inner.config.profile_source.as_ref()?.persona(profile);
+            if persona.is_none() {
+                tracing::debug!(%session_id, profile, "turn names an unknown profile");
+            }
+            persona
+        });
+        match (start.system_prompt, persona) {
+            (Some(prompt), _) => ensure_system_prompt(&mut conversation, &prompt),
+            // A bot's persona holds its memory: rebuilt every turn, so an
+            // edit made last turn is what it knows now.
+            (None, Some(persona)) => {
+                let registry = agente_core::tools::ToolRegistry::new(&context.project_dir);
+                let prompt = agente_core::context::bot_system_prompt(
+                    &persona,
+                    &context.project_dir,
+                    &registry.definitions(),
+                );
+                replace_system_prompt(&mut conversation, prompt);
+            }
+            (None, None) => ensure_system_prompt(
+                &mut conversation,
+                &self.inner.cached_system_prompt(&context.project_dir),
+            ),
         }
-        let system_prompt = match start.system_prompt {
-            Some(prompt) => prompt,
-            None => self.inner.cached_system_prompt(&context.project_dir),
-        };
-        ensure_system_prompt(&mut conversation, &system_prompt);
         // Project instructions (AGENTS.md) as a user-message reminder;
         // idempotent, so it also re-attaches after compaction dropped it.
         if !agente_core::context::conversation_has_reminder(
@@ -1335,6 +1368,16 @@ fn empty_snapshot(session_id: SessionId) -> SessionSnapshot {
         session_id,
         revision: 0,
         conversation: Vec::new(),
+    }
+}
+
+fn replace_system_prompt(conversation: &mut Vec<Message>, prompt: String) {
+    match conversation
+        .iter_mut()
+        .find(|message| message.role == agente_protocol::Role::System)
+    {
+        Some(message) => message.content = prompt,
+        None => ensure_system_prompt(conversation, &prompt),
     }
 }
 
@@ -2109,6 +2152,60 @@ mod tests {
             .map(|m| m.content.as_str())
             .collect();
         assert_eq!(users, vec!["first", "second"]);
+    }
+
+    /// A bot's persona (and so its memory) is read afresh on every turn.
+    #[tokio::test]
+    async fn a_profile_turn_uses_the_current_persona() {
+        struct Personas(std::sync::Mutex<String>);
+        impl ProfileSource for Personas {
+            fn persona(&self, profile: &str) -> Option<String> {
+                (profile == "colina").then(|| self.0.lock().unwrap().clone())
+            }
+        }
+        let personas = Arc::new(Personas(std::sync::Mutex::new(
+            "You are Colina (@colina).\nMemory: likes tea.".into(),
+        )));
+        let handle = RuntimeSupervisor::start(test_config().with_profile_source(personas.clone()));
+        let session_id = SessionId::new();
+        let start = |prompt: &str, profile: &str| StartTurn {
+            session_id,
+            prompt: Some(Message::user(prompt)),
+            profile: Some(profile.into()),
+            // Unknown provider fails fast, before any network access.
+            provider: Some("definitely-not-a-provider".into()),
+            ..StartTurn::default()
+        };
+        let system = || {
+            handle.session_snapshot(session_id).conversation[0]
+                .content
+                .clone()
+        };
+
+        let _ = handle
+            .start_turn(start("hi", "colina"))
+            .unwrap()
+            .outcome()
+            .await;
+        assert!(system().starts_with("You are Colina (@colina).\nMemory: likes tea."));
+        assert!(system().contains("WORKING METHOD:"));
+
+        *personas.0.lock().unwrap() = "You are Colina (@colina).\nMemory: likes coffee.".into();
+        let _ = handle
+            .start_turn(start("again", "colina"))
+            .unwrap()
+            .outcome()
+            .await;
+        assert!(system().contains("likes coffee"));
+        assert!(!system().contains("likes tea"));
+
+        // An unknown profile keeps the prompt the session has.
+        let _ = handle
+            .start_turn(start("third", "nobody"))
+            .unwrap()
+            .outcome()
+            .await;
+        assert!(system().contains("likes coffee"));
     }
 
     #[tokio::test]

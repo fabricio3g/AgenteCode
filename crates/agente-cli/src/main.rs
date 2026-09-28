@@ -264,18 +264,31 @@ fn run_serve(
         if agente_daemon::is_serving(&socket).await {
             anyhow::bail!("agente is already serving on {}", socket.display());
         }
+        let bots_dir = AppConfig::config_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from(".agente"))
+            .join("bots");
+        let bots = std::sync::Arc::new(
+            agente_bot::BotStore::open(&bots_dir)
+                .map_err(|error| anyhow::anyhow!("bots folder {}: {error}", bots_dir.display()))?,
+        );
         let runtime_config = RuntimeConfig::from_app_config(&config, project_dir)
             .with_user_store()
-            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?;
+            .map_err(|error| anyhow::anyhow!("session store unavailable: {error}"))?
+            .with_profile_source(std::sync::Arc::new(agente_daemon::BotProfiles(
+                std::sync::Arc::clone(&bots),
+            )));
         if let Some(store) = runtime_config.session_store.as_ref() {
             let report = agente_runtime::import::import_legacy_sessions(store);
             if report.imported > 0 || report.failed > 0 {
                 tracing::info!(?report, "imported TUI sessions into the store");
             }
         }
-        let handle = RuntimeSupervisor::start(runtime_config);
+        let service = agente_daemon::Service {
+            runtime: RuntimeSupervisor::start(runtime_config),
+            bots,
+        };
         eprintln!("agente serving on {}", socket.display());
-        let served = agente_daemon::serve_unix(handle, &socket, async {
+        let served = agente_daemon::serve_unix(service, &socket, async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await;
