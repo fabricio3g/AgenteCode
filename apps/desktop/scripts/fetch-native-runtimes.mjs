@@ -9,12 +9,14 @@
 // Environment:
 //   NATIVE_RUNTIME_PLATFORM  linux | windows | macos   (default: this machine)
 //   NATIVE_RUNTIME_ARCH      x64 | arm64                (default: this machine)
-//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan,cuda"     (default: cpu, vulkan, metal)
+//   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: every one published)
 //   LLAMA_CPP_TAG / WHISPER_CPP_TAG  release to use     (defaults below)
 //   GITHUB_TOKEN             optional, avoids the API rate limit in CI
 //
-// CUDA is opt-in: its archives (with the CUDA runtime) add ~0.5–0.8 GB per
-// platform, while Vulkan covers NVIDIA, AMD and Intel GPUs in ~30 MB.
+// Each OS build ships every backend its platform has: CPU, Vulkan (any GPU),
+// CUDA 12 with its runtime (NVIDIA; 12 rather than 13 so GTX 10-series cards
+// still work), ROCm (AMD) and SYCL (Intel). CUDA with its runtime is the
+// largest, ~0.6-0.8 GB; the whole set is ~1.1 GB per installer.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -30,7 +32,6 @@ const PLATFORM = process.env.NATIVE_RUNTIME_PLATFORM || (
   process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux'
 );
 const ARCH = process.env.NATIVE_RUNTIME_ARCH || (process.arch === 'arm64' ? 'arm64' : 'x64');
-const DEFAULT_BACKENDS = ['cpu', 'vulkan', 'metal'];
 const BACKENDS = (process.env.NATIVE_RUNTIME_BACKENDS || '')
   .split(',')
   .map((value) => value.trim().toLowerCase())
@@ -48,16 +49,22 @@ const ENGINES = [
       'linux-x64': {
         cpu: ['llama-{tag}-bin-ubuntu-x64.tar.gz'],
         vulkan: ['llama-{tag}-bin-ubuntu-vulkan-x64.tar.gz'],
-        cuda: ['llama-{tag}-bin-ubuntu-cuda-12.8-x64.tar.gz', 'cudart-llama-{tag}-bin-ubuntu-cuda-12.8-x64.tar.gz']
+        cuda: ['llama-{tag}-bin-ubuntu-cuda-12.8-x64.tar.gz', 'cudart-llama-{tag}-bin-ubuntu-cuda-12.8-x64.tar.gz'],
+        rocm: ['llama-{tag}-bin-ubuntu-rocm-10.0-x64.tar.gz'],
+        sycl: ['llama-{tag}-bin-ubuntu-sycl-fp16-x64.tar.gz']
       },
       'linux-arm64': {
         cpu: ['llama-{tag}-bin-ubuntu-arm64.tar.gz'],
-        vulkan: ['llama-{tag}-bin-ubuntu-vulkan-arm64.tar.gz']
+        vulkan: ['llama-{tag}-bin-ubuntu-vulkan-arm64.tar.gz'],
+        // Only CUDA 13 is published for arm64 (Jetson Thor, GH200-class).
+        cuda: ['llama-{tag}-bin-ubuntu-cuda-13.4-arm64.tar.gz', 'cudart-llama-{tag}-bin-ubuntu-cuda-13.4-arm64.tar.gz']
       },
       'windows-x64': {
         cpu: ['llama-{tag}-bin-win-cpu-x64.zip'],
         vulkan: ['llama-{tag}-bin-win-vulkan-x64.zip'],
-        cuda: ['llama-{tag}-bin-win-cuda-12.4-x64.zip', 'cudart-llama-bin-win-cuda-12.4-x64.zip']
+        cuda: ['llama-{tag}-bin-win-cuda-12.4-x64.zip', 'cudart-llama-bin-win-cuda-12.4-x64.zip'],
+        rocm: ['llama-{tag}-bin-win-rocm-10.0-x64.zip'],
+        sycl: ['llama-{tag}-bin-win-sycl-x64.zip']
       },
       'macos-arm64': { metal: ['llama-{tag}-bin-macos-arm64.tar.gz'] },
       'macos-x64': { metal: ['llama-{tag}-bin-macos-x64.tar.gz'] }
@@ -68,14 +75,12 @@ const ENGINES = [
     repo: 'ggml-org/whisper.cpp',
     tag: process.env.WHISPER_CPP_TAG || 'b5130',
     executables: ['whisper-cli', 'main'],
-    // whisper.cpp publishes CPU builds (and CUDA for Windows); no Vulkan.
+    // whisper.cpp publishes CPU builds for every OS; its only GPU build
+    // (Windows CUDA) is 674 MB, and speech-to-text is quick on the CPU.
     assets: {
       'linux-x64': { cpu: ['whisper-bin-ubuntu-x64.tar.gz'] },
       'linux-arm64': { cpu: ['whisper-bin-ubuntu-arm64.tar.gz'] },
-      'windows-x64': {
-        cpu: ['whisper-bin-x64.zip'],
-        cuda: ['whisper-cublas-12.4.0-bin-x64.zip']
-      }
+      'windows-x64': { cpu: ['whisper-bin-x64.zip'] }
     }
   }
 ];
@@ -83,7 +88,7 @@ const ENGINES = [
 const LIBRARY = /\.(so(\.\d+)*|dll|dylib|metallib)$/i;
 
 function wanted(backend) {
-  return BACKENDS.length ? BACKENDS.includes(backend) : DEFAULT_BACKENDS.includes(backend);
+  return !BACKENDS.length || BACKENDS.includes(backend);
 }
 
 async function github(url) {
