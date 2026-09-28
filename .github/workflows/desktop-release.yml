@@ -73,6 +73,7 @@ jobs:
             libvulkan-dev \
             glslang-tools \
             glslc \
+            spirv-headers \
             pkg-config
 
       - name: Install Windows native build dependencies
@@ -80,6 +81,11 @@ jobs:
         shell: pwsh
         run: |
           choco install cmake ninja vulkan-sdk -y --no-progress
+          # The SDK installer doesn't reach later steps' environment: point them at it.
+          $sdk = Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $sdk) { throw 'Vulkan SDK not found under C:\VulkanSDK' }
+          "VULKAN_SDK=$($sdk.FullName)" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "$($sdk.FullName)\Bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
 
 
       - name: Install CUDA toolkit
