@@ -1,56 +1,52 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/agente-code-lockup-on-dark.svg" />
-    <img src="assets/brand/agente-code-lockup-on-light.svg" alt="Agente Code" height="72" />
-  </picture>
+  <img src="assets/brand/agente-code-icon.svg" alt="" height="72" />
 </p>
 
+<h1 align="center">Agente</h1>
+
 <p align="center">
-  <strong>A keyboard-first coding agent for your terminal, written in Rust.</strong><br />
-  Any model, any provider — with subagents, skills, MCP, tabs and real cost tracking.
+  <strong>One agent core in Rust, four ways to use it.</strong><br />
+  In your terminal, on your desktop, as a team of bots, and (soon) on a server. Any model, any provider, your keys.
 </p>
 
 ---
 
-## Why Agente Code
+## The family
 
-- **Your models, your keys.** 45+ built-in providers — OpenRouter, OpenCode Go, DeepSeek, Z.AI/GLM, MiniMax, Kimi, Qwen, OpenAI, Groq, Mistral, xAI, local Ollama / LM Studio — plus any OpenAI-, Anthropic- or Gemini-compatible endpoint.
-- **A calm, fast TUI.** One consistent look for every list and dialog, hover and click everywhere, eased scrolling, light and dark themes, and nothing on screen you did not ask for.
-- **An agent core built for long work.** Parallel tools, background subagents in isolated git worktrees, automatic compaction, prompt caching on every provider that supports it.
-- **Honest numbers.** The status row shows what you really spent and how much of your prompt came from cache — the provider's own charge when it reports one, marked as an estimate when it does not.
+| | What it is | Status |
+|---|---|---|
+| **Agente Code** | A keyboard-first coding agent for the terminal (`agente`) | Available: Linux, Windows |
+| **Agente Desktop** | The desktop app: chat, local models, voice, artifacts, and a Code section on the same core | Available: Linux, Windows |
+| **Agente Bot** | Named bots with their own persona, memory, model and routines, handing work to each other. **Colina** is the first | Core done; the Desktop Bots screen is next |
+| **Agente Server** | The same runtime headless, in Docker, for your bots and your team | Planned |
 
-## Features
+They are not four agents. There is one: the Rust core in `crates/agente-core`, run by one runtime. The terminal uses it directly; Desktop and the bots talk to it through `agente serve`, a local background service. A fix or a new tool lands everywhere at once.
 
-| | |
-|---|---|
-| **Modes** | `plan` (read-only, ends with a plan you accept or revise), `build`, and `auto` (build with every tool call approved). `Shift+Tab` cycles. |
-| **Subagents** | `explore`, `plan`, `general-purpose` and your own types from `.agente/agents/*.md`; up to 8 run at once, each with a live card, detail view and its own cost. |
-| **Skills** | [Agent Skills](https://agentskills.io/specification) from `.agente/skills`, `.agents/skills` or `.claude/skills`. The agent picks the right one itself; `/skill-name` runs one on demand. |
-| **MCP** | stdio and Streamable HTTP servers through the official Rust SDK, from `agente.json` or the project's `.mcp.json` (approved first). Read-only tools run unasked; `/mcp` shows status. |
-| **Media** | Drop or paste an image, audio, video or PDF, paste a screenshot with `Ctrl+V`, or `@` a media file. Sent in each provider's native format to models that accept it — after asking you (`/settings`). |
-| **Tabs** | Several sessions at once; background tabs keep working and tell you when they finish or need approval. |
-| **Message queue** | Type while the agent works: `Enter` queues, `Enter` again hands it to the running turn at its next step. |
-| **Sessions** | Every session is saved. Click one of your messages to **revert** (undoes the file edits since) or **fork** it into a new session. `agente --resume` reopens any session. |
-| **Safety** | Approval cards with real diffs, per-tool permissions, undo/redo of file edits, secret redaction in logs and errors. |
-| **Embedding** | `--acp-stdio` speaks the Agent Client Protocol for editors; `--no-tui` runs headless in CI and pipes. |
+```mermaid
+flowchart LR
+  core["agente-core<br/>agent loop · tools · providers<br/>subagents · skills · MCP"] --> runtime["agente-runtime<br/>sessions · events · approvals · undo"]
+  runtime --> tui["Agente Code<br/>(terminal)"]
+  runtime --> serve["agente serve<br/>(local socket, JSON-RPC)"]
+  serve --> desktop["Agente Desktop"]
+  serve --> bots["Agente Bot<br/>Colina and team"]
+  serve -.-> server["Agente Server<br/>(planned)"]
+```
 
 ## Install
 
-**Linux** (x86_64 and arm64), Agente Code into `~/.local/bin`:
+**Linux** (x86_64 and arm64): Agente Code into `~/.local/bin`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh
 ```
 
-With Agente Desktop too (AppImage plus an app menu entry):
+Add `--desktop` for Agente Desktop too (an AppImage with an app menu entry), or `--desktop-only`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh -s -- --desktop
 ```
 
-Other options: `--desktop-only`, `--version v0.2.0`, `--dir ~/bin`.
-
-**Windows** (x64, PowerShell), Agente Code into `%LOCALAPPDATA%\Agente\bin`, added to your PATH:
+**Windows** (x64, PowerShell): Agente Code into `%LOCALAPPDATA%\Agente\bin`, added to your PATH.
 
 ```powershell
 irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1 | iex
@@ -62,125 +58,187 @@ With Agente Desktop too (runs its installer):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1))) -Desktop
 ```
 
-Both scripts verify the download against the release's `SHA256SUMS`. Every file is also on the [Releases](https://github.com/fabricio3g/AgenteCode/releases) page.
+Both scripts check every download against the release's `SHA256SUMS`, and take `--version vX.Y.Z` / `-Version vX.Y.Z`. Every file is also on the [Releases](https://github.com/fabricio3g/AgenteCode/releases) page.
 
-### From source
-
-Requirements: **Rust 1.88+**.
+**From source** (Rust 1.88+):
 
 ```bash
 git clone https://github.com/fabricio3g/AgenteCode
 cd AgenteCode
-cargo build --release
-./target/release/agente
+cargo build --release          # target/release/agente
 ```
 
-On Linux, `packaging/linux/install-desktop.sh` adds an **Agente Code** launcher with its icon to your app menu (per user, no root needed).
+---
 
-## Quick start
+## Agente Code
+
+A calm, fast terminal UI over the full agent: plan, build or auto mode, parallel tools, background subagents in their own git worktrees, skills, MCP servers, and honest cost numbers.
 
 ```bash
-agente                                   # interactive TUI in the current folder
+agente                                   # the TUI in the current folder
 agente -p ~/src/my-app                   # … in another project
 agente "refactor the auth module"        # start with a prompt
 agente --no-tui "fix the failing test"   # headless, auto-approving tools
-agente --resume                          # pick a saved session to reopen
-agente --resume 3f2a                     # reopen by id or unique prefix
+agente --resume                          # reopen a saved session
 ```
 
-1. Connect a provider with `/provider` (keys are stored in `~/.agente/auth.json`, never in config files).
-2. Choose a model with `/model`, and a reasoning effort with `Ctrl+T` when the model supports it.
-3. Type what you want. Use `@` to mention files, `/` for commands, `Ctrl+P` for everything else.
+1. Connect a provider with `/provider`. Keys are stored in `~/.agente/auth.json`, never in config files.
+2. Pick a model with `/model`, and a reasoning effort with `Ctrl+T` when the model has one.
+3. Type what you want: `@` mentions files, `/` runs commands, `Ctrl+P` opens everything else.
 
-When you quit, Agente prints `Resume with: agente --resume <session-id>` for every open tab.
+| | |
+|---|---|
+| **Providers** | 45+ built in (OpenRouter, OpenCode Go, DeepSeek, Z.AI/GLM, MiniMax, Kimi, Qwen, OpenAI, Groq, Mistral, xAI, Ollama, LM Studio, …) plus any OpenAI-, Anthropic- or Gemini-compatible endpoint. |
+| **Modes** | `plan` (read-only, ends with a plan you accept or revise), `build`, and `auto` (build without asking, except for destructive commands). `Shift+Tab` cycles. |
+| **Subagents** | `explore`, `plan`, `general-purpose` and your own from `.agente/agents/*.md`; up to 8 at once, each with a live card and its own cost. |
+| **Skills** | [Agent Skills](https://agentskills.io/specification) from `.agente/skills`, `.agents/skills` or `.claude/skills`, picked by the agent or run with `/skill-name`. |
+| **MCP** | stdio and Streamable HTTP servers from `agente.json` or the project's `.mcp.json` (approved first). Read-only tools run unasked. |
+| **Background processes** | Dev servers and watchers keep running after a tool call; list, read and stop them. |
+| **Media** | Paste or drop images, audio, video and PDFs, sent natively to models that accept them. |
+| **Sessions** | Every session is saved. Revert to any message (undoing the file edits since) or fork from it. |
+| **Safety** | Approval cards with real diffs, per-tool permissions, undo/redo of edits, secrets redacted from logs. |
+| **Embedding** | `--acp-stdio` speaks the Agent Client Protocol for editors; `--no-tui` runs headless in CI. |
 
-## Everyday use
+The status row under the composer reads `mode │ $spend · cache% │ context`. `~$0.04` is an estimate from catalog prices, `$0.04+` means some calls had no known price, and `free` means the provider charged nothing.
+
+<details>
+<summary>Keyboard</summary>
 
 | Key | Action |
 |---|---|
 | `Enter` | Send · while working: queue · again on an empty composer: send the queue now |
-| `↑` | Previous prompt · with a queued message: edit it |
-| `Shift+Tab` / `Ctrl+Tab` | Cycle plan → build → auto |
-| `Esc` | Interrupt the running turn (press twice) |
+| `Shift+Tab` | Cycle plan → build → auto |
+| `Esc` `Esc` | Interrupt the running turn |
 | `Ctrl+P` | Command palette |
 | `Ctrl+T` | Reasoning effort |
-| `Ctrl+V` | Paste text, or attach a screenshot from the clipboard |
+| `Ctrl+V` | Paste text, or attach a screenshot |
 | `Ctrl+X` | Subagents |
-| `Ctrl+S` | Session picker |
-| `Ctrl+N` | New session |
-| `F2` | New tab |
-| `Ctrl+PgUp` / `Ctrl+PgDn` | Switch tabs |
-| `Ctrl+O` | Open the prompt in your `$EDITOR` |
-| `Ctrl+B` | Show this session's file changes |
-| `PgUp` / `PgDn`, wheel | Scroll the chat |
+| `Ctrl+S` / `Ctrl+N` | Session picker / new session |
+| `F2`, `Ctrl+PgUp` / `Ctrl+PgDn` | New tab, switch tabs |
+| `Ctrl+O` | Edit the prompt in your `$EDITOR` |
+| `Ctrl+B` | This session's file changes |
 | `?` / `F1` | All shortcuts |
 
-Useful commands: `/settings`, `/skills`, `/mcp`, `/subagent-models`, `/compact`, `/undo`, `/redo`, `/init` (writes an `AGENTS.md` for your project), `/doctor`.
+Commands worth knowing: `/settings`, `/skills`, `/mcp`, `/compact`, `/undo`, `/redo`, `/init` (writes an `AGENTS.md` for your project), `/doctor`.
 
-The status row under the composer reads `mode │ $spend · cache% │ context`:
-`~$0.04` is an estimate from catalog prices, `$0.04+` means some calls had no known price, `free` means the provider charged nothing, and `~12k` marks a locally estimated context size.
+</details>
 
-## Configuration
+<details>
+<summary>Configuration, skills and MCP</summary>
 
-Settings merge from `~/.agente/config.json` and the project's `agente.json` (the project wins). Most of them are also one keypress away in `/settings`: smart compaction, parallel subagents, reduced motion, always-approve, per-kind media permission, theme and per-subagent models. See [`agente.json.example`](agente.json.example) for every field.
-
-### Skills
+Settings merge from `~/.agente/config.json` and the project's `agente.json` (the project wins); most are also in `/settings`. See [`agente.json.example`](agente.json.example) for every field.
 
 A skill is a folder with a `SKILL.md`:
 
 ```markdown
 ---
 name: release-notes
-description: Draft release notes from merged PRs. Use when the user asks for a changelog or release notes.
+description: Draft release notes from merged PRs. Use when the user asks for a changelog.
 ---
 1. Run `scripts/collect.sh <tag>` to list the merged PRs.
 2. …
 ```
 
-Put it in `<project>/.agente/skills/` (or `.agents/skills/`, `.claude/skills/`; user-wide under `~/.agente/skills/`). The model sees each skill's name and description and loads the full instructions when a task matches. `/release-notes <request>` runs it directly; `disable-model-invocation: true` keeps a skill manual-only.
-
-### MCP servers
+MCP servers:
 
 ```json
 {
   "mcp": {
     "docs":   { "command": ["npx", "-y", "@acme/docs-mcp"] },
-    "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp",
-      "headers": { "Authorization": "Bearer $SENTRY_TOKEN" }
-    }
+    "sentry": { "type": "http", "url": "https://mcp.sentry.dev/mcp",
+                "headers": { "Authorization": "Bearer $SENTRY_TOKEN" } }
   }
 }
 ```
 
-Servers connect in the background and a slow one never delays a turn. Tools a server marks read-only run without asking (and in plan mode); the rest ask first unless the server has `"trust": true`. Servers declared in a project's `.mcp.json` run only after you approve them in `/mcp`.
+</details>
 
-## Project layout
+---
 
-| Crate | What it holds |
+## Agente Desktop
+
+The desktop app for people who'd rather not live in a terminal, and for everything that isn't code.
+
+- **Chat** with any provider, or with **local models** that run on your machine. llama.cpp ships inside the app in every build its project publishes for your OS: CPU, Vulkan (any GPU), CUDA 12 (NVIDIA), ROCm (AMD) and SYCL (Intel). The app picks CUDA on NVIDIA and Vulkan elsewhere.
+- **Voice**: speech-to-text with the bundled whisper.cpp, and text-to-speech.
+- **Artifacts**: documents, slides and pages the assistant makes, viewed and kept beside the chat.
+- **Code**: the same agent as Agente Code with Desktop's UI: transcript, approvals with diffs, changes, processes and a built-in browser the agent can drive. It runs on the Rust core through `agente serve` (Linux today; Windows is being finished).
+
+Built with Electron, Svelte and TypeScript in [`apps/desktop`](apps/desktop) ([its README](apps/desktop/README.md)).
+
+```bash
+cd apps/desktop
+npm install
+npm run dev
+```
+
+---
+
+## Agente Bot
+
+A roster of named bots, each with its own persona, memory, model and schedule, that hand work to one another. **Colina**, your everyday assistant, is there from the start and can't be deleted; add others (a researcher, a reviewer, a writer) as you need them.
+
+Each bot is a folder you can read and edit:
+
+```text
+~/.agente/bots/colina/
+  bot.toml        title, role, avatar, model, tools, daily budget
+  SOUL.md         who the bot is and how it works
+  USER.md         what it knows about you
+  MEMORY.md       notes it keeps for itself, one per line
+  routines.toml   what it does on a schedule
+  workspace/      where its tools work
+```
+
+- **Persona and memory.** Every turn starts from the bot's files, so what it remembered yesterday is in today's conversation. It edits its own memory with `memory_update`, a note at a time, within a 4,000-character cap.
+- **Handoffs.** `message_bot` hands a task to a teammate and brings back the answer. The teammate works in its own chat, on its own model, never with more trust than the bot that asked, and can't pass the task on again (no loops).
+- **Routines.** Prompts a bot runs on a schedule (hourly, daily, weekdays, weekly or cron), each answer landing in its chat. A run missed while your computer slept happens once when it wakes.
+- **One conversation per bot.** A bot keeps a single chat, so it builds up context instead of starting over.
+
+Bots run inside `agente serve`. The Bots screen in Desktop is being built; until then they're reachable over its socket (`bots.*` and `routines.*`, below).
+
+---
+
+## Agente Server
+
+`agente serve` is the runtime as a long-lived service: one process that Desktop, a second terminal and the bots share, so a session started in one place can be watched or continued in another.
+
+```bash
+agente serve             # listen on $XDG_RUNTIME_DIR/agente/agente.sock (this user only)
+agente serve --status    # is one running?
+```
+
+It speaks JSON-RPC 2.0, one message per line: `session.*`, `turn.start|cancel|steer`, `approval.respond`, `edits.undo|redo|rewind`, `events.subscribe`, `processes.*`, `bots.*`, `routines.*`. The Docker image (**Agente Server**) with remote access and messaging channels for the bots is planned next.
+
+---
+
+## Repository
+
+| Path | What it holds |
 |---|---|
-| `crates/agente-core` | Agent loop, tools, providers, permissions, subagents, skills, MCP, compaction |
-| `crates/agente-tui` | The terminal UI: state, widgets, dialogs, key and mouse routing |
-| `crates/agente-cli` | The `agente` binary (TUI, headless, ACP) |
-| `crates/agente-{acp,runtime,session,protocol,node}` | Editor embedding, persistence, shared types, Node/Electron bindings |
-| `apps/desktop` | **Agente Desktop**, the Electron app: chat, local models, artifacts, voice and the Code section ([its README](apps/desktop/README.md)) |
-
-Per project, Agente keeps its data in `.agente/`: saved plans (`plans/`), subagent worktrees, custom commands, agents and skills.
+| `crates/agente-core` | The agent: loop, tools, providers, permissions, subagents, skills, MCP, compaction |
+| `crates/agente-runtime` | Sessions, events, approvals, undo/redo, per-session projects and modes |
+| `crates/agente-daemon` | `agente serve`: the socket, bots and routines |
+| `crates/agente-bot` | Bot folders, personas, memory and routine schedules |
+| `crates/agente-tui` | The terminal UI |
+| `crates/agente-cli` | The `agente` binary: TUI, headless, ACP, `serve` |
+| `crates/agente-{protocol,session,acp,node}` | Shared types, persistence, editor embedding, Node bindings |
+| `apps/desktop` | Agente Desktop |
 
 ## Development
 
 ```bash
-cargo check                     # must stay at zero warnings
+cargo check                     # zero warnings, enforced
 cargo test --workspace
-cargo clippy --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Agente Desktop has its own toolchain; run `npm install` and `npm run dev` inside `apps/desktop`. CI runs the Rust and Desktop jobs only when their folders change.
+Desktop has its own toolchain inside `apps/desktop` (`npm install`, `npm run dev`, `npm test`, `npm run check`, `npm run fallow:audit`). CI runs the Rust and Desktop jobs when their folders change.
 
-[AGENTS.md](AGENTS.md) documents the architecture, the design decisions behind the UI and the full keyboard map — read it before a larger change.
+- [AGENTS.md](AGENTS.md): architecture and the design decisions behind the UI; read it before a larger change.
+- [docs/RELEASING.md](docs/RELEASING.md): a version tag builds and publishes Agente Code and Agente Desktop for Linux and Windows.
 
-Brand assets live in `assets/brand/` (icon sizes, `favicon.ico`, lockups for dark and light backgrounds) and are generated by `crates/agente-tui/examples/gen_brand.rs`. The wordmark is outlined from [Space Grotesk](https://github.com/floriankarsten/space-grotesk) Medium (SIL Open Font License 1.1), so the SVGs embed no font.
+Brand assets live in `assets/brand/`. The wordmark is outlined from [Space Grotesk](https://github.com/floriankarsten/space-grotesk) Medium (SIL Open Font License 1.1).
 
 ## License
 
