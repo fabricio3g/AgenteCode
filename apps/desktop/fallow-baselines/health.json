@@ -7,7 +7,7 @@
     },
     "main/agente-daemon.ts": {
       "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "main/agente/changes.ts": {
@@ -2010,14 +2010,6 @@
         "count": 2
       }
     },
-    "scripts/build-native-runtimes.mjs": {
-      "crap_high": {
-        "count": 1
-      },
-      "crap_moderate": {
-        "count": 3
-      }
-    },
     "scripts/smoke-deepseek-flash.mjs": {
       "crap_critical": {
         "count": 1
@@ -2149,8 +2141,8 @@
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
+    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "main/chat-ipc.ts:high impact",
     "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/chat/document-surface.ts:high impact",
@@ -2208,6 +2200,7 @@
     "main/runtime-config-resolver.ts:high impact",
     "main/agente/rust-events.ts:untested risk",
     "main/web-crawler.ts:complexity",
+    "main/agente-daemon.ts:untested risk",
     "main/data-folder.ts:high impact",
     "scripts/smoke-search-scrape.mjs:untested risk",
     "main/agente/desktop-tools-mcp.ts:untested risk",

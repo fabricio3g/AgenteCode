@@ -29,10 +29,14 @@ export function resolveAgenteBinary(options: { resourcesPath?: string; repoRoot?
   return candidates.find((candidate): candidate is string => !!candidate && fs.existsSync(candidate)) ?? null;
 }
 
-/** Same place `agente serve` uses by default, so terminals find it too. */
-export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.XDG_RUNTIME_DIR) return path.join(env.XDG_RUNTIME_DIR, 'agente', 'agente.sock');
-  return path.join(env.HOME || os.homedir(), '.agente', 'agente.sock');
+/**
+ * Same place `agente serve` uses by default, so terminals find it too: a
+ * named pipe on Windows, a Unix socket elsewhere.
+ */
+export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') return `\\\\.\\pipe\\agente-${env.USERNAME ?? 'user'}`;
+  const folder = env.XDG_RUNTIME_DIR ? path.join(env.XDG_RUNTIME_DIR, 'agente') : path.join(env.HOME ?? os.homedir(), '.agente');
+  return path.join(folder, 'agente.sock');
 }
 
 type DaemonOptions = {

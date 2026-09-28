@@ -289,7 +289,7 @@ fn run_serve(
         let service = agente_daemon::Service { runtime, bots };
         let _routines = agente_daemon::spawn_scheduler(service.clone());
         eprintln!("agente serving on {}", socket.display());
-        let served = agente_daemon::serve_unix(service, &socket, async {
+        let served = agente_daemon::serve_local(service, &socket, async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await;

@@ -36,13 +36,18 @@ pub enum ServeError {
         path: PathBuf,
         source: std::io::Error,
     },
-    #[error("agente serve needs Unix sockets; this platform is not supported yet")]
+    #[error("agente serve isn't supported on this platform yet")]
     Unsupported,
 }
 
 /// Where the socket lives: `$XDG_RUNTIME_DIR/agente/agente.sock` (a private,
-/// per-login folder), else `~/.agente/agente.sock`.
+/// per-login folder), else `~/.agente/agente.sock`. On Windows it is a named
+/// pipe, `\\.\pipe\agente-<user>`.
 pub fn default_socket_path() -> PathBuf {
+    if cfg!(windows) {
+        let user = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
+        return PathBuf::from(format!(r"\\.\pipe\agente-{user}"));
+    }
     if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         return PathBuf::from(runtime_dir)
             .join("agente")
@@ -58,17 +63,21 @@ pub async fn is_serving(path: &Path) -> bool {
     {
         tokio::net::UnixStream::connect(path).await.is_ok()
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::is_serving(path)
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = path;
         false
     }
 }
 
-/// Accept clients on `path` until `shutdown` resolves, then remove the
-/// socket. A stale socket file (no daemon behind it) is replaced; a live one
-/// is an error, so two daemons never share a path.
-pub async fn serve_unix(
+/// Accept clients on `path` (a Unix socket, or a named pipe on Windows)
+/// until `shutdown` resolves. A stale socket file (no daemon behind it) is
+/// replaced; a live one is an error, so two daemons never share a path.
+pub async fn serve_local(
     service: Service,
     path: &Path,
     shutdown: impl std::future::Future<Output = ()>,
@@ -77,7 +86,11 @@ pub async fn serve_unix(
     {
         unix::serve(service, path, shutdown).await
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::serve(service, path, shutdown).await
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (service, path, shutdown);
         Err(ServeError::Unsupported)
@@ -144,6 +157,77 @@ mod unix {
             }
         }
         let _ = std::fs::remove_file(path);
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+mod windows {
+    use std::path::Path;
+
+    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeServer, ServerOptions};
+
+    use super::{serve_connection, ServeError, Service};
+
+    /// ERROR_PIPE_BUSY: every instance is taken, so a server is there.
+    const PIPE_BUSY: i32 = 231;
+
+    pub(super) fn is_serving(path: &Path) -> bool {
+        match ClientOptions::new().open(path.as_os_str()) {
+            Ok(_) => true,
+            Err(error) => error.raw_os_error() == Some(PIPE_BUSY),
+        }
+    }
+
+    fn instance(path: &Path, first: bool) -> std::io::Result<NamedPipeServer> {
+        ServerOptions::new()
+            // The first instance claims the name: a pipe someone else
+            // created first is an error, not a server we'd share.
+            .first_pipe_instance(first)
+            .reject_remote_clients(true)
+            .create(path.as_os_str())
+    }
+
+    pub(super) async fn serve(
+        service: Service,
+        path: &Path,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> Result<(), ServeError> {
+        let pipe_error = |source| ServeError::Socket {
+            path: path.to_path_buf(),
+            source,
+        };
+        if is_serving(path) {
+            return Err(ServeError::AlreadyRunning(path.to_path_buf()));
+        }
+        // Windows gives the creating user full access and everyone else at
+        // most read access, which can't send a request.
+        let mut server = instance(path, true).map_err(pipe_error)?;
+        tracing::info!(pipe = %path.display(), "agente serve listening");
+
+        tokio::pin!(shutdown);
+        loop {
+            tokio::select! {
+                connected = server.connect() => {
+                    // The next client needs its own instance, made before
+                    // this one is handed off, so the name never disappears.
+                    let next = instance(path, false).map_err(pipe_error)?;
+                    let client = std::mem::replace(&mut server, next);
+                    if let Err(error) = connected {
+                        tracing::warn!(%error, "pipe connection failed");
+                        continue;
+                    }
+                    let service = service.clone();
+                    tokio::spawn(async move {
+                        let (reader, writer) = tokio::io::split(client);
+                        if let Err(error) = serve_connection(service, reader, writer).await {
+                            tracing::debug!(%error, "client connection ended");
+                        }
+                    });
+                }
+                () = &mut shutdown => break,
+            }
+        }
         Ok(())
     }
 }

@@ -61,8 +61,9 @@ test('the client matches replies, surfaces errors and notifications, and fails p
 });
 
 test('the default socket follows XDG_RUNTIME_DIR, else ~/.agente', () => {
-  assert.equal(defaultSocketPath({ XDG_RUNTIME_DIR: '/run/user/1000' }), '/run/user/1000/agente/agente.sock');
-  assert.equal(defaultSocketPath({ HOME: '/home/me' }), '/home/me/.agente/agente.sock');
+  assert.equal(defaultSocketPath({ XDG_RUNTIME_DIR: '/run/user/1000' }, 'linux'), '/run/user/1000/agente/agente.sock');
+  assert.equal(defaultSocketPath({ HOME: '/home/me' }, 'linux'), '/home/me/.agente/agente.sock');
+  assert.equal(defaultSocketPath({ USERNAME: 'ana' }, 'win32'), '\\\\.\\pipe\\agente-ana');
 });
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..', '..');

@@ -268,3 +268,59 @@ async fn colina_chats_in_one_permanent_session_with_her_persona() {
         .contains("built in"));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The real transport: a Unix socket, or a named pipe on Windows.
+#[tokio::test]
+async fn agente_serve_answers_on_its_local_socket() {
+    let (service, dir) = runtime("local");
+    #[cfg(unix)]
+    let path = std::path::PathBuf::from(format!("/tmp/ag-serve-{}.sock", std::process::id()));
+    #[cfg(windows)]
+    let path = std::path::PathBuf::from(format!(r"\\.\pipe\agente-test-{}", std::process::id()));
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn({
+        let path = path.clone();
+        async move {
+            agente_daemon::serve_local(service, &path, async {
+                let _ = stopped.await;
+            })
+            .await
+        }
+    });
+    let mut serving = false;
+    for _ in 0..100 {
+        if agente_daemon::is_serving(&path).await {
+            serving = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(serving, "no server on {}", path.display());
+
+    #[cfg(unix)]
+    let stream = tokio::net::UnixStream::connect(&path).await.unwrap();
+    #[cfg(windows)]
+    let stream = tokio::net::windows::named_pipe::ClientOptions::new()
+        .open(path.as_os_str())
+        .unwrap();
+    let (read, mut write) = tokio::io::split(stream);
+    write
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n")
+        .await
+        .unwrap();
+    let mut lines = BufReader::new(read).lines();
+    let reply: Value = serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+    assert_eq!(reply["result"]["server"], "agente");
+
+    // A second daemon on the same path is refused.
+    let (other, _) = runtime("local-2");
+    let second = agente_daemon::serve_local(other, &path, async {}).await;
+    assert!(matches!(
+        second,
+        Err(agente_daemon::ServeError::AlreadyRunning(_))
+    ));
+
+    let _ = stop.send(());
+    server.await.unwrap().unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+}
