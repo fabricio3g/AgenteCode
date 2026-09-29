@@ -47,4 +47,25 @@ What is missing: none.`;
 What was completed: 5 sources gathered.
 What is missing: none.`);
   });
+
+  it('keeps answers that open in the first person, list included', () => {
+    const text = `I can help you with a lot of things:
+
+1. Answer questions and explain topics
+2. Write and edit text
+3. Help with code
+
+Let me know what you need!`;
+    expect(sanitizeAssistantVisibleText(text)).toBe(text);
+    expect(sanitizeAssistantVisibleText("Let me explain how it works.\n\n- first\n- second")).toBe(
+      "Let me explain how it works.\n\n- first\n- second"
+    );
+  });
+
+  it('never blanks a reply the model wrote', () => {
+    expect(sanitizeAssistantVisibleText('Thinking\nPlanning\nThe user wants a list.')).toBe(
+      'Thinking\nPlanning\nThe user wants a list.'
+    );
+    expect(sanitizeAssistantVisibleText('<think>only reasoning</think>')).toBe('');
+  });
 });

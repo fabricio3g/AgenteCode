@@ -67,9 +67,11 @@ function stripLegacyAgentFallbackDiagnostics(content: string): string {
 function stripTranscriptPrefix(content: string): string {
   const lines = content.replace(/\r\n?/g, '\n').split('\n');
   const markerCount = lines.filter((line) => TRANSCRIPT_MARKER_RE.test(line)).length;
-  const hasMetaPreamble = lines.slice(0, 16).some((line) => META_LINE_RE.test(line));
 
-  if (markerCount < 2 && !hasMetaPreamble) return content;
+  // Only a leaked agent transcript ("Thought for 3s", "Using: …") has a
+  // preamble to drop. Without its markers, an opening like "I can help
+  // with:" or "Let me explain" IS the answer, list and all.
+  if (markerCount < 2) return content;
 
   let index = 0;
   let skippingMetaBlock = false;
@@ -94,10 +96,17 @@ function stripTranscriptPrefix(content: string): string {
   return lines.slice(index).join('\n');
 }
 
-export function sanitizeAssistantVisibleText(content: string): string {
-  if (!content) return '';
-  return stripTranscriptPrefix(stripLegacyAgentFallbackDiagnostics(stripToolPayloads(content).replace(DEBUG_LINE_RE, '')))
+function tidy(content: string): string {
+  return content
     .replace(/^\s*\|\s*$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+export function sanitizeAssistantVisibleText(content: string): string {
+  if (!content) return '';
+  const withoutPayloads = stripToolPayloads(content).replace(DEBUG_LINE_RE, '');
+  const visible = tidy(stripTranscriptPrefix(stripLegacyAgentFallbackDiagnostics(withoutPayloads)));
+  // Cleaning up must never blank a reply the model did write.
+  return visible || tidy(withoutPayloads);
 }
