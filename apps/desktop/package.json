@@ -2,7 +2,7 @@
   "name": "agente-desktop",
   "version": "0.2.0",
   "private": true,
-  "description": "Agente Desktop – local AI workspace (Electron)",
+  "description": "Agente Desktop \u2013 local AI workspace (Electron)",
   "type": "module",
   "main": "dist-electron/main/index.cjs",
   "scripts": {
@@ -94,11 +94,11 @@
     "productName": "Agente",
     "artifactName": "Agente-${version}-${arch}.${ext}",
     "directories": {
-      "output": "dist-electron",
+      "output": "release",
       "buildResources": "build"
     },
     "files": [
-      "main/**/*",
+      "dist-electron/main/**/*",
       "preload/**/*",
       "renderer/dist/**/*"
     ],
@@ -106,27 +106,29 @@
       "node_modules/apache-arrow/**/*",
       "node_modules/@lancedb/**/*",
       "node_modules/better-sqlite3/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/sharp/**/*",
       "node_modules/node-pty/**/*",
       "node_modules/kokoro-js/voices/**/*",
       "resources/bin/**/*"
     ],
     "extraResources": [
       {
-        "from": "../models",
+        "from": "models",
         "to": "models",
         "filter": [
           "**/*"
         ]
       },
       {
-        "from": "../assets",
+        "from": "assets",
         "to": "assets",
         "filter": [
           "**/*"
         ]
       },
       {
-        "from": "../resources/bin",
+        "from": "resources/bin",
         "to": "bin",
         "filter": [
           "**/*"

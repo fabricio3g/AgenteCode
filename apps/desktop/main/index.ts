@@ -24,10 +24,12 @@ const RENDERER_DEV_URL = 'http://localhost:5173';
  */
 net.setDefaultAutoSelectFamilyAttemptTimeout(2500);
 
-const RENDERER_PROD_PATH = path.join(moduleDir, '..', 'renderer', 'dist', 'index.html');
+// Packaged, the main bundle runs from app.asar/dist-electron/main: the
+// renderer and preload are found from the app's root, not from here.
+const RENDERER_PROD_PATH = path.join(app.getAppPath(), 'renderer', 'dist', 'index.html');
 const APP_ICON_PATH = IS_DEV
   ? path.join(moduleDir, '..', '..', 'renderer', 'public', 'app-icon.png')
-  : path.join(moduleDir, '..', 'renderer', 'dist', 'app-icon.png');
+  : path.join(app.getAppPath(), 'renderer', 'dist', 'app-icon.png');
 
 let tray = null;
 
