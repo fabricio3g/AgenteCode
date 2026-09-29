@@ -18,7 +18,7 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import {
     Plus, X,
-    Search, Cpu, Volume2, Settings, Shapes
+    Search, Cpu, Volume2, Settings, Shapes, Accessibility
   } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -33,6 +33,7 @@
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import { resolveModelHubSection } from '$lib/utils/model-hub-routing';
   import UnifiedSettingsPanel from './UnifiedSettingsPanel.svelte';
+  import AccessibilitySettings from './AccessibilitySettings.svelte';
   import ModelWorkspace from './ModelWorkspace.svelte';
   import ModelNavRail from './ModelNavRail.svelte';
   import VoiceSection from './sections/VoiceSection.svelte';
@@ -84,6 +85,7 @@
     { id: 'artifacts' as NavSection, label: $t('settingsNav.artifacts'), icon: Shapes, active: false },
     { id: 'local' as NavSection, label: $t('settingsNav.local'), icon: Cpu, active: hasRuntime },
     { id: 'voice' as NavSection, label: $t('settingsNav.voice'), icon: Volume2, active: false },
+    { id: 'accessibility' as NavSection, label: $t('settingsNav.accessibility'), icon: Accessibility, active: false },
   ]);
 
   const isModelSection = $derived(activeSection === 'models' || activeSection === 'explore' || activeSection === 'loaded');
@@ -348,6 +350,8 @@
           {#key selectedProviderId}<ProviderDetail providerId={selectedProviderId} />{/key}
         {:else if activeSection === 'local'}
           <ThisComputerSection />
+        {:else if activeSection === 'accessibility'}
+          <AccessibilitySettings />
         {/if}
         </main>
       </div>
@@ -389,7 +393,7 @@
   /* Nav rows: quiet, the same size in both rails. Active is a soft fill,
      never a ring; the focus ring only shows for keyboard focus. */
   :global(.nav-row) {
-    height: 2rem;
+    height: 1.75rem;
     padding: 0 0.625rem;
     border: 0;
     border-radius: 0.5rem;

@@ -1631,7 +1631,8 @@ textarea {
    * of overflowing once. `break-word` still rescues unbreakable URLs.
    */
   overflow-wrap: break-word;
-  padding: 0.75rem 1rem;
+  padding: 0.625rem 0.9375rem;
+  font-size: calc(0.875rem * var(--reading-scale, 1));
   background: var(--user-bubble);
   color: var(--user-bubble-text);
   border: 0;
@@ -1857,13 +1858,13 @@ kbd {
   -moz-osx-font-smoothing: grayscale;
   color: inherit;
   line-height: 1.65;
-  font-size: 0.95rem;
+  font-size: calc(0.9375rem * var(--reading-scale, 1));
 }
 
 /* Research modes (Search / Deep / Max): APA-style reports need more air */
 .markdown-body.is-research {
   line-height: 1.74;
-  font-size: 0.96rem;
+  font-size: calc(0.9375rem * var(--reading-scale, 1));
 }
 
 .markdown-body.is-research p,
@@ -2475,4 +2476,89 @@ svg.lucide:is(.size-2, .size-2\.5, .size-3, .h-3, .h-2\.5) {
 @media (prefers-reduced-motion: reduce) {
   svg.lucide { transition: none; }
   :is(button, a, [role='menuitem'], [role='tab'], label):hover svg.lucide { translate: none; rotate: none; scale: none; }
+}
+
+/* ─── Accessibility (Settings → Accessibility) ─────────────────────────────
+   The store in stores/accessibility.svelte.ts sets these on <html>. Interface
+   size is the window zoom; everything else is a class or a variable here. */
+:root {
+  --reading-scale: 1;
+}
+
+html[data-font='system'] {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, sans-serif;
+}
+
+html[data-font='hyperlegible'] {
+  --font-sans: 'Atkinson Hyperlegible', 'Inter Variable', system-ui, sans-serif;
+}
+
+/* Relaxed spacing: more room between lines, letters and words when reading. */
+html.a11y-relaxed body {
+  letter-spacing: 0.01em;
+}
+html.a11y-relaxed .markdown-body,
+html.a11y-relaxed .chateaui-user-bubble,
+html.a11y-relaxed .composer-textarea {
+  line-height: 1.9;
+  letter-spacing: 0.02em;
+  word-spacing: 0.08em;
+}
+html.a11y-relaxed .markdown-body p,
+html.a11y-relaxed .markdown-body li {
+  margin-bottom: 0.9em;
+}
+
+/* Higher contrast: secondary text and hairlines move toward the foreground. */
+html.a11y-contrast {
+  --muted-foreground: #3f3f3f;
+  --text-secondary: #262626;
+  --text-tertiary: #3f3f3f;
+  --border: rgb(0 0 0 / 0.2);
+  --border-subtle: rgb(0 0 0 / 0.14);
+  --border-hover: rgb(0 0 0 / 0.32);
+  --input: rgb(0 0 0 / 0.32);
+  --composer-ring: rgb(0 0 0 / 0.32);
+}
+html.dark.a11y-contrast {
+  --muted-foreground: #cfcfcf;
+  --text-secondary: #e5e5e5;
+  --text-tertiary: #cfcfcf;
+  --border: rgb(255 255 255 / 0.24);
+  --border-subtle: rgb(255 255 255 / 0.16);
+  --border-hover: rgb(255 255 255 / 0.36);
+  --input: rgb(255 255 255 / 0.34);
+  --composer-ring: rgb(255 255 255 / 0.34);
+}
+
+/* Always-visible focus: a solid outline on whatever has keyboard focus. */
+html.a11y-focus :focus-visible {
+  outline: 2px solid var(--brand-accent) !important;
+  outline-offset: 2px !important;
+}
+
+html.a11y-underline a,
+html.a11y-underline .markdown-body a {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
+/* Reduce motion: on from the setting, or from the system unless turned off. */
+html.a11y-reduce-motion *:not(.animate-spin),
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:not(.a11y-allow-motion) *:not(.animate-spin),
+  html:not(.a11y-allow-motion) *::before,
+  html:not(.a11y-allow-motion) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

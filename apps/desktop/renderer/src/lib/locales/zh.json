@@ -515,7 +515,8 @@
     "endpointAdded": "已添加 {name}，如需要请添加 API 密钥",
     "endpointAddedReady": "已添加 {name}，可以使用",
     "artifacts": "产物",
-    "title": "设置"
+    "title": "设置",
+    "accessibility": "辅助功能"
   },
   "providers": {
     "cloudDescription": "使用你自己的 API 密钥，聊天内容直接从本应用发送给提供商。",
@@ -1422,5 +1423,37 @@
       "manual": "上次为手动运行"
     },
     "close": "关闭"
+  },
+  "accessibility": {
+    "title": "辅助功能",
+    "description": "让 Agente 更易于查看、阅读和使用。更改会立即在这台电脑上生效。",
+    "reset": "恢复默认",
+    "display": "显示",
+    "interfaceSize": "界面大小",
+    "interfaceSizeDesc": "整个应用的文字、按钮和间距。也可以用 Ctrl + 和 Ctrl − 调整。",
+    "textSize": "消息文字大小",
+    "textSizeDesc": "聊天消息和输入框，在界面大小的基础上调整。",
+    "sample": "聊天消息在这个大小下会这样显示。",
+    "reading": "阅读",
+    "font": "字体",
+    "fontDesc": "Atkinson Hyperlegible 专为便于区分字母而设计。",
+    "fontDefault": "Inter（默认）",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "系统字体",
+    "relaxed": "宽松间距",
+    "relaxedDesc": "增加消息中的行距、字距和词距。",
+    "underlineLinks": "为链接加下划线",
+    "underlineLinksDesc": "链接显示下划线，不只依靠颜色区分。",
+    "visibility": "对比度和焦点",
+    "contrast": "提高对比度",
+    "contrastDesc": "次要文字更深，边框更明显。",
+    "focus": "始终显示焦点轮廓",
+    "focusDesc": "在获得键盘焦点的元素周围显示清晰的轮廓。",
+    "motion": "动效",
+    "reduceMotion": "减少动效",
+    "reduceMotionDesc": "关闭动画和过渡效果。",
+    "motionSystem": "跟随系统",
+    "motionOn": "开启",
+    "motionOff": "关闭"
   }
 }

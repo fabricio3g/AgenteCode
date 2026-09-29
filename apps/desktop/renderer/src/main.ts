@@ -3,6 +3,8 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import './app.css';
 import '$lib/i18n/index';
+// Interface size, contrast, motion… before the first paint.
+import '$lib/stores/accessibility.svelte';
 import App from './App.svelte';
 import { mount } from 'svelte';
 

@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'window:minimize', 'window:toggle-maximize', 'window:is-maximized', 'window:close', 'window:request-close', 'window:set-active-work',
@@ -66,7 +66,8 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start',
-  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event'
+  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event',
+  'ui-zoom'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -96,6 +97,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowClose: () => ipcRenderer.invoke('window:close'),
   windowRequestClose: () => ipcRenderer.invoke('window:request-close'),
   windowSetActiveWork: (active, reasons = []) => ipcRenderer.invoke('window:set-active-work', { active, reasons }),
+
+  // Interface size (Settings → Accessibility, and Ctrl +/-/0)
+  getZoomFactor: () => webFrame.getZoomFactor(),
+  setZoomFactor: (factor) => {
+    const value = Number(factor);
+    if (Number.isFinite(value) && value >= 0.5 && value <= 3) webFrame.setZoomFactor(value);
+  },
 
   // App info
   appName: 'Agente', // mirrors shared/brand.ts

@@ -9,6 +9,7 @@ import { initTts } from './voice/audiocpp-tts.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';
+import { zoomKeyDirection } from '../shared/zoom-keys.ts';
 
 // Resolves under both the esbuild CJS bundle and tsx's ESM loader.
 const moduleDir = moduleDirname(import.meta.url);
@@ -84,6 +85,15 @@ function createWindow() {
 
   mainWindow.webContents.on('will-navigate', (event) => {
     event.preventDefault();
+  });
+
+  // Ctrl/Cmd +, - and 0 change the interface size setting (Settings →
+  // Accessibility) instead of an unsaved zoom from the default menu.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const direction = input.type === 'keyDown' ? zoomKeyDirection(input.key, input.control || input.meta, input.alt) : null;
+    if (direction === null) return;
+    event.preventDefault();
+    mainWindow.webContents.send('ui-zoom', direction);
   });
 }
 

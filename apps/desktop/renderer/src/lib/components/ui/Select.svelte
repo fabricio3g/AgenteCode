@@ -248,7 +248,7 @@
   aria-activedescendant={open && activeIndex >= 0 ? optionId(activeIndex) : undefined}
   aria-required={required || undefined}
   class={cn(
-    'flex h-9 w-full items-center justify-between gap-2 rounded-md px-3 text-left text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
+    'flex h-8 w-full items-center justify-between gap-2 rounded-md px-2.5 text-left text-[13px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50',
     variant === 'surface'
       ? 'border-0 bg-[var(--card)] transition-[background-color,box-shadow] duration-[var(--motion-fast)] hover:bg-[var(--surface-hover)] focus-visible:bg-[var(--card)] focus-visible:ring-[3px] focus-visible:ring-ring/25'
       : 'border border-border bg-background transition-[border-color,box-shadow] duration-[var(--motion-fast)] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20',
@@ -298,7 +298,7 @@
           aria-disabled={option.disabled || undefined}
           disabled={option.disabled}
           class={cn(
-            'flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm outline-none transition-colors duration-[var(--motion-fast)] disabled:cursor-not-allowed disabled:opacity-40',
+            'flex w-full items-start gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors duration-[var(--motion-fast)] disabled:cursor-not-allowed disabled:opacity-40',
             activeIndex === index && 'bg-[var(--surface-hover)]',
             option.value === value && 'bg-[var(--surface-active)] text-foreground',
           )}

@@ -515,7 +515,8 @@
     "endpointAdded": "{name} added — add its API key if it needs one",
     "endpointAddedReady": "{name} added and ready",
     "artifacts": "Artifacts",
-    "title": "Settings"
+    "title": "Settings",
+    "accessibility": "Accessibility"
   },
   "providers": {
     "cloudDescription": "Uses your own API key. Chats go straight from this app to the provider.",
@@ -1422,5 +1423,37 @@
       "manual": "last run by hand"
     },
     "close": "Close"
+  },
+  "accessibility": {
+    "title": "Accessibility",
+    "description": "Make Agente easier to see, read and use. Changes apply right away on this computer.",
+    "reset": "Reset to defaults",
+    "display": "Display",
+    "interfaceSize": "Interface size",
+    "interfaceSizeDesc": "Text, buttons and spacing across the whole app. Ctrl + and Ctrl − also change it.",
+    "textSize": "Message text size",
+    "textSizeDesc": "Chat messages and the message box, on top of the interface size.",
+    "sample": "This is how chat messages will look at this size.",
+    "reading": "Reading",
+    "font": "Font",
+    "fontDesc": "Atkinson Hyperlegible is designed to be easy to tell letters apart.",
+    "fontDefault": "Inter (default)",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "System font",
+    "relaxed": "Relaxed spacing",
+    "relaxedDesc": "More space between lines, letters and words in messages.",
+    "underlineLinks": "Underline links",
+    "underlineLinksDesc": "Links are underlined, so they don't depend on color.",
+    "visibility": "Contrast and focus",
+    "contrast": "Higher contrast",
+    "contrastDesc": "Darker secondary text and stronger borders.",
+    "focus": "Always show the focus outline",
+    "focusDesc": "A clear outline around whatever has keyboard focus.",
+    "motion": "Motion",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionDesc": "Turn off animations and transitions.",
+    "motionSystem": "Follow system",
+    "motionOn": "On",
+    "motionOff": "Off"
   }
 }

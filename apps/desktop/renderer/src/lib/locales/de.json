@@ -515,7 +515,8 @@
     "endpointAdded": "{name} hinzugefügt – API-Schlüssel ergänzen, falls nötig",
     "endpointAddedReady": "{name} hinzugefügt und bereit",
     "artifacts": "Artefakte",
-    "title": "Einstellungen"
+    "title": "Einstellungen",
+    "accessibility": "Barrierefreiheit"
   },
   "providers": {
     "cloudDescription": "Nutzt deinen eigenen API-Schlüssel. Chats gehen direkt von der App zum Anbieter.",
@@ -1422,5 +1423,37 @@
       "manual": "letzter Lauf von Hand"
     },
     "close": "Schließen"
+  },
+  "accessibility": {
+    "title": "Barrierefreiheit",
+    "description": "Agente leichter sehen, lesen und bedienen. Änderungen gelten sofort auf diesem Computer.",
+    "reset": "Zurücksetzen",
+    "display": "Anzeige",
+    "interfaceSize": "Größe der Oberfläche",
+    "interfaceSizeDesc": "Text, Schaltflächen und Abstände in der ganzen App. Strg + und Strg − ändern sie ebenfalls.",
+    "textSize": "Textgröße der Nachrichten",
+    "textSizeDesc": "Chatnachrichten und Eingabefeld, zusätzlich zur Größe der Oberfläche.",
+    "sample": "So sehen Chatnachrichten in dieser Größe aus.",
+    "reading": "Lesen",
+    "font": "Schrift",
+    "fontDesc": "Atkinson Hyperlegible ist darauf ausgelegt, Buchstaben gut zu unterscheiden.",
+    "fontDefault": "Inter (Standard)",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "Systemschrift",
+    "relaxed": "Großzügige Abstände",
+    "relaxedDesc": "Mehr Abstand zwischen Zeilen, Buchstaben und Wörtern in Nachrichten.",
+    "underlineLinks": "Links unterstreichen",
+    "underlineLinksDesc": "Links werden unterstrichen und hängen nicht von der Farbe ab.",
+    "visibility": "Kontrast und Fokus",
+    "contrast": "Höherer Kontrast",
+    "contrastDesc": "Dunklerer Nebentext und deutlichere Rahmen.",
+    "focus": "Fokusrahmen immer zeigen",
+    "focusDesc": "Ein klarer Rahmen um das Element mit dem Tastaturfokus.",
+    "motion": "Bewegung",
+    "reduceMotion": "Bewegung reduzieren",
+    "reduceMotionDesc": "Schaltet Animationen und Übergänge aus.",
+    "motionSystem": "Wie das System",
+    "motionOn": "An",
+    "motionOff": "Aus"
   }
 }

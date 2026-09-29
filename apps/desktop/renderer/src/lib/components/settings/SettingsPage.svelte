@@ -28,7 +28,7 @@
 </script>
 
 <div class="min-h-0 flex-1 overflow-y-auto bg-background">
-  <div class="mx-auto w-full space-y-7 px-5 pb-10 pt-9 sm:px-8 {wide ? 'max-w-[1120px]' : 'max-w-[720px]'}">
+  <div class="mx-auto w-full space-y-6 px-5 pb-10 pt-7 sm:px-8 {wide ? 'max-w-[1120px]' : 'max-w-[720px]'}">
     <header class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex min-w-0 items-center gap-3">
         {#if icon}
@@ -37,8 +37,8 @@
           </span>
         {/if}
         <div class="min-w-0">
-          <h3 class="truncate text-xl font-semibold tracking-[-0.02em] text-foreground">{title}</h3>
-          {#if description}<p class="mt-1 text-[13px] text-muted-foreground">{description}</p>{/if}
+          <h3 class="truncate text-lg font-semibold tracking-[-0.02em] text-foreground">{title}</h3>
+          {#if description}<p class="mt-0.5 text-[12.5px] text-muted-foreground">{description}</p>{/if}
         </div>
       </div>
       {#if actions}<div class="flex shrink-0 items-center gap-2">{@render actions()}</div>{/if}

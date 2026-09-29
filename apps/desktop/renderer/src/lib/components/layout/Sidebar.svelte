@@ -165,7 +165,7 @@
            concerns Home and Roleplay. -->
       {#if appStore.activeSpace !== 'code'}
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
           class:is-current={appStore.homeView === 'artifacts'}
           aria-current={appStore.homeView === 'artifacts' ? 'page' : undefined}
           onclick={() => appStore.showArtifactLibrary()}
@@ -175,7 +175,7 @@
           <span class="btn-label">{$t('sidebar.artifacts')}</span>
         </button>
         <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
           class:is-current={appStore.homeView === 'bots'}
           aria-current={appStore.homeView === 'bots' ? 'page' : undefined}
           onclick={() => appStore.showBots()}
@@ -190,7 +190,7 @@
 
     <button
       type="button"
-      class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+      class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
       onclick={() => { appStore.chatSearchOpen = true; }}
       title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
     >
@@ -253,7 +253,7 @@
 
     <div class="sidebar-footer px-0.5 py-2">
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         title={$t('sidebar.models')}
       >
@@ -261,7 +261,7 @@
         <span class="btn-label">{$t('sidebar.models')}</span>
       </button>
       <button
-        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+        class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
         onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
         title={$t('sidebar.settings')}
       >

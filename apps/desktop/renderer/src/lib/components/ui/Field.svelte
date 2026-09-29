@@ -21,9 +21,9 @@
   } = $props();
 </script>
 
-<div class={cn(horizontal && 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between', className)}>
-  <div class="min-w-0 space-y-1">
-    <label class="block text-sm font-medium text-foreground" for={htmlFor}>{label}</label>
+<div class={cn(horizontal && 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6', className)}>
+  <div class="min-w-0 space-y-0.5">
+    <label class="block text-[13px] font-medium text-foreground" for={htmlFor}>{label}</label>
     {#if description}
       <p class="text-xs leading-relaxed text-muted-foreground">{description}</p>
     {/if}
@@ -31,7 +31,7 @@
       <p class="text-xs text-error" role="alert">{error}</p>
     {/if}
   </div>
-  <div class={cn(horizontal && 'shrink-0 sm:w-72')}>
+  <div class={cn(horizontal && 'shrink-0 sm:w-64')}>
     {@render children()}
   </div>
 </div>

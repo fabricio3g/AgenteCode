@@ -134,7 +134,7 @@
   {/if}
 
   <div
-    class="chateaui-user-bubble text-sm leading-relaxed"
+    class="chateaui-user-bubble leading-relaxed"
     data-chat-message-content
     data-chat-message-id={ctx.message.id}
   >

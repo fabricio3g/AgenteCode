@@ -515,7 +515,8 @@
     "endpointAdded": "{name} を追加しました。必要なら API キーを追加してください",
     "endpointAddedReady": "{name} を追加しました",
     "artifacts": "アーティファクト",
-    "title": "設定"
+    "title": "設定",
+    "accessibility": "アクセシビリティ"
   },
   "providers": {
     "cloudDescription": "ご自身の API キーを使います。チャットはこのアプリからプロバイダーへ直接送られます。",
@@ -1422,5 +1423,37 @@
       "manual": "前回は手動実行"
     },
     "close": "閉じる"
+  },
+  "accessibility": {
+    "title": "アクセシビリティ",
+    "description": "Agente を見やすく、読みやすく、使いやすくします。変更はこのコンピューターですぐに反映されます。",
+    "reset": "初期設定に戻す",
+    "display": "表示",
+    "interfaceSize": "インターフェースのサイズ",
+    "interfaceSizeDesc": "アプリ全体の文字、ボタン、余白。Ctrl + と Ctrl − でも変更できます。",
+    "textSize": "メッセージの文字サイズ",
+    "textSizeDesc": "チャットのメッセージと入力欄。インターフェースのサイズに加えて適用されます。",
+    "sample": "このサイズではチャットのメッセージがこのように表示されます。",
+    "reading": "読みやすさ",
+    "font": "フォント",
+    "fontDesc": "Atkinson Hyperlegible は文字を見分けやすいように設計されています。",
+    "fontDefault": "Inter（標準）",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "システムフォント",
+    "relaxed": "ゆったりした間隔",
+    "relaxedDesc": "メッセージの行間、文字間、単語間を広げます。",
+    "underlineLinks": "リンクに下線を表示",
+    "underlineLinksDesc": "色に頼らずリンクがわかるよう下線を付けます。",
+    "visibility": "コントラストとフォーカス",
+    "contrast": "コントラストを上げる",
+    "contrastDesc": "補足テキストを濃く、枠線をはっきりさせます。",
+    "focus": "フォーカス枠を常に表示",
+    "focusDesc": "キーボードのフォーカスがある要素をはっきり囲みます。",
+    "motion": "動き",
+    "reduceMotion": "動きを減らす",
+    "reduceMotionDesc": "アニメーションとトランジションをオフにします。",
+    "motionSystem": "システムに従う",
+    "motionOn": "オン",
+    "motionOff": "オフ"
   }
 }

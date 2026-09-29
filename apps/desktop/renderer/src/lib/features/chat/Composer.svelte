@@ -582,10 +582,10 @@
   .composer-textarea {
     display: block;
     margin: 0;
-    min-height: 2.5rem;
+    min-height: 2.25rem;
     max-height: 13rem;
     padding: 0 0.25rem;
-    font-size: 1rem;
+    font-size: calc(0.9375rem * var(--reading-scale, 1));
     line-height: 1.55;
     letter-spacing: -0.005em;
   }
@@ -600,7 +600,7 @@
   @media (max-width: 640px) {
     .composer-textarea {
       max-height: 10rem;
-      font-size: 0.9375rem;
+      font-size: calc(0.875rem * var(--reading-scale, 1));
     }
   }
 </style>

@@ -515,7 +515,8 @@
     "endpointAdded": "{name} adicionado: adicione a chave de API se precisar",
     "endpointAddedReady": "{name} adicionado e pronto",
     "artifacts": "Artefatos",
-    "title": "Configurações"
+    "title": "Configurações",
+    "accessibility": "Acessibilidade"
   },
   "providers": {
     "cloudDescription": "Usa sua própria chave de API. Os chats vão direto deste app para o provedor.",
@@ -1422,5 +1423,37 @@
       "manual": "última execução manual"
     },
     "close": "Fechar"
+  },
+  "accessibility": {
+    "title": "Acessibilidade",
+    "description": "Deixe o Agente mais fácil de ver, ler e usar. As mudanças valem na hora neste computador.",
+    "reset": "Restaurar padrão",
+    "display": "Tela",
+    "interfaceSize": "Tamanho da interface",
+    "interfaceSizeDesc": "Texto, botões e espaçamentos em todo o app. Ctrl + e Ctrl − também mudam.",
+    "textSize": "Tamanho do texto das mensagens",
+    "textSizeDesc": "Mensagens do chat e caixa de mensagem, além do tamanho da interface.",
+    "sample": "É assim que as mensagens do chat vão aparecer neste tamanho.",
+    "reading": "Leitura",
+    "font": "Fonte",
+    "fontDesc": "A Atkinson Hyperlegible foi feita para distinguir bem cada letra.",
+    "fontDefault": "Inter (padrão)",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "Fonte do sistema",
+    "relaxed": "Espaçamento amplo",
+    "relaxedDesc": "Mais espaço entre linhas, letras e palavras nas mensagens.",
+    "underlineLinks": "Sublinhar links",
+    "underlineLinksDesc": "Os links ficam sublinhados, sem depender da cor.",
+    "visibility": "Contraste e foco",
+    "contrast": "Mais contraste",
+    "contrastDesc": "Texto secundário mais escuro e bordas mais fortes.",
+    "focus": "Sempre mostrar o contorno de foco",
+    "focusDesc": "Um contorno nítido ao redor do que tem o foco do teclado.",
+    "motion": "Movimento",
+    "reduceMotion": "Reduzir movimento",
+    "reduceMotionDesc": "Desativa animações e transições.",
+    "motionSystem": "Seguir o sistema",
+    "motionOn": "Ativado",
+    "motionOff": "Desativado"
   }
 }

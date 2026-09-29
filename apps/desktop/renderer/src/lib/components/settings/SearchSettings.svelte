@@ -204,7 +204,7 @@
     <div class="px-4">
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label="Search provider"
         description="Use one provider directly, or combine an engine pool."
         htmlFor="search-provider"
@@ -218,7 +218,7 @@
 
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label="Target results"
         description="Standard web searches request 1–20 results. Deep modes use their own larger research budget."
         htmlFor="search-result-target"
@@ -235,7 +235,7 @@
 
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label="Safe search"
         description="Applied when the selected engine supports it."
         htmlFor="safe-search"

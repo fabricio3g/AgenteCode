@@ -515,7 +515,8 @@
     "endpointAdded": "{name} añadido: añade su clave API si la necesita",
     "endpointAddedReady": "{name} añadido y listo",
     "artifacts": "Artefactos",
-    "title": "Configuración"
+    "title": "Configuración",
+    "accessibility": "Accesibilidad"
   },
   "providers": {
     "cloudDescription": "Usa tu propia clave API. Los chats van directamente de esta app al proveedor.",
@@ -1422,5 +1423,37 @@
       "manual": "última ejecución manual"
     },
     "close": "Cerrar"
+  },
+  "accessibility": {
+    "title": "Accesibilidad",
+    "description": "Haz que Agente sea más fácil de ver, leer y usar. Los cambios se aplican al momento en este equipo.",
+    "reset": "Restablecer",
+    "display": "Pantalla",
+    "interfaceSize": "Tamaño de la interfaz",
+    "interfaceSizeDesc": "Texto, botones y espacios en toda la app. Ctrl + y Ctrl − también lo cambian.",
+    "textSize": "Tamaño del texto de los mensajes",
+    "textSizeDesc": "Mensajes del chat y cuadro de mensaje, sobre el tamaño de la interfaz.",
+    "sample": "Así se verán los mensajes del chat con este tamaño.",
+    "reading": "Lectura",
+    "font": "Fuente",
+    "fontDesc": "Atkinson Hyperlegible está diseñada para distinguir bien cada letra.",
+    "fontDefault": "Inter (predeterminada)",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "Fuente del sistema",
+    "relaxed": "Espaciado amplio",
+    "relaxedDesc": "Más espacio entre líneas, letras y palabras en los mensajes.",
+    "underlineLinks": "Subrayar enlaces",
+    "underlineLinksDesc": "Los enlaces se subrayan para no depender del color.",
+    "visibility": "Contraste y foco",
+    "contrast": "Más contraste",
+    "contrastDesc": "Texto secundario más oscuro y bordes más marcados.",
+    "focus": "Mostrar siempre el contorno de foco",
+    "focusDesc": "Un contorno claro alrededor de lo que tiene el foco del teclado.",
+    "motion": "Movimiento",
+    "reduceMotion": "Reducir movimiento",
+    "reduceMotionDesc": "Desactiva animaciones y transiciones.",
+    "motionSystem": "Según el sistema",
+    "motionOn": "Activado",
+    "motionOff": "Desactivado"
   }
 }

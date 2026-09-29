@@ -11,6 +11,8 @@ type ElectronAPI = {
   windowClose: () => Promise<void>;
   windowRequestClose: () => Promise<{ closed: boolean; prompted: boolean }>;
   windowSetActiveWork: (active: boolean, reasons?: string[]) => Promise<unknown>;
+  getZoomFactor?: () => number;
+  setZoomFactor?: (factor: number) => void;
   platform: string;
   isElectron: boolean;
 };

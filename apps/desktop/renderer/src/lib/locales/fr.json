@@ -515,7 +515,8 @@
     "endpointAdded": "{name} ajouté — ajoutez sa clé API si nécessaire",
     "endpointAddedReady": "{name} ajouté et prêt",
     "artifacts": "Artefacts",
-    "title": "Réglages"
+    "title": "Réglages",
+    "accessibility": "Accessibilité"
   },
   "providers": {
     "cloudDescription": "Utilise votre propre clé API. Les discussions vont directement de l'app au fournisseur.",
@@ -1422,5 +1423,37 @@
       "manual": "dernière exécution manuelle"
     },
     "close": "Fermer"
+  },
+  "accessibility": {
+    "title": "Accessibilité",
+    "description": "Rendez Agente plus facile à voir, à lire et à utiliser. Les changements s'appliquent tout de suite sur cet ordinateur.",
+    "reset": "Rétablir les valeurs par défaut",
+    "display": "Affichage",
+    "interfaceSize": "Taille de l'interface",
+    "interfaceSizeDesc": "Texte, boutons et espacements dans toute l'app. Ctrl + et Ctrl − la modifient aussi.",
+    "textSize": "Taille du texte des messages",
+    "textSizeDesc": "Messages du chat et zone de saisie, en plus de la taille de l'interface.",
+    "sample": "Voici à quoi ressembleront les messages à cette taille.",
+    "reading": "Lecture",
+    "font": "Police",
+    "fontDesc": "Atkinson Hyperlegible est conçue pour bien distinguer chaque lettre.",
+    "fontDefault": "Inter (par défaut)",
+    "fontHyperlegible": "Atkinson Hyperlegible",
+    "fontSystem": "Police du système",
+    "relaxed": "Espacement aéré",
+    "relaxedDesc": "Plus d'espace entre les lignes, les lettres et les mots des messages.",
+    "underlineLinks": "Souligner les liens",
+    "underlineLinksDesc": "Les liens sont soulignés pour ne pas dépendre de la couleur.",
+    "visibility": "Contraste et focus",
+    "contrast": "Contraste renforcé",
+    "contrastDesc": "Texte secondaire plus sombre et bordures plus marquées.",
+    "focus": "Toujours afficher le contour de focus",
+    "focusDesc": "Un contour net autour de l'élément qui a le focus clavier.",
+    "motion": "Mouvement",
+    "reduceMotion": "Réduire les animations",
+    "reduceMotionDesc": "Désactive les animations et les transitions.",
+    "motionSystem": "Selon le système",
+    "motionOn": "Activé",
+    "motionOff": "Désactivé"
   }
 }

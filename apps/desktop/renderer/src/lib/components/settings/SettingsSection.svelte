@@ -39,7 +39,7 @@
       {#if actions}<div class="flex shrink-0 items-center gap-1">{@render actions()}</div>{/if}
     </div>
   {/if}
-  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush ? 'py-1' : 'px-4 py-1')}>
+  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush ? 'py-1' : 'px-3.5 py-0.5')}>
     <div class="settings-rows">
       {@render children()}
     </div>

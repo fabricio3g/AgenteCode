@@ -337,7 +337,7 @@
 {/snippet}
 
 {#snippet settingRow(label: string, hint: string, control: import('svelte').Snippet)}
-  <div class="flex flex-col gap-2 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+  <div class="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
     <div class="min-w-0">
       <p class="text-sm font-medium text-foreground">{label}</p>
       {#if hint}<p class="text-xs leading-relaxed text-muted-foreground">{hint}</p>{/if}
@@ -457,9 +457,9 @@
         <Button variant="ghost" size="sm" onclick={() => void chooseCustomRuntime()}><FolderInput /> {$t('voice.customBuild')}</Button>
       {/snippet}
       {#if whisperRuntimesLoading && !whisperRuntimes.length}
-        <p class="flex items-center gap-2 py-3.5 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('voice.scanning')}</p>
+        <p class="flex items-center gap-2 py-3 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('voice.scanning')}</p>
       {:else if !whisperRuntimes.length}
-        <p class="py-3.5 text-xs text-muted-foreground">{$t('voice.noWhisperRuntime')}</p>
+        <p class="py-3 text-xs text-muted-foreground">{$t('voice.noWhisperRuntime')}</p>
       {:else}
         {#each whisperRuntimes as runtime (runtime.path)}
           <div class="flex items-center gap-3 py-2.5">

@@ -132,7 +132,7 @@
       tabindex={variant === 'tabs' ? (value === option.value ? 0 : -1) : undefined}
       disabled={option.disabled}
       class={cn(
-        'relative z-10 rounded-full px-3.5 py-1.5 text-xs font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
+        'relative z-10 rounded-full px-3 py-1 text-xs font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
         value === option.value
           ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--surface-active)] text-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground',

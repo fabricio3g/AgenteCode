@@ -33,7 +33,7 @@
   <SettingsSection title={$t('generalSettings.profile')}>
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.yourName')}
         description={$t('generalSettings.shownOnWelcome')}
         htmlFor="profile-name"
@@ -49,7 +49,7 @@
 
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.language')}
         description={$t('generalSettings.languageDesc')}
         htmlFor="interface-language"
@@ -66,7 +66,7 @@
   <SettingsSection title={$t('generalSettings.chatBehavior')}>
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.showAssistantText')}
         description={$t('generalSettings.showAssistantTextDesc')}
       >
@@ -75,7 +75,7 @@
 
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.enableThinking')}
         description={$t('generalSettings.enableThinkingDesc')}
       >
@@ -84,7 +84,7 @@
 
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.roleplay')}
         description={$t('generalSettings.roleplayDesc')}
       >
@@ -101,21 +101,21 @@
   <SettingsSection title={$t('generalSettings.appearance')}>
       <Field
         horizontal
-        class="py-4"
+        class="py-3"
         label={$t('generalSettings.theme')}
         description={$t('generalSettings.themeDesc')}
       >
-        <SegmentedControl
+        <div class="flex justify-end"><SegmentedControl
           label={$t('generalSettings.theme')}
           value={themeStore.current}
           options={[{ value: 'light', label: $t('generalSettings.light') }, { value: 'dark', label: $t('generalSettings.dark') }]}
           onchange={(value) => themeStore.set(value as 'light' | 'dark')}
-        />
+        /></div>
       </Field>
   </SettingsSection>
 
   <SettingsSection title={$t('generalSettings.huggingFaceAccess')} description={$t('generalSettings.huggingFaceDesc')}>
-    <div class="py-4">
+    <div class="py-3">
       <Field label={$t('generalSettings.accessToken')} htmlFor="hf-access-token">
         <div class="flex flex-col gap-2 sm:flex-row">
           <Input
