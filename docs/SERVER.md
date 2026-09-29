@@ -57,6 +57,24 @@ anything else is refused. Without `--token` or `AGENTE_TOKEN`, the server
 makes one in `~/.agente/serve-token` (readable only by its user) and says so
 when it starts.
 
+## Bots on Telegram
+
+A bot can answer on Telegram. In Desktop: Bots → Edit → Telegram. On a
+server:
+
+```bash
+export AGENTE_TOKEN=...                 # the server's token, for --remote
+R="--remote 127.0.0.1:7420"
+TELEGRAM_BOT_TOKEN=123456:ABC... agente telegram connect @colina $R   # token from @BotFather
+agente telegram pair @colina --full $R  # prints /pair <code> for you to send the bot
+agente telegram pair @colina $R         # a read-only person (chat and search, no tools)
+agente telegram status @colina $R
+```
+
+Only paired people can talk to the bot, in private chats. A code works
+once, for 10 minutes. Each bot answers on its own model and within its
+daily budget.
+
 ## Reaching it safely
 
 The connection is **not encrypted**. The examples publish the port on

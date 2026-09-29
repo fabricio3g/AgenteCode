@@ -18,6 +18,11 @@ pub struct AttachOptions {
     /// A session id (or a unique prefix), `@handle` for a bot, or nothing
     /// for the most recent session.
     pub target: Option<String>,
+    pub server: ServerOptions,
+}
+
+/// Which `agente serve` to talk to.
+pub struct ServerOptions {
     pub socket: Option<PathBuf>,
     /// `host:port` of a remote `agente serve --listen`.
     pub remote: Option<String>,
@@ -27,7 +32,7 @@ pub struct AttachOptions {
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
 
 /// A JSON-RPC connection to the daemon.
-struct Client {
+pub(crate) struct Client {
     outbox: mpsc::UnboundedSender<Value>,
     pending: Pending,
     next_id: std::sync::atomic::AtomicU64,
@@ -89,7 +94,7 @@ impl Client {
         (client, notifications)
     }
 
-    async fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+    pub(crate) async fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
         let id = self
             .next_id
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -116,7 +121,7 @@ type Stream = (
     Box<dyn AsyncWrite + Unpin + Send>,
 );
 
-async fn connect(options: &AttachOptions) -> anyhow::Result<Stream> {
+async fn connect(options: &ServerOptions) -> anyhow::Result<Stream> {
     if let Some(remote) = &options.remote {
         let stream = tokio::net::TcpStream::connect(remote)
             .await
@@ -287,9 +292,12 @@ pub fn run(options: AttachOptions) -> anyhow::Result<()> {
     runtime.block_on(attach(options))
 }
 
-async fn attach(options: AttachOptions) -> anyhow::Result<()> {
-    let (reader, writer) = connect(&options).await?;
-    let (client, mut notifications) = Client::start(reader, writer);
+/// Connect to the daemon and initialize (with the token, for a remote one).
+pub(crate) async fn open(
+    options: &ServerOptions,
+) -> anyhow::Result<(Client, mpsc::UnboundedReceiver<(String, Value)>)> {
+    let (reader, writer) = connect(options).await?;
+    let (client, notifications) = Client::start(reader, writer);
     let token = options
         .token
         .clone()
@@ -298,6 +306,11 @@ async fn attach(options: AttachOptions) -> anyhow::Result<()> {
         bail!("a remote agente needs its token: pass --token or set AGENTE_TOKEN");
     }
     client.call("initialize", json!({ "token": token })).await?;
+    Ok((client, notifications))
+}
+
+async fn attach(options: AttachOptions) -> anyhow::Result<()> {
+    let (client, mut notifications) = open(&options.server).await?;
     let mut target = resolve(&client, options.target.as_deref()).await?;
     if let Some(session) = target.session() {
         client

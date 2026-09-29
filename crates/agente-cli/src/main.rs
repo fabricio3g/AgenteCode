@@ -6,6 +6,7 @@ use agente_tui::App;
 
 mod attach;
 mod logging;
+mod telegram_cli;
 
 #[derive(Parser)]
 #[command(name = "agente", version)]
@@ -85,6 +86,21 @@ enum Command {
         /// Token remote clients must present (default: ~/.agente/serve-token,
         /// created on first use).
         #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
+        token: Option<String>,
+    },
+    /// Put a bot on Telegram: connect its @BotFather token, pair people,
+    /// see who can message it.
+    Telegram {
+        #[command(subcommand)]
+        action: telegram_cli::TelegramAction,
+        /// Socket path of a local `agente serve`.
+        #[arg(long, global = true, conflicts_with = "remote")]
+        socket: Option<std::path::PathBuf>,
+        /// host:port of a remote `agente serve --listen`.
+        #[arg(long, global = true, value_name = "HOST:PORT")]
+        remote: Option<String>,
+        /// Token of the remote server.
+        #[arg(long, global = true, env = "AGENTE_TOKEN", hide_env_values = true)]
         token: Option<String>,
     },
     /// Join a live session, or a bot's chat, on a running `agente serve`:
@@ -237,10 +253,29 @@ fn main() -> anyhow::Result<()> {
     {
         return attach::run(attach::AttachOptions {
             target,
-            socket,
-            remote,
-            token,
+            server: attach::ServerOptions {
+                socket,
+                remote,
+                token,
+            },
         });
+    }
+
+    if let Some(Command::Telegram {
+        action,
+        socket,
+        remote,
+        token,
+    }) = cli.command
+    {
+        return telegram_cli::run(
+            action,
+            attach::ServerOptions {
+                socket,
+                remote,
+                token,
+            },
+        );
     }
 
     if let Some(Command::Serve {
