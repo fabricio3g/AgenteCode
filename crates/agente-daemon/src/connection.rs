@@ -42,6 +42,15 @@ struct Connection {
     subscription: Mutex<Option<JoinHandle<()>>>,
 }
 
+/// What `initialize` answers: the protocol and server versions.
+pub(crate) fn initialize_result() -> Value {
+    json!({
+        "protocol_version": agente_protocol::PROTOCOL_VERSION,
+        "server": "agente",
+        "version": env!("CARGO_PKG_VERSION"),
+    })
+}
+
 /// Serve one client until it disconnects.
 pub async fn serve_connection<R, W>(service: Service, reader: R, writer: W) -> std::io::Result<()>
 where
@@ -135,7 +144,7 @@ where
     result
 }
 
-fn error_reply(id: Value, code: i32, message: &str) -> Value {
+pub(crate) fn error_reply(id: Value, code: i32, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
@@ -271,11 +280,7 @@ impl Connection {
     fn handle(self: &Arc<Self>, method: &str, params: Value) -> Result<Value, Failure> {
         let runtime = &self.runtime;
         match method {
-            "initialize" => Ok(json!({
-                "protocol_version": agente_protocol::PROTOCOL_VERSION,
-                "server": "agente",
-                "version": env!("CARGO_PKG_VERSION"),
-            })),
+            "initialize" => Ok(initialize_result()),
             "session.list" => to_json(runtime.session_infos()),
             "session.get" => {
                 let SessionParams { session_id } = parse(params)?;

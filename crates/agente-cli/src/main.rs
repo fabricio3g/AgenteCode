@@ -4,6 +4,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use agente_core::config::AppConfig;
 use agente_tui::App;
 
+mod attach;
 mod logging;
 
 #[derive(Parser)]
@@ -75,6 +76,32 @@ enum Command {
         /// Only report whether a daemon is serving, then exit.
         #[arg(long)]
         status: bool,
+        /// Also accept remote clients on this address (for example
+        /// 127.0.0.1:7420, or 0.0.0.0:7420 in a container). Clients must
+        /// send the token with `initialize`. Not encrypted: use a tunnel or
+        /// a TLS proxy across networks.
+        #[arg(long, value_name = "ADDR")]
+        listen: Option<std::net::SocketAddr>,
+        /// Token remote clients must present (default: ~/.agente/serve-token,
+        /// created on first use).
+        #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
+        token: Option<String>,
+    },
+    /// Join a live session, or a bot's chat, on a running `agente serve`:
+    /// its turns stream here and what you type is sent to it.
+    Attach {
+        /// A session id (or a unique prefix), or @handle for a bot. Without
+        /// one, the most recent session.
+        target: Option<String>,
+        /// Socket path of a local `agente serve`.
+        #[arg(long, conflicts_with = "remote")]
+        socket: Option<std::path::PathBuf>,
+        /// host:port of a remote `agente serve --listen`.
+        #[arg(long, value_name = "HOST:PORT")]
+        remote: Option<String>,
+        /// Token of the remote server.
+        #[arg(long, env = "AGENTE_TOKEN", hide_env_values = true)]
+        token: Option<String>,
     },
 }
 
@@ -201,8 +228,35 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if let Some(Command::Serve { socket, status }) = cli.command {
-        return run_serve(&project_dir, config, socket, status);
+    if let Some(Command::Attach {
+        target,
+        socket,
+        remote,
+        token,
+    }) = cli.command
+    {
+        return attach::run(attach::AttachOptions {
+            target,
+            socket,
+            remote,
+            token,
+        });
+    }
+
+    if let Some(Command::Serve {
+        socket,
+        status,
+        listen,
+        token,
+    }) = cli.command
+    {
+        let options = ServeOptions {
+            socket,
+            status,
+            listen,
+            token,
+        };
+        return run_serve(&project_dir, config, options);
     }
 
     if cli.acp_stdio {
@@ -237,14 +291,38 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_serve(
-    project_dir: &str,
-    config: AppConfig,
+struct ServeOptions {
     socket: Option<std::path::PathBuf>,
     status: bool,
-) -> anyhow::Result<()> {
+    listen: Option<std::net::SocketAddr>,
+    token: Option<String>,
+}
+
+/// Ctrl-C, or SIGTERM (how `docker stop` and service managers ask).
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut term) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> anyhow::Result<()> {
     use agente_runtime::{RuntimeConfig, RuntimeSupervisor};
 
+    let ServeOptions {
+        socket,
+        status,
+        listen,
+        token,
+    } = options;
     let socket = socket.unwrap_or_else(agente_daemon::default_socket_path);
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(async move {
@@ -289,14 +367,52 @@ fn run_serve(
         let service = agente_daemon::Service { runtime, bots };
         let _routines = agente_daemon::spawn_scheduler(service.clone());
         let _spend = agente_daemon::spawn_spend_tracker(service.clone());
+        // One signal stops every listener.
+        let (stop, stopped) = tokio::sync::watch::channel(false);
+        let stop = std::sync::Arc::new(stop);
+        let on_signal = std::sync::Arc::clone(&stop);
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            let _ = on_signal.send(true);
+        });
+        let until_stopped = |mut stopped: tokio::sync::watch::Receiver<bool>| async move {
+            let _ = stopped.wait_for(|stop| *stop).await;
+        };
+        let remote = match listen {
+            Some(addr) => {
+                let token = match token.filter(|token| !token.trim().is_empty()) {
+                    Some(token) => token,
+                    None => {
+                        let path = agente_daemon::default_token_path();
+                        let token =
+                            agente_daemon::load_or_create_token(&path).map_err(|error| {
+                                anyhow::anyhow!("token file {}: {error}", path.display())
+                            })?;
+                        eprintln!("remote clients: use the token in {}", path.display());
+                        token
+                    }
+                };
+                eprintln!("agente serving remote clients on {addr}");
+                let service = service.clone();
+                let stopped = until_stopped(stopped.clone());
+                Some(tokio::spawn(async move {
+                    agente_daemon::serve_tcp(service, addr, token, stopped).await
+                }))
+            }
+            None => None,
+        };
         eprintln!("agente serving on {}", socket.display());
-        let served = agente_daemon::serve_local(service, &socket, async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await;
+        let served = agente_daemon::serve_local(service, &socket, until_stopped(stopped)).await;
+        // The local socket failing (in use, path too long…) stops everything.
+        let _ = stop.send(true);
+        let remote_served = match remote {
+            Some(task) => task.await.unwrap_or(Ok(())),
+            None => Ok(()),
+        };
         // Dev servers and watchers started in the background end with us.
         agente_core::tools::processes::stop_all();
         served?;
+        remote_served?;
         Ok::<(), anyhow::Error>(())
     })
 }

@@ -8,10 +8,14 @@ mod bot_tools;
 mod bots;
 mod connection;
 mod routines;
+mod tcp;
 
 pub use bots::{spawn_spend_tracker, BotProfiles};
 pub use connection::serve_connection;
 pub use routines::spawn_scheduler;
+pub use tcp::{
+    default_token_path, generate_token, load_or_create_token, serve_authenticated, serve_tcp,
+};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
