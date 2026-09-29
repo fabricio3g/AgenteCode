@@ -1,8 +1,8 @@
 {
   "name": "agente-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
-  "description": "Agente Desktop \u2013 local AI workspace (Electron)",
+  "description": "Agente Desktop – local AI workspace (Electron)",
   "type": "module",
   "main": "dist-electron/main/index.cjs",
   "scripts": {
@@ -92,7 +92,7 @@
   "build": {
     "appId": "dev.agente.desktop",
     "productName": "Agente",
-    "artifactName": "Agente-${version}-${arch}.${ext}",
+    "artifactName": "Agente-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"

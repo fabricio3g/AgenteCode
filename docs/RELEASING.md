@@ -4,8 +4,8 @@ One version tag publishes one GitHub release with everything in it:
 
 | Workflow | Builds |
 |---|---|
-| `release.yml` | Agente Code (`agente`) for Linux x86_64, Linux arm64 and Windows x64, `SHA256SUMS`, `install.sh`, `install.ps1` |
-| `desktop-release.yml` | Agente Desktop: Linux AppImage and deb (x86_64), Windows installer (x64) |
+| `release.yml` | Agente Code as plain executables: `agente-linux-x86_64`, `agente-linux-arm64`, `agente-windows-x86_64.exe`, and `SHA256SUMS` |
+| `desktop-release.yml` | Agente Desktop: `Agente-linux-x86_64.AppImage`, `Agente-linux-amd64.deb`, `Agente-win-x64.exe` |
 
 ## Steps
 
@@ -33,14 +33,14 @@ edit them on the Releases page if needed.
 
 ## Notes
 
-- The one-line installers download from `raw.githubusercontent.com` and the
-  release assets, so the repository must be public for them to work.
-- `install.sh` finds the latest release through the `/releases/latest`
-  redirect; `install.ps1` uses the GitHub API. A draft or pre-release is not
-  "latest".
-- Desktop file names follow `build.artifactName` in
-  `apps/desktop/package.json` (`Agente-<version>-<arch>.<ext>`); the
-  installers depend on that pattern.
+- File names don't carry the version, so
+  `https://github.com/fabricio3g/AgenteCode/releases/latest/download/<file>`
+  always points at the newest release. Anonymous downloads need the
+  repository to be public.
+- Desktop file names come from `build.artifactName` in
+  `apps/desktop/package.json` (`Agente-${os}-${arch}.${ext}`).
+- Desktop bundles llama.cpp and whisper.cpp from their own GitHub releases
+  (`scripts/fetch-native-runtimes.mjs`); nothing native is compiled.
 - To try the build without publishing, run the workflows by hand
   (Actions → Run workflow): they build and upload artifacts but skip the
   release.

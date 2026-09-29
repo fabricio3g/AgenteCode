@@ -25,13 +25,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            archive: tar.gz
+            asset: agente-linux-x86_64
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            archive: tar.gz
+            asset: agente-linux-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive: zip
+            asset: agente-windows-x86_64.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -54,35 +54,21 @@ jobs:
       - name: Build
         run: cargo build --release --locked --bin agente --target ${{ matrix.target }}
 
-      - name: Package (Linux)
-        if: matrix.archive == 'tar.gz'
+      # The release ships the executable itself, under a name that stays the
+      # same from version to version (so .../releases/latest/download/<name>
+      # always works), with its SHA-256 beside it.
+      - name: Collect the binary
         shell: bash
         run: |
-          name="agente-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/agente" "dist/$name/"
-          cp LICENSE README.md "dist/$name/"
-          tar -C dist -czf "dist/$name.tar.gz" "$name"
-          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
-
-      - name: Package (Windows)
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: |
-          $name = "agente-$env:GITHUB_REF_NAME-${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/agente.exe", LICENSE, README.md "dist/$name/"
-          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
-          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii "dist/$name.zip.sha256"
+          mkdir -p dist
+          exe=agente; [ "${{ runner.os }}" = "Windows" ] && exe=agente.exe
+          cp "target/${{ matrix.target }}/release/$exe" "dist/${{ matrix.asset }}"
+          cd dist && sha256sum "${{ matrix.asset }}" > "${{ matrix.asset }}.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.target }}
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/*.sha256
+          path: dist/*
 
   publish:
     name: Publish release
@@ -98,15 +84,14 @@ jobs:
           merge-multiple: true
 
       - name: One checksums file
-        run: cat assets/*.sha256 > assets/SHA256SUMS
+        run: |
+          cat assets/*.sha256 > assets/SHA256SUMS
+          rm assets/*.sha256
 
       - uses: softprops/action-gh-release@v2
         with:
           name: Agente ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            assets/*.tar.gz
-            assets/*.zip
+            assets/agente-*
             assets/SHA256SUMS
-            install.sh
-            install.ps1

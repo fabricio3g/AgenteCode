@@ -17,7 +17,7 @@
 |---|---|---|
 | **Agente Code** | A keyboard-first coding agent for the terminal (`agente`) | Available: Linux, Windows |
 | **Agente Desktop** | The desktop app: chat, local models, voice, artifacts, and a Code section on the same core | Available: Linux, Windows |
-| **Agente Bot** | Named bots with their own persona, memory, model and routines, handing work to each other. **Colina** is the first | Core done; the Desktop Bots screen is next |
+| **Agente Bot** | Named bots with their own persona, memory, model and routines, handing work to each other. **Colina** is the first | Available in Desktop (Bots screen) and `agente serve` |
 | **Agente Server** | The same runtime headless, in Docker, for your bots and your team | Planned |
 
 They are not four agents. There is one: the Rust core in `crates/agente-core`, run by one runtime. The terminal uses it directly; Desktop and the bots talk to it through `agente serve`, a local background service. A fix or a new tool lands everywhere at once.
@@ -34,31 +34,39 @@ flowchart LR
 
 ## Install
 
-**Linux** (x86_64 and arm64): Agente Code into `~/.local/bin`.
+Every release has the programs themselves, ready to run: no installer script, no build. Get them from the [latest release](https://github.com/fabricio3g/AgenteCode/releases/latest).
+
+| | Linux x86_64 | Linux arm64 | Windows x64 |
+|---|---|---|---|
+| **Agente Code** | `agente-linux-x86_64` | `agente-linux-arm64` | `agente-windows-x86_64.exe` |
+| **Agente Desktop** | `Agente-linux-x86_64.AppImage` or `Agente-linux-amd64.deb` | | `Agente-win-x64.exe` |
+
+`SHA256SUMS` in the same release lists every file's checksum.
+
+**Agente Code on Linux:** save the file as `agente` somewhere on your `PATH` and make it executable.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh
+mkdir -p ~/.local/bin
+curl -fL -o ~/.local/bin/agente https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-x86_64
+chmod +x ~/.local/bin/agente
+agente --version
 ```
 
-Add `--desktop` for Agente Desktop too (an AppImage with an app menu entry), or `--desktop-only`:
+(On arm64, download `agente-linux-arm64` instead.)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.sh | sh -s -- --desktop
-```
-
-**Windows** (x64, PowerShell): Agente Code into `%LOCALAPPDATA%\Agente\bin`, added to your PATH.
+**Agente Code on Windows:** save `agente-windows-x86_64.exe` as `agente.exe` in a folder on your `PATH`, for example:
 
 ```powershell
-irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1 | iex
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Agente\bin" | Out-Null
+Invoke-WebRequest https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-windows-x86_64.exe -OutFile "$env:LOCALAPPDATA\Agente\bin\agente.exe"
+[Environment]::SetEnvironmentVariable('Path', "$env:LOCALAPPDATA\Agente\bin;" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
 ```
 
-With Agente Desktop too (runs its installer):
+**Agente Desktop on Linux:** make the AppImage executable and run it (it needs FUSE 2: `sudo apt install libfuse2t64` on recent Ubuntu), or install the `.deb` with `sudo apt install ./Agente-linux-amd64.deb`.
 
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fabricio3g/AgenteCode/main/install.ps1))) -Desktop
-```
+**Agente Desktop on Windows:** run `Agente-win-x64.exe`.
 
-Both scripts check every download against the release's `SHA256SUMS`, and take `--version vX.Y.Z` / `-Version vX.Y.Z`. Every file is also on the [Releases](https://github.com/fabricio3g/AgenteCode/releases) page.
+Desktop already contains `agente` (its Code section and bots run on it), so installing both is only needed to use Agente Code in a terminal too.
 
 **From source** (Rust 1.88+):
 
