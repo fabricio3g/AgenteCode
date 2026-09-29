@@ -13,6 +13,7 @@
 //!
 //! Colina is the default bot: created on first run and never deleted.
 
+mod budget;
 mod memory;
 mod prompt;
 mod routines;
@@ -21,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use budget::DailySpend;
 pub use memory::MemoryEdit;
 pub use prompt::persona_prompt;
 pub use routines::{NewRoutine, Routine, RoutineRun, Schedule};
@@ -123,6 +125,12 @@ pub enum BotError {
     Memory(String),
     #[error("{0}")]
     Routine(String),
+    #[error("@{handle} has spent its daily budget (${spent:.2} of ${budget:.2}); it can work again tomorrow, or raise the budget in its settings")]
+    OverBudget {
+        handle: String,
+        spent: f64,
+        budget: f64,
+    },
     #[error("bot.toml of @{handle}: {message}")]
     Config { handle: String, message: String },
     #[error(transparent)]
@@ -136,16 +144,24 @@ struct BotState {
     /// When each routine last ran, by routine id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     routines: std::collections::BTreeMap<String, RoutineRun>,
+    /// What the bot spent on its most recent day of work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    spend: Option<DailySpend>,
 }
 
 pub struct BotStore {
     root: PathBuf,
+    /// Serializes read-modify-write of the bots' `state.json` files.
+    state_lock: std::sync::Mutex<()>,
 }
 
 impl BotStore {
     /// Open (and create) the bots folder; Colina is seeded when missing.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, BotError> {
-        let store = Self { root: root.into() };
+        let store = Self {
+            root: root.into(),
+            state_lock: std::sync::Mutex::new(()),
+        };
         std::fs::create_dir_all(&store.root)?;
         if !store.dir(DEFAULT_BOT).join("bot.toml").exists() {
             store.write_bot(DEFAULT_BOT, &colina(), Some(COLINA_SOUL))?;
@@ -282,9 +298,9 @@ impl BotStore {
     }
 
     pub fn set_session_id(&self, handle: &str, session_id: &str) -> Result<(), BotError> {
-        let mut state = self.read_state(handle)?;
-        state.session_id = Some(session_id.to_string());
-        self.write_state(handle, &state)
+        self.edit_state(handle, |state| {
+            state.session_id = Some(session_id.to_string())
+        })
     }
 
     /// The folder the bot's tools work in (created on first use).
@@ -310,6 +326,17 @@ impl BotStore {
             &self.read_doc(handle, Doc::Memory)?,
             &teammates,
         ))
+    }
+
+    /// Change a bot's `state.json` without losing a concurrent change.
+    fn edit_state(&self, handle: &str, edit: impl FnOnce(&mut BotState)) -> Result<(), BotError> {
+        let _guard = self
+            .state_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut state = self.read_state(handle)?;
+        edit(&mut state);
+        self.write_state(handle, &state)
     }
 
     fn write_state(&self, handle: &str, state: &BotState) -> Result<(), BotError> {

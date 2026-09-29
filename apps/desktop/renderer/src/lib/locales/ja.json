@@ -1368,7 +1368,7 @@
     "role": "役割",
     "rolePlaceholder": "調べて報告する",
     "advanced": "詳細",
-    "advancedHint": "人物像、あなたについて知っていること、記憶",
+    "advancedHint": "人物像、あなたについて知っていること、メモリ、予算",
     "soul": "人物像",
     "soulHint": "働き方と話し方 (SOUL.md)。",
     "aboutYou": "あなたについて",
@@ -1422,7 +1422,13 @@
       "cancelled": "前回は停止",
       "manual": "前回は手動実行"
     },
-    "close": "閉じる"
+    "close": "閉じる",
+    "budget": "1日の予算",
+    "budgetHint": "1日にモデルに使える上限です。上限に達すると、チャット、ルーティン、引き継ぎは翌日まで待機します。",
+    "budgetHintSpent": "今日の使用額：{spent}。予算に達すると、チャット、ルーティン、引き継ぎは翌日まで待機します。",
+    "budgetInvalid": "0より大きい金額を入力するか、上限なしなら空欄にしてください。",
+    "noLimit": "上限なし",
+    "perDay": "/日"
   },
   "accessibility": {
     "title": "アクセシビリティ",

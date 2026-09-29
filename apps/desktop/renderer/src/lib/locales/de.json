@@ -1368,7 +1368,7 @@
     "role": "Rolle",
     "rolePlaceholder": "Recherchiert und berichtet",
     "advanced": "Erweitert",
-    "advancedHint": "Wer er ist, was er über dich weiß, und sein Gedächtnis",
+    "advancedHint": "Wer er ist, was er über dich weiß, sein Gedächtnis und sein Budget",
     "soul": "Wer er ist",
     "soulHint": "Wie er arbeitet und spricht (SOUL.md).",
     "aboutYou": "Über dich",
@@ -1422,7 +1422,13 @@
       "cancelled": "letzter Lauf gestoppt",
       "manual": "letzter Lauf von Hand"
     },
-    "close": "Schließen"
+    "close": "Schließen",
+    "budget": "Tagesbudget",
+    "budgetHint": "Höchstens so viel darf er pro Tag für Modelle ausgeben. Ist es erreicht, warten Chats, Routinen und Übergaben bis morgen.",
+    "budgetHintSpent": "Heute ausgegeben: {spent}. Ist das Budget erreicht, warten Chats, Routinen und Übergaben bis morgen.",
+    "budgetInvalid": "Gib einen Betrag über 0 ein oder lass das Feld für kein Limit leer.",
+    "noLimit": "Kein Limit",
+    "perDay": "pro Tag"
   },
   "accessibility": {
     "title": "Barrierefreiheit",

@@ -97,7 +97,12 @@
           </Button>
         </div>
       </header>
-      {@render children()}
+      <!-- The body scrolls when the dialog is taller than the window (small
+           windows, large interface sizes); bodies with their own scroller
+           still get a bounded height from this flex column. -->
+      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {@render children()}
+      </div>
       {#if footer}
         <footer class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-4 py-3 sm:px-5">
           {@render footer()}

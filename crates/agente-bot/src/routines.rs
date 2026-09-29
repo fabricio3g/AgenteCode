@@ -218,9 +218,9 @@ impl BotStore {
             return Ok(false);
         }
         self.write_routines(handle, routines)?;
-        let mut state = self.read_state(handle)?;
-        state.routines.remove(id);
-        self.write_state(handle, &state)?;
+        self.edit_state(handle, |state| {
+            state.routines.remove(id);
+        })?;
         Ok(true)
     }
 
@@ -236,9 +236,9 @@ impl BotStore {
     }
 
     pub fn record_run(&self, handle: &str, id: &str, run: RoutineRun) -> Result<(), BotError> {
-        let mut state = self.read_state(handle)?;
-        state.routines.insert(id.to_string(), run);
-        self.write_state(handle, &state)
+        self.edit_state(handle, |state| {
+            state.routines.insert(id.to_string(), run);
+        })
     }
 
     /// Every routine of every bot that should run by `now`.

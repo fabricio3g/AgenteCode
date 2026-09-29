@@ -1368,7 +1368,7 @@
     "role": "Função",
     "rolePlaceholder": "Pesquisa e traz o resultado",
     "advanced": "Avançado",
-    "advancedHint": "Quem ele é, o que sabe sobre você e a memória dele",
+    "advancedHint": "Quem ele é, o que sabe sobre você, sua memória e seu orçamento",
     "soul": "Quem ele é",
     "soulHint": "Como trabalha e fala (SOUL.md).",
     "aboutYou": "Sobre você",
@@ -1422,7 +1422,13 @@
       "cancelled": "última execução interrompida",
       "manual": "última execução manual"
     },
-    "close": "Fechar"
+    "close": "Fechar",
+    "budget": "Orçamento diário",
+    "budgetHint": "O máximo que pode gastar com modelos por dia. Ao atingi-lo, chats, rotinas e repasses esperam até amanhã.",
+    "budgetHintSpent": "Gasto hoje: {spent}. Ao atingir o orçamento, chats, rotinas e repasses esperam até amanhã.",
+    "budgetInvalid": "Informe um valor maior que 0, ou deixe vazio para não ter limite.",
+    "noLimit": "Sem limite",
+    "perDay": "por dia"
   },
   "accessibility": {
     "title": "Acessibilidade",

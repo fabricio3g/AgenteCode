@@ -28,12 +28,17 @@
   let soul = $state(initial?.soul ?? '');
   let user = $state(initial?.user ?? '');
   let memory = $state(initial?.memory ?? '');
+  // Empty means no limit.
+  let budget = $state(initial?.daily_budget != null ? String(initial.daily_budget) : '');
   let advanced = $state(false);
   let saving = $state(false);
   let error = $state<string | null>(null);
 
   const preview = $derived({ title: title || '?', avatar: { tint, initials: bot?.avatar.initials }, working: false });
   const tooLong = $derived([soul, user, memory].some((text) => text.length > DOC_CAP));
+  const budgetValue = $derived(budget.trim() === '' ? undefined : Number(budget.trim().replace(',', '.')));
+  const budgetInvalid = $derived(budgetValue !== undefined && !(Number.isFinite(budgetValue) && budgetValue > 0));
+  const usd = (value: number) => `$${value.toFixed(2)}`;
 
   async function save() {
     if (!title.trim()) {
@@ -44,14 +49,14 @@
     error = null;
     try {
       if (bot) {
-        const { avatar, model, toolsets, skills, daily_budget } = bot;
+        const { avatar, model, toolsets, skills } = bot;
         await botsStore.save(
           bot.handle,
-          { title: title.trim(), role: role.trim(), avatar: { ...avatar, tint }, model, toolsets, skills, daily_budget },
+          { title: title.trim(), role: role.trim(), avatar: { ...avatar, tint }, model, toolsets, skills, daily_budget: budgetValue },
           { soul, user, memory }
         );
       } else {
-        const created = await botsStore.create({ title: title.trim(), role: role.trim(), avatar: { tint }, soul });
+        const created = await botsStore.create({ title: title.trim(), role: role.trim(), avatar: { tint }, soul, daily_budget: budgetValue });
         if (user.trim()) await botsIpc.writeDoc(created.handle, 'user', user);
       }
       onclose();
@@ -117,6 +122,18 @@
             <textarea id="bot-memory" class="aui-input min-h-24 font-mono text-[12px]" bind:value={memory}></textarea>
           </Field>
         {/if}
+        <Field
+          label={$t('bots.budget')}
+          description={bot ? $t('bots.budgetHintSpent', { values: { spent: usd(bot.spent_today ?? 0) } }) : $t('bots.budgetHint')}
+          error={budgetInvalid ? $t('bots.budgetInvalid') : undefined}
+          htmlFor="bot-budget"
+        >
+          <div class="flex items-center gap-2">
+            <span class="text-[13px] text-muted-foreground">$</span>
+            <input id="bot-budget" class="aui-input budget-input" type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
+            <span class="whitespace-nowrap text-[12px] text-muted-foreground">{$t('bots.perDay')}</span>
+          </div>
+        </Field>
         {#if tooLong}<p class="text-[12px] text-destructive">{$t('bots.tooLong', { values: { n: DOC_CAP } })}</p>{/if}
       </div>
     </Disclosure>
@@ -128,7 +145,7 @@
       {/if}
       <span class="flex-1"></span>
       <Button variant="ghost" onclick={onclose}>{$t('bots.cancel')}</Button>
-      <Button onclick={save} loading={saving} disabled={tooLong}>{bot ? $t('bots.save') : $t('bots.create')}</Button>
+      <Button onclick={save} loading={saving} disabled={tooLong || budgetInvalid}>{bot ? $t('bots.save') : $t('bots.create')}</Button>
     </div>
   </div>
 </Dialog>
@@ -144,5 +161,6 @@
     font-size: 10px;
     box-shadow: inset 0 0 0 1px var(--border-subtle);
   }
+  .budget-input { width: 8rem; }
   .swatch.selected { box-shadow: 0 0 0 2px var(--background), 0 0 0 3.5px var(--foreground); }
 </style>

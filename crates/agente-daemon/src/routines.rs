@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use agente_bot::{BotStore, NewRoutine, Routine, RoutineRun};
+use agente_bot::{BotError, BotStore, NewRoutine, Routine, RoutineRun};
 use agente_protocol::{Origin, StartTurn, Trust, TurnStatus};
 use agente_runtime::{RuntimeError, TurnHandle};
 use chrono::Utc;
@@ -44,6 +44,15 @@ fn run_due(service: &Service) {
         }
     };
     for (handle, routine) in due {
+        // Over its daily budget: skip this run rather than retry every tick.
+        if let Err(error @ BotError::OverBudget { .. }) = service
+            .bots
+            .check_budget(&handle, chrono::Local::now().date_naive())
+        {
+            tracing::info!(%error, bot = handle, routine = routine.id, "routine skipped");
+            record(&service.bots, &handle, &routine.id, "over_budget");
+            continue;
+        }
         match start(service, &handle, &routine) {
             Ok(turn) => follow(service.bots.clone(), handle, routine.id, turn),
             // Mid-conversation: try again on the next tick.

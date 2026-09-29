@@ -9,7 +9,7 @@ mod bots;
 mod connection;
 mod routines;
 
-pub use bots::BotProfiles;
+pub use bots::{spawn_spend_tracker, BotProfiles};
 pub use connection::serve_connection;
 pub use routines::spawn_scheduler;
 

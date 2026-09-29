@@ -1368,7 +1368,7 @@
     "role": "Role",
     "rolePlaceholder": "Researches things and reports back",
     "advanced": "Advanced",
-    "advancedHint": "Who it is, what it knows about you, and its memory",
+    "advancedHint": "Who it is, what it knows about you, its memory and its budget",
     "soul": "Who it is",
     "soulHint": "How it works and speaks (SOUL.md).",
     "aboutYou": "About you",
@@ -1422,7 +1422,13 @@
       "cancelled": "last run stopped",
       "manual": "last run by hand"
     },
-    "close": "Close"
+    "close": "Close",
+    "budget": "Daily budget",
+    "budgetHint": "Most it may spend on models in a day. When it's reached, chats, routines and handoffs wait until tomorrow.",
+    "budgetHintSpent": "Spent today: {spent}. When the budget is reached, chats, routines and handoffs wait until tomorrow.",
+    "budgetInvalid": "Enter an amount above 0, or leave it empty for no limit.",
+    "noLimit": "No limit",
+    "perDay": "per day"
   },
   "accessibility": {
     "title": "Accessibility",

@@ -21,6 +21,8 @@ export interface Bot extends BotConfig {
   builtin: boolean;
   session_id: string | null;
   working: boolean;
+  /** What the bot has spent today, in US dollars. */
+  spent_today?: number;
 }
 
 export interface BotDetail extends Bot {

@@ -387,9 +387,9 @@ async function finishApprovedRun(chatId: string, decision: 'allow' | 'deny'): Pr
 }
 
 // ── Agente Bot (the Bots screen) ────────────────────────────────────────
-type MockBot = { handle: string; title: string; role: string; avatar: { initials?: string; tint: string }; builtin: boolean; working: boolean; session_id: string | null; soul: string; user: string; memory: string };
+type MockBot = { handle: string; title: string; role: string; avatar: { initials?: string; tint: string }; builtin: boolean; working: boolean; session_id: string | null; soul: string; user: string; memory: string; daily_budget?: number; spent_today?: number };
 const mockBots: MockBot[] = [
-  { handle: 'colina', title: 'Colina', role: 'your everyday assistant', avatar: { initials: 'C', tint: 'green' }, builtin: true, working: false, session_id: 's-colina', soul: 'Colina is warm, direct and practical.', user: 'Works on Agente; prefers short answers.', memory: 'Favorite color: teal.\n' },
+  { handle: 'colina', title: 'Colina', role: 'your everyday assistant', avatar: { initials: 'C', tint: 'green' }, builtin: true, working: false, session_id: 's-colina', daily_budget: 2, spent_today: 0.37, soul: 'Colina is warm, direct and practical.', user: 'Works on Agente; prefers short answers.', memory: 'Favorite color: teal.\n' },
   { handle: 'scout', title: 'Scout', role: 'researches things and reports back', avatar: { initials: 'S', tint: 'blue' }, builtin: false, working: false, session_id: 's-scout', soul: 'Precise and brief.', user: '', memory: '' },
   { handle: 'quill', title: 'Quill', role: 'writes and edits', avatar: { initials: 'Q', tint: 'yellow' }, builtin: false, working: false, session_id: null, soul: '', user: '', memory: '' }
 ];

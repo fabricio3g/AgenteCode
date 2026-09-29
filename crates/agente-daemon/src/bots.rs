@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use agente_bot::{BotConfig, BotError, BotStore, Doc, NewBot};
 use agente_core::tools::Tool;
-use agente_protocol::{Message, Origin, SessionId, StartTurn, TurnMode};
+use agente_protocol::{Message, Origin, RuntimeEvent, SessionId, StartTurn, TurnMode};
 use agente_runtime::{ProfileSource, ProfileTurn, RuntimeHandle};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -60,6 +60,48 @@ impl ProfileSource for BotProfiles {
             )));
         }
         tools
+    }
+}
+
+/// Add the cost of every model call made in a bot's session to its spend
+/// for today, so its daily budget can stop the next turn.
+pub fn spawn_spend_tracker(service: crate::Service) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut events = service.runtime.subscribe();
+        loop {
+            let envelope = match events.recv().await {
+                Ok(envelope) => envelope,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(missed)) => {
+                    tracing::warn!(
+                        missed,
+                        "spend tracker fell behind; some costs were not counted"
+                    );
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            };
+            if let RuntimeEvent::CallUsage {
+                cost_usd: Some(cost),
+                ..
+            } = envelope.event
+            {
+                record_spend(&service.bots, &envelope.session_id.to_string(), cost);
+            }
+        }
+    })
+}
+
+fn record_spend(store: &BotStore, session_id: &str, cost: f64) {
+    let handle = match store.handle_for_session(session_id) {
+        Ok(Some(handle)) => handle,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::warn!(%error, "could not look up the bot of a session");
+            return;
+        }
+    };
+    if let Err(error) = store.add_spend(&handle, chrono::Local::now().date_naive(), cost) {
+        tracing::warn!(%error, bot = handle, "could not record the bot's spend");
     }
 }
 
@@ -116,6 +158,9 @@ fn with_session(
         .is_some_and(|id| runtime.is_busy(id));
     value["session_id"] = json!(session_id);
     value["working"] = json!(working);
+    value["spent_today"] = json!(store
+        .spent_on(&bot.handle, chrono::Local::now().date_naive())
+        .map_err(bot_failure)?);
     Ok(value)
 }
 
@@ -225,6 +270,7 @@ pub(crate) fn bot_turn(
     origin: Option<Origin>,
 ) -> Result<StartTurn, BotError> {
     let bot = store.get(handle)?;
+    store.check_budget(handle, chrono::Local::now().date_naive())?;
     let session_id = match store
         .session_id(handle)?
         .and_then(|id| id.parse::<SessionId>().ok())
@@ -294,6 +340,23 @@ mod tests {
         .unwrap();
         assert_eq!(turn.model.as_deref(), Some("pinned"));
         assert_eq!(turn.provider.as_deref(), Some("openrouter"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_bot_past_its_daily_budget_starts_no_turn() {
+        let dir = std::env::temp_dir().join(format!("agente-bots-budget-{}", std::process::id()));
+        let store = BotStore::open(&dir).unwrap();
+        let mut config = store.get("colina").unwrap().config;
+        config.daily_budget = Some(0.5);
+        store.update("colina", config).unwrap();
+        let params = json!({ "handle": "colina", "text": "hi" });
+        chat_turn(&store, params.clone()).unwrap();
+
+        let session = store.session_id("colina").unwrap().unwrap();
+        record_spend(&store, &session, 0.6);
+        let (_, message) = chat_turn(&store, params).unwrap_err();
+        assert!(message.contains("daily budget"), "{message}");
         let _ = std::fs::remove_dir_all(dir);
     }
 
