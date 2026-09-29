@@ -136,6 +136,8 @@ export const COPY_EN = {
     process_list: 'List processes',
     process_output: 'Read process output',
     process_stop: 'Stop process',
+    message_bot: 'Ask',
+    memory_update: 'Remember',
     approvePlan: 'Approve plan',
     approval: 'Approval',
     approved: 'Approved',

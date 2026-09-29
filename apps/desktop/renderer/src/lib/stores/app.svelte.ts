@@ -141,7 +141,7 @@ class AppStore {
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
   /** What the Home surface shows: the chat, or the Artifacts screen. */
-  homeView = $state<'chat' | 'artifacts'>('chat');
+  homeView = $state<'chat' | 'artifacts' | 'bots'>('chat');
   /** The artifact open on the Artifacts screen (`chatId:messageId:index`), or the library. */
   artifactScreenKey = $state<string | null>(null);
   /** Opened from a chat: Back returns there instead of to the library. */
@@ -602,6 +602,11 @@ class AppStore {
     const next = { ...this.artifactPanels };
     delete next[chatId];
     this.artifactPanels = next;
+  }
+
+  /** Show the Bots screen (the roster, a bot's chat and its routines). */
+  showBots() {
+    this.homeView = 'bots';
   }
 
   /** Show the Artifacts library. */

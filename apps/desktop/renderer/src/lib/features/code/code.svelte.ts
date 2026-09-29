@@ -3,10 +3,10 @@ import { approvalsStore } from '$lib/stores/approvals.svelte';
 import {
   loadCodeProjectsFromDb,
   saveCodeProjectToDb,
-  deleteCodeProjectFromDb,
-  loadAppConfig
+  deleteCodeProjectFromDb
 } from '$lib/utils/storage';
 import { invoke } from '$lib/services/bridge';
+import { currentProviderModel } from '$lib/services/current-model';
 import { pathExists, pickWorkspaceFolder } from '$lib/services/files';
 import { createId } from '$lib/utils/id';
 import { isDefaultChatTitle } from '$lib/stores/app-store-helpers';
@@ -308,17 +308,6 @@ class CodeStore {
     return !!(provider && (provider.has_api_key || provider.api_key) && provider.model);
   }
 
-  /** Resolve provider/model from app config the same way the chat pipeline does. */
-  async #resolveProviderModel(): Promise<{ provider: string; model: string }> {
-    const config = await loadAppConfig();
-    if (config.llm?.backend_mode === 'local' || !config.llm?.provider) {
-      return { provider: 'local', model: config.llm?.local?.model || '' };
-    }
-    const name = config.llm.provider;
-    const entry = config.llm.providers?.[name];
-    return { provider: name, model: entry?.model || '' };
-  }
-
   // ── Live runs ────────────────────────────────────────────────────────
 
   runFor(chatId: string | null | undefined): AgenteRun | null {
@@ -542,11 +531,11 @@ class CodeStore {
     if (this.#sessionIds.has(chatId)) {
       // The picker may have changed since the session started (possibly while
       // another conversation was on screen): run with what it shows now.
-      const { provider, model } = await this.#resolveProviderModel();
+      const { provider, model } = await currentProviderModel();
       if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
     } else {
       try {
-        const { provider, model } = await this.#resolveProviderModel();
+        const { provider, model } = await currentProviderModel();
         if (!model) {
           throw new Error('No model selected — pick one in the Model Hub first.');
         }

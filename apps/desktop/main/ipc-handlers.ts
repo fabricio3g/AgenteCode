@@ -85,6 +85,7 @@ import { registerToolingHandlers } from './ipc/tooling-handlers.ts';
 import { registerBrowserAgentHandlers } from './ipc/browser-agent-handlers.ts';
 import { registerCodeWorkspaceHandlers, disposeCodeWorkspace } from './ipc/code-workspace-handlers.ts';
 import { registerAgenteHandlers, disposeAgenteSessions as disposeAllAgenteSessions } from './ipc/agente-handlers.ts';
+import { registerBotHandlers } from './agente/bots.ts';
 import type { ErrorMessageFn } from './ipc/types.ts';
 import { createLogger } from './utils/logger.ts';
 
@@ -373,6 +374,9 @@ export function registerIpcHandlers() {
     ipcMain,
     getMainWindow,
   });
+
+  // ── Agente Bot (the bots living in the same runtime) ──
+  registerBotHandlers(ipcMain, getMainWindow);
 }
 
 export { disposeAllAgenteSessions, disposeCodeWorkspace };

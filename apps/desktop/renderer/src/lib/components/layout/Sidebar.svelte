@@ -11,7 +11,7 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Boxes, Code2, Drama, House, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
+  import { Bot, Boxes, Code2, Drama, House, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
 
@@ -173,6 +173,16 @@
         >
           <Puzzle class="size-4 shrink-0" />
           <span class="btn-label">{$t('sidebar.artifacts')}</span>
+        </button>
+        <button
+          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm transition-colors"
+          class:is-current={appStore.homeView === 'bots'}
+          aria-current={appStore.homeView === 'bots' ? 'page' : undefined}
+          onclick={() => appStore.showBots()}
+          title={$t('sidebar.bots')}
+        >
+          <Bot class="size-4 shrink-0" />
+          <span class="btn-label">{$t('sidebar.bots')}</span>
         </button>
         <SidebarInstances />
       {/if}

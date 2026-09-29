@@ -1,6 +1,5 @@
 {
   "clone_groups": [
-    "main/agente/extensions/extension-runner.ts:107-116|main/agente/extensions/extension-runner.ts:83-100",
     "main/browser-panel.ts:144-151|main/browser-panel.ts:152-159",
     "main/chat-db.ts:617-643|main/chat-db.ts:690-716",
     "main/chat-ipc.ts:131-136|main/chat-ipc.ts:86-91",
@@ -27,7 +26,6 @@
     "main/search-providers/aggregator/engines.ts:182-189|main/search-providers/aggregator/engines.ts:223-230",
     "main/search-providers/shared.ts:254-260|main/web-scraper.ts:238-244",
     "main/web-crawler.ts:26-44|main/web-scraper.ts:13-21",
-    "main/whisper-resolver.ts:33-37|scripts/build-native-runtimes.mjs:110-115",
     "renderer/src/lib/components/agent/ArtifactStudio.svelte:152-157|renderer/src/lib/ui/components/ArtifactBlock.svelte:62-67",
     "renderer/src/lib/components/onboarding/OnboardingStepModel.svelte:72-81|renderer/src/lib/components/onboarding/OnboardingStepTtsModel.svelte:82-91",
     "renderer/src/lib/components/settings/ModelWorkspace.svelte:96-100|renderer/src/lib/models/model-explore.ts:8-16",
@@ -69,12 +67,12 @@
     "renderer/src/lib/services/chat-api.ts:781-787|renderer/src/lib/services/chat-api.ts:869-875",
     "renderer/src/lib/services/chat-api.ts:903-908|renderer/src/lib/services/chat-api.ts:924-929",
     "renderer/src/lib/services/runtime.ts:197-225|renderer/src/lib/stores/app-store-local-model.ts:52-80",
-    "renderer/src/lib/stores/app-store-config.ts:84-101|renderer/src/lib/stores/app.svelte.ts:3020-3037",
+    "renderer/src/lib/stores/app-store-config.ts:84-101|renderer/src/lib/stores/app.svelte.ts:3025-3042",
     "renderer/src/lib/stores/app-store-config.ts:85-101|renderer/src/lib/types/chat.ts:785-801",
-    "renderer/src/lib/stores/app-store-config.ts:192-205|renderer/src/lib/stores/app.svelte.ts:3136-3149",
-    "renderer/src/lib/stores/app-store-config.ts:192-205|renderer/src/lib/stores/app.svelte.ts:3136-3149|renderer/src/lib/types/chat.ts:856-869",
+    "renderer/src/lib/stores/app-store-config.ts:192-205|renderer/src/lib/stores/app.svelte.ts:3141-3154",
     "renderer/src/lib/stores/app-store-helpers.ts:22-33|renderer/src/lib/stores/deep-research.svelte.ts:57-68",
     "renderer/src/lib/stores/app-store-local-model.ts:206-217|renderer/src/lib/stores/app-store-local-model.ts:235-246",
+    "renderer/src/lib/stores/app.svelte.ts:3141-3154|renderer/src/lib/types/chat.ts:856-869",
     "renderer/src/lib/stores/tts.svelte.ts:301-311|renderer/src/lib/stores/tts.svelte.ts:99-109",
     "renderer/src/lib/stores/tts.svelte.ts:342-354|renderer/src/lib/stores/tts.svelte.ts:392-404",
     "renderer/src/lib/stores/tts.svelte.ts:364-377|renderer/src/lib/stores/tts.svelte.ts:414-427",
@@ -86,12 +84,8 @@
     "renderer/src/lib/utils/chart-data.ts:140-147|renderer/src/lib/utils/chart-data.ts:55-62",
     "renderer/src/lib/utils/chart-data.ts:144-152|renderer/src/lib/utils/chart-data.ts:59-67",
     "renderer/src/lib/utils/doc-utils.ts:72-80|renderer/src/lib/utils/doc-utils.ts:89-97",
-    "renderer/tests/agente-runtime.spec.ts:121-127|renderer/tests/agente-runtime.spec.ts:132-138",
     "shared/agent-core/types.ts:137-149|shared/agente-protocol.ts:132-133",
     "tests/integration/config-flow.test.js:137-144|tests/integration/config-flow.test.js:162-168",
-    "tests/unit/agente-sessions-checkpoints.test.js:144-150|tests/unit/agente-sessions-checkpoints.test.js:183-188",
-    "tests/unit/agente-sessions-checkpoints.test.js:166-171|tests/unit/agente-sessions-checkpoints.test.js:200-205",
-    "tests/unit/agente-sessions-checkpoints.test.js:166-171|tests/unit/agente-sessions-checkpoints.test.js:200-205|tests/unit/agente-sessions-checkpoints.test.js:220-225",
     "tests/unit/config.file-ops.test.js:34-42|tests/unit/config.file-ops.test.js:62-70",
     "tests/unit/local-thinking-body.test.js:11-16|tests/unit/provider-contracts.test.js:9-14"
   ]

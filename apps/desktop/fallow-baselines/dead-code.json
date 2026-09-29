@@ -142,6 +142,7 @@
     "main/providers/base.ts:ReasoningRequest",
     "renderer/src/lib/components/ui/index.ts:MenuPlacement",
     "renderer/src/lib/components/ui/index.ts:SelectOption",
+    "renderer/src/lib/features/bots/bots-ipc.ts:ModelChoice",
     "renderer/src/lib/features/chat/document-surface.ts:DocumentSurfaceProduct",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:FormulaValue",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:ErrorValue",

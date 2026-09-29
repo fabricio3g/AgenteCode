@@ -151,6 +151,10 @@ function describeToolArgs(toolName: string, args: unknown): string {
       return `“${text('pattern')}”${text('path') ? ` · ${text('path')}` : ''}`;
     case 'ls':
       return text('path') || '.';
+    case 'message_bot':
+      return [text('to'), firstLine(text('message'))].filter(Boolean).join(' · ');
+    case 'memory_update':
+      return firstLine(text('new') || text('line'));
     default: {
       for (const key of ['url', 'path', 'command', 'query', 'pattern', 'text', 'ref']) {
         if (text(key)) return firstLine(text(key));

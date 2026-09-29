@@ -10,6 +10,19 @@
         "count": 2
       }
     },
+    "main/agente/bot-history.ts": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "main/agente/bots.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "main/agente/changes.ts": {
       "crap_critical": {
         "count": 1
@@ -998,6 +1011,21 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/bots/BotEditor.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/bots/RoutineEditor.svelte": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/bots/bots.svelte.ts": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
     "renderer/src/lib/features/chat/AttachmentDocumentsBlock.svelte": {
       "crap_moderate": {
         "count": 1
@@ -1294,7 +1322,7 @@
         "count": 2
       },
       "crap_moderate": {
-        "count": 4
+        "count": 3
       }
     },
     "renderer/src/lib/features/code/workspace.svelte.ts": {
@@ -2110,6 +2138,7 @@
     "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "renderer/src/lib/models/model-fit.ts:high impact",
     "main/runtime-resolver.ts:high impact",
+    "renderer/src/lib/features/code/code-run.ts:high impact",
     "renderer/src/lib/services/agent-message-context.ts:high impact",
     "main/whisper-resolver.ts:high impact",
     "shared/deck.ts:high impact",
@@ -2123,9 +2152,8 @@
     "main/providers/helpers.ts:high impact",
     "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
     "renderer/src/lib/services/agent-provider.ts:dead code",
-    "renderer/src/lib/features/code/code.svelte.ts:high impact",
-    "renderer/src/lib/features/code/code-run.ts:high impact",
     "renderer/src/lib/services/artifact-model.ts:high impact",
+    "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "main/search-providers/shared.ts:high impact",
     "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
     "renderer/src/lib/services/generated-documents.ts:high impact",
@@ -2141,8 +2169,8 @@
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
     "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
     "renderer/src/lib/stores/app-store-local-model.ts:high impact",
+    "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
     "main/chat-ipc.ts:high impact",
     "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/chat/document-surface.ts:high impact",
@@ -2176,6 +2204,7 @@
     "main/agente/transport.ts:untested risk",
     "main/generated-documents.ts:complexity",
     "renderer/src/lib/utils/id.ts:high impact",
+    "main/agente/rust-events.ts:high impact",
     "renderer/src/lib/services/agent-model-call.ts:complexity",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
     "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
@@ -2194,11 +2223,11 @@
     "main/whisper-server.ts:high impact",
     "main/rag-engine.ts:high impact",
     "main/link-scorer.ts:untested risk",
+    "main/agente/bot-history.ts:untested risk",
     "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:high impact",
     "main/model-download.ts:complexity",
     "main/runtime-config-resolver.ts:high impact",
-    "main/agente/rust-events.ts:untested risk",
     "main/web-crawler.ts:complexity",
     "main/agente-daemon.ts:untested risk",
     "main/data-folder.ts:high impact",

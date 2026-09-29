@@ -94,13 +94,43 @@ async function connect(): Promise<AgenteClient> {
   if (listening !== client) {
     listening = client;
     client.onNotification((method, params) => {
-      if (method === 'event') route(params as RuntimeEventEnvelope);
+      if (method !== 'event') return;
+      const envelope = params as RuntimeEventEnvelope;
+      route(envelope);
+      for (const listener of runtimeEventListeners) listener(envelope);
     });
+    // Turns this app didn't start (bot routines, handoffs) arrive this way;
+    // the runtime never sends a turn twice to the client that started it.
+    await client.request('events.subscribe', {}).catch(() => {});
     await registerDesktopTools(client).catch((error: unknown) => {
       console.warn(`[agente] desktop tools unavailable: ${error instanceof Error ? error.message : String(error)}`);
     });
   }
   return client;
+}
+
+/**
+ * Hand the runtime Desktop's provider (with its key, over the socket only)
+ * and return the id and model a turn should name.
+ */
+export async function useProvider(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
+  const provider = providerEntry(providerName, model);
+  if (provider.model) await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
+  return { id: provider.id, model: provider.model };
+}
+
+type RuntimeEventListener = (envelope: RuntimeEventEnvelope) => void;
+const runtimeEventListeners = new Set<RuntimeEventListener>();
+
+/** Every runtime event, from any session (bots use it; Code chats route their own). */
+export function onRuntimeEvent(listener: RuntimeEventListener): () => void {
+  runtimeEventListeners.add(listener);
+  return () => runtimeEventListeners.delete(listener);
+}
+
+/** The runtime connection, started on first use. */
+export function runtimeConnection(): Promise<AgenteClient> {
+  return connect();
 }
 
 function emit(event: CodeAgentEvent): void {
@@ -139,9 +169,9 @@ function route(envelope: RuntimeEventEnvelope): void {
 
 const TURN_MODES: Record<AgenteRuntimeMode, TurnMode> = { full: 'auto', supervised: 'build', plan: 'plan' };
 
-/** Desktop's provider for a chat, as a provider entry for runtime.configure. */
-function providerEntry(chat: ChatState): { id: string; config: Record<string, unknown>; model: string } {
-  const transport = resolveTransport(chat.provider, chat.model);
+/** Desktop's provider and model, as a provider entry for runtime.configure. */
+function providerEntry(providerName: string, model: string): { id: string; config: Record<string, unknown>; model: string } {
+  const transport = resolveTransport(providerName, model);
   const id = `desktop-${transport.providerName}`;
   const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName) || undefined;
   return {
@@ -226,9 +256,8 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   try {
     const client = await connect();
     activeChat = chat;
-    const provider = providerEntry(chat);
+    const provider = await useProvider(client, chat.provider, chat.model);
     if (!provider.model) return { ok: false, error: 'No model selected — pick one in the Model Hub first.' };
-    await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
     const message: Message = { role: 'user', content: text, attachments: storeImages(images) };
     const started = await client.request<{ turn_id: string }>('turn.start', turnParams(chat, provider, message));
     chat.systemPrompt = undefined;

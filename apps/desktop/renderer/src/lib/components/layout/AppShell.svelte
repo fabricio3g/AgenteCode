@@ -9,6 +9,7 @@
   import HomeSurface from '$lib/features/home/HomeSurface.svelte';
   import CodeSurface from '$lib/features/code/CodeSurface.svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
+  import BotsScreen from '$lib/features/bots/BotsScreen.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
   import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
   import { charactersStore } from '$lib/features/roleplay/characters.svelte';
@@ -233,6 +234,8 @@
           <CodeSurface />
         {:else if appStore.homeView === 'artifacts'}
           <ArtifactsScreen />
+        {:else if appStore.homeView === 'bots'}
+          <BotsScreen />
         {:else if inRoleplaySpace}
           <RoleplaySurface />
         {:else}

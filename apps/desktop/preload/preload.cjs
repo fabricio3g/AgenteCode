@@ -53,6 +53,9 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_compact', 'agente_set_model', 'agente_set_runtime_mode',
   'agente_respond_approval', 'agente_list_checkpoints', 'agente_rollback',
   'agente_delete_session_data', 'agente_live_chats',
+  'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
+  'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval',
+  'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
   'agente_changes', 'agente_file_diff', 'agente_revert_file'
@@ -62,7 +65,7 @@ const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
   'tts-chunk', 'tts-done', 'tts-start',
-  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event'
+  'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event'
 ]);
 
 contextBridge.exposeInMainWorld('electronAPI', {

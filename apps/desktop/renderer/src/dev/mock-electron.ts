@@ -386,7 +386,94 @@ async function finishApprovedRun(chatId: string, decision: 'allow' | 'deny'): Pr
   send({ type: 'agent_end', stopReason: 'stop' });
 }
 
+// ── Agente Bot (the Bots screen) ────────────────────────────────────────
+type MockBot = { handle: string; title: string; role: string; avatar: { initials?: string; tint: string }; builtin: boolean; working: boolean; session_id: string | null; soul: string; user: string; memory: string };
+const mockBots: MockBot[] = [
+  { handle: 'colina', title: 'Colina', role: 'your everyday assistant', avatar: { initials: 'C', tint: 'green' }, builtin: true, working: false, session_id: 's-colina', soul: 'Colina is warm, direct and practical.', user: 'Works on Agente; prefers short answers.', memory: 'Favorite color: teal.\n' },
+  { handle: 'scout', title: 'Scout', role: 'researches things and reports back', avatar: { initials: 'S', tint: 'blue' }, builtin: false, working: false, session_id: 's-scout', soul: 'Precise and brief.', user: '', memory: '' },
+  { handle: 'quill', title: 'Quill', role: 'writes and edits', avatar: { initials: 'Q', tint: 'yellow' }, builtin: false, working: false, session_id: null, soul: '', user: '', memory: '' }
+];
+const mockRoutines: Record<string, Record<string, unknown>[]> = {
+  colina: [
+    { id: 'morning-brief', title: 'Morning brief', prompt: 'Summarize what is on my plate today.', schedule: { every: 'weekdays', at: '08:00' }, paused: false, created_at: new Date(Date.now() - 86_400_000 * 3).toISOString(), last_run: { at: new Date(Date.now() - 3_600_000 * 5).toISOString(), status: 'completed' }, next_run: new Date(Date.now() + 3_600_000 * 19).toISOString() },
+    { id: 'weekly-review', title: 'Weekly review', prompt: 'What did we finish this week?', schedule: { every: 'week', day: 'fri', at: '17:00' }, paused: true, created_at: new Date().toISOString(), last_run: null, next_run: null }
+  ]
+};
+const botEvent = (handle: string, event: Record<string, unknown>) => emit('bot_event', { handle, event: { chatId: `bot:${handle}`, ...event } });
+const botHistory: Record<string, unknown[]> = {
+  colina: [
+    { prompt: 'Summarize what is on my plate today.', source: { kind: 'routine', title: 'Morning brief' }, events: [
+      { type: 'agent_start', chatId: 'bot:colina' },
+      { type: 'text_delta', chatId: 'bot:colina', delta: 'Three things today:\n\n1. Review the **Bots screen** PR.\n2. Tag `v0.2.1` once Windows CI is green.\n3. Reply to the release notes thread.' },
+      { type: 'agent_end', chatId: 'bot:colina', stopReason: 'stop' }
+    ] },
+    { prompt: 'What is 17 times 23? Ask Scout.', source: { kind: 'user' }, events: [
+      { type: 'agent_start', chatId: 'bot:colina' },
+      { type: 'text_delta', chatId: 'bot:colina', delta: 'Asking Scout.' },
+      { type: 'tool_start', chatId: 'bot:colina', toolCallId: 'h1', toolName: 'message_bot', args: { to: '@scout', message: 'What is 17 times 23?' } },
+      { type: 'tool_end', chatId: 'bot:colina', toolCallId: 'h1', result: '@scout replied:\n\n391', isError: false, status: 'done' },
+      { type: 'text_delta', chatId: 'bot:colina', delta: '17 × 23 is **391**.' },
+      { type: 'agent_end', chatId: 'bot:colina', stopReason: 'stop' }
+    ] }
+  ],
+  scout: [
+    { prompt: 'What is 17 times 23?', source: { kind: 'handoff', from: 'colina' }, events: [
+      { type: 'agent_start', chatId: 'bot:scout' },
+      { type: 'text_delta', chatId: 'bot:scout', delta: '391' },
+      { type: 'agent_end', chatId: 'bot:scout', stopReason: 'stop' }
+    ] }
+  ]
+};
+const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
+  bots_list: () => mockBots.map(({ soul: _s, user: _u, memory: _m, ...bot }) => bot),
+  bots_get: (args) => mockBots.find((bot) => bot.handle === args?.handle),
+  bots_history: (args) => botHistory[String(args?.handle)] ?? [],
+  routines_list: (args) => mockRoutines[String(args?.handle)] ?? [],
+  routines_save: (args) => ({ ...(args?.routine as object), id: 'new', created_at: new Date().toISOString(), last_run: null, next_run: null }),
+  routines_delete: () => ({ deleted: true }),
+  routines_run_now: () => ({ turn_id: 't-run' }),
+  bots_create: (args) => {
+    const { title = 'Bot', role = '', soul = '', avatar } = (args ?? {}) as { title?: string; role?: string; soul?: string; avatar?: { tint?: string } };
+    const handle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const bot: MockBot = { handle, title, role, soul, avatar: { tint: avatar?.tint ?? 'blue' }, builtin: false, working: false, session_id: null, user: '', memory: '' };
+    mockBots.push(bot);
+    return bot;
+  },
+  bots_update: (args) => {
+    const bot = mockBots.find((item) => item.handle === args?.handle);
+    if (bot) Object.assign(bot, args?.config as object);
+    return bot;
+  },
+  bots_write_doc: () => ({ ok: true }),
+  bots_delete: (args) => {
+    const index = mockBots.findIndex((bot) => bot.handle === args?.handle);
+    if (index >= 0) mockBots.splice(index, 1);
+    return { deleted: true };
+  },
+  bots_compact: () => ({ messages: 3 }),
+  bots_cancel: () => ({ ok: true }),
+  bots_respond_approval: () => ({ ok: true }),
+  bots_chat: (args) => {
+    const handle = String(args?.handle);
+    setTimeout(() => botEvent(handle, { type: 'agent_start' }), 150);
+    setTimeout(() => botEvent(handle, { type: 'text_delta', delta: 'On it. ' }), 500);
+    setTimeout(() => botEvent(handle, { type: 'text_delta', delta: 'Here is a short answer from the mock bot.' }), 900);
+    setTimeout(() => {
+      // The runtime saves the exchange; the reload after agent_end shows it.
+      const chatId = `bot:${handle}`;
+      (botHistory[handle] ??= []).push({ prompt: String(args?.text ?? ''), source: { kind: 'user' }, events: [
+        { type: 'agent_start', chatId },
+        { type: 'text_delta', chatId, delta: 'On it. Here is a short answer from the mock bot.' },
+        { type: 'agent_end', chatId, stopReason: 'stop' }
+      ] });
+      botEvent(handle, { type: 'agent_end', stopReason: 'stop' });
+    }, 1200);
+    return { turn_id: 't-mock', session_id: `s-${handle}` };
+  }
+};
+
 const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
+  ...botHandlers,
   get_config: () => config,
   save_config: () => ({}),
   update_config: () => ({}),
