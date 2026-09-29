@@ -9,6 +9,7 @@ mod bots;
 mod connection;
 mod routines;
 mod tcp;
+mod telegram;
 
 pub use bots::{spawn_spend_tracker, BotProfiles};
 pub use connection::serve_connection;
@@ -16,6 +17,7 @@ pub use routines::spawn_scheduler;
 pub use tcp::{
     default_token_path, generate_token, load_or_create_token, serve_authenticated, serve_tcp,
 };
+pub use telegram::spawn_telegram;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -1434,7 +1434,32 @@
     "modelHint": "Qual provedor e modelo este bot usa. Você pode mudar quando quiser.",
     "modelSame": "O mesmo do chat",
     "provider": "Provedor",
-    "modelPlaceholder": "Id do modelo, por exemplo anthropic/claude-sonnet-5"
+    "modelPlaceholder": "Id do modelo, por exemplo anthropic/claude-sonnet-5",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "Converse com este bot pelo Telegram",
+      "loading": "Verificando…",
+      "step1": "No Telegram, abra o @BotFather, envie /newbot e siga os passos.",
+      "step2": "Cole aqui o token que ele der.",
+      "token": "Token do bot do Telegram",
+      "connect": "Conectar",
+      "connecting": "Conectando…",
+      "connectedAs": "Conectado como",
+      "disconnect": "Desconectar",
+      "disconnectTitle": "Desconectar o Telegram?",
+      "disconnectMessage": "O bot para de responder no Telegram e esquece quem foi pareado. Você pode conectar de novo depois.",
+      "people": "Quem pode mandar mensagem",
+      "nobody": "Ninguém ainda. Pareie você ou alguém de confiança.",
+      "readOnly": "Somente leitura",
+      "full": "Acesso total",
+      "access": "Acesso",
+      "pair": "Parear alguém",
+      "unpair": "Remover {name}",
+      "sendCode": "Envie isto para {bot} no Telegram em até {minutes} min:",
+      "theBot": "o bot",
+      "readOnlyHint": "Somente leitura: conversa e pesquisa; não muda arquivos nem roda comandos.",
+      "fullHint": "Acesso total: para você. Ferramentas podem rodar, com botões Permitir/Negar no Telegram."
+    }
   },
   "accessibility": {
     "title": "Acessibilidade",

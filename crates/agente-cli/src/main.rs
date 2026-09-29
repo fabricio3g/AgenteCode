@@ -367,6 +367,7 @@ fn run_serve(project_dir: &str, config: AppConfig, options: ServeOptions) -> any
         let service = agente_daemon::Service { runtime, bots };
         let _routines = agente_daemon::spawn_scheduler(service.clone());
         let _spend = agente_daemon::spawn_spend_tracker(service.clone());
+        let _telegram = agente_daemon::spawn_telegram(service.clone());
         // One signal stops every listener.
         let (stop, stopped) = tokio::sync::watch::channel(false);
         let stop = std::sync::Arc::new(stop);

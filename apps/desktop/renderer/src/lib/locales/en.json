@@ -1434,7 +1434,32 @@
     "modelHint": "Which provider and model this bot uses. You can change it any time.",
     "modelSame": "Same as the chat",
     "provider": "Provider",
-    "modelPlaceholder": "Model id, for example anthropic/claude-sonnet-5"
+    "modelPlaceholder": "Model id, for example anthropic/claude-sonnet-5",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "Message this bot from Telegram",
+      "loading": "Checking…",
+      "step1": "In Telegram, open @BotFather, send /newbot and follow its steps.",
+      "step2": "Paste the token it gives you here.",
+      "token": "Telegram bot token",
+      "connect": "Connect",
+      "connecting": "Connecting…",
+      "connectedAs": "Connected as",
+      "disconnect": "Disconnect",
+      "disconnectTitle": "Disconnect Telegram?",
+      "disconnectMessage": "The bot stops answering on Telegram and forgets who was paired. You can connect again later.",
+      "people": "Who can message it",
+      "nobody": "Nobody yet. Pair yourself or someone you trust.",
+      "readOnly": "Read-only",
+      "full": "Full access",
+      "access": "Access",
+      "pair": "Pair someone",
+      "unpair": "Remove {name}",
+      "sendCode": "Send this to {bot} on Telegram within {minutes} min:",
+      "theBot": "the bot",
+      "readOnlyHint": "Read-only: chats and looks things up; doesn't change files or run commands.",
+      "fullHint": "Full access: for you. Tools can run, with Allow/Deny buttons in Telegram."
+    }
   },
   "accessibility": {
     "title": "Accessibility",

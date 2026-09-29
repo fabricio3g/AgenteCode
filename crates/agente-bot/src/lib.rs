@@ -17,6 +17,7 @@ mod budget;
 mod memory;
 mod prompt;
 mod routines;
+mod telegram;
 
 use std::path::{Path, PathBuf};
 
@@ -26,6 +27,7 @@ pub use budget::DailySpend;
 pub use memory::MemoryEdit;
 pub use prompt::persona_prompt;
 pub use routines::{NewRoutine, Routine, RoutineRun, Schedule};
+pub use telegram::{ChannelTrust, PairedChat, PairingCode, TelegramState};
 
 /// The bot every install starts with.
 pub const DEFAULT_BOT: &str = "colina";
@@ -147,6 +149,9 @@ struct BotState {
     /// What the bot spent on its most recent day of work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     spend: Option<DailySpend>,
+    /// Its Telegram channel: paired chats, pairing code, update offset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    telegram: Option<TelegramState>,
 }
 
 pub struct BotStore {

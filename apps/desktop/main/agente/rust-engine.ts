@@ -172,17 +172,22 @@ const TURN_MODES: Record<AgenteRuntimeMode, TurnMode> = { full: 'auto', supervis
 /** Desktop's provider and model, as a provider entry for runtime.configure. */
 function providerEntry(providerName: string, model: string): { id: string; config: Record<string, unknown>; model: string } {
   const transport = resolveTransport(providerName, model);
-  const id = `desktop-${transport.providerName}`;
+  return {
+    id: `desktop-${transport.providerName}`,
+    model: transport.model,
+    config: providerConfig(providerName, [transport.model])
+  };
+}
+
+/** A provider as the runtime takes it: Desktop's endpoint and key, and these models. */
+export function providerConfig(providerName: string, models: string[]): Record<string, unknown> {
+  const transport = resolveTransport(providerName, models[0]);
   const apiKey = resolveApiKey('', transport.baseUrl, transport.providerName) || undefined;
   return {
-    id,
-    model: transport.model,
-    config: {
-      name: transport.providerName,
-      api_format: 'openai',
-      options: { baseURL: transport.baseUrl, ...(apiKey ? { apiKey } : {}) },
-      models: { [transport.model]: { name: transport.model } }
-    }
+    name: transport.providerName,
+    api_format: 'openai',
+    options: { baseURL: transport.baseUrl, ...(apiKey ? { apiKey } : {}) },
+    models: Object.fromEntries(models.map((model) => [model, { name: model }]))
   };
 }
 

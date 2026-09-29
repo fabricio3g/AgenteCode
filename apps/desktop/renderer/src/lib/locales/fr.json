@@ -1434,7 +1434,32 @@
     "modelHint": "Le fournisseur et le modèle qu'utilise ce bot. Modifiable à tout moment.",
     "modelSame": "Le même que le chat",
     "provider": "Fournisseur",
-    "modelPlaceholder": "Id du modèle, par exemple anthropic/claude-sonnet-5"
+    "modelPlaceholder": "Id du modèle, par exemple anthropic/claude-sonnet-5",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "Écrire à ce bot depuis Telegram",
+      "loading": "Vérification…",
+      "step1": "Dans Telegram, ouvrez @BotFather, envoyez /newbot et suivez les étapes.",
+      "step2": "Collez ici le jeton qu'il vous donne.",
+      "token": "Jeton du bot Telegram",
+      "connect": "Connecter",
+      "connecting": "Connexion…",
+      "connectedAs": "Connecté en tant que",
+      "disconnect": "Déconnecter",
+      "disconnectTitle": "Déconnecter Telegram ?",
+      "disconnectMessage": "Le bot ne répond plus sur Telegram et oublie qui était associé. Vous pourrez le reconnecter plus tard.",
+      "people": "Qui peut lui écrire",
+      "nobody": "Personne pour l'instant. Associez-vous, ou une personne de confiance.",
+      "readOnly": "Lecture seule",
+      "full": "Accès complet",
+      "access": "Accès",
+      "pair": "Associer quelqu'un",
+      "unpair": "Retirer {name}",
+      "sendCode": "Envoyez ceci à {bot} sur Telegram d'ici {minutes} min :",
+      "theBot": "le bot",
+      "readOnlyHint": "Lecture seule : discute et cherche des informations ; ne modifie pas de fichiers, n'exécute pas de commandes.",
+      "fullHint": "Accès complet : pour vous. Les outils peuvent s'exécuter, avec des boutons Autoriser/Refuser dans Telegram."
+    }
   },
   "accessibility": {
     "title": "Accessibilité",

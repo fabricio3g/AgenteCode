@@ -62,6 +62,30 @@ interface BotHistoryTurn {
   events: CodeAgentEvent[];
 }
 
+export type ChannelTrust = 'owner' | 'trusted';
+
+export interface PairedChat {
+  chat_id: number;
+  name: string;
+  trust: ChannelTrust;
+  paired_at: string;
+}
+
+export interface PairingCode {
+  code: string;
+  trust: ChannelTrust;
+  expires_at: string;
+}
+
+/** A bot's Telegram channel (the token itself never comes back). */
+export interface TelegramStatus {
+  connected: boolean;
+  username: string | null;
+  error: string | null;
+  paired: PairedChat[];
+  pairing: PairingCode | null;
+}
+
 /** The model the app is using (bots without a pinned model use it). */
 export type ModelChoice = { provider?: string; model?: string };
 
@@ -80,7 +104,12 @@ export const botsIpc = {
   routines: (handle: string) => invoke<Routine[]>('routines_list', { handle }),
   saveRoutine: (handle: string, routine: NewRoutine, model: ModelChoice) => invoke<Routine>('routines_save', { handle, routine, ...model }),
   deleteRoutine: (handle: string, id: string) => invoke<{ deleted: boolean }>('routines_delete', { handle, id }),
-  runRoutine: (handle: string, id: string) => invoke<{ turn_id: string }>('routines_run_now', { handle, id })
+  runRoutine: (handle: string, id: string) => invoke<{ turn_id: string }>('routines_run_now', { handle, id }),
+  telegram: (handle: string) => invoke<TelegramStatus>('bots_telegram', { handle }),
+  telegramConnect: (handle: string, token: string) => invoke<TelegramStatus>('bots_telegram_connect', { handle, token }),
+  telegramDisconnect: (handle: string) => invoke<TelegramStatus>('bots_telegram_disconnect', { handle }),
+  telegramPair: (handle: string, trust: ChannelTrust) => invoke<PairingCode>('bots_telegram_pair', { handle, trust }),
+  telegramUnpair: (handle: string, chatId: number) => invoke<TelegramStatus>('bots_telegram_unpair', { handle, chat_id: chatId })
 };
 
 /** Live events of every bot's chat, as the Code UI's events. */

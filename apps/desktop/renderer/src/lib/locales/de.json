@@ -1434,7 +1434,32 @@
     "modelHint": "Welchen Anbieter und welches Modell dieser Bot nutzt. Jederzeit änderbar.",
     "modelSame": "Wie im Chat",
     "provider": "Anbieter",
-    "modelPlaceholder": "Modell-ID, zum Beispiel anthropic/claude-sonnet-5"
+    "modelPlaceholder": "Modell-ID, zum Beispiel anthropic/claude-sonnet-5",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "Diesem Bot über Telegram schreiben",
+      "loading": "Wird geprüft…",
+      "step1": "Öffne in Telegram @BotFather, sende /newbot und folge den Schritten.",
+      "step2": "Füge hier den Token ein, den du bekommst.",
+      "token": "Telegram-Bot-Token",
+      "connect": "Verbinden",
+      "connecting": "Verbinde…",
+      "connectedAs": "Verbunden als",
+      "disconnect": "Trennen",
+      "disconnectTitle": "Telegram trennen?",
+      "disconnectMessage": "Der Bot antwortet nicht mehr auf Telegram und vergisst, wer gekoppelt war. Du kannst ihn später wieder verbinden.",
+      "people": "Wer ihm schreiben darf",
+      "nobody": "Noch niemand. Kopple dich selbst oder jemanden, dem du vertraust.",
+      "readOnly": "Nur lesen",
+      "full": "Voller Zugriff",
+      "access": "Zugriff",
+      "pair": "Jemanden koppeln",
+      "unpair": "{name} entfernen",
+      "sendCode": "Sende das innerhalb von {minutes} Min. an {bot} in Telegram:",
+      "theBot": "den Bot",
+      "readOnlyHint": "Nur lesen: chattet und sucht; ändert keine Dateien und führt keine Befehle aus.",
+      "fullHint": "Voller Zugriff: für dich. Werkzeuge können laufen, mit Erlauben/Ablehnen-Knöpfen in Telegram."
+    }
   },
   "accessibility": {
     "title": "Barrierefreiheit",

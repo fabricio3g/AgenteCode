@@ -55,6 +55,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'agente_delete_session_data', 'agente_live_chats',
   'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
   'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval',
+  'bots_telegram', 'bots_telegram_connect', 'bots_telegram_disconnect', 'bots_telegram_pair', 'bots_telegram_unpair',
   'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
   'voice_models_status', 'voice_model_download', 'voice_model_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',

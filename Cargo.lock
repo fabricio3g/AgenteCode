@@ -33,6 +33,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -102,6 +103,7 @@ dependencies = [
  "agente-runtime",
  "async-trait",
  "chrono",
+ "reqwest 0.11.27",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

@@ -13,6 +13,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import BotAvatar from './BotAvatar.svelte';
   import BotModelPicker from './BotModelPicker.svelte';
+  import BotTelegram from './BotTelegram.svelte';
   import { botsStore } from './bots.svelte';
   import { botsIpc, type BotDetail, type BotTint } from './bots-ipc';
 
@@ -34,6 +35,7 @@
   // Empty means no limit.
   let budget = $state(initial?.daily_budget != null ? String(initial.daily_budget) : '');
   let advanced = $state(false);
+  let telegramOpen = $state(false);
   let saving = $state(false);
   let error = $state<string | null>(null);
 
@@ -144,6 +146,14 @@
         {#if tooLong}<p class="text-[12px] text-destructive">{$t('bots.tooLong', { values: { n: DOC_CAP } })}</p>{/if}
       </div>
     </Disclosure>
+
+    {#if bot}
+      <Disclosure bind:open={telegramOpen} title={$t('bots.telegram.title')} description={$t('bots.telegram.hint')}>
+        <div class="pt-2">
+          {#if telegramOpen}<BotTelegram handle={bot.handle} />{/if}
+        </div>
+      </Disclosure>
+    {/if}
 
     {#if error}<p class="text-[12px] text-destructive">{error}</p>{/if}
     <div class="flex items-center gap-2">

@@ -1434,7 +1434,32 @@
     "modelHint": "这个机器人使用的提供商和模型，随时可以更改。",
     "modelSame": "与聊天相同",
     "provider": "提供商",
-    "modelPlaceholder": "模型 ID，例如 anthropic/claude-sonnet-5"
+    "modelPlaceholder": "模型 ID，例如 anthropic/claude-sonnet-5",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "在 Telegram 上给这个机器人发消息",
+      "loading": "正在检查…",
+      "step1": "在 Telegram 中打开 @BotFather，发送 /newbot 并按步骤操作。",
+      "step2": "把它给你的令牌粘贴到这里。",
+      "token": "Telegram 机器人令牌",
+      "connect": "连接",
+      "connecting": "正在连接…",
+      "connectedAs": "已连接为",
+      "disconnect": "断开",
+      "disconnectTitle": "断开 Telegram？",
+      "disconnectMessage": "机器人将不再在 Telegram 上回复，并忘记已配对的人。之后可以重新连接。",
+      "people": "谁可以给它发消息",
+      "nobody": "还没有人。配对你自己或你信任的人。",
+      "readOnly": "只读",
+      "full": "完全访问",
+      "access": "访问权限",
+      "pair": "配对某人",
+      "unpair": "移除 {name}",
+      "sendCode": "请在 {minutes} 分钟内在 Telegram 上把这条发给 {bot}：",
+      "theBot": "机器人",
+      "readOnlyHint": "只读：可以聊天和查资料；不会修改文件或运行命令。",
+      "fullHint": "完全访问：给你自己。可以运行工具，Telegram 中会出现允许/拒绝按钮。"
+    }
   },
   "accessibility": {
     "title": "辅助功能",

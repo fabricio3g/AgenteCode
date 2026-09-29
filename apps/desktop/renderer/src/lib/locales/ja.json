@@ -1434,7 +1434,32 @@
     "modelHint": "このボットが使うプロバイダーとモデル。いつでも変更できます。",
     "modelSame": "チャットと同じ",
     "provider": "プロバイダー",
-    "modelPlaceholder": "モデルID（例：anthropic/claude-sonnet-5）"
+    "modelPlaceholder": "モデルID（例：anthropic/claude-sonnet-5）",
+    "telegram": {
+      "title": "Telegram",
+      "hint": "Telegram からこのボットにメッセージを送る",
+      "loading": "確認中…",
+      "step1": "Telegram で @BotFather を開き、/newbot を送って手順に従います。",
+      "step2": "表示されたトークンをここに貼り付けます。",
+      "token": "Telegram ボットのトークン",
+      "connect": "接続",
+      "connecting": "接続中…",
+      "connectedAs": "接続中のアカウント",
+      "disconnect": "切断",
+      "disconnectTitle": "Telegram を切断しますか？",
+      "disconnectMessage": "ボットは Telegram で応答しなくなり、ペアリングした相手も忘れます。後で再接続できます。",
+      "people": "メッセージを送れる人",
+      "nobody": "まだいません。自分か信頼できる人をペアリングしてください。",
+      "readOnly": "閲覧のみ",
+      "full": "フルアクセス",
+      "access": "アクセス",
+      "pair": "ペアリングする",
+      "unpair": "{name} を削除",
+      "sendCode": "{minutes} 分以内に Telegram で {bot} に次を送信してください：",
+      "theBot": "ボット",
+      "readOnlyHint": "閲覧のみ：会話と調べものだけ。ファイルの変更やコマンドの実行はしません。",
+      "fullHint": "フルアクセス：あなた用。ツールを実行でき、Telegram に許可/拒否ボタンが表示されます。"
+    }
   },
   "accessibility": {
     "title": "アクセシビリティ",

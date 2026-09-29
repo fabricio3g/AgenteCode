@@ -393,6 +393,13 @@ const mockBots: MockBot[] = [
   { handle: 'scout', title: 'Scout', role: 'researches things and reports back', avatar: { initials: 'S', tint: 'blue' }, builtin: false, working: false, session_id: 's-scout', soul: 'Precise and brief.', user: '', memory: '' },
   { handle: 'quill', title: 'Quill', role: 'writes and edits', avatar: { initials: 'Q', tint: 'yellow' }, builtin: false, working: false, session_id: null, soul: '', user: '', memory: '' }
 ];
+const mockTelegram: { connected: boolean; username: string | null; error: string | null; paired: Array<{ chat_id: number; name: string; trust: string; paired_at: string }>; pairing: { code: string; trust: string; expires_at: string } | null } = {
+  connected: true,
+  username: 'colina_agente_bot',
+  error: null,
+  paired: [{ chat_id: 1, name: 'Fabricio (@fab)', trust: 'owner', paired_at: new Date().toISOString() }],
+  pairing: null
+};
 const mockRoutines: Record<string, Record<string, unknown>[]> = {
   colina: [
     { id: 'morning-brief', title: 'Morning brief', prompt: 'Summarize what is on my plate today.', schedule: { every: 'weekdays', at: '08:00' }, paused: false, created_at: new Date(Date.now() - 86_400_000 * 3).toISOString(), last_run: { at: new Date(Date.now() - 3_600_000 * 5).toISOString(), status: 'completed' }, next_run: new Date(Date.now() + 3_600_000 * 19).toISOString() },
@@ -445,6 +452,14 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
     return bot;
   },
   bots_write_doc: () => ({ ok: true }),
+  bots_telegram: () => ({ ...mockTelegram }),
+  bots_telegram_connect: () => Object.assign(mockTelegram, { connected: true, username: 'colina_agente_bot', error: null }),
+  bots_telegram_disconnect: () => Object.assign(mockTelegram, { connected: false, username: null, paired: [], pairing: null }),
+  bots_telegram_pair: (args) => {
+    mockTelegram.pairing = { code: '482913', trust: String(args?.trust ?? 'trusted'), expires_at: new Date(Date.now() + 600_000).toISOString() };
+    return mockTelegram.pairing;
+  },
+  bots_telegram_unpair: (args) => Object.assign(mockTelegram, { paired: mockTelegram.paired.filter((chat) => chat.chat_id !== args?.chat_id) }),
   bots_delete: (args) => {
     const index = mockBots.findIndex((bot) => bot.handle === args?.handle);
     if (index >= 0) mockBots.splice(index, 1);

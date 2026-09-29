@@ -111,6 +111,51 @@ struct HandleParams {
 }
 
 #[derive(Deserialize)]
+struct TokenParams {
+    handle: String,
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct PairParams {
+    handle: String,
+    trust: agente_bot::ChannelTrust,
+}
+
+#[derive(Deserialize)]
+struct UnpairParams {
+    handle: String,
+    chat_id: i64,
+}
+
+/// `<digits>:<35 or so letters, digits, _ and ->`, as @BotFather gives them.
+fn looks_like_telegram_token(token: &str) -> bool {
+    let token = token.trim();
+    token.split_once(':').is_some_and(|(id, secret)| {
+        !id.is_empty()
+            && id.chars().all(|c| c.is_ascii_digit())
+            && secret.len() >= 30
+            && secret
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    })
+}
+
+/// A bot's Telegram channel as Desktop shows it (never the token itself).
+fn telegram_status(store: &BotStore, handle: &str) -> Result<Value, Failure> {
+    let connected = store.telegram_token(handle).map_err(bot_failure)?.is_some();
+    let state = store.telegram_state(handle).map_err(bot_failure)?;
+    let now = chrono::Utc::now();
+    Ok(json!({
+        "connected": connected,
+        "username": state.username,
+        "error": state.error,
+        "paired": state.paired,
+        "pairing": state.pairing.filter(|code| code.expires_at > now),
+    }))
+}
+
+#[derive(Deserialize)]
 struct UpdateParams {
     handle: String,
     config: BotConfig,
@@ -225,6 +270,44 @@ pub(crate) fn handle(
                 }
                 None => Ok(json!({ "messages": 0 })),
             }
+        }
+        "bots.telegram" => {
+            let HandleParams { handle } = parse(params)?;
+            telegram_status(store, &handle)
+        }
+        // Connecting takes effect within a few seconds (the channel poller
+        // picks the token up); `bots.telegram` then shows the @name or error.
+        "bots.telegram_connect" => {
+            let TokenParams { handle, token } = parse(params)?;
+            if !looks_like_telegram_token(&token) {
+                return Err((
+                    rpc::INVALID_PARAMS,
+                    "That doesn't look like a Telegram bot token (from @BotFather, like 123456:ABC…).".into(),
+                ));
+            }
+            store
+                .set_telegram_token(&handle, Some(&token))
+                .map_err(bot_failure)?;
+            telegram_status(store, &handle)
+        }
+        "bots.telegram_disconnect" => {
+            let HandleParams { handle } = parse(params)?;
+            store
+                .set_telegram_token(&handle, None)
+                .map_err(bot_failure)?;
+            telegram_status(store, &handle)
+        }
+        "bots.telegram_pair" => {
+            let PairParams { handle, trust } = parse(params)?;
+            let code = store
+                .new_pairing_code(&handle, trust, chrono::Utc::now())
+                .map_err(bot_failure)?;
+            Ok(json!(code))
+        }
+        "bots.telegram_unpair" => {
+            let UnpairParams { handle, chat_id } = parse(params)?;
+            store.unpair_chat(&handle, chat_id).map_err(bot_failure)?;
+            telegram_status(store, &handle)
         }
         "bots.write_doc" => {
             let DocParams { handle, doc, text } = parse(params)?;
@@ -346,6 +429,13 @@ mod tests {
     #[test]
     fn a_bot_past_its_daily_budget_starts_no_turn() {
         let dir = std::env::temp_dir().join(format!("agente-bots-budget-{}", std::process::id()));
+        assert!(looks_like_telegram_token(
+            "123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
+        assert!(!looks_like_telegram_token("hello"));
+        assert!(!looks_like_telegram_token(
+            "12a:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+        ));
         let store = BotStore::open(&dir).unwrap();
         let mut config = store.get("colina").unwrap().config;
         config.daily_budget = Some(0.5);
