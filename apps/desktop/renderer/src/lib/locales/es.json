@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "Gastado hoy: {spent}. Al alcanzar el presupuesto, los chats, rutinas y traspasos esperan hasta mañana.",
     "budgetInvalid": "Escribe un importe mayor que 0, o déjalo vacío para no poner límite.",
     "noLimit": "Sin límite",
-    "perDay": "al día"
+    "perDay": "al día",
+    "mentionLabel": "Compañeros para mencionar"
   },
   "accessibility": {
     "title": "Accesibilidad",

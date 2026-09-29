@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { untrack } from 'svelte';
   import { ArrowDown, ArrowUp, Plus, Trash2, Upload, X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
@@ -244,11 +245,7 @@
               <div class="cast-row">
                 <span class="cast-order">{index + 1}</span>
                 <span class="cast-avatar">
-                  {#if card.avatar}
-                    <img src={card.avatar} alt={card.name} />
-                  {:else}
-                    <span>{card.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-                  {/if}
+                  <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
                 <button type="button" class="aui-icon-button size-7" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
@@ -511,12 +508,6 @@
     color: var(--text-muted);
     font-size: 0.6875rem;
     font-weight: 600;
-  }
-
-  .cast-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
   }
 
   .cast-add {

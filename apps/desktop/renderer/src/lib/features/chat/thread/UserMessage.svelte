@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { CornerDownLeft, Copy, Pencil, Trash2 } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -124,11 +125,7 @@
     <div class="persona-chip">
       <span class="persona-name">{roleplayPersona.name}</span>
       <span class="persona-avatar">
-        {#if roleplayPersona.avatar}
-          <img src={roleplayPersona.avatar} alt={roleplayPersona.name} />
-        {:else}
-          <span>{roleplayPersona.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-        {/if}
+        <Avatar size="fill" name={roleplayPersona.name ?? ''} image={roleplayPersona.avatar} />
       </span>
     </div>
   {/if}
@@ -188,11 +185,6 @@
     font-weight: 600;
   }
 
-  .persona-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 
   .work-pill {
     display: inline-flex;

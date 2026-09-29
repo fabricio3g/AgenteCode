@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "Dépensé aujourd'hui : {spent}. Une fois le budget atteint, chats, routines et transferts attendent le lendemain.",
     "budgetInvalid": "Saisissez un montant supérieur à 0, ou laissez vide pour ne pas limiter.",
     "noLimit": "Sans limite",
-    "perDay": "par jour"
+    "perDay": "par jour",
+    "mentionLabel": "Coéquipiers à mentionner"
   },
   "accessibility": {
     "title": "Accessibilité",

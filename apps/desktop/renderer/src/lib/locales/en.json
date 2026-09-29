@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "Spent today: {spent}. When the budget is reached, chats, routines and handoffs wait until tomorrow.",
     "budgetInvalid": "Enter an amount above 0, or leave it empty for no limit.",
     "noLimit": "No limit",
-    "perDay": "per day"
+    "perDay": "per day",
+    "mentionLabel": "Teammates to mention"
   },
   "accessibility": {
     "title": "Accessibility",

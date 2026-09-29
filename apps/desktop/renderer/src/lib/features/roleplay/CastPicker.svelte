@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Check } from 'lucide-svelte';
   import { charactersStore } from './characters.svelte';
 
@@ -45,11 +46,7 @@
         aria-pressed={order >= 0}
       >
         <span class="cast-avatar">
-          {#if card.avatar}
-            <img src={card.avatar} alt={card.name} />
-          {:else}
-            <span>{card.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-          {/if}
+          <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
           {#if order >= 0}
             <span class="cast-check"><Check class="size-2.5" /></span>
           {/if}
@@ -112,12 +109,6 @@
     font-weight: 600;
   }
 
-  .cast-avatar img {
-    width: 100%;
-    height: 100%;
-    border-radius: var(--radius-full);
-    object-fit: cover;
-  }
 
   .cast-check {
     position: absolute;

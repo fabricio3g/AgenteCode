@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "今天已花费：{spent}。达到预算后，聊天、例行任务和转交会等到明天。",
     "budgetInvalid": "请输入大于 0 的金额，或留空表示不限。",
     "noLimit": "不限",
-    "perDay": "每天"
+    "perDay": "每天",
+    "mentionLabel": "可提及的队友"
   },
   "accessibility": {
     "title": "辅助功能",

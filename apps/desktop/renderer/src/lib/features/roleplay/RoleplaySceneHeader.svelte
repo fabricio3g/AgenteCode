@@ -10,6 +10,7 @@
 -->
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Ban, BookOpen, Dices, ListOrdered, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
   import { Menu, MenuItem, Select } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
@@ -155,11 +156,7 @@
               aria-label={isMuted(character.id) ? `${character.name} is muted` : `Have ${character.name} speak now`}
               onclick={() => onspeak?.(character.id)}
             >
-              {#if character.avatar}
-                <img src={character.avatar} alt={character.name} />
-              {:else}
-                <span>{character.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-              {/if}
+              <Avatar size="fill" name={character.name ?? ''} image={character.avatar} />
             </button>
             {#if isMuted(character.id)}
               <span class="muted-badge"><Ban class="size-2.5" /></span>
@@ -353,11 +350,6 @@
       opacity var(--motion-fast) var(--motion-ease);
   }
 
-  .cast-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 
   .cast-avatar:hover {
     border-color: var(--border-hover);

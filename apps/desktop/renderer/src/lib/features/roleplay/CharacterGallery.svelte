@@ -9,6 +9,7 @@
 -->
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Plus, Search, Pencil, Upload } from 'lucide-svelte';
   import type { CharacterCard } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
@@ -102,11 +103,7 @@
             onclick={() => onpick(card)}
           >
             <div class="avatar">
-              {#if card.avatar}
-                <img src={card.avatar} alt={card.name} />
-              {:else}
-                <span>{card.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-              {/if}
+              <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
             </div>
             <div class="min-w-0">
               <div class="truncate text-[14px] font-medium text-foreground">{card.name}</div>
@@ -198,11 +195,6 @@
     font-weight: 600;
   }
 
-  .avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 
   .tag {
     padding: 0.0625rem 0.4375rem;

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Copy, FileSearch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
@@ -175,11 +176,7 @@
 <div class="flex w-full max-w-full items-start gap-2">
   {#if speaker}
     <span class="speaker-avatar" title={speaker.name}>
-      {#if speaker.avatar}
-        <img src={speaker.avatar} alt={speaker.name} />
-      {:else}
-        <span>{speaker.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-      {/if}
+      <Avatar size="fill" name={speaker.name ?? ''} image={speaker.avatar} />
     </span>
   {/if}
   <div class="min-w-0 flex-1">
@@ -264,11 +261,6 @@
     font-weight: 600;
   }
 
-  .speaker-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 
   .speaker-name {
     margin-bottom: 0.25rem;

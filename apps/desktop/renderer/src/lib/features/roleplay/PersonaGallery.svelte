@@ -8,6 +8,7 @@
 -->
 
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte';
   import { Pencil, Plus, Trash2 } from 'lucide-svelte';
   import type { UserPersona } from '$lib/types/chat';
   import { charactersStore } from './characters.svelte';
@@ -52,11 +53,7 @@
         <div class="persona-card group relative">
           <button type="button" class="card-hit flex w-full flex-col items-center gap-2 p-4 text-center" onclick={() => onedit(persona)}>
             <div class="avatar">
-              {#if persona.avatar}
-                <img src={persona.avatar} alt={persona.name} />
-              {:else}
-                <span>{persona.name?.trim()?.[0]?.toUpperCase() || '?'}</span>
-              {/if}
+              <Avatar size="fill" name={persona.name ?? ''} image={persona.avatar} />
             </div>
             <div class="min-w-0">
               <div class="truncate text-[14px] font-medium text-foreground">{persona.name}</div>
@@ -124,11 +121,6 @@
     font-weight: 600;
   }
 
-  .avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 
   .tag {
     padding: 0.0625rem 0.4375rem;

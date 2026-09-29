@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "今日の使用額：{spent}。予算に達すると、チャット、ルーティン、引き継ぎは翌日まで待機します。",
     "budgetInvalid": "0より大きい金額を入力するか、上限なしなら空欄にしてください。",
     "noLimit": "上限なし",
-    "perDay": "/日"
+    "perDay": "/日",
+    "mentionLabel": "メンションするチームメイト"
   },
   "accessibility": {
     "title": "アクセシビリティ",

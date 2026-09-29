@@ -1428,7 +1428,8 @@
     "budgetHintSpent": "Heute ausgegeben: {spent}. Ist das Budget erreicht, warten Chats, Routinen und Übergaben bis morgen.",
     "budgetInvalid": "Gib einen Betrag über 0 ein oder lass das Feld für kein Limit leer.",
     "noLimit": "Kein Limit",
-    "perDay": "pro Tag"
+    "perDay": "pro Tag",
+    "mentionLabel": "Teammitglieder zum Erwähnen"
   },
   "accessibility": {
     "title": "Barrierefreiheit",

@@ -17,6 +17,7 @@
   import BotAvatar from './BotAvatar.svelte';
   import { botsStore, type BotTurnView } from './bots.svelte';
   import type { Bot } from './bots-ipc';
+  import { insertMention, matchBots, mentionAt, type Mention } from './mention';
 
   let {
     bot,
@@ -26,6 +27,11 @@
   }: { bot: Bot; onedit: () => void; routinesOpen: boolean; ontoggleroutines: () => void } = $props();
 
   let draft = $state('');
+  let input = $state<HTMLTextAreaElement | undefined>(undefined);
+  // The `@teammate` being typed, and which suggestion is highlighted.
+  let mention = $state<Mention | null>(null);
+  let highlighted = $state(0);
+  const suggestions = $derived(mention ? matchBots(botsStore.bots, mention.query, bot.handle) : []);
   let viewport = $state<HTMLDivElement | undefined>(undefined);
   let pinned = $state(true);
 
@@ -55,7 +61,42 @@
     else void botsStore.send(text);
   }
 
+  function trackMention() {
+    const next = input ? mentionAt(draft, input.selectionStart ?? draft.length) : null;
+    if (next?.query !== mention?.query || next?.start !== mention?.start) highlighted = 0;
+    mention = next;
+  }
+
+  function pick(handle: string) {
+    if (!mention || !input) return;
+    const next = insertMention(draft, input.selectionStart ?? draft.length, mention, handle);
+    draft = next.text;
+    mention = null;
+    void tick().then(() => {
+      input?.focus();
+      input?.setSelectionRange(next.caret, next.caret);
+    });
+  }
+
+  /** Arrow keys, Enter/Tab and Escape drive the suggestions while they show. */
+  function onMentionKey(event: KeyboardEvent): boolean {
+    if (!suggestions.length) return false;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      highlighted = (highlighted + step + suggestions.length) % suggestions.length;
+    } else if ((event.key === 'Enter' || event.key === 'Tab') && !event.isComposing) {
+      pick(suggestions[highlighted].handle);
+    } else if (event.key === 'Escape') {
+      mention = null;
+    } else {
+      return false;
+    }
+    event.preventDefault();
+    return true;
+  }
+
   function onKeydown(event: KeyboardEvent) {
+    if (onMentionKey(event)) return;
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       send();
@@ -127,9 +168,32 @@
   </div>
 
   <div class="shrink-0 px-4 pb-4">
-    <div class="composer mx-auto max-w-3xl">
+    <div class="composer relative mx-auto max-w-3xl">
+      {#if suggestions.length}
+        <ul class="mentions" role="listbox" id="bot-mentions" aria-label={$t('bots.mentionLabel')}>
+          {#each suggestions as option, index (option.handle)}
+            <li role="option" aria-selected={index === highlighted} id={`bot-mention-${option.handle}`}>
+              <button type="button" class="mention" class:on={index === highlighted} onmousedown={(event) => event.preventDefault()} onclick={() => pick(option.handle)} onmouseenter={() => (highlighted = index)}>
+                <BotAvatar bot={option} size="sm" />
+                <span class="truncate text-[13px] text-foreground">{option.title}</span>
+                <span class="truncate text-[12px] text-muted-foreground">@{option.handle}</span>
+                {#if option.role}<span class="ml-auto truncate pl-2 text-[11.5px] text-muted-foreground">{option.role}</span>{/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <textarea
+        bind:this={input}
         bind:value={draft}
+        oninput={trackMention}
+        onclick={trackMention}
+        onblur={() => (mention = null)}
+        role="combobox"
+        aria-expanded={suggestions.length > 0}
+        aria-controls="bot-mentions"
+        aria-autocomplete="list"
+        aria-activedescendant={suggestions.length ? `bot-mention-${suggestions[highlighted]?.handle}` : undefined}
         rows="1"
         placeholder={$t('bots.placeholder', { values: { name: bot.title } })}
         aria-label={$t('bots.placeholder', { values: { name: bot.title } })}
@@ -216,4 +280,30 @@
     color: var(--background);
   }
   .send:disabled { opacity: 0.3; }
+  .mentions {
+    position: absolute;
+    bottom: calc(100% + 0.4rem);
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    border-radius: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--popover);
+    padding: 0.3rem;
+    box-shadow: var(--shadow-lg);
+  }
+  .mention {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.6rem;
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+  }
+  .mention.on { background: var(--surface-hover); }
 </style>
