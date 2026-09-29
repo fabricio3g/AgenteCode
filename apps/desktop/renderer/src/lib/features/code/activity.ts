@@ -1,24 +1,35 @@
+// A run of tool calls, read at a glance: "Read 8 files · searched 2 · ran 1
+// command". The rows stay one click away.
+
 import type { AgentStep } from '$lib/types/chat';
+import { toolKind, type ToolKind } from '$shared/tool-kinds';
 
-export type ActivityKind = 'commands' | 'edits' | 'reads';
+/** Order the counts appear in the summary line. */
+const ORDER: ToolKind[] = ['edit', 'command', 'read', 'list', 'search', 'web', 'subagent', 'other'];
 
-/** Shared by the compact group and its individual tool rows. */
-export function activityKind(step: AgentStep): ActivityKind | undefined {
-  if (step.toolName === 'bash' || step.type === 'executing') return 'commands';
-  if (step.toolName === 'edit' || step.toolName === 'write' || step.type === 'writing') return 'edits';
-  if (['read', 'grep', 'ls'].includes(step.toolName ?? '') || step.type === 'reading') return 'reads';
-  return undefined;
+export function stepKind(step: AgentStep): ToolKind {
+  return toolKind(step.toolName);
 }
 
-export function activitySummary(steps: AgentStep[]) {
-  const active = steps.filter((step) => step.status === 'running' || step.status === 'pending');
-  const counted = active.length ? active : steps;
-  const kind = steps[0] ? activityKind(steps[0]) : undefined;
-  const count = kind === 'edits'
-    ? new Set(counted.flatMap((step) => {
-        const paths = [...(step.fileChanges ?? []), ...(step.diffStats ?? [])].map((file) => file.path);
-        return paths.length ? paths : [step.detail?.split('\n')[0] || step.id];
-      })).size
-    : counted.length;
-  return { kind, running: active.length > 0, count };
+/** Files an edit step touched (an edit to the same file twice counts once). */
+function editedFiles(steps: AgentStep[]): number {
+  const paths = steps.flatMap((step) => {
+    const files = [...(step.fileChanges ?? []), ...(step.diffStats ?? [])].map((file) => file.path);
+    return files.length ? files : [step.detail?.split('\n')[0] || step.id];
+  });
+  return new Set(paths).size;
+}
+
+export interface ActivityCount {
+  kind: ToolKind;
+  count: number;
+}
+
+/** Per-kind counts for a run of steps, in reading order, and whether any is still going. */
+export function activitySummary(steps: AgentStep[]): { counts: ActivityCount[]; running: boolean } {
+  const counts = ORDER.map((kind) => {
+    const ofKind = steps.filter((step) => stepKind(step) === kind);
+    return { kind, count: kind === 'edit' ? (ofKind.length ? editedFiles(ofKind) : 0) : ofKind.length };
+  }).filter((entry) => entry.count > 0);
+  return { counts, running: steps.some((step) => step.status === 'running' || step.status === 'pending') };
 }

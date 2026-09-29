@@ -298,21 +298,29 @@
     },
     "modeTitle": "モード",
     "activity": {
-      "commands": {
-        "running": "コマンドを実行中",
-        "done": "コマンドを実行しました"
-      },
-      "edits": {
-        "running": "ファイルを編集中",
-        "done": "ファイルを編集しました"
-      },
-      "reads": {
-        "running": "読み取りと検索中",
-        "done": "読み取りと検索が完了しました"
-      },
       "subagents": {
         "running": "サブエージェントを実行中",
         "done": "サブエージェント"
+      },
+      "running": {
+        "read": "{n} 件のファイルを読み込み中",
+        "search": "{n} 件を検索中",
+        "edit": "{n} 件のファイルを編集中",
+        "command": "{n} 件のコマンドを実行中",
+        "web": "{n} 件のウェブを閲覧中",
+        "subagent": "{n} 件のサブエージェントを実行中",
+        "other": "{n} 件のツールを使用中",
+        "list": "{n} 件のフォルダを一覧中"
+      },
+      "done": {
+        "read": "{n} 件のファイルを読み込み",
+        "search": "{n} 件を検索",
+        "edit": "{n} 件のファイルを編集",
+        "command": "{n} 件のコマンドを実行",
+        "web": "{n} 件のウェブを閲覧",
+        "subagent": "{n} 件のサブエージェントを実行",
+        "other": "{n} 件のツールを使用",
+        "list": "{n} 件のフォルダを一覧"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "コメント",
       "commentPrefix": "プランについて: ",
       "hint": "Build はツールの承認を求めます"
-    }
+    },
+    "runtimeNotes": "実行時のメモ · {n}"
   },
   "searchModal": {
     "inMessages": "メッセージ内",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "サイドパネルの幅を変更",
     "resizeSplit": "重ねたパネルのサイズを変更"
+  },
+  "thread": {
+    "showActivity": "アクティビティを表示",
+    "hideActivity": "アクティビティを隠す",
+    "viewFullActivity": "すべてのアクティビティを見る ↗"
   }
 }

@@ -19,7 +19,7 @@
   import { codeWorkspace } from './workspace.svelte';
   import { codeStore } from './code.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { activityKind } from './activity';
+  import { stepKind } from './activity';
 
   let { step, chatId }: { step: AgentStep; chatId?: string } = $props();
 
@@ -29,8 +29,8 @@
   const isRunning = $derived(step.status === 'running' || step.status === 'pending');
   const isApproval = $derived(step.status === 'awaiting_approval' || approvalsStore.items.some((a) => a.id === step.id));
   const isError = $derived(step.status === 'error');
-  const isCommand = $derived(activityKind(step) === 'commands');
-  const isEdit = $derived(activityKind(step) === 'edits');
+  const isCommand = $derived(stepKind(step) === 'command');
+  const isEdit = $derived(stepKind(step) === 'edit');
   const adds = $derived(step.diffStats?.reduce((s, d) => s + d.additions, 0) || 0);
   const dels = $derived(step.diffStats?.reduce((s, d) => s + d.deletions, 0) || 0);
   const looksLikeDiff = (text: string) => /^(---|\+\+\+|@@)/m.test(text);

@@ -298,21 +298,29 @@
     },
     "modeTitle": "Mode",
     "activity": {
-      "commands": {
-        "running": "Exécution des commandes",
-        "done": "Commandes exécutées"
-      },
-      "edits": {
-        "running": "Modification des fichiers",
-        "done": "Fichiers modifiés"
-      },
-      "reads": {
-        "running": "Lecture et recherche",
-        "done": "Lu et recherché"
-      },
       "subagents": {
         "running": "Exécution des sous-agents",
         "done": "Sous-agents"
+      },
+      "running": {
+        "read": "lecture de {n, plural, one {# fichier} other {# fichiers}}",
+        "search": "recherche {n}",
+        "edit": "modification de {n, plural, one {# fichier} other {# fichiers}}",
+        "command": "exécution de {n, plural, one {# commande} other {# commandes}}",
+        "web": "navigation {n}",
+        "subagent": "{n, plural, one {# sous-agent} other {# sous-agents}} en cours",
+        "other": "{n, plural, one {# outil} other {# outils}}",
+        "list": "liste de {n, plural, one {# dossier} other {# dossiers}}"
+      },
+      "done": {
+        "read": "{n, plural, one {# fichier lu} other {# fichiers lus}}",
+        "search": "{n, plural, one {# recherche} other {# recherches}}",
+        "edit": "{n, plural, one {# fichier modifié} other {# fichiers modifiés}}",
+        "command": "{n, plural, one {# commande exécutée} other {# commandes exécutées}}",
+        "web": "{n, plural, one {# page web} other {# pages web}}",
+        "subagent": "{n, plural, one {# sous-agent} other {# sous-agents}}",
+        "other": "{n, plural, one {# outil utilisé} other {# outils utilisés}}",
+        "list": "{n, plural, one {# dossier listé} other {# dossiers listés}}"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "Commentaire",
       "commentPrefix": "À propos du plan : ",
       "hint": "Build demande l’approbation des outils"
-    }
+    },
+    "runtimeNotes": "Notes d'exécution · {n}"
   },
   "searchModal": {
     "inMessages": "Dans les messages",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "Redimensionner les panneaux latéraux",
     "resizeSplit": "Redimensionner les panneaux empilés"
+  },
+  "thread": {
+    "showActivity": "Afficher l'activité",
+    "hideActivity": "Masquer l'activité",
+    "viewFullActivity": "Voir toute l'activité ↗"
   }
 }

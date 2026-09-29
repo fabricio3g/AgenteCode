@@ -17,7 +17,6 @@
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
   import CodeActivityGroup from './CodeActivityGroup.svelte';
-  import { activityKind } from './activity';
   import { t } from 'svelte-i18n';
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
@@ -67,13 +66,13 @@
   type Entry = ReturnType<typeof orderedEntries>[number];
   type Block = { key: string; steps?: NonNullable<Entry['step']>[]; text?: string };
 
-  /** Consecutive steps become one block, so spacing separates text from work. */
+  /** Consecutive steps become one block (one summary line), so text and work alternate cleanly. */
   function groupEntries(entries: Entry[]): Block[] {
     const blocks: Block[] = [];
     for (const entry of entries) {
       const last = blocks[blocks.length - 1];
       if (entry.step) {
-        if (last?.steps && activityKind(last.steps[0]!) === activityKind(entry.step)) last.steps.push(entry.step);
+        if (last?.steps) last.steps.push(entry.step);
         else blocks.push({ key: entry.key, steps: [entry.step] });
       } else if (entry.text) {
         blocks.push({ key: entry.key, text: entry.text });
@@ -159,15 +158,13 @@
 
           {#if children.length}<SubagentGroup {children} />{/if}
           {#if diagnostics.length}
-            <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">Runtime notes · {diagnostics.length}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
+            <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">{$t('code.runtimeNotes', { values: { n: diagnostics.length } })}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
           {/if}
 
           {#if streaming && !entries.length && !message.reasoning}
             <div class="flex items-center px-1 text-xs text-muted-foreground">
               <span class="thinking-dots" aria-label={copy.status.working}></span>
             </div>
-          {:else if streaming && entries[entries.length - 1]?.text}
-            <span class="stream-caret" aria-hidden="true"></span>
           {/if}
 
           {#if todos.length}
@@ -237,7 +234,16 @@
     {#if plan && !run?.running}<PlanReviewCard {chatId} {plan} />{/if}
   </div>
   {#if !pinnedToBottom}
-    <button type="button" class="sticky bottom-1 float-right flex items-center gap-1.5 rounded-full bg-popover px-3 py-1.5 text-xs text-muted-foreground shadow-sm" onclick={() => { pinnedToBottom = true; if (viewport) viewport.scrollTop = viewport.scrollHeight; }}><ArrowDown class="size-3.5" />Latest</button>
+    <!-- Back to the latest output: centred, above the composer, never over text. -->
+    <div class="pointer-events-none sticky bottom-2 flex justify-center">
+      <button
+        type="button"
+        class="jump-latest pointer-events-auto"
+        aria-label={$t('chat.jumpToLatest')}
+        title={$t('chat.jumpToLatest')}
+        onclick={() => { pinnedToBottom = true; if (viewport) viewport.scrollTop = viewport.scrollHeight; }}
+      ><ArrowDown class="size-4" /></button>
+    </div>
   {/if}
 </div>
 
@@ -263,22 +269,19 @@
     50% { opacity: 1; }
   }
 
-  /* Streaming caret: a breathing block under the live text. */
-  .stream-caret {
-    display: inline-block;
-    width: 0.5rem;
-    height: 1em;
-    margin-left: 0.15rem;
-    border-radius: 1px;
-    background: var(--foreground);
-    opacity: 0.75;
-    animation: code-caret-breathe 1s ease-in-out infinite;
+  .jump-latest {
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: var(--popover);
+    color: var(--muted-foreground);
+    box-shadow: var(--shadow-lg);
   }
-
-  @keyframes code-caret-breathe {
-    0%, 100% { opacity: 0.15; }
-    50% { opacity: 0.8; }
-  }
+  .jump-latest:hover { color: var(--foreground); }
 
   .thinking-dots {
     position: relative;
@@ -309,7 +312,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .stream-caret,
     .retry-dot,
     .thinking-dots::before,
     .thinking-dots::after {

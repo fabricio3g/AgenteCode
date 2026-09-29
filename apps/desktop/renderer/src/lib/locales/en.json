@@ -298,15 +298,40 @@
     },
     "modeTitle": "Mode",
     "activity": {
-      "commands": { "running": "Executing commands", "done": "Executed commands" },
-      "edits": { "running": "Editing files", "done": "Edited files" },
-      "reads": { "running": "Reading and searching", "done": "Read and searched" },
-      "subagents": { "running": "Running subagents", "done": "Subagents" }
+      "subagents": {
+        "running": "Running subagents",
+        "done": "Subagents"
+      },
+      "running": {
+        "read": "reading {n, plural, one {# file} other {# files}}",
+        "search": "searching {n}",
+        "edit": "editing {n, plural, one {# file} other {# files}}",
+        "command": "running {n, plural, one {# command} other {# commands}}",
+        "web": "browsing {n}",
+        "subagent": "running {n, plural, one {# subagent} other {# subagents}}",
+        "other": "using {n, plural, one {# tool} other {# tools}}",
+        "list": "listing {n, plural, one {# folder} other {# folders}}"
+      },
+      "done": {
+        "read": "read {n, plural, one {# file} other {# files}}",
+        "search": "searched {n}",
+        "edit": "edited {n, plural, one {# file} other {# files}}",
+        "command": "ran {n, plural, one {# command} other {# commands}}",
+        "web": "browsed {n}",
+        "subagent": "ran {n, plural, one {# subagent} other {# subagents}}",
+        "other": "used {n, plural, one {# tool} other {# tools}}",
+        "list": "listed {n, plural, one {# folder} other {# folders}}"
+      }
     },
     "plan": {
-      "title": "Review plan", "accept": "Accept and build", "redo": "Revise plan", "comment": "Comment",
-      "commentPrefix": "About the plan: ", "hint": "Build asks for tool approvals"
-    }
+      "title": "Review plan",
+      "accept": "Accept and build",
+      "redo": "Revise plan",
+      "comment": "Comment",
+      "commentPrefix": "About the plan: ",
+      "hint": "Build asks for tool approvals"
+    },
+    "runtimeNotes": "Runtime notes · {n}"
   },
   "searchModal": {
     "inMessages": "In messages",
@@ -1501,5 +1526,10 @@
   "dock": {
     "resizeWidth": "Resize the side panels",
     "resizeSplit": "Resize the stacked panels"
+  },
+  "thread": {
+    "showActivity": "Show activity",
+    "hideActivity": "Hide activity",
+    "viewFullActivity": "View full activity ↗"
   }
 }

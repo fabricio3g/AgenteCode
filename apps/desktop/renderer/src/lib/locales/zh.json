@@ -298,21 +298,29 @@
     },
     "modeTitle": "模式",
     "activity": {
-      "commands": {
-        "running": "正在执行命令",
-        "done": "已执行命令"
-      },
-      "edits": {
-        "running": "正在编辑文件",
-        "done": "已编辑文件"
-      },
-      "reads": {
-        "running": "正在读取和搜索",
-        "done": "已读取和搜索"
-      },
       "subagents": {
         "running": "正在运行子智能体",
         "done": "子智能体"
+      },
+      "running": {
+        "read": "正在读取 {n} 个文件",
+        "search": "正在搜索 {n} 次",
+        "edit": "正在编辑 {n} 个文件",
+        "command": "正在运行 {n} 条命令",
+        "web": "正在浏览 {n} 个网页",
+        "subagent": "正在运行 {n} 个子代理",
+        "other": "正在使用 {n} 个工具",
+        "list": "正在列出 {n} 个文件夹"
+      },
+      "done": {
+        "read": "读取了 {n} 个文件",
+        "search": "搜索了 {n} 次",
+        "edit": "编辑了 {n} 个文件",
+        "command": "运行了 {n} 条命令",
+        "web": "浏览了 {n} 个网页",
+        "subagent": "运行了 {n} 个子代理",
+        "other": "使用了 {n} 个工具",
+        "list": "列出了 {n} 个文件夹"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "评论",
       "commentPrefix": "关于计划：",
       "hint": "Build 会请求工具批准"
-    }
+    },
+    "runtimeNotes": "运行说明 · {n}"
   },
   "searchModal": {
     "inMessages": "在消息中",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "调整侧边面板宽度",
     "resizeSplit": "调整堆叠面板大小"
+  },
+  "thread": {
+    "showActivity": "显示活动",
+    "hideActivity": "隐藏活动",
+    "viewFullActivity": "查看全部活动 ↗"
   }
 }

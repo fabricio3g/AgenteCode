@@ -3,7 +3,7 @@ import type { ChatMessage } from '$lib/types/chat';
 import { acceptMessage, parsePlan, pendingPlan } from './plan-review';
 import { fileMentionAt, insertFile, matchFiles } from './file-mention';
 import { chatToMarkdown, exportFileName } from './export-chat';
-import { activitySummary } from './activity';
+import { activitySummary, stepKind } from './activity';
 import { conversationSpend, spendLabel } from './accounting';
 import { emptySpend } from './code-run';
 
@@ -57,21 +57,6 @@ describe('export', () => {
 });
 
 describe('compact activity and composer accounting', () => {
-  it('counts active commands rather than earlier completed commands', () => {
-    expect(activitySummary([
-      { id: 'old', type: 'executing', toolName: 'bash', label: 'Run', status: 'done' },
-      { id: 'live', type: 'executing', toolName: 'bash', label: 'Run', status: 'running' }
-    ])).toEqual({ kind: 'commands', running: true, count: 1 });
-  });
-
-  it('counts edited files once when several edits touch the same file', () => {
-    expect(activitySummary([
-      { id: 'a', type: 'writing', toolName: 'edit', label: 'Edit', detail: 'src/app.ts', status: 'done' },
-      { id: 'b', type: 'writing', toolName: 'edit', label: 'Edit', detail: 'src/app.ts', status: 'done' },
-      { id: 'c', type: 'writing', toolName: 'write', label: 'Write', detail: 'README.md', status: 'done' }
-    ])).toEqual({ kind: 'edits', running: false, count: 2 });
-  });
-
   it('uses live accounting once and keeps prior turns when resuming', () => {
     const prior = { ...emptySpend(), costUsd: 0.01, promptTokens: 20, cacheReadTokens: 80, estimated: true };
     const current = { ...emptySpend(), costUsd: 0.02, promptTokens: 20, cacheReadTokens: 80 };
@@ -81,5 +66,36 @@ describe('compact activity and composer accounting', () => {
     expect(spendLabel(conversationSpend(saved, live))).toBe('~$0.040 · 80% cached');
     // A stale run left behind after rewind contributes nothing.
     expect(spendLabel(conversationSpend(saved.slice(0, 1), live))).toBe('~$0.010 · 80% cached');
+  });
+});
+
+
+describe('activity summary', () => {
+  const step = (toolName: string, status: 'done' | 'running' = 'done', path?: string) =>
+    ({ id: Math.random().toString(36), type: 'tool', label: toolName, toolName, status, ...(path ? { fileChanges: [{ path }] } : {}) }) as never;
+
+  it('knows the Rust core tool names', () => {
+    expect(stepKind(step('read_file'))).toBe('read');
+    expect(stepKind(step('find'))).toBe('search');
+    expect(stepKind(step('shell'))).toBe('command');
+    expect(stepKind(step('mcp__github__issues'))).toBe('other');
+  });
+
+  it('counts a mixed run by kind, edits by distinct file', () => {
+    const summary = activitySummary([step('read_file'), step('find'), step('read_file'), step('edit_file', 'done', 'a.ts'), step('edit_file', 'done', 'a.ts'), step('shell', 'running')]);
+    expect(summary.running).toBe(true);
+    expect(summary.counts).toEqual([
+      { kind: 'edit', count: 1 },
+      { kind: 'command', count: 1 },
+      { kind: 'read', count: 2 },
+      { kind: 'search', count: 1 }
+    ]);
+  });
+});
+
+describe('tool kinds for UI names', () => {
+  it('reads the names main gives Rust tools and the browser tools', () => {
+    const kind = (toolName: string) => stepKind({ id: 'x', type: 'tool', label: '', toolName, status: 'done' });
+    expect([kind('bash'), kind('ls'), kind('write'), kind('browser_navigate')]).toEqual(['command', 'list', 'edit', 'web']);
   });
 });

@@ -298,21 +298,29 @@
     },
     "modeTitle": "Modo",
     "activity": {
-      "commands": {
-        "running": "Executando comandos",
-        "done": "Comandos executados"
-      },
-      "edits": {
-        "running": "Editando arquivos",
-        "done": "Arquivos editados"
-      },
-      "reads": {
-        "running": "Lendo e pesquisando",
-        "done": "Lido e pesquisado"
-      },
       "subagents": {
         "running": "Executando subagentes",
         "done": "Subagentes"
+      },
+      "running": {
+        "read": "lendo {n, plural, one {# arquivo} other {# arquivos}}",
+        "search": "buscando {n}",
+        "edit": "editando {n, plural, one {# arquivo} other {# arquivos}}",
+        "command": "executando {n, plural, one {# comando} other {# comandos}}",
+        "web": "navegando {n}",
+        "subagent": "executando {n, plural, one {# subagente} other {# subagentes}}",
+        "other": "usando {n, plural, one {# ferramenta} other {# ferramentas}}",
+        "list": "listando {n, plural, one {# pasta} other {# pastas}}"
+      },
+      "done": {
+        "read": "leu {n, plural, one {# arquivo} other {# arquivos}}",
+        "search": "buscou {n}",
+        "edit": "editou {n, plural, one {# arquivo} other {# arquivos}}",
+        "command": "executou {n, plural, one {# comando} other {# comandos}}",
+        "web": "navegou {n}",
+        "subagent": "executou {n, plural, one {# subagente} other {# subagentes}}",
+        "other": "usou {n, plural, one {# ferramenta} other {# ferramentas}}",
+        "list": "listou {n, plural, one {# pasta} other {# pastas}}"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "Comentário",
       "commentPrefix": "Sobre o plano: ",
       "hint": "O Build pede aprovação das ferramentas"
-    }
+    },
+    "runtimeNotes": "Notas do ambiente · {n}"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "Redimensionar os painéis laterais",
     "resizeSplit": "Redimensionar os painéis empilhados"
+  },
+  "thread": {
+    "showActivity": "Mostrar atividade",
+    "hideActivity": "Ocultar atividade",
+    "viewFullActivity": "Ver toda a atividade ↗"
   }
 }

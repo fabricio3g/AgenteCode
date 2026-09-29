@@ -514,7 +514,6 @@ class CodeStore {
       // just a generic "failed" card.
       if (run.error) {
         message.metadata = { ...message.metadata, error: true, errorMessage: run.error };
-        if (!message.content) message.content = run.error;
       } else if (run.stopReason) {
         message.metadata = { ...message.metadata, codeStopReason: run.stopReason };
       }

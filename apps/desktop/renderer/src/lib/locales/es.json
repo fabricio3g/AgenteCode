@@ -298,21 +298,29 @@
     },
     "modeTitle": "Modo",
     "activity": {
-      "commands": {
-        "running": "Ejecutando comandos",
-        "done": "Comandos ejecutados"
-      },
-      "edits": {
-        "running": "Editando archivos",
-        "done": "Archivos editados"
-      },
-      "reads": {
-        "running": "Leyendo y buscando",
-        "done": "Leído y buscado"
-      },
       "subagents": {
         "running": "Ejecutando subagentes",
         "done": "Subagentes"
+      },
+      "running": {
+        "read": "leyendo {n, plural, one {# archivo} other {# archivos}}",
+        "search": "buscando {n}",
+        "edit": "editando {n, plural, one {# archivo} other {# archivos}}",
+        "command": "ejecutando {n, plural, one {# comando} other {# comandos}}",
+        "web": "navegando {n}",
+        "subagent": "ejecutando {n, plural, one {# subagente} other {# subagentes}}",
+        "other": "usando {n, plural, one {# herramienta} other {# herramientas}}",
+        "list": "listando {n, plural, one {# carpeta} other {# carpetas}}"
+      },
+      "done": {
+        "read": "leyó {n, plural, one {# archivo} other {# archivos}}",
+        "search": "buscó {n}",
+        "edit": "editó {n, plural, one {# archivo} other {# archivos}}",
+        "command": "ejecutó {n, plural, one {# comando} other {# comandos}}",
+        "web": "navegó {n}",
+        "subagent": "ejecutó {n, plural, one {# subagente} other {# subagentes}}",
+        "other": "usó {n, plural, one {# herramienta} other {# herramientas}}",
+        "list": "listó {n, plural, one {# carpeta} other {# carpetas}}"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "Comentario",
       "commentPrefix": "Sobre el plan: ",
       "hint": "Build pide la aprobación de las herramientas"
-    }
+    },
+    "runtimeNotes": "Notas del entorno · {n}"
   },
   "searchModal": {
     "inMessages": "En los mensajes",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "Cambiar el ancho de los paneles laterales",
     "resizeSplit": "Cambiar el tamaño de los paneles apilados"
+  },
+  "thread": {
+    "showActivity": "Mostrar actividad",
+    "hideActivity": "Ocultar actividad",
+    "viewFullActivity": "Ver toda la actividad ↗"
   }
 }

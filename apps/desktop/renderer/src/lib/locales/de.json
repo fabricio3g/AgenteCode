@@ -298,21 +298,29 @@
     },
     "modeTitle": "Modus",
     "activity": {
-      "commands": {
-        "running": "Befehle werden ausgeführt",
-        "done": "Befehle ausgeführt"
-      },
-      "edits": {
-        "running": "Dateien werden bearbeitet",
-        "done": "Dateien bearbeitet"
-      },
-      "reads": {
-        "running": "Lesen und Suchen",
-        "done": "Gelesen und gesucht"
-      },
       "subagents": {
         "running": "Subagenten laufen",
         "done": "Subagenten"
+      },
+      "running": {
+        "read": "liest {n, plural, one {# Datei} other {# Dateien}}",
+        "search": "sucht {n}",
+        "edit": "bearbeitet {n, plural, one {# Datei} other {# Dateien}}",
+        "command": "führt {n, plural, one {# Befehl} other {# Befehle}} aus",
+        "web": "browst {n}",
+        "subagent": "{n, plural, one {# Subagent läuft} other {# Subagenten laufen}}",
+        "other": "nutzt {n, plural, one {# Werkzeug} other {# Werkzeuge}}",
+        "list": "listet {n, plural, one {# Ordner} other {# Ordner}}"
+      },
+      "done": {
+        "read": "{n, plural, one {# Datei gelesen} other {# Dateien gelesen}}",
+        "search": "{n}× gesucht",
+        "edit": "{n, plural, one {# Datei bearbeitet} other {# Dateien bearbeitet}}",
+        "command": "{n, plural, one {# Befehl ausgeführt} other {# Befehle ausgeführt}}",
+        "web": "{n}× im Web",
+        "subagent": "{n, plural, one {# Subagent} other {# Subagenten}}",
+        "other": "{n, plural, one {# Werkzeug genutzt} other {# Werkzeuge genutzt}}",
+        "list": "{n, plural, one {# Ordner aufgelistet} other {# Ordner aufgelistet}}"
       }
     },
     "plan": {
@@ -322,7 +330,8 @@
       "comment": "Kommentar",
       "commentPrefix": "Zum Plan: ",
       "hint": "Build fragt nach Werkzeugfreigaben"
-    }
+    },
+    "runtimeNotes": "Laufzeithinweise · {n}"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",
@@ -1517,5 +1526,10 @@
   "dock": {
     "resizeWidth": "Seitenleisten in der Breite ändern",
     "resizeSplit": "Gestapelte Bereiche in der Größe ändern"
+  },
+  "thread": {
+    "showActivity": "Aktivität zeigen",
+    "hideActivity": "Aktivität ausblenden",
+    "viewFullActivity": "Gesamte Aktivität ansehen ↗"
   }
 }

@@ -2,7 +2,8 @@
 
 <script lang="ts">
   import type { AgentActivity, AgentOutcome, AgentStopReason, ChatMessage } from '$lib/types/chat';
-  import { Check, ChevronDown, CircleAlert, LoaderCircle, Square } from 'lucide-svelte';
+  import { Check, ChevronDown, CircleAlert, CircleStop, LoaderCircle } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import ToolCallRow from '$lib/components/agent/ToolCallRow.svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy } from '$lib/copy';
@@ -184,7 +185,7 @@
 
 {#if hasRelevance}
   <div class="agent-status">
-    <button type="button" class="agent-line" onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} agent activity`}>
+    <button type="button" class="agent-line" onclick={() => expanded = !expanded} aria-expanded={expanded} aria-label={expanded ? $t('thread.hideActivity') : $t('thread.showActivity')}>
       {#if isStreaming}
         <LoaderCircle class="size-3.5 motion-safe:animate-spin" />
         <span class="agent-line-text">
@@ -194,7 +195,7 @@
         {#if failed}
           <CircleAlert class="size-3.5 text-destructive" />
         {:else if stopped}
-          <Square class="size-3" />
+          <CircleStop class="size-3.5" />
         {:else}
           <span class="status-icon done" aria-hidden="true">
             <Check class="size-3.5" />
@@ -213,7 +214,7 @@
           <ToolCallRow {step} />
         {/each}
         {#if messageId}
-          <button type="button" class="activity-link" onclick={openActivity}>View full activity ↗</button>
+          <button type="button" class="activity-link" onclick={openActivity}>{$t('thread.viewFullActivity')}</button>
         {/if}
       </div>
     {/if}
@@ -227,9 +228,10 @@
     overflow: hidden;
   }
 
+  /* The line is as wide as its text, so the chevron sits right after it. */
   .agent-line {
     display: flex;
-    width: 100%;
+    width: fit-content;
     max-width: 100%;
     align-items: center;
     gap: 0.4rem;
@@ -268,7 +270,7 @@
   }
 
   .agent-line-text {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
     overflow: hidden;

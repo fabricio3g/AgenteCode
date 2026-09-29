@@ -14,14 +14,19 @@
   const visible = $derived(steps.filter((step) => step.type !== 'approval' || attention(step)));
   const quiet = $derived(visible.filter((step) => !attention(step)));
   const summary = $derived(activitySummary(quiet));
+  /** "Read 8 files · searched 2 · ran 1 command", first letter capitalised. */
+  const line = $derived.by(() => {
+    const state = summary.running ? 'running' : 'done';
+    const text = summary.counts.map(({ kind, count }) => $t(`code.activity.${state}.${kind}`, { values: { n: count } })).join(' · ');
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  });
 </script>
 
-{#if quiet.length && summary.kind}
+{#if quiet.length > 1}
   <div class="min-w-0">
     <button type="button" class="activity-trigger" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
       <ChevronRight class="size-3 shrink-0 transition-transform {expanded ? 'rotate-90' : ''}" />
-      <span>{$t(`code.activity.${summary.kind}.${summary.running ? 'running' : 'done'}`)}</span>
-      <span class="tabular-nums">{summary.count}</span>
+      <span class="min-w-0 truncate tabular-nums">{line}</span>
     </button>
     {#if expanded}
       <div class="ml-3 min-w-0 py-1">
