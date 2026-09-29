@@ -2,21 +2,26 @@
 
 import { invoke } from '$lib/services/bridge';
 import type { CodeCheckpointSummary, AgenteStartSessionArgs } from '$shared/agente-protocol';
+import type { Attachment } from '$shared/agente-protocol.gen';
 
-export function startCodeAgentSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean }> {
+export function startCodeAgentSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex?: number }> {
   return invoke('agente_start_session', args as unknown as Record<string, unknown>);
 }
 
-export function promptCodeAgent(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>): Promise<{ ok: boolean; error?: string }> {
-  return invoke('agente_prompt', { chatId, text, images });
+export function codeMessageAction(chatId: string, action: 'fork' | 'rewind', conversationIndex: number): Promise<{ sessionId: string; reverted?: number }> {
+  return invoke('agente_message_action', { chatId, action, conversationIndex });
 }
 
-export function steerCodeAgent(chatId: string, text: string): Promise<{ ok: boolean }> {
-  return invoke('agente_steer', { chatId, text });
+export function promptCodeAgent(chatId: string, text: string, attachments?: Attachment[]): Promise<{ ok: boolean; error?: string; conversationIndex?: number }> {
+  return invoke('agente_prompt', { chatId, text, attachments });
 }
 
-export function followUpCodeAgent(chatId: string, text: string): Promise<{ ok: boolean }> {
-  return invoke('agente_follow_up', { chatId, text });
+export function steerCodeAgent(chatId: string, text: string, attachments?: Attachment[]): Promise<{ ok: boolean }> {
+  return invoke('agente_steer', { chatId, text, attachments });
+}
+
+export function followUpCodeAgent(chatId: string, text: string, attachments?: Attachment[]): Promise<{ ok: boolean }> {
+  return invoke('agente_follow_up', { chatId, text, attachments });
 }
 
 export function abortCodeAgent(chatId: string): Promise<{ ok: boolean }> {
@@ -60,4 +65,50 @@ export function listLiveCodeAgentChats(): Promise<string[]> {
 /** Close live sessions and delete their logs + checkpoints (never project files). */
 export function deleteCodeAgentSessionData(args: { chatIds?: string[]; sessionIds?: string[] }): Promise<{ ok: boolean; removed: number }> {
   return invoke('agente_delete_session_data', args);
+}
+
+// ── TUI parity: !commands, undo/redo, project lookups ──────────────────
+
+/** Run `command` in the project's shell, outside the model (the TUI's `!command`). */
+export function execCodeCommand(chatId: string, command: string): Promise<{ ok: boolean; error?: string }> {
+  return invoke('agente_exec', { chatId, command });
+}
+
+/** Undo or redo the last batch of file edits in the conversation's session. */
+export function codeEdits(chatId: string, action: 'undo' | 'redo'): Promise<{ ok: boolean; files?: string[]; error?: string }> {
+  return invoke(action === 'undo' ? 'agente_undo' : 'agente_redo', { chatId });
+}
+
+export interface ProjectInfo {
+  skills: Array<{ name: string; description: string; scope: 'user' | 'project'; source: string }>;
+  agents: Array<{ name: string; description: string; builtin: boolean }>;
+  commands: Array<{ name: string; description: string; template: string }>;
+  agents_md: boolean;
+}
+
+export interface McpServer {
+  name: string;
+  target: string;
+  remote: boolean;
+  status: 'disabled' | 'needs_approval' | 'connecting' | 'ready' | 'failed';
+  error: string | null;
+  tools: number;
+}
+
+export function projectInfo(projectRoot: string): Promise<ProjectInfo> {
+  return invoke('agente_project_info', { projectRoot });
+}
+
+/** Write AGENTS.md and the .agente folders (the TUI's /init). */
+export function initProject(projectRoot: string): Promise<{ message: string }> {
+  return invoke('agente_project_init', { projectRoot });
+}
+
+export function mcpStatus(projectRoot?: string): Promise<McpServer[]> {
+  return invoke('agente_mcp_status', { projectRoot });
+}
+
+/** The project's files (git's view when it is a repository), for @ mentions. */
+export function projectFiles(projectRoot: string): Promise<string[]> {
+  return invoke('agente_project_files', { projectRoot });
 }

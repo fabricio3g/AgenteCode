@@ -109,7 +109,7 @@ export class RustTurnTranslator {
 
   translate(envelope: RuntimeEventEnvelope): CodeAgentEvent[] {
     // A subagent's own events are not this chat's steps.
-    if (envelope.parent_run_id) return [];
+    if (envelope.parent_run_id && envelope.event.type !== 'approval_requested') return [this.runtimeEvent(envelope.event, envelope.parent_run_id)];
     const event = envelope.event;
     if (event.type === 'file_changed') {
       this.recordFile(event);
@@ -153,10 +153,11 @@ export class RustTurnTranslator {
 
   private map(event: RuntimeEvent): CodeAgentEvent[] {
     const handler = this.handlers[event.type] as ((event: RuntimeEvent) => CodeAgentEvent[]) | undefined;
-    // thinking, whole assistant messages (the deltas carried them),
-    // heartbeats, per-call spend, subagent events and diagnostics have no
-    // Code UI counterpart.
-    return handler ? handler(event) : [];
+    return handler ? handler(event) : [this.runtimeEvent(event)];
+  }
+
+  private runtimeEvent(event: RuntimeEvent, parentRunId?: string): CodeAgentEvent {
+    return { type: 'runtime_event', chatId: this.chatId, event, ...(parentRunId ? { parentRunId } : {}) };
   }
 
   private usage(usage: Extract<RuntimeEvent, { type: 'usage' }>['usage']): CodeAgentEvent {
@@ -186,7 +187,7 @@ export class RustTurnTranslator {
       return [{ type: 'tool_start', chatId: this.chatId, toolCallId: event.id, toolName: uiToolName(event.name), args: parseArgs(event.arguments) }];
     },
     tool_progress: (event) => {
-      const text = (this.output.get(event.id) ?? '') + event.chunk;
+      const text = ((this.output.get(event.id) ?? '') + event.chunk).slice(-32_768);
       this.output.set(event.id, text);
       return [{ type: 'tool_update', chatId: this.chatId, toolCallId: event.id, partialResult: text }];
     },
@@ -213,10 +214,9 @@ export class RustTurnTranslator {
     }],
     todo_changed: (event) => [{ type: 'todo_update', chatId: this.chatId, todos: todos(event.todos) }],
     compaction_started: () => [{ type: 'compaction_start', chatId: this.chatId, reason: 'auto' }],
-    context_compacted: () => [{ type: 'compaction_end', chatId: this.chatId, reason: 'auto', success: true }],
+    context_compacted: (event) => [{ type: 'compaction_end', chatId: this.chatId, reason: 'auto', success: true, tokensBefore: event.tokens_before, tokensAfter: event.tokens_after, smart: event.smart }],
     usage: (event) => [this.usage(event.usage)],
     retry: (event) => [{ type: 'llm_retry', chatId: this.chatId, attempt: event.attempt, delayMs: event.delay_ms }],
-    steering_queued: () => [{ type: 'steer_acknowledged', chatId: this.chatId, accepted: true }],
     turn_finished: () => this.finishTurn('stop'),
     turn_cancelled: () => this.finishTurn('aborted'),
     turn_failed: (event) => [{ type: 'error', chatId: this.chatId, message: event.message }, ...this.finishTurn('error')]

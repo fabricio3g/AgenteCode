@@ -5,7 +5,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { AgenteClient, AgenteRpcError } from '../../main/agente-client.ts';
-import { AgenteDaemon, defaultSocketPath, resolveAgenteBinary } from '../../main/agente-daemon.ts';
+import { AgenteDaemon, defaultSocketPath, resolveAgenteBinary, REQUIRED_CAPABILITIES } from '../../main/agente-daemon.ts';
 
 /** Short socket paths: Unix sockets cap the path at ~108 bytes. */
 function socketDir(tag) {
@@ -66,6 +66,30 @@ test('the default socket follows XDG_RUNTIME_DIR, else ~/.agente', () => {
   assert.equal(defaultSocketPath({ USERNAME: 'ana' }, 'win32'), '\\\\.\\pipe\\agente-ana');
 });
 
+test('a reused daemon missing desktop methods is rejected during initialization', async () => {
+  const dir = socketDir('stale');
+  const socketPath = path.join(dir, 's.sock');
+  let disconnected;
+  const closed = new Promise((resolve) => { disconnected = resolve; });
+  const server = net.createServer((connection) => {
+    connection.once('data', (chunk) => {
+      const request = JSON.parse(String(chunk));
+      connection.end(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { protocol_version: 2, version: '0.2.1' } }) + '\n');
+    });
+    connection.once('close', disconnected);
+  });
+  await new Promise((resolve) => server.listen(socketPath, resolve));
+  try {
+    const daemon = new AgenteDaemon({ binary: null, socketPath });
+    await assert.rejects(daemon.connect(), /incompatible.*missing bots.*Restart agente serve/s);
+    await closed;
+    assert.equal(server.listening, true, 'an incompatible external daemon is not stopped');
+  } finally {
+    server.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..', '..');
 const binary = resolveAgenteBinary({ repoRoot });
 
@@ -77,6 +101,9 @@ test('Desktop starts agente serve, runs a command through it, and reuses a runni
   const daemon = new AgenteDaemon({ binary, socketPath, env });
   try {
     const client = await daemon.connect();
+    const hello = await client.request('initialize');
+    assert.ok(REQUIRED_CAPABILITIES.every((capability) => hello.capabilities.includes(capability)));
+    assert.ok(Array.isArray(await client.request('bots.list')), 'Bots uses the current backend');
     assert.equal(await daemon.connect(), client, 'one connection is shared');
 
     const notes = [];

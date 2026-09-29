@@ -28,12 +28,10 @@
   import BrowserPanel from '$lib/components/browser/BrowserPanel.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
-  import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import RightDock, { type DockPanel } from './RightDock.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
   import { codeWorkspace } from '$lib/features/code/workspace.svelte';
-  import { Plus, Boxes, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
   import { hardwareStore } from '$lib/stores/hardware.svelte';
@@ -69,9 +67,6 @@
     ['mod+?', $t('shortcuts.help')],
     ['escape', $t('shortcuts.escape')]
   ]);
-  const newSessionLabel = $derived(
-    inCodeSpace ? $t('code.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')
-  );
 
   function startNewSession() {
     if (inCodeSpace) {
@@ -104,7 +99,7 @@
       event.preventDefault(); openModelHub('general'); return;
     }
     if (ctrl && event.key === 'b') {
-      event.preventDefault(); appStore.sidebarOpen = !appStore.sidebarOpen; return;
+      event.preventDefault(); toggleSidebar(); return;
     }
     // Ctrl+` toggles the artifact studio
     if (ctrl && event.key === '`') {
@@ -134,7 +129,10 @@
       void hardwareStore.refresh();
       void capabilitiesStore.refresh();
     }
-    return () => document.removeEventListener('keydown', handleKeydown);
+    return () => {
+      document.removeEventListener('keydown', handleKeydown);
+      clearPeekTimers();
+    };
   });
 
   $effect(() => {
@@ -163,6 +161,117 @@
   let sidebarResizing = $state(false);
   let sidebarStart = 0;
 
+  // One mounted sidebar: pinned participates in layout; preview floats below
+  // the topbar. Hover state never changes the user's pinned choice.
+  let sidebarPanel = $state<HTMLDivElement>();
+  let sidebarPeek = $state(false);
+  let peekOpenTimer: ReturnType<typeof setTimeout> | undefined;
+  let peekCloseTimer: ReturnType<typeof setTimeout> | undefined;
+  let pointerTarget: Node | null = null;
+  let keyboardNavigation = false;
+  let suppressPeekUntil = 0;
+
+  function clearPeekTimers() {
+    clearTimeout(peekOpenTimer);
+    clearTimeout(peekCloseTimer);
+    peekOpenTimer = peekCloseTimer = undefined;
+  }
+
+  function closeSidebarPeek() {
+    clearPeekTimers();
+    sidebarPeek = false;
+  }
+
+  function toggleSidebar() {
+    closeSidebarPeek();
+    suppressPeekUntil = performance.now() + 250;
+    appStore.sidebarOpen = !appStore.sidebarOpen;
+  }
+
+  function isSidebarTarget(target: Node | null): boolean {
+    if (!target) return false;
+    if (sidebarPanel?.contains(target)) return true;
+    if (target instanceof Element && target.closest('[data-sidebar-toggle]')) return true;
+    // Menus are portalled: their trigger's aria-controls keeps the preview
+    // alive while the pointer or keyboard moves into their floating panel.
+    return [...(sidebarPanel?.querySelectorAll('[aria-expanded="true"][aria-controls]') ?? [])].some((trigger) => {
+      const controlled = document.getElementById(trigger.getAttribute('aria-controls')!);
+      return !!controlled?.contains(target);
+    });
+  }
+
+  function keepSidebarPeek() {
+    clearTimeout(peekCloseTimer);
+    peekCloseTimer = undefined;
+  }
+
+  function showSidebarPeek() {
+    if (appStore.sidebarOpen || performance.now() < suppressPeekUntil) return;
+    keepSidebarPeek();
+    if (peekOpenTimer || sidebarPeek) return;
+    peekOpenTimer = setTimeout(() => {
+      peekOpenTimer = undefined;
+      sidebarPeek = true;
+    }, 120);
+  }
+
+  function schedulePeekClose() {
+    clearTimeout(peekOpenTimer);
+    peekOpenTimer = undefined;
+    if (peekCloseTimer) return;
+    peekCloseTimer = setTimeout(() => {
+      peekCloseTimer = undefined;
+      if (isSidebarTarget(pointerTarget) || (keyboardNavigation && isSidebarTarget(document.activeElement))) return;
+      sidebarPeek = false;
+    }, 180);
+  }
+
+  function leaveSidebar(event: PointerEvent) {
+    pointerTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+    if (!isSidebarTarget(pointerTarget)) schedulePeekClose();
+  }
+
+  $effect(() => {
+    if (appStore.sidebarOpen) closeSidebarPeek();
+  });
+
+  $effect(() => {
+    if (!sidebarPeek) return;
+    const move = (event: PointerEvent) => {
+      keyboardNavigation = false;
+      pointerTarget = event.target instanceof Node ? event.target : null;
+      if (isSidebarTarget(pointerTarget)) keepSidebarPeek();
+      else schedulePeekClose();
+    };
+    const press = (event: PointerEvent) => {
+      keyboardNavigation = false;
+      if (!isSidebarTarget(event.target instanceof Node ? event.target : null)) closeSidebarPeek();
+    };
+    const key = (event: KeyboardEvent) => {
+      keyboardNavigation = true;
+      if (event.key === 'Escape' && !document.querySelector('[role="menu"], [aria-modal="true"]')) {
+        closeSidebarPeek();
+        document.querySelector<HTMLButtonElement>('[data-sidebar-toggle]')?.focus();
+      }
+    };
+    const focus = (event: FocusEvent) => {
+      if (isSidebarTarget(event.target instanceof Node ? event.target : null)) keepSidebarPeek();
+      else schedulePeekClose();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerdown', press, true);
+    document.addEventListener('keydown', key);
+    document.addEventListener('focusin', focus);
+    window.addEventListener('blur', closeSidebarPeek);
+    return () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerdown', press, true);
+      document.removeEventListener('keydown', key);
+      document.removeEventListener('focusin', focus);
+      window.removeEventListener('blur', closeSidebarPeek);
+    };
+  });
+
   function resizeSidebar(delta: number) {
     sidebarWidth = Math.round(Math.min(440, Math.max(200, sidebarStart + delta)));
   }
@@ -177,51 +286,22 @@
   }
 </script>
 
-<div class="flex h-full overflow-hidden bg-background text-foreground">
+<div class="relative flex h-full overflow-hidden bg-background text-foreground">
   <!-- Full-height sidebar (Flaxeo pattern): sidebar | titlebar+main -->
   <div
-    class="sidebar-outer relative flex shrink-0 flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-sidebar"
+    class="sidebar-outer relative flex shrink-0 flex-col bg-sidebar"
     class:expanded={appStore.sidebarOpen}
     class:resizing={sidebarResizing}
     style="--sidebar-w: {sidebarWidth}px"
   >
-    <div class="sidebar-view-full absolute inset-0 flex flex-col">
+    <div
+      bind:this={sidebarPanel}
+      id="app-sidebar"
+      class="sidebar-view-full absolute inset-0 flex flex-col"
+      class:preview={!appStore.sidebarOpen && sidebarPeek}
+      inert={!appStore.sidebarOpen && !sidebarPeek}
+    >
       <Sidebar />
-    </div>
-
-    <!-- pt-0.5 centres the first 2rem control inside the titlebar's 2.25rem
-         row, so the collapsed rail keeps the same baseline as the titlebar. -->
-    <div class="sidebar-view-collapsed absolute inset-0 flex flex-col items-center gap-0.5 px-2 pt-0.5">
-      <Tooltip label={newSessionLabel}>
-        <button
-          class="aui-icon-button size-8"
-          onclick={startNewSession}
-          aria-label={newSessionLabel}
-        >
-          <Plus class="size-4" />
-        </button>
-      </Tooltip>
-
-      <div class="flex-1"></div>
-
-      <Tooltip label={$t('sidebar.models')}>
-        <button
-          class="aui-icon-button size-8"
-          onclick={() => openModelHub('models')}
-          aria-label={$t('sidebar.models')}
-        >
-          <Boxes class="size-4" />
-        </button>
-      </Tooltip>
-      <Tooltip label={$t('sidebar.settings')}>
-        <button
-          class="aui-icon-button size-8 mb-1"
-          onclick={() => openModelHub('general')}
-          aria-label={$t('sidebar.settings')}
-        >
-          <Settings class="size-4" />
-        </button>
-      </Tooltip>
     </div>
   </div>
 
@@ -237,7 +317,7 @@
 
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
   <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
-    <Titlebar />
+    <Titlebar sidebarPreview={sidebarPeek} onSidebarEnter={showSidebarPeek} onSidebarLeave={leaveSidebar} onSidebarToggle={toggleSidebar} />
 
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <!-- The one branch point between the spaces:
@@ -321,46 +401,50 @@
 
 <style>
   .sidebar-outer {
-    width: 3.5rem; /* w-14 */
+    width: 0;
     transition: width var(--motion-smooth) var(--motion-ease-out);
   }
   /* Default 15rem: room for a project tree with row actions and status
      dots; dragging the edge sets --sidebar-w. */
   .sidebar-outer.expanded {
     width: var(--sidebar-w, 15rem);
+    border-right: 1px solid var(--sidebar-border);
   }
   .sidebar-outer.resizing {
     transition: none;
   }
 
   .sidebar-view-full {
+    width: var(--sidebar-w, 15rem);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
     overflow: hidden;
     transition: opacity 150ms ease, visibility 0s linear 150ms;
   }
-  .sidebar-outer.expanded .sidebar-view-full {
+  .sidebar-outer.expanded .sidebar-view-full,
+  .sidebar-view-full.preview {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
     transition-delay: 40ms, 0s;
   }
 
-  .sidebar-view-collapsed {
-    opacity: 1;
-    visibility: visible;
-    transition: opacity 120ms ease, visibility 0s linear;
-  }
-
-  .sidebar-outer.expanded .sidebar-view-collapsed {
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition-delay: 0s, 120ms;
+  .sidebar-view-full.preview {
+    --sidebar: var(--popover);
+    position: fixed;
+    z-index: var(--z-float);
+    top: 2.25rem;
+    bottom: 0.5rem;
+    left: 0;
+    right: auto;
+    max-width: calc(100vw - 1rem);
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+    box-shadow: var(--shadow-lg);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .sidebar-outer { transition: none; will-change: auto; }
+    .sidebar-view-full { transition: none; }
   }
 </style>

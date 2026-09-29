@@ -23,7 +23,7 @@ import { toErrorMessage, isAbortError, humanizeAgentError } from '$lib/utils/err
 import { debugLog } from '$lib/services/agent-tool-dispatch';
 import { checkAbort, emitSteps, useSystemPrompt, type AgentRun } from '$lib/services/agent-run-context';
 
-export type ModelCallOutcome = { completion: CompletionResult } | { error: string };
+export type ModelCallOutcome = { completion: CompletionResult } | { error: string; errorCode?: string };
 
 export async function callModel(
   run: AgentRun,
@@ -36,11 +36,14 @@ export async function callModel(
   let streamedContent = '';
   // Captured so the fallback can report *why* native tools failed.
   let nativeStreamError = '';
+  let streamErrorCode: string | undefined;
   args.onContent?.('');
 
   const runStream = (msgs: RequestMessage[], tools?: typeof plan.toolDefs) => {
     streamedReasoning = '';
     streamedContent = '';
+    nativeStreamError = '';
+    streamErrorCode = undefined;
     return agentStreamComplete({
       messages: msgs,
       tools,
@@ -48,7 +51,7 @@ export async function callModel(
       config,
       reasoningLevel: args.reasoningLevel,
       omitMaxTokens: plan.omitMaxTokens,
-      onError: (message) => { nativeStreamError = message; },
+      onError: (message, code) => { nativeStreamError = message; streamErrorCode = code; },
       onReasoning: (text) => {
         streamedReasoning += text;
         turn.callbacks?.onThinkingDelta?.(text);
@@ -88,7 +91,11 @@ export async function callModel(
     step.label = 'Error';
     step.detail = humanizeAgentError(err);
     emitSteps(run);
-    return { error: toErrorMessage(err) || 'The model request failed.' };
+    // A failed attempt is discarded before the shared loop replays it.
+    run.finalReasoning = reasoningBeforeTurn;
+    args.onReasoning?.(run.finalReasoning);
+    args.onContent?.('');
+    return { error: toErrorMessage(err) || 'The model request failed.', ...(streamErrorCode ? { errorCode: streamErrorCode } : {}) };
   };
   const complete = async (): Promise<ModelCallOutcome> => {
     const completion = await runComplete(messages);
@@ -115,15 +122,12 @@ export async function callModel(
       checkAbort(run);
       // null (and a missing result) mean the native stream produced nothing usable.
       if (streamResult) return { completion: streamResult };
-      transport.nativeFailed = true;
       debugLog(plan.debugLogs, `[agent] native stream returned no result | reason="${nativeStreamError.slice(0, 200) || 'unreported'}"`);
-      // Only poison the cache on a known tool rejection: null also covers clone,
-      // network and missing base_url errors, and bare 400s cover auth failures
-      // and context overflows, which say nothing about tool support.
-      if (/tool/i.test(nativeStreamError) && /unsupport|not support|400|422|requires.*jinja/i.test(nativeStreamError)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setToolSupportCache(config as any, false);
-      }
+      const toolRejected = /tool|function/i.test(nativeStreamError)
+        && /unsupport|not support|400|422|requires.*jinja/i.test(nativeStreamError);
+      if (!toolRejected && nativeStreamError) return fail(new Error(nativeStreamError));
+      transport.nativeFailed = true;
+      if (toolRejected) setToolSupportCache(config, false);
       useSystemPrompt(run, 'xml');
       return await complete();
     }
@@ -146,13 +150,10 @@ export async function callModel(
       }
     }
 
-    if (nativeActive && /tool|400|422|unsupported/i.test(errMsg)) {
+    if (nativeActive && /tool|function/i.test(errMsg) && /400|422|unsupport|not support|requires.*jinja/i.test(errMsg)) {
       debugLog(plan.debugLogs, '[agent] -> falling back to XML (tool/400/422/unsupported error)');
       transport.nativeFailed = true;
-      // Only poison the cache when the error names tools — a bare 400 also covers
-      // context overflows and malformed params.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (/tool/i.test(errMsg)) setToolSupportCache(config as any, false);
+      setToolSupportCache(config, false);
       ensureToolCallPairs(messages, 'fill');
       useSystemPrompt(run, 'xml');
       return lastTry();

@@ -6,6 +6,9 @@
 import type { IpcMain, BrowserWindow } from 'electron';
 import { rustEngine as engine } from '../agente/rust-engine.ts';
 import { setMainWindowGetter } from '../agente/event-bridge.ts';
+import { listProjectFiles } from '../agente/project-files.ts';
+import { historyTurns } from '../agente/bot-history.ts';
+import type { Attachment, SessionSnapshot } from '../../shared/agente-protocol.gen.ts';
 import type { AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision } from '../../shared/agente-protocol.ts';
 
 type AgenteHandlerDeps = {
@@ -18,14 +21,14 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
 
   ipcMain.handle('agente_start_session', (_e, args: AgenteStartSessionArgs) => engine.startSession(args));
 
-  ipcMain.handle('agente_prompt', (_e, args: { chatId: string; text: string; images?: Array<{ data: string; mimeType: string }> }) =>
-    engine.prompt(args.chatId, args.text, args.images)
+  ipcMain.handle('agente_prompt', (_e, args: { chatId: string; text: string; images?: Array<{ data: string; mimeType: string }>; attachments?: Attachment[] }) =>
+    engine.prompt(args.chatId, args.text, args.images, args.attachments)
   );
 
-  ipcMain.handle('agente_steer', (_e, args: { chatId: string; text: string }) => engine.steer(args.chatId, args.text));
-  ipcMain.handle('agente_follow_up', (_e, args: { chatId: string; text: string }) => engine.followUp(args.chatId, args.text));
+  ipcMain.handle('agente_steer', (_e, args: { chatId: string; text: string; attachments?: Attachment[] }) => engine.steer(args.chatId, args.text, args.attachments));
+  ipcMain.handle('agente_follow_up', (_e, args: { chatId: string; text: string; attachments?: Attachment[] }) => engine.followUp(args.chatId, args.text, args.attachments));
   ipcMain.handle('agente_abort', (_e, args: { chatId: string }) => engine.abort(args.chatId));
-  ipcMain.handle('agente_compact', (_e, args: { chatId: string; customInstructions?: string }) => engine.compact(args.chatId, args.customInstructions));
+  ipcMain.handle('agente_compact', (_e, args: { chatId: string }) => engine.compact(args.chatId));
 
   ipcMain.handle('agente_set_model', (_e, args: { chatId: string; provider: string; model: string; thinkingLevel?: string }) =>
     engine.setModel(args.chatId, args.provider, args.model, args.thinkingLevel)
@@ -45,6 +48,33 @@ export function registerAgenteHandlers({ ipcMain, getMainWindow }: AgenteHandler
   ipcMain.handle('agente_rollback', (_e, args: { chatId: string; turnIndex: number; sessionId?: string; projectRoot?: string }) =>
     engine.rollback(args.chatId, args.turnIndex, { sessionId: args.sessionId, projectRoot: args.projectRoot })
   );
+  ipcMain.handle('agente_exec', (_e, args: { chatId: string; command: string }) => engine.exec(args.chatId, args.command));
+  ipcMain.handle('agente_undo', (_e, args: { chatId: string }) => engine.edits(args.chatId, 'undo'));
+  ipcMain.handle('agente_redo', (_e, args: { chatId: string }) => engine.edits(args.chatId, 'redo'));
+  ipcMain.handle('agente_project_info', (_e, args: { projectRoot: string }) => engine.runtimeRequest('project.info', { project_dir: args.projectRoot }));
+  ipcMain.handle('agente_project_init', (_e, args: { projectRoot: string }) => engine.runtimeRequest('project.init', { project_dir: args.projectRoot }));
+  ipcMain.handle('agente_mcp_status', (_e, args?: { projectRoot?: string }) => engine.runtimeRequest('mcp.status', args?.projectRoot ? { project_dir: args.projectRoot } : {}));
+  ipcMain.handle('agente_mcp_control', async (_e, args: { projectRoot: string; name: string; action: string }) => {
+    const result = await engine.runtimeRequest('mcp.control', { project_dir: args.projectRoot, name: args.name, action: args.action });
+    if (args.action === 'approve') {
+      const settings = await engine.runtimeRequest<{ approved_mcp_servers: string[] }>('runtime.settings');
+      await engine.configureSettings({ approved_mcp_servers: settings.approved_mcp_servers });
+    }
+    return result;
+  });
+  ipcMain.handle('agente_project_files', (_e, args: { projectRoot: string }) => listProjectFiles(args.projectRoot));
+  ipcMain.handle('agente_message_action', (_e, args: { chatId: string; action: 'fork' | 'rewind'; conversationIndex: number }) => engine.messageAction(args.chatId, args.action, args.conversationIndex));
+  ipcMain.handle('agente_session_snapshot', (_e, args: { sessionId: string }) => engine.runtimeRequest('session.get', { session_id: args.sessionId }));
+  ipcMain.handle('agente_session_list', () => engine.runtimeRequest('session.list'));
+  ipcMain.handle('agente_session_history', async (_e, args: { sessionId: string; chatId: string }) => {
+    const { snapshot } = await engine.runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: args.sessionId });
+    return historyTurns(snapshot.conversation, args.chatId);
+  });
+  ipcMain.handle('agente_subagent_model', (_e, args: { chatId: string; kind: string; inherit: boolean }) => engine.subagentModel(args.chatId, args.kind, args.inherit));
+  ipcMain.handle('agente_runtime_configure', (_e, args: Record<string, unknown>) => engine.configureSettings(args));
+  ipcMain.handle('agente_media_import', (_e, args: Record<string, unknown>) => engine.runtimeRequest('media.import', args));
+  ipcMain.handle('agente_runtime_settings', () => engine.runtimeRequest('runtime.settings'));
+  ipcMain.handle('agente_child_cancel', (_e, args: { runId: string }) => engine.runtimeRequest('children.cancel', { run_id: args.runId }));
   ipcMain.handle('agente_live_chats', () => engine.liveChatIds());
   ipcMain.handle('agente_delete_session_data', (_e, args: { chatIds?: string[]; sessionIds?: string[] }) => engine.deleteSessionData(args ?? {}));
 }

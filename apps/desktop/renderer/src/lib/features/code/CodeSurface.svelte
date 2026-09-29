@@ -134,14 +134,14 @@
               </div>
             </div>
           {:else}
-            <CodeTranscript messages={chat.messages} chatId={chat.id} />
+            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
           {/if}
           {#if unlinked}
             <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-center text-xs text-muted-foreground">
               {$t('code.unlinkedHint')}
             </p>
           {:else}
-            <CodeComposer {chat} />
+            {#key chat.id}<CodeComposer {chat} />{/key}
           {/if}
         </div>
 

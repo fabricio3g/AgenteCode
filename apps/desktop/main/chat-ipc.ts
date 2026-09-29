@@ -4,6 +4,7 @@ import { resolveProvider } from './providers/registry.ts';
 import { normalizeBaseUrl } from './providers/helpers.ts';
 import { safeParseJson } from './providers/helpers.ts';
 import { resolveLlamaSessionKey } from './llama-session.ts';
+import { classifyError, LlmStreamError } from './providers/protocol.ts';
 
 const activeStreams = new Map();
 
@@ -144,7 +145,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       }
     };
     setTimeout(() => {
-      emit({ type: 'error', error: errorMsg });
+      emit({ type: 'error', error: errorMsg, errorCode: 'AUTH' });
     }, 0);
     return { streamId };
   }
@@ -221,7 +222,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
             providerState = chunk.state;
             break;
           case 'finish':
-            if (chunk.reason.kind === 'error') throw new Error(chunk.reason.failure.message);
+             if (chunk.reason.kind === 'error') throw new LlmStreamError(chunk.reason.failure);
             break;
         }
       }
@@ -237,7 +238,8 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
       if (abortController.signal.aborted) {
         emit({ type: 'cancelled' });
       } else {
-        emit({ type: 'error', error: String(error?.message || error || 'Chat stream failed') });
+        const failure = classifyError(error);
+        emit({ type: 'error', error: failure.message, errorCode: failure.code });
       }
     } finally {
       clearTimeout(streamTimeout);

@@ -1,14 +1,15 @@
 import type { AppConfig } from '$lib/types/chat';
 import { VOICE_MODELS } from '$shared/voice-models';
-import { generateTtsStream, cancelTtsStream, base64ToFloat32Pcm, onTtsChunk, onTtsDone, onTtsStart } from '$lib/services/tts';
+import { generateTtsStream, cancelTtsStream, base64ToFloat32Pcm, onTtsChunk, onTtsDone, onTtsStart, onTtsError } from '$lib/services/tts';
+import { toastStore } from '$lib/stores/toast.svelte';
 import { invoke } from '$lib/services/bridge';
 import { cleanTextForTTS } from '$lib/utils/tts-text';
 
 const SAMPLE_RATE = 24000;
 
-type TtsChunkEvent = { seq?: number; index?: number; total?: number; base64?: string };
-type TtsStartEvent = { seq?: number; total?: number };
-type TtsDoneEvent = { seq?: number };
+type TtsChunkEvent = { requestId?: string; index?: number; total?: number; base64?: string };
+type TtsStartEvent = { requestId?: string; total?: number };
+type TtsDoneEvent = { requestId?: string };
 
 class TtsStore {
   playing = $state(false);
@@ -21,6 +22,7 @@ class TtsStore {
   lastPlayedMessageId: string | null = $state(null);
   elapsedTime = $state(0);
   totalDuration = $state(0);
+  lastError = $state<string | null>(null);
   audioBuffers: Map<string, Float32Array> = new Map();
   // Reactive set of message IDs that have stored audio (for Svelte reactivity)
   storedAudioIds = $state<Set<string>>(new Set());
@@ -29,34 +31,32 @@ class TtsStore {
 
   private audioCtx: AudioContext | null = null;
   private genId = 0;
-  private currentGenId: number | null = null;
+  private currentRequestId: string | null = null;
   private chunkQueue: { index: number; samples: Float32Array }[] = [];
-  private nextIndex = 0;
   private doneReceived = false;
   private unsubChunk: (() => void) | null = null;
   private unsubDone: (() => void) | null = null;
   private unsubStart: (() => void) | null = null;
+  private unsubError: (() => void) | null = null;
   private collectedChunks: { index: number; samples: Float32Array }[] = [];
   private progressInterval: ReturnType<typeof setInterval> | null = null;
   // Look-ahead scheduling state
-  private scheduleAheadTime = 0.1; // seconds to keep buffered ahead
   private scheduledCount = 0; // chunks already scheduled for playback
   private lastScheduledEnd = 0; // AudioContext time when last scheduled chunk ends
   private pendingEndSource: AudioBufferSourceNode | null = null; // tracks final chunk for onended
-  private silenceBuffer: AudioBuffer | null = null; // 200ms silence between sentences
+  private playbackTimeline: Array<{ start: number; duration: number; offset: number }> = [];
+  private scheduledDuration = 0;
 
   async preloadEngine(): Promise<boolean> {
     if (this.preloaded) return true;
     if (this.preloadPromise) return this.preloadPromise;
     this.preloadPromise = (async () => {
       try {
-        // Always call preload_tts to ensure worker is initialized.
-        // list_tts_voices may return cached voices without initWorker()
-        // having completed, so we unconditionally warm up the worker.
         await invoke<string[]>('preload_tts');
         this.preloaded = true;
         return true;
       } catch { return false; }
+      finally { this.preloadPromise = null; }
     })();
     return this.preloadPromise;
   }
@@ -65,14 +65,15 @@ class TtsStore {
     return this.playing && this.currentMessageId === messageId;
   }
 
-  private playbackStartTime = 0; // AudioContext.currentTime when first chunk started playing
-
   private startProgressTracking() {
     this.stopProgressTracking();
-    this.playbackStartTime = this.audioCtx ? this.audioCtx.currentTime : 0;
     this.progressInterval = setInterval(() => {
       if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
-        this.elapsedTime = Math.max(0, this.audioCtx.currentTime - this.playbackStartTime);
+        const now = this.audioCtx.currentTime;
+        const clip = this.playbackTimeline[this.playbackTimeline.length - 1];
+        if (clip && clip.start <= now) {
+          this.elapsedTime = Math.min(this.totalDuration, clip.offset + Math.min(clip.duration, now - clip.start));
+        }
       }
     }, 50);
   }
@@ -85,26 +86,28 @@ class TtsStore {
   }
 
   stop() {
+    this.genId++;
     cancelTtsStream();
     this.stopProgressTracking();
-    this.currentGenId = null;
+    this.currentRequestId = null;
     this.chunkQueue = [];
     this.collectedChunks = [];
-    this.nextIndex = 0;
     this.doneReceived = false;
     this.scheduledCount = 0;
     this.lastScheduledEnd = 0;
     this.pendingEndSource = null;
-    this.silenceBuffer = null;
-    this.playbackStartTime = 0;
+    this.playbackTimeline = [];
+    this.scheduledDuration = 0;
     this.unsubChunk?.();
     this.unsubDone?.();
     this.unsubStart?.();
+    this.unsubError?.();
     this.unsubChunk = null;
     this.unsubDone = null;
     this.unsubStart = null;
+    this.unsubError = null;
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      this.audioCtx.close();
+      void this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -125,6 +128,7 @@ class TtsStore {
     }
 
     this.stop();
+    this.lastError = null;
     const cleaned = cleanTextForTTS(text);
     if (!cleaned?.trim()) return;
 
@@ -142,10 +146,10 @@ class TtsStore {
 
     // A voice of the local engines (Settings → Voice); anything else is the browser's.
     if (VOICE_MODELS.some((model) => model.voices.some((option) => option.id === voice))) {
-      this.genId++;
-      this.currentGenId = this.genId;
+      const session = this.genId;
+      const requestId = crypto.randomUUID();
+      this.currentRequestId = requestId;
       this.chunkQueue = [];
-      this.nextIndex = 0;
       this.doneReceived = false;
       this.scheduledCount = 0;
       this.lastScheduledEnd = 0;
@@ -153,66 +157,73 @@ class TtsStore {
 
       this.unsubChunk = onTtsChunk((evt) => {
         const chunk = evt as TtsChunkEvent;
-        if (chunk.seq !== this.currentGenId || this.currentMessageId !== messageId) return;
+        if (chunk.requestId !== this.currentRequestId || this.currentMessageId !== messageId) return;
         const index = Number(chunk.index ?? 0);
         const total = Number(chunk.total ?? 0);
         const base64 = String(chunk.base64 || '');
         if (!base64) return;
         this.progress = { index: index + 1, total };
-        const samples = base64ToFloat32Pcm(base64);
+        let samples: Float32Array;
+        try { samples = base64ToFloat32Pcm(base64); }
+        catch { this.failPlayback('The voice engine returned invalid audio.'); return; }
+        if (!samples.length || this.collectedChunks.some((item) => item.index === index)) return;
         this.collectedChunks.push({ index, samples });
         this.chunkQueue.push({ index, samples });
         this.chunkQueue.sort((a, b) => a.index - b.index);
+        this.totalDuration += samples.length / SAMPLE_RATE;
         this.scheduleAhead();
       });
 
       this.unsubStart = onTtsStart((evt) => {
         const start = evt as TtsStartEvent;
-        if (start.seq !== this.currentGenId) return;
+        if (start.requestId !== this.currentRequestId) return;
         this.progress = { index: 0, total: Number(start.total ?? 0) };
       });
 
       this.unsubDone = onTtsDone((evt) => {
         const done = evt as TtsDoneEvent;
-        if (done.seq !== this.currentGenId) return;
+        if (done.requestId !== this.currentRequestId) return;
         this.doneReceived = true;
-        // If all chunks already scheduled, set up end detection immediately
-        if (this.scheduledCount >= this.chunkQueue.length) {
-          this.setupEndDetection();
-        } else {
-          // Otherwise scheduleAhead will catch it on next chunk
-          this.scheduleAhead();
-        }
+        this.isGenerating = false;
+        this.scheduleAhead();
+        if (!this.pendingEndSource) this.onPlaybackEnded();
       });
 
-      this.startProgressTracking();
-      generateTtsStream({
-        text: cleaned,
-        voice,
-        speed,
-        volume,
-        model: config.tts?.voice_model,
-        language: config.tts?.language
+      this.unsubError = onTtsError((event) => {
+        if (event.requestId !== this.currentRequestId) return;
+        this.failPlayback(String(event.message || 'Voice generation failed.'));
       });
+
+      try {
+        // Unlock the audio clock from the user's Play click, before synthesis
+        // waits for the engine. Creating it on a later IPC chunk can be blocked.
+        await this.ensureAudioContext();
+        if (session !== this.genId) return;
+        this.startProgressTracking();
+        await generateTtsStream({ text: cleaned, voice, speed, volume, requestId,
+          model: config.tts?.voice_model, language: config.tts?.language });
+      } catch (error) {
+        if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
 
     this.playBrowser(messageId, cleaned, config);
   }
 
-  private ensureSilenceBuffer() {
-    if (!this.audioCtx || this.silenceBuffer) return;
-    // Create 200ms silence buffer for natural rhythm between sentences
-    const silenceLen = Math.round(24000 * 200 / 1000);
-    this.silenceBuffer = this.audioCtx.createBuffer(1, silenceLen, 24000);
+  private failPlayback(message: string) {
+    this.stop();
+    this.lastError = message;
+    toastStore.error(message);
+    this.onPlaybackEnd?.();
   }
 
-  private ensureAudioContext() {
+  private async ensureAudioContext() {
     if (!this.audioCtx || this.audioCtx.state === 'closed') {
       this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
     }
     if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+      await this.audioCtx.resume();
     }
   }
 
@@ -220,15 +231,13 @@ class TtsStore {
     if (this.currentMessageId === null) return;
     if (this.scheduledCount >= this.chunkQueue.length) return; // nothing new to schedule
 
-    this.ensureAudioContext();
     if (!this.audioCtx) return;
-
-    this.ensureSilenceBuffer();
+    const session = this.genId;
 
     // Schedule chunks in look-ahead window
     while (this.scheduledCount < this.chunkQueue.length) {
       const chunk = this.chunkQueue[this.scheduledCount];
-      if (!chunk) break;
+      if (!chunk || chunk.index !== this.scheduledCount) break;
 
       const buffer = this.audioCtx.createBuffer(1, chunk.samples.length, SAMPLE_RATE);
       buffer.copyToChannel(chunk.samples as Float32Array<ArrayBuffer>, 0);
@@ -236,52 +245,29 @@ class TtsStore {
       const source = this.audioCtx.createBufferSource();
       source.buffer = buffer;
       source.connect(this.audioCtx.destination);
+      source.onended = () => {
+        if (session !== this.genId || this.pendingEndSource !== source) return;
+        this.pendingEndSource = null;
+        if (this.doneReceived && this.scheduledCount === this.chunkQueue.length) this.onPlaybackEnded();
+      };
 
       // Schedule to start at the later of: current time + small margin, or lastScheduledEnd
       const when = Math.max(this.audioCtx.currentTime + 0.02, this.lastScheduledEnd);
       source.start(when);
+      this.playbackTimeline.push({ start: when, duration: buffer.duration, offset: this.scheduledDuration });
+      this.scheduledDuration += buffer.duration;
 
       this.lastScheduledEnd = when + buffer.duration;
       this.scheduledCount++;
-      this.nextIndex = this.scheduledCount;
-
-      // If there's a next chunk, schedule 200ms silence gap
-      if (this.scheduledCount < this.chunkQueue.length && this.silenceBuffer) {
-        const silenceSrc = this.audioCtx.createBufferSource();
-        silenceSrc.buffer = this.silenceBuffer;
-        silenceSrc.connect(this.audioCtx.destination);
-        silenceSrc.start(this.lastScheduledEnd);
-        this.lastScheduledEnd += this.silenceBuffer.duration;
-      }
 
       // Track the final source for end detection
       this.pendingEndSource = source;
     }
 
-    // If done and all chunks scheduled, set up end detection
-    if (this.doneReceived && this.scheduledCount >= this.chunkQueue.length) {
-      this.setupEndDetection();
-    }
-  }
-
-  private setupEndDetection() {
-    if (this.pendingEndSource && this.audioCtx) {
-      const endTime = this.lastScheduledEnd;
-      const source = this.pendingEndSource;
-      source.onended = () => {
-        this.onPlaybackEnded();
-      };
-      // Fallback timeout in case onended doesn't fire
-      const waitMs = Math.max(100, (endTime - this.audioCtx.currentTime + 0.1) * 1000);
-      setTimeout(() => {
-        this.onPlaybackEnded();
-      }, waitMs);
-    } else {
-      this.onPlaybackEnded();
-    }
   }
 
   private onPlaybackEnded() {
+    if (!this.playing || !this.currentMessageId) return;
     this.stopProgressTracking();
     // Store collected chunks as a single buffer BEFORE clearing state
     if (this.currentMessageId && this.collectedChunks.length > 0 && !this.audioBuffers.has(this.currentMessageId)) {
@@ -295,19 +281,22 @@ class TtsStore {
     this.elapsedTime = this.totalDuration;
     this.pendingEndSource = null;
     this.currentMessageId = null;
+    this.currentRequestId = null;
     this.unsubChunk?.();
     this.unsubDone?.();
     this.unsubStart?.();
+    this.unsubError?.();
     this.unsubChunk = null;
     this.unsubDone = null;
     this.unsubStart = null;
+    this.unsubError = null;
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
-      this.audioCtx.close();
+      void this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
     }
     this.onPlaybackEnd?.();
     // Fire onAudioComplete AFTER buffer is stored so the player can transition
-    this.onAudioComplete?.(finishedId!, totalDur);
+    if (this.audioBuffers.has(finishedId)) this.onAudioComplete?.(finishedId, totalDur);
   }
 
   private storeCollectedAudio(messageId: string) {
@@ -332,98 +321,56 @@ class TtsStore {
   }
 
   async replay(messageId: string): Promise<void> {
-    const buffer = this.audioBuffers.get(messageId);
-    if (!buffer) return;
-
-    this.stop();
-    this.lastPlayedMessageId = messageId;
-    this.playing = true;
-    this.currentMessageId = messageId;
-    this.elapsedTime = 0;
-    this.totalDuration = buffer.length / SAMPLE_RATE;
-
-    if (!this.audioCtx || this.audioCtx.state === 'closed') {
-      this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
-    }
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
-
-    this.startProgressTracking();
-
-    const audioBuffer = this.audioCtx.createBuffer(1, buffer.length, SAMPLE_RATE);
-    audioBuffer.copyToChannel(buffer as Float32Array<ArrayBuffer>, 0);
-    const source = this.audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.audioCtx.destination);
-
-    const startTime = this.audioCtx.currentTime;
-    source.onended = () => {
-      this.stopProgressTracking();
-      this.playing = false;
-      this.currentMessageId = null;
-      this.elapsedTime = this.totalDuration;
-      this.onPlaybackEnd?.();
-    };
-    source.start();
-
-    // Track progress via audio clock
-    this.progressInterval = setInterval(() => {
-      if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
-        const pos = this.audioCtx.currentTime - startTime;
-        // Account for playback rate (default 1.0) adjusted by config speed
-        const rate = source.playbackRate?.value ?? 1;
-        this.elapsedTime = Math.min(pos * rate, this.totalDuration);
-      }
-    }, 50);
+    await this.playStoredAudio(messageId, 0);
   }
 
   async seek(messageId: string, fraction: number) {
+    await this.playStoredAudio(messageId, Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0);
+  }
+
+  private async playStoredAudio(messageId: string, fraction: number): Promise<void> {
     const buffer = this.audioBuffers.get(messageId);
-    if (!buffer) return;
+    if (!buffer?.length) return;
 
     const sampleOffset = Math.floor(fraction * buffer.length);
     const sliced = buffer.slice(sampleOffset);
 
     this.stop();
+    this.lastError = null;
+    const session = this.genId;
     this.lastPlayedMessageId = messageId;
     this.playing = true;
     this.currentMessageId = messageId;
-    this.elapsedTime = 0;
+    this.elapsedTime = sampleOffset / SAMPLE_RATE;
     this.totalDuration = buffer.length / SAMPLE_RATE;
 
-    if (!this.audioCtx || this.audioCtx.state === 'closed') {
-      this.audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
+    try {
+      await this.ensureAudioContext();
+      if (session !== this.genId) return;
+      if (!sliced.length) { this.finishStoredPlayback(); return; }
+      const ctx = this.audioCtx!;
+      const audioBuffer = ctx.createBuffer(1, sliced.length, SAMPLE_RATE);
+      audioBuffer.copyToChannel(sliced, 0);
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => { if (session === this.genId) this.finishStoredPlayback(); };
+      this.playbackTimeline.push({ start: ctx.currentTime, duration: audioBuffer.duration, offset: this.elapsedTime });
+      this.startProgressTracking();
+      source.start();
+    } catch (error) {
+      if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
     }
-    if (this.audioCtx.state === 'suspended') {
-      await this.audioCtx.resume();
-    }
+  }
 
-    const audioBuffer = this.audioCtx.createBuffer(1, sliced.length, SAMPLE_RATE);
-    audioBuffer.copyToChannel(sliced as Float32Array<ArrayBuffer>, 0);
-    const source = this.audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(this.audioCtx.destination);
-
-    const startTime = this.audioCtx.currentTime;
-    const baseElapsed = (sampleOffset / SAMPLE_RATE);
-    this.elapsedTime = baseElapsed;
-
-    source.onended = () => {
-      this.stopProgressTracking();
-      this.playing = false;
-      this.currentMessageId = null;
-      this.elapsedTime = this.totalDuration;
-      this.onPlaybackEnd?.();
-    };
-    source.start();
-
-    this.progressInterval = setInterval(() => {
-      if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
-        const pos = this.audioCtx.currentTime - startTime;
-        this.elapsedTime = baseElapsed + pos;
-      }
-    }, 50);
+  private finishStoredPlayback() {
+    this.stopProgressTracking();
+    this.playing = false;
+    this.currentMessageId = null;
+    this.elapsedTime = this.totalDuration;
+    if (this.audioCtx && this.audioCtx.state !== 'closed') void this.audioCtx.close().catch(() => {});
+    this.audioCtx = null;
+    this.onPlaybackEnd?.();
   }
 
   private playBrowser(messageId: string, text: string, config: AppConfig) {

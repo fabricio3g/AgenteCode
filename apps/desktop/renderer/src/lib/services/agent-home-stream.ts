@@ -136,7 +136,7 @@ export function createHomeStreamFn(run: AgentRun): StreamFn {
 
       const reasoningBefore = run.finalReasoning;
       const outcome = await callModel(run, { iter: run.turn - 1, step, nativeActive, callbacks: request.callbacks });
-      if ('error' in outcome) return assistant({ stopReason: 'error', errorMessage: outcome.error });
+      if ('error' in outcome) return assistant({ stopReason: 'error', errorMessage: outcome.error, errorCode: outcome.errorCode });
       const { completion } = outcome;
 
       run.usage = mergeCompletionUsage(run.usage, completion.usage);

@@ -24,18 +24,21 @@ export function placePanel(
   panel: { width: number; height: number },
   placement: MenuPlacement,
   viewport: { width: number; height: number } = { width: window.innerWidth, height: window.innerHeight }
-): { top: number; left: number } {
+): { top: number; left: number; maxHeight: number; maxWidth: number } {
   const wantsTop = placement.startsWith('top');
   const wantsEnd = placement.endsWith('end');
 
-  let top = wantsTop ? anchor.top - panel.height - GAP : anchor.bottom + GAP;
-  let left = wantsEnd ? anchor.right - panel.width : anchor.left;
-
-  if (top < GAP) top = anchor.bottom + GAP;
-  if (top + panel.height > viewport.height - GAP) {
-    const flipped = anchor.top - panel.height - GAP;
-    if (flipped >= GAP) top = flipped;
-  }
-  left = Math.max(GAP, Math.min(left, viewport.width - panel.width - GAP));
-  return { top, left };
+  const maxWidth = Math.max(0, viewport.width - GAP * 2);
+  const viewportHeight = Math.max(0, viewport.height - GAP * 2);
+  const above = Math.max(0, Math.min(viewportHeight, anchor.top - GAP * 2));
+  const below = Math.max(0, Math.min(viewportHeight, viewport.height - anchor.bottom - GAP * 2));
+  const preferred = wantsTop ? above : below;
+  const opposite = wantsTop ? below : above;
+  const useTop = panel.height <= preferred || preferred >= opposite ? wantsTop : !wantsTop;
+  const maxHeight = useTop ? above : below;
+  const height = Math.min(panel.height, maxHeight);
+  const width = Math.min(panel.width, maxWidth);
+  const top = Math.max(GAP, Math.min(useTop ? anchor.top - height - GAP : anchor.bottom + GAP, viewport.height - height - GAP));
+  const left = Math.max(GAP, Math.min(wantsEnd ? anchor.right - width : anchor.left, viewport.width - width - GAP));
+  return { top, left, maxHeight, maxWidth };
 }

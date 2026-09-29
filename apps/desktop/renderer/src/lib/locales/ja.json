@@ -296,7 +296,33 @@
       "keys": "↑↓ で選択 · Tab で補完 · Enter で実行 · Esc で閉じる",
       "nothingToCompact": "まだ圧縮するものがありません。先にメッセージを送ってください。"
     },
-    "modeTitle": "モード"
+    "modeTitle": "モード",
+    "activity": {
+      "commands": {
+        "running": "コマンドを実行中",
+        "done": "コマンドを実行しました"
+      },
+      "edits": {
+        "running": "ファイルを編集中",
+        "done": "ファイルを編集しました"
+      },
+      "reads": {
+        "running": "読み取りと検索中",
+        "done": "読み取りと検索が完了しました"
+      },
+      "subagents": {
+        "running": "サブエージェントを実行中",
+        "done": "サブエージェント"
+      }
+    },
+    "plan": {
+      "title": "プランを確認",
+      "accept": "承認して構築",
+      "redo": "プランを修正",
+      "comment": "コメント",
+      "commentPrefix": "プランについて: ",
+      "hint": "Build はツールの承認を求めます"
+    }
   },
   "searchModal": {
     "inMessages": "メッセージ内",

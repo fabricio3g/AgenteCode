@@ -1,4 +1,5 @@
 import type { ChatSession } from '$lib/types/chat';
+import { chatToMarkdown } from '$lib/features/code/export-chat';
 
 /**
  * Shared session export.
@@ -7,6 +8,7 @@ import type { ChatSession } from '$lib/types/chat';
  * Replaces duplicated builders in AppShell and Sidebar.
  */
 export function buildSessionMarkdown(chat: Pick<ChatSession, 'title' | 'messages'>, dateStr: string): string {
+  if (chat.messages.some((message) => message.agentSteps?.length)) return chatToMarkdown(chat.title, chat.messages);
   const lines: string[] = [`# ${chat.title || 'Chat'}\n\n*Exported ${dateStr}*\n`];
   for (const m of chat.messages) {
     lines.push('---');

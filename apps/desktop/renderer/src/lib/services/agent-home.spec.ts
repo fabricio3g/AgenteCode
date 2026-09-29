@@ -138,6 +138,41 @@ describe('Home agent tool round trip', () => {
     expect(result.artifacts).toHaveLength(0);
     expect(liveGeocodePlace).not.toHaveBeenCalled();
   });
+  it('reports a failed model request as failed, not as a delivered answer', async () => {
+    vi.mocked(agentStreamComplete).mockImplementation(async (args) => {
+      args.onError?.('JSON error injected into SSE stream (Stealth: upstream error)', 'SERVER');
+      return null;
+    });
+    const result = await runAgentTask({ chatId: 'home-failed', rawPrompt: 'Create a PDF about rivers', messages: [{ role: 'user', content: 'Create a PDF about rivers' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact: vi.fn() });
+    expect(result.outcome).toBe('failed');
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('retries a mid-stream provider failure and keeps native tools on the retry', async () => {
+    const requests: Array<{ tools?: unknown; messages: unknown }> = [];
+    vi.mocked(agentStreamComplete)
+      .mockImplementationOnce(async (args) => {
+        requests.push({ tools: args.tools, messages: structuredClone(args.messages) });
+        args.onError?.('JSON error injected into SSE stream', 'SERVER');
+        return null;
+      })
+      .mockImplementationOnce(async (args) => {
+        requests.push({ tools: args.tools, messages: structuredClone(args.messages) });
+        return { content: '', reasoning: '', toolCalls: [{ id: 'calc-1', name: 'calculator', arguments: { expression: '2+2' } }] };
+      })
+      .mockImplementationOnce(async (args) => {
+        requests.push({ tools: args.tools, messages: structuredClone(args.messages) });
+        return { content: 'The answer is 4.', reasoning: '' };
+      });
+    const result = await runAgentTask({ chatId: 'home-retry', rawPrompt: 'What is 2+2?', messages: [{ role: 'user', content: 'What is 2+2?' }], agentProfile: 'chat', onStep: vi.fn(), onArtifact: vi.fn() });
+    expect(requests).toHaveLength(3);
+    // A transport failure is not evidence that the model refuses tools.
+    expect(requests[1].tools).toBeDefined();
+    expect(requests[2].messages.some((message: Record<string, unknown>) => message.tool_call_id === 'calc-1')).toBe(true);
+    expect(result.outcome).toBe('completed');
+    expect(result.content).toBe('The answer is 4.');
+  });
+
   it('honors the explicit Agent choice even with automatic routing', () => {
     expect(shouldUseToolLoop({ control: 'auto', composerMode: 'agent', route: 'conversation', contextMode: 'home' })).toBe(true);
   });

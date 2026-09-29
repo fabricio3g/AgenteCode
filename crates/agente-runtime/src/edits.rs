@@ -11,8 +11,9 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use agente_protocol::SessionId;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct FileEdit {
     pub path: String,
     /// `None`: the file did not exist.
@@ -20,19 +21,23 @@ pub(crate) struct FileEdit {
     pub after: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Batch {
     edits: Vec<FileEdit>,
     /// Conversation length when the turn started (its user message included).
     conversation_len: usize,
+    turn_index: usize,
+    created_at: i64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct History {
     undo: Vec<Batch>,
     redo: Vec<Batch>,
     /// Set when a turn starts; the batch is recorded when it ends.
+    #[serde(skip)]
     pending_start: Option<usize>,
+    turn_index: usize,
 }
 
 #[derive(Debug, Default)]
@@ -42,7 +47,9 @@ pub(crate) struct EditLog {
 
 impl EditLog {
     pub fn begin_turn(&mut self, session_id: SessionId, conversation_len: usize) {
-        self.sessions.entry(session_id).or_default().pending_start = Some(conversation_len);
+        let history = self.sessions.entry(session_id).or_default();
+        history.pending_start = Some(conversation_len);
+        history.turn_index += 1;
     }
 
     /// Record a finished turn's edits as one batch. A new batch ends any
@@ -58,6 +65,8 @@ impl EditLog {
         history.undo.push(Batch {
             edits,
             conversation_len: start,
+            turn_index: history.turn_index,
+            created_at: chrono::Utc::now().timestamp_millis(),
         });
     }
 
@@ -109,28 +118,66 @@ impl EditLog {
         project_dir: &str,
     ) -> Result<usize, String> {
         let history = self.sessions.entry(session_id).or_default();
-        let mut undone = 0;
-        while history
+        let first = history
             .undo
-            .last()
-            .is_some_and(|batch| batch.conversation_len > conversation_index)
-        {
-            let batch = history.undo.pop().expect("checked above");
-            if let Err(error) = apply(&batch.edits, project_dir, Side::Before) {
-                history.undo.push(batch);
-                return Err(format!(
-                    "Reverted {undone} turn(s) of edits, then stopped: {error}"
-                ));
-            }
-            undone += 1;
-        }
-        // Rewound turns are gone from the conversation: nothing to redo.
-        history.redo.clear();
+            .iter()
+            .position(|batch| batch.conversation_len > conversation_index)
+            .unwrap_or(history.undo.len());
+        let edits = merge(
+            history.undo[first..]
+                .iter()
+                .flat_map(|batch| batch.edits.clone())
+                .collect(),
+        );
+        apply(&edits, project_dir, Side::Before)?;
+        let batches = history.undo.split_off(first);
+        let undone = batches.len();
+        history.redo.extend(batches.into_iter().rev());
         Ok(undone)
+    }
+
+    pub fn restore(&mut self, session_id: SessionId, value: serde_json::Value) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.sessions.entry(session_id) {
+            if let Ok(history) = serde_json::from_value(value) {
+                entry.insert(history);
+            }
+        }
+    }
+
+    pub fn snapshot(&self, session_id: SessionId) -> serde_json::Value {
+        self.sessions
+            .get(&session_id)
+            .and_then(|history| serde_json::to_value(history).ok())
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    pub fn checkpoints(&self, session_id: SessionId) -> serde_json::Value {
+        let Some(history) = self.sessions.get(&session_id) else {
+            return serde_json::json!([]);
+        };
+        serde_json::Value::Array(history.undo.iter().map(|batch| {
+            let (additions, deletions) = batch.edits.iter().map(line_delta).fold((0, 0), |total, value| (total.0 + value.0, total.1 + value.1));
+            serde_json::json!({
+                "turnIndex": batch.turn_index, "createdAt": batch.created_at,
+                "conversationIndex": batch.conversation_len.saturating_sub(1),
+                "fileCount": batch.edits.len(), "additions": additions, "deletions": deletions,
+                "files": batch.edits.iter().map(|edit| &edit.path).collect::<Vec<_>>()
+            })
+        }).collect())
     }
 
     pub fn forget(&mut self, session_id: SessionId) {
         self.sessions.remove(&session_id);
+    }
+
+    /// Keep undo/redo after compaction, without stale conversation positions.
+    pub fn compacted(&mut self, session_id: SessionId) {
+        if let Some(history) = self.sessions.get_mut(&session_id) {
+            for batch in history.undo.iter_mut().chain(&mut history.redo) {
+                batch.conversation_len = 0;
+            }
+            history.pending_start = Some(0);
+        }
     }
 }
 
@@ -148,6 +195,22 @@ fn merge(edits: Vec<FileEdit>) -> Vec<FileEdit> {
     }
     merged.retain(|edit| edit.before != edit.after);
     merged
+}
+
+fn line_delta(edit: &FileEdit) -> (usize, usize) {
+    let mut before = HashMap::<&str, usize>::new();
+    for line in edit.before.as_deref().unwrap_or_default().lines() {
+        *before.entry(line).or_default() += 1;
+    }
+    let mut additions = 0;
+    for line in edit.after.as_deref().unwrap_or_default().lines() {
+        if let Some(count) = before.get_mut(line).filter(|count| **count > 0) {
+            *count -= 1;
+        } else {
+            additions += 1;
+        }
+    }
+    (additions, before.values().sum())
 }
 
 #[derive(Clone, Copy)]
@@ -305,7 +368,29 @@ mod tests {
         // at 5 and 8 are undone, the first one stays.
         assert_eq!(log.rewind(session, 4, root).unwrap(), 2);
         assert_eq!(read(&dir, "a.txt").as_deref(), Some("t1"));
-        assert_eq!(log.redo(session, root).unwrap_err(), "Nothing to redo");
+        log.redo(session, root).unwrap();
+        assert_eq!(read(&dir, "a.txt").as_deref(), Some("t2"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_conflict_in_an_older_batch_blocks_the_entire_rewind() {
+        let dir = project("rewind-conflict");
+        let root = dir.to_str().unwrap();
+        let session = SessionId::new();
+        let mut log = EditLog::default();
+        log.begin_turn(session, 2);
+        log.end_turn(
+            session,
+            vec![edit("a.txt", Some("original"), Some("agent"))],
+        );
+        log.begin_turn(session, 5);
+        log.end_turn(session, vec![edit("b.txt", None, Some("new"))]);
+        std::fs::write(dir.join("a.txt"), "hand edited").unwrap();
+        std::fs::write(dir.join("b.txt"), "new").unwrap();
+        assert!(log.rewind(session, 1, root).unwrap_err().contains("a.txt"));
+        assert_eq!(read(&dir, "b.txt").as_deref(), Some("new"));
+        assert_eq!(log.checkpoints(session).as_array().unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

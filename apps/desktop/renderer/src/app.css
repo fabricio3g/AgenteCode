@@ -232,43 +232,37 @@
 .dark {
   color-scheme: dark;
 
-  /*
-   * One background. Every surface — page, sidebar, cards, dialogs, popovers —
-   * is the same colour; separation comes from spacing and shadow, not from a
-   * ladder of greys stacked on each other and outlined in hairlines.
-   *
-   * Interaction states are alpha overlays (see --surface-hover below) rather
-   * than named surface colours, so they read correctly on top of anything.
-   */
-  --background: #141414;
-  --foreground: #ffffff;
-  --card: #141414;
-  --card-foreground: #ffffff;
-  --popover: #141414;
-  --popover-foreground: #ffffff;
-  --primary: #ffffff;
-  --primary-foreground: #0d0d0d;
-  --secondary: rgb(255 255 255 / 0.06);
-  --secondary-foreground: #ffffff;
-  --muted: rgb(255 255 255 / 0.05);
-  --muted-foreground: #9a9a9a;
-  --accent: rgb(255 255 255 / 0.08);
-  --accent-foreground: #ffffff;
-  --destructive: #f87171;
-  --destructive-foreground: #ffffff;
+  /* Soft charcoal, with a small surface lift and off-white type. Interaction
+     fills stay translucent so the same controls work across all surfaces. */
+  --background: #1b1c1e;
+  --foreground: #e5e5e2;
+  --card: #242527;
+  --card-foreground: var(--foreground);
+  --popover: #2a2b2e;
+  --popover-foreground: var(--foreground);
+  --primary: #deded9;
+  --primary-foreground: #1b1c1e;
+  --secondary: rgb(229 229 226 / 0.05);
+  --secondary-foreground: var(--foreground);
+  --muted: rgb(229 229 226 / 0.045);
+  --muted-foreground: #a3a4a6;
+  --accent: rgb(229 229 226 / 0.07);
+  --accent-foreground: var(--foreground);
+  --destructive: #d38d88;
+  --destructive-foreground: #1b1c1e;
   /* Hairlines are a last resort now — barely there, and only where two regions
      genuinely need separating. */
-  --border: rgb(255 255 255 / 0.07);
-  --input: rgb(255 255 255 / 0.1);
-  --ring: rgb(255 255 255 / 0.24);
-  --sidebar: #141414;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #0d0d0d;
-  --sidebar-accent: rgb(255 255 255 / 0.06);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgb(255 255 255 / 0.07);
-  --sidebar-ring: rgb(255 255 255 / 0.24);
+  --border: rgb(229 229 226 / 0.075);
+  --input: rgb(229 229 226 / 0.12);
+  --ring: rgb(229 229 226 / 0.24);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--secondary);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
   --surface-shadow: none;
   /* A transparent shadow rather than `none`: this token is composed into a
      comma-separated box-shadow list, and `none` is only legal on its own —
@@ -277,35 +271,33 @@
 
   /* Aliases */
   --surface: var(--card);
-  /* Translucent, so they layer on the single background instead of being a
-     third and fourth grey to keep in sync with it. */
-  --surface-hover: rgb(255 255 255 / 0.06);
-  --surface-active: rgb(255 255 255 / 0.1);
+  --surface-hover: rgb(229 229 226 / 0.055);
+  --surface-active: rgb(229 229 226 / 0.085);
   --surface-overlay: var(--popover);
   --text: var(--foreground);
-  --text-secondary: #a3a3a3;
-  --text-tertiary: #9a9a9a;
+  --text-secondary: #b9bab8;
+  --text-tertiary: var(--muted-foreground);
   --text-muted: var(--muted-foreground);
   --text-inverse: var(--primary-foreground);
   --border-hover: rgb(255 255 255 / 0.14);
   --border-active: rgb(255 255 255 / 0.2);
   --border-subtle: rgb(255 255 255 / 0.04);
   --border-inverse: rgb(255 255 255 / 0.3);
-  --primary-hover: #e5e5e5;
+  --primary-hover: #eeeee9;
   --primary-fg: var(--primary-foreground);
-  --accent-hover: #333333;
+  --accent-hover: #343538;
   --accent-fg: var(--accent-foreground);
   --accent-soft: rgb(255 255 255 / 0.06);
 
-  --success: #4ade80;
-  --success-bg: rgb(74 222 128 / 0.1);
-  --success-border: rgb(74 222 128 / 0.2);
-  --warning: #facc15;
-  --warning-bg: rgb(250 204 21 / 0.1);
-  --warning-border: rgb(250 204 21 / 0.2);
-  --error: #f87171;
-  --error-bg: rgb(248 113 113 / 0.1);
-  --error-border: rgb(248 113 113 / 0.2);
+  --success: #94b59b;
+  --success-bg: rgb(148 181 155 / 0.08);
+  --success-border: rgb(148 181 155 / 0.18);
+  --warning: #c5ad7c;
+  --warning-bg: rgb(197 173 124 / 0.08);
+  --warning-border: rgb(197 173 124 / 0.18);
+  --error: var(--destructive);
+  --error-bg: rgb(211 141 136 / 0.08);
+  --error-border: rgb(211 141 136 / 0.18);
   --info: var(--foreground);
   --info-bg: rgb(255 255 255 / 0.06);
   --info-border: rgb(255 255 255 / 0.12);
@@ -316,16 +308,15 @@
   --work-accent-border: var(--border);
   --work-glint: rgb(255 255 255 / 0.06);
 
-  --brand-accent: #f08a4a;
-  --brand-accent-strong: #f5a06b;
+  --brand-accent: #c78e68;
+  --brand-accent-strong: #d6a281;
 
   --user-bubble: rgb(255 255 255 / 0.06);
   --user-bubble-text: var(--foreground);
   --user-bubble-border: transparent;
-  /* Dark's equivalent of the white card: the panel colour, not a tint. */
   --composer-surface: var(--card);
   --composer-ring: var(--border);
-  --composer-ring-focus: rgb(240 138 74 / 0.6);
+  --composer-ring-focus: rgb(199 142 104 / 0.4);
   --chat-bg: var(--background);
   --titlebar-bg: var(--sidebar);
   --sidebar-bg: var(--sidebar);
@@ -360,21 +351,21 @@
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.35);
   --shadow-xl: 0 16px 40px rgb(0 0 0 / 0.4);
 
-  --accent-red-bg: rgb(248 113 113 / 0.1);
-  --accent-red-text: #fca5a5;
+  --accent-red-bg: var(--error-bg);
+  --accent-red-text: var(--error);
   --accent-blue-bg: rgb(255 255 255 / 0.06);
   --accent-blue-text: #d4d4d4;
-  --accent-green-bg: rgb(74 222 128 / 0.1);
-  --accent-green-text: #86efac;
-  --accent-yellow-bg: rgb(250 204 21 / 0.1);
-  --accent-yellow-text: #fde047;
+  --accent-green-bg: var(--success-bg);
+  --accent-green-text: var(--success);
+  --accent-yellow-bg: var(--warning-bg);
+  --accent-yellow-text: var(--warning);
 
-  --code-terminal-bg: #0a0a0a;
-  --code-terminal-text: #d4d4d4;
-  --code-terminal-prompt: #4ade80;
-  --code-terminal-dim: #737373;
-  --code-terminal-error: #f87171;
-  --code-terminal-warn: #fbbf24;
+  --code-terminal-bg: #18191b;
+  --code-terminal-text: var(--foreground);
+  --code-terminal-prompt: var(--success);
+  --code-terminal-dim: var(--muted-foreground);
+  --code-terminal-error: var(--error);
+  --code-terminal-warn: var(--warning);
 }
 
 html,

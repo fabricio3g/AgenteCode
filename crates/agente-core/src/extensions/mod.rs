@@ -248,3 +248,80 @@ pub fn expand_command_template(template: &str, arguments: &str) -> String {
         .replace("{{args}}", arguments)
         .replace("$FILE", arguments)
 }
+
+/// Bootstrap AGENTS.md for a project (`/init`, in the TUI and Desktop):
+/// guidance for the agent plus the `.agente/{commands,agents,skills}` folders.
+pub fn init_project(project_dir: &str) -> anyhow::Result<String> {
+    let path = std::path::Path::new(project_dir).join("AGENTS.md");
+    if path.exists() {
+        return Ok(
+            "AGENTS.md already exists — edit it to refine project guidance for the agent."
+                .to_string(),
+        );
+    }
+
+    let mut langs = Vec::new();
+    let has = |name: &str| std::path::Path::new(project_dir).join(name).exists();
+    if has("Cargo.toml") {
+        langs.push("Rust (Cargo)");
+    }
+    if has("package.json") {
+        langs.push("JavaScript/TypeScript (npm)");
+    }
+    if has("pyproject.toml") || has("requirements.txt") {
+        langs.push("Python");
+    }
+    if has("go.mod") {
+        langs.push("Go");
+    }
+    if has("pom.xml") || has("build.gradle") || has("build.gradle.kts") {
+        langs.push("Java/Kotlin");
+    }
+
+    let stack = if langs.is_empty() {
+        "Unknown — inspect the tree before editing.".to_string()
+    } else {
+        langs.join(", ")
+    };
+
+    let body = format!(
+        r#"# AGENTS.md
+
+Project guidance for coding agents working in this repository.
+
+## Stack
+
+{stack}
+
+## Working directory
+
+`{project_dir}`
+
+## Conventions
+
+- Prefer small, focused changes over large rewrites.
+- Match existing style, naming, and module layout.
+- Run the project's normal checks after non-trivial edits.
+- Do not commit secrets or rewrite git history.
+
+## Commands
+
+Document useful build/test/lint commands here after discovery.
+
+## Notes
+
+Add architecture notes, do-not-touch areas, and preferred patterns below.
+"#
+    );
+
+    std::fs::write(&path, body)?;
+    // Scaffold extensibility dirs (filesystem plugins later)
+    for dir in [".agente/commands", ".agente/agents", ".agente/skills"] {
+        let _ = std::fs::create_dir_all(std::path::Path::new(project_dir).join(dir));
+    }
+
+    Ok(
+        "Created AGENTS.md and .agente/{commands,agents,skills}. Commit AGENTS.md when ready."
+            .to_string(),
+    )
+}

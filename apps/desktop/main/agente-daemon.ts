@@ -17,14 +17,14 @@ const EXE = process.platform === 'win32' ? 'agente.exe' : 'agente';
 
 /**
  * The `agente` binary: `AGENTE_BIN`, then the copy bundled with a packaged
- * app, then the monorepo's own build (release before debug) in development.
+ * app. Development uses the debug build produced by dev:agente.
  */
 export function resolveAgenteBinary(options: { resourcesPath?: string; repoRoot?: string } = {}): string | null {
   const candidates = [
     process.env.AGENTE_BIN,
-    options.resourcesPath ? path.join(options.resourcesPath, 'bin', EXE) : undefined,
+    options.repoRoot ? path.join(options.repoRoot, 'target', 'debug', EXE) : undefined,
     options.repoRoot ? path.join(options.repoRoot, 'target', 'release', EXE) : undefined,
-    options.repoRoot ? path.join(options.repoRoot, 'target', 'debug', EXE) : undefined
+    options.resourcesPath ? path.join(options.resourcesPath, 'bin', EXE) : undefined
   ];
   return candidates.find((candidate): candidate is string => !!candidate && fs.existsSync(candidate)) ?? null;
 }
@@ -45,6 +45,10 @@ type DaemonOptions = {
   /** Extra environment for the runtime (tests point its config elsewhere). */
   env?: NodeJS.ProcessEnv;
 };
+
+export const REQUIRED_CAPABILITIES = ['bots', 'routines', 'project', 'processes', 'sessions', 'turns', 'edits', 'desktop_v1'] as const;
+
+type RuntimeHello = { protocol_version: number; version: string; capabilities?: string[] };
 
 /**
  * Keeps one runtime connection alive: connects to a daemon already serving,
@@ -86,10 +90,22 @@ export class AgenteDaemon {
   private async open(): Promise<AgenteClient> {
     const existing = await AgenteClient.connect(this.socketPath).catch(() => null);
     const client = existing ?? (await this.spawnAndConnect());
-    const hello = await client.request<{ protocol_version: number }>('initialize', { client: 'agente-desktop' });
-    if (hello.protocol_version < AGENTE_PROTOCOL_VERSION) {
+    try {
+      const hello = await client.request<RuntimeHello>('initialize', { client: 'agente-desktop' }, START_TIMEOUT_MS);
+      const missing = REQUIRED_CAPABILITIES.filter((name) => !hello.capabilities?.includes(name));
+      if (hello.protocol_version !== AGENTE_PROTOCOL_VERSION || missing.length) {
+        throw new Error(
+          `The Agente runtime on ${this.socketPath} is incompatible with this desktop ` +
+          `(server ${hello.version}, protocol ${hello.protocol_version}; need protocol ${AGENTE_PROTOCOL_VERSION}` +
+          `${missing.length ? `, missing ${missing.join(', ')}` : ''}). ` +
+          'Restart agente serve with the current build, then restart the desktop. npm run dev builds the development runtime.'
+        );
+      }
+      console.info(`[agente] connected socket=${this.socketPath} source=${existing ? 'existing daemon' : this.options.binary} version=${hello.version} protocol=${hello.protocol_version} capabilities=${hello.capabilities?.join(',')}`);
+    } catch (error) {
       client.close();
-      throw new Error(`The Agente runtime on ${this.socketPath} is older than this app (protocol ${hello.protocol_version}, need ${AGENTE_PROTOCOL_VERSION}). Stop it and try again.`);
+      if (!existing) this.stop();
+      throw error;
     }
     client.onClose(() => {
       if (this.client === client) this.client = null;
@@ -120,7 +136,7 @@ export class AgenteDaemon {
     });
     const deadline = Date.now() + START_TIMEOUT_MS;
     const ready = (async () => {
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
         const client = await AgenteClient.connect(this.socketPath).catch(() => null);
         if (client) return client;
         await new Promise((resolve) => setTimeout(resolve, 100));

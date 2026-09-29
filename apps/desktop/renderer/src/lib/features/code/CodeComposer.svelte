@@ -11,7 +11,8 @@
 -->
 
 <script lang="ts">
-  import { Archive, ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, GitCompareArrows, MessageSquarePlus, Play, ShieldCheck, Square, SquareTerminal, Zap } from 'lucide-svelte';
+  import { onDestroy, untrack } from 'svelte';
+  import { Archive, ArrowDownToLine, ArrowUp, Bot, Check, ChevronDown, ClipboardList, File as FileIcon, FileDown, GitCompareArrows, MessageSquarePlus, MoreHorizontal, Paperclip, Play, Plug, RotateCcw, RotateCw, Settings2, ShieldCheck, Sparkles, Square, SquareTerminal, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery, type SlashCommand } from './slash-commands';
@@ -21,7 +22,16 @@
   import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import ContextUsageRing from '$lib/features/chat/composer/ContextUsageRing.svelte';
   import { codeStore } from './code.svelte';
-  import { setAgenteModel } from './code-ipc';
+  import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
+  import CodeProjectDialog from './CodeProjectDialog.svelte';
+  import { conversationSpend, spendLabel } from './accounting';
+  import { fileMentionAt, insertFile, matchFiles } from './file-mention';
+  import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
+  import { themeStore } from '$lib/stores/theme.svelte';
+  import { Button, Dialog } from '$lib/components/ui';
+  import { invoke } from '$lib/services/bridge';
+  import type { Attachment, AttachmentKind } from '$shared/agente-protocol.gen';
+  import { MEDIA_ACCEPT, isMediaPath, mediaData } from './code-media';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
@@ -34,8 +44,19 @@
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
 
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
-  let text = $state('');
+  let text = $state(untrack(() => chat.draft || ''));
   let modeMenuOpen = $state(false);
+  let toolsMenuOpen = $state(false);
+  let dialog = $state<'skills' | 'agents' | 'mcp' | 'sessions' | 'settings' | null>(null);
+  let caret = $state(0);
+  let files = $state<string[]>([]);
+  let fileIndex = $state(0);
+  let fileDismissed = $state(false);
+  let mediaPicker = $state<HTMLInputElement>();
+  let attachments = $state<Attachment[]>(untrack(() => chat.codeAgent?.draftAttachments?.map((item) => ({ ...item })) || []));
+  let pendingMedia = $state<Attachment[]>([]);
+  let allowMedia = $state<AttachmentKind[]>([]);
+  let attaching = $state(false);
 
   const run = $derived(codeStore.runFor(chat.id));
   const running = $derived(!!run?.running);
@@ -43,11 +64,12 @@
   // Honest model visibility: without a usable model the bar says so instead
   // of letting a send die inside the provider.
   const modelReady = $derived(codeStore.modelReady);
-  const canSend = $derived(!!text.trim() && (modelReady || running));
+  const canSend = $derived((!!text.trim() || attachments.length > 0) && !attaching && (modelReady || running));
   // Real accounting from the engine: promptTokens of the last call is the
   // context footprint. Hidden until the first report, like Home's ring.
-  const usage = $derived(run?.usage);
-  const showContextRing = $derived(!!usage && usage.promptTokens > 0);
+  const usage = $derived(run?.usage ?? [...chat.messages].reverse().find((message) => message.metadata?.codeUsage)?.metadata?.codeUsage);
+  const showContextRing = $derived(!!usage && usage.promptTokens > 0 && (usage.contextWindow ?? 0) > 0);
+  const accountingLabel = $derived(spendLabel(conversationSpend(chat.messages, run ?? undefined)));
   /** Input handed off but not yet consumed by a turn. */
   const queuedCount = $derived(run?.queuedCount ?? 0);
   /**
@@ -74,7 +96,16 @@
 
   function selectMode(mode: 'plan' | 'supervised' | 'full') {
     modeMenuOpen = false;
-    if (mode !== runtimeMode) void codeStore.setMode(chat.id, mode);
+    if (mode !== runtimeMode) void codeStore.setMode(chat.id, mode).catch((error) => toastStore.error(String(error)));
+  }
+
+  async function editFiles(action: 'undo' | 'redo') {
+    await codeStore.ensureSession(chat.id);
+    const result = await codeEdits(chat.id, action);
+    if (!result.ok) throw new Error(result.error || 'Could not restore files.');
+    await codeStore.refreshCheckpoints(chat.id);
+    if (project) await codeWorkspace.refreshChanges({ chatId: chat.id, projectRoot: project.rootPath, sessionId: chat.codeAgent?.sessionId || undefined });
+    toastStore.success(`${action === 'undo' ? 'Restored' : 'Reapplied'} ${result.files?.length ?? 0} files`);
   }
 
   function openModelHub() {
@@ -119,9 +150,9 @@
         else toastStore.error($t('code.compactFailed', { values: { error: result.error ?? '' } }));
       }
     },
-    { name: 'new', icon: MessageSquarePlus, label: $t('code.newConversation'), hint: $t('code.slash.newHint'), disabled: !project, run: () => { if (project) codeStore.newConversation(project); } },
+    { name: 'new', aliases: ['tab'], icon: MessageSquarePlus, label: $t('code.newConversation'), hint: $t('code.slash.newHint'), disabled: !project, run: () => { if (project) codeStore.newConversation(project); } },
     { name: 'plan', icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint'), run: () => selectMode('plan') },
-    { name: 'supervised', icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint'), run: () => selectMode('supervised') },
+    { name: 'supervised', aliases: ['build'], icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint'), run: () => selectMode('supervised') },
     { name: 'full', aliases: ['auto'], icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint'), run: () => selectMode('full') },
     { name: 'changes', icon: GitCompareArrows, label: $t('codeWs.changes'), hint: $t('code.slash.changesHint'), run: () => codeWorkspace.toggleChanges(true) },
     {
@@ -134,8 +165,62 @@
           toastStore.error($t('codeWs.terminalFailed', { values: { reason: (error as Error).message } }));
         }
       }
-    }
+    },
+    { name: 'skills', icon: Sparkles, label: 'Skills', hint: 'Project skills and custom commands', run: () => { dialog = 'skills'; } },
+    { name: 'subagents', aliases: ['agents', 'subagent-models'], icon: Bot, label: 'Subagents', hint: 'Live work, output and model overrides', run: () => { dialog = 'agents'; } },
+    { name: 'mcp', icon: Plug, label: 'MCP servers', hint: 'Tool server status and connections', run: () => { dialog = 'mcp'; } },
+    { name: 'settings', icon: Settings2, label: 'Agent settings', hint: 'Compaction and parallel subagents', run: () => { dialog = 'settings'; } },
+    { name: 'session', aliases: ['resume', 'sessions'], icon: MessageSquarePlus, label: 'Resume session', hint: 'Open a saved Rust session', run: () => { dialog = 'sessions'; } },
+    { name: 'undo', icon: RotateCcw, label: 'Undo edits', hint: 'Restore the previous file contents', disabled: running, run: () => editFiles('undo') },
+    { name: 'redo', icon: RotateCw, label: 'Redo edits', hint: 'Reapply the undone file changes', disabled: running, run: () => editFiles('redo') },
+    { name: 'init', icon: FileIcon, label: 'Initialize project', hint: 'Create AGENTS.md and agent folders', disabled: !project,
+      run: async () => { if (project) toastStore.info((await initProject(project.rootPath)).message); } },
+    { name: 'export', icon: FileDown, label: 'Export conversation', hint: 'Download conversation and tool history as Markdown', run: () => downloadSessionMarkdown(chat) },
+    { name: 'model', aliases: ['provider', 'refresh-models'], icon: Sparkles, label: 'Choose model', hint: 'Open the desktop model hub', run: openModelHub },
+    { name: 'project', icon: FileIcon, label: 'Open project', hint: 'Choose a working folder', run: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); } },
+    { name: 'stop', icon: Square, label: 'Stop run', hint: 'Interrupt the running agent', disabled: !running, run: () => codeStore.stop(chat.id) },
+    { name: 'mode', aliases: ['approve'], icon: ShieldCheck, label: 'Change mode', hint: 'Cycle plan, build and auto', run: () => selectMode(runtimeMode === 'plan' ? 'supervised' : runtimeMode === 'supervised' ? 'full' : 'plan') },
+    { name: 'theme', icon: Settings2, label: 'Toggle theme', hint: 'Switch dark and light', run: () => themeStore.toggle() },
+    { name: 'help', aliases: ['hotkeys'], icon: MoreHorizontal, label: 'Commands', hint: 'Show the Code command menu', run: () => { toolsMenuOpen = true; } }
   ]);
+
+  $effect(() => {
+    const root = project?.rootPath;
+    files = [];
+    if (!root) return;
+    let active = true;
+    void projectFiles(root).then((value) => { if (active) files = value; }).catch(() => {});
+    return () => { active = false; };
+  });
+  const mention = $derived(fileMentionAt(text, caret));
+  const fileMatches = $derived(mention ? matchFiles(files, mention.query) : []);
+  const fileOpen = $derived(!!mention && !fileDismissed && fileMatches.length > 0);
+  $effect(() => { void mention?.query; fileIndex = 0; });
+  function chooseFile(file: string) {
+    if (!mention) return;
+    if (isMediaPath(file)) {
+      const start = mention.start;
+      const end = caret;
+      void attachPath(file).then((attached) => { if (attached) text = text.slice(0, start) + text.slice(end); });
+      return;
+    }
+    const inserted = insertFile(text, caret, mention, file);
+    text = inserted.text;
+    caret = inserted.caret;
+    void Promise.resolve().then(() => { textarea?.focus(); textarea?.setSelectionRange(caret, caret); });
+  }
+  function onFileKey(event: KeyboardEvent): boolean {
+    if (!fileOpen) return false;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      fileIndex = (fileIndex + (event.key === 'ArrowDown' ? 1 : -1) + fileMatches.length) % fileMatches.length;
+    } else if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey && !event.isComposing)) {
+      event.preventDefault(); chooseFile(fileMatches[fileIndex]!);
+    } else if (event.key === 'Escape') {
+      event.preventDefault(); fileDismissed = true;
+    } else return false;
+    return true;
+  }
 
   let slashIndex = $state(0);
   let slashDismissed = $state(false);
@@ -157,7 +242,9 @@
   async function runCommand(command: Command) {
     if (command.disabled) return;
     clearComposer();
-    await command.run();
+    toolsMenuOpen = false;
+    try { await command.run(); }
+    catch (error) { toastStore.error(String(error)); }
   }
 
   function completeCommand(command: Command) {
@@ -172,6 +259,7 @@
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       slashIndex = (slashIndex + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      void Promise.resolve().then(() => document.querySelector('.slash-item.is-active')?.scrollIntoView({ block: 'nearest' }));
       return true;
     }
     if (event.key === 'Tab') {
@@ -202,9 +290,61 @@
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   }
 
+  $effect(() => {
+    void invoke<{ allow_media: AttachmentKind[] }>('agente_runtime_settings').then((settings) => (allowMedia = settings.allow_media)).catch(() => {});
+  });
+  function offerMedia(items: Attachment[]) {
+    const ready = items.filter((item) => item.kind === 'pdf' || allowMedia.includes(item.kind));
+    attachments = [...attachments, ...ready.filter((item) => !attachments.some((existing) => existing.path === item.path))];
+    pendingMedia = [...pendingMedia, ...items.filter((item) => !ready.includes(item))];
+  }
+  async function acceptMedia(always = false) {
+    try {
+      if (always) {
+        const kinds = [...new Set([...allowMedia, ...pendingMedia.map((item) => item.kind)])];
+        await invoke('agente_runtime_configure', { allow_media: kinds });
+        allowMedia = kinds;
+      }
+      attachments = [...attachments, ...pendingMedia.filter((item) => !attachments.some((existing) => existing.path === item.path))];
+      pendingMedia = [];
+      focusComposer();
+    } catch (error) { toastStore.error(String(error)); }
+  }
+  async function attachFiles(selected: File[]) {
+    attaching = true;
+    try {
+      const imported: Attachment[] = [];
+      for (const file of selected) {
+        const result = await invoke<{ attachment: Attachment }>('agente_media_import', await mediaData(file));
+        if (result.attachment) imported.push(result.attachment);
+      }
+      offerMedia(imported);
+    } catch (error) { toastStore.error(String(error)); }
+    finally { attaching = false; }
+  }
+  async function attachPath(path: string): Promise<boolean> {
+    try {
+      const { attachment } = await invoke<{ attachment: Attachment | null }>('agente_media_import', { path, project_dir: project?.rootPath });
+      if (!attachment) return false;
+      offerMedia([attachment]);
+      return true;
+    } catch (error) { toastStore.error(String(error)); return false; }
+  }
+  function onPaste(event: ClipboardEvent) {
+    const selected = [...(event.clipboardData?.files || [])];
+    if (selected.length) { event.preventDefault(); void attachFiles(selected); return; }
+    const pasted = event.clipboardData?.getData('text/plain') || '';
+    if (isMediaPath(pasted)) {
+      event.preventDefault();
+      const start = textarea?.selectionStart || 0;
+      const end = textarea?.selectionEnd || 0;
+      void attachPath(pasted).then((attached) => { if (!attached) text = text.slice(0, start) + pasted + text.slice(end); });
+    }
+  }
+
   async function submit() {
-    const value = text.trim();
-    if (!value) return;
+    const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
+    if (!value || attaching) return;
     // "/compact" typed out and sent runs the command, it is not a message.
     const command = exactSlashCommand(commands, value);
     if (command) {
@@ -212,28 +352,42 @@
       return;
     }
     if (running) {
+      const media = attachments;
+      attachments = [];
       text = '';
       if (textarea) autoGrow(textarea);
-      await codeStore.steer(chat.id, value);
+      await codeStore.steer(chat.id, value, media);
       return;
     }
     if (!modelReady) return;
+    const media = attachments;
+    attachments = [];
     text = '';
     if (textarea) autoGrow(textarea);
-    await codeStore.send(chat.id, value);
+    if (value.startsWith('!')) await codeStore.exec(chat.id, value.slice(1));
+    else await codeStore.send(chat.id, value, media);
   }
 
   async function queueFollowUp() {
-    const value = text.trim();
+    const value = text.trim() || (attachments.length ? 'Please review the attached media.' : '');
     if (!value) return;
     if (!running && !modelReady) return;
     text = '';
+    const media = attachments;
+    attachments = [];
     if (textarea) autoGrow(textarea);
-    await codeStore.followUp(chat.id, value);
+    await codeStore.followUp(chat.id, value, media);
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Backspace' && !text && attachments.length) { event.preventDefault(); attachments = attachments.slice(0, -1); return; }
+    if (onFileKey(event)) return;
     if (onSlashKey(event)) return;
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.preventDefault();
+      selectMode(runtimeMode === 'plan' ? 'supervised' : runtimeMode === 'supervised' ? 'full' : 'plan');
+      return;
+    }
     // Escape stops a live run (the shortcut help promises it).
     if (event.key === 'Escape' && running) {
       event.preventDefault();
@@ -257,6 +411,8 @@
   function onInput(event: Event) {
     const element = event.currentTarget as HTMLTextAreaElement;
     text = element.value;
+    caret = element.selectionStart;
+    fileDismissed = false;
     slashDismissed = false;
     autoGrow(element);
   }
@@ -268,7 +424,8 @@
     const provider = appStore.activeProviderName;
     const model = appStore.activeModelLabel;
     const backend = appStore.backendMode;
-    const key = `${backend}:${provider}:${model}`;
+    const thinking = chat.reasoningLevel || undefined;
+    const key = `${backend}:${provider}:${model}:${thinking || ''}`;
     if (!lastAppliedModel) {
       lastAppliedModel = key;
       return;
@@ -280,7 +437,7 @@
       chat.id,
       backend === 'local' ? 'local' : provider,
       backend === 'local' ? String(appStore.config.llm?.local?.model || '') : model,
-      undefined
+      thinking
     ).catch(() => {});
   });
 
@@ -304,7 +461,25 @@
     void text;
     autoGrow(textarea);
   });
+  $effect(() => {
+    const id = chat.id;
+    const draft = text;
+    const media = attachments.map((item) => ({ ...item }));
+    untrack(() => appStore.updateChatDraft(id, draft, media));
+    const timer = setTimeout(() => appStore.persist(), 300);
+    return () => clearTimeout(timer);
+  });
+  onDestroy(() => appStore.persist());
 </script>
+
+{#if dialog && project}<CodeProjectDialog chatId={chat.id} projectRoot={project.rootPath} section={dialog} onclose={() => (dialog = null)} />{/if}
+{#if pendingMedia.length}
+  <Dialog title="Attach media" onclose={() => (pendingMedia = [])} size="sm">
+    <div class="space-y-3 p-4 text-sm"><p class="text-muted-foreground">Send these files to the selected model?</p>{#each pendingMedia as media, index (index)}<p class="truncate">{media.name} · {media.kind}</p>{/each}
+      <div class="flex gap-2"><Button size="sm" onclick={() => acceptMedia()}>Attach</Button><Button size="sm" variant="ghost" onclick={() => acceptMedia(true)}>Always allow</Button></div>
+    </div>
+  </Dialog>
+{/if}
 
 <div class="composer-dock relative z-20 w-full shrink-0 px-3 pb-2 pt-2 md:px-6 md:pb-3" role="region" aria-label={$t('code.composerRegion')}>
   <div class="composer-frame mx-auto w-full" style="max-width: var(--thread-width);">
@@ -314,7 +489,13 @@
         {$t('code.awaitingApproval')}
       </button>
     {/if}
-    {#if slashOpen}
+    {#if fileOpen}
+      <div class="slash-menu" role="listbox" aria-label="Project files">
+        {#each fileMatches as file, index (file)}
+          <button type="button" role="option" aria-selected={index === fileIndex} class="slash-item" class:is-active={index === fileIndex} onmouseenter={() => (fileIndex = index)} onmousedown={(event) => event.preventDefault()} onclick={() => chooseFile(file)}><FileIcon class="size-4 shrink-0 text-muted-foreground" /><span class="truncate font-mono text-xs">{file}</span></button>
+        {/each}
+      </div>
+    {:else if slashOpen}
       <div class="slash-menu" role="listbox" aria-label={$t('code.slash.title')}>
         {#each slashMatches as command, index (command.name)}
           {@const Icon = command.icon}
@@ -340,6 +521,11 @@
     {/if}
     <div class="composer-shell aui-composer pointer-events-auto transition">
       <div class="composer-body">
+        {#if attachments.length}
+          <div class="mb-2 flex flex-wrap gap-1.5">
+            {#each attachments as media, index (index)}<span class="flex max-w-64 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"><Paperclip class="size-3" /><span class="truncate">{media.name}</span><button type="button" aria-label={`Remove ${media.name}`} onclick={() => (attachments = attachments.filter((_, i) => i !== index))}><X class="size-3" /></button></span>{/each}
+          </div>
+        {/if}
         <textarea
           bind:this={textarea}
           class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"
@@ -348,9 +534,14 @@
           value={text}
           oninput={onInput}
           onkeydown={onKeydown}
+          onpaste={onPaste}
+          ondragover={(event) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault(); }}
+          ondrop={(event) => { const selected = [...(event.dataTransfer?.files || [])]; if (selected.length) { event.preventDefault(); void attachFiles(selected); } }}
+          onselect={() => { if (textarea) caret = textarea.selectionStart; }}
         ></textarea>
 
         <div class="composer-actions">
+          <div class="composer-selectors">
           <!-- Runtime mode gate — plan / supervised / full-auto. Scope lives on
                the left of the bar; the model picker answers on the right. -->
           <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
@@ -381,26 +572,27 @@
             {/each}
           </Menu>
 
-          <ModelSwitcher />
+          <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
+          </div>
+
+          {#if accountingLabel || showContextRing || (running && queuedCount > 0)}
+            <div class="composer-accounting">
+              {#if accountingLabel}<span class="spend-label" title="Conversation spend and reported prompt cache rate">{accountingLabel}</span>{/if}
+              {#if running && queuedCount > 0}<span class="queue-label" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
+              {#if showContextRing && usage}
+                <ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} />
+              {/if}
+            </div>
+          {/if}
 
           <div class="trailing">
-            {#if showContextRing && usage}
-              <ContextUsageRing
-                usedTokens={usage.promptTokens}
-                maxTokens={usage.contextWindow}
-                reservedTokens={usage.completionTokens}
-              />
-            {/if}
+          <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
+          <button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Attach media" disabled={attaching} onclick={() => mediaPicker?.click()}><Paperclip class="size-4" /></button>
 
-            {#if running && queuedCount > 0}
-              <!-- QueueDock-lite: proof the queued message landed. -->
-              <span
-                class="queued-pill flex h-8 items-center rounded-full border border-border px-2.5 text-[11px] font-medium text-muted-foreground"
-                role="status"
-              >
-                {$t('code.queued', { values: { n: queuedCount } })}
-              </span>
-            {/if}
+          <Menu bind:open={toolsMenuOpen} placement="top-end" label="Code tools">
+            {#snippet trigger(props)}<button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Code tools" {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+            {#each commands as command (command.name)}<MenuItem icon={command.icon} label={command.label} description={command.hint} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+          </Menu>
 
             {#if running}
               <!-- Stop is unambiguous and always reachable mid-run. -->
@@ -491,6 +683,8 @@
 
   .composer-frame {
     position: relative;
+    container: code-composer / inline-size;
+    min-width: 0;
   }
 
   .composer-shell {
@@ -505,13 +699,60 @@
   }
 
   .composer-actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 0.375rem;
     min-height: 2rem;
   }
 
+  .composer-selectors {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .model-slot {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 18rem;
+  }
+
+  .composer-accounting {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    min-width: 0;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spend-label,
+  .queue-label { white-space: nowrap; }
+
+  .trailing { grid-column: 3; }
+
+  @container code-composer (max-width: 560px) {
+    .composer-actions { grid-template-columns: minmax(0, 1fr) auto; }
+    .trailing { grid-column: 2; grid-row: 1; }
+    .composer-accounting {
+      grid-row: 2;
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      gap: 0.25rem 0.5rem;
+    }
+    .composer-accounting :global(.context-ring) { width: 1.5rem; height: 1.5rem; margin-left: auto; }
+    .mode-trigger { padding-inline: 0.375rem; }
+    .mode-trigger :global(svg:first-child) { display: none; }
+  }
+
   .slash-menu {
+    max-height: min(20rem, 40vh);
+    overflow-y: auto;
     margin-bottom: 0.5rem;
     padding: 0.25rem;
     border: 1px solid var(--border);
@@ -560,8 +801,8 @@
   /* Same white-pill treatment as the ModelSwitcher trigger beside it. */
   .mode-trigger {
     color: var(--text-secondary);
-    background: var(--card);
-    border: 1px solid var(--border);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-full);
     box-shadow: none;
     transition:
@@ -572,7 +813,6 @@
 
   .mode-trigger:hover,
   .mode-trigger.is-open {
-    border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     background: var(--muted);
     color: var(--foreground);
   }
@@ -634,7 +874,6 @@
 
   .trailing {
     display: flex;
-    flex: 1 1 auto;
     align-items: center;
     justify-content: flex-end;
     gap: 0.375rem;
@@ -657,10 +896,8 @@
   }
 
   .send-btn.is-stop {
-    /* Stop reads as an interrupt, not a submit: quiet surface, loud glyph. */
-    background: color-mix(in srgb, var(--error) 14%, var(--background));
-    color: var(--error);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--error) 35%, transparent);
+    background: var(--surface-active);
+    color: var(--foreground);
   }
 
   .send-btn:active:not(:disabled) {
@@ -676,11 +913,6 @@
 
   .continue-btn:active {
     transform: scale(0.98);
-  }
-
-  .queued-pill {
-    background: var(--card);
-    letter-spacing: -0.01em;
   }
 
   .send-icon {

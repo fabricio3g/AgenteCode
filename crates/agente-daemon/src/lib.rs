@@ -7,6 +7,7 @@
 mod bot_tools;
 mod bots;
 mod connection;
+mod project;
 mod routines;
 mod tcp;
 mod telegram;

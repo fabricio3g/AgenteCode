@@ -13,6 +13,7 @@ agente-core = { workspace = true }
 agente-protocol = { workspace = true }
 agente-runtime = { workspace = true }
 async-trait = { workspace = true }
+base64 = "0.22"
 chrono = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

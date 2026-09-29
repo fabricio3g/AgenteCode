@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use agente_acp::rpc::{self, FrameError, Incoming};
 use agente_bot::BotStore;
-use agente_protocol::{ApprovalDecision, SessionId, StartTurn, Trust, TurnId, UserInput};
+use agente_protocol::{
+    ApprovalDecision, Attachment, Message, RunId, SessionId, StartTurn, Trust, TurnId,
+};
 
 use crate::Service;
 use agente_runtime::{RuntimeError, RuntimeHandle, TurnHandle};
@@ -48,6 +50,7 @@ pub(crate) fn initialize_result() -> Value {
         "protocol_version": agente_protocol::PROTOCOL_VERSION,
         "server": "agente",
         "version": env!("CARGO_PKG_VERSION"),
+        "capabilities": ["bots", "routines", "project", "processes", "sessions", "turns", "edits", "desktop_v1"],
     })
 }
 
@@ -89,7 +92,27 @@ where
         }
         match rpc::classify(&line) {
             Ok(Incoming::Request { id, method, params }) => {
-                let outcome = if method == "runtime.configure" {
+                let outcome = if method == "mcp.control" {
+                    #[derive(Deserialize)]
+                    struct Params {
+                        project_dir: String,
+                        name: String,
+                        action: String,
+                    }
+                    match parse::<Params>(params) {
+                        Ok(Params {
+                            project_dir,
+                            name,
+                            action,
+                        }) => connection
+                            .runtime
+                            .control_mcp(&project_dir, &name, &action)
+                            .await
+                            .map(|()| json!({ "ok": true }))
+                            .map_err(runtime_failure),
+                        Err(error) => Err(error),
+                    }
+                } else if method == "runtime.configure" {
                     // Waits for the MCP servers the patch names, so the next
                     // turn already sees their tools.
                     connection
@@ -176,6 +199,19 @@ struct SessionParams {
 }
 
 #[derive(Deserialize)]
+struct OpenSessionParams {
+    session_id: SessionId,
+    project_dir: String,
+}
+
+#[derive(Deserialize)]
+struct ForkParams {
+    session_id: SessionId,
+    #[serde(default)]
+    conversation_index: Option<usize>,
+}
+
+#[derive(Deserialize)]
 struct TurnParams {
     turn_id: TurnId,
 }
@@ -184,6 +220,8 @@ struct TurnParams {
 struct SteerParams {
     turn_id: TurnId,
     content: String,
+    #[serde(default)]
+    attachments: Vec<Attachment>,
 }
 
 #[derive(Deserialize)]
@@ -281,6 +319,35 @@ impl Connection {
         let runtime = &self.runtime;
         match method {
             "initialize" => Ok(initialize_result()),
+            "runtime.settings" => Ok(runtime.settings()),
+            "models.info" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    provider: String,
+                    model: String,
+                }
+                let Params { provider, model } = parse(params)?;
+                let info = runtime.model_info(&provider, &model);
+                Ok(json!({
+                    "id": info.id,
+                    "name": info.name,
+                    "provider_id": info.provider_id,
+                    "capabilities": info.capabilities,
+                    "cost": info.cost,
+                    "limits": info.limits,
+                    "reasoning_options": info.reasoning_options,
+                    "reasoning_stream_field": info.reasoning_stream_field,
+                }))
+            }
+            "media.import" => crate::project::import_media(params),
+            "children.cancel" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    run_id: RunId,
+                }
+                let Params { run_id } = parse(params)?;
+                Ok(json!({ "ok": runtime.cancel_child(run_id) }))
+            }
             "session.list" => to_json(runtime.session_infos()),
             "session.get" => {
                 let SessionParams { session_id } = parse(params)?;
@@ -288,6 +355,19 @@ impl Connection {
                     "snapshot": to_json(runtime.session_snapshot(session_id))?,
                     "meta": to_json(runtime.session_meta(session_id))?,
                 }))
+            }
+            "session.open" => {
+                let OpenSessionParams {
+                    session_id,
+                    project_dir,
+                } = parse(params)?;
+                Ok(
+                    json!({ "snapshot": runtime.open_session(session_id, &project_dir).map_err(runtime_failure)? }),
+                )
+            }
+            "session.checkpoints" => {
+                let SessionParams { session_id } = parse(params)?;
+                Ok(runtime.checkpoints(session_id))
             }
             "session.delete" => {
                 let SessionParams { session_id } = parse(params)?;
@@ -301,13 +381,34 @@ impl Connection {
                 to_json(runtime.compact(session_id).map_err(runtime_failure)?)
             }
             "session.fork" => {
-                let SessionParams { session_id } = parse(params)?;
-                to_json(runtime.fork_session(session_id))
+                let ForkParams {
+                    session_id,
+                    conversation_index,
+                } = parse(params)?;
+                if runtime.is_busy(session_id) {
+                    return Err((BUSY, "wait for the turn to finish before forking".into()));
+                }
+                if conversation_index.is_some_and(|index| {
+                    index > runtime.session_snapshot(session_id).conversation.len()
+                }) {
+                    return Err((
+                        rpc::INVALID_PARAMS,
+                        "conversation index is beyond this session".into(),
+                    ));
+                }
+                let fork = runtime.fork_session(session_id);
+                if let Some(index) = conversation_index {
+                    runtime
+                        .rewind(fork.session_id, index)
+                        .map_err(runtime_failure)?;
+                }
+                to_json(runtime.session_snapshot(fork.session_id))
             }
             "turn.start" => {
                 let start: StartTurn = parse(params)?;
                 let turn = runtime.start_turn(start).map_err(runtime_failure)?;
-                Ok(json!({ "turn_id": self.pump(turn) }))
+                let conversation_index = turn.conversation_index;
+                Ok(json!({ "turn_id": self.pump(turn), "conversation_index": conversation_index }))
             }
             "turn.exec" => {
                 // Whoever can open the socket is the owner: it is created
@@ -327,8 +428,14 @@ impl Connection {
                 Ok(json!({ "ok": runtime.cancel(turn_id) }))
             }
             "turn.steer" => {
-                let SteerParams { turn_id, content } = parse(params)?;
-                Ok(json!({ "ok": runtime.steer(turn_id, UserInput { content }) }))
+                let SteerParams {
+                    turn_id,
+                    content,
+                    attachments,
+                } = parse(params)?;
+                let mut message = Message::user(content);
+                message.attachments = attachments;
+                Ok(json!({ "ok": runtime.steer_message(turn_id, message) }))
             }
             "approval.respond" => {
                 let decision: ApprovalDecision = parse(params)?;
@@ -407,6 +514,9 @@ impl Connection {
                 let turn = crate::routines::run_now(&service, params)?;
                 let session_id = turn.session_id();
                 Ok(json!({ "turn_id": self.pump(turn), "session_id": session_id }))
+            }
+            "project.info" | "project.init" | "project.expand_prompt" | "mcp.status" => {
+                crate::project::handle(runtime, method, params)
             }
             routines if routines.starts_with("routines.") => {
                 crate::routines::handle(&self.bots, method, params)

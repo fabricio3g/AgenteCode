@@ -11,7 +11,7 @@ import { RustTurnTranslator } from './rust-events.ts';
 /** Who asked: you, a routine, or another bot handing work over. */
 export type BotTurnSource = { kind: 'user' } | { kind: 'routine'; title: string } | { kind: 'handoff'; from: string };
 
-export type BotTurn = { prompt: string; source: BotTurnSource; events: CodeAgentEvent[] };
+export type BotTurn = { prompt: string; source: BotTurnSource; events: CodeAgentEvent[]; conversationIndex?: number };
 
 /** Project instructions the runtime adds as a user message; not something anyone said. */
 const REMINDER_MARKER = '<system-reminder>';
@@ -69,13 +69,13 @@ export function historyTurns(conversation: Message[], chatId: string): BotTurn[]
     run({ type: 'turn_finished', revision: 0 });
     current = null;
   };
-  for (const message of conversation) {
+  for (const [conversationIndex, message] of conversation.entries()) {
     if (message.role === 'system') continue;
     if (message.role === 'user') {
       if (message.content.includes(REMINDER_MARKER)) continue;
       if (current) close();
       translator = new RustTurnTranslator(chatId, () => 0);
-      current = { ...turnSource(message.content), events: [] };
+      current = { ...turnSource(message.content), events: [], conversationIndex };
       turns.push(current);
       run({ type: 'turn_started' });
       continue;

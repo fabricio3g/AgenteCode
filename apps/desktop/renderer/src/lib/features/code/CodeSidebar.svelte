@@ -232,6 +232,7 @@
                   aria-label={$t('code.projectOptions')}
                   aria-expanded={props['aria-expanded']}
                   aria-haspopup={props['aria-haspopup']}
+                  aria-controls={props['aria-controls']}
                   onclick={(event) => {
                     event.stopPropagation();
                     menuPoint = null;

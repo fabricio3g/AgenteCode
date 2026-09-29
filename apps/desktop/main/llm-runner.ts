@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { getHardwareLimits } from './system-info.ts';
-import { ManagedProcess, buildLlamaArgs, buildEmbeddingArgs, resolveChatTemplateForModel } from './process-manager.ts';
+import { ManagedProcess, ProcessStartCancelled, buildLlamaArgs, buildEmbeddingArgs, resolveChatTemplateForModel } from './process-manager.ts';
 import {
   resolveRuntimeBinary, listRuntimeBinaries, clearRuntimeSelectionFromConfig
 } from './runtime-resolver.ts';
@@ -31,6 +31,8 @@ const embedding = new ManagedProcess({
 let llamaStatus = llama.status;
 /** What the main instance was last started with, for restarts (sharing). */
 let lastMainConfig: Record<string, unknown> | null = null;
+let launchGeneration = 0;
+let mainLaunch: { signature: string; promise: Promise<string> } | null = null;
 
 export function getMainLaunchConfig(): Record<string, unknown> | null {
   return lastMainConfig;
@@ -111,7 +113,6 @@ function sendSupervisorEvent(
 
 function emitStatus(win: BrowserWindow | null | undefined, patch: Record<string, unknown>): void {
   llama.setStatus(patch);
-  sendSupervisorEvent(win, patch);
 }
 
 /**
@@ -176,7 +177,37 @@ function templateStatusFor(modelPath: string | null | undefined): { source: stri
   }
 }
 
-export async function startLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined): Promise<string> {
+export function startLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined): Promise<string> {
+  const signature = JSON.stringify(Object.fromEntries(Object.entries(config).sort(([a], [b]) => a.localeCompare(b))));
+  if (mainLaunch?.signature === signature && (llama.status.state === 'starting' || llama.status.state === 'ready')) return mainLaunch.promise;
+  const previous = mainLaunch;
+  const generation = ++launchGeneration;
+  // Stop the old child before its credential is replaced; identical callers
+  // above share the complete launch, including preparation and /props.
+  const stopped = llama.stop();
+  const promise = (async () => {
+    await stopped;
+    await previous?.promise.catch(() => {});
+    if (generation !== launchGeneration) throw new ProcessStartCancelled();
+    try {
+      const result = await launchLlama(config, win, generation);
+      if (generation !== launchGeneration) throw new ProcessStartCancelled();
+      return result;
+    } catch (err) {
+      if (generation === launchGeneration) {
+        endLlamaSession();
+        if (!(err instanceof ProcessStartCancelled)) emitStatus(win, { state: 'error', message: toErrorMessage(err) });
+      }
+      throw err;
+    }
+  })();
+  const request = { signature, promise };
+  mainLaunch = request;
+  void promise.catch(() => { if (mainLaunch === request) mainLaunch = null; });
+  return promise;
+}
+
+async function launchLlama(config: Record<string, unknown>, win: BrowserWindow | null | undefined, generation: number): Promise<string> {
   const runtimePath = resolveRuntimeBinary(config.runtime_path as string);
   if (!runtimePath || !fs.existsSync(runtimePath)) {
     throw new Error('llama-server binary not found. Install a runtime first.');
@@ -193,6 +224,7 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
 
   // Get system info for runtime config resolution
   const systemInfo = await getHardwareLimits();
+  if (generation !== launchGeneration) throw new ProcessStartCancelled();
 
   const port = (launchConfig.port as number) || 11435;
   // Another server (an extra instance) already answering on this port would
@@ -202,6 +234,7 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
     if (busy) throw new Error(`Port ${port} is already used by another running model.`);
   }
   const capabilities = inspectLlamaServer(runtimePath);
+  if (generation !== launchGeneration) throw new ProcessStartCancelled();
   // Per-launch credential so a stray browser tab cannot drive the local model
   // through the server's permissive default CORS policy.
   const apiKey = supportsLlamaFlag(capabilities, '--api-key') ? startLlamaSession(port) : '';
@@ -209,9 +242,9 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
 
   // Relay everything the supervisor learns — including the load phases it
   // parses out of llama-server's own log — straight to the renderer.
-  llama._onStatusChange = (status: Record<string, unknown>) => {
+  llama._onStatusChange = (status: Record<string, unknown>, patch: Record<string, unknown>) => {
     llamaStatus = { ...llamaStatus, ...status };
-    sendSupervisorEvent(win, status);
+    sendSupervisorEvent(win, patch);
   };
 
   emitStatus(win, {
@@ -222,7 +255,6 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
     ...templateStatusFor(launchConfig.model_path as string)
   });
 
-  try {
     await llama.start({
       binaryPath: runtimePath,
       args,
@@ -235,6 +267,8 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
         ...templateStatusFor(launchConfig.model_path as string)
       }
     });
+    const props = await fetchServerProps(port);
+    if (generation !== launchGeneration) throw new ProcessStartCancelled();
     emitStatus(win, {
       state: 'ready',
       port,
@@ -242,18 +276,16 @@ export async function startLlama(config: Record<string, unknown>, win: BrowserWi
       model_path: launchConfig.model_path,
       runtime_path: runtimePath,
       ...templateStatusFor(launchConfig.model_path as string),
-      ...readPropsFields(await fetchServerProps(port))
+      ...readPropsFields(props)
     });
     return 'started';
-  } catch (err: unknown) {
-    endLlamaSession();
-    emitStatus(win, { state: 'error', message: toErrorMessage(err) });
-    throw err;
-  }
 }
 
 export async function stopLlama(win: BrowserWindow | null | undefined): Promise<void> {
+  const generation = ++launchGeneration;
+  mainLaunch = null;
   await llama.stop({ runtime_path: null, model_path: null, model_id: null, port: null });
+  if (generation !== launchGeneration) return;
   endLlamaSession();
   emitStatus(win, { state: 'idle', runtime_path: null, model_path: null, model_id: null });
 }
@@ -297,6 +329,8 @@ export function getLlamaStatus() {
 // ── Cleanup / status ──
 
 export function cleanupLlm() {
+  launchGeneration += 1;
+  mainLaunch = null;
   llama.kill();
   embedding.kill();
   endLlamaSession();

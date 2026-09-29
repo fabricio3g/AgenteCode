@@ -16,7 +16,7 @@ export class AgenteRpcError extends Error {
   }
 }
 
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void };
+type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
 type NotificationListener = (method: string, params: unknown) => void;
 type Incoming = { id?: unknown; method?: string; params?: unknown; result?: unknown; error?: { code?: number; message?: string } };
 
@@ -59,11 +59,15 @@ export class AgenteClient {
     return this.closed;
   }
 
-  request<T = unknown>(method: string, params: unknown = null): Promise<T> {
+  request<T = unknown>(method: string, params: unknown = null, timeoutMs = 60_000): Promise<T> {
     if (this.closed) return Promise.reject(new Error('The Agente runtime is not connected.'));
     const id = ++this.nextId;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Agente runtime request ${method} timed out after ${timeoutMs / 1000}s.`));
+      }, timeoutMs);
+      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
       this.socket.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
     });
   }
@@ -108,6 +112,7 @@ export class AgenteClient {
     const pending = this.pending.get(id);
     if (!pending) return;
     this.pending.delete(id);
+    clearTimeout(pending.timer);
     if (!message.error) {
       pending.resolve(message.result);
       return;
@@ -119,7 +124,10 @@ export class AgenteClient {
   private shutdown(error: Error): void {
     if (this.closed) return;
     this.closed = true;
-    for (const { reject } of this.pending.values()) reject(error);
+    for (const { reject, timer } of this.pending.values()) {
+      clearTimeout(timer);
+      reject(error);
+    }
     this.pending.clear();
     for (const listener of this.closeListeners) listener();
     this.closeListeners.clear();

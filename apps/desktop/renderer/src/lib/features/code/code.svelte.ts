@@ -26,8 +26,11 @@ import {
   rollbackCodeAgent,
   deleteCodeAgentSessionData,
   listLiveCodeAgentChats,
-  setAgenteModel
+  setAgenteModel,
+  execCodeCommand
 } from './code-ipc';
+import { codeMessageAction } from './code-ipc';
+import type { Attachment, SessionInfo, SessionSnapshot } from '$shared/agente-protocol.gen';
 import { subscribeToCodeAgentEvents } from './code-events.svelte';
 
 interface AgenteRun extends CodeRunState {
@@ -74,6 +77,7 @@ class CodeStore {
   runs = $state<Record<string, AgenteRun>>({});
   /** engine session id per chat (also mirrored into chat.codeAgent.sessionId) */
   #sessionIds = new Map<string, string>();
+  #conversationIndices = new Map<string, number>();
   /** Approvals the engine settled itself (abort, shutdown) — do not answer them again. */
   #engineSettled = new Set<string>();
   #repairedInterrupted = false;
@@ -293,6 +297,40 @@ class CodeStore {
     appStore.selectChat(chatId);
   }
 
+  async importSession(info: SessionInfo): Promise<void> {
+    const existing = appStore.chats.find((chat) => chat.codeAgent?.sessionId === info.session_id);
+    if (existing) { this.openConversation(existing.id); return; }
+    let project = this.projects.find((item) => samePath(item.rootPath, info.project_dir));
+    if (!project) {
+      project = { id: createId('proj'), rootPath: info.project_dir, rootName: folderName(info.project_dir), createdAt: Date.now(), updatedAt: Date.now() };
+      await saveCodeProjectToDb(project);
+      this.projects = sortByActivity([...this.projects, project]);
+    }
+    const created = this.newConversation(project);
+    const chat = appStore.chats.find((item) => item.id === created.id)!;
+    const turns = await invoke<Array<{ prompt: string; conversationIndex: number; events: CodeAgentEvent[] }>>('agente_session_history', { sessionId: info.session_id, chatId: chat.id });
+    chat.codeAgent!.sessionId = info.session_id;
+    chat.title = info.title || info.first_prompt || 'Resumed session';
+    for (const turn of turns) {
+      const run = createCodeRunState();
+      for (const event of turn.events) applyCodeAgentEvent(run, event);
+      chat.messages.push(
+        { id: createId('msg'), role: 'user', content: turn.prompt, createdAt: Date.now(), metadata: { codeConversationIndex: turn.conversationIndex } },
+        { id: createId('msg'), role: 'assistant', content: run.content, reasoning: run.reasoning, createdAt: Date.now(), done: true, status: 'idle', agentSteps: run.steps, metadata: { codeTimeline: run.timeline, codeTodos: run.todos, codeChildren: run.children, codeSpend: run.spend, codeUsage: run.usage, codeDiagnostics: run.diagnostics } }
+      );
+    }
+    appStore.markChatDirty(chat.id);
+    appStore.persist();
+  }
+
+  async ensureSession(chatId: string): Promise<void> {
+    const chat = appStore.chats.find((item) => item.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    if (!chat || !project) throw new Error('Select a project first.');
+    const error = await this.#ensureSession(chat, project);
+    if (error) throw new Error(error);
+  }
+
   // ── Model readiness ─────────────────────────────────────────────────
 
   /**
@@ -328,6 +366,7 @@ class CodeStore {
       this.runs = next;
     }
     this.#sessionIds.delete(chatId);
+    this.#conversationIndices.delete(chatId);
   }
 
   /** True once an engine session has been started for this chat. */
@@ -376,7 +415,18 @@ class CodeStore {
     const chat = appStore.chats.find((c) => c.id === event.chatId);
     if (!chat) return;
 
+    if (event.type === 'agent_start' && run.done) {
+      // A queued follow-up is a new Rust turn: give its deltas a fresh target.
+      Object.assign(run, createCodeRunState(), { running: true, assistantMessageId: undefined });
+      this.#appendAssistant(chat);
+    }
+
     applyCodeAgentEvent(run, event);
+    if (event.type === 'compaction_end' && event.success && event.tokensBefore !== undefined) {
+      for (const message of chat.messages) {
+        if (message.metadata) delete message.metadata.codeConversationIndex;
+      }
+    }
     if (event.type === 'agent_start') {
       // A follow-up's agent_start belongs to the same transcript turn — bind
       // the run to the streaming assistant message even when the run state
@@ -384,6 +434,9 @@ class CodeStore {
       run.assistantMessageId ??= chat.messages.slice().reverse().find((message) => message.role === 'assistant' && message.status === 'streaming')?.id;
       run.running = true;
       run.queuedCount = 0;
+    }
+    if (event.type === 'runtime_event' && event.event.type === 'user_messages_injected') {
+      run.queuedCount = Math.max(0, run.queuedCount - event.event.messages.length);
     }
     if (event.type === 'steer_acknowledged' && event.accepted) {
       // Authoritative receipt replaces the local approximation: the engine
@@ -439,7 +492,14 @@ class CodeStore {
     message.content = run.content;
     message.reasoning = run.reasoning || undefined;
     message.agentSteps = run.steps.map((step) => ({ ...step }));
-    message.metadata = { ...message.metadata, codeTimeline: run.timeline.map((entry) => ({ ...entry })) };
+    message.metadata = {
+      ...message.metadata,
+      codeTimeline: run.timeline.map((entry) => ({ ...entry })),
+      codeChildren: structuredClone($state.snapshot(run.children)),
+      codeSpend: { ...run.spend },
+      ...(run.usage ? { codeUsage: { ...run.usage } } : {}),
+      codeDiagnostics: [...run.diagnostics]
+    };
     if (run.done) {
       message.status = run.error ? 'error' : 'idle';
       message.done = true;
@@ -464,13 +524,16 @@ class CodeStore {
   }
 
   /** Append a user message to a chat transcript (no assistant placeholder). */
-  #appendUserTurn(chat: ChatSession, text: string): void {
+  #appendUserTurn(chat: ChatSession, text: string, attachments: Attachment[] = []): void {
     chat.messages.push({
       id: createId('msg'),
       role: 'user',
       content: text,
+      ...(!this.runs[chat.id]?.assistantMessageId && this.#conversationIndices.has(chat.id)
+        ? { metadata: { codeConversationIndex: this.#conversationIndices.get(chat.id) } } : {}),
       createdAt: Date.now()
     });
+    if (attachments.length) chat.messages.at(-1)!.metadata = { ...chat.messages.at(-1)!.metadata, codeAttachments: attachments.map((attachment) => ({ ...attachment })) };
     if (isDefaultChatTitle(chat.title)) {
       chat.title = text.slice(0, 60);
     }
@@ -482,6 +545,10 @@ class CodeStore {
   /** Push the user turn plus the streaming assistant placeholder for a run. */
   #appendTurnPair(chat: ChatSession, text: string): void {
     this.#appendUserTurn(chat, text);
+    this.#appendAssistant(chat);
+  }
+
+  #appendAssistant(chat: ChatSession): void {
     const assistantMessageId = createId('msg');
     this.#requireRun(chat.id).assistantMessageId = assistantMessageId;
     chat.messages.push({
@@ -503,14 +570,24 @@ class CodeStore {
    * recorded in the transcript like any other user turn.
    * The assistant placeholder message streams live from code_agent_event.
    */
-  async send(chatId: string, text: string): Promise<void> {
+  async send(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
+    await this.#runTurn(chatId, text, () => promptCodeAgent(chatId, text, attachments), attachments);
+  }
+
+  /** `!command`: run it in the project's shell, outside the model (the TUI's `!`). */
+  async exec(chatId: string, command: string): Promise<void> {
+    await this.#runTurn(chatId, `!${command}`, () => execCodeCommand(chatId, command));
+  }
+
+  /** Start (or resume) the session, record the turn, then `start` it. */
+  async #runTurn(chatId: string, text: string, start: () => Promise<{ ok: boolean; error?: string; conversationIndex?: number }>, attachments: Attachment[] = []): Promise<void> {
     const chat = appStore.chats.find((c) => c.id === chatId);
     const project = this.projectById(chat?.projectId ?? null);
     if (!chat || !project || !text.trim()) return;
 
     const run = this.#requireRun(chatId);
     if (run.running) {
-      await this.steer(chatId, text);
+      await this.steer(chatId, text, attachments);
       return;
     }
 
@@ -528,52 +605,33 @@ class CodeStore {
     });
     this.#ensureEventSubscription();
 
-    if (this.#sessionIds.has(chatId)) {
-      // The picker may have changed since the session started (possibly while
-      // another conversation was on screen): run with what it shows now.
-      const { provider, model } = await currentProviderModel();
-      if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
-    } else {
-      try {
-        const { provider, model } = await currentProviderModel();
-        if (!model) {
-          throw new Error('No model selected — pick one in the Model Hub first.');
-        }
-        const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
-        const resumeSessionId = chat.codeAgent?.sessionId || undefined;
-        const { sessionId } = await startCodeAgentSession({
-          chatId,
-          projectRoot: project.rootPath,
-          provider,
-          model,
-          runtimeMode,
-          resumeSessionId,
-          ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
-        });
-        this.#sessionIds.set(chatId, sessionId);
-        if (chat.codeAgent) {
-          chat.codeAgent.sessionId = sessionId;
-          chat.codeAgent.updatedAt = Date.now();
-        }
-      } catch (err: unknown) {
-        const messageText = err instanceof Error ? err.message : String(err);
-        run.running = false;
-        run.done = true;
-        run.error = messageText;
-        // A failed start is still a turn: show what was asked and why it
-        // failed instead of swallowing both.
-        this.#appendTurnPair(chat, text);
-        this.#flushToMessage(chatId, run);
-        return;
-      }
+    const failure = await this.#ensureSession(chat, project);
+    if (failure) {
+      run.running = false;
+      run.done = true;
+      run.error = failure;
+      // A failed start is still a turn: show what was asked and why it
+      // failed instead of swallowing both.
+      this.#appendTurnPair(chat, text);
+      this.#flushToMessage(chatId, run);
+      return;
     }
 
     this.#appendTurnPair(chat, text);
     this.#touchProject(project.id);
+    const userMessage = chat.messages.at(-2)!;
+    if (attachments.length) userMessage.metadata = { ...userMessage.metadata, codeAttachments: attachments.map((attachment) => ({ ...attachment })) };
 
     try {
-      const result = await promptCodeAgent(chatId, text);
-      if (result.ok) return;
+      const result = await start();
+      if (result.ok) {
+        if (result.conversationIndex !== undefined) {
+          userMessage.metadata = { ...userMessage.metadata, codeConversationIndex: result.conversationIndex };
+          appStore.markChatDirty(chatId);
+          appStore.persist();
+        }
+        return;
+      }
       run.error = result.error || 'Failed to start the coding agent.';
     } catch (err: unknown) {
       run.error = err instanceof Error ? err.message : String(err);
@@ -584,18 +642,59 @@ class CodeStore {
     this.#flushToMessage(chatId, run);
   }
 
+  /** Make sure the chat has an engine session on the model the picker shows; an error message if not. */
+  async #ensureSession(chat: ChatSession, project: { rootPath: string }): Promise<string | null> {
+    const chatId = chat.id;
+    if (this.#sessionIds.has(chatId)) {
+      // The picker may have changed since the session started (possibly while
+      // another conversation was on screen): run with what it shows now.
+      const { provider, model } = await currentProviderModel();
+      if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
+      const sessionId = this.#sessionIds.get(chatId)!;
+      const snapshot = await invoke<{ snapshot: SessionSnapshot }>('agente_session_snapshot', { sessionId }).catch(() => undefined);
+      if (snapshot) this.#conversationIndices.set(chatId, snapshot.snapshot.conversation.length);
+      return null;
+    }
+    try {
+      const { provider, model } = await currentProviderModel();
+      if (!model) {
+        throw new Error('No model selected — pick one in the Model Hub first.');
+      }
+      const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
+      const resumeSessionId = chat.codeAgent?.sessionId || undefined;
+      const { sessionId, conversationIndex } = await startCodeAgentSession({
+        chatId,
+        projectRoot: project.rootPath,
+        provider,
+        model,
+        runtimeMode,
+        resumeSessionId,
+        ...(chat.reasoningLevel ? { thinkingLevel: chat.reasoningLevel } : {})
+      });
+      this.#sessionIds.set(chatId, sessionId);
+      if (conversationIndex !== undefined) this.#conversationIndices.set(chatId, conversationIndex);
+      if (chat.codeAgent) {
+        chat.codeAgent.sessionId = sessionId;
+        chat.codeAgent.updatedAt = Date.now();
+      }
+      return null;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
   /**
    * Course-correct mid-run: records the message in the transcript and hands
    * it to the engine, which injects it after the current tool batch.
    */
-  async steer(chatId: string, text: string): Promise<void> {
+  async steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat || !text.trim()) return;
-    this.#appendUserTurn(chat, text);
+    this.#appendUserTurn(chat, text, attachments);
     const run = this.#requireRun(chatId);
     run.queuedCount += 1;
     try {
-      const result = await steerCodeAgent(chatId, text);
+      const result = await steerCodeAgent(chatId, text, attachments);
       if (!result.ok) this.#rollbackQueued(run);
     } catch {
       this.#rollbackQueued(run);
@@ -603,18 +702,18 @@ class CodeStore {
   }
 
   /** Queue input that runs only when the agent would otherwise stop. */
-  async followUp(chatId: string, text: string): Promise<void> {
+  async followUp(chatId: string, text: string, attachments: Attachment[] = []): Promise<void> {
     const chat = appStore.chats.find((c) => c.id === chatId);
     if (!chat || !text.trim()) return;
     const run = this.#requireRun(chatId);
     if (!run.running) {
-      await this.send(chatId, text);
+      await this.send(chatId, text, attachments);
       return;
     }
-    this.#appendUserTurn(chat, text);
+    this.#appendUserTurn(chat, text, attachments);
     run.queuedCount += 1;
     try {
-      const result = await followUpCodeAgent(chatId, text);
+      const result = await followUpCodeAgent(chatId, text, attachments);
       if (!result.ok) this.#rollbackQueued(run);
     } catch {
       this.#rollbackQueued(run);
@@ -636,6 +735,8 @@ class CodeStore {
       chat.codeAgent.runtimeMode = mode;
       chat.codeAgent.updatedAt = Date.now();
     }
+    appStore.markChatDirty(chatId);
+    appStore.persist();
     try {
       localStorage.setItem(DEFAULT_MODE_KEY, mode);
     } catch {
@@ -646,6 +747,35 @@ class CodeStore {
 
   async compact(chatId: string): Promise<{ ok: boolean; error?: string }> {
     return compactCodeAgent(chatId);
+  }
+
+  async actOnMessage(chatId: string, messageId: string, action: 'fork' | 'rewind'): Promise<void> {
+    const chat = appStore.chats.find((item) => item.id === chatId);
+    const project = this.projectById(chat?.projectId ?? null);
+    const index = chat?.messages.findIndex((item) => item.id === messageId) ?? -1;
+    const message = chat?.messages[index];
+    if (!chat || !project || !message || message.metadata?.codeConversationIndex === undefined) return;
+    if (this.runFor(chatId)?.running) throw new Error('Wait for the turn to finish.');
+    const failure = await this.#ensureSession(chat, project);
+    if (failure) throw new Error(failure);
+    const result = await codeMessageAction(chatId, action, message.metadata.codeConversationIndex);
+    const previous = structuredClone($state.snapshot(chat.messages.slice(0, index)));
+    if (action === 'fork') {
+      const created = this.newConversation(project);
+      const fork = appStore.chats.find((item) => item.id === created.id)!;
+      fork.messages = previous;
+      fork.title = `${chat.title} (fork)`;
+      fork.codeAgent = { ...chat.codeAgent!, sessionId: result.sessionId, updatedAt: Date.now() };
+      fork.draft = message.content;
+      appStore.markChatDirty(fork.id);
+    } else {
+      chat.messages = previous;
+      chat.draft = message.content;
+      this.evictChat(chatId);
+      appStore.markChatDirty(chatId);
+      window.dispatchEvent(new CustomEvent('code-composer-draft', { detail: message.content }));
+    }
+    appStore.persist();
   }
 
   async refreshCheckpoints(chatId: string): Promise<void> {

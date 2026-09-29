@@ -296,7 +296,33 @@
       "keys": "↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭",
       "nothingToCompact": "还没有可压缩的内容，请先发送一条消息。"
     },
-    "modeTitle": "模式"
+    "modeTitle": "模式",
+    "activity": {
+      "commands": {
+        "running": "正在执行命令",
+        "done": "已执行命令"
+      },
+      "edits": {
+        "running": "正在编辑文件",
+        "done": "已编辑文件"
+      },
+      "reads": {
+        "running": "正在读取和搜索",
+        "done": "已读取和搜索"
+      },
+      "subagents": {
+        "running": "正在运行子智能体",
+        "done": "子智能体"
+      }
+    },
+    "plan": {
+      "title": "查看计划",
+      "accept": "接受并构建",
+      "redo": "修改计划",
+      "comment": "评论",
+      "commentPrefix": "关于计划：",
+      "hint": "Build 会请求工具批准"
+    }
   },
   "searchModal": {
     "inMessages": "在消息中",

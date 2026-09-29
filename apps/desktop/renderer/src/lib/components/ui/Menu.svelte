@@ -30,6 +30,7 @@
     onclick: (event: MouseEvent) => void;
     'aria-expanded': boolean;
     'aria-haspopup': 'menu';
+    'aria-controls': string;
   }
 
   interface Props {
@@ -67,6 +68,9 @@
   let top = $state(0);
   let left = $state(0);
   let anchorWidth = $state(0);
+  let maxHeight = $state<number>();
+  let maxWidth = $state<number>();
+  const menuId = $props.id();
 
   function close() {
     if (!open) return;
@@ -78,11 +82,15 @@
   function position() {
     if (!anchorEl || !panelEl) return;
     const anchor = anchorEl.getBoundingClientRect();
-    const panel = panelEl.getBoundingClientRect();
+    // Layout dimensions are unaffected by the entrance transform. scrollHeight
+    // retains the full content height after the panel becomes scrollable.
+    const panel = { width: panelEl.offsetWidth, height: Math.max(panelEl.offsetHeight, panelEl.scrollHeight + 2) };
     anchorWidth = anchorPoint ? 0 : anchor.width;
     const placed = placePanel(anchorPoint ? pointRect(anchorPoint.x, anchorPoint.y) : anchor, panel, placement);
     top = placed.top;
     left = placed.left;
+    maxHeight = placed.maxHeight;
+    maxWidth = placed.maxWidth;
   }
 
   function focusItem(delta: number) {
@@ -113,7 +121,11 @@
     const reposition = () => position();
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
+    const observer = new ResizeObserver(reposition);
+    if (anchorEl) observer.observe(anchorEl);
+    observer.observe(panelEl);
     return () => {
+      observer.disconnect();
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition);
     };
@@ -156,8 +168,8 @@
   });
 </script>
 
-<span bind:this={anchorEl} class="inline-flex">
-  {@render trigger({ onclick: handleTrigger, 'aria-expanded': open, 'aria-haspopup': 'menu' })}
+<span bind:this={anchorEl} class="inline-flex min-w-0 shrink-0">
+  {@render trigger({ onclick: handleTrigger, 'aria-expanded': open, 'aria-haspopup': 'menu', 'aria-controls': menuId })}
 </span>
 
 {#if open}
@@ -165,11 +177,12 @@
     <!-- svelte-ignore a11y_click_events_have_key_events (items are buttons; Enter/Space activate them) -->
     <div
       bind:this={panelEl}
+      id={menuId}
       class={cn('aui-menu aui-menu-panel py-1', className)}
       role="menu"
       aria-label={label}
       tabindex="-1"
-      style={`top:${top}px; left:${left}px; min-width:max(${minWidth}, ${anchorWidth}px);`}
+      style={`top:${top}px; left:${left}px; max-width:${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}; min-width:min(max(${minWidth}, ${anchorWidth}px), ${maxWidth === undefined ? 'calc(100vw - 12px)' : `${maxWidth}px`}); max-height:${maxHeight === undefined ? 'calc(100dvh - 12px)' : `${maxHeight}px`};`}
       onclick={(event) => {
         // Choosing an item closes the menu; callers no longer each have to.
         const item = (event.target as HTMLElement).closest('[role="menuitem"]');
@@ -186,5 +199,8 @@
   .aui-menu-panel {
     position: fixed;
     z-index: var(--z-menu);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 </style>

@@ -9,6 +9,21 @@ function run(events: CodeAgentEvent[]) {
 }
 
 describe('agente run reducer', () => {
+  it('keeps subagent text and tool output separate, counting child spend once in the session', () => {
+    const state = run([
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_started', run_id: 'child', kind: 'explore', description: 'Check tests' } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_delta', run_id: 'child', text: 'Looking.' } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: 'read_file', content: 'src/a.ts', finished: false, is_error: false } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_tool', run_id: 'child', call_id: 'tool', name: '', content: 'actual output', finished: true, is_error: false } },
+      { type: 'runtime_event', chatId: 'c', parentRunId: 'child', event: { type: 'call_usage', cost_usd: 0.01, cost_estimated: false, usage: { prompt_tokens: 100, completion_tokens: 10, cache_read_tokens: 900, cache_creation_tokens: 0 } } },
+      { type: 'runtime_event', chatId: 'c', event: { type: 'child_finished', run_id: 'child', summary: 'All good', is_error: false } }
+    ]);
+    expect(state.content).toBe('');
+    expect(state.steps).toHaveLength(0);
+    expect(state.children[0]).toMatchObject({ text: 'Looking.', summary: 'All good', status: 'done', tools: [{ name: 'read_file', output: 'actual output', status: 'done' }] });
+    expect(state.spend.costUsd).toBe(0.01);
+    expect(state.children[0]!.spend.costUsd).toBe(0.01);
+  });
   it('accumulates text and thinking deltas', () => {
     const state = run([
       { type: 'text_delta', chatId: 'c', delta: 'Hello ' },

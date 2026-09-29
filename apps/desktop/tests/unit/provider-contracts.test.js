@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { resolveProvider } from '../../main/providers/registry.ts';
 import { buildBody } from '../../main/providers/openai-core.ts';
 import { getDialect, resolveDialect } from '../../main/providers/dialects.ts';
-import { mapOpenAiFinishReason } from '../../main/providers/protocol.ts';
+import { mapOpenAiFinishReason, classifyError } from '../../main/providers/protocol.ts';
 
 function withFetch(fakeFetch, callback) {
   const original = globalThis.fetch;
@@ -29,6 +29,22 @@ describe('provider endpoint contracts', () => {
     });
     assert.deepEqual(mapOpenAiFinishReason('stop'), { kind: 'stop' });
     assert.deepEqual(mapOpenAiFinishReason('tool_calls'), { kind: 'tool-calls' });
+  });
+
+  it('keeps the upstream cause of an OpenRouter mid-stream failure, and classifies it as retryable', () => {
+    // OpenRouter's generic "JSON error injected into SSE stream" hides the real
+    // reason in error.metadata, so a retryable outage looked like an unknown one.
+    const failure = classifyError({
+      message: 'JSON error injected into SSE stream',
+      error: { message: 'JSON error injected into SSE stream', code: 502, metadata: { provider_name: 'Stealth', raw: 'upstream connection reset' } }
+    });
+    assert.match(failure.message, /Stealth: upstream connection reset/);
+    assert.equal(failure.code, 'SERVER');
+  });
+
+  it('does not re-file a context overflow as an unknown stream error', () => {
+    const failure = classifyError({ message: 'Error code: 400 - context_length_exceeded', status: 400 });
+    assert.equal(failure.code, 'CONTEXT_WINDOW_EXCEEDED');
   });
 
   it('honors explicit SDK providers on local gateways', () => {

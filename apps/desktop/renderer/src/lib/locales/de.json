@@ -296,7 +296,33 @@
       "keys": "↑↓ wählen · Tab ergänzen · Enter ausführen · Esc schließen",
       "nothingToCompact": "Noch nichts zu verdichten – sende zuerst eine Nachricht."
     },
-    "modeTitle": "Modus"
+    "modeTitle": "Modus",
+    "activity": {
+      "commands": {
+        "running": "Befehle werden ausgeführt",
+        "done": "Befehle ausgeführt"
+      },
+      "edits": {
+        "running": "Dateien werden bearbeitet",
+        "done": "Dateien bearbeitet"
+      },
+      "reads": {
+        "running": "Lesen und Suchen",
+        "done": "Gelesen und gesucht"
+      },
+      "subagents": {
+        "running": "Subagenten laufen",
+        "done": "Subagenten"
+      }
+    },
+    "plan": {
+      "title": "Plan prüfen",
+      "accept": "Annehmen und bauen",
+      "redo": "Plan überarbeiten",
+      "comment": "Kommentar",
+      "commentPrefix": "Zum Plan: ",
+      "hint": "Build fragt nach Werkzeugfreigaben"
+    }
   },
   "searchModal": {
     "inMessages": "In Nachrichten",

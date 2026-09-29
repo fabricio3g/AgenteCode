@@ -1,5 +1,6 @@
 import type { IndexedDocument, SearchResult, SlideData } from '$lib/types/bridge';
-import type { AgentActivityKey, CodeStopReason, CodeTodoItem, HomeStopReason } from '$shared/agente-protocol';
+import type { AgentActivityKey, CodeChild, CodeRunSummary, CodeSpend, CodeStopReason, CodeTodoItem, HomeStopReason } from '$shared/agente-protocol';
+import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
 
 /** One entry of a Code run's transcript, in arrival order. */
 export type CodeTimelineEntry = { kind: 'text'; text: string } | { kind: 'step'; id: string };
@@ -59,6 +60,12 @@ export interface MessageVersion {
     codeElapsedMs?: number;
     /** A system note in the transcript (e.g. "Restored files to before turn 3"). */
     codeNote?: string;
+    codeChildren?: CodeChild[];
+    codeSpend?: CodeSpend;
+    codeUsage?: CodeRunSummary['usage'];
+    codeDiagnostics?: string[];
+    codeConversationIndex?: number;
+    codeAttachments?: CodeAttachment[];
     currentActivity?: AgentActivity;
     activityLabel?: string;
     publicFallback?: boolean;
@@ -292,6 +299,7 @@ export interface CodeAgentInstance {
 }
 
 export interface CodeAgentSessionMeta {
+  draftAttachments?: CodeAttachment[];
   instanceId: CodeAgentInstanceId;
   driverKind?: CodeAgentDriverKind;
   providerId?: CodeAgentProviderId;

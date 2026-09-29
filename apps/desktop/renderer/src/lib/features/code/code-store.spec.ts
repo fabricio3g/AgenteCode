@@ -87,6 +87,14 @@ beforeEach(() => {
 });
 
 describe('queued input accounting', () => {
+  it('keeps steering pending until Rust consumes it at a step boundary', async () => {
+    await startRun();
+    await codeStore.steer(CHAT_ID, 'after the tool');
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'steering_queued' } });
+    expect(codeStore.runFor(CHAT_ID)?.queuedCount).toBe(1);
+    emit({ type: 'runtime_event', chatId: CHAT_ID, event: { type: 'user_messages_injected', messages: ['after the tool'] } });
+    expect(codeStore.runFor(CHAT_ID)?.queuedCount).toBe(0);
+  });
   it('rolls back the queued count when a steer is rejected', async () => {
     await startRun();
     bridge.responses['agente_steer'] = { ok: false };
@@ -238,6 +246,20 @@ describe('streaming targets the last assistant message, not the transcript tail'
 });
 
 describe('stable assistant targeting across run restarts', () => {
+  it('gives an automatically started follow-up its own streaming reply', async () => {
+    await startRun();
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'first reply' });
+    await codeStore.followUp(CHAT_ID, 'next task');
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    emit({ type: 'agent_start', chatId: CHAT_ID });
+    emit({ type: 'text_delta', chatId: CHAT_ID, delta: 'second reply' });
+    emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });
+    const messages = appStore.chats[0]!.messages;
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(messages[1]!.content).toBe('first reply');
+    expect(messages[3]!.content).toBe('second reply');
+    expect(messages[3]!.status).toBe('idle');
+  });
   it('a run started after eviction binds to the fresh assistant message and finalizes it', async () => {
     await startRun();
     emit({ type: 'agent_end', chatId: CHAT_ID, stopReason: 'stop' });

@@ -138,6 +138,8 @@ pub(crate) fn forward_legacy_events(
                 tokens_after,
                 smart,
             } => {
+                inner.lock_edits().compacted(session_id);
+                inner.persist_edits(session_id);
                 let revision = replace_conversation(
                     &inner,
                     session_id,
@@ -184,6 +186,7 @@ pub(crate) fn forward_legacy_events(
 
     forwarder.flush();
     inner.lock_edits().end_turn(session_id, turn_edits);
+    inner.persist_edits(session_id);
     inner.lock_turns().remove(&turn_id);
     inner.prune_finished_children();
     if let Some(outcome) = terminal_outcome {

@@ -60,13 +60,15 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'voice_models_status', 'voice_model_download', 'voice_model_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
-  'agente_changes', 'agente_file_diff', 'agente_revert_file'
+  'agente_changes', 'agente_file_diff', 'agente_revert_file',
+   'agente_exec', 'agente_undo', 'agente_redo', 'agente_project_info', 'agente_project_init', 'agente_mcp_status', 'agente_project_files',
+   'agente_message_action', 'agente_session_snapshot', 'agente_session_list', 'agente_session_history', 'agente_runtime_configure', 'agente_runtime_settings', 'agente_child_cancel', 'agente_subagent_model', 'agente_media_import', 'agente_mcp_control'
 ]);
 
 const ALLOWED_EVENT_CHANNELS = new Set([
   'supervisor-event', 'download-progress', 'runtime-download-progress', 'whisper-runtime-download-progress', 'voice-setup-progress', 'instances-changed',
   'search-result', 'search-progress', 'agent-event', 'tts-event', 'chat-stream-event',
-  'tts-chunk', 'tts-done', 'tts-start',
+  'tts-chunk', 'tts-done', 'tts-start', 'tts-error',
   'code_agent_event', 'browser_panel_state', 'code_process_event', 'terminal_event', 'bot_event',
   'ui-zoom'
 ]);

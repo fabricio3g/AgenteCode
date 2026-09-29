@@ -127,6 +127,8 @@ export interface ModelSession {
 export interface SupervisorStatus {
   state: SupervisorState | { Error: string } | string;
   active_model?: string | null;
+  model_path?: string | null;
+  runtime_path?: string | null;
   port?: number | null;
   uptime_secs?: number | null;
   memory_mb?: number | null;

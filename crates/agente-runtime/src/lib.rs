@@ -212,6 +212,7 @@ impl RuntimeSupervisor {
                 config,
                 sessions: RwLock::new(HashMap::new()),
                 contexts: Mutex::new(HashMap::new()),
+                project_mcps: Mutex::new(HashMap::new()),
                 turns: Mutex::new(HashMap::new()),
                 child_ids: Mutex::new(HashMap::new()),
                 sequence: AtomicU64::new(0),
@@ -235,6 +236,7 @@ struct RuntimeInner {
     sessions: RwLock<HashMap<SessionId, SessionSnapshot>>,
     /// Per-session project folder and permissions (mode, approve-all grants).
     contexts: Mutex<HashMap<SessionId, SessionContext>>,
+    project_mcps: Mutex<HashMap<String, Arc<McpManager>>>,
     turns: Mutex<HashMap<TurnId, TurnControl>>,
     child_ids: Mutex<HashMap<String, RunId>>,
     sequence: AtomicU64,
@@ -459,6 +461,31 @@ impl RuntimeInner {
         prompt
     }
 
+    fn project_mcp(&self, project_dir: &str) -> Arc<McpManager> {
+        let live = self.live();
+        let mut projects = self
+            .project_mcps
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(manager) = projects.get(project_dir) {
+            return Arc::clone(manager);
+        }
+        let base = live
+            .mcp_manager
+            .or_else(|| self.config.mcp_manager.clone())
+            .unwrap_or_else(|| Arc::new(McpManager::from_sources(&live.app_config.mcp, "", &[])));
+        let manager =
+            Arc::new(base.for_project(project_dir, &live.app_config.approved_mcp_servers));
+        projects.insert(project_dir.to_string(), Arc::clone(&manager));
+        if let Ok(executor) = tokio::runtime::Handle::try_current() {
+            let connecting = Arc::clone(&manager);
+            executor.spawn(async move {
+                connecting.connect_project().await;
+            });
+        }
+        manager
+    }
+
     /// The session's project and permission engine, set up on first use.
     /// The runtime's own project keeps the shared engine; another project
     /// gets its own, so its approvals and mode never leak across projects.
@@ -467,10 +494,25 @@ impl RuntimeInner {
             .contexts
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let wanted = project_dir.unwrap_or(&self.config.project_dir);
+        let saved_project = self
+            .config
+            .session_store
+            .as_ref()
+            .and_then(|store| store.read_meta(session_id).ok().flatten())
+            .map(|meta| meta.info.project_dir);
+        let wanted = project_dir
+            .or(saved_project.as_deref())
+            .unwrap_or(&self.config.project_dir);
         if let Some(context) = contexts.get(&session_id) {
             if project_dir.is_none() || context.project_dir == wanted {
                 return context.clone();
+            }
+        }
+        if let Some(store) = &self.config.session_store {
+            if let Ok(Some(meta)) = store.read_meta(session_id) {
+                if let Some(history) = meta.clients.get("runtime_edits") {
+                    self.lock_edits().restore(session_id, history.clone());
+                }
             }
         }
         // Each session has its own engine: its mode, auto-approve and
@@ -570,6 +612,20 @@ impl RuntimeInner {
     /// Write a session snapshot through the configured store. Persistence
     /// failures never propagate: the in-memory session remains authoritative
     /// and the next commit retries. A no-op without a configured store.
+    fn persist_edits(&self, session_id: SessionId) {
+        let Some(store) = &self.config.session_store else {
+            return;
+        };
+        let value = self.lock_edits().snapshot(session_id);
+        let Ok(Some(mut meta)) = store.read_meta(session_id) else {
+            return;
+        };
+        meta.clients.insert("runtime_edits".into(), value);
+        if let Err(error) = store.write_meta(&meta) {
+            tracing::warn!(%session_id, %error, "session edit history persistence failed");
+        }
+    }
+
     fn persist_snapshot(&self, snapshot: &SessionSnapshot) {
         let Some(store) = self.config.session_store.as_ref() else {
             return;
@@ -643,6 +699,7 @@ pub enum RuntimeError {
 pub struct TurnHandle {
     turn_id: TurnId,
     session_id: SessionId,
+    pub conversation_index: Option<usize>,
     events: mpsc::Receiver<RuntimeEventEnvelope>,
     outcome: Option<oneshot::Receiver<TurnOutcome>>,
 }
@@ -789,6 +846,9 @@ impl RuntimeHandle {
                 );
             }
         }
+        let conversation_index = conversation
+            .iter()
+            .rposition(|message| message.role == Role::User);
         let revision = existing.revision;
         let snapshot = SessionSnapshot {
             session_id,
@@ -876,9 +936,7 @@ impl RuntimeHandle {
             context.engine.clone(),
             cancel.signal(),
             self.inner.config.approval_broker.clone(),
-            live.mcp_manager
-                .clone()
-                .or_else(|| self.inner.config.mcp_manager.clone()),
+            Some(self.inner.project_mcp(&context.project_dir)),
             self.inner.config.subagent_registry.clone(),
             live.subagent_models.clone(),
             live.smart_compaction,
@@ -905,6 +963,7 @@ impl RuntimeHandle {
         Ok(TurnHandle {
             turn_id,
             session_id,
+            conversation_index,
             events: event_rx,
             outcome: Some(outcome_rx),
         })
@@ -937,11 +996,15 @@ impl RuntimeHandle {
     /// (after a tool round, or right after the reply it is streaming) and
     /// answers it in the same turn. Nothing is cancelled.
     pub fn steer(&self, turn_id: TurnId, input: UserInput) -> bool {
+        self.steer_message(turn_id, Message::user(input.content))
+    }
+
+    pub fn steer_message(&self, turn_id: TurnId, message: Message) -> bool {
         let turns = self.inner.lock_turns();
         let Some(control) = turns.get(&turn_id) else {
             return false;
         };
-        control.inbox.lock().push(Message::user(input.content));
+        control.inbox.lock().push(message);
         let envelope = self.envelope(
             control.session_id,
             turn_id,
@@ -977,6 +1040,38 @@ impl RuntimeHandle {
         Ok(())
     }
 
+    /// Client-editable settings, without provider credentials.
+    pub fn settings(&self) -> serde_json::Value {
+        let live = self.inner.live();
+        let config = &live.app_config;
+        serde_json::json!({
+            "smart_compaction": config.smart_compaction,
+            "max_parallel_subagents": config.max_parallel_subagents.unwrap_or(8),
+            "subagent_models": config.subagent_models,
+            "allow_media": config.allow_media,
+            "approved_mcp_servers": config.approved_mcp_servers,
+        })
+    }
+
+    pub fn model_info(&self, provider: &str, model: &str) -> agente_core::providers::ModelInfo {
+        let live = self.inner.live();
+        agente_core::providers::resolve_model_info(
+            &live.provider_registry,
+            live.catalog.as_ref(),
+            provider,
+            model,
+        )
+    }
+
+    pub fn cancel_child(&self, run_id: RunId) -> bool {
+        let legacy = self
+            .inner
+            .lock_children()
+            .iter()
+            .find_map(|(legacy, id)| (*id == run_id).then(|| legacy.clone()));
+        legacy.is_some_and(|id| self.inner.config.subagent_registry.cancel(&id))
+    }
+
     /// Apply a patch; returns the MCP manager built from it, if it named
     /// `mcp`, still to be connected.
     fn configure_inner(
@@ -988,6 +1083,7 @@ impl RuntimeHandle {
             return Err(invalid("configure expects a JSON object".into()));
         };
         let patch_mcp = patch.contains_key("mcp");
+        let patch_approvals = patch.contains_key("approved_mcp_servers");
         let mut live = self
             .inner
             .live
@@ -1002,7 +1098,7 @@ impl RuntimeHandle {
         for (key, value) in patch {
             match (key.as_str(), value, merged.get_mut(&key)) {
                 (
-                    "provider",
+                    "provider" | "mcp",
                     serde_json::Value::Object(providers),
                     Some(serde_json::Value::Object(current)),
                 ) => {
@@ -1029,6 +1125,13 @@ impl RuntimeHandle {
             added = Some(manager);
         }
         *live = next;
+        if patch_mcp || patch_approvals {
+            self.inner
+                .project_mcps
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clear();
+        }
         Ok(added)
     }
 
@@ -1056,6 +1159,63 @@ impl RuntimeHandle {
         ids.sort_by_key(|id| id.as_uuid());
         ids.dedup();
         ids
+    }
+
+    /// The MCP servers turns can use, and how each is doing.
+    pub fn mcp_snapshots(&self) -> Vec<agente_core::mcp::ServerSnapshot> {
+        let live = self.inner.live();
+        live.mcp_manager
+            .clone()
+            .or_else(|| self.inner.config.mcp_manager.clone())
+            .map(|manager| manager.snapshots())
+            .unwrap_or_default()
+    }
+
+    pub fn project_mcp_snapshots(
+        &self,
+        project_dir: &str,
+    ) -> Vec<agente_core::mcp::ServerSnapshot> {
+        self.inner.project_mcp(project_dir).snapshots()
+    }
+
+    pub async fn control_mcp(
+        &self,
+        project_dir: &str,
+        name: &str,
+        action: &str,
+    ) -> Result<(), RuntimeError> {
+        let manager = self.inner.project_mcp(project_dir);
+        let server = manager
+            .snapshots()
+            .into_iter()
+            .find(|server| server.name == name)
+            .ok_or_else(|| RuntimeError::Config(format!("unknown MCP server {name}")))?;
+        match action {
+            "disable" => manager.disable(name),
+            "approve" => {
+                if server.source != agente_core::mcp::ServerSource::ProjectFile {
+                    return Err(RuntimeError::Config(
+                        "only project MCP servers need approval".into(),
+                    ));
+                }
+                let mut approved = self.inner.live().app_config.approved_mcp_servers;
+                let key = agente_core::mcp::approval_key(project_dir, name);
+                if !approved.contains(&key) {
+                    approved.push(key);
+                }
+                self.configure(serde_json::json!({ "approved_mcp_servers": approved }))?;
+                self.inner.project_mcp(project_dir).reconnect(name).await;
+            }
+            "reconnect" if server.status != agente_core::mcp::ServerStatus::NeedsApproval => {
+                manager.reconnect(name).await
+            }
+            _ => {
+                return Err(RuntimeError::Config(
+                    "choose approve, reconnect or disable".into(),
+                ))
+            }
+        }
+        Ok(())
     }
 
     /// Saved sessions' list entries, most recently active first.
@@ -1151,6 +1311,9 @@ impl RuntimeHandle {
         }
         let after = result.messages.len();
         let tokens_saved = result.summary.tokens_saved as u32;
+        self.inner.session_context(session_id, None);
+        self.inner.lock_edits().compacted(session_id);
+        self.inner.persist_edits(session_id);
         let revision = bridge::replace_conversation(&self.inner, session_id, result.messages);
         let envelope = self.envelope(
             session_id,
@@ -1289,6 +1452,7 @@ impl RuntimeHandle {
         Ok(TurnHandle {
             turn_id,
             session_id,
+            conversation_index: None,
             events: event_rx,
             outcome: Some(outcome_rx),
         })
@@ -1317,6 +1481,11 @@ impl RuntimeHandle {
         if self.is_busy(session_id) {
             return Err(RuntimeError::SessionBusy(session_id));
         }
+        if conversation_index > self.inner.lookup_session(session_id).conversation.len() {
+            return Err(RuntimeError::Config(
+                "conversation index is beyond this session".into(),
+            ));
+        }
         let project_dir = self.inner.session_context(session_id, None).project_dir;
         let reverted = self
             .inner
@@ -1326,6 +1495,7 @@ impl RuntimeHandle {
         let mut conversation = self.inner.lookup_session(session_id).conversation;
         conversation.truncate(conversation_index);
         bridge::replace_conversation(&self.inner, session_id, conversation);
+        self.inner.persist_edits(session_id);
         Ok(reverted)
     }
 
@@ -1338,7 +1508,10 @@ impl RuntimeHandle {
             return Err(RuntimeError::SessionBusy(session_id));
         }
         let project_dir = self.inner.session_context(session_id, None).project_dir;
-        change(&mut self.inner.lock_edits(), &project_dir).map_err(RuntimeError::Edits)
+        let paths =
+            change(&mut self.inner.lock_edits(), &project_dir).map_err(RuntimeError::Edits)?;
+        self.inner.persist_edits(session_id);
+        Ok(paths)
     }
 
     /// Whether a turn is running in the session.
@@ -1353,8 +1526,42 @@ impl RuntimeHandle {
         self.inner.lookup_session(session_id)
     }
 
+    /// Bind a client session before its first turn (including direct tools).
+    pub fn open_session(
+        &self,
+        session_id: SessionId,
+        project_dir: &str,
+    ) -> Result<SessionSnapshot, RuntimeError> {
+        if self.is_busy(session_id) {
+            return Err(RuntimeError::SessionBusy(session_id));
+        }
+        if !std::path::Path::new(project_dir).is_dir() {
+            return Err(RuntimeError::Config(format!(
+                "project folder does not exist: {project_dir}"
+            )));
+        }
+        self.inner.session_context(session_id, Some(project_dir));
+        let snapshot = self.session_snapshot(session_id);
+        self.inner.update_meta(session_id, project_dir, |info| {
+            info.project_dir = project_dir.to_string()
+        });
+        Ok(snapshot)
+    }
+
+    pub fn checkpoints(&self, session_id: SessionId) -> serde_json::Value {
+        let project = self
+            .session_meta(session_id)
+            .map(|meta| meta.info.project_dir);
+        self.inner.session_context(session_id, project.as_deref());
+        self.inner.lock_edits().checkpoints(session_id)
+    }
+
     pub fn fork_session(&self, source: SessionId) -> SessionSnapshot {
         let source = self.session_snapshot(source);
+        let project_dir = self
+            .inner
+            .session_context(source.session_id, None)
+            .project_dir;
         let session_id = SessionId::new();
         let snapshot = SessionSnapshot {
             session_id,
@@ -1364,6 +1571,9 @@ impl RuntimeHandle {
         self.inner
             .write_sessions()
             .insert(session_id, snapshot.clone());
+        self.inner.session_context(session_id, Some(&project_dir));
+        self.inner.update_meta(session_id, &project_dir, |_| {});
+        self.inner.persist_snapshot(&snapshot);
         snapshot
     }
 
@@ -1439,6 +1649,46 @@ fn ensure_system_prompt(conversation: &mut Vec<Message>, prompt: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn saved_edits_recover_the_project_and_remain_undoable_after_restart() {
+        let (config, root) = persistent_config("edits-recovery");
+        let project = root.join("other-project");
+        std::fs::create_dir_all(&project).unwrap();
+        let session = agente_protocol::SessionId::new();
+        let runtime = super::RuntimeSupervisor::start(config);
+        runtime
+            .open_session(session, project.to_str().unwrap())
+            .unwrap();
+        runtime.inner.lock_edits().begin_turn(session, 3);
+        std::fs::write(project.join("a.txt"), "keep\nnew\n").unwrap();
+        runtime.inner.lock_edits().end_turn(
+            session,
+            vec![super::edits::FileEdit {
+                path: "a.txt".into(),
+                before: Some("keep\nold\n".into()),
+                after: Some("keep\nnew\n".into()),
+            }],
+        );
+        runtime.inner.persist_edits(session);
+        drop(runtime);
+        let restored = super::RuntimeSupervisor::start(persistent_config_at(&root));
+        let checkpoints = restored.checkpoints(session);
+        assert_eq!(checkpoints[0]["additions"], 1);
+        assert_eq!(checkpoints[0]["deletions"], 1);
+        assert_eq!(restored.undo(session).unwrap(), vec!["a.txt"]);
+        assert_eq!(
+            std::fs::read_to_string(project.join("a.txt")).unwrap(),
+            "keep\nold\n"
+        );
+        drop(restored);
+        let restored = super::RuntimeSupervisor::start(persistent_config_at(&root));
+        restored.redo(session).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join("a.txt")).unwrap(),
+            "keep\nnew\n"
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
     use super::*;
     use agente_core::agent::{AgentEvent, AgentTaskEvent};
     use agente_core::subagent::{SubagentSnapshot, SubagentStatus};

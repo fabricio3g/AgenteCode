@@ -193,7 +193,8 @@ export async function buildAgentResult(run: AgentRun): Promise<AgentTaskResult> 
   const publicFallback = isPublicFallbackContent(content);
   // Generic fallback text is not evidence: a run that gathered nothing and has
   // only that to show failed, even though it has something to display.
-  const useful = hasGatheredEvidence(run, sources, publicFallback ? '' : content);
+   // An explanation of a failed request is not a delivered result.
+   const useful = hasGatheredEvidence(run, sources, publicFallback || run.requestFailed ? '' : content);
   const stopReason = run.stopReason !== 'none' ? run.stopReason : classifyStopReason(errorReason || warningReason);
   const outcome: AgentOutcome = errorReason ? (useful ? 'stopped' : 'failed') : warningReason ? 'partial' : 'completed';
   const fatal = outcome === 'failed';

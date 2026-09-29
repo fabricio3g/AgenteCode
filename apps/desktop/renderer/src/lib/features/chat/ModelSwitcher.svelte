@@ -16,8 +16,11 @@
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { ModelOption } from '$lib/types/chat';
+  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl, providerLabel } from '$lib/utils/providers';
+
+  let { compact = false, showReasoning = false }: { compact?: boolean; showReasoning?: boolean } = $props();
 
   const isAnyModelLoaded = $derived(!!appStore.localModelActive);
   const loadedModelName = $derived(appStore.localModelActive?.name || '');
@@ -371,6 +374,7 @@
   type="button"
   class="model-trigger titlebar-no-drag flex h-8 max-w-[18rem] items-center gap-1.5 px-2.5 transition"
   class:is-open={appStore.modelMenuOpen}
+  class:is-compact={compact}
   style="-webkit-app-region: no-drag; pointer-events: auto;"
   onclick={toggleMenu}
   aria-haspopup="dialog"
@@ -501,6 +505,8 @@
         </Tooltip>
       {/if}
     </div>
+
+    {#if showReasoning}<div class="px-3 pb-2"><ReasoningLevelSelector /></div>{/if}
 
     <!-- Runtime busy -->
     {#if appStore.backendMode === 'local' && localLoading}
@@ -760,6 +766,16 @@
     background: var(--muted);
     color: var(--foreground);
   }
+
+  .model-trigger.is-compact {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    justify-content: flex-start;
+    padding-inline: 0.375rem;
+  }
+
+  .model-trigger.is-compact .trigger-label { min-width: 0; }
 
   .trigger-label {
     color: inherit;

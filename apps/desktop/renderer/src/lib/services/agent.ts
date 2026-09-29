@@ -45,6 +45,7 @@ function onLoopEvent(run: AgentRun, state: PolicyState, event: AgentEvent) {
     run.currentStep = startThinkStep(run, state, event.turnIndex);
   } else if (event.type === 'llm_retry' && run.currentStep) {
     run.currentStep.status = 'running';
+    run.currentStep.label = 'Retrying';
     run.currentStep.detail = `Temporary provider error — retrying (attempt ${event.attempt + 1})`;
     emitSteps(run);
   }

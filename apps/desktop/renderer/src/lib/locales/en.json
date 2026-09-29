@@ -296,7 +296,17 @@
       "keys": "↑↓ to choose · Tab to complete · Enter to run · Esc to close",
       "nothingToCompact": "Nothing to compact yet — send a message first."
     },
-    "modeTitle": "Mode"
+    "modeTitle": "Mode",
+    "activity": {
+      "commands": { "running": "Executing commands", "done": "Executed commands" },
+      "edits": { "running": "Editing files", "done": "Edited files" },
+      "reads": { "running": "Reading and searching", "done": "Read and searched" },
+      "subagents": { "running": "Running subagents", "done": "Subagents" }
+    },
+    "plan": {
+      "title": "Review plan", "accept": "Accept and build", "redo": "Revise plan", "comment": "Comment",
+      "commentPrefix": "About the plan: ", "hint": "Build asks for tool approvals"
+    }
   },
   "searchModal": {
     "inMessages": "In messages",

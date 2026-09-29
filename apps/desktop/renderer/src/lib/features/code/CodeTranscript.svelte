@@ -12,17 +12,23 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { AlertCircle, CircleCheck, History, TriangleAlert } from 'lucide-svelte';
+  import { AlertCircle, ArrowDown, CircleCheck, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
-  import CodeStepRow from './CodeStepRow.svelte';
+  import CodeActivityGroup from './CodeActivityGroup.svelte';
+  import { activityKind } from './activity';
   import { t } from 'svelte-i18n';
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
   import { codeStore } from './code.svelte';
   import { orderedEntries } from './code-run';
   import TodoList from './TodoList.svelte';
+  import SubagentGroup from './SubagentGroup.svelte';
+  import PlanReviewCard from './PlanReviewCard.svelte';
+  import { pendingPlan } from './plan-review';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import { openWorkspaceFile } from '$lib/services/files';
 
   let { messages, chatId }: { messages: ChatMessage[]; chatId: string } = $props();
 
@@ -31,11 +37,14 @@
 
   /** Live run state for retry + todo visibility while streaming. */
   const run = $derived(codeStore.runFor(chatId));
+  const plan = $derived(pendingPlan(messages));
 
   $effect(() => {
     void messages.length;
     void messages[messages.length - 1]?.content;
     void messages[messages.length - 1]?.agentSteps?.length;
+    void run?.children.map((child) => `${child.status}${child.text}${child.summary}${child.tools.map((tool) => tool.output).join('')}`).join('');
+    void run?.steps.map((step) => step.output).join('');
     if (pinnedToBottom) {
       void tick().then(() => {
         if (viewport) viewport.scrollTop = viewport.scrollHeight;
@@ -48,6 +57,13 @@
     pinnedToBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 80;
   }
 
+  async function messageAction(message: ChatMessage, action: 'copy' | 'fork' | 'rewind') {
+    try {
+      if (action === 'copy') await navigator.clipboard.writeText(message.content);
+      else await codeStore.actOnMessage(chatId, message.id, action);
+    } catch (error) { toastStore.error(String(error)); }
+  }
+
   type Entry = ReturnType<typeof orderedEntries>[number];
   type Block = { key: string; steps?: NonNullable<Entry['step']>[]; text?: string };
 
@@ -57,7 +73,7 @@
     for (const entry of entries) {
       const last = blocks[blocks.length - 1];
       if (entry.step) {
-        if (last?.steps) last.steps.push(entry.step);
+        if (last?.steps && activityKind(last.steps[0]!) === activityKind(entry.step)) last.steps.push(entry.step);
         else blocks.push({ key: entry.key, steps: [entry.step] });
       } else if (entry.text) {
         blocks.push({ key: entry.key, text: entry.text });
@@ -68,7 +84,8 @@
 
   function entriesFor(message: ChatMessage) {
     const live = message.status === 'streaming' && run?.assistantMessageId === message.id ? run.timeline : undefined;
-    return orderedEntries(message, live);
+    const children = live ? run?.children : message.metadata?.codeChildren;
+    return orderedEntries(message, live).filter((entry) => !(children?.length && entry.step?.toolName === 'task' && entry.step.status !== 'error'));
   }
 
   function noteText(note: string): string {
@@ -88,13 +105,25 @@
   }
 </script>
 
-<div bind:this={viewport} class="flex-1 overflow-y-auto px-4 py-6" onscroll={onScroll}>
-  <div class="mx-auto flex max-w-3xl flex-col gap-5">
+<div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6" onscroll={onScroll}>
+  <div class="mx-auto flex min-w-0 flex-col gap-5" style="max-width: var(--thread-width);">
     {#each messages as message (message.id)}
       {#if message.role === 'user'}
-        <div class="flex justify-end">
-          <div class="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-border bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
+        <div class="group flex flex-col items-end gap-1">
+          <div class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl rounded-br-sm bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
             {message.content}
+            {#if message.metadata?.codeAttachments?.length}
+              <div class="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {#each message.metadata.codeAttachments as attachment, index (index)}<button type="button" class="max-w-64 truncate rounded-full bg-background/50 px-2 py-1 hover:bg-background" onclick={() => openWorkspaceFile(attachment.path).catch((error) => toastStore.error(String(error)))}>{attachment.name} · {attachment.kind}</button>{/each}
+              </div>
+            {/if}
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'copy')}><Copy class="size-3" />Copy</button>
+            {#if message.metadata?.codeConversationIndex !== undefined && !run?.running}
+              <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'fork')}><GitFork class="size-3" />Fork</button>
+              <button type="button" class="flex items-center gap-1" onclick={() => messageAction(message, 'rewind')}><RotateCcw class="size-3" />Revert</button>
+            {/if}
           </div>
         </div>
       {:else if message.metadata?.codeNote && !message.content && !message.agentSteps?.length}
@@ -105,9 +134,12 @@
         </div>
       {:else}
         {@const streaming = message.status === 'streaming'}
+        {@const live = run?.assistantMessageId === message.id}
         {@const entries = entriesFor(message)}
-        {@const todos = streaming ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
-        <div class="flex flex-col gap-4">
+        {@const todos = live ? run?.todos ?? [] : message.metadata?.codeTodos ?? []}
+        {@const children = live ? run?.children ?? [] : message.metadata?.codeChildren ?? []}
+        {@const diagnostics = live ? run?.diagnostics ?? [] : message.metadata?.codeDiagnostics ?? []}
+        <div class="flex min-w-0 flex-col gap-4">
           {#if message.reasoning?.trim()}
             <ReasoningBlock reasoning={message.reasoning} status={message.status} variant="outline" />
           {/if}
@@ -116,9 +148,7 @@
           {#each groupEntries(entries) as block (block.key)}
             {#if block.steps}
               <div class="-mx-2 flex flex-col gap-px">
-                {#each block.steps as step (step.id)}
-                  <CodeStepRow {step} />
-                {/each}
+                <CodeActivityGroup steps={block.steps} {chatId} />
               </div>
             {:else if block.text}
               <div class="text-sm leading-relaxed text-foreground">
@@ -126,6 +156,11 @@
               </div>
             {/if}
           {/each}
+
+          {#if children.length}<SubagentGroup {children} />{/if}
+          {#if diagnostics.length}
+            <details class="text-xs text-muted-foreground"><summary class="cursor-pointer">Runtime notes · {diagnostics.length}</summary><div class="mt-2 space-y-1">{#each diagnostics as note, index (index)}<p>{note}</p>{/each}</div></details>
+          {/if}
 
           {#if streaming && !entries.length && !message.reasoning}
             <div class="flex items-center px-1 text-xs text-muted-foreground">
@@ -171,12 +206,12 @@
                 {noteText(message.metadata.codeNote)}
               </div>
             {:else if message.metadata?.codeHitTurnLimit}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-amber-600 dark:text-amber-400">
+              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
                 <TriangleAlert class="size-3" />
                 {copy.codeRun.turnLimit}{elapsed ? ` · ${elapsed}` : ''}
               </div>
             {:else if reason === 'stop' && !entries.length && !message.reasoning?.trim()}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-amber-600 dark:text-amber-400">
+              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
                 <TriangleAlert class="size-3" />
                 {copy.codeRun.noReply}
               </div>
@@ -190,7 +225,7 @@
                 {$t('code.statusStopped')}{elapsed ? ` · ${elapsed}` : ''}
               </div>
             {:else if reason === 'length'}
-              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-amber-600 dark:text-amber-400">
+              <div class="run-chip flex items-center gap-1.5 self-start text-[11px] text-warning">
                 <TriangleAlert class="size-3" />
                 {$t('code.statusLength')}
               </div>
@@ -199,7 +234,11 @@
         </div>
       {/if}
     {/each}
+    {#if plan && !run?.running}<PlanReviewCard {chatId} {plan} />{/if}
   </div>
+  {#if !pinnedToBottom}
+    <button type="button" class="sticky bottom-1 float-right flex items-center gap-1.5 rounded-full bg-popover px-3 py-1.5 text-xs text-muted-foreground shadow-sm" onclick={() => { pinnedToBottom = true; if (viewport) viewport.scrollTop = viewport.scrollHeight; }}><ArrowDown class="size-3.5" />Latest</button>
+  {/if}
 </div>
 
 <style>

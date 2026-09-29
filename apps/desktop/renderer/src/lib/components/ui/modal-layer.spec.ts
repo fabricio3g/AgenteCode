@@ -73,7 +73,10 @@ describe('placePanel', () => {
   const viewport = { width: 800, height: 600 };
 
   it('opens below the anchor and flips up near the bottom edge', () => {
-    expect(placePanel(pointRect(100, 100), { width: 200, height: 150 }, 'bottom-start', viewport)).toEqual({ top: 106, left: 100 });
+    // The panel reports the room it may use, so a long menu scrolls instead of
+    // overflowing the window; the placement itself is unchanged.
+    expect(placePanel(pointRect(100, 100), { width: 200, height: 150 }, 'bottom-start', viewport))
+      .toEqual({ top: 106, left: 100, maxHeight: 488, maxWidth: 788 });
     expect(placePanel(pointRect(100, 560), { width: 200, height: 150 }, 'bottom-start', viewport).top).toBe(404);
   });
 

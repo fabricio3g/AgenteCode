@@ -9,6 +9,8 @@
 // error on the side that has not caught up, instead of a silent drift
 // between two hand-synced copies.
 
+import type { RuntimeEvent } from './agente-protocol.gen';
+
 /** How much autonomy the runtime has: plan-first, per-action approval, or free rein. */
 export type AgenteRuntimeMode = 'full' | 'supervised' | 'plan';
 
@@ -83,6 +85,26 @@ export interface CodeTodoItem {
   status: 'pending' | 'in_progress' | 'completed';
 }
 
+export interface CodeSpend {
+  costUsd: number;
+  estimated: boolean;
+  unpriced: boolean;
+  promptTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+export interface CodeChild {
+  id: string;
+  kind: string;
+  description: string;
+  status: 'running' | 'done' | 'error';
+  text: string;
+  summary?: string;
+  tools: Array<{ id: string; name: string; output: string; status: 'running' | 'done' | 'error' }>;
+  spend: CodeSpend;
+}
+
 /** One file a turn produced, by reference — the bytes stay behind the wire. */
 export interface CodeArtifactRef {
   kind: string;
@@ -127,6 +149,7 @@ export type CodeAgentEvent =
   | { type: 'turn_end'; chatId: string; turnIndex: number }
   | { type: 'text_delta'; chatId: string; delta: string }
   | { type: 'thinking_delta'; chatId: string; delta: string }
+  | { type: 'runtime_event'; chatId: string; event: RuntimeEvent; parentRunId?: string | null }
   | { type: 'tool_start'; chatId: string; toolCallId: string; toolName: string; args: unknown; label?: string; detail?: string }
   | { type: 'tool_update'; chatId: string; toolCallId: string; partialResult: unknown }
   | { type: 'tool_end'; chatId: string; toolCallId: string; result: unknown; isError: boolean; status?: 'done' | 'error'; fileChanges?: Array<{ path: string; kind: string }>; diffStats?: Array<{ path: string; kind: string; additions: number; deletions: number }> }
@@ -134,7 +157,7 @@ export type CodeAgentEvent =
   | { type: 'length_continue'; chatId: string; turnIndex: number }
   | { type: 'todo_update'; chatId: string; todos: CodeTodoItem[] }
   | { type: 'compaction_start'; chatId: string; reason: string }
-  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean }
+  | { type: 'compaction_end'; chatId: string; reason: string; success: boolean; tokensBefore?: number; tokensAfter?: number; smart?: boolean }
   | { type: 'approval_request'; chatId: string; requestId: string; toolName: string; args: unknown; diff?: string; kind?: 'action' | 'plan' }
   | { type: 'approval_resolved'; chatId: string; requestId: string; decision: ApprovalDecision }
   | { type: 'checkpoint_captured'; chatId: string; turnIndex: number; fileCount: number }

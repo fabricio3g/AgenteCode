@@ -119,14 +119,17 @@ function withUpstreamDetail(message: string, body: unknown): string {
 
 export function classifyError(input: unknown): LlmFailure {
   if (input && typeof input === 'object') {
+    if (input instanceof LlmStreamError) return input.failure;
     const err = input as { status?: unknown; code?: unknown; message?: unknown; name?: unknown };
-    const status = Number(err.status ?? err.code ?? 0);
-    const message = withUpstreamDetail(String(err.message ?? input), (input as { error?: unknown }).error);
+    const body = (input as { error?: { code?: unknown; message?: unknown; metadata?: Record<string, unknown> } }).error;
+    const status = Number(err.status ?? body?.code ?? err.code ?? 0);
+    const message = withUpstreamDetail(String(err.message ?? body?.message ?? input), body ?? input);
 
     // AbortError from an caller signal is not a failure worth retrying.
     if (err.name === 'AbortError' || err.name === 'AbortSignalTimeoutError') {
       return { message, code: 'ABORTED' };
     }
+    if (CONTEXT_WINDOW_RE.test(message)) return { message, code: 'CONTEXT_WINDOW_EXCEEDED' };
     if (status === 401 || status === 403) return { message, code: 'AUTH' };
     if (status === 402) return { message, code: 'QUOTA_EXCEEDED' };
     if (status === 429) return { message, code: 'RATE_LIMIT' };

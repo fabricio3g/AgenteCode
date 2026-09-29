@@ -1,4 +1,5 @@
 import type { AgentArtifact, AppConfig, Attachment, ChatContextMode, ChatFolder, ChatMessage, ChatSession, LocalThinkingMode, MessageVersion, ModelOption, ReasoningCapabilities, ReasoningLevel, WorkspaceFile } from '$lib/types/chat';
+import type { Attachment as CodeAttachment } from '$shared/agente-protocol.gen';
 import { SPACES } from '$lib/spaces';
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import type { IndexedDocument, SearchResult } from '$lib/types/bridge';
@@ -1313,10 +1314,31 @@ class AppStore {
 
   updateComposer(value: string) {
     this.composer = value;
-    if (this.currentChat) {
-      this.currentChat.draft = value;
-      this.persist();
+    if (this.currentChatId && this.updateChatDraft(this.currentChatId, value)) this.persist();
+  }
+
+  /** Drafts are mutated here, where the chat state is owned, by stable id. */
+  updateChatDraft(chatId: string, value: string, attachments?: CodeAttachment[]): boolean {
+    const chat = this.findChat(chatId);
+    if (!chat) return false;
+    let changed = chat.draft !== value;
+    if (changed) chat.draft = value;
+    if (attachments && chat.codeAgent) {
+      const previous = chat.codeAgent.draftAttachments ?? [];
+      const same = previous.length === attachments.length && previous.every((item, index) => {
+        const next = attachments[index]!;
+        return item.path === next.path && item.name === next.name && item.kind === next.kind && item.mime === next.mime && item.bytes === next.bytes;
+      });
+      if (!same) {
+        chat.codeAgent.draftAttachments = attachments.map((item) => ({ ...item }));
+        changed = true;
+      }
     }
+    if (changed) {
+      if (chatId === this.currentChatId) this.composer = value;
+      this.markChatDirty(chatId);
+    }
+    return changed;
   }
 
   setUserName(name: string) {

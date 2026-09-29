@@ -6,6 +6,8 @@ type TtsWorkerMessage = {
   total?: number;
   index?: number;
   base64?: string;
+  requestId?: string;
+  message?: string;
 };
 
 type TtsHandlerDeps = {
@@ -43,7 +45,7 @@ export function registerTtsHandlers({
     if (!win) return;
 
     if (msg.type === 'start' && typeof msg.id === 'number' && typeof msg.total === 'number') {
-      win.webContents.send('tts-start', { seq: msg.id, total: msg.total });
+      win.webContents.send('tts-start', { seq: msg.id, requestId: msg.requestId, total: msg.total });
       return;
     }
 
@@ -54,12 +56,16 @@ export function registerTtsHandlers({
       typeof msg.total === 'number' &&
       typeof msg.base64 === 'string'
     ) {
-      win.webContents.send('tts-chunk', { seq: msg.id, index: msg.index, total: msg.total, base64: msg.base64 });
+      win.webContents.send('tts-chunk', { seq: msg.id, requestId: msg.requestId, index: msg.index, total: msg.total, base64: msg.base64 });
       return;
     }
 
     if (msg.type === 'done' && typeof msg.id === 'number' && typeof msg.total === 'number') {
-      win.webContents.send('tts-done', { seq: msg.id, total: msg.total });
+      win.webContents.send('tts-done', { seq: msg.id, requestId: msg.requestId, total: msg.total });
+      return;
+    }
+    if (msg.type === 'error') {
+      win.webContents.send('tts-error', { seq: msg.id, requestId: msg.requestId, message: msg.message || 'Voice generation failed.' });
     }
   };
 
@@ -67,7 +73,9 @@ export function registerTtsHandlers({
 
   ipcMain.handle('generate_tts_stream', (_e, { request }) => {
     log('generate_tts_stream called');
-    generateTtsStream(request, null);
+    void Promise.resolve(generateTtsStream(request, null)).catch((error) => forwardTtsWorkerMessage({
+      type: 'error', requestId: request?.requestId, message: error instanceof Error ? error.message : String(error)
+    }));
     return { ok: true };
   });
 

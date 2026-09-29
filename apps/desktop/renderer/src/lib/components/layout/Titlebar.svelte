@@ -6,7 +6,6 @@
   import { appWindow } from '$lib/services/window';
   import { appStore } from '$lib/stores/app.svelte';
   import { Search, SlidersHorizontal, MoonStar, SunMedium, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
-  import ModelSwitcher from '$lib/features/chat/ModelSwitcher.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { themeStore } from '$lib/stores/theme.svelte';
   import { downloadsStore } from '$lib/stores/downloads.svelte';
@@ -14,6 +13,13 @@
   import CodeTitlebarTools from '$lib/features/code/CodeTitlebarTools.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
+
+  let { sidebarPreview = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
+    sidebarPreview?: boolean;
+    onSidebarEnter: () => void;
+    onSidebarLeave: (event: PointerEvent) => void;
+    onSidebarToggle: () => void;
+  } = $props();
 
   /** The open Code conversation, when there is one: its pane toggles live here. */
   const codeChat = $derived.by(() => {
@@ -47,7 +53,13 @@
     <Tooltip label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}>
       <button
         class="aui-icon-button size-8 titlebar-no-drag"
-        onclick={() => (appStore.sidebarOpen = !appStore.sidebarOpen)}
+        data-sidebar-toggle
+        onclick={onSidebarToggle}
+        onpointerenter={onSidebarEnter}
+        onpointerleave={onSidebarLeave}
+        aria-controls="app-sidebar"
+        aria-expanded={appStore.sidebarOpen || sidebarPreview}
+        aria-pressed={appStore.sidebarOpen}
         aria-label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
       >
         {#if appStore.sidebarOpen}

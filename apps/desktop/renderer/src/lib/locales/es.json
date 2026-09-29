@@ -296,7 +296,33 @@
       "keys": "↑↓ para elegir · Tab completa · Enter ejecuta · Esc cierra",
       "nothingToCompact": "Aún no hay nada que compactar: envía un mensaje primero."
     },
-    "modeTitle": "Modo"
+    "modeTitle": "Modo",
+    "activity": {
+      "commands": {
+        "running": "Ejecutando comandos",
+        "done": "Comandos ejecutados"
+      },
+      "edits": {
+        "running": "Editando archivos",
+        "done": "Archivos editados"
+      },
+      "reads": {
+        "running": "Leyendo y buscando",
+        "done": "Leído y buscado"
+      },
+      "subagents": {
+        "running": "Ejecutando subagentes",
+        "done": "Subagentes"
+      }
+    },
+    "plan": {
+      "title": "Revisar el plan",
+      "accept": "Aceptar y construir",
+      "redo": "Rehacer el plan",
+      "comment": "Comentario",
+      "commentPrefix": "Sobre el plan: ",
+      "hint": "Build pide la aprobación de las herramientas"
+    }
   },
   "searchModal": {
     "inMessages": "En los mensajes",

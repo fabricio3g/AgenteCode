@@ -9,6 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolveApiKey } from '../chat-ipc.ts';
 import { getAppPaths } from '../paths.ts';
+import { loadConfig, saveConfig } from '../config.ts';
+import { getLlamaStatus } from '../llm-runner.ts';
 import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
 import type { AgenteClient } from '../agente-client.ts';
@@ -19,7 +21,7 @@ import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.t
 import { RustProcessBridge } from './rust-processes.ts';
 import { RustTurnTranslator } from './rust-events.ts';
 import type { AgenteCheckpointSummary, AgenteRuntimeMode, AgenteStartSessionArgs, ApprovalDecision, CodeAgentEvent } from '../../shared/agente-protocol.ts';
-import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode } from '../../shared/agente-protocol.gen.ts';
+import type { Attachment, Message, RuntimeEventEnvelope, SessionSnapshot, TurnMode, TurnOutcome } from '../../shared/agente-protocol.gen.ts';
 
 const FALLBACK_CONTEXT_WINDOW = 32_768;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,7 +37,7 @@ type ChatState = {
   /** Sent with the first turn of a new session only. */
   systemPrompt?: string;
   turnId: string | null;
-  followUps: string[];
+  followUps: Array<{ text: string; attachments: Attachment[] }>;
   contextWindow: number;
   translator: RustTurnTranslator;
   checkpoints: AgenteCheckpointSummary[];
@@ -45,6 +47,7 @@ const chats = new Map<string, ChatState>();
 let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
+let connectionPromise: Promise<AgenteClient> | null = null;
 
 /** Dev servers the runtime runs for Rust-engine chats, for the Processes pane. */
 export const rustProcesses = new RustProcessBridge(
@@ -82,7 +85,16 @@ function findRepoRoot(start: string): string | undefined {
   return undefined;
 }
 
-async function connect(): Promise<AgenteClient> {
+function connect(): Promise<AgenteClient> {
+  if (!connectionPromise) {
+    const connecting = openConnection();
+    connectionPromise = connecting;
+    void connecting.catch(() => { if (connectionPromise === connecting) connectionPromise = null; });
+  }
+  return connectionPromise;
+}
+
+async function openConnection(): Promise<AgenteClient> {
   if (!daemon) {
     const binary = resolveAgenteBinary({
       resourcesPath: typeof process.resourcesPath === 'string' ? process.resourcesPath : undefined,
@@ -93,7 +105,25 @@ async function connect(): Promise<AgenteClient> {
   const client = await daemon.connect();
   if (listening !== client) {
     listening = client;
+    client.onClose(() => {
+      if (listening !== client) return;
+      listening = null;
+      connectionPromise = null;
+      for (const chat of chats.values()) {
+        if (!chat.turnId) continue;
+        chat.turnId = null;
+        chat.followUps = [];
+        emit({ type: 'error', chatId: chat.chatId, message: 'The Rust runtime disconnected. Reconnect by sending a new message.' });
+        emit({ type: 'agent_end', chatId: chat.chatId, stopReason: 'error' });
+      }
+    });
     client.onNotification((method, params) => {
+      if (method === 'turn.outcome') {
+        const outcome = params as TurnOutcome;
+        const chat = [...chats.values()].find((state) => state.sessionId === outcome.session_id);
+        if (chat && (!chat.turnId || chat.turnId === outcome.turn_id)) continueWithFollowUp(chat);
+        return;
+      }
       if (method !== 'event') return;
       const envelope = params as RuntimeEventEnvelope;
       route(envelope);
@@ -105,6 +135,14 @@ async function connect(): Promise<AgenteClient> {
     await registerDesktopTools(client).catch((error: unknown) => {
       console.warn(`[agente] desktop tools unavailable: ${error instanceof Error ? error.message : String(error)}`);
     });
+    const saved = loadConfig().agent_runtime as Record<string, unknown> | undefined;
+    if (saved) {
+      const overrides = saved.subagent_models as Record<string, { provider: string; model: string }> | undefined;
+      for (const model of Object.values(overrides || {})) {
+        if (model.provider.startsWith('desktop-')) await useProvider(client, model.provider.slice(8), model.model);
+      }
+      await client.request('runtime.configure', saved);
+    }
   }
   return client;
 }
@@ -115,7 +153,18 @@ async function connect(): Promise<AgenteClient> {
  */
 export async function useProvider(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
   const provider = providerEntry(providerName, model);
-  if (provider.model) await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
+  if (provider.model) {
+    const transport = resolveTransport(providerName, model);
+    const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string }>('models.info', { provider: transport.providerName, model: provider.model });
+    const capabilities = { ...info.capabilities };
+    if (transport.providerName === 'local') {
+      const modalities = getLlamaStatus().modalities;
+      capabilities.vision = transportSeesImages(transport);
+      capabilities.input_modalities = Array.isArray(modalities) ? modalities : capabilities.vision ? ['text', 'image'] : ['text'];
+    }
+    provider.config.models = { [provider.model]: { name: provider.model, capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
+    await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
+  }
   return { id: provider.id, model: provider.model };
 }
 
@@ -152,18 +201,18 @@ function recordCheckpoint(chat: ChatState, event: Extract<CodeAgentEvent, { type
 function continueWithFollowUp(chat: ChatState): void {
   chat.turnId = null;
   const next = chat.followUps.shift();
-  if (next !== undefined) void prompt(chat.chatId, next);
+  if (next !== undefined) void prompt(chat.chatId, next.text, undefined, next.attachments);
 }
 
 function route(envelope: RuntimeEventEnvelope): void {
   const chat = [...chats.values()].find((state) => state.sessionId === envelope.session_id);
   if (!chat) return;
+  if (envelope.event.type === 'turn_started' && !envelope.parent_run_id) chat.turnId = envelope.turn_id;
   for (const event of chat.translator.translate(envelope)) {
     if (event.type === 'checkpoint_finalized') recordCheckpoint(chat, event);
     emit(event);
     // A command may have left a server running in the background.
     if (event.type === 'tool_end') rustProcesses.nudge();
-    if (event.type === 'agent_end') continueWithFollowUp(chat);
   }
 }
 
@@ -229,10 +278,16 @@ function turnParams(chat: ChatState, provider: { id: string; model: string }, me
   };
 }
 
-async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean }> {
+async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
+  const live = chats.get(args.chatId);
+  if (live) {
+    Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel });
+    const current = await runtimeRequest<{ snapshot: SessionSnapshot }>('session.get', { session_id: live.sessionId });
+    return { sessionId: live.sessionId, resumed: true, conversationIndex: current.snapshot.conversation.length };
+  }
   const client = await connect();
   const sessionId = args.resumeSessionId && UUID.test(args.resumeSessionId) ? args.resumeSessionId : crypto.randomUUID();
-  const existing = await client.request<{ snapshot: SessionSnapshot }>('session.get', { session_id: sessionId });
+  const existing = await client.request<{ snapshot: SessionSnapshot }>('session.open', { session_id: sessionId, project_dir: args.projectRoot });
   const resumed = existing.snapshot.conversation.length > 0;
   const chat: ChatState = {
     chatId: args.chatId,
@@ -252,10 +307,10 @@ async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: 
   chat.translator = new RustTurnTranslator(args.chatId, () => chat.contextWindow);
   chats.set(args.chatId, chat);
   refreshContextWindow(chat);
-  return { sessionId, resumed };
+  return { sessionId, resumed, conversationIndex: existing.snapshot.conversation.length };
 }
 
-async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>): Promise<{ ok: boolean; error?: string }> {
+async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>, attachments: Attachment[] = []): Promise<{ ok: boolean; error?: string; conversationIndex?: number }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
   try {
@@ -263,11 +318,19 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
     activeChat = chat;
     const provider = await useProvider(client, chat.provider, chat.model);
     if (!provider.model) return { ok: false, error: 'No model selected — pick one in the Model Hub first.' };
-    const message: Message = { role: 'user', content: text, attachments: storeImages(images) };
-    const started = await client.request<{ turn_id: string }>('turn.start', turnParams(chat, provider, message));
+    const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
+    const media = [...attachments, ...storeImages(images)];
+    if (media.length) {
+      const info = await client.request<{ capabilities: { input_modalities?: string[]; vision: boolean } }>('models.info', { provider: provider.id, model: provider.model });
+      const modalities = info.capabilities.input_modalities || [];
+      const unsupported = media.filter((item) => modalities.length ? !modalities.includes(item.kind) && !(item.kind === 'pdf' && modalities.includes('file')) : item.kind !== 'image' || !info.capabilities.vision);
+      if (unsupported.length) throw new Error(`The selected model cannot accept ${unsupported.map((item) => item.name).join(', ')}. Choose a model with those input modalities.`);
+    }
+    const message: Message = { role: 'user', content: expanded.text, attachments: media };
+    const started = await client.request<{ turn_id: string; conversation_index?: number }>('turn.start', turnParams(chat, provider, message));
     chat.systemPrompt = undefined;
     chat.turnId = started.turn_id;
-    return { ok: true };
+    return { ok: true, conversationIndex: started.conversation_index };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     emit({ type: 'error', chatId, message });
@@ -275,37 +338,37 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   }
 }
 
-function steer(chatId: string, text: string): { ok: boolean } {
+async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
-  if (!chat.turnId) return followUp(chatId, text);
-  void connect().then((client) => client.request('turn.steer', { turn_id: chat.turnId, content: text })).catch(() => {});
+  if (!chat.turnId) return followUp(chatId, text, attachments);
+  const client = await connect();
+  const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
+  return client.request('turn.steer', { turn_id: chat.turnId, content: expanded.text, attachments });
+}
+
+async function followUp(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
+  const chat = chats.get(chatId);
+  if (!chat) return { ok: false };
+  if (chat.turnId) chat.followUps.push({ text, attachments });
+  else return prompt(chatId, text, undefined, attachments);
   return { ok: true };
 }
 
-function followUp(chatId: string, text: string): { ok: boolean } {
-  const chat = chats.get(chatId);
-  if (!chat) return { ok: false };
-  if (chat.turnId) chat.followUps.push(text);
-  else void prompt(chatId, text);
-  return { ok: true };
-}
-
-function abort(chatId: string): { ok: boolean } {
+async function abort(chatId: string): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat?.turnId) return { ok: false };
   chat.followUps = [];
-  void connect().then((client) => client.request('turn.cancel', { turn_id: chat.turnId })).catch(() => {});
-  return { ok: true };
+  const client = await connect();
+  return client.request('turn.cancel', { turn_id: chat.turnId });
 }
 
-function respondApproval(chatId: string, requestId: string, decision: ApprovalDecision): { ok: boolean } {
+async function respondApproval(chatId: string, requestId: string, decision: ApprovalDecision): Promise<{ ok: boolean }> {
   if (!chats.has(chatId)) return { ok: false };
-  void connect()
-    .then((client) => client.request('approval.respond', { request_id: requestId, decision: decision === 'allow' ? 'approve_once' : 'deny' }))
-    .catch(() => {});
-  emit({ type: 'approval_resolved', chatId, requestId, decision });
-  return { ok: true };
+  const client = await connect();
+  const result = await client.request<{ ok: boolean }>('approval.respond', { request_id: requestId, decision: decision === 'allow' ? 'approve_once' : 'deny' });
+  if (result.ok) emit({ type: 'approval_resolved', chatId, requestId, decision });
+  return result;
 }
 
 function setRuntimeMode(chatId: string, mode: AgenteRuntimeMode): { ok: boolean } {
@@ -338,34 +401,110 @@ async function compact(chatId: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 
-async function listCheckpoints(chatId: string): Promise<AgenteCheckpointSummary[]> {
-  return chats.get(chatId)?.checkpoints ?? [];
+/** `!command` in the composer: run it in the project's shell, outside the model (owner only). */
+async function exec(chatId: string, command: string): Promise<{ ok: boolean; error?: string }> {
+  const chat = chats.get(chatId);
+  if (!chat) return { ok: false, error: 'No active agente session for this chat' };
+  try {
+    const client = await connect();
+    const started = await client.request<{ turn_id: string }>('turn.exec', {
+      session_id: chat.sessionId,
+      tool: 'shell',
+      arguments: { command }
+    });
+    chat.turnId = started.turn_id;
+    return { ok: true };
+  } catch (error: unknown) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Undo or redo the last batch of file edits in the chat's session. */
+async function edits(chatId: string, action: 'undo' | 'redo'): Promise<{ ok: boolean; files?: string[]; error?: string }> {
+  const chat = chats.get(chatId);
+  if (!chat) return { ok: false, error: 'No active session' };
+  try {
+    const client = await connect();
+    const result = await client.request<{ paths: string[] }>(`edits.${action}`, { session_id: chat.sessionId });
+    return { ok: true, files: result.paths };
+  } catch (error: unknown) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Project and runtime lookups that need no chat: skills, subagents, commands, MCP, /init. */
+async function runtimeRequest<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  const client = await connect();
+  return client.request<T>(method, params);
+}
+
+async function subagentModel(chatId: string, kind: string, inherit: boolean): Promise<{ ok: boolean }> {
+  const chat = chats.get(chatId);
+  if (!chat) throw new Error('Start a Code session before choosing subagent models.');
+  const client = await connect();
+  const settings = await client.request<{ subagent_models: Record<string, { provider: string; model: string }> }>('runtime.settings');
+  const models = { ...settings.subagent_models };
+  if (inherit) delete models[kind];
+  else {
+    const provider = await useProvider(client, chat.provider, chat.model);
+    models[kind] = { provider: provider.id, model: provider.model };
+  }
+  return configureSettings({ subagent_models: models });
+}
+
+/** Persist only user settings; endpoint keys and Desktop's MCP token stay live. */
+async function configureSettings(patch: Record<string, unknown>): Promise<{ ok: boolean }> {
+  const allowed = ['smart_compaction', 'max_parallel_subagents', 'subagent_models', 'allow_media', 'approved_mcp_servers'];
+  if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error('Unknown agent setting.');
+  if ('max_parallel_subagents' in patch && (!Number.isInteger(patch.max_parallel_subagents) || Number(patch.max_parallel_subagents) < 1 || Number(patch.max_parallel_subagents) > 32)) throw new Error('Choose 1–32 parallel subagents.');
+  const result = await runtimeRequest<{ ok: boolean }>('runtime.configure', patch);
+  const config = loadConfig();
+  config.agent_runtime = { ...(config.agent_runtime as Record<string, unknown> || {}), ...patch };
+  saveConfig(config);
+  return result;
+}
+
+async function listCheckpoints(chatId: string, sessionId?: string): Promise<AgenteCheckpointSummary[]> {
+  const id = chats.get(chatId)?.sessionId ?? sessionId;
+  return id ? runtimeRequest('session.checkpoints', { session_id: id }) : [];
 }
 
 /**
  * Put the files back to how they were before `turnIndex`: undo the edits of
  * that turn and every later one, newest first. The conversation is kept.
  */
-async function rollback(chatId: string, turnIndex: number): Promise<{ ok: boolean; restored?: number; files?: string[]; error?: string }> {
+async function rollback(chatId: string, turnIndex: number, options: { sessionId?: string; projectRoot?: string } = {}): Promise<{ ok: boolean; restored?: number; files?: string[]; error?: string }> {
   const chat = chats.get(chatId);
-  if (!chat) return { ok: false, error: 'No checkpoints for this conversation' };
-  const later = chat.checkpoints.filter((checkpoint) => checkpoint.turnIndex >= turnIndex);
+  const sessionId = chat?.sessionId ?? options.sessionId;
+  if (!sessionId) return { ok: false, error: 'No checkpoints for this conversation' };
+  const later = (await listCheckpoints(chatId, sessionId)).filter((checkpoint) => checkpoint.turnIndex >= turnIndex);
   try {
     const client = await connect();
     const files = new Set<string>();
     for (let i = 0; i < later.length; i += 1) {
-      const undone = await client.request<{ paths: string[] }>('edits.undo', { session_id: chat.sessionId });
+      const undone = await client.request<{ paths: string[] }>('edits.undo', { session_id: sessionId });
       for (const file of undone.paths) files.add(file);
     }
-    chat.checkpoints = chat.checkpoints.filter((checkpoint) => checkpoint.turnIndex < turnIndex);
+    if (chat) chat.checkpoints = chat.checkpoints.filter((checkpoint) => checkpoint.turnIndex < turnIndex);
     return { ok: true, restored: files.size, files: [...files] };
   } catch (error: unknown) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
+async function messageAction(chatId: string, action: 'fork' | 'rewind', conversationIndex: number): Promise<{ sessionId: string; reverted?: number }> {
+  const chat = chats.get(chatId);
+  if (!chat) throw new Error('Open this conversation before using its message actions.');
+  if (action === 'fork') {
+    const snapshot = await runtimeRequest<SessionSnapshot>('session.fork', { session_id: chat.sessionId, conversation_index: conversationIndex });
+    return { sessionId: snapshot.session_id };
+  }
+  const result = await runtimeRequest<{ reverted: number }>('edits.rewind', { session_id: chat.sessionId, conversation_index: conversationIndex });
+  return { sessionId: chat.sessionId, reverted: result.reverted };
+}
+
 function liveChatIds(): string[] {
-  return [...chats.keys()];
+  return [...chats.values()].filter((chat) => !!chat.turnId).map((chat) => chat.chatId);
 }
 
 /** Runtime session ids named directly or by their live chats (which are forgotten). */
@@ -394,6 +533,7 @@ function disposeAllSessions(): void {
   daemon?.stop();
   daemon = null;
   listening = null;
+  connectionPromise = null;
   activeChat = null;
   rustProcesses.dispose();
   void desktopTools?.then((server) => server.close());
@@ -411,6 +551,12 @@ export const rustEngine = {
   setRuntimeMode,
   setModel,
   compact,
+  exec,
+  edits,
+  runtimeRequest,
+  messageAction,
+  subagentModel,
+  configureSettings,
   listCheckpoints,
   rollback,
   liveChatIds,

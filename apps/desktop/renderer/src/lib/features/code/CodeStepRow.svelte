@@ -9,24 +9,28 @@
 -->
 
 <script lang="ts">
+  import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { AlertCircle, Check, ChevronRight, FilePen, FileSearch, Globe, Loader2, Search, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
+  import { AlertCircle, Check, ChevronRight, FilePen, FileSearch, Globe, Loader2, Search, Square, SquareTerminal, Wrench, XCircle } from 'lucide-svelte';
   import type { AgentStep } from '$lib/types/chat';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { formatToolDuration } from '$lib/utils/tool-ui';
   import { copy } from '$lib/copy';
   import { codeWorkspace } from './workspace.svelte';
+  import { codeStore } from './code.svelte';
+  import { toastStore } from '$lib/stores/toast.svelte';
+  import { activityKind } from './activity';
 
-  let { step }: { step: AgentStep } = $props();
+  let { step, chatId }: { step: AgentStep; chatId?: string } = $props();
 
-  const OUTPUT_LIMIT = 8000;
+  const OUTPUT_LIMIT = 32_768;
 
   const tool = $derived(step.toolName ?? '');
   const isRunning = $derived(step.status === 'running' || step.status === 'pending');
   const isApproval = $derived(step.status === 'awaiting_approval' || approvalsStore.items.some((a) => a.id === step.id));
   const isError = $derived(step.status === 'error');
-  const isCommand = $derived(tool === 'bash');
-  const isEdit = $derived(tool === 'edit' || tool === 'write');
+  const isCommand = $derived(activityKind(step) === 'commands');
+  const isEdit = $derived(activityKind(step) === 'edits');
   const adds = $derived(step.diffStats?.reduce((s, d) => s + d.additions, 0) || 0);
   const dels = $derived(step.diffStats?.reduce((s, d) => s + d.deletions, 0) || 0);
   const looksLikeDiff = (text: string) => /^(---|\+\+\+|@@)/m.test(text);
@@ -36,10 +40,16 @@
   });
 
   let expanded = $state(false);
+  let outputElement = $state<HTMLPreElement>();
+  let followOutput = $state(true);
+  $effect(() => {
+    void body;
+    if (isRunning && followOutput) void tick().then(() => { if (outputElement) outputElement.scrollTop = outputElement.scrollHeight; });
+  });
   let userToggled = $state(false);
   $effect(() => {
-    // Open by default only what needs eyes: approvals, failures, a live command.
-    if (!userToggled) expanded = isApproval || isError || (isCommand && isRunning && !!step.output);
+    // Routine output opens on demand; approvals and failures need eyes immediately.
+    if (!userToggled) expanded = isApproval || isError;
   });
 
   // Live elapsed time while running.
@@ -67,7 +77,7 @@
   });
 
   function toggle() {
-    if (!body && !isApproval) return;
+    if (!body && !isApproval && !isRunning) return;
     userToggled = true;
     expanded = !expanded;
   }
@@ -90,7 +100,7 @@
 {#if !(step.type === 'approval' && !isApproval)}
 <div class="step" class:is-approval={isApproval} class:is-error={isError} class:is-open={expanded}>
   <div class="flex items-center">
-  <button type="button" class="step-head" onclick={toggle} aria-expanded={body || isApproval ? expanded : undefined} disabled={!body && !isApproval}>
+  <button type="button" class="step-head" onclick={toggle} aria-expanded={body || isApproval || isRunning ? expanded : undefined} disabled={!body && !isApproval && !isRunning}>
     <Icon class="step-icon size-3.5 shrink-0 {isRunning ? 'animate-spin' : ''}" />
     <span class="min-w-0 flex-1 truncate text-left">
       <span class="font-medium text-foreground">{step.label}</span>
@@ -112,6 +122,7 @@
   {#if isEdit && step.status === 'done' && (adds || dels || step.fileChanges?.length)}
     <button type="button" class="view-link shrink-0 px-2" onclick={viewChanges}>{$t('codeWs.viewChanges')}</button>
   {/if}
+  {#if isRunning && isCommand && chatId}<button type="button" class="view-link shrink-0 px-2" aria-label="Stop running command" onclick={() => { if (chatId) void codeStore.stop(chatId).catch((error) => toastStore.error(String(error))); }}><Square class="size-3" /></button>{/if}
   </div>
 
   {#if expanded}
@@ -119,7 +130,9 @@
       {#if body && looksLikeDiff(body)}
         <pre class="diff-text">{#each body.slice(0, OUTPUT_LIMIT).split('\n') as line, index (index)}<span class="dl {diffLineClass(line)}">{line || ' '}</span>{/each}</pre>
       {:else if body}
-        <pre class="out" class:is-terminal={isCommand} class:text-error={isError && !isCommand}>{body.slice(-OUTPUT_LIMIT)}{#if isRunning && isCommand}<span class="caret"></span>{/if}</pre>
+        <pre bind:this={outputElement} onscroll={() => { if (outputElement) followOutput = outputElement.scrollHeight - outputElement.scrollTop - outputElement.clientHeight < 24; }} class="out" class:is-terminal={isCommand} class:text-error={isError && !isCommand}>{body.slice(-OUTPUT_LIMIT)}{#if isRunning && isCommand}<span class="caret"></span>{/if}</pre>
+      {:else if isRunning}
+        <p class="text-xs text-muted-foreground">{isCommand && /\|\s*tail\b/.test(step.detail || '') ? 'This pipe prints its tail when the command finishes.' : 'Waiting for output…'}</p>
       {/if}
       {#if isApproval}
         <div class="flex items-center gap-2 pt-2">

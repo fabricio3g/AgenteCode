@@ -50,6 +50,16 @@ test('a turn with a command and an edit becomes the Code UI stream', () => {
   assert.equal(out.at(-1).stopReason, 'stop');
 });
 
+test('child output, spend and consumed steering survive the desktop translation', () => {
+  const translator = new RustTurnTranslator('chat-1', () => 32_000);
+  const child = { type: 'child_delta', run_id: 'child-1', text: 'Checked it.' };
+  assert.deepEqual(translator.translate(envelope(child)), [{ type: 'runtime_event', chatId: 'chat-1', event: child }]);
+  const usage = { type: 'call_usage', cost_usd: 0.02, cost_estimated: false, usage: { prompt_tokens: 100, completion_tokens: 10, cache_read_tokens: 900, cache_creation_tokens: 0 } };
+  assert.deepEqual(translator.translate(envelope(usage, { parent_run_id: 'child-1' })), [{ type: 'runtime_event', chatId: 'chat-1', event: usage, parentRunId: 'child-1' }]);
+  const injected = { type: 'user_messages_injected', messages: ['Do this first.'] };
+  assert.deepEqual(translator.translate(envelope(injected)), [{ type: 'runtime_event', chatId: 'chat-1', event: injected }]);
+});
+
 test('approvals, failures and subagent events', () => {
   const translator = new RustTurnTranslator('chat-2', () => 0);
   const [approval] = run(translator, [{
@@ -62,7 +72,9 @@ test('approvals, failures and subagent events', () => {
   assert.equal(approval.diff, '--- x.txt (before)\n+++ x.txt (after)\n+hi');
 
   // A subagent's own events never become this chat's steps.
-  assert.deepEqual(translator.translate(envelope({ type: 'assistant_delta', text: 'child' }, { parent_run_id: 'run-1' })), []);
+  const child = translator.translate(envelope({ type: 'assistant_delta', text: 'child' }, { parent_run_id: 'run-1' }));
+  assert.equal(child[0].type, 'runtime_event');
+  assert.equal(child[0].parentRunId, 'run-1');
 
   const failed = run(translator, [{ type: 'turn_started' }, { type: 'turn_failed', message: 'provider down' }]);
   assert.deepEqual(failed.map((e) => e.type), ['agent_start', 'turn_start', 'error', 'turn_end', 'agent_end']);

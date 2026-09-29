@@ -111,30 +111,57 @@ function matchLoadPhase(line) {
   return -1;
 }
 
+export class ProcessStartCancelled extends Error {
+  constructor() {
+    super('Model load cancelled by a stop or a newer load request.');
+    this.name = 'ProcessStartCancelled';
+  }
+}
+
 export class ManagedProcess {
   constructor(options = {}) {
     this.process = null;
     this.status = { state: 'idle', ...options.initialStatus };
     this._onStatusChange = options.onStatusChange || (() => {});
-    this._stdoutListener = null;
-    this._stderrListener = null;
+    this._spawn = options.spawn || spawn;
+    this._fetch = options.fetch || fetch;
+    this._startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT + DEFAULT_HEALTH_TIMEOUT;
+    this._healthIntervalMs = options.healthIntervalMs ?? HEALTH_CHECK_INTERVAL;
+    this._shutdownMs = options.shutdownMs ?? GRACEFUL_SHUTDOWN_MS;
+    this._generation = 0;
+    this._startRequest = null;
+    this._stopping = null;
+    this._cancelStart = null;
   }
 
   setStatus(patch) {
     this.status = { ...this.status, ...patch };
-    this._onStatusChange(this.status);
+    this._onStatusChange(this.status, patch);
   }
 
-  async start({ binaryPath, args, env, healthPort, statusFields = {} }) {
-    if (this.process) {
-      await this.stop();
-    }
+  start(options) {
+    const signature = JSON.stringify(options);
+    if (this._startRequest?.signature === signature) return this._startRequest.promise;
+    const generation = ++this._generation;
+    const promise = (async () => {
+      await this._stopProcess();
+      if (generation !== this._generation) throw new ProcessStartCancelled();
+      return this._launch(options, generation);
+    })();
+    const request = { signature, promise, generation };
+    this._startRequest = request;
+    void promise.catch(() => {
+      if (this._startRequest === request) this._startRequest = null;
+    });
+    return promise;
+  }
 
-    this.setStatus({ state: 'starting', ...statusFields });
-
+  _launch({ binaryPath, args, env, healthPort, statusFields = {} }, generation) {
+    this.setStatus({ ...statusFields, state: 'starting', message: null, log_tail: null, load_progress: 0, load_phase: null });
     return new Promise((resolve, reject) => {
+      let proc;
       try {
-        this.process = spawn(binaryPath, args, {
+        proc = this._spawn(binaryPath, args, {
           stdio: ['ignore', 'pipe', 'pipe'],
           env: { ...process.env, ...env }
         });
@@ -143,36 +170,57 @@ export class ManagedProcess {
         reject(err);
         return;
       }
+      this.process = proc;
 
       let settled = false;
-      let recentLogs = [];
+      let expectedStop = false;
+      let checkingHealth = false;
+      const recentLogs = [];
       let phaseIndex = -1;
+      let terminateTimer;
+      const current = () => this.process === proc && generation === this._generation;
+      const clearChecks = () => {
+        clearTimeout(startupTimeout);
+        clearInterval(healthInterval);
+      };
+      this._cancelStart = () => {
+        expectedStop = true;
+        clearChecks();
+        if (!settled) {
+          settled = true;
+          reject(new ProcessStartCancelled());
+        }
+      };
 
       const startupTimeout = setTimeout(() => {
-        if (settled) return;
+        if (settled || !current()) return;
         settled = true;
-        this.process?.kill('SIGTERM');
+        clearChecks();
         const tail = recentLogs.slice(-20).join('\n');
         const reached = phaseIndex >= 0 ? ` while ${LOAD_PHASES[phaseIndex].label.toLowerCase()}` : '';
         const message = `Server health check timed out${reached}${tail ? `\n${tail}` : ''}`;
         this.setStatus({ state: 'error', message, log_tail: recentLogs.slice(-20) });
         reject(new Error(message));
-      }, DEFAULT_STARTUP_TIMEOUT + DEFAULT_HEALTH_TIMEOUT);
+        proc.kill('SIGTERM');
+        terminateTimer = setTimeout(() => { if (this.process === proc) proc.kill('SIGKILL'); }, this._shutdownMs);
+      }, this._startupTimeoutMs);
 
       const healthInterval = setInterval(async () => {
-        if (settled) return;
+        if (settled || checkingHealth || !current()) return;
+        checkingHealth = true;
         try {
-          const resp = await fetch(`http://127.0.0.1:${healthPort}/health`, { signal: AbortSignal.timeout(2000) });
-          if (!resp.ok) return;
+          const resp = await this._fetch(`http://127.0.0.1:${healthPort}/health`, { signal: AbortSignal.timeout(2000) });
+          if (!resp.ok || settled || !current()) return;
           settled = true;
-          clearTimeout(startupTimeout);
-          clearInterval(healthInterval);
-          this.setStatus({ state: 'ready', load_progress: 100, load_phase: null, log_tail: null, ...statusFields });
+          clearChecks();
+          this.setStatus({ ...statusFields, state: 'ready', load_progress: 100, load_phase: null, log_tail: null });
           resolve('started');
         } catch {
           // The server commonly needs several seconds to load a model.
+        } finally {
+          checkingHealth = false;
         }
-      }, HEALTH_CHECK_INTERVAL);
+      }, this._healthIntervalMs);
 
       const onData = (data) => {
         const text = String(data || '');
@@ -185,7 +233,7 @@ export class ManagedProcess {
           // Report load progress from what the server says it is doing. Phases
           // only ever advance — a later log line about an earlier stage must
           // not walk the bar backwards.
-          if (settled) continue;
+          if (settled || !current()) continue;
           const matched = matchLoadPhase(trimmed);
           if (matched > phaseIndex) {
             phaseIndex = matched;
@@ -198,62 +246,80 @@ export class ManagedProcess {
         // the HTTP health endpoint, not a version-specific log line.
       };
 
-      this._stdoutListener = onData;
-      this._stderrListener = onData;
-      this.process.stdout.on('data', onData);
-      this.process.stderr.on('data', onData);
-
-        this.process.on('error', (err) => {
-          clearTimeout(startupTimeout);
-          clearInterval(healthInterval);
-          this.setStatus({ state: 'error', message: err.message });
-          if (!settled) { settled = true; reject(err); }
-        });
-
-      this.process.on('exit', (code, signal) => {
-          clearTimeout(startupTimeout);
-          clearInterval(healthInterval);
+      proc.stdout.on('data', onData);
+      proc.stderr.on('data', onData);
+      proc.on('error', (err) => {
+        clearChecks();
+        if (current() && !expectedStop) this.setStatus({ state: 'error', message: err.message });
+        if (!settled) { settled = true; reject(err); }
+        if (this.process === proc) {
           this.process = null;
-          if (!settled) {
-            settled = true;
-          if (code !== 0) {
-            const tail = recentLogs.slice(-20).join('\n');
-            this.setStatus({ log_tail: recentLogs.slice(-20) });
-            reject(new Error(`Process exited with code ${code}, signal ${signal}${tail ? `\n${tail}` : ''}`));
-          } else {
-            resolve('exited');
-          }
+          this._cancelStart = null;
+        }
+      });
+
+      proc.on('exit', (code, signal) => {
+        clearTimeout(terminateTimer);
+        clearChecks();
+        proc.stdout.off('data', onData);
+        proc.stderr.off('data', onData);
+        const wasCurrent = current();
+        if (this.process === proc) {
+          this.process = null;
+          this._cancelStart = null;
+          if (this._startRequest?.generation === generation) this._startRequest = null;
+        }
+        const tail = recentLogs.slice(-20).join('\n');
+        const message = `Process exited with code ${code}, signal ${signal}${tail ? `\n${tail}` : ''}`;
+        if (wasCurrent && !expectedStop && this.status.state !== 'error') {
+          this.setStatus({ state: code === 0 && settled ? 'idle' : 'error', message, log_tail: recentLogs.slice(-20) });
+        }
+        if (!settled) {
+          settled = true;
+          reject(expectedStop ? new ProcessStartCancelled() : new Error(message));
         }
       });
     });
   }
 
   async stop(idleFields = {}) {
+    const generation = ++this._generation;
+    this._startRequest = null;
+    await this._stopProcess();
+    if (generation === this._generation) this.setStatus({ state: 'idle', ...idleFields, load_phase: null, load_progress: null });
+  }
+
+  async _stopProcess() {
+    if (this._stopping) return this._stopping;
     if (!this.process) return;
     const proc = this.process;
-    // Remove stored listeners before killing
-    if (this._stdoutListener) {
-      proc.stdout.off('data', this._stdoutListener);
-      this._stdoutListener = null;
-    }
-    if (this._stderrListener) {
-      proc.stderr.off('data', this._stderrListener);
-      this._stderrListener = null;
-    }
+    this._cancelStart?.();
     this.setStatus({ state: 'stopping' });
-    proc.kill('SIGTERM');
-    await new Promise(resolve => {
+    const stopping = new Promise(resolve => {
       const timer = setTimeout(() => {
         proc.kill('SIGKILL');
+      }, this._shutdownMs);
+      proc.once('exit', () => { clearTimeout(timer); resolve(); });
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        clearTimeout(timer);
         resolve();
-      }, GRACEFUL_SHUTDOWN_MS);
-      proc.on('exit', () => { clearTimeout(timer); resolve(); });
+      } else {
+        proc.kill('SIGTERM');
+      }
     });
-    this.process = null;
-    this.setStatus({ state: 'idle', ...idleFields });
+    this._stopping = stopping;
+    try {
+      await stopping;
+      if (this.process === proc) this.process = null;
+    } finally {
+      if (this._stopping === stopping) this._stopping = null;
+    }
   }
 
   kill() {
+    this._generation += 1;
+    this._startRequest = null;
+    this._cancelStart?.();
     if (this.process) {
       this.process.kill('SIGKILL');
       this.process = null;

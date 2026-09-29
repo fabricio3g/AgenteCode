@@ -121,13 +121,10 @@ export async function agentStreamComplete(options: {
   /**
    * Receives the real failure reason whenever this returns `null`.
    *
-   * The `null` return is deliberately kept — the caller treats it as "native tools
-   * did not work, fall back to XML" — but on its own it erased the provider's actual
-   * message (a 400 body, a tool rejection, a context overflow). That left the
-   * caller's error pattern-matching with nothing to match on, so a model that simply
-   * does not support tools was indistinguishable from a network blip.
+   * Failure never becomes a successful partial reply. The caller uses the code
+   * to retry transient failures and only falls back on actual tool rejections.
    */
-  onError?: (message: string) => void;
+  onError?: (message: string, code?: string) => void;
 }): Promise<CompletionResult | null> {
   if (!isElectron()) return null;
   options.signal?.throwIfAborted();
@@ -147,6 +144,7 @@ export async function agentStreamComplete(options: {
   let resolveStream: (() => void) | null = null;
   let rejectStream: ((error: Error) => void) | null = null;
   let finalResult: CompletionResult = { content: '', reasoning: '' };
+  let errorCode: string | undefined;
 
   const streamPromise = new Promise<void>((resolve, reject) => {
     resolveStream = resolve;
@@ -205,12 +203,12 @@ export async function agentStreamComplete(options: {
     }
 
     if (event.type === 'cancelled') {
-      dispatcher.flush();
-      resolveStream?.();
+      rejectStream?.(new DOMException('Agent task cancelled', 'AbortError'));
       return;
     }
 
     if (event.type === 'error') {
+      errorCode = typeof event.errorCode === 'string' ? event.errorCode : undefined;
       rejectStream?.(new Error(typeof event.error === 'string' ? event.error : 'Streaming request failed'));
     }
   });
@@ -247,15 +245,15 @@ export async function agentStreamComplete(options: {
     await streamPromise;
     return finalResult;
   } catch (err: unknown) {
-    if (options.signal?.aborted) throw new DOMException('Agent task cancelled by user', 'AbortError');
+    if (options.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+      throw new DOMException('Agent task cancelled by user', 'AbortError');
+    }
     const errStr = toErrorMessage(err);
     const isCloneError = errStr.includes('could not be cloned') || errStr.includes('DataCloneError');
     debugLog(debugLogs, `[agent-llm] agentStreamComplete FAILED | err=${errStr.slice(0, 200)} | hasPartialContent=${!!(finalResult.content || finalResult.toolCalls?.length)} | isCloneError=${isCloneError}`);
     console.warn('[agent-llm] agentStreamComplete failed:', err);
-    if (finalResult.content || finalResult.toolCalls?.length) {
-      return finalResult;
-    }
-    options.onError?.(errStr);
+    if (errorCode) options.onError?.(errStr, errorCode);
+    else options.onError?.(errStr);
     return null;
   } finally {
     idle.clear();

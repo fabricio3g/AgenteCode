@@ -85,6 +85,7 @@ struct Server {
     status: RwLock<ServerStatus>,
     connection: RwLock<Option<Arc<Connection>>>,
     stderr: Arc<Mutex<VecDeque<String>>>,
+    connecting: AtomicBool,
 }
 
 impl Server {
@@ -106,6 +107,9 @@ impl Server {
     }
 
     async fn connect(&self) {
+        if self.connecting.swap(true, Ordering::SeqCst) {
+            return;
+        }
         *self.status.write() = ServerStatus::Connecting;
         self.disconnect();
         let result = tokio::time::timeout(CONNECT_TIMEOUT, self.open()).await;
@@ -125,6 +129,7 @@ impl Server {
             }
         };
         *self.status.write() = status;
+        self.connecting.store(false, Ordering::SeqCst);
     }
 
     async fn open(&self) -> anyhow::Result<Connection> {
@@ -406,6 +411,41 @@ impl McpManager {
         manager
     }
 
+    /// Share configured connections, adding only this project's servers.
+    pub fn for_project(&self, project_dir: &str, approved: &[String]) -> Self {
+        let mut manager = Self {
+            servers: self
+                .servers
+                .iter()
+                .filter(|server| server.source == ServerSource::Config)
+                .cloned()
+                .collect(),
+        };
+        for (name, config) in super::load_project_mcp_json(project_dir) {
+            if manager.server(&name).is_some() {
+                continue;
+            }
+            let server = manager.add(&name, config, ServerSource::ProjectFile);
+            if !approved.contains(&super::approval_key(project_dir, &name)) {
+                *server.status.write() = ServerStatus::NeedsApproval;
+            }
+        }
+        manager
+    }
+
+    pub async fn connect_project(&self) {
+        futures::future::join_all(
+            self.servers
+                .iter()
+                .filter(|server| {
+                    server.source == ServerSource::ProjectFile
+                        && matches!(*server.status.read(), ServerStatus::Connecting)
+                })
+                .map(|server| server.connect()),
+        )
+        .await;
+    }
+
     /// Register a server (idle until [`Self::connect_all`]).
     pub fn add_client(&mut self, name: String, config: McpConfig) {
         self.add(&name, config, ServerSource::Config);
@@ -424,6 +464,7 @@ impl McpManager {
             status: RwLock::new(status),
             connection: RwLock::new(None),
             stderr: Arc::new(Mutex::new(VecDeque::new())),
+            connecting: AtomicBool::new(false),
         });
         self.servers.retain(|s| s.name != name);
         self.servers.push(Arc::clone(&server));

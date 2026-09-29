@@ -39,7 +39,7 @@
     >
       <Activity class="size-3.5" />
       {$t('codeWs.processes')}
-      {#if running}<span class="rounded-full bg-success px-1.5 text-[10px] font-semibold tabular-nums text-primary-fg">{running}</span>{/if}
+      {#if running}<span class="text-[11px] tabular-nums text-muted-foreground">{running}</span>{/if}
     </button>
     {#each codeWorkspace.terminals as term (term.id)}
       {@const key = `terminal:${term.id}` as const}

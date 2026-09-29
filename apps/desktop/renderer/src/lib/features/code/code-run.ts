@@ -1,7 +1,7 @@
 // Agente run state: folds CodeAgentEvent pushes into AgentSteps + streamed
 // content. Pure logic — no Svelte, no IPC — so it is directly testable.
 
-import type { CodeAgentEvent, CodeArtifactRef, CodeRunSummary, CodeSourceRef, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
+import type { CodeAgentEvent, CodeArtifactRef, CodeChild, CodeRunSummary, CodeSourceRef, CodeSpend, CodeStopReason, CodeTodoItem, AgentActivityKey } from '$shared/agente-protocol';
 import type { AgentStep, CodeAgentDiffStat, CodeAgentFileChange, CodeTimelineEntry } from '$lib/types/chat';
 import { sanitizeAgentVisibleText } from '$lib/services/agent-parsing';
 import { copy } from '$lib/copy';
@@ -53,10 +53,77 @@ export interface CodeRunState {
   activity?: AgentActivityKey;
   /** End-of-run rollup from run_summary. */
   summary?: CodeRunSummary;
+  children: CodeChild[];
+  spend: CodeSpend;
+  diagnostics: string[];
+  generation?: { outputBytes: number; toolName?: string | null };
+}
+
+export function emptySpend(): CodeSpend {
+  return { costUsd: 0, estimated: false, unpriced: false, promptTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 }
 
 export function createCodeRunState(): CodeRunState {
-  return { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [] };
+  return { content: '', timeline: [], reasoning: '', reasoningRaw: '', steps: [], diffStats: [], fileChanges: [], done: false, todos: [], truncatedOnce: false, artifacts: [], sources: [], children: [], spend: emptySpend(), diagnostics: [] };
+}
+
+function applyRuntimeEvent(state: CodeRunState, event: Extract<CodeAgentEvent, { type: 'runtime_event' }>): boolean {
+  const value = event.event;
+  const id = event.parentRunId || ('run_id' in value ? value.run_id : undefined);
+  let child = id ? state.children.find((item) => item.id === id) : undefined;
+  if (id && !child) {
+    child = { id, kind: 'subagent', description: '', status: 'running', text: '', tools: [], spend: emptySpend() };
+    state.children.push(child);
+  }
+  switch (value.type) {
+    case 'child_started':
+      Object.assign(child!, { kind: value.kind, description: value.description, status: 'running' });
+      return true;
+    case 'assistant_delta':
+      if (!child) return false;
+      child.text = (child.text + value.text).slice(-32_768);
+      return true;
+    case 'child_delta':
+      child!.text = (child!.text + value.text).slice(-32_768);
+      return true;
+    case 'child_tool': {
+      let tool = child!.tools.find((item) => item.id === value.call_id);
+      if (!tool) {
+        tool = { id: value.call_id, name: value.name, output: '', status: 'running' };
+        child!.tools.push(tool);
+      }
+      if (value.name) tool.name = value.name;
+      tool.output = (value.finished || value.name ? value.content : tool.output + value.content).slice(-32_768);
+      tool.status = value.finished ? (value.is_error ? 'error' : 'done') : 'running';
+      return true;
+    }
+    case 'child_finished':
+    case 'child_completed_notice':
+      Object.assign(child!, { summary: value.summary, status: value.type === 'child_finished' ? (value.is_error ? 'error' : 'done') : (value.status === 'completed' ? 'done' : 'error') });
+      return true;
+    case 'call_usage': {
+      // The session includes its children; a child also keeps its own subtotal.
+      for (const spend of child ? [state.spend, child.spend] : [state.spend]) {
+        spend.costUsd += value.cost_usd ?? 0;
+        spend.estimated ||= value.cost_estimated;
+        spend.unpriced ||= value.cost_usd == null;
+        spend.promptTokens += value.usage.prompt_tokens;
+        spend.cacheReadTokens += value.usage.cache_read_tokens;
+        spend.cacheWriteTokens += value.usage.cache_creation_tokens;
+      }
+      return true;
+    }
+    case 'diagnostic':
+      state.diagnostics = [...state.diagnostics, value.message].slice(-20);
+      return true;
+    case 'generation_progress':
+      if (!child) state.generation = { outputBytes: value.output_bytes, toolName: value.tool_name };
+      return false;
+    case 'tool_heartbeat':
+      return false;
+    default:
+      return false;
+  }
 }
 
 /** Add or update a step; a new step also takes its place in the timeline. */
@@ -232,7 +299,7 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
     case 'compaction_start':
       return { id: `compaction-${event.chatId}`, type: 'planning', label: copy.codeRun.compacting, status: 'running' };
     case 'compaction_end':
-      return { id: `compaction-${event.chatId}`, type: 'done', label: copy.codeRun.compacted, status: 'done' };
+      return { id: `compaction-${event.chatId}`, type: 'done', label: copy.codeRun.compacted, status: event.success ? 'done' : 'error', detail: event.tokensBefore !== undefined ? `${event.tokensBefore.toLocaleString()} → ${(event.tokensAfter ?? 0).toLocaleString()} tokens · ${event.smart ? 'summarized' : 'trimmed'}` : undefined };
     default:
       return null;
   }
@@ -245,6 +312,8 @@ export function eventToStep(event: CodeAgentEvent): AgentStep | null {
  */
 export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent): boolean {
   switch (event.type) {
+    case 'runtime_event':
+      return applyRuntimeEvent(state, event);
     case 'agent_start': {
       // A follow-up restarts the engine loop inside the same run: keep the
       // original start so "worked for" covers the whole piece of work.
@@ -278,7 +347,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       const step = state.steps.find((s) => s.id === event.toolCallId);
       const partial = event.partialResult;
       const text = typeof partial === 'string' ? partial : (partial as { output?: unknown } | null)?.output;
-      if (step && typeof text === 'string') step.output = text.slice(-6000);
+      if (step && typeof text === 'string') step.output = text.slice(-32_768);
       return true;
     }
     case 'tool_end': {
@@ -286,7 +355,7 @@ export function applyCodeAgentEvent(state: CodeRunState, event: CodeAgentEvent):
       if (step) {
         step.status = event.status || (event.isError ? 'error' : 'done');
         const output = event.result != null ? String(event.result) : '';
-        if (output) step.output = output.slice(0, 6000);
+        if (output) step.output = step.toolName === 'present_plan' ? output : output.slice(-32_768);
         if (event.fileChanges?.length) {
           step.fileChanges = event.fileChanges.map((file) => ({ path: file.path, kind: file.kind as CodeAgentFileChange['kind'] }));
         }

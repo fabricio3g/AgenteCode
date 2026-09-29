@@ -4,6 +4,8 @@ import { invoke, listen } from './bridge';
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 let lastLocalLoadSignature: string | null = null;
+let localLoadGeneration = 0;
+let localLoad: { signature: string; promise: Promise<string> } | null = null;
 
 function normalizeLocalBaseUrl(rawBaseUrl?: string): string {
   const raw = rawBaseUrl?.trim() || DEFAULT_LOCAL_BASE_URL;
@@ -38,6 +40,8 @@ async function startLlama(config: LlamaConfig): Promise<string> {
 }
 
 export async function stopLlama(): Promise<void> {
+  localLoadGeneration += 1;
+  localLoad = null;
   await invoke<void>('stop_llama');
   lastLocalLoadSignature = null;
 }
@@ -224,6 +228,27 @@ export async function loadLocalModel(args: {
   swaFull?: boolean;
   splitMode?: string;
 }): Promise<string> {
+  const signature = JSON.stringify(args);
+  if (localLoad?.signature === signature) return localLoad.promise;
+  const generation = ++localLoadGeneration;
+  const request = { signature, promise: performLocalModelLoad(args, generation) };
+  localLoad = request;
+  try {
+    return await request.promise;
+  } finally {
+    if (localLoad === request) localLoad = null;
+  }
+}
+
+async function performLocalModelLoad(args: Parameters<typeof loadLocalModel>[0], generation: number): Promise<string> {
+  const checkCurrent = () => {
+    if (generation !== localLoadGeneration) throw new Error('Model load cancelled by a stop or a newer load request.');
+  };
+  const stopForRestart = async () => {
+    checkCurrent();
+    await invoke<void>('stop_llama');
+    checkCurrent();
+  };
   const baseUrl = resolveLocalBaseUrl(args.config);
 
   const settings = await getRecommendedSettings(
@@ -232,6 +257,7 @@ export async function loadLocalModel(args: {
     args.gpuLayers ?? args.config.llm?.local?.gpu_layers,
     args.runtimePath || args.config.llm?.local?.runtime_path
   );
+  checkCurrent();
   const { host, port } = parseHostPort(resolveLocalBindBaseUrl(args.config));
   const baseStartConfig: LlamaConfig = {
     model_path: args.modelPath,
@@ -277,8 +303,8 @@ export async function loadLocalModel(args: {
 
   try {
     const currentStatus = await getSupervisorStatus();
-    const currentModelPath = currentStatus?.active_model || null;
-    if (currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
+    const currentModelPath = currentStatus?.model_path || null;
+    if (currentStatus?.state === 'ready' && currentModelPath === args.modelPath && lastLocalLoadSignature === desiredSignature) {
       return baseUrl;
     }
   } catch {
@@ -286,7 +312,7 @@ export async function loadLocalModel(args: {
   }
 
   try {
-    await stopLlama();
+    await stopForRestart();
   } catch {
     // ignore stop failures before restart
   }
@@ -297,8 +323,11 @@ export async function loadLocalModel(args: {
   }
 
   const startWithConfig = async (config: LlamaConfig) => {
+    checkCurrent();
     await startLlama(config);
+    checkCurrent();
     await waitForLocalServer(baseUrl);
+    checkCurrent();
   };
 
   let lastError: unknown = null;
@@ -309,12 +338,13 @@ export async function loadLocalModel(args: {
   } catch (error) {
     lastError = error;
   }
+  checkCurrent();
 
   if (baseStartConfig.runtime_path) {
     try {
       const retryConfig = { ...baseStartConfig };
       delete retryConfig.runtime_path;
-      await stopLlama().catch(() => {});
+      await stopForRestart();
       await startWithConfig(retryConfig);
       lastLocalLoadSignature = buildLocalLoadSignature(retryConfig);
       return baseUrl;
@@ -322,6 +352,7 @@ export async function loadLocalModel(args: {
       lastError = error;
     }
   }
+  checkCurrent();
 
   if (Number(baseStartConfig.gpu_offload || 0) > 0 && isGpuOrRuntimeError(lastError)) {
     try {
@@ -334,7 +365,7 @@ export async function loadLocalModel(args: {
         cache_type_k: 'f16',
         cache_type_v: 'f16'
       };
-      await stopLlama().catch(() => {});
+      await stopForRestart();
       await startWithConfig(saferConfig);
       lastLocalLoadSignature = buildLocalLoadSignature(saferConfig);
       return baseUrl;
@@ -342,6 +373,7 @@ export async function loadLocalModel(args: {
       lastError = error;
     }
   }
+  checkCurrent();
 
   if (Number(baseStartConfig.gpu_offload || 0) > 0 && isGpuOrRuntimeError(lastError)) {
     const maxThreads = Math.max(1, Number(args.config.llm?.local?.cpu_threads || navigator.hardwareConcurrency || 1));
@@ -359,7 +391,7 @@ export async function loadLocalModel(args: {
       cache_type_k: 'f16',
       cache_type_v: 'f16'
     };
-    await stopLlama().catch(() => {});
+    await stopForRestart();
     await startWithConfig(cpuSafeConfig);
     lastLocalLoadSignature = buildLocalLoadSignature(cpuSafeConfig);
     return baseUrl;

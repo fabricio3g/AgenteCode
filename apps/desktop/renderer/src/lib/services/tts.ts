@@ -21,13 +21,12 @@ export async function unloadTts(): Promise<void> {
   await invoke<void>('unload_tts');
 }
 
-export function generateTtsStream(request: TtsRequest & { volume?: number }): void {
-  console.log(`${LOG_PREFIX} Sending generate_tts_stream:`, request.text?.slice(0, 30));
-  invoke<{ ok: boolean }>('generate_tts_stream', { request });
+export async function generateTtsStream(request: TtsRequest & { volume?: number; requestId: string }): Promise<void> {
+  await invoke<{ ok: boolean }>('generate_tts_stream', { request });
 }
 
 export function cancelTtsStream(): void {
-  invoke<void>('cancel_tts_stream');
+  void invoke<void>('cancel_tts_stream').catch(() => {});
 }
 
 export function base64ToFloat32Pcm(base64: string): Float32Array {
@@ -47,38 +46,23 @@ export function onTtsChunk(cb: (evt: TtsEvent) => void): () => void {
   const api = getElectronApi();
   if (!api) return () => {};
 
-  console.log(`${LOG_PREFIX} Subscribing to tts-chunk`);
-  return api.on('tts-chunk', (evt) => {
-    console.log(`${LOG_PREFIX} tts-chunk event received:`, JSON.stringify(evt).slice(0, 200));
-    cb(evt);
-  });
+  return api.on('tts-chunk', cb);
 }
 
 export function onTtsStart(cb: (evt: TtsEvent) => void): () => void {
   const api = getElectronApi();
   if (!api) return () => {};
 
-  return api.on('tts-start', (evt) => {
-    console.log(`${LOG_PREFIX} tts-start event received:`, JSON.stringify(evt));
-    cb(evt);
-  });
+  return api.on('tts-start', cb);
 }
 
 export function onTtsDone(cb: (evt: TtsEvent) => void): () => void {
   const api = getElectronApi();
   if (!api) return () => {};
 
-  console.log(`${LOG_PREFIX} Subscribing to tts-done`);
-  return api.on('tts-done', (evt) => {
-    console.log(`${LOG_PREFIX} tts-done event received:`, JSON.stringify(evt));
-    cb(evt);
-  });
+  return api.on('tts-done', cb);
 }
 
-async function initWorker(): Promise<string[]> {
-  const voices = await invoke<string[]>('list_tts_voices');
-  if (voices?.length) return voices;
-  // Trigger init
-  await invoke<{ ok: boolean }>('generate_tts_stream', { request: { text: '.', voice: 'af_heart' } });
-  return invoke<string[]>('list_tts_voices');
+export function onTtsError(cb: (evt: TtsEvent) => void): () => void {
+  return getElectronApi()?.on('tts-error', cb) ?? (() => {});
 }
