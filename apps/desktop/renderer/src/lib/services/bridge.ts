@@ -32,11 +32,26 @@ export function isElectron(): boolean {
   return false;
 }
 
+/**
+ * IPC copies arguments with the structured clone algorithm, which refuses
+ * Svelte's reactive proxies ("An object could not be cloned"). Arguments
+ * that can't be cloned as they are are sent as plain JSON data instead.
+ */
+export function cloneable<T>(value: T): T {
+  if (value === undefined) return value;
+  try {
+    structuredClone(value);
+    return value;
+  } catch {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+}
+
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!isElectron()) {
     throw new Error(`Electron IPC not available in browser mode: ${command}`);
   }
-  return window.electronAPI!.invoke(command, args) as Promise<T>;
+  return window.electronAPI!.invoke(command, cloneable(args)) as Promise<T>;
 }
 
 export async function listen<T>(event: string, handler: (payload: T) => void): Promise<() => void> {

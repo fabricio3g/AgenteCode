@@ -149,7 +149,7 @@ describe('Home agent tool round trip', () => {
   });
 
   it('retries a mid-stream provider failure and keeps native tools on the retry', async () => {
-    const requests: Array<{ tools?: unknown; messages: unknown }> = [];
+    const requests: Array<{ tools?: unknown; messages: Array<{ tool_call_id?: string }> }> = [];
     vi.mocked(agentStreamComplete)
       .mockImplementationOnce(async (args) => {
         requests.push({ tools: args.tools, messages: structuredClone(args.messages) });
@@ -168,7 +168,7 @@ describe('Home agent tool round trip', () => {
     expect(requests).toHaveLength(3);
     // A transport failure is not evidence that the model refuses tools.
     expect(requests[1].tools).toBeDefined();
-    expect(requests[2].messages.some((message: Record<string, unknown>) => message.tool_call_id === 'calc-1')).toBe(true);
+    expect(requests[2].messages.some((message) => message.tool_call_id === 'calc-1')).toBe(true);
     expect(result.outcome).toBe('completed');
     expect(result.content).toBe('The answer is 4.');
   });
