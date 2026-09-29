@@ -1429,7 +1429,12 @@
     "budgetInvalid": "Enter an amount above 0, or leave it empty for no limit.",
     "noLimit": "No limit",
     "perDay": "per day",
-    "mentionLabel": "Teammates to mention"
+    "mentionLabel": "Teammates to mention",
+    "model": "Model",
+    "modelHint": "Which provider and model this bot uses. You can change it any time.",
+    "modelSame": "Same as the chat",
+    "provider": "Provider",
+    "modelPlaceholder": "Model id, for example anthropic/claude-sonnet-5"
   },
   "accessibility": {
     "title": "Accessibility",

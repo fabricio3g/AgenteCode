@@ -12,6 +12,7 @@
   import { Button, Dialog, Disclosure, Field } from '$lib/components/ui';
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import BotAvatar from './BotAvatar.svelte';
+  import BotModelPicker from './BotModelPicker.svelte';
   import { botsStore } from './bots.svelte';
   import { botsIpc, type BotDetail, type BotTint } from './bots-ipc';
 
@@ -28,6 +29,8 @@
   let soul = $state(initial?.soul ?? '');
   let user = $state(initial?.user ?? '');
   let memory = $state(initial?.memory ?? '');
+  // Its own provider and model, or none to follow the chat's.
+  let modelPin = $state(initial?.model);
   // Empty means no limit.
   let budget = $state(initial?.daily_budget != null ? String(initial.daily_budget) : '');
   let advanced = $state(false);
@@ -49,14 +52,14 @@
     error = null;
     try {
       if (bot) {
-        const { avatar, model, toolsets, skills } = bot;
+        const { avatar, toolsets, skills } = bot;
         await botsStore.save(
           bot.handle,
-          { title: title.trim(), role: role.trim(), avatar: { ...avatar, tint }, model, toolsets, skills, daily_budget: budgetValue },
+          { title: title.trim(), role: role.trim(), avatar: { ...avatar, tint }, model: modelPin, toolsets, skills, daily_budget: budgetValue },
           { soul, user, memory }
         );
       } else {
-        const created = await botsStore.create({ title: title.trim(), role: role.trim(), avatar: { tint }, soul, daily_budget: budgetValue });
+        const created = await botsStore.create({ title: title.trim(), role: role.trim(), avatar: { tint }, soul, model: modelPin, daily_budget: budgetValue });
         if (user.trim()) await botsIpc.writeDoc(created.handle, 'user', user);
       }
       onclose();
@@ -107,6 +110,10 @@
     </Field>
     <Field label={$t('bots.role')} htmlFor="bot-role">
       <input id="bot-role" class="aui-input" bind:value={role} placeholder={$t('bots.rolePlaceholder')} />
+    </Field>
+
+    <Field label={$t('bots.model')} description={$t('bots.modelHint')}>
+      <BotModelPicker bind:value={modelPin} />
     </Field>
 
     <Disclosure bind:open={advanced} title={$t('bots.advanced')} description={$t('bots.advancedHint')}>

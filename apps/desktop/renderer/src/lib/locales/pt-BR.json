@@ -1429,7 +1429,12 @@
     "budgetInvalid": "Informe um valor maior que 0, ou deixe vazio para não ter limite.",
     "noLimit": "Sem limite",
     "perDay": "por dia",
-    "mentionLabel": "Colegas para mencionar"
+    "mentionLabel": "Colegas para mencionar",
+    "model": "Modelo",
+    "modelHint": "Qual provedor e modelo este bot usa. Você pode mudar quando quiser.",
+    "modelSame": "O mesmo do chat",
+    "provider": "Provedor",
+    "modelPlaceholder": "Id do modelo, por exemplo anthropic/claude-sonnet-5"
   },
   "accessibility": {
     "title": "Acessibilidade",

@@ -1429,7 +1429,12 @@
     "budgetInvalid": "0より大きい金額を入力するか、上限なしなら空欄にしてください。",
     "noLimit": "上限なし",
     "perDay": "/日",
-    "mentionLabel": "メンションするチームメイト"
+    "mentionLabel": "メンションするチームメイト",
+    "model": "モデル",
+    "modelHint": "このボットが使うプロバイダーとモデル。いつでも変更できます。",
+    "modelSame": "チャットと同じ",
+    "provider": "プロバイダー",
+    "modelPlaceholder": "モデルID（例：anthropic/claude-sonnet-5）"
   },
   "accessibility": {
     "title": "アクセシビリティ",

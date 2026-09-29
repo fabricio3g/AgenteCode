@@ -1429,7 +1429,12 @@
     "budgetInvalid": "请输入大于 0 的金额，或留空表示不限。",
     "noLimit": "不限",
     "perDay": "每天",
-    "mentionLabel": "可提及的队友"
+    "mentionLabel": "可提及的队友",
+    "model": "模型",
+    "modelHint": "这个机器人使用的提供商和模型，随时可以更改。",
+    "modelSame": "与聊天相同",
+    "provider": "提供商",
+    "modelPlaceholder": "模型 ID，例如 anthropic/claude-sonnet-5"
   },
   "accessibility": {
     "title": "辅助功能",

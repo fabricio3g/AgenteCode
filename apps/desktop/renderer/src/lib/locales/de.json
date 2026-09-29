@@ -1429,7 +1429,12 @@
     "budgetInvalid": "Gib einen Betrag über 0 ein oder lass das Feld für kein Limit leer.",
     "noLimit": "Kein Limit",
     "perDay": "pro Tag",
-    "mentionLabel": "Teammitglieder zum Erwähnen"
+    "mentionLabel": "Teammitglieder zum Erwähnen",
+    "model": "Modell",
+    "modelHint": "Welchen Anbieter und welches Modell dieser Bot nutzt. Jederzeit änderbar.",
+    "modelSame": "Wie im Chat",
+    "provider": "Anbieter",
+    "modelPlaceholder": "Modell-ID, zum Beispiel anthropic/claude-sonnet-5"
   },
   "accessibility": {
     "title": "Barrierefreiheit",

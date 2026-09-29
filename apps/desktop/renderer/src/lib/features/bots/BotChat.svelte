@@ -109,7 +109,7 @@
     <BotAvatar {bot} />
     <div class="min-w-0 flex-1">
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
-      <p class="truncate text-[11.5px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}</p>
+      <p class="truncate text-[11.5px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
     <button type="button" class="head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
