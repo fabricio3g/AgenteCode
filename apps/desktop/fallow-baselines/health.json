@@ -101,7 +101,7 @@
         "count": 2
       },
       "crap_moderate": {
-        "count": 4
+        "count": 5
       }
     },
     "main/chat-db.ts": {
@@ -777,6 +777,9 @@
       },
       "crap_critical": {
         "count": 1
+      },
+      "crap_high": {
+        "count": 1
       }
     },
     "renderer/src/lib/components/layout/ChatSearchModal.svelte": {
@@ -1006,8 +1009,24 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/bots/BotChat.svelte": {
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/features/bots/BotEditor.svelte": {
       "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/bots/BotModelPicker.svelte": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       }
     },
@@ -2144,7 +2163,6 @@
     "renderer/src/lib/services/artifact-model.ts:high impact",
     "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "main/search-providers/shared.ts:high impact",
-    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
     "renderer/src/lib/services/generated-documents.ts:high impact",
     "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
     "main/search-providers/aggregator/engines.ts:untested risk",
@@ -2199,6 +2217,7 @@
     "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "main/providers/openai-core.ts:high impact",
     "main/content-summarizer.ts:untested risk",
+    "renderer/src/lib/features/code/workspace.svelte.ts:high impact",
     "renderer/src/lib/utils/errors.ts:high impact",
     "main/browser-format.ts:high impact",
     "main/system-info.ts:high impact",

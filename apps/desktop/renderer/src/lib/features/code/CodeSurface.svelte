@@ -5,8 +5,8 @@
 
   Radical calm: an almost empty canvas until there is work — one headline
   and one action per state. With a conversation open, the title bar's Code
-  tools open the panes around it: Changes on the right, terminals and
-  processes below.
+  tools open the panes around it: Changes in the right dock (AppShell),
+  terminals and processes below.
 -->
 
 <script lang="ts">
@@ -20,7 +20,6 @@
   import CodeTranscript from './CodeTranscript.svelte';
   import CodeComposer from './CodeComposer.svelte';
   import BottomDock from './workspace/BottomDock.svelte';
-  import ChangesPane from './workspace/ChangesPane.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
 
   onMount(() => {
@@ -46,6 +45,12 @@
   const activeProject = $derived(chatProject ?? codeStore.projectById(codeStore.activeProjectId));
   const run = $derived(codeStore.runFor(chat?.id));
   const sessionId = $derived(chat?.codeAgent?.sessionId || undefined);
+
+  // The right dock's Changes pane follows the open conversation.
+  $effect(() => {
+    codeWorkspace.changesTarget = chat && chatProject ? { chatId: chat.id, projectRoot: chatProject.rootPath, ...(sessionId ? { sessionId } : {}) } : null;
+    return () => (codeWorkspace.changesTarget = null);
+  });
 
   // History survives a restart: load it when a conversation opens, not only
   // when a run ends.
@@ -74,11 +79,6 @@
   // ── Pane sizes ───────────────────────────────────────────────────────
   let mainColumn = $state<HTMLDivElement>();
   let startSize = 0;
-
-  function resizeChanges(delta: number) {
-    const max = Math.max(320, (mainColumn?.parentElement?.clientWidth ?? 1200) - 360);
-    codeWorkspace.setLayout({ changesWidth: Math.round(Math.min(max, Math.max(300, startSize - delta))) });
-  }
 
   function resizeBottom(delta: number) {
     const max = Math.max(160, (mainColumn?.clientHeight ?? 800) - 180);
@@ -158,17 +158,6 @@
         {/if}
       </div>
 
-      {#if codeWorkspace.layout.changesOpen && chatProject}
-        <ResizeHandle
-          axis="x"
-          label={$t('codeWs.resizeChanges')}
-          onstart={() => (startSize = codeWorkspace.layout.changesWidth)}
-          onresize={resizeChanges}
-        />
-        <div class="shrink-0 border-l border-[var(--border-subtle)]" style="width: {codeWorkspace.layout.changesWidth}px">
-          <ChangesPane chatId={chat.id} projectRoot={chatProject.rootPath} {sessionId} />
-        </div>
-      {/if}
     </div>
   {:else}
     <div class="flex flex-1 flex-col items-center justify-center gap-5 px-6 text-center">

@@ -175,6 +175,8 @@ function createTab(url?: string): PanelTab {
   try {
     (view.webContents as unknown as { setAudioMuted?: (m: boolean) => void }).setAudioMuted?.(false);
   } catch { /* ignore */ }
+  // Rounded like the box it sits in, inside the right dock's card.
+  (view as unknown as { setBorderRadius?: (radius: number) => void }).setBorderRadius?.(8);
   tabSeq += 1;
   const tab: PanelTab = { id: `btab-${Date.now()}-${tabSeq}`, view, preset: 'fit', debuggerAttached: false, console: [], consoleSeq: 0 };
   wireGuestEvents(tab);

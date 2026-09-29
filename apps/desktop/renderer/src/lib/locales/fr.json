@@ -345,8 +345,7 @@
     "takeControl": "Prendre la main",
     "youHaveControl": "Vous avez la main — l’agent est en pause",
     "handBack": "Rendre la main",
-    "agent": "Agent",
-    "resize": "Redimensionner le navigateur"
+    "agent": "Agent"
   },
   "localLoad": {
     "title": "Charger un modèle local",
@@ -939,7 +938,6 @@
     "hidePanel": "Masquer le panneau",
     "terminalFailed": "Impossible d'ouvrir un terminal : {reason}",
     "resizeBottom": "Redimensionner le panneau du bas",
-    "resizeChanges": "Redimensionner le panneau des modifications",
     "running": "En cours",
     "stopped": "Arrêté",
     "exited": "Terminé ({code})",
@@ -1140,9 +1138,6 @@
       "open": "Aperçu"
     },
     "backToChat": "Retour à la conversation",
-    "panel": {
-      "resize": "Redimensionner le panneau"
-    },
     "typesTitle": "Types d’artefacts"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "Selon le système",
     "motionOn": "Activé",
     "motionOff": "Désactivé"
+  },
+  "dock": {
+    "resizeWidth": "Redimensionner les panneaux latéraux",
+    "resizeSplit": "Redimensionner les panneaux empilés"
   }
 }

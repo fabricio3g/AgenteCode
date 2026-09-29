@@ -345,8 +345,7 @@
     "takeControl": "Tomar el control",
     "youHaveControl": "Tienes el control — el agente está en pausa",
     "handBack": "Devolver",
-    "agent": "Agente",
-    "resize": "Cambiar tamaño del navegador"
+    "agent": "Agente"
   },
   "localLoad": {
     "title": "Cargar modelo local",
@@ -939,7 +938,6 @@
     "hidePanel": "Ocultar panel",
     "terminalFailed": "No se pudo abrir una terminal: {reason}",
     "resizeBottom": "Cambiar tamaño del panel inferior",
-    "resizeChanges": "Cambiar tamaño del panel de cambios",
     "running": "En ejecución",
     "stopped": "Detenido",
     "exited": "Terminó ({code})",
@@ -1140,9 +1138,6 @@
       "open": "Vista previa"
     },
     "backToChat": "Volver al chat",
-    "panel": {
-      "resize": "Cambiar tamaño del panel"
-    },
     "typesTitle": "Tipos de artefacto"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "Según el sistema",
     "motionOn": "Activado",
     "motionOff": "Desactivado"
+  },
+  "dock": {
+    "resizeWidth": "Cambiar el ancho de los paneles laterales",
+    "resizeSplit": "Cambiar el tamaño de los paneles apilados"
   }
 }

@@ -44,21 +44,6 @@
     }
   }
 
-  /** Drag the left edge to resize; the width is remembered. */
-  function startResize(event: PointerEvent) {
-    event.preventDefault();
-    const startX = event.clientX;
-    const startWidth = browserPanelStore.width;
-    const onMove = (move: PointerEvent) => browserPanelStore.setWidth(startWidth + (startX - move.clientX));
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      void syncBounds();
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  }
-
   function shortLabel(tab: { title: string; url: string }) {
     if (tab.title) return tab.title.slice(0, 18);
     try {
@@ -95,10 +80,7 @@
   class="browser-panel"
   role="complementary"
   aria-label={$t('browser.title')}
-  style={`width: ${browserPanelStore.width}px;`}
 >
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="browser-resize" title={$t('browser.resize')} onpointerdown={startResize}></div>
   <div class="browser-tabs" role="tablist" aria-label="Browser tabs">
     {#each browserPanelStore.tabs as tab (tab.id)}
       <div
@@ -232,14 +214,12 @@
   .browser-panel {
     position: relative;
     display: flex;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
     flex-direction: column;
-    height: 100%;
-    min-width: 360px;
-    max-width: 70%;
-    flex-shrink: 0;
     overflow: hidden;
-    border-left: 1px solid var(--border);
-    background: var(--background);
+    background: var(--card);
   }
 
   /* Tab strip: quiet browser tabs, active reads as connected to page. */
@@ -387,18 +367,6 @@
     color: var(--foreground);
   }
 
-  .browser-resize {
-    position: absolute;
-    inset-block: 0;
-    left: -3px;
-    width: 6px;
-    cursor: col-resize;
-    z-index: 1;
-  }
-
-  .browser-resize:hover {
-    background: color-mix(in srgb, var(--sidebar-primary) 35%, transparent);
-  }
 
   .browser-banner {
     display: flex;
@@ -430,9 +398,13 @@
     border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
   }
 
+  /* The page (a native view laid over this box) stays inside the dock
+     card's border and clear of its rounded corners. */
   .browser-viewport-box {
     flex: 1 1 auto;
     min-height: 0;
+    margin: 0 5px 5px;
+    border-radius: 0.5rem;
     background: #fff;
   }
 

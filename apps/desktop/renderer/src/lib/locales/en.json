@@ -345,8 +345,7 @@
     "takeControl": "Take control",
     "youHaveControl": "You have control — the agent is paused",
     "handBack": "Hand back",
-    "agent": "Agent",
-    "resize": "Resize browser panel"
+    "agent": "Agent"
   },
   "localLoad": {
     "title": "Load local model",
@@ -939,7 +938,6 @@
     "hidePanel": "Hide panel",
     "terminalFailed": "Couldn't start a terminal: {reason}",
     "resizeBottom": "Resize the bottom panel",
-    "resizeChanges": "Resize the changes panel",
     "running": "Running",
     "stopped": "Stopped",
     "exited": "Exited ({code})",
@@ -1140,9 +1138,6 @@
       "open": "Preview"
     },
     "backToChat": "Back to chat",
-    "panel": {
-      "resize": "Resize artifact panel"
-    },
     "typesTitle": "Artifact types"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "Follow system",
     "motionOn": "On",
     "motionOff": "Off"
+  },
+  "dock": {
+    "resizeWidth": "Resize the side panels",
+    "resizeSplit": "Resize the stacked panels"
   }
 }

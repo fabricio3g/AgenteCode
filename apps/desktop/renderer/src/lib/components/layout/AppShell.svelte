@@ -30,6 +30,9 @@
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
+  import RightDock, { type DockPanel } from './RightDock.svelte';
+  import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
+  import { codeWorkspace } from '$lib/features/code/workspace.svelte';
   import { Plus, Boxes, Settings } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { capabilitiesStore } from '$lib/stores/capabilities.svelte';
@@ -42,6 +45,17 @@
 
   let showShortcutsHelp = $state(false);
   const inCodeSpace = $derived(appStore.activeSpace === 'code');
+
+  // The right dock: Changes (Code), the open artifact (Home chat) and the
+  // agent browser, stacked when more than one is open.
+  const changesTarget = $derived(codeWorkspace.changesTarget);
+  const dockPanels = $derived.by(() => {
+    const panels: DockPanel[] = [];
+    if (inCodeSpace && codeWorkspace.layout.changesOpen && changesTarget) panels.push({ id: 'changes', content: changesPanel });
+    if (!inCodeSpace && appStore.homeView === 'chat' && appStore.artifactPanel) panels.push({ id: 'artifact', content: artifactPanel });
+    if (browserPanelStore.open) panels.push({ id: 'browser', content: browserPanel, accent: browserPanelStore.agentDriving });
+    return panels;
+  });
   const inRoleplaySpace = $derived(appStore.activeSpace === 'roleplay');
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
   const shortcutRows = $derived<Array<[string, string]>>([
@@ -242,15 +256,16 @@
           <HomeSurface />
         {/if}
       </div>
-      {#if !inCodeSpace && appStore.homeView === 'chat' && appStore.artifactPanel}
-        <ArtifactPanel />
-      {/if}
-      {#if browserPanelStore.open}
-        <BrowserPanel />
-      {/if}
+      <RightDock panels={dockPanels} />
     </div>
   </div>
 </div>
+
+{#snippet changesPanel()}
+  {#if changesTarget}<ChangesPane chatId={changesTarget.chatId} projectRoot={changesTarget.projectRoot} sessionId={changesTarget.sessionId} />{/if}
+{/snippet}
+{#snippet artifactPanel()}<ArtifactPanel />{/snippet}
+{#snippet browserPanel()}<BrowserPanel />{/snippet}
 
 {#if appStore.promptConfigOpen}
   <SystemPromptModal />

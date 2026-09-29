@@ -29,17 +29,6 @@ function normalizeUrl(value: string): string {
  * takeover). The page itself lives in a main-process WebContentsView;
  * this store never touches guest content.
  */
-const WIDTH_KEY = 'flaxeo.browserPanel.width';
-
-function readWidth(): number {
-  try {
-    const value = Number(localStorage.getItem(WIDTH_KEY));
-    return Number.isFinite(value) && value >= 360 ? value : 600;
-  } catch {
-    return 600;
-  }
-}
-
 class BrowserPanelStore {
   open = $state(false);
   tabs = $state<BrowserPanelTab[]>([]);
@@ -50,8 +39,6 @@ class BrowserPanelStore {
   agentDriving = $state(false);
   /** The user took control: main refuses agent actions until handed back. */
   userTakeover = $state(false);
-  /** Panel width in px, remembered across launches. */
-  width = $state(readWidth());
   loading = $state(false);
   #subscribed = false;
 
@@ -130,15 +117,6 @@ class BrowserPanelStore {
 
   async history(action: 'back' | 'forward' | 'reload') {
     await browserHistory(action, this.activeTabId || undefined).catch(() => {});
-  }
-
-  setWidth(px: number) {
-    this.width = Math.round(Math.max(360, Math.min(px, Math.floor(window.innerWidth * 0.7))));
-    try {
-      localStorage.setItem(WIDTH_KEY, String(this.width));
-    } catch {
-      // Blocked storage: the width lasts for this session.
-    }
   }
 
   async closeTab(tabId: string) {

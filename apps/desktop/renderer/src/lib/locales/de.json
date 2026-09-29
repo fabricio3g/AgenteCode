@@ -345,8 +345,7 @@
     "takeControl": "Übernehmen",
     "youHaveControl": "Du hast die Kontrolle — der Agent pausiert",
     "handBack": "Zurückgeben",
-    "agent": "Agent",
-    "resize": "Browsergröße ändern"
+    "agent": "Agent"
   },
   "localLoad": {
     "title": "Lokales Modell laden",
@@ -939,7 +938,6 @@
     "hidePanel": "Bereich ausblenden",
     "terminalFailed": "Terminal konnte nicht starten: {reason}",
     "resizeBottom": "Unteren Bereich skalieren",
-    "resizeChanges": "Änderungsbereich skalieren",
     "running": "Läuft",
     "stopped": "Gestoppt",
     "exited": "Beendet ({code})",
@@ -1140,9 +1138,6 @@
       "open": "Vorschau"
     },
     "backToChat": "Zurück zum Chat",
-    "panel": {
-      "resize": "Seitenleiste anpassen"
-    },
     "typesTitle": "Artefakttypen"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "Wie das System",
     "motionOn": "An",
     "motionOff": "Aus"
+  },
+  "dock": {
+    "resizeWidth": "Seitenleisten in der Breite ändern",
+    "resizeSplit": "Gestapelte Bereiche in der Größe ändern"
   }
 }

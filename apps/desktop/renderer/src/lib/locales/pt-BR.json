@@ -345,8 +345,7 @@
     "takeControl": "Assumir o controle",
     "youHaveControl": "Você está no controle — o agente está pausado",
     "handBack": "Devolver",
-    "agent": "Agente",
-    "resize": "Redimensionar navegador"
+    "agent": "Agente"
   },
   "localLoad": {
     "title": "Carregar modelo local",
@@ -939,7 +938,6 @@
     "hidePanel": "Ocultar painel",
     "terminalFailed": "Não foi possível abrir um terminal: {reason}",
     "resizeBottom": "Redimensionar o painel inferior",
-    "resizeChanges": "Redimensionar o painel de alterações",
     "running": "Em execução",
     "stopped": "Parado",
     "exited": "Encerrado ({code})",
@@ -1140,9 +1138,6 @@
       "open": "Pré-visualizar"
     },
     "backToChat": "Voltar à conversa",
-    "panel": {
-      "resize": "Redimensionar painel"
-    },
     "typesTitle": "Tipos de artefato"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "Seguir o sistema",
     "motionOn": "Ativado",
     "motionOff": "Desativado"
+  },
+  "dock": {
+    "resizeWidth": "Redimensionar os painéis laterais",
+    "resizeSplit": "Redimensionar os painéis empilhados"
   }
 }

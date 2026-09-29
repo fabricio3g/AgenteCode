@@ -345,8 +345,7 @@
     "takeControl": "操作を引き継ぐ",
     "youHaveControl": "操作中 — エージェントは一時停止中",
     "handBack": "返す",
-    "agent": "エージェント",
-    "resize": "ブラウザーのサイズを変更"
+    "agent": "エージェント"
   },
   "localLoad": {
     "title": "ローカルモデルを読み込む",
@@ -939,7 +938,6 @@
     "hidePanel": "パネルを隠す",
     "terminalFailed": "ターミナルを起動できません: {reason}",
     "resizeBottom": "下部パネルのサイズを変更",
-    "resizeChanges": "変更パネルのサイズを変更",
     "running": "実行中",
     "stopped": "停止",
     "exited": "終了（{code}）",
@@ -1140,9 +1138,6 @@
       "open": "プレビュー"
     },
     "backToChat": "チャットに戻る",
-    "panel": {
-      "resize": "パネルのサイズを変更"
-    },
     "typesTitle": "アーティファクトの種類"
   },
   "viewer": {
@@ -1492,5 +1487,9 @@
     "motionSystem": "システムに従う",
     "motionOn": "オン",
     "motionOff": "オフ"
+  },
+  "dock": {
+    "resizeWidth": "サイドパネルの幅を変更",
+    "resizeSplit": "重ねたパネルのサイズを変更"
   }
 }

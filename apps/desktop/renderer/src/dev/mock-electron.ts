@@ -452,6 +452,19 @@ const botHandlers: Record<string, (args?: Record<string, unknown>) => unknown> =
     return bot;
   },
   bots_write_doc: () => ({ ok: true }),
+  // Agent browser: one tab, shown as if an agent were driving it.
+  browser_open_tab: (args) => {
+    const tab = { id: 'btab-1', url: String(args?.url ?? 'https://example.com'), title: 'Example Domain', preset: 'fit' };
+    emit('browser_panel_state', { tabs: [tab], activeTabId: tab.id, visible: true, agentDriving: true, takeover: false });
+    return tab;
+  },
+  browser_panel_visible: (args) => {
+    const visible = !!args?.visible;
+    emit('browser_panel_state', visible
+      ? { tabs: [{ id: 'btab-1', url: 'https://example.com', title: 'Example Domain', preset: 'fit' }], activeTabId: 'btab-1', visible, agentDriving: true, takeover: false }
+      : { tabs: [{ id: 'btab-1', url: 'https://example.com', title: 'Example Domain', preset: 'fit' }], activeTabId: 'btab-1', visible, agentDriving: false, takeover: false });
+    return { ok: true };
+  },
   bots_telegram: () => ({ ...mockTelegram }),
   bots_telegram_connect: () => Object.assign(mockTelegram, { connected: true, username: 'colina_agente_bot', error: null }),
   bots_telegram_disconnect: () => Object.assign(mockTelegram, { connected: false, username: null, paired: [], pairing: null }),

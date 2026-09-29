@@ -10,13 +10,12 @@ type BottomTab = 'processes' | `terminal:${string}`;
 
 interface Layout {
   changesOpen: boolean;
-  changesWidth: number;
   bottomOpen: boolean;
   bottomHeight: number;
 }
 
 const LAYOUT_KEY = 'flaxeo.code.layout';
-const DEFAULT_LAYOUT: Layout = { changesOpen: false, changesWidth: 420, bottomOpen: false, bottomHeight: 260 };
+const DEFAULT_LAYOUT: Layout = { changesOpen: false, bottomOpen: false, bottomHeight: 260 };
 const MAX_PROCESS_OUTPUT = 120_000;
 
 function readLayout(): Layout {
@@ -46,6 +45,9 @@ class CodeWorkspaceStore {
   terminals = $state<TerminalTab[]>([]);
   #terminalListeners = new Map<string, (data: string) => void>();
   #terminalBacklog = new Map<string, string>();
+
+  /** What the Changes pane in the right dock shows: the open Code conversation. */
+  changesTarget = $state<{ chatId: string; projectRoot: string; sessionId?: string } | null>(null);
 
   changes = $state<ChangeList | null>(null);
   changesLoading = $state(false);
