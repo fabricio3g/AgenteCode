@@ -18,7 +18,7 @@
 | **Agente Code** | A keyboard-first coding agent for the terminal (`agente`) | Available: Linux, Windows |
 | **Agente Desktop** | The desktop app: chat, local models, voice, artifacts, and a Code section on the same core | Available: Linux, Windows |
 | **Agente Bot** | Named bots with their own persona, memory, model and routines, handing work to each other. **Colina** is the first | Available in Desktop (Bots screen) and `agente serve` |
-| **Agente Server** | The same runtime headless, in Docker, for your bots and your team | Planned |
+| **Agente Server** | The same runtime headless, in Docker, for your bots and your team | Preview |
 
 They are not four agents. There is one: the Rust core in `crates/agente-core`, run by one runtime. The terminal uses it directly; Desktop and the bots talk to it through `agente serve`, a local background service. A fix or a new tool lands everywhere at once.
 
@@ -29,7 +29,7 @@ flowchart LR
   runtime --> serve["agente serve<br/>(local socket, JSON-RPC)"]
   serve --> desktop["Agente Desktop"]
   serve --> bots["Agente Bot<br/>Colina and team"]
-  serve -.-> server["Agente Server<br/>(planned)"]
+  serve -.-> server["Agente Server<br/>(Docker)"]
 ```
 
 ## Install
@@ -203,7 +203,7 @@ Each bot is a folder you can read and edit:
 - **Routines.** Prompts a bot runs on a schedule (hourly, daily, weekdays, weekly or cron), each answer landing in its chat. A run missed while your computer slept happens once when it wakes.
 - **One conversation per bot.** A bot keeps a single chat, so it builds up context instead of starting over.
 
-Bots run inside `agente serve`. The Bots screen in Desktop is being built; until then they're reachable over its socket (`bots.*` and `routines.*`, below).
+Bots run inside `agente serve`. Desktop has a Bots screen; from a terminal, `agente attach @handle` opens a bot's chat.
 
 ---
 
@@ -212,11 +212,14 @@ Bots run inside `agente serve`. The Bots screen in Desktop is being built; until
 `agente serve` is the runtime as a long-lived service: one process that Desktop, a second terminal and the bots share, so a session started in one place can be watched or continued in another.
 
 ```bash
-agente serve             # listen on $XDG_RUNTIME_DIR/agente/agente.sock (this user only)
-agente serve --status    # is one running?
+agente serve                              # listen on $XDG_RUNTIME_DIR/agente/agente.sock (this user only)
+agente serve --listen 127.0.0.1:7420      # also accept remote clients, with a token
+agente serve --status                     # is one running?
+agente attach                             # join the latest session from another terminal
+agente attach @colina --remote host:7420  # a bot's chat on a remote server
 ```
 
-It speaks JSON-RPC 2.0, one message per line: `session.*`, `turn.start|cancel|steer`, `approval.respond`, `edits.undo|redo|rewind`, `events.subscribe`, `processes.*`, `bots.*`, `routines.*`. The Docker image (**Agente Server**) with remote access and messaging channels for the bots is planned next.
+It speaks JSON-RPC 2.0, one message per line: `session.*`, `turn.start|cancel|steer`, `approval.respond`, `edits.undo|redo|rewind`, `events.subscribe`, `processes.*`, `bots.*`, `routines.*`. **Agente Server** is the same thing in Docker (`ghcr.io/fabricio3g/agente-server`); see [docs/SERVER.md](docs/SERVER.md) for running it and reaching it safely.
 
 ---
 

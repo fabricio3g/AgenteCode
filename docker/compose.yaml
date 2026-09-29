@@ -1,0 +1,26 @@
+# Agente Server with Docker Compose:
+#
+#   AGENTE_TOKEN=$(openssl rand -hex 32) docker compose -f docker/compose.yaml up -d
+#
+# The port is published on localhost only; reach it from elsewhere through an
+# SSH tunnel, a VPN or a TLS reverse proxy (see docs/SERVER.md).
+services:
+  agente:
+    image: ghcr.io/fabricio3g/agente-server:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7420:7420"
+    environment:
+      AGENTE_TOKEN: ${AGENTE_TOKEN:?set AGENTE_TOKEN to a long random string}
+      # Provider keys the models need, for example:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - agente-data:/home/agente/.agente
+      - ./workspace:/workspace
+volumes:
+  agente-data:

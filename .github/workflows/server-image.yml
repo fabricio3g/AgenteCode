@@ -1,0 +1,81 @@
+name: Agente Server image
+
+# Builds the Docker image and checks it starts and answers with a token on
+# every change to the server; v* tags also publish it to GitHub Container
+# Registry as ghcr.io/<owner>/agente-server:<version> and :latest.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['crates/**', 'Cargo.toml', 'Cargo.lock', 'docker/**', '.dockerignore', '.github/workflows/server-image.yml']
+  pull_request:
+    paths: ['crates/**', 'Cargo.toml', 'Cargo.lock', 'docker/**', '.dockerignore', '.github/workflows/server-image.yml']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          load: true
+          tags: agente-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Starts, and only answers with the token
+        run: |
+          docker run -d --name agente -p 127.0.0.1:7420:7420 -e AGENTE_TOKEN=ci-token agente-server:ci
+          for i in $(seq 1 60); do
+            docker exec agente agente serve --status && break
+            sleep 1
+          done
+          python3 - <<'EOF'
+          import json, socket
+          def first_reply(token):
+              s = socket.create_connection(("127.0.0.1", 7420), timeout=10)
+              s.sendall((json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"token": token}}) + "\n").encode())
+              return json.loads(s.makefile().readline())
+          ok = first_reply("ci-token")
+          assert ok["result"]["server"] == "agente", ok
+          bad = first_reply("wrong")
+          assert bad["error"]["code"] == -32004, bad
+          print("token check ok")
+          EOF
+          docker stop -t 10 agente
+          test "$(docker inspect -f '{{.State.ExitCode}}' agente)" = 0
+
+      - name: Show logs
+        if: failure()
+        run: docker logs agente || true
+
+      - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/agente-server:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/agente-server:latest
+          cache-from: type=gha

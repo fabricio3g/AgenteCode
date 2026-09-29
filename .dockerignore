@@ -1,0 +1,9 @@
+# Only the Rust workspace goes into the Agente Server image build.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!assets/brand/
+!docker/
+crates/**/target
+crates/agente-node/node_modules
