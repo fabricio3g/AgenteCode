@@ -10,7 +10,7 @@
 //   NATIVE_RUNTIME_PLATFORM  linux | windows | macos   (default: this machine)
 //   NATIVE_RUNTIME_ARCH      x64 | arm64                (default: this machine)
 //   NATIVE_RUNTIME_BACKENDS  e.g. "cpu,vulkan"          (default: every one published)
-//   LLAMA_CPP_TAG / WHISPER_CPP_TAG  release to use     (defaults below)
+//   LLAMA_CPP_TAG / WHISPER_CPP_TAG / AUDIO_CPP_TAG  release to use (defaults below)
 //   GITHUB_TOKEN             optional, avoids the API rate limit in CI
 //
 // Each OS build ships every backend its platform has: CPU, Vulkan (any GPU),
@@ -68,6 +68,20 @@ const ENGINES = [
       },
       'macos-arm64': { metal: ['llama-{tag}-bin-macos-arm64.tar.gz'] },
       'macos-x64': { metal: ['llama-{tag}-bin-macos-x64.tar.gz'] }
+    }
+  },
+  {
+    engine: 'audio',
+    repo: '0xShug0/audio.cpp',
+    tag: process.env.AUDIO_CPP_TAG || 'v0.8.2',
+    executables: ['audiocpp_server'],
+    // The server reads each model family's definition from model_specs/.
+    folders: ['model_specs'],
+    // Text to speech (Settings → Voice). CPU builds run everywhere; the
+    // models are downloaded by the user in the app.
+    assets: {
+      'linux-x64': { cpu: ['audio-{tag}-bin-ubuntu-x64-cpu-portable.tar.gz'] },
+      'windows-x64': { cpu: ['audio-{tag}-bin-windows-x64-cpu-portable.zip'] }
     }
   },
   {
@@ -153,6 +167,14 @@ function shippedFiles(unpacked, executables) {
   );
 }
 
+/** Folders that ship whole (audio.cpp's model_specs). */
+function copyFolders(unpacked, outDir, folders) {
+  for (const name of folders ?? []) {
+    const found = directories(unpacked).map((dir) => path.join(dir, name)).find((dir) => fs.existsSync(dir));
+    if (found) fs.cpSync(found, path.join(outDir, name), { recursive: true });
+  }
+}
+
 /** Copy what ships into `outDir`; returns how many executables it held. */
 function install(unpacked, outDir, executables) {
   let count = 0;
@@ -193,6 +215,7 @@ async function fetchBackend(spec, backend, names, assets, work) {
     await download(asset, archive);
     extract(archive, `${archive}.d`);
     found += install(`${archive}.d`, outDir, executables);
+    copyFolders(`${archive}.d`, outDir, spec.folders);
     sources.push(asset.browser_download_url);
   }
   if (!found) throw new Error(`${spec.engine}/${backend}: no ${spec.executables.join(' or ')} in the archives`);

@@ -5,7 +5,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc-handlers.ts';
 import { stopAllInstances } from './instances.ts';
-import { initTts } from './tts-engine.ts';
+import { initTts } from './voice/audiocpp-tts.ts';
 import { moduleDirname } from './module-env.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { setMainWindow, setPreloadPath, getMainWindow, requestMainWindowClose, setActiveWorkState } from './window-manager.ts';

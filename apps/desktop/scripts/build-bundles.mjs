@@ -37,11 +37,6 @@ const BUNDLES = {
     define: { 'import.meta.url': '__filename' },
     extraExternals: MAIN_ONLY_EXTERNALS,
   },
-  tts: {
-    entry: 'main/tts-worker.ts',
-    outfile: 'dist-electron/main/tts-worker.cjs',
-    extraExternals: [],
-  },
 };
 
 const argv = process.argv.slice(2);

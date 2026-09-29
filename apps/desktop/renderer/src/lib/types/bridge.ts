@@ -336,13 +336,9 @@ export interface TtsRequest {
   text: string;
   voice: string;
   speed: number;
-  engine: 'kokoro' | 'wasm';
-  model_path: string;
-  voices_path: string;
-  tokens_path: string;
-  lexicon_path?: string;
-  dict_dir?: string;
-  data_dir?: string;
+  /** The voice model (shared/voice-models.ts); the first downloaded one when unset. */
+  model?: string;
+  language?: string;
 }
 
 export interface SandboxExecResult {

@@ -1,5 +1,5 @@
 import type { AppConfig } from '$lib/types/chat';
-import { isKokoroVoice } from '$lib/services/kokoro-tts';
+import { VOICE_MODELS } from '$shared/voice-models';
 import { generateTtsStream, cancelTtsStream, base64ToFloat32Pcm, onTtsChunk, onTtsDone, onTtsStart } from '$lib/services/tts';
 import { invoke } from '$lib/services/bridge';
 import { cleanTextForTTS } from '$lib/utils/tts-text';
@@ -140,7 +140,8 @@ class TtsStore {
     const speed = config.tts?.speed ?? 1;
     const volume = config.tts?.volume ?? 1;
 
-    if (isKokoroVoice(voice)) {
+    // A voice of the local engines (Settings → Voice); anything else is the browser's.
+    if (VOICE_MODELS.some((model) => model.voices.some((option) => option.id === voice))) {
       this.genId++;
       this.currentGenId = this.genId;
       this.chunkQueue = [];
@@ -190,13 +191,8 @@ class TtsStore {
         voice,
         speed,
         volume,
-        engine: config.tts?.engine === 'wasm' ? 'wasm' : 'kokoro',
-        model_path: config.tts?.model_path || '',
-        voices_path: config.tts?.voices_path || '',
-        tokens_path: config.tts?.tokens_path || '',
-        lexicon_path: config.tts?.lexicon_path,
-        dict_dir: config.tts?.dict_dir,
-        data_dir: config.tts?.data_dir
+        model: config.tts?.voice_model,
+        language: config.tts?.language
       });
       return;
     }

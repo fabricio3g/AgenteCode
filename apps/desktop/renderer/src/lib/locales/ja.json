@@ -752,7 +752,26 @@
     "micNone": "マイクが接続されていません",
     "micNoneHint": "接続すると自動的に検出されます。",
     "micBusy": "他のアプリが使用中",
-    "micBusyHint": "使用中のアプリを閉じてから再度お試しください。"
+    "micBusyHint": "使用中のアプリを閉じてから再度お試しください。",
+    "engine": {
+      "title": "音声エンジン",
+      "hint": "このコンピューターで動作します。一度ダウンロードすれば、以後はオフラインで使えます。",
+      "supertonic-3": "高速で自然、多言語対応。おすすめ。",
+      "kokoro-82m": "最も自然な声、9 言語。",
+      "languages": "{n} 言語",
+      "voices": "音声",
+      "downloading": "ダウンロード中… {n}%",
+      "use": "使用",
+      "delete": "削除",
+      "deleteTitle": "{name} を削除しますか？",
+      "deleteMessage": "{size} MB を解放します。いつでも再ダウンロードできます。",
+      "download": "ダウンロード · {size} MB",
+      "needsEspeak": "この言語には eSpeak NG が必要です。Ubuntu / Debian: sudo apt install espeak-ng",
+      "languageHint": "返答を読み上げる言語。",
+      "female": "女性",
+      "male": "男性",
+      "none": "上で音声エンジンをダウンロードすると、返答を読み上げられます。"
+    }
   },
   "searchSettings": {
     "title": "ウェブ検索",

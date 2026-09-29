@@ -642,19 +642,6 @@
         "count": 2
       }
     },
-    "main/tts-engine.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "main/tts-worker.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      }
-    },
     "main/vector-store.ts": {
       "crap_high": {
         "count": 1
@@ -669,6 +656,14 @@
       },
       "crap_moderate": {
         "count": 4
+      }
+    },
+    "main/voice/audiocpp-tts.ts": {
+      "crap_high": {
+        "count": 3
+      },
+      "crap_moderate": {
+        "count": 3
       }
     },
     "main/web-crawler.ts": {
@@ -853,14 +848,6 @@
         "count": 1
       }
     },
-    "renderer/src/lib/components/onboarding/OnboardingStepTtsModel.svelte": {
-      "crap_high": {
-        "count": 2
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "renderer/src/lib/components/search/DeepResearchWidget.svelte": {
       "crap_critical": {
         "count": 2
@@ -975,6 +962,14 @@
       },
       "crap_critical": {
         "count": 3
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/components/settings/voice/SpeakVoicePicker.svelte": {
+      "crap_high": {
+        "count": 1
       },
       "crap_moderate": {
         "count": 1
@@ -1823,14 +1818,8 @@
       }
     },
     "renderer/src/lib/stores/tts.svelte.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
       "crap_moderate": {
-        "count": 2
+        "count": 3
       }
     },
     "renderer/src/lib/ui/components/AgentBlock.svelte": {
@@ -2185,7 +2174,6 @@
     "main/document-markdown.ts:untested risk",
     "main/agente/changes.ts:untested risk",
     "renderer/src/lib/utils/code-copy.ts:dead code",
-    "renderer/src/lib/services/kokoro-tts.ts:dead code",
     "renderer/src/lib/utils/local-models.ts:high impact",
     "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/providers/connection-test.ts:untested risk",
@@ -2196,6 +2184,7 @@
     "renderer/src/lib/ui/prompt.ts:untested risk",
     "main/stt-engine.ts:untested risk",
     "main/browser-actions.ts:high impact",
+    "main/voice/audiocpp-tts.ts:high impact",
     "renderer/src/lib/stores/models.svelte.ts:high impact",
     "main/web-scraper.ts:high impact",
     "main/search-providers/aggregator/options.ts:untested risk",
@@ -2220,22 +2209,22 @@
     "shared/agent-core/agent-loop.ts:complexity",
     "renderer/src/lib/components/ui/Select.svelte:complexity",
     "main/agente/rust-processes.ts:high impact",
+    "main/model-download.ts:complexity",
     "main/whisper-server.ts:high impact",
     "main/rag-engine.ts:high impact",
     "main/link-scorer.ts:untested risk",
     "main/agente/bot-history.ts:untested risk",
     "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:high impact",
-    "main/model-download.ts:complexity",
     "main/runtime-config-resolver.ts:high impact",
     "main/web-crawler.ts:complexity",
     "main/agente-daemon.ts:untested risk",
     "main/data-folder.ts:high impact",
     "scripts/smoke-search-scrape.mjs:untested risk",
     "main/agente/desktop-tools-mcp.ts:untested risk",
-    "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "main/browser-panel.ts:high impact",
     "renderer/src/lib/utils/stream-reveal.ts:untested risk",
+    "renderer/src/lib/utils/assistant-visible.ts:untested risk",
     "scripts/smoke-provider-models.mjs:untested risk",
     "renderer/src/lib/utils/chart-data.ts:complexity",
     "renderer/src/lib/ui/parser.ts:complexity",

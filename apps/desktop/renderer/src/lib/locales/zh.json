@@ -752,7 +752,26 @@
     "micNone": "未连接麦克风",
     "micNoneHint": "插入后会自动检测。",
     "micBusy": "正被其他应用使用",
-    "micBusyHint": "关闭正在使用它的应用后重试。"
+    "micBusyHint": "关闭正在使用它的应用后重试。",
+    "engine": {
+      "title": "语音引擎",
+      "hint": "在本机运行。下载一次，之后离线可用。",
+      "supertonic-3": "快速、自然、多语言。推荐。",
+      "kokoro-82m": "最自然的声音，支持 9 种语言。",
+      "languages": "{n} 种语言",
+      "voices": "个声音",
+      "downloading": "正在下载… {n}%",
+      "use": "使用",
+      "delete": "删除",
+      "deleteTitle": "删除 {name}？",
+      "deleteMessage": "将释放 {size} MB。可随时重新下载。",
+      "download": "下载 · {size} MB",
+      "needsEspeak": "此语言需要在电脑上安装 eSpeak NG。Ubuntu / Debian：sudo apt install espeak-ng",
+      "languageHint": "朗读回复所用的语言。",
+      "female": "女声",
+      "male": "男声",
+      "none": "在上方下载语音引擎，即可朗读回复。"
+    }
   },
   "searchSettings": {
     "title": "网页搜索",

@@ -56,6 +56,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'bots_list', 'bots_get', 'bots_create', 'bots_update', 'bots_delete', 'bots_write_doc', 'bots_compact',
   'bots_history', 'bots_cancel', 'bots_chat', 'bots_respond_approval',
   'routines_list', 'routines_save', 'routines_delete', 'routines_run_now',
+  'voice_models_status', 'voice_model_download', 'voice_model_delete',
   'terminal_create', 'terminal_write', 'terminal_resize', 'terminal_kill',
   'agente_process_list', 'agente_process_output', 'agente_process_start', 'agente_process_stop', 'agente_process_clear',
   'agente_changes', 'agente_file_diff', 'agente_revert_file'

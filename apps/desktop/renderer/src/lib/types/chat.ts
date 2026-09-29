@@ -867,6 +867,9 @@ export interface AppConfig {
     dict_dir?: string;
     data_dir?: string;
     model_variant?: string;
+    /** The audio.cpp voice model (shared/voice-models.ts) and the language it speaks. */
+    voice_model?: string;
+    language?: string;
   };
   stt?: {
     whisper_quality?: string;

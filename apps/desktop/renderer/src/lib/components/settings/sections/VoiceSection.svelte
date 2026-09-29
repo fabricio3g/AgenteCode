@@ -7,6 +7,7 @@
 -->
 
 <script lang="ts">
+  import SpeakVoicePicker from '../voice/SpeakVoicePicker.svelte';
   import { locale, t } from 'svelte-i18n';
   import { get } from 'svelte/store';
   import { Check, Download, FolderInput, LoaderCircle, Play, RefreshCw, RotateCcw, Square, Trash2, X } from 'lucide-svelte';
@@ -24,7 +25,6 @@
   import { probeMicrophone, watchMicrophones, type MicState } from '$lib/features/chat/composer/mic-probe';
   import SpeechModelPicker from '$lib/features/chat/composer/SpeechModelPicker.svelte';
   import { listSpeechModels, removeSpeechModel, setupSpeech, useSpeechModel, type SpeechModel } from '$lib/features/chat/composer/speech-models';
-  import VoiceLanguageSelector from '../VoiceLanguageSelector.svelte';
   import SettingsPage from '../SettingsPage.svelte';
   import SettingsSection from '../SettingsSection.svelte';
   import { loadVoiceCatalog, type VoiceModelEntry } from '../voice-catalog';
@@ -405,24 +405,9 @@
 
       {@render settingRow($t('voice.autoPlay'), $t('voice.autoPlayHint'), autoplaySwitch)}
 
-      {#if activeTts}
-        <div class="space-y-2 py-3.5">
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm font-medium text-foreground">{$t('voice.voice')}</p>
-              <p class="text-xs text-muted-foreground">{$t('voice.voiceHint')}</p>
-            </div>
-            <Button variant="outline" size="sm" onclick={() => void preview()} disabled={!activeTts}>
-              {#if previewing}<Square /> {$t('voice.stopPreview')}{:else}<Play /> {$t('voice.preview')}{/if}
-            </Button>
-          </div>
-          <VoiceLanguageSelector
-            selectedVoice={tts.voice || ''}
-            showVolume={false}
-            onSelect={(voice) => void appStore.updateTtsSettings({ voice })}
-          />
-        </div>
+      <SpeakVoicePicker />
 
+      <div class="contents">
         {#snippet speedSlider()}
           <div class="flex w-56 items-center gap-3">
             <input type="range" min="0.5" max="2" step="0.05" bind:value={speed} onchange={() => void appStore.updateTtsSettings({ speed })} class="flex-1 accent-[var(--primary)]" aria-label={$t('voice.speed')} />
@@ -438,23 +423,9 @@
           </div>
         {/snippet}
         {@render settingRow($t('voice.volume'), '', volumeSlider)}
-      {:else}
-        <p class="py-3.5 text-xs text-muted-foreground">{$t('voice.needsModel')}</p>
-      {/if}
+      </div>
     </SettingsSection>
 
-    <SettingsSection title={$t('voice.voiceModels')} description={$t('voice.voiceModelsHint')}>
-      {#snippet actions()}
-        <Button variant="ghost" size="icon-sm" onclick={() => void reloadCatalog()} disabled={catalogLoading} aria-label={$t('voice.refresh')} title={$t('voice.refresh')}>
-          <RefreshCw class={catalogLoading ? 'animate-spin' : ''} />
-        </Button>
-      {/snippet}
-      {#if !catalogLoaded}
-        <p class="flex items-center gap-2 py-3.5 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> {$t('voice.loading')}</p>
-      {:else}
-        {#each ttsModels as entry (entry.key)}{@render modelRow(entry)}{/each}
-      {/if}
-    </SettingsSection>
   {:else}
     <SettingsSection title={$t('voice.dictation')}>
       {@render settingRow($t('voice.language'), $t('voice.languageHint'), languageSelect)}

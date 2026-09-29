@@ -3152,6 +3152,8 @@ class AppStore {
     dict_dir?: string;
     data_dir?: string;
     model_variant?: string;
+    voice_model?: string;
+    language?: string;
   }) {
     await this.commitConfig(mergeTtsSettingsConfig(this.config, partial));
   }

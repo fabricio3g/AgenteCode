@@ -15,7 +15,8 @@ import {
   startEmbeddingServer, stopEmbeddingServer
 } from './llm-runner.ts';
 import { getEmbeddingStatus } from './embedding-state.ts';
-import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './tts-engine.ts';
+import { initTts, generateTtsStream, cancelTtsStream, unloadTts, checkEspeakData, listVoices, onWorkerMessage } from './voice/audiocpp-tts.ts';
+import { registerVoiceModelHandlers } from './voice/voice-model-handlers.ts';
 import { transcribeAudio, getSttStatus, unloadWhisper } from './stt-engine.ts';
 import {
   startDownloadHf, getDownloadJobs, cancelDownloadJob,
@@ -175,6 +176,7 @@ export function registerIpcHandlers() {
     onWorkerMessage,
     logger: (message, ...args) => log.info(message, ...args),
   });
+  registerVoiceModelHandlers(ipcMain);
 
   // ── STT (speech-to-text) ──
   registerEngineHandlers(ipcMain);

@@ -752,7 +752,26 @@
     "micNone": "No microphone connected",
     "micNoneHint": "Plug one in; it's detected automatically.",
     "micBusy": "In use by another app",
-    "micBusyHint": "Close the app using it, then try again."
+    "micBusyHint": "Close the app using it, then try again.",
+    "engine": {
+      "title": "Voice engine",
+      "hint": "Runs on this computer. Download one once; it is used offline from then on.",
+      "supertonic-3": "Fast, natural and multilingual. Recommended.",
+      "kokoro-82m": "The most natural voices, in 9 languages.",
+      "languages": "{n} languages",
+      "voices": "voices",
+      "downloading": "Downloading… {n}%",
+      "use": "Use",
+      "delete": "Delete",
+      "deleteTitle": "Delete {name}?",
+      "deleteMessage": "Frees {size} MB. You can download it again anytime.",
+      "download": "Download · {size} MB",
+      "needsEspeak": "This language needs eSpeak NG on your computer. On Ubuntu or Debian: sudo apt install espeak-ng",
+      "languageHint": "The language replies are read in.",
+      "female": "Female",
+      "male": "Male",
+      "none": "Download a voice engine above to hear replies read aloud."
+    }
   },
   "searchSettings": {
     "title": "Web search",

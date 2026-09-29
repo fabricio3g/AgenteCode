@@ -203,6 +203,8 @@ export function mergeTtsSettingsConfig(
     dict_dir?: string;
     data_dir?: string;
     model_variant?: string;
+    voice_model?: string;
+    language?: string;
   }
 ): AppConfig {
   return {
