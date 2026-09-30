@@ -11,6 +11,19 @@ pub(crate) fn is_retryable_error(msg: &str) -> bool {
         return status == 408 || status == 429 || (500..600).contains(&status);
     }
 
+    // Gateways can fail inside an HTTP 200 SSE stream with a JSON status.
+    if let Some(value) = msg
+        .find('{')
+        .and_then(|start| serde_json::from_str::<serde_json::Value>(&msg[start..]).ok())
+    {
+        if let Some(status) = value
+            .get("code")
+            .or_else(|| value.get("error").and_then(|error| error.get("code")))
+            .and_then(serde_json::Value::as_u64)
+        {
+            return status == 408 || status == 429 || (500..600).contains(&status);
+        }
+    }
     let lower = msg.to_lowercase();
     lower.contains("overloaded")
         || lower.contains("rate limit")
@@ -20,6 +33,13 @@ pub(crate) fn is_retryable_error(msg: &str) -> bool {
         || lower.contains("stream stalled")
         || lower.contains("stalled (no data")
         || lower.contains("connection reset")
+        || lower.contains("connection refused")
+        || lower.contains("error sending request")
+        || lower.contains("dns error")
+        || lower.contains("failed to lookup address")
+        || lower.contains("temporary failure in name resolution")
+        || lower.contains("provider_unavailable")
+        || lower.contains("provider returned an empty response")
         || lower.contains("chat stream ended before completion")
         || lower.contains("network error")
         || super::errors::contains_word(&lower, "timeout")
@@ -85,6 +105,27 @@ mod tests {
         assert!(is_retryable_error("request timed out"));
         assert!(is_retryable_error("server overloaded"));
         assert!(!is_retryable_error("model refused to answer"));
+    }
+
+    #[test]
+    fn gateway_stream_errors_and_dns_failures_are_transient() {
+        for error in [
+            r#"Stream error: openrouter: {"code":502,"message":"Provider returned an empty response","metadata":{"error_type":"provider_unavailable"}}"#,
+            r#"openrouter: {"error":{"code":503,"message":"Unavailable"}}"#,
+            "HTTP 504 Gateway Timeout",
+            "dns error: failed to lookup address information: Temporary failure in name resolution",
+            "HTTP request failed: error sending request for url (https://openrouter.ai)",
+            "tcp connect error: Connection refused (os error 111)",
+        ] {
+            assert!(is_retryable_error(error), "{error}");
+        }
+        for error in [
+            r#"openrouter: {"code":400,"message":"provider_unavailable"}"#,
+            "HTTP 401 - Provider returned an empty response",
+            "invalid certificate: UnknownIssuer",
+        ] {
+            assert!(!is_retryable_error(error), "{error}");
+        }
     }
 
     #[test]

@@ -297,8 +297,8 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
     let mut retry_attempt = 0u32;
     // Consecutive empty completions this turn (see the empty-response retry).
     let mut empty_response_retries = 0u32;
-    let max_retries = 3u32;
-    let base_delay_ms = 1000u64;
+    let max_retries = 2u32;
+    let base_delay_ms = 500u64;
     // Provider-reported context overflows recovered by forced compaction this
     // turn. Bounded: a transcript that will not fit must still fail loudly.
     const MAX_OVERFLOW_RECOVERIES: u32 = 2;
@@ -581,6 +581,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             std::collections::HashMap::new();
         let mut stream_error: Option<String> = None;
         let mut stream_stop_reason = StopReason::Unknown;
+        let mut received_output = false;
 
         loop {
             tokio::select! {
@@ -588,6 +589,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                     match event {
                         Some(event) => match event {
                             StreamEvent::TextDelta(text) => {
+                                received_output |= !text.is_empty();
                                 generation_progress.record(text.len(), None, &sender, task_id);
                                 full_response.push_str(&text);
                                 send_event(&sender, task_id, AgentEvent::TextDelta(text.clone()));
@@ -597,28 +599,34 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                             }
                             StreamEvent::TextStart | StreamEvent::TextEnd => {}
                             StreamEvent::ReasoningDelta(text) => {
+                                received_output |= !text.is_empty();
                                 generation_progress.record(text.len(), None, &sender, task_id);
                                 full_reasoning.push_str(&text);
                                 send_event(&sender, task_id, AgentEvent::ReasoningDelta(text));
                             }
                             StreamEvent::ReasoningStart | StreamEvent::ReasoningEnd => {}
                             StreamEvent::ThinkingSignature(sig) => {
+                                received_output = true;
                                 thinking_signature = Some(sig);
                             }
                             StreamEvent::Continuation(value) => {
+                                received_output = true;
                                 continuation = Some(value);
                             }
                             StreamEvent::ToolCallStart { name, id } => {
+                                received_output = true;
                                 generation_progress.record(0, Some(&name), &sender, task_id);
                                 tool_call_accumulators.insert(id.clone(), (name, String::new()));
                             }
                             StreamEvent::ToolCallDelta { id, args_delta } => {
+                                received_output |= !args_delta.is_empty();
                                 if let Some((name, accumulated)) = tool_call_accumulators.get_mut(&id) {
                                     generation_progress.record(args_delta.len(), Some(name), &sender, task_id);
                                     accumulated.push_str(&args_delta);
                                 }
                             }
                             StreamEvent::ToolCallEnd { id } => {
+                                received_output = true;
                                 if let Some((name, args)) = tool_call_accumulators.remove(&id) {
                                     tool_calls.push(ToolCall {
                                         id: id.clone(),
@@ -731,7 +739,10 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
             // tool schemas the estimate never counts) disagrees. Shrink the
             // transcript deterministically — no extra LLM call that would
             // itself overflow — and re-issue the request.
-            if is_context_overflow_error(&err) && overflow_recoveries < MAX_OVERFLOW_RECOVERIES {
+            if !received_output
+                && is_context_overflow_error(&err)
+                && overflow_recoveries < MAX_OVERFLOW_RECOVERIES
+            {
                 overflow_recoveries += 1;
                 tracing::warn!(
                     iteration,
@@ -762,7 +773,7 @@ pub(crate) async fn run_agent_loop(cfg: AgentRunConfig) -> Result<(), AgentLoopF
                 }
                 messages = forced.messages;
             }
-            if is_retryable_error(&err) && retry_attempt < max_retries {
+            if !received_output && is_retryable_error(&err) && retry_attempt < max_retries {
                 retry_attempt += 1;
                 let delay = jittered_backoff(base_delay_ms, retry_attempt - 1).as_millis() as u64;
                 tracing::info!(
@@ -1310,6 +1321,8 @@ mod tests {
         info: crate::providers::ProviderInfo,
         calls: std::sync::Mutex<u32>,
         first_error: &'static str,
+        fail_calls: u32,
+        partial_event: Option<crate::llm::StreamEvent>,
     }
 
     #[async_trait::async_trait]
@@ -1329,9 +1342,12 @@ mod tests {
             let first_call = {
                 let mut calls = self.calls.lock().unwrap();
                 *calls += 1;
-                *calls == 1
+                *calls <= self.fail_calls
             };
             if first_call {
+                if let Some(event) = &self.partial_event {
+                    sender.send(event.clone()).await.ok();
+                }
                 return Err(crate::llm::LlmError::StreamError(
                     self.first_error.to_string(),
                 ));
@@ -1557,6 +1573,8 @@ mod tests {
             },
             calls: std::sync::Mutex::new(0),
             first_error: "The request is 265713 tokens long and exceeds this model's context length of 262144 tokens (context_length_exceeded)",
+            fail_calls: 1,
+            partial_event: None,
         });
         registry.register("test-overflow", provider.clone());
 
@@ -1657,6 +1675,51 @@ mod tests {
 
     #[tokio::test]
     async fn interrupted_chat_stream_retries_and_delivers_the_answer() {
+        let (calls, result, events) =
+            failure_turn("Chat stream ended before completion", 1, None).await;
+        result.expect("transient stream recovers");
+        assert_eq!(calls, 2);
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, AgentEvent::Retry { .. })));
+        assert!(events.iter().any(|event| matches!(event, AgentEvent::Done { conversation, .. } if conversation.last().is_some_and(|message| message.content == "recovered"))));
+    }
+
+    #[tokio::test]
+    async fn transient_retries_are_bounded_and_stop_after_any_output() {
+        let error = r#"openrouter: {"code":502,"message":"Provider returned an empty response"}"#;
+        let (calls, result, events) = failure_turn(error, 10, None).await;
+        assert!(result.is_err());
+        assert_eq!(calls, 3, "initial request plus two retries");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, AgentEvent::Retry { .. }))
+                .count(),
+            2
+        );
+        for event in [
+            crate::llm::StreamEvent::TextDelta("partial".into()),
+            crate::llm::StreamEvent::ReasoningDelta("thinking".into()),
+            crate::llm::StreamEvent::ToolCallStart {
+                name: "read".into(),
+                id: "call".into(),
+            },
+        ] {
+            let (calls, result, events) = failure_turn(error, 1, Some(event)).await;
+            assert!(result.is_err());
+            assert_eq!(calls, 1, "partial output must never be replayed");
+            assert!(!events
+                .iter()
+                .any(|event| matches!(event, AgentEvent::Retry { .. })));
+        }
+    }
+
+    async fn failure_turn(
+        first_error: &'static str,
+        fail_calls: u32,
+        partial_event: Option<crate::llm::StreamEvent>,
+    ) -> (u32, Result<(), AgentLoopFailure>, Vec<AgentEvent>) {
         use crate::cancellation::AbortController;
         use crate::permissions::{shared_permission_engine, ApprovalBroker};
         use crate::types::AgentMode;
@@ -1669,7 +1732,9 @@ mod tests {
                 ..Default::default()
             },
             calls: std::sync::Mutex::new(0),
-            first_error: "Chat stream ended before completion",
+            first_error,
+            fail_calls,
+            partial_event,
         });
         registry.register("test-overflow", provider.clone());
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1682,7 +1747,7 @@ mod tests {
             model: "stub-model".into(),
             thinking_level: "off".into(),
             project_dir: ".".into(),
-            max_iterations: Some(2),
+            max_iterations: Some(5),
             registry,
             catalog: None,
             permission_engine: shared_permission_engine(AgentMode::Plan),
@@ -1700,15 +1765,10 @@ mod tests {
             user_inbox: None,
             extra_tools: Vec::new(),
         };
-        run_agent_loop(config)
-            .await
-            .expect("transient stream recovers");
-        assert_eq!(*provider.calls.lock().unwrap(), 2);
+        let result = run_agent_loop(config).await;
+        let calls = *provider.calls.lock().unwrap();
         let events: Vec<_> = rx.try_iter().map(|e| e.event).collect();
-        assert!(events
-            .iter()
-            .any(|event| matches!(event, AgentEvent::Retry { .. })));
-        assert!(events.iter().any(|event| matches!(event, AgentEvent::Done { conversation, .. } if conversation.last().is_some_and(|message| message.content == "recovered"))));
+        (calls, result, events)
     }
 
     /// Stub that demands `tool_rounds` tool executions before answering in
