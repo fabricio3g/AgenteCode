@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/fabricio3g/AgenteCode/releases"><img src="https://img.shields.io/github/v/release/fabricio3g/AgenteCode?style=flat&color=666666" alt="Latest release" /></a>
-  <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/rust.yml"><img src="https://github.com/fabricio3g/AgenteCode/actions/workflows/rust.yml/badge.svg" alt="Rust CI" /></a>
-  <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/desktop.yml"><img src="https://github.com/fabricio3g/AgenteCode/actions/workflows/desktop.yml/badge.svg" alt="Desktop CI" /></a>
+  <a href="https://github.com/fabricio3g/AgenteCode/releases"><img src="https://img.shields.io/badge/release-v0.2.2-666666?style=flat" alt="Release v0.2.2" /></a>
+  <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/rust.yml"><img src="https://img.shields.io/badge/Rust-CI-666666?style=flat" alt="Rust CI" /></a>
+  <a href="https://github.com/fabricio3g/AgenteCode/actions/workflows/desktop.yml"><img src="https://img.shields.io/badge/Desktop-CI-666666?style=flat" alt="Desktop CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-666666?style=flat" alt="MIT license" /></a>
 </p>
 
@@ -35,7 +35,7 @@
 
 | | Made for | How to use it |
 |---|---|---|
-| **Agente Desktop** | Chat, local models, research, voice, artifacts, roleplay, and a visual coding workspace | Run from source; Linux and Windows installers are planned for `0.2.2` |
+| **Agente Desktop** | Chat, local models, research, voice, artifacts, roleplay, and a visual coding workspace | Download a Linux or Windows installer |
 | **Agente Code** | Working in a repository without leaving your terminal | Download a Linux or Windows binary |
 | **Agente Bots** | Assistants with a persona, memory, teammates, and scheduled routines | Desktop's Bots screen or `agente attach @colina` |
 | **Agente Server** | Keeping sessions and bots running on your own infrastructure | `agente serve` or the Docker image; preview |
@@ -43,6 +43,10 @@
 Use cloud providers with your own keys, or connect local models. The coding agent and bots share the Rust core; Desktop talks to the runtime through a local background service.
 
 ## Get started
+
+The repository is currently private. Open the release links while signed in
+with an account that has repository access, or use the [GitHub CLI](https://cli.github.com)
+after `gh auth login`. Anonymous download requests return 404.
 
 ### Download Agente Code
 
@@ -58,18 +62,31 @@ On Linux, install to your user bin directory (make sure `~/.local/bin` is on you
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fL -o ~/.local/bin/agente https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-x86_64
+gh release download --repo fabricio3g/AgenteCode --pattern agente-linux-x86_64 --output ~/.local/bin/agente --clobber
 chmod +x ~/.local/bin/agente
 agente --version
 ```
 
 Use `agente-linux-arm64` instead on arm64. On Windows, rename the download to `agente.exe` and put it in a folder on your `PATH`.
 
-The release's [`SHA256SUMS`](https://github.com/fabricio3g/AgenteCode/releases/latest/download/SHA256SUMS) covers the published Code binaries.
+The release's [`SHA256SUMS`](https://github.com/fabricio3g/AgenteCode/releases/latest/download/SHA256SUMS) covers the Code binaries, Desktop installers, and update metadata.
 
-### Run Desktop from source
+### Download Agente Desktop
 
-The latest published release, `v0.2.1`, contains Code binaries only. Desktop installers for Linux and Windows are part of the [`0.2.2` release plan](docs/RELEASE_PLAN_0.2.2.md).
+Desktop installers are included in [`v0.2.2`](https://github.com/fabricio3g/AgenteCode/releases/tag/v0.2.2):
+
+| Platform | Download |
+|---|---|
+| Linux x86_64 | [AppImage](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage) |
+| Debian/Ubuntu amd64 | [.deb package](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-amd64.deb) |
+| Windows x64 | [Installer](https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-win-x64.exe) |
+
+On Linux, make the AppImage executable and run it, or install the Debian package with `sudo apt install ./Agente-linux-amd64.deb`. AppImages require FUSE 2 (`libfuse2t64` on recent Ubuntu). On Windows, run the installer; this release is unsigned.
+
+Desktop includes its own `agente` runtime. Install the standalone Code binary too if you want to use it in a terminal.
+
+<details>
+<summary><strong>Run Desktop from source</strong></summary>
 
 With stable Rust, Node.js 22.12+ and the native build tools for your OS installed:
 
@@ -82,6 +99,8 @@ CARGO_BUILD_JOBS=2 npm run dev
 ```
 
 The dev command builds `agente` and starts Electron and the renderer. See the [Desktop guide](apps/desktop/README.md) for native-module troubleshooting and local-model setup.
+
+</details>
 
 ## Agente Desktop
 
@@ -286,7 +305,7 @@ node scripts/gen-protocol-types.mjs --check
 | [Desktop development](apps/desktop/docs/DEVELOPMENT.md) | Toolchain and native-module troubleshooting |
 | [Server](docs/SERVER.md) | Self-hosting, remote sessions, and Telegram |
 | [Releasing](docs/RELEASING.md) | CLI and desktop build and publication workflow |
-| [0.2.2 release plan](docs/RELEASE_PLAN_0.2.2.md) | Coordinated binaries and installers, packaging work, and validation gates |
+| [0.2.2 release record](docs/RELEASE_PLAN_0.2.2.md) | Coordinated binaries and installers, packaging work, and validation gates |
 
 ## License
 

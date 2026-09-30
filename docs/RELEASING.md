@@ -1,8 +1,8 @@
 # Releasing
 
-The next coordinated desktop and Code release is planned in
-[Agente 0.2.2 release plan](RELEASE_PLAN_0.2.2.md), including the desktop
-packaging failures that must be resolved before tagging.
+The [Agente 0.2.2 release record](RELEASE_PLAN_0.2.2.md) documents the
+coordinated desktop and Code release, including the packaging fixes and
+validation checklist.
 
 One version tag builds both products into a shared draft GitHub release:
 

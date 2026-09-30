@@ -118,7 +118,7 @@ jobs:
             test -s latest.yml
           fi
           shopt -s nullglob
-          files=( *.AppImage *.deb *.exe *.zip *.yml *.blockmap )
+          files=( *.AppImage *.deb *.exe *.zip latest*.yml *.blockmap )
           sha256sum "${files[@]}" > "SHA256SUMS-${{ matrix.name }}"
 
       - name: Upload build artifacts
@@ -130,7 +130,7 @@ jobs:
             apps/desktop/release/*.deb
             apps/desktop/release/*.exe
             apps/desktop/release/*.zip
-            apps/desktop/release/*.yml
+            apps/desktop/release/latest*.yml
             apps/desktop/release/*.blockmap
             apps/desktop/release/SHA256SUMS-*
           if-no-files-found: error
@@ -160,7 +160,7 @@ jobs:
             release-assets/*.deb
             release-assets/*.exe
             release-assets/*.zip
-            release-assets/*.yml
+            release-assets/latest*.yml
             release-assets/*.blockmap
             release-assets/DESKTOP_SHA256SUMS
           generate_release_notes: true

@@ -4,6 +4,12 @@ Prepared on 2026-09-30. This plan covers **Agente Desktop** and **Agente Code**
 from the same commit on `main`, under one GitHub release, `v0.2.2`.
 Rust and Desktop versions are set to `0.2.2` for this patch release candidate.
 
+**Published:** [Agente v0.2.2](https://github.com/fabricio3g/AgenteCode/releases/tag/v0.2.2)
+on 2026-09-30, marked Latest, with all required Code and Desktop downloads.
+The checklist below is retained with the retry evidence for future releases.
+The repository remains private: the published release is visible to accounts
+with repository access, and downloads require authentication.
+
 ## Scope and artifacts
 
 | Product | Platform | Required assets |
@@ -45,10 +51,28 @@ failed before its publication job:
 
 Additional publication preparation:
 
-The retry preparation now adds explicit repository/publish metadata, reclaims
+The retry preparation adds explicit repository/publish metadata, reclaims
 Linux runner space (including compiler output after the runtime is bundled),
 and checks required installer files before upload. Both workflows stage assets
-in a draft release. These changes still need a successful packaging run.
+in a draft release. Both packaging jobs passed in the retry.
+
+Verified retry evidence for source commit `bf9c845`:
+
+- [Code release builds](https://github.com/fabricio3g/AgenteCode/actions/runs/36744061227):
+  Linux x86_64, Linux arm64, and Windows x64 passed.
+- [Desktop release builds](https://github.com/fabricio3g/AgenteCode/actions/runs/36744061147):
+  Linux AppImage/deb and Windows NSIS, YAML, and blockmap passed.
+- [Desktop CI](https://github.com/fabricio3g/AgenteCode/actions/runs/36744019168)
+  passed on the same source commit.
+- All nine executable, installer, and update-metadata upload digests matched
+  the build checksum manifests. The combined `SHA256SUMS` covers both products.
+- The downloaded Linux Code binary reports `agente 0.2.2`; help and an isolated
+  TUI launch/render/clean-exit smoke test passed.
+- Windows packaging logs confirm signing was skipped; release notes disclose
+  the unsigned installer.
+
+Electron-builder diagnostic YAML is excluded from future uploads and removed
+from this release; only `latest*.yml` update metadata is distributed.
 
 1. Pin and record the llama.cpp, whisper.cpp, and audio.cpp runtime versions.
    Current script defaults are `b11146`, `b5130`, and `v0.8.2`, respectively.
@@ -158,8 +182,9 @@ git push origin v0.2.2
 
 Combine the two checksum manifests and finish coordinated publication only
 when every required asset is available (see `RELEASING.md`).
-Verify the release page and anonymous `releases/latest/download/…` URLs,
-download the published files, and compare their SHA-256 checksums. Include
+Verify the release page and authenticated downloads while the repository is
+private; anonymous `releases/latest/download/…` URLs work only for a public
+repository. Download the published files and compare their SHA-256 checksums. Include
 clear installation instructions for each platform and the packaging/signing
 status established above.
 
