@@ -13,6 +13,7 @@
   import CharacterGallery from './CharacterGallery.svelte';
   import WorldGallery from './WorldGallery.svelte';
   import PersonaGallery from './PersonaGallery.svelte';
+  import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
 
   type Shelf = 'worlds' | 'characters' | 'personas';
 
@@ -51,18 +52,8 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col">
-  <div class="mx-auto flex w-full items-center gap-1 px-6 pt-4" style="max-width: var(--thread-width);">
-    {#each tabs as tab (tab.id)}
-      <button
-        type="button"
-        class="rounded-full px-3 py-1.5 text-[12px] font-medium transition {shelf === tab.id
-          ? 'bg-[var(--surface-active)] text-foreground'
-          : 'text-muted-foreground hover:bg-[var(--surface-hover)] hover:text-foreground'}"
-        onclick={() => (shelf = tab.id)}
-      >
-        {tab.label}
-      </button>
-    {/each}
+  <div class="mx-auto flex w-full flex-wrap items-center gap-2 px-6 pt-4" style="max-width: var(--thread-width);">
+    <SegmentedControl value={shelf} options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))} label="Roleplay library" variant="tabs" onchange={(value) => (shelf = value as Shelf)} />
     <span class="flex-1"></span>
     <button type="button" class="aui-btn shrink-0" onclick={onnewScene}>
       <Plus class="size-4" />

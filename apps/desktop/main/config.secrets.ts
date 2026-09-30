@@ -184,6 +184,8 @@ export class SecretsManager {
     const secrets = this.readSecrets();
     this.extractSection(secrets, 'llm.providers', cfg?.llm?.providers);
     this.extractSection(secrets, 'search.providers', cfg?.search?.providers);
+    this.extractSection(secrets, 'tts.providers', cfg?.tts?.providers);
+    this.extractSection(secrets, 'stt.providers', cfg?.stt?.providers);
     this.writeSecrets(secrets);
   }
 
@@ -206,6 +208,8 @@ export class SecretsManager {
     const secrets = this.readSecrets();
     this.injectSection(secrets, 'llm.providers', cfg?.llm?.providers);
     this.injectSection(secrets, 'search.providers', cfg?.search?.providers);
+    this.injectSection(secrets, 'tts.providers', cfg?.tts?.providers);
+    this.injectSection(secrets, 'stt.providers', cfg?.stt?.providers);
     return cfg;
   }
 

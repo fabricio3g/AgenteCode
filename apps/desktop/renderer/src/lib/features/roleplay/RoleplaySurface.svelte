@@ -19,7 +19,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { copy } from '$lib/copy';
   import type { CharacterCard, RoleplayWorld, UserPersona } from '$lib/types/chat';
-  import { charactersStore, greetingsFor } from './characters.svelte';
+  import { charactersStore, emptyCharacter, greetingsFor } from './characters.svelte';
   import RoleplayLibrary from './RoleplayLibrary.svelte';
   import CharacterEditorModal from './CharacterEditorModal.svelte';
   import PersonaEditorModal from './PersonaEditorModal.svelte';
@@ -28,6 +28,7 @@
   import CastEditorModal from './CastEditorModal.svelte';
   import SceneJournal from './SceneJournal.svelte';
   import RoleplaySceneHeader from './RoleplaySceneHeader.svelte';
+  import RoleplaySettingsModal from './RoleplaySettingsModal.svelte';
 
   const currentChat = $derived(appStore.currentChat);
   const character = $derived(charactersStore.getById(currentChat?.characterId));
@@ -44,6 +45,16 @@
       .filter((card): card is CharacterCard => !!card);
   });
   const nextSpeaker = $derived(roleplayStore.peekSpeaker());
+  const settings = $derived(roleplayStore.settings(currentChat));
+  const room = $derived(roleplayStore.room(currentChat));
+  const completion = $derived.by(() => {
+    if (settings.autocomplete === 'off') return undefined;
+    const candidates = [...cast.filter((card) => room.presentIds.includes(card.id)).map((card) => ({ ...card, description: card.tagline || card.nickname || card.id.slice(-8) })), ...room.npcs];
+    return {
+      candidates: candidates.map((candidate) => ({ ...candidate, disambiguate: candidates.some((other) => other.id !== candidate.id && other.name.toLocaleLowerCase() === candidate.name.toLocaleLowerCase()) })),
+      automatic: settings.autocomplete === 'automatic', nickname: settings.nameInsertion === 'nickname'
+    };
+  });
   const persona = $derived(charactersStore.getPersonaById(currentChat?.personaId));
   const castNames = $derived(cast.map((card) => card.name).join(', '));
 
@@ -67,6 +78,7 @@
   let editingWorld = $state<RoleplayWorld | null>(null);
   let castEditorOpen = $state(false);
   let journalOpen = $state(false);
+  let settingsOpen = $state(false);
   /** Scene setup target: a world, or null for a world-less quick scene. */
   let sceneSetup = $state<{ world: RoleplayWorld | null } | null>(null);
 
@@ -149,18 +161,17 @@
       />
     {:else}
       <RoleplaySceneHeader
-        characters={cast}
+        mode={settings.interactionMode}
+        onmode={(mode) => roleplayStore.setOption('interactionMode', mode)}
+        onsettings={() => (settingsOpen = true)}
+        presentIds={[...room.presentIds, ...room.npcs.map((npc) => npc.id)]}
+        characters={[...cast, ...room.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))]}
         personas={charactersStore.personas}
         activePersonaId={currentChat?.personaId ?? null}
         mutedIds={currentChat?.roleplay?.mutedIds ?? []}
         nextSpeakerId={nextSpeaker?.id ?? null}
-        autoMode={currentChat?.roleplay?.autoMode ?? false}
-        autoDelayMs={currentChat?.roleplay?.autoModeDelayMs ?? 8000}
-        adventureChoices={currentChat?.roleplay?.adventureChoices ?? false}
-        choiceTimerSeconds={currentChat?.roleplay?.choiceTimerSeconds ?? null}
-        propsEnabled={currentChat?.roleplay?.props ?? false}
-        showSpeakerLabels={currentChat?.roleplay?.showSpeakerLabels ?? false}
-        replyOrder={currentChat?.roleplay?.replyOrder ?? 'list'}
+        autoMode={settings.autoMode}
+        adventureChoices={settings.adventureChoices}
         disabled={appStore.currentChatGenerating}
         onpersona={onPersona}
         onpersonaedit={(persona) => {
@@ -171,16 +182,11 @@
         onspeak={(id) => void roleplayStore.speakNow(id)}
         onmute={(id) => roleplayStore.toggleMute(id)}
         onauto={(enabled) => roleplayStore.setAutoMode(enabled)}
-        onorder={(order) => roleplayStore.setReplyOrder(order)}
-        ondelay={(delayMs) => roleplayStore.setOption('autoModeDelayMs', delayMs)}
         onchoices={(enabled) => roleplayStore.setOption('adventureChoices', enabled)}
-        ontimer={(seconds) => roleplayStore.setOption('choiceTimerSeconds', seconds)}
-        onprops={(enabled) => roleplayStore.setOption('props', enabled)}
-        onlabels={(enabled) => roleplayStore.setOption('showSpeakerLabels', enabled)}
         ontwist={() => void roleplayStore.throwTwist()}
         onjournal={() => (journalOpen = true)}
       />
-      <Thread />
+      <Thread density={settings.messageDensity} />
       {#if threadIsEmpty && castNames}
         <div class="scene-hint">
           <span><span class="scene-hint-strong">{castNames}</span> {cast.length > 1 ? 'are' : 'is'} ready.</span>
@@ -209,7 +215,7 @@
           {/if}
         </div>
       {/if}
-      <Composer />
+      <Composer placeholder={settings.interactionMode !== 'chat' ? 'Say or do something…' : `Message ${character?.name || 'the room'}…`} nameCompletion={completion} />
     {/if}
   </div>
 </div>
@@ -248,6 +254,10 @@
 
 {#if journalOpen}
   <SceneJournal onclose={() => (journalOpen = false)} />
+{/if}
+
+{#if settingsOpen}
+  <RoleplaySettingsModal onclose={() => (settingsOpen = false)} />
 {/if}
 
 {#if sceneSetup}

@@ -72,6 +72,9 @@ export interface MessageVersion {
     diagnosticsRedacted?: boolean;
     documentSurface?: { kind: 'report' | 'documents'; title?: string; primaryFile?: string };
     workProduct?: { id: string; kind: WorkProductKind; title: string; primaryFile?: string; status?: WorkProductStatus };
+    /** Roleplay-only versioned state; persisted by the existing metadata path. */
+    roleplay?: RoleplayTurnSnapshot;
+    roleplayPersona?: { id: string | null; name: string; avatar?: string };
   };
 }
 
@@ -492,6 +495,7 @@ export interface CharacterCard {
   id: string;
   name: string;
   nickname?: string;
+  aliases?: string[];
   tagline?: string;
   /** Data URL or local file path. */
   avatar?: string;
@@ -514,6 +518,7 @@ export interface CharacterCard {
   book?: CharacterBook | null;
   /** Kokoro/engine voice id used for this character's replies. */
   voiceId?: string | null;
+  voice?: import('$shared/speech').VoiceAssignment | null;
   /** Group chats: 0 (never speaks unless mentioned) … 100 (always replies). */
   talkativeness?: number;
   temperature?: number | null;
@@ -577,7 +582,7 @@ export interface RoleplayStoryTurn {
 export type RoleplayReplyOrder = 'list' | 'natural' | 'mention' | 'manual';
 
 /** Defaults a world applies to scenes started from it. */
-export interface WorldSettings {
+export interface WorldSettings extends RoleplayOptions {
   replyOrder?: RoleplayReplyOrder;
   /** Let characters keep talking without a user turn. */
   autoMode?: boolean;
@@ -629,7 +634,7 @@ export interface RoleplayWorld {
 }
 
 /** Per-session roleplay state, persisted with the chat. */
-export interface RoleplaySettings {
+export interface RoleplaySettings extends RoleplayOptions {
   /** Group-chat roster. The first id is the primary speaker. */
   characterIds?: string[];
   temperature?: number | null;
@@ -662,6 +667,77 @@ export interface RoleplaySettings {
   replyOrder?: RoleplayReplyOrder;
   /** Group members muted for this scene. */
   mutedIds?: string[];
+  scene?: RoleplaySceneState;
+  sceneOrigin?: RoleplaySceneState;
+  /** The turn at which the user last adjusted the room manually. */
+  sceneAnchorId?: string;
+}
+
+export interface RoleplayOptions {
+  interactionMode?: 'chat' | 'narrative' | 'dynamic';
+  replyStyle?: 'dialogue' | 'balanced' | 'narrative';
+  replyLength?: 'brief' | 'adaptive' | 'detailed';
+  initiative?: 'reactive' | 'balanced' | 'proactive';
+  pacing?: 'slow' | 'balanced' | 'fast';
+  npcDialogue?: boolean;
+  maxExchangeLines?: number;
+  surprise?: number;
+  twistCooldown?: number;
+  choiceMin?: number;
+  choiceMax?: number;
+  decisionWeights?: Record<string, number>;
+  outcomeRolls?: boolean;
+  outcomeWeights?: { success: number; cost: number; setback: number };
+  showOutcomes?: boolean;
+  memoryEnabled?: boolean;
+  autoMemory?: boolean;
+  memoryBudget?: number;
+  autocomplete?: 'off' | 'mention' | 'automatic';
+  nameInsertion?: 'name' | 'nickname';
+  choiceExpiry?: 'pause' | 'silence' | 'event';
+  genre?: string;
+  stakes?: 'gentle' | 'balanced' | 'high';
+  rerollEnabled?: boolean;
+  sceneNpcs?: boolean;
+  showAvatars?: boolean;
+  messageDensity?: 'comfortable' | 'compact';
+  actionFormatting?: 'emphasis' | 'plain';
+  voicePlayback?: boolean;
+}
+
+export interface RoleplaySceneState {
+  location: string;
+  presentIds: string[];
+  npcs: Array<{ id: string; name: string; description: string }>;
+  facts: string[];
+  goals: string[];
+  relationships: string[];
+}
+
+export interface RoleplayContribution {
+  speakerId: string | null;
+  addresseeIds: string[];
+  content: string;
+}
+
+export interface RoleplayTurnSnapshot {
+  /** The only characters permitted to speak, retained across Retry/version changes. */
+  participantIds?: string[];
+  settled?: boolean;
+  persona?: { id: string | null; name: string; avatar?: string };
+  mode: 'chat' | 'narrative' | 'dynamic';
+  seed: number;
+  direction: string;
+  instruction: string;
+  outcome?: 'success' | 'cost' | 'setback';
+  outcomeApplied?: boolean;
+  settings: RoleplaySettings;
+  sceneBefore: RoleplaySceneState;
+  sceneAfter: RoleplaySceneState;
+  contributions: RoleplayContribution[];
+  choices: string[];
+  props: RoleplayProp[];
+  storyTurn?: RoleplayStoryTurn;
 }
 
 /**
@@ -862,6 +938,10 @@ export interface AppConfig {
     };
   };
   tts?: {
+    backend_mode?: 'local' | 'api' | 'browser';
+    api_provider?: string;
+    providers?: Record<string, import('$shared/speech').SpeechProviderConfig>;
+    narrator?: import('$shared/speech').VoiceAssignment;
     enable_voice_output?: boolean;
     auto_play_voice?: boolean;
     voice?: string;
@@ -880,6 +960,9 @@ export interface AppConfig {
     language?: string;
   };
   stt?: {
+    provider?: 'local' | 'api' | 'auto';
+    api_provider?: string;
+    providers?: Record<string, import('$shared/speech').SpeechProviderConfig>;
     whisper_quality?: string;
     whisper_model_path?: string;
     runtime_path?: string;

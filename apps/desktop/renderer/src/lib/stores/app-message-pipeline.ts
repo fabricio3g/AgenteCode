@@ -44,7 +44,8 @@ export function buildRequestMessagesWithPatchedUser(params: {
     const reasoning = getMessageRequestReasoning(message);
     outbound.push({
       role,
-      content: attributeRoleplayContent(role, message.speakerId, content, params.attribution),
+      content: attributeRoleplayContent(role, message.speakerId, content, message.metadata?.roleplayPersona
+        ? { ...params.attribution!, userName: message.metadata.roleplayPersona.name } : params.attribution),
       ...(reasoning ? { reasoning_content: reasoning } : {})
     });
   }
@@ -68,11 +69,17 @@ export function appendRoleplayNudge(
 ): RequestMessage[] {
   if (!attribution?.group || !attribution.speakerName) return messages;
   const userName = attribution.userName || 'the user';
+  const participants = attribution.participantIds?.map((id) => attribution.names.get(id)).filter(Boolean);
+  const routing = participants?.length
+    ? `Speaking permission for this turn: ${participants.join(', ')} only. ${participants.length === 1 ? 'Exactly one character replies.' : 'Each addressed character may answer briefly.'} Other characters remain silent even if mentioned in the reply. This overrides ensemble permissions and turn direction. `
+    : '';
   return [
     ...messages,
     {
       role: 'system',
-      content: `Now write only ${attribution.speakerName}'s reply. Do not write for ${userName} or the other characters.`
+      content: routing + (attribution.allowMultiSpeaker
+        ? `${attribution.speakerName} responds first. Relevant present characters may address and answer one another, up to ${attribution.maxExchangeLines ?? 3} short contributions, within one response. Attribute each contribution with Name: so the interface can show individual character replies. Answer ${userName}'s actual topic; do not steer the scene, prescribe their next move or invent a decision for them. Return control to ${userName}; do not author their actions, thoughts or dialogue.`
+        : `Now write only ${attribution.speakerName}'s reply. Do not write for ${userName} or the other characters.`)
     }
   ];
 }

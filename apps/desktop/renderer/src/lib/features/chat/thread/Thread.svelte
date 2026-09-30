@@ -20,6 +20,7 @@
   import Message from './Message.svelte';
   import ThreadTimeline from './ThreadTimeline.svelte';
   import type { TimelineMarker } from './timeline';
+  let { density = 'comfortable' }: { density?: 'comfortable' | 'compact' } = $props();
 
   /** Treat anything within this many pixels of the bottom as "at the bottom". */
   const BOTTOM_THRESHOLD_PX = 96;
@@ -317,7 +318,7 @@
         onscroll={handleScroll}
       >
         <div
-          class="mx-auto flex w-full flex-col gap-7"
+          class="mx-auto flex w-full flex-col {density === 'compact' ? 'gap-4' : 'gap-7'}"
           style="max-width: var(--thread-width);"
         >
           {#each messages as message (message.id)}

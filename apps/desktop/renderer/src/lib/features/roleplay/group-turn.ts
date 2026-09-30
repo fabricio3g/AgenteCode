@@ -35,7 +35,33 @@ export function mentionsName(text: string, name: string): boolean {
 /** Characters mentioned in a message, in cast order. */
 function mentionedCast(text: string, cast: CharacterCard[]): CharacterCard[] {
   if (!text) return [];
-  return cast.filter((card) => mentionsName(text, card.name) || (!!card.nickname && mentionsName(text, card.nickname)));
+  return cast.filter((card) => [card.name, card.nickname, ...(card.aliases ?? [])].some((name) => !!name && mentionsName(text, name)));
+}
+
+/** Vocatives and explicit @names address someone; a reference alone does not. */
+export function extractAddressees(text: string, cast: Array<Pick<CharacterCard, 'id' | 'name' | 'nickname' | 'aliases'>>): string[] {
+  const explicitIds = [...text.matchAll(/\[character:([^\]]+)\]/g)].map((match) => match[1]);
+  const identified = cast.filter((card) => explicitIds.includes(card.id)).map((card) => card.id);
+  if (identified.length) return identified;
+  const names = cast.flatMap((card) => [card.name, card.nickname, ...(card.aliases ?? [])].filter((name): name is string => !!name)).sort((a, b) => b.length - a.length);
+  const joinedNames = names.map(escapeRegExp).join('|');
+  // A list at the start is a vocative; names elsewhere may merely be references.
+  const vocative = joinedNames ? new RegExp(`^(?:hey\\s+|hi\\s+|hello\\s+)?(@?(?:${joinedNames}))(?:\\s*(?:,|and|&)\\s*@?(?:${joinedNames}))*(?=\\s*[,：:!?]|\\s+(?:can|could|would|will|do|what|how|tell|please)\\b|$)`, 'iu').exec(text.trim())?.[0] : undefined;
+  const addressed = cast.filter((card) => [card.name, card.nickname, ...(card.aliases ?? [])].filter(Boolean).some((name) => {
+    const escaped = escapeRegExp(name!);
+    return (!!vocative && mentionsName(vocative, name!)) || new RegExp(`(?:^|[^\\p{L}\\p{N}])@${escaped}(?=$|[^\\p{L}\\p{N}])|(?:^|[.!?]\\s*)${escaped}\\s*[,：:]|[,，]\\s*${escaped}\\s*[?!.]?\\s*$`, 'iu').test(text.trim());
+  })).map((card) => card.id);
+  if (addressed.length) return addressed;
+  if (/\b(?:you (?:both|all)|both of you|everyone|all of you)\b/iu.test(text)) return cast.map((card) => card.id);
+  return [];
+}
+
+/** Speaking permission is per turn, not a global invitation to the whole cast. */
+export function selectTurnParticipants(text: string, cast: CharacterCard[], defaultSpeaker: string | null, allowExchange: boolean): string[] {
+  const addressed = extractAddressees(text, cast);
+  const exchange = allowExchange && /\b(?:talk|chat|speak|discuss|converse|conversation|answer|ask)\b[\s\S]*?\b(?:each other|among(?:st)? yourselves|together|one another|between you)\b/iu.test(text);
+  const candidates = addressed.length ? addressed : exchange ? (extractMentions(text, cast).length ? extractMentions(text, cast) : cast.map((card) => card.id)) : defaultSpeaker ? [defaultSpeaker] : [];
+  return candidates.filter((id) => cast.some((card) => card.id === id));
 }
 
 /** Character ids mentioned in a message, in cast order. */
@@ -86,6 +112,9 @@ export function selectNextSpeaker(ctx: TurnContext): string | null {
 
   if (ctx.strategy === 'manual') return null;
 
+  const addressed = extractAddressees(lastMessage?.content || '', cast);
+  if (addressed.length) return (cast.find((card) => addressed.includes(card.id)) ?? cast[0]).id;
+
   if (ctx.strategy === 'list') {
     const lastIndex = cast.findIndex((card) => card.id === last);
     const next = cast[(lastIndex + 1) % cast.length];
@@ -99,7 +128,7 @@ export function selectNextSpeaker(ctx: TurnContext): string | null {
   }
 
   // natural
-  const mentionedCandidates = withoutSelf(ctx, mentioned, last);
+  const mentionedCandidates = withoutSelf(ctx, lastMessage?.role === 'assistant' ? mentioned : [], last);
   if (mentionedCandidates.length) return mentionedCandidates[0].id;
 
   const chatty = cast.filter((card) => {

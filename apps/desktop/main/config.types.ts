@@ -130,6 +130,10 @@ export type TTSEngineType = 'kokoro' | 'wasm';
  * TTS configuration.
  */
 export interface TTSConfig {
+  backend_mode?: 'local' | 'api' | 'browser';
+  api_provider?: string;
+  providers?: Record<string, import('../shared/speech.ts').SpeechProviderConfig>;
+  narrator?: import('../shared/speech.ts').VoiceAssignment;
   engine: TTSEngineType;
   model_variant: string;
   model_dir: string;
@@ -163,6 +167,8 @@ export type WhisperQuality =
  * STT configuration.
  */
 export interface STTConfig {
+  api_provider?: string;
+  providers?: Record<string, import('../shared/speech.ts').SpeechProviderConfig>;
   provider: STTProviderType;
   model: string;
   whisper_quality: WhisperQuality;

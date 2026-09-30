@@ -12,6 +12,7 @@
   import Renderer from '../Renderer.svelte';
   import { hasUIContent, uiChatLibrary } from '..';
   import { domainLabel } from '../message-utils';
+  import { highlightRoleplayMentions } from '$lib/features/roleplay/roleplay-mentions';
 
   interface Props {
     content: string;
@@ -21,9 +22,10 @@
     /** When set (search | deep | max), apply research-friendly APA report spacing. */
     searchMode?: ChatMessage['searchMode'] | null;
     onAction?: (event: ActionEvent) => void;
+    mentionNames?: string[];
   }
 
-  let { content, status = 'idle', metadataError = false, sources = [], searchMode = null, onAction }: Props = $props();
+  let { content, status = 'idle', metadataError = false, sources = [], searchMode = null, onAction, mentionNames = [] }: Props = $props();
 
   const isResearch = $derived(
     searchMode === 'search' || searchMode === 'deep' || searchMode === 'max'
@@ -65,10 +67,10 @@
       ? splitStreamingMarkdown(markdownSource)
       : { settled: markdownSource, tail: '' }
   ));
-  const settledHtml = $derived(streamSplit.settled ? renderMarkdown(streamSplit.settled) : '');
+  const settledHtml = $derived(streamSplit.settled ? highlightRoleplayMentions(renderMarkdown(streamSplit.settled), mentionNames) : '');
   const tailHtml = $derived(
     streamSplit.tail
-      ? renderMarkdown(streamSplit.tail, { highlight: false, math: false, cache: false })
+      ? highlightRoleplayMentions(renderMarkdown(streamSplit.tail, { highlight: false, math: false, cache: false }), mentionNames)
       : ''
   );
 

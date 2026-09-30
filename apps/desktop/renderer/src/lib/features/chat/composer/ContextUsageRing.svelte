@@ -39,8 +39,9 @@
 
   const usagePercent = $derived.by(() => {
     if (!safeMax) return 0;
-    return Math.min(100, Math.round((safeUsed / safeMax) * 100));
+    return Math.min(100, safeUsed / safeMax * 100);
   });
+  const percentLabel = $derived(usagePercent > 0 && usagePercent < 1 ? '<1' : Math.floor(usagePercent).toString());
 
   const radius = $derived.by(() => (size - strokeWidth) / 2);
   const circumference = $derived.by(() => 2 * Math.PI * radius);
@@ -49,7 +50,7 @@
   // A gauge, not a spinner: the percentage sits beside it, and it warms as the context fills.
   const accentColor = $derived(usagePercent >= 95 ? 'var(--error)' : usagePercent >= 80 ? 'var(--warning)' : 'var(--muted-foreground)');
 
-  const usageLabel = $derived.by(() => $t('chat.context.usage', { values: { used: formatTokenCount(safeUsed), max: formatTokenCount(safeMax), percent: usagePercent } }));
+  const usageLabel = $derived.by(() => $t('chat.context.usage', { values: { used: formatTokenCount(safeUsed), max: formatTokenCount(safeMax), percent: percentLabel } }));
   const reserveLabel = $derived.by(() => reservedTokens > 0 ? $t('chat.context.reserved', { values: { n: formatTokenCount(reservedTokens) } }) : '');
   const pricingLabel = $derived.by(() => {
     const parts: string[] = [];
@@ -103,7 +104,7 @@
       style={`stroke:${accentColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
     ></circle>
   </svg>
-  <span class="context-ring-label">{usagePercent === 0 && safeUsed > 0 ? '<1' : usagePercent}%</span>
+  <span class="context-ring-label">Context {percentLabel}%</span>
 
   {#if hover}
     <div class="context-tooltip">

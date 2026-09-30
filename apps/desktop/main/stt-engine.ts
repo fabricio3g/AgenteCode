@@ -7,6 +7,7 @@ import { getAppPaths } from './paths.ts';
 import { resolveWhisperBinary, detectBestBackend, pickBestRuntime, listWhisperBinaries } from './whisper-resolver.ts';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '../shared/providers.ts';
 import { findWhisperServer, stopWhisperServer, transcribeWithServer, whisperServerStatus } from './whisper-server.ts';
+import { transcribeApiAudio } from './voice/speech-api.ts';
 
 const MAX_STT_AUDIO_BYTES = 16 * 1024 * 1024;
 const FFMPEG_TIMEOUT_MS = 45_000;
@@ -304,6 +305,11 @@ async function transcribeLocal(audioBytes, mimeType, quality): Promise<{ text: s
 
 async function transcribeApi(audioBytes, mimeType) {
   const cfg = loadConfig();
+  if (cfg.stt?.api_provider) {
+    const provider = cfg.stt.providers?.[cfg.stt.api_provider];
+    if (!provider) throw new Error('Configure the transcription service in Settings → Voice.');
+    return transcribeApiAudio(provider, audioBytes, mimeType, cfg.stt.language);
+  }
   const providerName = cfg.llm?.provider || DEFAULT_PROVIDER_ID;
   const provider = cfg.llm?.providers?.[providerName] || {};
   const baseUrl = (provider.base_url || DEFAULT_PROVIDER_BASE_URL).replace(/\/+$/, '');
@@ -406,9 +412,9 @@ export function getSttStatus() {
   const binary = getWhisperBinary();
   const sttProvider = resolveSttProviderMode(cfg, modelAvailable && !!binary);
 
-  const providerName = cfg.llm?.provider || DEFAULT_PROVIDER_ID;
-  const provider = cfg.llm?.providers?.[providerName] || {};
-  const hasApiKey = !!(provider.api_key && provider.api_key !== '***');
+  const providerName = cfg.stt?.api_provider || cfg.llm?.provider || DEFAULT_PROVIDER_ID;
+  const provider = cfg.stt?.api_provider ? cfg.stt.providers?.[providerName] : cfg.llm?.providers?.[providerName];
+  const hasApiKey = !!provider && (!!provider.api_key || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/)/.test(provider.base_url || ''));
 
   const usingLocal = sttProvider === 'local' || (sttProvider === 'auto' && modelAvailable && !!binary);
   const ready = sttProvider === 'api'
@@ -421,7 +427,7 @@ export function getSttStatus() {
 
   return {
     provider: usingLocal ? 'local' : providerName,
-    model: usingLocal ? `whisper-${quality}` : (cfg.stt?.model || 'whisper-1'),
+    model: usingLocal ? `whisper-${quality}` : (provider?.model || cfg.stt?.model || 'whisper-1'),
     ready,
     whisper_quality: quality,
     language: usingLocal ? (cfg.stt?.language || 'auto') : undefined,

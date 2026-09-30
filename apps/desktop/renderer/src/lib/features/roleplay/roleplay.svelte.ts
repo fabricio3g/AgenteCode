@@ -16,6 +16,8 @@ import type {
   LorebookEntry,
   RoleplayJournalEntry,
   RoleplaySettings,
+  RoleplaySceneState,
+  RoleplayTurnSnapshot,
   RoleplayWorld
 } from '$lib/types/chat';
 import type { RoleplayAttribution } from '$lib/stores/app-message-pipeline';
@@ -27,13 +29,16 @@ import {
 } from '$lib/services/roleplay-prompts';
 import { toastStore } from '$lib/stores/toast.svelte';
 import { createId } from '$lib/utils/id';
-import { charactersStore, greetingsFor } from './characters.svelte';
+import { charactersStore, emptyCharacter, greetingsFor } from './characters.svelte';
 import { worldsStore } from './worlds.svelte';
-import { selectNextSpeaker } from './group-turn';
+import { selectNextSpeaker, selectTurnParticipants } from './group-turn';
 import { buildRoleplayStopStrings, stripSpeakerPrefix } from './roleplay-output';
 import { stripRoleplayChoiceBlock } from './roleplay-choices';
 import { makeSilenceTurn, makeTwistTurn, pickTwist, type StoryTurn } from './roleplay-twists';
 import { createRoleplayTurn, PASSTHROUGH_TURN, type RoleplayTurn } from './roleplay-turn';
+import { ensembleEnabled, resolveRoleplaySettings } from './roleplay-settings';
+import { copyScene, decideTurn, sceneForChat, seededRandom, stripSceneBlock, turnSnapshot, restrictContributions } from './roleplay-scene';
+import { roleplayPreferences } from './roleplay-presets.svelte';
 
 /** What the roleplay store needs from the app store. */
 interface RoleplayHost {
@@ -117,24 +122,63 @@ class RoleplayStore {
       .filter((card): card is CharacterCard => !!card);
   }
 
+  settings(chat: ChatSession | null = this.scene): RoleplaySettings {
+    roleplayPreferences.load();
+    return resolveRoleplaySettings(roleplayPreferences.defaults, worldsStore.getById(chat?.worldId)?.settings, chat?.roleplay);
+  }
+
+  room(chat: ChatSession | null = this.scene): RoleplaySceneState {
+    return chat ? sceneForChat(chat) : { location: '', presentIds: [], npcs: [], facts: [], goals: [], relationships: [] };
+  }
+
+  private presentCast(chat: ChatSession): CharacterCard[] {
+    const room = this.room(chat);
+    return [...this.cast(chat).filter((card) => room.presentIds.includes(card.id)), ...room.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))];
+  }
+
+  private cardForId(chat: ChatSession | null, id: string | null | undefined): CharacterCard | null {
+    const card = charactersStore.getById(id);
+    if (card || !chat) return card;
+    const npc = this.room(chat).npcs.find((entry) => entry.id === id);
+    return npc ? emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }) : null;
+  }
+
+  setScene(scene: RoleplaySceneState) {
+    const chat = this.scene;
+    if (!chat || this.host.currentChatGenerating) return;
+    this.patchSettings(chat, { sceneOrigin: chat.roleplay?.sceneOrigin ?? chat.roleplay?.scene ?? this.room(chat), scene: copyScene(scene), sceneAnchorId: chat.messages.at(-1)?.id });
+    this.save();
+  }
+
+  setSettings(settings: Partial<RoleplaySettings>) {
+    const chat = this.scene;
+    if (!chat) return;
+    chat.roleplay = { ...settings };
+    if (settings.autoMode === false) this.stopAuto(chat.id);
+    this.save();
+  }
+
   /**
    * Who speaks next: a forced speaker wins, otherwise the scene's reply order
    * decides. 1:1 scenes always answer as the character; manual order answers
    * as the primary on a plain send (the user force-talks for anyone else).
    */
   private routeSpeaker(chat: ChatSession, messages: ChatMessage[] = chat.messages): string | null {
-    const cast = this.cast(chat);
-    if (cast.length < 2) return chat.characterId || null;
+    const cast = this.presentCast(chat).filter((card) => !chat.roleplay?.mutedIds?.includes(card.id));
+    if (!cast.length) return null;
+    if (cast.length < 2) return cast[0].id;
     const forced = this.speakerOverrides[chat.id];
-    if (forced) return forced;
-    const strategy = chat.roleplay?.replyOrder || 'list';
-    if (strategy === 'manual') return chat.characterId || null;
+    if (forced && cast.some((card) => card.id === forced)) return forced;
+    const strategy = this.settings(chat).replyOrder || 'natural';
+    if (strategy === 'manual') return cast[0].id;
     return selectNextSpeaker({
       strategy,
       cast,
       messages,
       mutedIds: chat.roleplay?.mutedIds || [],
-      allowSelfReplies: false
+      allowSelfReplies: false,
+      // Preview and send share a stable routing roll for this history boundary.
+      random: seededRandom(chat.messages.reduce((hash, message) => [...message.id].reduce((value, char) => Math.imul(value, 31) + char.charCodeAt(0), hash), 1))
     });
   }
 
@@ -149,7 +193,7 @@ class RoleplayStore {
   /** Who the roster should show as next, without forcing a turn. */
   peekSpeaker(): CharacterCard | null {
     const chat = this.scene;
-    return chat ? charactersStore.getById(this.routeSpeaker(chat)) : null;
+    return chat ? this.cardForId(chat, this.routeSpeaker(chat)) : null;
   }
 
   /** Replace the scene's cast mid-chat (add, remove, reorder). */
@@ -159,7 +203,9 @@ class RoleplayStore {
     const cast = [...new Set(characterIds)].filter((id) => !!charactersStore.getById(id));
     if (!cast.length) return;
     const muted = (chat.roleplay?.mutedIds || []).filter((id) => cast.includes(id));
-    this.patchSettings(chat, { characterIds: cast, mutedIds: muted });
+    const room = this.room(chat);
+    room.presentIds = [...room.presentIds.filter((id) => cast.includes(id)), ...cast.filter((id) => !this.castIds(chat).includes(id))];
+    this.patchSettings(chat, { characterIds: cast, mutedIds: muted, sceneOrigin: chat.roleplay?.sceneOrigin ?? chat.roleplay?.scene ?? this.room(chat), scene: room, sceneAnchorId: chat.messages.at(-1)?.id });
     // The primary must be a member; removing it promotes the new first member.
     if (!chat.characterId || !cast.includes(chat.characterId)) chat.characterId = cast[0];
     delete this.speakerOverrides[chat.id];
@@ -210,13 +256,14 @@ class RoleplayStore {
     await this.host.sendCurrentMessage({ silent: true });
   }
 
-  /** Adventure choices: clicking one sends it as the user's turn. */
+  /** Suggestions are editable drafts; only the user submits a turn. */
   async sendChoice(choice: string) {
     if (!this.scene) return;
     const text = String(choice || '').trim();
     if (!text) return;
     this.host.composer = text;
-    await this.host.sendCurrentMessage();
+    this.pauseAuto();
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('focus-composer'));
   }
 
   /** Throw a story twist at the scene: a GM move, never a user turn. */
@@ -234,6 +281,12 @@ class RoleplayStore {
   async expireChoice() {
     const chat = this.scene;
     if (!chat || this.host.currentChatGenerating) return;
+    const expiry = this.settings(chat).choiceExpiry;
+    if (expiry === 'pause' || this.host.composer.trim()) return;
+    if (expiry === 'event') {
+      await this.throwTwist();
+      return;
+    }
     this.pendingStoryTurns = { ...this.pendingStoryTurns, [chat.id]: makeSilenceTurn(this.names(chat)) };
     await this.speakNow();
   }
@@ -254,14 +307,14 @@ class RoleplayStore {
    */
   routeTurn(chat: ChatSession, messages: ChatMessage[]): boolean {
     if (!isRoleplay(chat)) return true;
-    const cast = this.cast(chat);
+    const cast = [...this.cast(chat), ...this.presentCast(chat).filter((card) => card.id.startsWith('npc-'))];
     if (!cast.length) {
       toastStore.info('This scene has no character. Choose one to continue.', 4000);
       return false;
     }
     const speaker = this.routeSpeaker(chat, messages);
-    if (!speaker && cast.length > 1) {
-      toastStore.info('Everyone is muted — unmute a character to continue.', 4000);
+    if (!speaker) {
+      toastStore.info('No available character in this room — adjust presence or unmute a character.', 4000);
       return false;
     }
     if (speaker) this.speakerOverrides[chat.id] = speaker;
@@ -274,38 +327,63 @@ class RoleplayStore {
    * story turn — one turn, one generation. `consumeRouting` also spends the
    * routed speaker (a fresh send); a regenerate keeps it for the next send.
    */
-  prepareTurn(chat: ChatSession, options: { speakerId?: string | null; consumeRouting?: boolean } = {}): RoleplayTurn {
+  prepareTurn(chat: ChatSession, options: { speakerId?: string | null; consumeRouting?: boolean; snapshot?: RoleplayTurnSnapshot; historyEnd?: number; reroll?: boolean } = {}): RoleplayTurn {
     if (!isRoleplay(chat)) return PASSTHROUGH_TURN;
-    const speakerId = options.speakerId ?? this.speakerId(chat);
-    const parts = this.promptParts(chat, speakerId);
+    let speakerId = options.speakerId ?? this.speakerId(chat);
+    const history = options.historyEnd == null ? chat : { ...chat, messages: chat.messages.slice(0, options.historyEnd) };
+    const settings = options.snapshot?.settings ?? this.settings(chat);
+    const selected = options.snapshot && !options.reroll ? options.snapshot : decideTurn(history, settings,
+      options.snapshot?.sceneBefore ?? sceneForChat(history), Math.floor(Math.random() * 4294967296));
+    const snapshot: RoleplayTurnSnapshot = { ...selected, settled: false, sceneAfter: copyScene(selected.sceneBefore), contributions: [], choices: [], props: [] };
+    if (!snapshot.participantIds) {
+      const available = [...this.cast(history).filter((card) => snapshot.sceneBefore.presentIds.includes(card.id)),
+        ...snapshot.sceneBefore.npcs.map((npc) => emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }))]
+        .filter((card) => !settings.mutedIds?.includes(card.id));
+      const user = [...history.messages].reverse().find((message) => message.role === 'user');
+      snapshot.participantIds = selectTurnParticipants(user?.content ?? '', available, speakerId, ensembleEnabled(settings));
+    }
+    speakerId = snapshot.participantIds[0] ?? speakerId;
+    if (!snapshot.persona) {
+      const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
+      snapshot.persona = { id: persona?.id ?? null, name: persona?.name || this.host.userName || 'User', avatar: persona?.avatar };
+    }
+    const parts = this.promptParts(history, speakerId, snapshot);
     const turn = createRoleplayTurn({
       speakerId,
-      attribution: this.attribution(chat, speakerId),
+      attribution: this.attribution(history, speakerId, snapshot),
       sampling: parts.sampling,
       stop: parts.stop,
-      sanitize: this.outputSanitizer(chat),
-      choices: !!chat.roleplay?.adventureChoices,
-      storyTurn: this.takeStoryTurn(chat.id)
+      sanitize: this.outputSanitizer(chat, settings, snapshot.sceneBefore, snapshot.participantIds, speakerId),
+      choices: !!settings.adventureChoices,
+      storyTurn: this.takeStoryTurn(chat.id),
+      snapshot
     });
     if (options.consumeRouting) delete this.speakerOverrides[chat.id];
     return turn;
   }
 
   /** Speaker attribution for the request pipeline (group scenes only). */
-  attribution(chat: ChatSession | null, speakerId?: string | null): RoleplayAttribution | undefined {
+  attribution(chat: ChatSession | null, speakerId?: string | null, snapshot?: RoleplayTurnSnapshot): RoleplayAttribution | undefined {
     if (!isRoleplay(chat)) return undefined;
-    const ids = this.castIds(chat);
+    const ids = snapshot?.settings.characterIds ?? this.castIds(chat);
     const names = new Map<string, string>();
     for (const id of ids) {
       const card = charactersStore.getById(id);
       if (card?.name) names.set(id, card.name);
     }
-    const speaker = charactersStore.getById(speakerId ?? this.speakerId(chat));
+    const settings = snapshot?.settings ?? this.settings(chat);
+    const room = snapshot?.sceneBefore ?? this.room(chat);
+    for (const npc of room.npcs) names.set(npc.id, npc.name);
+    const speaker = this.cardForId(chat, speakerId ?? this.speakerId(chat));
     return {
       names,
-      userName: charactersStore.getPersonaById(chat.personaId)?.name || this.host.userName || 'User',
-      group: ids.length > 1,
-      speakerName: speaker?.name
+      userName: snapshot?.persona?.name || charactersStore.getPersonaById(chat.personaId)?.name || this.host.userName || 'User',
+      group: ids.length + room.npcs.length > 1,
+      speakerName: names.get(speakerId ?? this.speakerId(chat) ?? '') || speaker?.name,
+      allowMultiSpeaker: snapshot?.participantIds ? snapshot.participantIds.length > 1 : ensembleEnabled(settings),
+      maxExchangeLines: settings.maxExchangeLines,
+      participantIds: snapshot?.participantIds,
+      mode: settings.interactionMode
     };
   }
 
@@ -313,25 +391,27 @@ class RoleplayStore {
    * Replies mimic the `Name:` attribution we send for group scenes. Strip it
    * at ingest unless the scene explicitly wants speaker labels.
    */
-  private outputSanitizer(chat: ChatSession): ((content: string) => string) | undefined {
-    const labels = !!chat.roleplay?.showSpeakerLabels || !!chat.roleplay?.allowMultiSpeaker;
-    const hideChoices = !!chat.roleplay?.adventureChoices;
+  private outputSanitizer(chat: ChatSession, settings = this.settings(chat), room = this.room(chat), participantIds?: string[], speakerId?: string | null): ((content: string) => string) | undefined {
+    const cast = this.cast({ ...chat, roleplay: { ...chat.roleplay, ...settings } });
+    const labels = settings.interactionMode !== 'chat' || !!settings.showSpeakerLabels || (ensembleEnabled(settings) && cast.length + room.npcs.length > 1);
+    const hideChoices = !!settings.adventureChoices;
 
     const names = new Set<string>();
     if (!labels) {
-      for (const card of this.cast(chat)) {
+      for (const card of cast) {
         if (card.name) names.add(card.name);
         if (card.nickname) names.add(card.nickname);
       }
+      for (const npc of room.npcs) names.add(npc.name);
       const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
       if (persona?.name) names.add(persona.name);
     }
     // Nothing to clean: no prefixes to strip and no choices block to lift.
-    if (!hideChoices && !names.size) return undefined;
-
     return (content: string) => {
-      const visible = hideChoices ? stripRoleplayChoiceBlock(content) : content;
-      return names.size ? stripSpeakerPrefix(visible, names) : visible;
+      const sceneText = stripSceneBlock(content);
+      const visible = hideChoices ? stripRoleplayChoiceBlock(sceneText) : sceneText;
+      const restricted = participantIds ? restrictContributions(visible, new Map([...cast.map((card) => [card.id, card.name] as [string, string]), ...room.npcs.map((npc) => [npc.id, npc.name] as [string, string])]), participantIds, speakerId ?? null, settings) : visible;
+      return names.size ? stripSpeakerPrefix(restricted, names) : restricted;
     };
   }
 
@@ -378,8 +458,8 @@ class RoleplayStore {
   continueAuto(chatId: string, stopped = false) {
     const chat = this.host.findChat(chatId);
     if (!isRoleplay(chat)) return;
-    const settings = chat.roleplay;
-    const castCount = settings?.characterIds?.length || 0;
+    const settings = this.settings(chat);
+    const castCount = this.presentCast(chat).length;
     if (stopped || !settings?.autoMode || castCount < 2 || (settings.replyOrder || 'list') === 'manual') {
       this.stopAuto(chatId);
       return;
@@ -478,7 +558,7 @@ class RoleplayStore {
 
   /** The two names that macros and story turns resolve against. */
   private names(chat: ChatSession): { char: string; user: string } {
-    const speaker = charactersStore.getById(this.speakerId(chat)) || charactersStore.getById(chat.characterId);
+    const speaker = this.cardForId(chat, this.speakerId(chat)) || charactersStore.getById(chat.characterId);
     const persona = charactersStore.getPersonaById(chat.personaId) ?? charactersStore.defaultPersona;
     return {
       char: speaker?.name?.trim() || 'the character',
@@ -491,7 +571,7 @@ class RoleplayStore {
    * card, persona, lorebook and author's note compose the whole instruction
    * block (see services/roleplay-prompts).
    */
-  private promptParts(chat: ChatSession | null, speakerId?: string | null): {
+  private promptParts(chat: ChatSession | null, speakerId?: string | null, snapshot?: RoleplayTurnSnapshot): {
     systemPrompt: string;
     loreEntries: LorebookEntry[];
     speaker: CharacterCard | null;
@@ -499,11 +579,25 @@ class RoleplayStore {
     stop: string[];
   } {
     const primary = charactersStore.getById(chat?.characterId);
-    const characters = chat ? this.cast(chat) : [];
+    const characters = chat ? this.cast(snapshot ? { ...chat, roleplay: { ...chat.roleplay, ...snapshot.settings } } : chat) : [];
     if (!characters.length && primary) characters.push(primary);
 
-    const persona = charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
+    const personaCard = snapshot?.persona
+      ? charactersStore.getPersonaById(snapshot.persona.id)
+      : charactersStore.getPersonaById(chat?.personaId) ?? charactersStore.defaultPersona;
+    const persona = personaCard && snapshot?.persona ? { ...personaCard, name: snapshot.persona.name } : personaCard;
     const world = worldsStore.getById(chat?.worldId);
+    const settings = snapshot?.settings ?? this.settings(chat);
+    const room = snapshot?.sceneBefore ?? this.room(chat);
+    for (const npc of room.npcs) characters.push(emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }));
+    const memoryLimit = (settings.memoryBudget ?? 800) * 4;
+    const journal = (settings.journal ?? []).filter((entry) => entry.pinned && (!entry.messageId || chat?.messages.some((message) => message.id === entry.messageId)));
+    const memoryContext = settings.memoryEnabled
+      ? [...journal.map((entry) => `${entry.title}: ${entry.body}`), ...room.facts, ...room.goals.map((goal) => `Goal: ${goal}`), ...room.relationships].join('\n').slice(0, memoryLimit) : '';
+    const sceneContext = [
+      `Location: ${room.location || 'as established in conversation'}`,
+      ...characters.map((card) => `${card.id}: ${card.name} — ${room.presentIds.includes(card.id) || room.npcs.some((npc) => npc.id === card.id) ? settings.mutedIds?.includes(card.id) ? 'present, silent' : 'present' : 'absent'}`)
+    ].join('\n');
 
     const scanDepth = Math.max(1, primary?.book?.scanDepth || 0, world?.book?.scanDepth || 0) || 4;
     const scanText = (chat?.messages || [])
@@ -523,27 +617,29 @@ class RoleplayStore {
       scanText
     );
 
-    const speaker = charactersStore.getById(speakerId ?? this.speakerId(chat)) || primary;
+    const speaker = characters.find((card) => card.id === (speakerId ?? this.speakerId(chat))) || primary;
     const systemPrompt = composeRoleplayPrompt({
       characters,
       speaker,
       persona,
-      userName: this.host.userName,
+      userName: snapshot?.persona?.name || this.host.userName,
       loreEntries,
-      authorNote: chat?.roleplay?.authorNote,
-      group: characters.length > 1,
-      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker,
-      adventureChoices: !!chat?.roleplay?.adventureChoices,
-      props: !!chat?.roleplay?.props,
+      authorNote: settings.authorNote,
+      group: characters.length > 1 || room.npcs.length > 0,
+      allowMultiSpeaker: snapshot?.participantIds ? snapshot.participantIds.length > 1 : ensembleEnabled(settings),
+      participantIds: snapshot?.participantIds,
+      adventureChoices: !!settings.adventureChoices,
+      props: !!settings.props,
       worldName: world?.name,
       worldOverview: world?.overview,
       worldScenario: world?.scenario,
-      contentRating: chat?.roleplay?.contentRating
+      contentRating: settings.contentRating,
+      settings, sceneContext, memoryContext
     });
 
     const sampling = resolveRoleplaySampling({
       speaker: speaker || null,
-      chatSettings: chat?.roleplay,
+      chatSettings: settings,
       worldSettings: world?.settings
     });
 
@@ -554,18 +650,18 @@ class RoleplayStore {
      * below mirrors `buildRoleplaySystemPrompt` exactly.
      */
     const stop = buildRoleplayStopStrings({
-      userName: persona?.name?.trim() || this.host.userName?.trim() || 'User',
+      userName: snapshot?.persona?.name || persona?.name?.trim() || this.host.userName?.trim() || 'User',
       speakerName: speaker?.name,
-      castNames: characters.map((card) => card.name),
-      allowMultiSpeaker: !!chat?.roleplay?.allowMultiSpeaker
+      allowMultiSpeaker: false,
+      castNames: characters.filter((card) => snapshot?.participantIds && !snapshot.participantIds.includes(card.id)).map((card) => card.name)
     });
 
     return { systemPrompt, loreEntries, speaker: speaker || null, sampling, stop };
   }
 
   /** The composed system prompt for a scene reply. */
-  systemPrompt(chat: ChatSession | null, speakerId?: string | null): string {
-    return this.promptParts(chat, speakerId).systemPrompt;
+  systemPrompt(chat: ChatSession | null, speakerId?: string | null, snapshot?: RoleplayTurnSnapshot): string {
+    return this.promptParts(chat, speakerId, snapshot).systemPrompt;
   }
 
   /**
@@ -578,7 +674,8 @@ class RoleplayStore {
     const messageSpeakerId = messageId
       ? chat.messages.find((message) => message.id === messageId)?.speakerId || null
       : null;
-    return this.promptParts(chat, messageSpeakerId);
+    const message = messageId ? chat.messages.find((entry) => entry.id === messageId) : undefined;
+    return this.promptParts(chat, messageSpeakerId, message ? turnSnapshot(message) : undefined);
   }
 
   // ── Starting a scene ──────────────────────────────────────────────────
@@ -628,23 +725,13 @@ class RoleplayStore {
     chat.worldId = world?.id ?? null;
     chat.personaId = options.personaId ?? null;
     chat.greetingIndex = openingIndex;
-    chat.roleplay = {
+    roleplayPreferences.load();
+    chat.roleplay = resolveRoleplaySettings(roleplayPreferences.defaults, worldSettings, {
       characterIds: cast.map((card) => card.id),
-      replyOrder: worldSettings.replyOrder ?? 'list',
-      autoMode: worldSettings.autoMode ?? false,
-      autoModeMaxTurns: worldSettings.autoModeMaxTurns ?? 4,
-      autoModeDelayMs: worldSettings.autoModeDelayMs ?? 8000,
-      adventureChoices: worldSettings.adventureChoices ?? false,
-      showSpeakerLabels: worldSettings.showSpeakerLabels ?? false,
-      allowMultiSpeaker: worldSettings.allowMultiSpeaker ?? false,
-      temperature: worldSettings.temperature ?? null,
-      topP: worldSettings.topP ?? null,
-      maxTokens: worldSettings.maxTokens ?? null,
-      authorNote: worldSettings.authorNote ?? '',
-      contentRating: worldSettings.contentRating ?? 'sfw',
       mutedIds: [],
+      scene: { location: '', presentIds: cast.map((card) => card.id), npcs: [], facts: [], goals: [], relationships: [] },
       ...(options.settings || {})
-    };
+    });
     chat.title = world?.name || (group ? `${primary.name} +${cast.length - 1}` : primary.name) || chat.title;
 
     const opening = openings[openingIndex];

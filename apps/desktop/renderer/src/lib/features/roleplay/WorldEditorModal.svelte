@@ -14,11 +14,12 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { dirtyGuard } from '$lib/components/ui/dirty-guard';
-  import { Button, Select, Switch } from '$lib/components/ui';
+  import { Button } from '$lib/components/ui';
   import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
   import { emptyWorld, normalizeWorld, worldsStore } from './worlds.svelte';
   import { charactersStore } from './characters.svelte';
   import LorebookEditor from './LorebookEditor.svelte';
+  import RoleplaySettingsEditor from './RoleplaySettingsEditor.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
 
@@ -47,13 +48,6 @@
 
   function set<K extends keyof RoleplayWorld>(key: K, value: RoleplayWorld[K]) {
     draft = { ...draft, [key]: value };
-  }
-
-  function setSetting<K extends keyof NonNullable<RoleplayWorld['settings']>>(
-    key: K,
-    value: NonNullable<RoleplayWorld['settings']>[K]
-  ) {
-    set('settings', { ...(draft.settings || {}), [key]: value });
   }
 
   function onAvatarPicked(event: Event) {
@@ -101,13 +95,6 @@
     set('starters', draft.starters.filter((_, i) => i !== index));
   }
 
-  function numberValue(event: Event): number | null {
-    const raw = (event.currentTarget as HTMLInputElement).value.trim();
-    if (!raw) return null;
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : null;
-  }
-
   async function save() {
     if (!draft.name.trim()) {
       toastStore.error('Give the world a name first.');
@@ -132,17 +119,6 @@
     { id: 'defaults', label: 'Defaults' }
   ];
 
-  const replyOrderOptions = [
-    { value: 'list', label: 'List order — take turns in cast order' },
-    { value: 'natural', label: 'Natural — mentions, then talkativeness' },
-    { value: 'mention', label: 'Mentions only' },
-    { value: 'manual', label: 'Manual — pick each speaker' }
-  ];
-
-  const ratingOptions = [
-    { value: 'sfw', label: 'Safe for work' },
-    { value: 'unrestricted', label: 'Unrestricted' }
-  ];
 </script>
 
 <div
@@ -311,124 +287,7 @@
       {/if}
 
       {#if section === 'defaults'}
-        <div class="space-y-1.5">
-          <span class="text-sm font-medium text-muted-foreground">Speaker order</span>
-          <Select
-            variant="surface"
-            value={draft.settings?.replyOrder || 'list'}
-            options={replyOrderOptions}
-            aria-label="Speaker order"
-            onchange={(value) => setSetting('replyOrder', value as NonNullable<RoleplayWorld['settings']>['replyOrder'])}
-          />
-        </div>
-
-        <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-xs font-medium text-foreground">Auto mode</div>
-            <div class="text-[11px] text-muted-foreground">Characters keep talking without a user turn until paused.</div>
-          </div>
-          <Switch
-            checked={!!draft.settings?.autoMode}
-            label="Auto mode"
-            onchange={(checked) => setSetting('autoMode', checked)}
-          />
-        </div>
-
-        <div class="space-y-1.5">
-          <span class="text-sm font-medium text-muted-foreground">Pause between auto turns</span>
-          <Select
-            variant="surface"
-            value={String(draft.settings?.autoModeDelayMs ?? 8000)}
-            options={[
-              { value: '2000', label: '2 seconds' },
-              { value: '4000', label: '4 seconds' },
-              { value: '8000', label: '8 seconds' },
-              { value: '12000', label: '12 seconds' }
-            ]}
-            aria-label="Pause between auto turns"
-            onchange={(value) => setSetting('autoModeDelayMs', Number(value) || 8000)}
-          />
-        </div>
-
-        <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-xs font-medium text-foreground">Adventure choices</div>
-            <div class="text-[11px] text-muted-foreground">Replies end with clickable suggested actions.</div>
-          </div>
-          <Switch
-            checked={!!draft.settings?.adventureChoices}
-            label="Adventure choices"
-            onchange={(checked) => setSetting('adventureChoices', checked)}
-          />
-        </div>
-
-        <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-xs font-medium text-foreground">Show speaker labels</div>
-            <div class="text-[11px] text-muted-foreground">Keep the "Name:" prefix the model writes in replies.</div>
-          </div>
-          <Switch
-            checked={!!draft.settings?.showSpeakerLabels}
-            label="Show speaker labels"
-            onchange={(checked) => setSetting('showSpeakerLabels', checked)}
-          />
-        </div>
-
-        <div class="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2">
-          <div class="min-w-0">
-            <div class="text-xs font-medium text-foreground">Let characters write each other</div>
-            <div class="text-[11px] text-muted-foreground">One generation may voice several cast members.</div>
-          </div>
-          <Switch
-            checked={!!draft.settings?.allowMultiSpeaker}
-            label="Let characters write each other"
-            onchange={(checked) => setSetting('allowMultiSpeaker', checked)}
-          />
-        </div>
-
-        <div class="grid gap-3 sm:grid-cols-3">
-          <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Auto turns before pause</span>
-            <input
-              class="aui-input"
-              type="number"
-              min="1"
-              max="12"
-              value={draft.settings?.autoModeMaxTurns ?? 4}
-              oninput={(event) => setSetting('autoModeMaxTurns', numberValue(event) ?? 4)}
-            />
-          </label>
-          <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Temperature</span>
-            <input class="aui-input" type="number" step="0.01" value={draft.settings?.temperature ?? ''} oninput={(event) => setSetting('temperature', numberValue(event))} placeholder="Model default" />
-          </label>
-          <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Top P</span>
-            <input class="aui-input" type="number" step="0.01" value={draft.settings?.topP ?? ''} oninput={(event) => setSetting('topP', numberValue(event))} placeholder="Model default" />
-          </label>
-        </div>
-
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label class="block space-y-1.5 text-sm">
-            <span class="text-xs font-medium text-muted-foreground">Max tokens</span>
-            <input class="aui-input" type="number" min="0" value={draft.settings?.maxTokens ?? ''} oninput={(event) => setSetting('maxTokens', numberValue(event))} placeholder="Model default" />
-          </label>
-          <div class="space-y-1.5">
-            <span class="text-xs font-medium text-muted-foreground">Content rating</span>
-            <Select
-              variant="surface"
-              value={draft.settings?.contentRating || 'sfw'}
-              options={ratingOptions}
-              aria-label="Content rating"
-              onchange={(value) => setSetting('contentRating', value as 'sfw' | 'unrestricted')}
-            />
-          </div>
-        </div>
-
-        <label class="block space-y-1.5 text-sm">
-          <span class="text-xs font-medium text-muted-foreground">Author's note</span>
-          <textarea class="aui-input min-h-16 resize-y" value={draft.settings?.authorNote || ''} oninput={(event) => setSetting('authorNote', event.currentTarget.value)} placeholder="Tone, pacing, or a rule for every reply."></textarea>
-        </label>
+        <RoleplaySettingsEditor value={draft.settings ?? {}} onchange={(next) => set('settings', next)} />
       {/if}
     </div>
 

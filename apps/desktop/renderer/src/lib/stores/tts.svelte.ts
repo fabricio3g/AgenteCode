@@ -13,6 +13,7 @@ type TtsDoneEvent = { requestId?: string };
 
 class TtsStore {
   playing = $state(false);
+  paused = $state(false);
   isGenerating = $state(false);
   currentMessageId = $state<string | null>(null);
   onPlaybackEnd: (() => void) | null = null;
@@ -24,6 +25,23 @@ class TtsStore {
   totalDuration = $state(0);
   lastError = $state<string | null>(null);
   audioBuffers: Map<string, Float32Array> = new Map();
+  private audioSignatures = new Map<string, string>();
+  private queue: Array<{ id: string; text: string; config: AppConfig }> = [];
+  private queueing = false;
+
+  speakSequence(parts: Array<{ id: string; text: string; config: AppConfig }>) {
+    this.stop();
+    this.queue = parts.filter((part) => part.text.trim());
+    this.nextInSequence();
+  }
+
+  private nextInSequence() {
+    const next = this.queue.shift();
+    if (!next) return;
+    this.queueing = true;
+    void this.speak(next.id, next.text, next.config);
+    this.queueing = false;
+  }
   // Reactive set of message IDs that have stored audio (for Svelte reactivity)
   storedAudioIds = $state<Set<string>>(new Set());
   // Fires when a generation + playback session completes for a message
@@ -70,7 +88,7 @@ class TtsStore {
     this.progressInterval = setInterval(() => {
       if (this.audioCtx && this.audioCtx.state === 'running' && this.playing) {
         const now = this.audioCtx.currentTime;
-        const clip = this.playbackTimeline[this.playbackTimeline.length - 1];
+        const clip = [...this.playbackTimeline].reverse().find((item) => item.start <= now);
         if (clip && clip.start <= now) {
           this.elapsedTime = Math.min(this.totalDuration, clip.offset + Math.min(clip.duration, now - clip.start));
         }
@@ -86,6 +104,7 @@ class TtsStore {
   }
 
   stop() {
+    if (!this.queueing) this.queue = [];
     this.genId++;
     cancelTtsStream();
     this.stopProgressTracking();
@@ -114,6 +133,7 @@ class TtsStore {
       window.speechSynthesis.cancel();
     }
     this.playing = false;
+    this.paused = false;
     this.isGenerating = false;
     this.currentMessageId = null;
     this.progress = null;
@@ -121,7 +141,34 @@ class TtsStore {
     this.totalDuration = 0;
   }
 
+  async pause() {
+    if (!this.playing || !this.currentMessageId) return;
+    const session = this.genId;
+    if (this.audioCtx?.state === 'running') await this.audioCtx.suspend();
+    else if (typeof window !== 'undefined') window.speechSynthesis?.pause();
+    if (session !== this.genId || !this.currentMessageId) return;
+    this.playing = false;
+    this.paused = true;
+  }
+
+  async resume() {
+    if (!this.paused || !this.currentMessageId) return;
+    const session = this.genId;
+    if (this.audioCtx?.state === 'suspended') await this.audioCtx.resume();
+    else if (typeof window !== 'undefined') window.speechSynthesis?.resume();
+    if (session !== this.genId || !this.currentMessageId) return;
+    this.paused = false;
+    this.playing = true;
+  }
+
   async speak(messageId: string, text: string, config: AppConfig): Promise<void> {
+    const signature = JSON.stringify([cleanTextForTTS(text), config.tts?.backend_mode, config.tts?.api_provider, config.tts?.voice, config.tts?.voice_model, config.tts?.speed, config.tts?.volume, config.tts?.language,
+      config.tts?.providers?.[config.tts.api_provider ?? '']?.model, config.tts?.providers?.[config.tts.api_provider ?? '']?.base_url, config.tts?.providers?.[config.tts.api_provider ?? '']?.voice]);
+    if (this.audioSignatures.get(messageId) !== signature) {
+      this.audioBuffers.delete(messageId);
+      this.storedAudioIds = new Set([...this.storedAudioIds].filter((id) => id !== messageId));
+      this.audioSignatures.set(messageId, signature);
+    }
     // If we already have a stored buffer for this message, replay instead of re-generating
     if (this.audioBuffers.has(messageId)) {
       return this.replay(messageId);
@@ -140,12 +187,12 @@ class TtsStore {
     this.totalDuration = 0;
     this.collectedChunks = [];
 
-    const voice = config.tts?.voice || 'af_heart';
+    const voice = config.tts?.backend_mode === 'api' ? config.tts?.voice || config.tts?.providers?.[config.tts.api_provider ?? '']?.voice || '' : config.tts?.voice || 'af_heart';
     const speed = config.tts?.speed ?? 1;
     const volume = config.tts?.volume ?? 1;
 
     // A voice of the local engines (Settings → Voice); anything else is the browser's.
-    if (VOICE_MODELS.some((model) => model.voices.some((option) => option.id === voice))) {
+    if (config.tts?.backend_mode === 'api' || (config.tts?.backend_mode !== 'browser' && (config.tts?.backend_mode === 'local' || VOICE_MODELS.some((model) => model.voices.some((option) => option.id === voice))))) {
       const session = this.genId;
       const requestId = crypto.randomUUID();
       this.currentRequestId = requestId;
@@ -201,7 +248,9 @@ class TtsStore {
         if (session !== this.genId) return;
         this.startProgressTracking();
         await generateTtsStream({ text: cleaned, voice, speed, volume, requestId,
-          model: config.tts?.voice_model, language: config.tts?.language });
+          backend: config.tts?.backend_mode, provider: config.tts?.api_provider,
+          model: config.tts?.backend_mode === 'api' ? config.tts?.providers?.[config.tts.api_provider ?? '']?.model : config.tts?.voice_model,
+          language: config.tts?.language });
       } catch (error) {
         if (session === this.genId) this.failPlayback(error instanceof Error ? error.message : String(error));
       }
@@ -267,7 +316,7 @@ class TtsStore {
   }
 
   private onPlaybackEnded() {
-    if (!this.playing || !this.currentMessageId) return;
+    if ((!this.playing && !this.paused) || !this.currentMessageId) return;
     this.stopProgressTracking();
     // Store collected chunks as a single buffer BEFORE clearing state
     if (this.currentMessageId && this.collectedChunks.length > 0 && !this.audioBuffers.has(this.currentMessageId)) {
@@ -277,6 +326,7 @@ class TtsStore {
     const totalDur = this.totalDuration;
     this.isGenerating = false;
     this.playing = false;
+    this.paused = false;
     this.progress = null;
     this.elapsedTime = this.totalDuration;
     this.pendingEndSource = null;
@@ -294,7 +344,8 @@ class TtsStore {
       void this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
     }
-    this.onPlaybackEnd?.();
+    if (this.queue.length) this.nextInSequence();
+    else this.onPlaybackEnd?.();
     // Fire onAudioComplete AFTER buffer is stored so the player can transition
     if (this.audioBuffers.has(finishedId)) this.onAudioComplete?.(finishedId, totalDur);
   }
@@ -366,11 +417,13 @@ class TtsStore {
   private finishStoredPlayback() {
     this.stopProgressTracking();
     this.playing = false;
+    this.paused = false;
     this.currentMessageId = null;
     this.elapsedTime = this.totalDuration;
     if (this.audioCtx && this.audioCtx.state !== 'closed') void this.audioCtx.close().catch(() => {});
     this.audioCtx = null;
-    this.onPlaybackEnd?.();
+    if (this.queue.length) this.nextInSequence();
+    else this.onPlaybackEnd?.();
   }
 
   private playBrowser(messageId: string, text: string, config: AppConfig) {
@@ -381,7 +434,11 @@ class TtsStore {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = Number(config.tts?.speed || 1);
-    u.onend = () => { if (this.currentMessageId === messageId) { this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
+    u.volume = Math.max(0, Math.min(1, config.tts?.volume ?? 1));
+    if (config.tts?.language) u.lang = config.tts.language;
+    const voice = window.speechSynthesis.getVoices().find((voice) => voice.name === config.tts?.voice || voice.voiceURI === config.tts?.voice);
+    if (voice) u.voice = voice;
+    u.onend = () => { if (this.currentMessageId === messageId) { this.playing = false; this.paused = false; this.currentMessageId = null; this.isGenerating = false; if (this.queue.length) this.nextInSequence(); else this.onPlaybackEnd?.(); } };
     u.onerror = () => { if (this.currentMessageId === messageId) { this.playing = false; this.currentMessageId = null; this.isGenerating = false; this.onPlaybackEnd?.(); } };
     try { window.speechSynthesis.speak(u); } catch {
       this.playing = false; this.currentMessageId = null; this.isGenerating = false;

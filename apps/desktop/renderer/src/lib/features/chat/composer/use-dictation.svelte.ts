@@ -419,6 +419,7 @@ export class Dictation {
    * Returns true when recording can start now.
    */
   private async ensureVoiceEngine(): Promise<boolean> {
+    if (appStore.config.stt?.provider === 'api') return true;
     if (this.voiceReady) return true;
     let plan: VoiceSetupPlan;
     try {

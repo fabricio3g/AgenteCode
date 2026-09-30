@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterCard, LorebookEntry } from '$lib/types/chat';
+import { resolveRoleplaySettings } from '$lib/features/roleplay/roleplay-settings';
 import {
   CONTENT_FRAME_SFW,
   CONTENT_FRAME_UNRESTRICTED,
@@ -51,6 +52,31 @@ describe('substituteMacros', () => {
 });
 
 describe('buildRoleplaySystemPrompt', () => {
+  it('keeps Chat conversational even with narrative card overrides and inherited reply styles', () => {
+    const prompt = buildRoleplaySystemPrompt({
+      characters: [card({ systemPrompt: 'Always narrate gestures.', postHistoryInstructions: 'Use elaborate prose.' })],
+      authorNote: 'Describe the room first.',
+      settings: resolveRoleplaySettings({ interactionMode: 'chat', replyStyle: 'narrative' })
+    });
+    const policy = prompt.slice(prompt.indexOf('## Character chat policy'));
+    expect(policy).toContain('Chat mode is always dialogue-only');
+    expect(policy).toContain('No narration, stage directions, italic actions');
+    expect(policy).toContain('Reply style: dialogue');
+    expect(policy).not.toContain('Use light italic emphasis');
+    expect(prompt.indexOf('## Character chat policy')).toBeGreaterThan(prompt.indexOf('Use elaborate prose.'));
+  });
+
+  it('uses a distinct narrator protocol in Narrative and retains opt-in directions in Dynamic', () => {
+    const narrative = buildRoleplaySystemPrompt({ characters: [card()], settings: resolveRoleplaySettings({ interactionMode: 'narrative' }) });
+    expect(narrative).toContain('## Narrative scene policy');
+    expect(narrative).toContain('starting with "Narrator:"');
+    expect(narrative).toContain('even with a single character');
+    expect(narrative).toContain('Never narrate unexpressed user actions or thoughts.');
+    const dynamic = buildRoleplaySystemPrompt({ characters: [card()], settings: resolveRoleplaySettings({ interactionMode: 'dynamic' }) });
+    expect(dynamic).toContain('## Dynamic scene policy');
+    expect(dynamic).not.toContain('Chat mode is always dialogue-only');
+  });
+
   it('uses the roleplay base prompt, never the assistant style or chart hint', () => {
     const prompt = buildRoleplaySystemPrompt({ characters: [card()] });
     expect(prompt).toContain('Aiko');

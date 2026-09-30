@@ -70,6 +70,31 @@ afterEach(async () => {
 });
 
 describe('chat-db process persistence', () => {
+  it('round-trips Roleplay presence, decisions, response versions and historical persona identity', async (t) => {
+    if (!getDatabase()) {
+      t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);
+      return;
+    }
+    const { saveChatSession, loadAllChats } = await loadChatDb();
+    const room = { location: 'Harbor', presentIds: ['wren'], npcs: [], facts: ['The key is brass.'], goals: [], relationships: [] };
+    const snapshot = { settled: true, mode: 'dynamic', seed: 42, direction: 'discovery', instruction: 'A relevant discovery.', settings: { interactionMode: 'dynamic', npcDialogue: true }, sceneBefore: room, sceneAfter: { ...room, location: 'Ship' }, contributions: [{ speakerId: 'wren', addresseeIds: [], content: 'Here we are.' }], choices: ['I board.'], props: [] };
+    saveChatSession({
+      id: 'roleplay-scene', title: 'Voyage', contextMode: 'roleplay', characterId: 'wren', personaId: 'player', createdAt: 1, updatedAt: 3,
+      roleplay: { interactionMode: 'dynamic', scene: room, characterIds: ['wren'] },
+      messages: [
+        { id: 'rp-user', role: 'user', content: 'I try to board.', done: true, createdAt: 1, metadata: { roleplayPersona: { id: 'player', name: 'Captain' } } },
+        { id: 'rp-response', role: 'assistant', content: 'Here we are.', done: true, createdAt: 2, speakerId: 'wren', activeVersion: 1, metadata: { roleplay: snapshot }, choices: snapshot.choices,
+          versions: [{ content: 'Still on shore.', createdAt: 2, metadata: { roleplay: { ...snapshot, sceneAfter: room } } }, { content: 'Here we are.', createdAt: 3, metadata: { roleplay: snapshot } }] }
+      ]
+    });
+    const [loaded] = loadAllChats();
+    assert.deepStrictEqual(loaded.roleplay.scene, room);
+    assert.strictEqual(loaded.messages[0].metadata.roleplayPersona.name, 'Captain');
+    assert.strictEqual(loaded.messages[1].activeVersion, 1);
+    assert.deepStrictEqual(loaded.messages[1].versions[1].metadata.roleplay, snapshot);
+    assert.strictEqual(loaded.messages[1].versions[0].metadata.roleplay.sceneAfter.location, 'Harbor');
+  });
+
   it('round-trips agent steps, search metadata, sources, artifacts, and rich version metadata', async (t) => {
     if (!getDatabase()) {
       t.skip(`better-sqlite3 is unavailable in this Node runtime: ${sqliteUnavailable}`);

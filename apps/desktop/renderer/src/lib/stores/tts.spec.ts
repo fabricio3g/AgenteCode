@@ -14,6 +14,7 @@ class TestAudioContext {
   state = 'suspended';
   destination = {};
   resume = vi.fn(async () => { this.state = 'running'; });
+  suspend = vi.fn(async () => { this.state = 'suspended'; });
   close = vi.fn(async () => { this.state = 'closed'; });
   createBuffer(_channels: number, length: number, rate: number) {
     return { duration: length / rate, copyToChannel: vi.fn() };
@@ -58,6 +59,41 @@ afterEach(() => {
 });
 
 describe('audio.cpp playback requests', () => {
+  it('pauses without cancelling synthesis and resumes the same request', async () => {
+    await ttsStore.speak('message', 'Hello.', config);
+    emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
+    await ttsStore.pause();
+    expect(ttsStore.currentMessageId).toBe('message');
+    expect(ttsStore.paused).toBe(true);
+    expect(ttsStore.playing).toBe(false);
+    await ttsStore.resume();
+    expect(ttsStore.playing).toBe(true);
+    expect(requests).toHaveLength(1);
+  });
+  it('plays differently voiced parts in order and cancellation drops the remaining queue', async () => {
+    ttsStore.speakSequence([{ id: 'rachel', text: 'Hello.', config }, { id: 'wren', text: 'Hi.', config: { tts: { voice: 'af_heart' } } }, { id: 'narrator', text: 'Rain falls.', config }]);
+    await vi.advanceTimersByTimeAsync(0);
+    emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
+    emit('tts-done', requests[0].requestId);
+    sources[0].onended?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(requests).toHaveLength(2);
+    expect(requests[1].text).toBe('Hi.');
+    expect(requests[1].voice).toBe('af_heart');
+    ttsStore.stop();
+    emit('tts-done', requests[1].requestId);
+    expect(ttsStore.currentMessageId).toBeNull();
+    expect(requests).toHaveLength(2);
+  });
+  it('regenerates cached audio when dialogue or voice changes', async () => {
+    await ttsStore.speak('message', 'Hello.', config);
+    emit('tts-chunk', requests[0].requestId, { index: 0, total: 1, base64: pcm });
+    emit('tts-done', requests[0].requestId); sources[0].onended?.();
+    expect(ttsStore.hasStoredAudio('message')).toBe(true);
+    await ttsStore.speak('message', 'Changed dialogue.', { tts: { voice: 'af_heart' } });
+    expect(requests).toHaveLength(2);
+    expect(ttsStore.hasStoredAudio('message')).toBe(false);
+  });
   it('plays matched PCM even after repeated cancellation has advanced the engine sequence', async () => {
     ttsStore.stop(); ttsStore.stop();
     await ttsStore.speak('message', 'Read this aloud.', config);

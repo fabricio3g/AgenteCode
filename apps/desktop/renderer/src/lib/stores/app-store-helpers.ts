@@ -404,7 +404,8 @@ export function buildRequestMessagesFromHistory(
     if (!content) continue;
     outbound.push({
       role: message.role,
-      content: attributeRoleplayContent(message.role, message.speakerId, content, attribution),
+      content: attributeRoleplayContent(message.role, message.speakerId, content, attribution && message.metadata?.roleplayPersona
+        ? { ...attribution, userName: message.metadata.roleplayPersona.name } : attribution),
       ...(getMessageRequestReasoning(message) ? { reasoning_content: getMessageRequestReasoning(message) } : {})
     });
   }
@@ -428,6 +429,10 @@ export interface RoleplayAttribution {
   group: boolean;
   /** The character whose reply is being generated. */
   speakerName?: string;
+  allowMultiSpeaker?: boolean;
+  maxExchangeLines?: number;
+  participantIds?: string[];
+  mode?: 'chat' | 'narrative' | 'dynamic';
 }
 
 /** Prefix a turn with its speaker's name in group scenes. */
@@ -439,6 +444,8 @@ export function attributeRoleplayContent(
 ): string {
   if (!attribution?.group) return content;
   if (role === 'assistant') {
+    // Ensemble lines already carry their own attribution.
+    if (/^\s*(?:\*\*|__)?Narrator\s*:/i.test(content) || [...attribution.names.values()].some((name) => content.startsWith(`${name}:`) || content.startsWith(`**${name}:`))) return content;
     const name = speakerId ? attribution.names.get(speakerId) : undefined;
     return name ? `${name}: ${content}` : content;
   }

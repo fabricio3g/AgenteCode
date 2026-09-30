@@ -14,7 +14,10 @@
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { Button, Select } from '$lib/components/ui';
-  import type { CharacterCard, RoleplayWorld } from '$lib/types/chat';
+  import type { CharacterCard, RoleplaySettings, RoleplayWorld } from '$lib/types/chat';
+  import RoleplaySettingsEditor from './RoleplaySettingsEditor.svelte';
+  import { roleplayPreferences } from './roleplay-presets.svelte';
+  import { resolveRoleplaySettings } from './roleplay-settings';
   import { charactersStore, greetingsFor } from './characters.svelte';
   import CastPicker from './CastPicker.svelte';
   import { copy } from '$lib/copy';
@@ -30,6 +33,7 @@
       personaId: string | null;
       openingSource: 'greeting' | 'starter' | 'none';
       openingIndex: number;
+      settings: RoleplaySettings;
     }) => void;
   }
 
@@ -46,6 +50,9 @@
     untrack(() => world?.defaultPersonaId || charactersStore.defaultPersona?.id || '')
   );
   let openingKey = $state<string>('0');
+  let sceneSettings = $state<RoleplaySettings>({});
+  roleplayPreferences.load();
+  const inherited = $derived(resolveRoleplaySettings(roleplayPreferences.defaults, world?.settings));
 
   const cast = $derived(castIds.map((id) => charactersStore.getById(id)).filter((card): card is CharacterCard => !!card));
   const primary = $derived(cast[0] || null);
@@ -85,7 +92,8 @@
       world,
       personaId: personaId || null,
       openingSource: selectedOpening.source,
-      openingIndex: selectedOpening.index
+      openingIndex: selectedOpening.index,
+      settings: sceneSettings
     });
   }</script>
 
@@ -121,6 +129,7 @@
     </div>
 
     <div class="aui-modal-body max-h-[64vh] space-y-5 overflow-y-auto">
+      <details><summary class="cursor-pointer text-sm text-muted-foreground">Conversation settings · Chat / Dynamic</summary><div class="pt-4"><RoleplaySettingsEditor value={sceneSettings} {inherited} onchange={(next) => (sceneSettings = next)} /></div></details>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-muted-foreground">Cast</span>

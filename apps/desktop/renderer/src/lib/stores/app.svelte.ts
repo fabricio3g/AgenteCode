@@ -7,6 +7,8 @@ import { countOf } from '$lib/utils/format';
 import { runAgentTask } from '$lib/services/agent';
 import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
+import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
+import { charactersStore } from '$lib/features/roleplay/characters.svelte';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
 import { writeTempFile, pathExists, pickWorkspaceFolder as pickWorkspaceFolderDialog, indexWorkspaceFolder, createWorkspaceDocument, renameWorkspaceFile, deleteWorkspaceFile, readWorkspaceFile, openWorkspaceFile, createWorkspaceFolder } from '$lib/services/files';
@@ -551,10 +553,11 @@ class AppStore {
     chat?: ChatSession | null;
     /** Roleplay: the character whose reply is being generated. */
     speakerId?: string | null;
+    roleplaySnapshot?: MessageVersion['metadata'];
   }): string {
     const chat = args.chat ?? this.currentChat;
     if (normalizeContextMode(chat?.contextMode) === 'roleplay') {
-      return roleplayStore.systemPrompt(chat, args.speakerId);
+      return roleplayStore.systemPrompt(chat, args.speakerId, args.roleplaySnapshot?.roleplay);
     }
     const basePrompt = selectBaseSystemPrompt({
       backendMode: args.backendMode,
@@ -1451,6 +1454,7 @@ class AppStore {
     }
 
     const message = chat.messages[index];
+    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
     if (message.role === 'user') {
       message.content = nextContent;
       chat.messages = chat.messages.slice(0, index + 1);
@@ -1474,6 +1478,14 @@ class AppStore {
         message.activeVersion = activeIndex;
       }
       message.content = nextContent;
+      if (chat.contextMode === 'roleplay' && message.metadata?.roleplay) {
+        // A prose edit cannot silently keep machine-derived consequences.
+        message.metadata = { ...message.metadata, roleplay: { ...message.metadata.roleplay, sceneAfter: message.metadata.roleplay.sceneBefore, contributions: [], choices: [], props: [] } };
+        const version = message.versions?.[message.activeVersion ?? 0];
+        if (version) version.metadata = message.metadata;
+        message.choices = [];
+        message.props = [];
+      }
     }
 
     chat.updatedAt = Date.now();
@@ -1487,6 +1499,7 @@ class AppStore {
     if (!chat) return;
     const index = chat.messages.findIndex((entry) => entry.id === messageId);
     if (index < 0) return;
+    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
     chat.messages = chat.messages.filter((entry) => entry.id !== messageId);
     chat.updatedAt = Date.now();
     if (this.editingMessageId === messageId) {
@@ -2139,6 +2152,10 @@ class AppStore {
           mode: activeComposerMode,
           searchMode: activeSearchMode
         };
+    if (userMessage && targetChat.contextMode === 'roleplay') {
+      const persona = charactersStore.getPersonaById(targetChat.personaId) ?? charactersStore.defaultPersona;
+      userMessage.metadata = { roleplayPersona: { id: persona?.id ?? null, name: persona?.name || this.userName || 'User', avatar: persona?.avatar } };
+    }
 
     // Scenes: a user turn resets the auto chain, and the reply is routed after
     // the user's turn is in the history so mentions inside it are seen. A scene
@@ -2212,6 +2229,7 @@ class AppStore {
         : [],
       artifact: null
     };
+    if (turn.snapshot) assistantMessage.metadata = { ...assistantMessage.metadata, roleplay: turn.snapshot };
 
     this.appendMessageToChat(targetChatId, assistantMessage);
 
@@ -2337,7 +2355,8 @@ class AppStore {
         providerPrompt: activeProvider?.system_prompt,
         includeChartHint: activeComposerMode !== 'agent',
         chat: targetChat,
-        speakerId: turn.speakerId
+        speakerId: turn.speakerId,
+        roleplaySnapshot: { roleplay: turn.snapshot }
       });
 
       const outboundMessages = turn.decorate(buildOutboundMessages({ messages: requestMessages, systemPrompt }));
@@ -2485,9 +2504,11 @@ class AppStore {
       syncMsg(true);
       this.persist();
 
-      if (this.config.tts?.enable_voice_output && this.config.tts?.auto_play_voice && assistantMessage.content) {
+      if (this.config.tts?.enable_voice_output && this.config.tts?.auto_play_voice && assistantMessage.content
+        && (activeContextMode !== 'roleplay' || roleplayStore.settings(targetChat).voicePlayback !== false)) {
         try {
-          void ttsStore.speak(assistantMessage.id, assistantMessage.content, this.config);
+          if (activeContextMode === 'roleplay') ttsStore.speakSequence(messageSpeechParts(assistantMessage, charactersStore.characters, this.config));
+          else void ttsStore.speak(assistantMessage.id, assistantMessage.content, this.config);
         } catch {
           // ignore TTS auto-play failures
         }
@@ -2635,7 +2656,7 @@ class AppStore {
     }
   }
 
-  async regenerateMessage(messageId: string) {
+  async regenerateMessage(messageId: string, options: { reroll?: boolean } = {}) {
     const chat = this.currentChat;
     const targetChatId = this.currentChatId;
     if (!chat || !targetChatId) return;
@@ -2659,9 +2680,11 @@ class AppStore {
       activeProvider,
       localBusyActionText: 'retrying here'
     })) return;
+    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, index + 1);
 
     // A regenerate answers as the same speaker and keeps a forced next speaker.
-    const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId });
+    const currentSnapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
+    const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId, snapshot: currentSnapshot, historyEnd: index, reroll: options.reroll });
     const agentic = message.mode === 'agent' || message.mode === 'instant';
     /*
      * The original turn's plan is carried over: an Instant answer stays on the
@@ -2683,6 +2706,7 @@ class AppStore {
       createdAt: Date.now(),
       metadata: {
         modelName: activeModelLabel,
+        ...(turn.snapshot ? { roleplay: turn.snapshot } : {}),
         ...executionMetadata(activeBackendMode)
       }
     };
@@ -2741,7 +2765,8 @@ class AppStore {
         backendMode: activeBackendMode,
         providerPrompt: activeProvider?.system_prompt,
         chat,
-        speakerId: turn.speakerId
+        speakerId: turn.speakerId,
+        roleplaySnapshot: { roleplay: turn.snapshot }
       });
       const reasoningLevel = chat.reasoningLevel ?? this.reasoningLevel;
       if (agentic) {
@@ -2828,9 +2853,10 @@ class AppStore {
         reasoningElapsedSeconds: reasoningTimer.elapsedSeconds()
       });
       message.content = nextVersion.content;
+      message.metadata = nextVersion.metadata;
       turn.finalize(message);
       nextVersion.content = message.content;
-      message.metadata = nextVersion.metadata;
+      nextVersion.metadata = message.metadata;
       message.model = activeModelLabel;
       message.done = true;
       // Only set status to 'idle' if the agent result didn't already set 'error'
@@ -2889,9 +2915,36 @@ class AppStore {
     const current = typeof message.activeVersion === 'number' ? message.activeVersion : 0;
     const next = Math.max(0, Math.min(current + direction, message.versions.length - 1));
     if (next === current) return;
+    if (chat.contextMode === 'roleplay') this.preserveRoleplayBranch(chat, chat.messages.findIndex((entry) => entry.id === messageId) + 1);
     message.activeVersion = next;
+    if (chat.contextMode === 'roleplay') {
+      const version = message.versions[next];
+      const snapshot = version.metadata?.roleplay;
+      message.content = version.content;
+      message.metadata = version.metadata;
+      message.choices = snapshot?.choices;
+      message.props = snapshot?.props;
+      message.storyTurn = snapshot?.storyTurn;
+    }
     this.touchChats();
     this.persist();
+  }
+
+  /** Keep an alternate timeline before changing an earlier Roleplay beat. */
+  private preserveRoleplayBranch(chat: ChatSession, keep: number) {
+    if (chat.contextMode !== 'roleplay' || keep >= chat.messages.length || keep < 0) return;
+    const ids = new Map<string, string>([[chat.id, createId('chat')]]);
+    for (const message of chat.messages) {
+      ids.set(message.id, createId('msg'));
+      for (const attachment of message.attachments ?? []) ids.set(attachment.id, createId('attachment'));
+    }
+    const branch = JSON.parse(JSON.stringify(chat), (_key, value) => typeof value === 'string' ? ids.get(value) ?? value : value) as ChatSession;
+    branch.title = `${chat.title} · alternate`;
+    branch.createdAt = Date.now();
+    branch.updatedAt = Date.now();
+    this.chats = [...this.chats, branch];
+    chat.messages = chat.messages.slice(0, keep);
+    toastStore.info('Later turns saved as an alternate conversation.', 3000);
   }
 
   private _apiModelsCacheKey(): string | null {
@@ -2910,6 +2963,12 @@ class AppStore {
   } = {}) {
     this.config = next;
     await saveAppConfig(next);
+    // Speech credentials are handed to main for encryption, then discarded here.
+    for (const section of [this.config.tts, this.config.stt]) {
+      for (const provider of Object.values(section?.providers ?? {})) {
+        if (provider.api_key) { provider.has_api_key = true; delete provider.api_key; }
+      }
+    }
     if (options.refreshModels) {
       await this.refreshModels();
     }
@@ -3120,7 +3179,7 @@ class AppStore {
 
   /** Whether the Roleplay space is enabled (Settings → General). */
   get roleplayEnabled(): boolean {
-    return this.config.ui?.roleplay_enabled === true;
+    return this.config.ui?.roleplay_enabled !== false;
   }
 
   async setRoleplayEnabled(enabled: boolean) {
@@ -3160,23 +3219,7 @@ class AppStore {
     await this.commitConfig(mergeSearchSettingsConfig(this.config, partial));
   }
 
-  async updateTtsSettings(partial: {
-    enable_voice_output?: boolean;
-    auto_play_voice?: boolean;
-    voice?: string;
-    speed?: number;
-    volume?: number;
-    engine?: 'kokoro' | 'wasm' | 'browser';
-    model_path?: string;
-    voices_path?: string;
-    tokens_path?: string;
-    lexicon_path?: string;
-    dict_dir?: string;
-    data_dir?: string;
-    model_variant?: string;
-    voice_model?: string;
-    language?: string;
-  }) {
+  async updateTtsSettings(partial: Partial<NonNullable<AppConfig['tts']>>) {
     await this.commitConfig(mergeTtsSettingsConfig(this.config, partial));
   }
 

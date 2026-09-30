@@ -82,6 +82,13 @@ export function redactConfig(cfg: AppConfig): RedactedAppConfig {
   
   // Redact LLM providers
   const redactedLLM = redactLLMConfig(cloned.llm);
+  for (const section of [cloned.tts, cloned.stt]) {
+    if (!section?.providers) continue;
+    for (const provider of Object.values(section.providers)) {
+      provider.has_api_key = !!provider.api_key;
+      delete provider.api_key;
+    }
+  }
 
   // Return redacted config
   return {

@@ -71,6 +71,7 @@ export function normalizeCharacterCard(card: Partial<CharacterCard>): CharacterC
     alternateGreetings: Array.isArray(card.alternateGreetings) ? card.alternateGreetings.map(String) : [],
     groupOnlyGreetings: Array.isArray(card.groupOnlyGreetings) ? card.groupOnlyGreetings.map(String) : [],
     tags: Array.isArray(card.tags) ? card.tags.map(String) : [],
+    aliases: Array.isArray(card.aliases) ? card.aliases.map(String).filter(Boolean) : [],
     assets: Array.isArray(card.assets) ? card.assets : [],
     createdAt: Number.isFinite(card.createdAt) ? Number(card.createdAt) : base.createdAt,
     updatedAt: Number.isFinite(card.updatedAt) ? Number(card.updatedAt) : base.updatedAt
@@ -182,6 +183,7 @@ export function mapCardFields(raw: UnknownRecord): Partial<CharacterCard> {
   return {
     name: str(raw.name),
     nickname: str(raw.nickname) || undefined,
+    aliases: strArray(raw.aliases),
     description: str(raw.description),
     personality: str(raw.personality),
     scenario: str(raw.scenario),

@@ -20,6 +20,7 @@
   import LorebookEditor from './LorebookEditor.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
+  import VoiceAssignmentEditor from '$lib/components/settings/voice/VoiceAssignmentEditor.svelte';
 
   interface Props {
     /** null = create a new character. */
@@ -35,7 +36,7 @@
   // Backdrop, Escape, X and Cancel all ask before throwing edits away.
   const guard = dirtyGuard(() => draft);
   let saving = $state(false);
-  let section = $state<'basics' | 'prompt' | 'greetings' | 'lore' | 'advanced'>('basics');
+  let section = $state<'basics' | 'prompt' | 'greetings' | 'lore' | 'voice' | 'advanced'>('basics');
 
   const isNew = $derived(!character);
 
@@ -99,6 +100,7 @@
     { id: 'prompt', label: 'Prompt' },
     { id: 'greetings', label: 'Greetings' },
     { id: 'lore', label: 'Lore' },
+    { id: 'voice', label: 'Voice' },
     { id: 'advanced', label: 'Advanced' }
   ];
 </script>
@@ -131,7 +133,7 @@
       </button>
     </div>
 
-    <div class="flex gap-1 border-b border-[var(--border-subtle)] px-5 py-2">
+    <div class="flex flex-wrap gap-1 border-b border-[var(--border-subtle)] px-5 py-2">
       {#each sections as item (item.id)}
         <button
           type="button"
@@ -182,6 +184,7 @@
               <span class="font-medium text-muted-foreground">Tagline</span>
               <input class="aui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
             </label>
+            <label class="block space-y-1.5 text-sm sm:col-span-2"><span class="font-medium text-muted-foreground">Aliases</span><input class="aui-input" value={(draft.aliases ?? []).join(', ')} placeholder="Alternative names, separated by commas" oninput={(event) => set('aliases', event.currentTarget.value.split(',').map((name) => name.trim()).filter(Boolean))} /></label>
             <label class="block space-y-1.5 text-sm">
               <span class="font-medium text-muted-foreground">Tags</span>
               <input class="aui-input" value={tagsToText(draft.tags)} oninput={(e) => updateTags(e.currentTarget.value)} placeholder="fantasy, slice-of-life" />
@@ -244,6 +247,9 @@
 
       {#if section === 'lore'}
         <LorebookEditor book={draft.book} onchange={(book) => set('book', book)} />
+      {/if}
+      {#if section === 'voice'}
+        <VoiceAssignmentEditor value={draft.voice ?? (draft.voiceId ? { voice: draft.voiceId, backend: 'local' } : null)} label="Character voice" previewText={draft.firstMessage || `Hello. I'm ${draft.name || 'here'}.`} onchange={(voice) => { set('voice', voice); set('voiceId', null); }} />
       {/if}
 
       {#if section === 'advanced'}

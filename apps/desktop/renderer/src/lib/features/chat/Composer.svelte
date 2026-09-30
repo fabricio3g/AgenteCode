@@ -22,6 +22,7 @@
 
   import AttachmentCards from './composer/AttachmentCards.svelte';
   import ModelSwitcher from './ModelSwitcher.svelte';
+  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
   import ComposerModelNotice from './composer/ComposerModelNotice.svelte';
   import ComposerSuggestions from './composer/ComposerSuggestions.svelte';
   import ComposerAddMenu from './composer/ComposerAddMenu.svelte';
@@ -34,6 +35,13 @@
   import { ComposerAttachments } from './composer/use-attachments.svelte';
   import { Dictation } from './composer/use-dictation.svelte';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
+  import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
+  import type { NameCandidate } from '$lib/features/shared/name-completion';
+
+  let { placeholder: customPlaceholder, nameCompletion }: {
+    placeholder?: string;
+    nameCompletion?: { candidates: NameCandidate[]; automatic?: boolean; nickname?: boolean };
+  } = $props();
 
   /** Textarea grows with content up to this height, then scrolls. */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
@@ -78,7 +86,7 @@
         ? say.inProgress('Agent working')
         : generating && appStore.composerMode === 'instant'
           ? say.inProgress('Answering')
-          : copy.composer.placeholder
+          : customPlaceholder ?? copy.composer.placeholder
   );
 
   // Mirrors the guards inside sendCurrentMessage so the button reflects reality.
@@ -145,6 +153,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (event.isComposing || event.defaultPrevented) return;
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     void submit();
@@ -376,6 +385,9 @@
     <!-- Radius comes from --composer-radius on .aui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
     <div class="composer-shell aui-composer pointer-events-auto transition">
+      {#if nameCompletion}
+        <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
+      {/if}
       {#if attachments.ocrLabel}
         <div class="px-3 pt-1">
           <div class="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-muted-foreground">
@@ -426,7 +438,8 @@
           {:else}
             <div class="composer-bar-leading">
               <ComposerAddMenu onattach={() => fileInput?.click()} />
-              <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
+              <div class="model-slot"><ModelSwitcher compact /></div>
+              <ReasoningLevelSelector />
             </div>
             <ComposerToolbar
               {dictation}
@@ -528,4 +541,8 @@
   }
 
   .model-slot { min-width: 0; max-width: 18rem; }
+  @container composer (max-width: 620px) {
+    :global(.composer-bar-leading) { flex-wrap: wrap; }
+    .model-slot { max-width: 12rem; }
+  }
 </style>

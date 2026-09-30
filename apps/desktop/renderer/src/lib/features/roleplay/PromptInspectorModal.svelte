@@ -13,7 +13,7 @@
   import { X } from 'lucide-svelte';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
-  import { appStore } from '$lib/stores/app.svelte';
+  import Portal from '$lib/components/ui/Portal.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { copy } from '$lib/copy';
 
@@ -29,6 +29,7 @@
   const estimatedTokens = $derived(Math.ceil((parts.systemPrompt.length || 0) / 4));
 </script>
 
+<Portal>
 <div
   class="aui-modal-backdrop"
   role="presentation"
@@ -41,7 +42,8 @@
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class="aui-modal-surface max-w-2xl"
-    role="dialog"
+     role="dialog"
+     aria-label="What the model saw"
     aria-modal="true"
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
@@ -59,7 +61,7 @@
       </button>
     </div>
 
-    <div class="aui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
+    <div class="aui-modal-body space-y-4">
       <div class="space-y-1.5">
         <div class="text-xs font-medium text-muted-foreground">
           Lore entries ({parts.loreEntries.length})
@@ -92,6 +94,7 @@
     </div>
   </div>
 </div>
+</Portal>
 
 <style>
   .prompt-chip {
@@ -103,8 +106,6 @@
   }
 
   .prompt-block {
-    max-height: 22rem;
-    overflow: auto;
     padding: 0.75rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);

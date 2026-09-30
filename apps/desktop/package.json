@@ -34,6 +34,7 @@
     "test:scraper": "npx tsx --test tests/unit/web-scraper.test.js",
     "smoke:search": "npx tsx scripts/smoke-search-scrape.mjs",
     "smoke:deepseek": "npx tsx scripts/smoke-deepseek-flash.mjs",
+    "smoke:roleplay": "node scripts/smoke-roleplay.mjs",
     "smoke:doc": "npx tsx scripts/smoke-doc-scrape.mjs",
     "smoke:live-data": "node scripts/smoke-live-data.mjs",
     "smoke:models": "npx tsx scripts/smoke-provider-models.mjs",

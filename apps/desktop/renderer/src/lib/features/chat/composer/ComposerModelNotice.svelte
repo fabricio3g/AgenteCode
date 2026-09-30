@@ -50,8 +50,9 @@
     </p>
   </div>
 {:else if state === 'no-local-model'}
-  <div class="notice pointer-events-auto flex-wrap justify-center gap-2">
-    <p class="notice-label">{copy.model.none}</p>
+  <div class="notice notice-empty pointer-events-auto">
+    <p class="notice-label notice-empty-label">{copy.model.none}</p>
+    <div class="notice-actions">
     <button
       type="button"
       class="notice-btn primary"
@@ -63,6 +64,7 @@
     <button type="button" class="notice-btn" onclick={() => openModelHub('runtime')}>
       {copy.model.changeRuntime}
     </button>
+    </div>
   </div>
 {:else if state === 'no-provider'}
   <div class="notice pointer-events-auto justify-center">
@@ -89,6 +91,9 @@
     font-weight: 500;
     letter-spacing: -0.005em;
   }
+  .notice-empty { flex-direction: column; justify-content: center; gap: 0.5rem; }
+  .notice-empty-label { font-size: 0.6875rem; font-weight: 400; color: var(--muted-foreground); }
+  .notice-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem; }
 
   /* Pill buttons sized to sit level with the composer's own controls. Both
      actions carry the same visual weight — a solid black button next to a

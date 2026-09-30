@@ -5,26 +5,16 @@
   import { appStore } from '$lib/stores/app.svelte';
   import CodeSidebar from '$lib/features/code/CodeSidebar.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
-  import type { ChatContextMode } from '$lib/types/chat';
   import { t } from 'svelte-i18n';
   import { slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Bot, Boxes, Code2, Drama, House, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
+  import { Bot, Boxes, Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
 
   let collapsedGroups = $state<Set<number>>(new Set([4]));
-
-  // Roleplay is opt-in: the tab only exists once the setting is on.
-  const spaceTabs = $derived<Array<{ id: ChatContextMode; label: string; icon: typeof House }>>([
-    { id: 'home', label: copy.spaces.home, icon: House },
-    { id: 'code', label: copy.spaces.code, icon: Code2 },
-    ...(appStore.roleplayEnabled
-      ? [{ id: 'roleplay' as ChatContextMode, label: copy.spaces.roleplay, icon: Drama }]
-      : [])
-  ]);
 
   /** The session list for the active space (home and roleplay share a layout). */
   const listChats = $derived(
@@ -99,60 +89,11 @@
     appStore.createChat(appStore.activeSpace);
   }
 
-  function onSpaceTabsKeydown(event: KeyboardEvent) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') {
-      return;
-    }
-    event.preventDefault();
-    const ids = spaceTabs.map((t) => t.id);
-    const current = ids.indexOf(appStore.activeSpace);
-    let next = current;
-    if (event.key === 'ArrowRight') next = (current + 1) % ids.length;
-    else if (event.key === 'ArrowLeft') next = (current - 1 + ids.length) % ids.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = ids.length - 1;
-    appStore.setActiveSpace(ids[next]!);
-    queueMicrotask(() => {
-      document.getElementById(`space-tab-${ids[next]}`)?.focus();
-    });
-  }
-
 </script>
 
 <aside class="sidebar relative isolate flex h-full w-full flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
   <div class="relative z-10 flex min-h-0 flex-1 flex-col px-3 pb-1 pt-2">
     <div class="flex flex-col gap-1.5 pb-3 pt-1">
-      <div
-        class="space-tabs"
-        role="tablist"
-        tabindex="-1"
-        aria-label="Session type"
-        onkeydown={onSpaceTabsKeydown}
-      >
-        {#each spaceTabs as tab (tab.id)}
-          {@const Icon = tab.icon}
-          <button
-            type="button"
-            class="space-tab"
-            class:active={appStore.activeSpace === tab.id}
-            role="tab"
-            id={`space-tab-${tab.id}`}
-            tabindex={appStore.activeSpace === tab.id ? 0 : -1}
-            aria-selected={appStore.activeSpace === tab.id}
-            aria-label={tab.label}
-            title={tab.label}
-            onclick={() => appStore.setActiveSpace(tab.id)}
-          >
-            <Icon class="space-tab-icon size-4" />
-            <!-- The label stays in the DOM and animates open on the selected
-                 tab (0fr → 1fr grid); inactive tabs stay icon-only so three
-                 spaces fit the rail. aria-label keeps every tab named. -->
-            <span class="space-tab-label" aria-hidden="true">
-              <span class="space-tab-label-text">{tab.label}</span>
-            </span>
-          </button>
-        {/each}
-      </div>
       <button
         class="new-chat-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition-colors"
         onclick={createForActiveSpace}
@@ -288,93 +229,6 @@
     border: none;
   }
 
-  .space-tabs {
-    display: flex;
-    gap: 2px;
-    border-radius: var(--radius-full);
-    background: var(--muted);
-    border: 0;
-    padding: 3px;
-  }
-
-  .space-tab {
-    min-width: 0;
-    /* Icon-only tabs size to their icon; the selected tab takes the rest and
-       reveals its label. */
-    flex: 0 0 auto;
-    height: 1.875rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.375rem;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 1;
-    cursor: pointer;
-    transition:
-      flex-grow var(--motion-smooth) var(--motion-ease-out),
-      padding-inline var(--motion-smooth) var(--motion-ease-out),
-      background-color var(--motion-fast) var(--motion-ease),
-      color var(--motion-fast) var(--motion-ease),
-      box-shadow var(--motion-fast) var(--motion-ease);
-  }
-
-  .space-tab :global(.space-tab-icon) {
-    flex-shrink: 0;
-  }
-
-  /* Icon-only tabs get a square-ish hit area around the glyph instead of
-     hugging it, so they are comfortable to click without a label. */
-  .space-tab:not(.active) {
-    min-width: 1.875rem;
-    padding-inline: 0.375rem;
-  }
-
-  /* Grid 0fr → 1fr is the one width animation that eases smoothly without
-     measuring text; the inner span owns the clipping. */
-  .space-tab-label {
-    display: grid;
-    grid-template-columns: 0fr;
-    opacity: 0;
-    transition:
-      grid-template-columns var(--motion-smooth) var(--motion-ease-out),
-      opacity var(--motion-fast) var(--motion-ease);
-  }
-
-  .space-tab.active .space-tab-label {
-    grid-template-columns: 1fr;
-    opacity: 1;
-  }
-
-  .space-tab-label-text {
-    overflow: hidden;
-    white-space: nowrap;
-  }
-
-  .space-tab:hover:not(.active) {
-    color: var(--sidebar-foreground);
-    background: color-mix(in srgb, var(--sidebar-foreground) 6%, transparent);
-  }
-
-  /* Raised pill on the track — same treatment as .aui-segmented-item.is-active,
-     so tabs read the same wherever they appear. */
-  .space-tab.active {
-    /* Animate flex-grow, not flex-basis: grow is interpolatable in Chromium. */
-    flex-grow: 1;
-    padding-inline: 0.625rem;
-    background: var(--surface-active);
-    color: var(--foreground);
-  }
-
-  .space-tab:focus-visible {
-    outline: 2px solid var(--sidebar-ring);
-    outline-offset: 1px;
-  }
-
   .new-chat-btn:hover {
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
@@ -414,7 +268,7 @@
   }
 
   .sidebar-btn {
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
     background: transparent;
     border: none;
   }
@@ -430,10 +284,4 @@
     font-weight: 500;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .space-tab,
-    .space-tab-label {
-      transition: none;
-    }
-  }
 </style>

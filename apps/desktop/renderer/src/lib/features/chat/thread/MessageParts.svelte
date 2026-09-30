@@ -29,6 +29,7 @@
   import FilesCreatedBlock from '$lib/ui/components/FilesCreatedBlock.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
+  import RoleplayResponse from '$lib/features/roleplay/RoleplayResponse.svelte';
   import SlidesBlock from '$lib/ui/components/SlidesBlock.svelte';
 
   import WritingIndicator from './WritingIndicator.svelte';
@@ -170,6 +171,9 @@
   {:else if part.kind === 'preface'}
     <p class="mb-2 text-[15px] leading-relaxed text-foreground">{part.content}</p>
   {:else if part.kind === 'content'}
+    {#if ctx.contextMode === 'roleplay'}
+      <RoleplayResponse content={part.content} status={ctx.message.status} snapshot={ctx.displayMetadata?.roleplay} speakerId={ctx.message.speakerId} messageId={ctx.message.id} />
+    {:else}
     <RichContent
       content={part.content}
       status={ctx.message.status}
@@ -178,6 +182,7 @@
       searchMode={ctx.message.searchMode || null}
       onAction={handleUIAction}
     />
+    {/if}
   {:else if part.kind === 'document'}
     <!-- The footer owns the source count; the surface must not repeat it. -->
     <DocumentSurface docs={part.docs} title={part.title} sourceCount={0} allowDownload={false} />

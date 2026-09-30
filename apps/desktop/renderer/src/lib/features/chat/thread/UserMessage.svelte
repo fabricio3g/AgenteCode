@@ -10,6 +10,8 @@
   import { writeToClipboard } from '$lib/utils/clipboard';
   import AttachmentDocumentsBlock from '$lib/features/chat/AttachmentDocumentsBlock.svelte';
   import { charactersStore } from '$lib/features/roleplay/characters.svelte';
+  import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
+  import { highlightRoleplayMentions } from '$lib/features/roleplay/roleplay-mentions';
   import MessageActionBar from './MessageActionBar.svelte';
   import { compactActions, type MessageAction } from './message-actions';
   import { useMessage } from './message-context';
@@ -54,7 +56,16 @@
   }
 
   const quoted = $derived(splitSelectedTextQuestion(ctx.message.content || ''));
-  const bodyHtml = $derived(renderMarkdown(quoted?.question || ctx.message.content || ''));
+  const bodyHtml = $derived.by(() => {
+    const content = quoted?.question || ctx.message.content || '';
+    if (ctx.contextMode !== 'roleplay') return renderMarkdown(content);
+    const chat = appStore.currentChat;
+    const names = (chat?.roleplay?.characterIds ?? (chat?.characterId ? [chat.characterId] : [])).flatMap((id) => {
+      const card = charactersStore.getById(id);
+      return card ? [card.name, card.nickname ?? '', ...(card.aliases ?? [])] : [];
+    });
+    return highlightRoleplayMentions(renderMarkdown(content.replace(/\s*\[character:[^\]]+\]/g, '')), [...names, ...roleplayStore.room().npcs.map((npc) => npc.name)]);
+  });
   const quoteHtml = $derived(quoted ? renderMarkdown(quoted.selectedText) : '');
   const workContext = $derived(ctx.message.workContext);
 
@@ -62,7 +73,7 @@
   const roleplayPersona = $derived.by(() => {
     const chat = appStore.currentChat;
     if (chat?.contextMode !== 'roleplay') return null;
-    return charactersStore.getPersonaById(chat.personaId);
+    return ctx.message.metadata?.roleplayPersona ?? charactersStore.getPersonaById(chat.personaId);
   });
 
   function scrollToSelectedSource() {
@@ -124,9 +135,11 @@
   {#if roleplayPersona}
     <div class="persona-chip">
       <span class="persona-name">{roleplayPersona.name}</span>
+      {#if roleplayStore.settings().showAvatars !== false}
       <span class="persona-avatar">
         <Avatar size="fill" name={roleplayPersona.name ?? ''} image={roleplayPersona.avatar} />
       </span>
+      {/if}
     </div>
   {/if}
 

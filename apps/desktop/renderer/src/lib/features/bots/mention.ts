@@ -1,5 +1,6 @@
 // `@teammate` in a bot's message box: find the mention being typed at the
 // caret, list the bots it could be, and put the chosen handle in.
+import { replaceCompletion } from '$lib/features/shared/name-completion';
 
 export interface Mention {
   /** Index of the `@`. */
@@ -27,7 +28,6 @@ export function matchBots<T extends { handle: string; title: string }>(bots: T[]
 
 /** Replace the mention with `@handle ` and return the new text and caret. */
 export function insertMention(text: string, caret: number, mention: Mention, handle: string): { text: string; caret: number } {
-  const inserted = `@${handle} `;
-  const rest = text.slice(caret).replace(/^[\w-]*\s?/, '');
-  return { text: text.slice(0, mention.start) + inserted + rest, caret: mention.start + inserted.length };
+  const suffix = /^[\w-]*\s?/.exec(text.slice(caret))?.[0].length ?? 0;
+  return replaceCompletion(text, { start: mention.start, end: caret + suffix }, `@${handle}`);
 }

@@ -14,7 +14,6 @@
   import ContextUsageRing from './ContextUsageRing.svelte';
   import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
-  import { lastReplyStats } from './reply-stats';
   import type { Dictation } from './use-dictation.svelte';
 
   interface Props {
@@ -31,7 +30,6 @@
   // An empty ring reads as a broken control, so it only appears once there is
   // actual context to report.
   const showContextRing = $derived(!!contextBudget && (contextBudget.usedTokens ?? 0) > 0);
-  const stats = $derived(generating ? undefined : lastReplyStats(appStore.currentChat?.messages, copy.thread.outputTokens));
   const hasDraft = $derived(!!appStore.composer.trim());
 
   const micTitle = $derived(
@@ -59,7 +57,7 @@
 {/snippet}
 
 <div class="composer-bar-trailing">
-  <ComposerStatus text={stats} ring={showContextRing ? contextRing : undefined} />
+  <ComposerStatus ring={showContextRing ? contextRing : undefined} />
 
   {#if !generating}
     <button

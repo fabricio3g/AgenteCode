@@ -2,7 +2,7 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Copy, FileSearch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
+  import { Copy, Dices, FileSearch, Pencil, RefreshCcw, Trash2, Volume2, X } from 'lucide-svelte';
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import { confirmStore } from '$lib/stores/confirm.svelte';
@@ -18,6 +18,7 @@
   import PropCard from '$lib/features/roleplay/PropCard.svelte';
   import PromptInspectorModal from '$lib/features/roleplay/PromptInspectorModal.svelte';
   import TtsAudioPlayer from '$lib/features/chat/TtsAudioPlayer.svelte';
+  import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
   import BranchPicker from './BranchPicker.svelte';
   import MessageActionBar from './MessageActionBar.svelte';
   import MessageFooter from './MessageFooter.svelte';
@@ -39,13 +40,17 @@
     ctx.message.agentSteps?.flatMap((step) => step.diffStats || []) || []
   );
   /** Roleplay: the character this turn belongs to, when one is bound. */
-  const speaker = $derived(charactersStore.getById(ctx.message.speakerId));
+  const speaker = $derived(charactersStore.getById(ctx.message.speakerId)
+    ?? (ctx.contextMode === 'roleplay' ? ctx.displayMetadata?.roleplay?.sceneAfter.npcs.find((npc) => npc.id === ctx.message.speakerId) : undefined));
 
   /**
    * The greeting is the first turn of a roleplay chat. It gets the ‹ 1 / 3 ›
    * pager below its bubble so the opening can be flipped in place.
    */
   const chat = $derived(appStore.currentChat);
+  const snapshot = $derived(chat?.contextMode === 'roleplay' ? ctx.displayMetadata?.roleplay : undefined);
+  const presentation = $derived(chat?.contextMode === 'roleplay' ? roleplayStore.settings(chat) : undefined);
+  const separateSpeakers = $derived(ctx.contextMode === 'roleplay');
   const isGreetingMessage = $derived(
     chat?.contextMode === 'roleplay' && chat.messages?.[0]?.id === ctx.message.id
   );
@@ -60,7 +65,7 @@
 
   /** Adventure choices render only on the newest reply, never mid-stream. */
   const adventureChoices = $derived.by(() => {
-    const choices = ctx.message.choices || [];
+    const choices = snapshot?.choices ?? ctx.message.choices ?? [];
     if (!choices.length || chat?.contextMode !== 'roleplay' || ctx.isStreaming) return [];
     const last = chat.messages?.[chat.messages.length - 1];
     return last?.id === ctx.message.id ? choices : [];
@@ -68,33 +73,34 @@
   /** Props the turn put in the user's hands — roleplay's own artifacts. */
   // Not called `props`: Svelte would read `$props` in this scope as a store
   // subscription to it and the component would not compile.
-  const handedProps = $derived(chat?.contextMode === 'roleplay' ? ctx.message.props || [] : []);
+  const handedProps = $derived(chat?.contextMode === 'roleplay' ? snapshot?.props ?? ctx.message.props ?? [] : []);
   /** Hiding the panel is per message; it must never turn the feature off. */
   let choicesDismissed = $state(false);
   const hasActiveDeepResearch = $derived(
     !!deepResearchStore.getActiveTaskForMessage(ctx.message.id)
   );
 
-  const ttsEnabled = $derived(!!appStore.config.tts?.enable_voice_output);
+  const ttsEnabled = $derived(!!appStore.config.tts?.enable_voice_output && presentation?.voicePlayback !== false);
   const ttsBusy = $derived(
-    ttsStore.currentMessageId === ctx.message.id && (ttsStore.isGenerating || ttsStore.playing)
+    ttsStore.currentMessageId === ctx.message.id && (ttsStore.isGenerating || ttsStore.playing || ttsStore.paused)
   );
   const hasTtsAudio = $derived(ttsStore.hasStoredAudio(ctx.message.id) || !!ctx.message.ttsAudio);
   const showTtsPlayer = $derived(
-    ttsEnabled && !ctx.isStreaming && (hasTtsAudio || (ttsStore.playing && ttsStore.currentMessageId === ctx.message.id))
+    ttsEnabled && !ctx.isStreaming && (hasTtsAudio || ((ttsStore.playing || ttsStore.paused) && ttsStore.currentMessageId === ctx.message.id))
   );
 
   // Charts render as their own blocks, so the copyable text is the prose only.
   const copyableText = $derived(stripChartBlocks(ctx.displayContent) || ctx.message.content || '');
 
   function toggleTts() {
-    if (ttsBusy) {
+    if (ttsBusy || (separateSpeakers && ttsStore.currentMessageId?.startsWith(`${ctx.message.id}:voice:`))) {
       ttsStore.stop();
       return;
     }
     const text = ctx.displayContent;
     if (!text.trim()) return;
-    ttsStore.speak(ctx.message.id, text, appStore.config);
+    if (separateSpeakers) ttsStore.speakSequence(messageSpeechParts({ ...ctx.message, content: text, versions: [] }, charactersStore.characters, appStore.config));
+    else void ttsStore.speak(ctx.message.id, text, appStore.config);
   }
 
   const actions = $derived<MessageAction[]>(
@@ -124,6 +130,11 @@
         run: () => appStore.openEditMessage(ctx.message.id)
       },
       // Roleplay: show the composed prompt, lore and token estimate.
+      snapshot?.mode === 'dynamic' && snapshot.settings.rerollEnabled && {
+        id: 'reroll', label: 'New direction', icon: Dices,
+        disabled: appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun,
+        run: () => appStore.regenerateMessage(ctx.message.id, { reroll: true })
+      },
       chat?.contextMode === 'roleplay' && {
         id: 'prompt',
         label: 'Prompt',
@@ -174,9 +185,9 @@
 </script>
 
 <div class="flex w-full max-w-full items-start gap-2">
-  {#if speaker}
+  {#if speaker && !separateSpeakers && presentation?.showAvatars !== false}
     <span class="speaker-avatar" title={speaker.name}>
-      <Avatar size="fill" name={speaker.name ?? ''} image={speaker.avatar} />
+      <Avatar size="fill" name={speaker.name ?? ''} image={'avatar' in speaker && typeof speaker.avatar === 'string' ? speaker.avatar : undefined} />
     </span>
   {/if}
   <div class="min-w-0 flex-1">
@@ -186,11 +197,14 @@
         <span class="min-w-0 truncate">{ctx.message.storyTurn.label}</span>
       </div>
     {/if}
-    {#if speaker}
+    {#if speaker && !separateSpeakers}
       <div class="speaker-name">{speaker.name}</div>
     {/if}
     <div data-chat-message-content data-chat-message-id={ctx.message.id}>
       <MessageParts />
+      {#if snapshot?.settled && snapshot.outcomeApplied && snapshot.outcome && snapshot.settings.showOutcomes}
+        <div class="mt-2 text-[11px] text-muted-foreground">{snapshot.outcome === 'cost' ? 'Success with a cost' : snapshot.outcome === 'success' ? 'Success' : 'Setback'}</div>
+      {/if}
     </div>
 
     {#each handedProps as prop, index (index)}
@@ -209,7 +223,7 @@
       <ChoicePanel
         choices={adventureChoices}
         disabled={appStore.currentChatGenerating}
-        timerSeconds={chat?.roleplay?.choiceTimerSeconds ?? null}
+        timerSeconds={snapshot?.settings.choiceTimerSeconds ?? chat?.roleplay?.choiceTimerSeconds ?? null}
         onpick={(choice) => void roleplayStore.sendChoice(choice)}
         onexpire={() => void roleplayStore.expireChoice()}
         ondismiss={() => (choicesDismissed = true)}
@@ -222,8 +236,8 @@
 
     <MessageFooter />
 
-    {#if showTtsPlayer}
-      <div class="mt-1"><TtsAudioPlayer message={ctx.message} /></div>
+    {#if showTtsPlayer && !separateSpeakers}
+      <div class="mt-2" style:padding-left={separateSpeakers && presentation?.showAvatars !== false ? '2.25rem' : undefined}><TtsAudioPlayer message={ctx.message} /></div>
     {/if}
 
     {#if !hasActiveDeepResearch && !ctx.isStreaming}

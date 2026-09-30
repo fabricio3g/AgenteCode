@@ -14,6 +14,7 @@
   import CodeTitlebarTools from '$lib/features/code/CodeTitlebarTools.svelte';
   import { codeStore } from '$lib/features/code/code.svelte';
   import { isCodeSession } from '$lib/features/shared/session-guards';
+  import SpaceTabs from './SpaceTabs.svelte';
 
   let { sidebarPreview = false, onSidebarEnter, onSidebarLeave, onSidebarToggle }: {
     sidebarPreview?: boolean;
@@ -48,6 +49,7 @@
 <!-- The app's own buttons, the same on every platform: the agent browser
      (a dock pane, beside the Code pane toggles), then downloads and theme. -->
 {#snippet appTools()}
+  <div class="titlebar-app-tools flex items-center">
   <Tooltip label={$t('titlebar.browser')} position="bottom">
     <button
       class="aui-icon-button size-8"
@@ -77,6 +79,7 @@
       {/if}
     </button>
   </Tooltip>
+  </div>
 {/snippet}
 
 
@@ -86,7 +89,7 @@
   role="banner"
 >
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
-    <Tooltip label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}>
+    <Tooltip label={appStore.sidebarOpen ? $t('titlebar.hideSidebar') : $t('titlebar.showSidebar')}>
       <button
         class="aui-icon-button size-8 titlebar-no-drag"
         data-sidebar-toggle
@@ -107,7 +110,7 @@
     </Tooltip>
     <Tooltip label={$t('titlebar.search')}>
       <button
-        class="aui-icon-button size-8 titlebar-no-drag"
+        class="aui-icon-button size-8 titlebar-no-drag titlebar-secondary"
         onclick={() => (appStore.chatSearchOpen = true)}
         aria-label={$t('titlebar.search')}
       >
@@ -116,7 +119,7 @@
     </Tooltip>
     <Tooltip label={$t('titlebar.llmSettings')}>
       <button
-        class="aui-icon-button size-8 titlebar-no-drag"
+        class="aui-icon-button size-8 titlebar-no-drag titlebar-secondary"
         onclick={() => (appStore.llmDrawerOpen = true)}
         aria-label={$t('titlebar.llmSettings')}
       >
@@ -129,10 +132,7 @@
     class="titlebar-center titlebar-no-drag flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3"
     style="-webkit-app-region: no-drag;"
   >
-    <div class="titlebar-no-drag" style="-webkit-app-region: no-drag; pointer-events: auto;">
-      <!-- The model selector now lives in the composer's control row, beside
-           the attach button, so the active model sits where you compose. -->
-    </div>
+    <SpaceTabs />
   </div>
 
   <div class="titlebar-right flex flex-1 items-center justify-end">
@@ -176,7 +176,9 @@
 
 <style>
   .titlebar-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+    container-type: inline-size;
     width: 100%;
     position: relative;
     border-bottom: none;
@@ -188,6 +190,16 @@
 
   .titlebar-right {
     min-width: 0;
+  }
+
+  @container (max-width: 520px) {
+    .titlebar-app-tools { display: none; }
+    .win-btn { width: 32px; }
+    .titlebar-center { padding-inline: 0.25rem; }
+  }
+
+  @container (max-width: 400px) {
+    .titlebar-secondary { display: none; }
   }
 
   .dot {

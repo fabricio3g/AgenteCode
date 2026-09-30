@@ -335,6 +335,8 @@ export interface PresentationData {
 }
 
 export interface TtsRequest {
+  backend?: 'local' | 'api' | 'browser';
+  provider?: string;
   text: string;
   voice: string;
   speed: number;

@@ -8,6 +8,8 @@
 
 <script lang="ts">
   import SpeakVoicePicker from '../voice/SpeakVoicePicker.svelte';
+  import SpeechServiceSettings from '../voice/SpeechServiceSettings.svelte';
+  import VoiceAssignmentEditor from '../voice/VoiceAssignmentEditor.svelte';
   import { locale, t } from 'svelte-i18n';
   import { get } from 'svelte/store';
   import { Check, Download, FolderInput, LoaderCircle, Play, RefreshCw, RotateCcw, Square, Trash2, X } from 'lucide-svelte';
@@ -405,7 +407,9 @@
 
       {@render settingRow($t('voice.autoPlay'), $t('voice.autoPlayHint'), autoplaySwitch)}
 
-      <SpeakVoicePicker />
+       <SpeechServiceSettings kind="tts" />
+       {#if !tts.backend_mode || tts.backend_mode === 'local'}<SpeakVoicePicker />{/if}
+       <div class="py-3"><VoiceAssignmentEditor label="Narrator voice" value={tts.narrator} previewText="Rain taps against the window. The room settles into a comfortable silence." onchange={(narrator) => void appStore.updateTtsSettings({ narrator: narrator ?? undefined })} /></div>
 
       <div class="contents">
         {#snippet speedSlider()}
@@ -428,12 +432,13 @@
 
   {:else}
     <SettingsSection title={$t('voice.dictation')}>
+      <SpeechServiceSettings kind="stt" />
       {@render settingRow($t('voice.language'), $t('voice.languageHint'), languageSelect)}
 
       {@render settingRow($t('voice.microphone'), micState === 'blocked' ? $t('voice.micDeniedHint') : micState === 'none' ? $t('voice.micNoneHint') : micState === 'busy' ? $t('voice.micBusyHint') : '', micSelect)}
     </SettingsSection>
 
-    <SettingsSection title={$t('voice.sttModels')} description={$t('voice.tier.sectionHint')}>
+    {#if stt.provider !== 'api'}<SettingsSection title={$t('voice.sttModels')} description={$t('voice.tier.sectionHint')}>
       <div class="py-3">
         {#if speechModels.length}
           <SpeechModelPicker
@@ -483,5 +488,6 @@
       {/if}
     </SettingsSection>
     </Disclosure>
+    {/if}
   {/if}
 </SettingsPage>

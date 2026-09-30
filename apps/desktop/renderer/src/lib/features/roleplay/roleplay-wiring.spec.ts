@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { appStore } from '$lib/stores/app.svelte';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { charactersStore } from '$lib/features/roleplay/characters.svelte';
@@ -238,6 +238,119 @@ describe('world scene wiring', () => {
 
     expect(chat?.roleplay?.autoModeDelayMs).toBe(8000);
     expect(chat?.roleplay?.adventureChoices).toBe(false);
+  });
+});
+
+describe('Chat / Dynamic integration', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    charactersStore.characters = [];
+    worldsStore.worlds = [];
+    appStore.chats = [];
+    appStore.activeRunsByChat = {};
+    appStore.composer = '';
+  });
+
+  async function start() {
+    const aiko = emptyCharacter({ id: 'aiko', name: 'Aiko' });
+    const ren = emptyCharacter({ id: 'ren', name: 'Ren', description: '{{char}} speaks softly.' });
+    await charactersStore.save(aiko); await charactersStore.save(ren);
+    return roleplayStore.startScene({ characters: [aiko, ren], openingSource: 'none' })!;
+  }
+
+  it('starts Chat by default and permits ensemble replies only when invited', async () => {
+    const scene = await start();
+    expect(scene.roleplay?.interactionMode).toBe('chat');
+    expect(roleplayStore.systemPrompt(scene)).toContain('Chat mode is always dialogue-only');
+    expect(roleplayStore.systemPrompt(scene)).toContain('Ren speaks softly.');
+    scene.messages.push({ id: 'invite', role: 'user', content: 'Talk to each other.', createdAt: 1 });
+    const turn = roleplayStore.prepareTurn(scene);
+    expect(turn.decorate([{ role: 'user', content: 'Talk to each other.' }]).at(-1)?.content).toContain('one response');
+    expect(turn.stop).not.toContain('\nRen:');
+    expect(turn.snapshot?.participantIds).toEqual(['aiko', 'ren']);
+    roleplayStore.setOption('npcDialogue', false);
+    const solo = roleplayStore.prepareTurn(scene);
+    expect(solo.decorate([]).at(-1)?.content).toContain('only Aiko');
+    expect(solo.stop).toContain('\nRen:');
+  });
+
+  it('keeps a targeted Dynamic reply exclusive through streaming, finalization and Retry', async () => {
+    const scene = await start();
+    roleplayStore.setOption('interactionMode', 'dynamic');
+    scene.messages.push({ id: 'question', role: 'user', content: 'Ren, what do you think about Aiko?', createdAt: 1 });
+    roleplayStore.routeTurn(scene, scene.messages);
+    const turn = roleplayStore.prepareTurn(scene, { consumeRouting: true });
+    expect(turn.speakerId).toBe('ren');
+    expect(turn.snapshot?.participantIds).toEqual(['ren']);
+    expect(turn.decorate([]).at(-1)?.content).toContain('Ren only');
+    const raw = 'Narrator: Rain falls.\nRen: Aiko is kind.\nAiko: Thank you.\nRen: Very kind.';
+    expect(turn.sanitize?.(raw)).not.toContain('Aiko:');
+    turn.record(raw);
+    const target = { content: raw };
+    turn.finalize(target);
+    const retry = roleplayStore.prepareTurn(scene, { snapshot: turn.snapshot, speakerId: 'aiko' });
+    expect(retry.speakerId).toBe('ren');
+    expect(retry.snapshot?.participantIds).toEqual(['ren']);
+  });
+
+  it('routes only present characters, including scene-local NPCs, and keeps preview stable', async () => {
+    const scene = await start();
+    roleplayStore.setScene({ ...roleplayStore.room(), presentIds: ['ren'] });
+    expect(roleplayStore.peekSpeaker()?.id).toBe('ren');
+    expect(roleplayStore.routeTurn(scene, scene.messages)).toBe(true);
+    expect(roleplayStore.prepareTurn(scene).speakerId).toBe('ren');
+    roleplayStore.setScene({ ...roleplayStore.room(), presentIds: [], npcs: [{ id: 'npc-mira', name: 'Mira', description: 'A practical dockhand.' }] });
+    expect(roleplayStore.routeTurn(scene, [{ id: 'u', role: 'user', content: '@Mira, help?', createdAt: 1 }])).toBe(true);
+    const turn = roleplayStore.prepareTurn(scene);
+    expect(turn.speakerId).toBe('npc-mira');
+    expect(roleplayStore.systemPrompt(scene, turn.speakerId)).toContain('npc-mira: Mira — present');
+    expect(roleplayStore.peekSpeaker()?.id).toBe('npc-mira');
+  });
+
+  it('suggestions fill a draft without starting generation', async () => {
+    await start();
+    const send = vi.spyOn(appStore, 'sendCurrentMessage');
+    await roleplayStore.sendChoice('I ask Ren about the letter.');
+    expect(appStore.composer).toBe('I ask Ren about the letter.');
+    expect(send).not.toHaveBeenCalled();
+    send.mockRestore();
+  });
+
+  it('carries world timers and props through the shared settings resolver', async () => {
+    const character = emptyCharacter({ name: 'Ren' });
+    await charactersStore.save(character);
+    const world = emptyWorld({ settings: { props: true, choiceTimerSeconds: 60, interactionMode: 'dynamic' } });
+    const scene = roleplayStore.startScene({ characters: [character], world, settings: { choiceTimerSeconds: 0 } })!;
+    expect(scene.roleplay?.props).toBe(true);
+    expect(scene.roleplay?.choiceTimerSeconds).toBe(0);
+    expect(scene.roleplay?.interactionMode).toBe('dynamic');
+  });
+
+  it('restores response-version state and saves later turns as an alternate conversation', async () => {
+    const scene = await start();
+    roleplayStore.setOption('interactionMode', 'dynamic');
+    const turn = roleplayStore.prepareTurn(scene);
+    const first = { id: 'response', role: 'assistant' as const, content: 'At the harbor.', createdAt: 2, done: true, status: 'idle' as const, versions: [], activeVersion: 0 };
+    turn.finalize(first);
+    const snapshot = turn.snapshot!;
+    const firstState = { ...snapshot, settled: true, sceneAfter: { ...snapshot.sceneBefore, location: 'Harbor' } };
+    const secondState = { ...firstState, sceneAfter: { ...snapshot.sceneBefore, location: 'Forest' } };
+    appStore.appendMessageToChat(scene.id, { ...first, metadata: { roleplay: firstState }, versions: [{ content: 'Harbor', createdAt: 2, metadata: { roleplay: firstState } }, { content: 'Forest', createdAt: 3, metadata: { roleplay: secondState } }] });
+    appStore.appendMessageToChat(scene.id, { id: 'later', role: 'user', content: 'Where now?', createdAt: 4 });
+    const before = appStore.chats.length;
+    appStore.setMessageActiveVersion('response', 1);
+    expect(roleplayStore.room().location).toBe('Forest');
+    expect(appStore.currentChat?.messages).toHaveLength(1);
+    expect(appStore.chats).toHaveLength(before + 1);
+    const alternate = appStore.chats.find((entry) => entry.id !== scene.id)!;
+    expect(alternate.messages).toHaveLength(2);
+    expect(alternate.messages[0].activeVersion).toBe(0);
+    expect(alternate.messages[0].id).not.toBe('response');
+    const retry = roleplayStore.prepareTurn(scene, { snapshot: secondState, historyEnd: 0 });
+    expect(retry.snapshot?.seed).toBe(secondState.seed);
+    expect(retry.snapshot?.direction).toBe(secondState.direction);
+    expect(retry.snapshot?.settled).toBe(false);
+    expect(retry.snapshot?.sceneAfter).toEqual(secondState.sceneBefore);
   });
 });
 

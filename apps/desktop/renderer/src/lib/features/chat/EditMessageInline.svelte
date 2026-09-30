@@ -49,21 +49,9 @@
     const message = chat.messages.find((entry) => entry.id === messageId);
     if (!message) return;
 
-    if (message.role === 'user') {
-      message.content = content.trim();
-    } else {
-      if (message.activeVersion !== undefined && message.versions?.[message.activeVersion]) {
-        message.versions[message.activeVersion].content = content.trim();
-      } else {
-        message.content = content.trim();
-      }
-    }
-
-    chat.updatedAt = Date.now();
-    appStore.editingMessageId = null;
-    appStore.editingMessageContent = '';
-    appStore.touchChats();
-    appStore.persist();
+    appStore.editingMessageId = messageId;
+    appStore.editingMessageContent = content;
+    appStore.saveEditedMessage();
     onDone?.();
   }
 

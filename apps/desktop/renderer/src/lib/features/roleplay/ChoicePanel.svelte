@@ -15,6 +15,7 @@
 
 <script lang="ts">
   import { X } from 'lucide-svelte';
+  import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
     choices: string[];
@@ -29,9 +30,6 @@
 
   let { choices, disabled = false, timerSeconds = null, onpick, onexpire, ondismiss }: Props = $props();
 
-  /** Matches --motion-smooth, so the pick reads before the turn sends. */
-  const PICK_HOLD_MS = 280;
-
   let picked = $state<number | null>(null);
   let now = $state(Date.now());
   let totalMs = $state(0);
@@ -45,6 +43,8 @@
   const remainingSeconds = $derived(Math.ceil(remainingMs / 1000));
   const fraction = $derived(clocked ? Math.max(0, Math.min(1, remainingMs / totalMs)) : 0);
   const held = $derived(hovering || pausedAt > 0 || typeof document !== 'undefined' && document.visibilityState === 'hidden');
+
+  $effect(() => { holdClock(hovering || !!appStore.composer.trim() || document.visibilityState === 'hidden'); });
 
   // New options restart the clock. Reading `choices` is what makes this re-run.
   $effect(() => {
@@ -64,7 +64,7 @@
   });
 
   $effect(() => {
-    if (!deadline || expired || picked != null || now < deadline) return;
+    if (!deadline || held || expired || picked != null || now < deadline) return;
     expired = true;
     onexpire?.();
   });
@@ -90,7 +90,7 @@
     if (disabled || picked != null || !choices[index]) return;
     picked = index;
     const choice = choices[index]!;
-    setTimeout(() => onpick(choice), PICK_HOLD_MS);
+    onpick(choice);
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -143,7 +143,7 @@
   </div>
 
   <div class="foot">
-    <span class="hint">or type below{choices.length ? ` · press ${choices.length > 1 ? `1–${choices.length}` : '1'}` : ''}</span>
+    <span class="hint">Select to draft, or type below{choices.length ? ` · press ${choices.length > 1 ? `1–${choices.length}` : '1'}` : ''}</span>
     {#if ondismiss}
       <button type="button" class="dismiss" aria-label="Dismiss suggestions" onclick={ondismiss}>
         <X class="size-3" />

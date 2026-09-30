@@ -17,7 +17,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'start_embedding_server', 'stop_embedding_server', 'get_embedding_status',
   'get_loaded_models', 'unload_model', 'get_recommended_settings', 'preview_local_model_command',
   'get_installed_runtimes', 'delete_runtime_binary', 'download_runtime',
-  'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'read_file_base64',
+  'generate_tts', 'generate_tts_stream', 'cancel_tts_stream', 'unload_tts', 'check_espeak_data', 'preload_tts', 'list_tts_voices', 'list_speech_voices', 'read_file_base64',
   'stt_transcribe', 'get_stt_status', 'unload_whisper', 'voice_setup_plan', 'setup_voice', 'list_speech_models', 'use_speech_model', 'remove_speech_model', 'get_engine_overview', 'list_instances', 'start_instance', 'stop_instance', 'set_instance_sharing', 'get_instance_key', 'check_whisper_update', 'update_whisper_engine', 'cleanup_engines', 'open_data_folder',   'fetch_provider_models', 'test_provider_connection', 'get_api_model_context', 'detect_tool_support',
   'get_reasoning_capabilities',
   'get_whisper_runtimes', 'delete_whisper_runtime', 'download_whisper_runtime',

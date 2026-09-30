@@ -1,5 +1,5 @@
 /**
- * The two top-level spaces of the app.
+ * The three top-level spaces of the app.
  *
  * Every session (chat) belongs to exactly one space, and a space decides what
  * the UI offers and what the model may do:
@@ -9,8 +9,8 @@
  * - `code` — the coding agent surface: project folders, workspace tools,
  *   file edits, checkpoints. Coding work only.
  * - `roleplay` — the character surface: character cards, user personas,
- *   lorebooks and immersive scenes. Direct streaming, no tools. Gated behind
- *   the `ui.roleplay_enabled` setting.
+ *   lorebooks and immersive scenes. Direct streaming, no tools. Enabled by
+ *   default and always available in the top-bar tabs.
  *
  * This module is the single source of truth for that split. Components read
  * labels and defaults from here; services consult it instead of hard-coding

@@ -86,6 +86,15 @@ export const ROLEPLAY_BASE_PROMPT = [
  * check is weaker than a fact it is already inside, and a list of prohibitions
  * tends to import the very subject it names.
  */
+export const CHARACTER_CHAT_PROMPT = [
+  "Write {{char}}'s next reply in a fictional chat between {{char}} and {{user}}.",
+  'Stay recognizably in character: voice, knowledge, motivations and personality follow the character definition.',
+  'Reply as this person would in an everyday conversation: direct, natural spoken dialogue in their own voice.',
+  'Write only what the character says. Do not narrate gestures, surroundings, inner monologues or stage directions; do not wrap speech in quotation marks or asterisks.',
+  'Never author {{user}}\'s thoughts, actions or dialogue. Leave them room to respond.',
+  'Use relevant memories without recapping. Vary phrasing, avoid stock gestures, and adapt length to what was actually said.'
+].join('\n');
+
 export const CONTENT_FRAME_SFW = [
   '## Content',
   'This scene is written for a general audience: warmth, tension, affection and conflict all belong in it.',
@@ -221,6 +230,7 @@ export interface RoleplayPromptInput {
   group?: boolean;
   /** Group chats: let one generation voice several characters. */
   allowMultiSpeaker?: boolean;
+  participantIds?: string[];
   /** Let a reply hand the user a prop — a letter, a map, a note. */
   props?: boolean;
   /** End replies with a clickable `[choices]` block. */
@@ -231,6 +241,9 @@ export interface RoleplayPromptInput {
   worldScenario?: string;
   /** How the scene handles mature material. Absent means nothing is said. */
   contentRating?: 'sfw' | 'unrestricted';
+  settings?: RoleplaySettings;
+  sceneContext?: string;
+  memoryContext?: string;
 }
 
 export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
@@ -245,7 +258,7 @@ export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
   const sections: string[] = [];
 
   // 1. Main instructions: the card's override replaces the default.
-  sections.push(primary.systemPrompt?.trim() ? macro(primary.systemPrompt) : macro(ROLEPLAY_BASE_PROMPT));
+  sections.push(primary.systemPrompt?.trim() ? macro(primary.systemPrompt) : macro(input.settings?.interactionMode === 'chat' ? CHARACTER_CHAT_PROMPT : ROLEPLAY_BASE_PROMPT));
 
   // 2. Content frame: what kind of scene this is, cast before anyone is in it.
   if (input.contentRating === 'unrestricted') sections.push(CONTENT_FRAME_UNRESTRICTED);
@@ -259,9 +272,10 @@ export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
 
   // 4. Character definitions.
   for (const character of characters) {
+    const characterMacro = (text: string) => substituteMacros(text, { char: character.name, user });
     const lines: string[] = [`## ${character.name}`];
-    if (character.description?.trim()) lines.push(macro(character.description.trim()));
-    if (character.personality?.trim()) lines.push(macro(character.personality.trim()));
+    if (character.description?.trim()) lines.push(characterMacro(character.description.trim()));
+    if (character.personality?.trim()) lines.push(characterMacro(character.personality.trim()));
     sections.push(lines.join('\n'));
   }
 
@@ -313,7 +327,7 @@ export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
         '- <short action the user could take, in second person>',
         '- <another action>',
         '[/choices]',
-        'Give 2 to 4 options that follow from the scene. Do not number them and do not comment on them.'
+        `Give ${input.settings?.choiceMin ?? 2} to ${input.settings?.choiceMax ?? 4} varied options that follow from the scene. Write editable first-person actions, never an action already taken. Do not number them or comment on them.`
       ].join('\n')
     );
   }
@@ -335,6 +349,38 @@ export function buildRoleplaySystemPrompt(input: RoleplayPromptInput): string {
   // 13. Post-history instructions last.
   if (primary.postHistoryInstructions?.trim()) {
     sections.push(macro(primary.postHistoryInstructions.trim()));
+  }
+
+  if (input.settings) {
+    const settings = input.settings;
+    sections.push([
+      `## ${settings.interactionMode === 'dynamic' ? 'Dynamic scene' : settings.interactionMode === 'narrative' ? 'Narrative scene' : 'Character chat'} policy`,
+      settings.interactionMode === 'dynamic'
+        ? 'Respond to the typed user turn with one coherent scene beat in one response. Put each brief narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Keep all gestures, actions, surroundings and internal observations in narrator passages. Character contributions contain only natural spoken dialogue, without italic actions or quotation marks around the whole reply. Do not jump through a whole scene.'
+        : settings.interactionMode === 'narrative'
+          ? 'Respond to the typed user turn with a short narrative scene. Put each narrator passage on its own line starting with "Narrator:" and each spoken contribution on its own line starting with the character\'s exact name and a colon, even with a single character. Alternate passages in their natural order; the interface shows narration between character replies. Keep gestures and surroundings in narrator passages, and character contributions as natural spoken dialogue. Never narrate unexpressed user actions or thoughts. Do not resolve the entire scene before the user can reply.'
+          : 'Chat mode is always dialogue-only, even if a card, example, author note or earlier reply uses narrative prose. Answer what the user actually said as a person talking to them, in the character\'s distinctive voice. No narration, stage directions, italic actions, internal monologues, scene-setting or descriptions of gestures. Do not quote the entire reply. Use contractions and conversational phrasing when appropriate to this character; avoid theatrical speeches and obligatory closing questions.',
+      `Reply style: ${settings.interactionMode === 'chat' ? 'dialogue' : settings.replyStyle}. Length: ${settings.replyLength}. Initiative: ${settings.initiative}. Pacing: ${settings.pacing}. Stakes: ${settings.stakes ?? 'balanced'}.`,
+      settings.interactionMode === 'chat' ? '' : 'Narrator passages use plain text. Never mix stage directions into character dialogue.',
+      settings.genre ? `Genre and tone: ${settings.genre}.` : '',
+      `At most ${settings.maxExchangeLines ?? 3} short character contributions. Use only relevant present participants. They may reference absent characters but absent characters cannot answer.`,
+      input.participantIds ? `Only these characters may speak this turn: ${characters.filter((card) => input.participantIds!.includes(card.id)).map((card) => card.name).join(', ')}. Everyone else stays silent. ${input.participantIds.length === 1 ? 'One character reply only; do not create an ensemble exchange.' : 'Keep their replies individual and brief.'} Speaking permission takes precedence over turn direction, cards, examples and NPC dialogue settings.` : '',
+      'A reference to a character is not necessarily a direct address. Let NPCs cooperate, disagree and answer each other when invited. Respect each character\'s private knowledge, motives and relationships; do not make them share one voice or omniscient knowledge.',
+      'An optional [character:ID] after a name identifies a particular character when names collide. Resolve it using the room IDs; do not echo the identifier in prose.',
+      'Respect canon and established facts. Distinguish a declared completed action from an intention or an uncertain attempt. Never invent unexpressed user dialogue, actions, thoughts or feelings.',
+      'Avoid repeated gestures, summaries and forced questions at the end of every turn. Leave a meaningful opening and return control to the user.',
+      'The user sets the topic and pace. Characters respond to that topic; do not act as a game master, prescribe the user\'s next move, push a new quest, order them around to advance a plot, or funnel them into a decision. A character may disagree or make an in-character request when the context calls for it, but does not direct the conversation on the user\'s behalf.',
+      input.sceneContext ? `## Current room\n${input.sceneContext}` : '',
+      input.memoryContext ? `## Relevant memory\n${input.memoryContext}` : '',
+      settings.interactionMode !== 'chat' ? [
+        'After the visible response and any choices/props, optionally append [scene] JSON [/scene]. This is private state metadata, not dialogue.',
+        'Use only changes supported by this completed scene beat. Omit unchanged fields. Never retcon established facts or supply the user\'s next action.',
+        'Shape: {"location":"...","presentIds":["existing character IDs"],"facts":["confirmed facts"],"goals":["unresolved goals"],"relationships":["established relationships"]}. Lists replace previous lists: carry forward still-relevant entries.',
+        'If a turn direction supplies an outcome roll and you actually resolve a genuinely uncertain attempted action with it, include "outcomeApplied":true. Omit this for ordinary dialogue, intentions, trivial actions or already established outcomes.',
+        settings.sceneNpcs ? 'You may include "npcs":[{"id":"npc-stable-slug","name":"...","description":"voice, goals and knowledge"}] for up to eight relevant scene-local NPCs. Preserve existing NPC IDs; these NPCs are currently present.' : 'Do not introduce new speaking NPCs.',
+        settings.autoMemory && settings.memoryEnabled ? 'Record only observable events and confirmed facts; distinguish a character\'s belief explicitly.' : 'Do not write facts, goals or relationships into metadata.'
+      ].join('\n') : ''
+    ].filter(Boolean).join('\n'));
   }
 
   return sections.filter(Boolean).join('\n\n');
