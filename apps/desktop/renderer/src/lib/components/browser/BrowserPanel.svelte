@@ -10,21 +10,20 @@
 
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, Bot } from 'lucide-svelte';
+  import { X, Plus, ArrowLeft, ArrowRight, RotateCw, LoaderCircle, Monitor, Laptop, Tablet, Smartphone, PanelRight, Hand, MoreHorizontal } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
-  import IconButton from '$lib/components/ui/IconButton.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
 
-  const VIEWPORT_META: Record<BrowserViewportPreset, { label: string; icon: typeof Monitor }> = {
-    fit: { label: 'Fit', icon: PanelRight },
-    desktop: { label: 'Desktop', icon: Monitor },
-    laptop: { label: 'Laptop', icon: Laptop },
-    tablet: { label: 'Tablet', icon: Tablet },
-    mobile: { label: 'Mobile', icon: Smartphone }
+  const VIEWPORT_ICON: Record<BrowserViewportPreset, typeof Monitor> = {
+    fit: PanelRight,
+    desktop: Monitor,
+    laptop: Laptop,
+    tablet: Tablet,
+    mobile: Smartphone
   };
 
   let panelEl = $state<HTMLDivElement | undefined>(undefined);
@@ -45,11 +44,11 @@
   }
 
   function shortLabel(tab: { title: string; url: string }) {
-    if (tab.title) return tab.title.slice(0, 18);
+    if (tab.title) return tab.title.slice(0, 24);
     try {
-      return new URL(tab.url).hostname || 'New tab';
+      return new URL(tab.url).hostname || $t('browser.newTab');
     } catch {
-      return 'New tab';
+      return $t('browser.newTab');
     }
   }
 
@@ -81,91 +80,47 @@
   role="complementary"
   aria-label={$t('browser.title')}
 >
-  <div class="browser-tabs" role="tablist" aria-label="Browser tabs">
-    {#each browserPanelStore.tabs as tab (tab.id)}
-      <div
-        class="browser-tab"
-        class:active={tab.id === browserPanelStore.activeTabId}
-        role="tab"
-        aria-selected={tab.id === browserPanelStore.activeTabId}
-      >
-        <button
-          type="button"
-          class="browser-tab-label"
-          onclick={() => void browserPanelStore.selectTab(tab.id).then(() => syncBounds())}
-          title={tab.url || 'New tab'}
-        >
-          {shortLabel(tab)}
-        </button>
-        <button
-          type="button"
-          class="browser-tab-close"
-          onclick={() => void browserPanelStore.closeTab(tab.id)}
-          aria-label={$t('browser.closeTab')}
-          tabindex="-1"
-        >
-          <X class="size-3" />
-        </button>
-      </div>
-    {/each}
-    <button
-      type="button"
-      class="browser-icon-btn"
-      onclick={() => void browserPanelStore.newTab().then(() => syncBounds())}
-      aria-label={$t('browser.newTab')}
-      title={$t('browser.newTab')}
-    >
-      <Plus class="size-3.5" />
-    </button>
-    <span class="browser-driving" class:on={browserPanelStore.agentDriving} title={browserPanelStore.agentDriving ? $t('browser.agentUsing') : ''}>
-      <span class="browser-driving-dot" aria-hidden="true"></span>
-      {browserPanelStore.agentDriving ? $t('browser.agent') : ''}
-    </span>
-  </div>
-
+  <!-- One slim row: back, the address, reload, everything else in "…". -->
   <div class="browser-bar">
-    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
-      <ArrowLeft class="size-3.5" />
+    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
+      <ArrowLeft />
     </button>
-    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('forward')} aria-label={$t('browser.forward')} title={$t('browser.forward')}>
-      <ArrowRight class="size-3.5" />
-    </button>
-    <button type="button" class="browser-icon-btn" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
-      <RotateCw class="size-3.5" />
-    </button>
-    <input
-      id="browser-address-input"
-      class="browser-url"
-      placeholder={$t('browser.address')}
-      bind:value={browserPanelStore.addressInput}
-      onkeydown={onAddressKeydown}
-      spellcheck={false}
-      autocomplete="off"
-    />
-    <button
-      type="button"
-      class="browser-icon-btn"
-      onclick={() => void browserPanelStore.go()}
-      aria-label={$t('browser.go')}
-      title={$t('browser.go')}
-      disabled={browserPanelStore.loading}
-    >
-      {#if browserPanelStore.loading}
-        <LoaderCircle class="size-3.5 animate-spin" />
-      {:else}
-        <ArrowRight class="size-3.5" />
+    <label class="browser-url" class:driving={browserPanelStore.agentDriving}>
+      {#if browserPanelStore.agentDriving}
+        <span class="driving-dot" title={$t('browser.agentUsing')} aria-label={$t('browser.agentUsing')}></span>
       {/if}
+      <input
+        id="browser-address-input"
+        placeholder={$t('browser.address')}
+        aria-label={$t('browser.address')}
+        bind:value={browserPanelStore.addressInput}
+        onkeydown={onAddressKeydown}
+        spellcheck={false}
+        autocomplete="off"
+      />
+      {#if browserPanelStore.loading}<LoaderCircle class="size-3 shrink-0 animate-spin text-muted-foreground" />{/if}
+    </label>
+    {#if browserPanelStore.userTakeover}
+      <button type="button" class="control-chip" onclick={() => void browserPanelStore.setTakeover(false)} title={$t('browser.youHaveControl')} aria-label={$t('browser.handBack')}>
+        <Hand class="size-3" /> <span class="control-label">{$t('browser.handBack')}</span>
+      </button>
+    {:else if browserPanelStore.agentDriving}
+      <button type="button" class="control-chip" onclick={() => void browserPanelStore.setTakeover(true)} title={$t('browser.agentUsing')} aria-label={$t('browser.takeControl')}>
+        <Hand class="size-3" /> <span class="control-label">{$t('browser.takeControl')}</span>
+      </button>
+    {/if}
+    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
+      <RotateCw />
     </button>
-    <Menu placement="bottom-end" label={$t('browser.screenSize')}>
+    <Menu placement="bottom-end" label={$t('browser.more')} minWidth="12rem">
       {#snippet trigger(props)}
-        {@const ActiveIcon = VIEWPORT_META[browserPanelStore.viewport]?.icon ?? Monitor}
-        <IconButton
-          {...props}
-          label="{$t('browser.screenSize')}: {browserPanelStore.viewport === 'fit' ? $t('browser.fit') : VIEWPORT_META[browserPanelStore.viewport]?.label ?? ''}"
-        >
-          <ActiveIcon class="size-3.5" />
-        </IconButton>
+        <button type="button" class="aui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
+          <MoreHorizontal />
+        </button>
       {/snippet}
+      <MenuItem icon={ArrowRight} label={$t('browser.forward')} onselect={() => void browserPanelStore.history('forward')} />
+      <MenuItem icon={Plus} label={$t('browser.newTab')} onselect={() => void browserPanelStore.newTab().then(() => syncBounds())} />
+      <div class="aui-menu-separator" role="separator"></div>
       <MenuItem
         icon={PanelRight}
         label={$t('browser.fit')}
@@ -173,7 +128,7 @@
         onselect={() => void browserPanelStore.setViewport('fit')}
       />
       {#each Object.entries(BROWSER_VIEWPORTS) as [id, preset] (id)}
-        {@const ItemIcon = VIEWPORT_META[id as BrowserViewportPreset]?.icon ?? Monitor}
+        {@const ItemIcon = VIEWPORT_ICON[id as BrowserViewportPreset] ?? Monitor}
         <MenuItem
           icon={ItemIcon}
           label="{preset.label} · {preset.width}×{preset.height}"
@@ -182,32 +137,33 @@
         />
       {/each}
     </Menu>
-    <button
-      type="button"
-      class="browser-icon-btn"
-      onclick={() => void browserPanelStore.hide()}
-      aria-label={$t('browser.closePanel')}
-      title={$t('browser.closePanel')}
-    >
-      <X class="size-3.5" />
+    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
+      <X />
     </button>
   </div>
 
-  {#if browserPanelStore.userTakeover}
-    <div class="browser-banner">
-      <Hand class="size-3.5 shrink-0" />
-      <span class="min-w-0 flex-1 truncate">{$t('browser.youHaveControl')}</span>
-      <button type="button" class="banner-btn" onclick={() => void browserPanelStore.setTakeover(false)}>{$t('browser.handBack')}</button>
-    </div>
-  {:else if browserPanelStore.agentDriving}
-    <div class="browser-banner is-agent">
-      <Bot class="size-3.5 shrink-0" />
-      <span class="min-w-0 flex-1 truncate">{$t('browser.agentUsing')}</span>
-      <button type="button" class="banner-btn" onclick={() => void browserPanelStore.setTakeover(true)}>{$t('browser.takeControl')}</button>
+  <!-- Tabs only once there is more than one. -->
+  {#if browserPanelStore.tabs.length > 1}
+    <div class="browser-tabs" role="tablist" aria-label={$t('browser.tabs')}>
+      {#each browserPanelStore.tabs as tab (tab.id)}
+        <div class="browser-tab" class:active={tab.id === browserPanelStore.activeTabId} role="tab" aria-selected={tab.id === browserPanelStore.activeTabId}>
+          <button
+            type="button"
+            class="browser-tab-label"
+            onclick={() => void browserPanelStore.selectTab(tab.id).then(() => syncBounds())}
+            title={tab.url || $t('browser.newTab')}
+          >
+            {shortLabel(tab)}
+          </button>
+          <button type="button" class="browser-tab-close" onclick={() => void browserPanelStore.closeTab(tab.id)} aria-label={$t('browser.closeTab')} tabindex="-1">
+            <X class="size-2.5" />
+          </button>
+        </div>
+      {/each}
     </div>
   {/if}
 
-  <div bind:this={viewportEl} class="browser-viewport-box" aria-label="Page view"></div>
+  <div bind:this={viewportEl} class="browser-viewport-box" aria-label={$t('browser.page')}></div>
 </div>
 
 <style>
@@ -220,61 +176,121 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--card);
+    container-type: inline-size;
   }
 
-  /* Tab strip: quiet browser tabs, active reads as connected to page. */
+  .browser-bar {
+    display: flex;
+    height: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0 0.3rem;
+  }
+
+  .browser-url {
+    display: flex;
+    min-width: 0;
+    height: 1.625rem;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0 0.125rem;
+    padding: 0 0.6rem;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    cursor: text;
+  }
+
+  .browser-url input {
+    min-width: 0;
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--foreground);
+    font-size: 12px;
+    outline: none;
+  }
+
+  .browser-url:focus-within {
+    box-shadow: inset 0 0 0 1px var(--border-hover);
+  }
+
+  .driving-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background: var(--brand-accent);
+    animation: browser-drive-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes browser-drive-pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+  }
+
+  .control-chip {
+    display: inline-flex;
+    height: 1.375rem;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .control-chip:hover {
+    border-color: var(--border-hover);
+    background: var(--surface-hover);
+  }
+
   .browser-tabs {
     display: flex;
+    height: 1.5rem;
+    flex-shrink: 0;
     align-items: center;
-    gap: 2px;
-    padding: 0.375rem 0.5rem 0;
+    gap: 0.125rem;
+    padding: 0 0.375rem 0.25rem;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  .browser-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
   .browser-tab {
     display: flex;
+    height: 1.25rem;
+    max-width: 9rem;
     align-items: center;
     gap: 0.125rem;
-    max-width: 10rem;
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
-    padding: 0.3rem 0.25rem 0.3rem 0.625rem;
-    font-size: 12px;
+    padding: 0 0.15rem 0 0.5rem;
+    border-radius: var(--radius-full);
     color: var(--muted-foreground);
+    font-size: 11.5px;
     white-space: nowrap;
   }
 
-  .browser-tab:hover {
-    background: var(--muted);
-  }
-
+  .browser-tab:hover,
   .browser-tab.active {
-    background: var(--card);
+    background: var(--surface-hover);
     color: var(--foreground);
-    box-shadow: inset 0 2px 0 var(--sidebar-primary);
   }
 
   .browser-tab-label {
-    border: none;
-    background: transparent;
-    color: inherit;
-    max-width: 8rem;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 0;
   }
 
   .browser-tab-close {
     display: inline-flex;
-    border: none;
+    padding: 0.15rem;
     border-radius: 9999px;
-    background: transparent;
     color: inherit;
-    padding: 0.2rem;
     opacity: 0;
   }
 
@@ -284,132 +300,28 @@
   }
 
   .browser-tab-close:hover {
-    opacity: 1 !important;
+    opacity: 1;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 
-  .browser-driving {
-    margin-left: auto;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding-right: 0.25rem;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--muted-foreground);
-  }
-
-  .browser-driving-dot {
-    width: 0.45rem;
-    height: 0.45rem;
-    border-radius: 9999px;
-    background: var(--border);
-  }
-
-  .browser-driving.on {
-    color: var(--foreground);
-  }
-
-  .browser-driving.on .browser-driving-dot {
-    background: var(--sidebar-primary);
-    animation: browser-drive-pulse 1.6s ease-in-out infinite;
-  }
-
-  @keyframes browser-drive-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-  }
-
-  /* Address row: one slim bar, page-first. */
-  .browser-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.375rem 0.5rem;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .browser-url {
-    min-width: 0;
-    flex: 1 1 auto;
-    height: 1.9rem;
-    border: none;
-    border-radius: var(--radius-md);
-    background: var(--muted);
-    color: var(--foreground);
-    padding: 0 0.65rem;
-    font-size: 0.78rem;
-    outline: none;
-  }
-
-  .browser-url:focus {
-    background: color-mix(in srgb, var(--muted) 60%, var(--background));
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 18%, transparent);
-  }
-
-  .browser-icon-btn {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
-    border-radius: var(--radius-md);
-    border: none;
-    background: transparent;
-    color: var(--muted-foreground);
-  }
-
-  .browser-icon-btn:hover:not(:disabled) {
-    background: var(--muted);
-    color: var(--foreground);
-  }
-
-
-  .browser-banner {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.3rem 0.5rem 0.3rem 0.75rem;
-    font-size: 11.5px;
-    color: var(--foreground);
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .browser-banner.is-agent {
-    background: color-mix(in srgb, var(--sidebar-primary) 10%, var(--card));
-  }
-
-  .banner-btn {
-    flex-shrink: 0;
-    border: 1px solid var(--border);
-    border-radius: 9999px;
-    background: var(--background);
-    color: var(--foreground);
-    padding: 0.1rem 0.6rem;
-    font-size: 11px;
-    font-weight: 500;
-  }
-
-  .banner-btn:hover {
-    border-color: color-mix(in srgb, var(--foreground) 35%, transparent);
-  }
-
-  /* The page (a native view laid over this box) stays inside the dock
-     card's border and clear of its rounded corners. */
+  /* The page is a native view laid over this box; main rounds it to 8px, so
+     a slim inset keeps it inside the card's rounded border. */
   .browser-viewport-box {
     flex: 1 1 auto;
     min-height: 0;
-    margin: 0 5px 5px;
-    border-radius: 0.5rem;
-    background: #fff;
+    margin: 0 4px 4px;
+    border-radius: 8px;
+    background: var(--muted);
+  }
+
+  /* A narrow card keeps the address readable: the chip becomes its icon. */
+  @container (max-width: 380px) {
+    .control-label { display: none; }
+    .control-chip { padding: 0 0.35rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .browser-driving.on .browser-driving-dot {
+    .driving-dot {
       animation: none;
     }
   }

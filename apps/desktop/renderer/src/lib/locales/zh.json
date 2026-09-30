@@ -521,7 +521,10 @@
     "takeControl": "接管",
     "youHaveControl": "你在控制 — 代理已暂停",
     "handBack": "交还",
-    "agent": "代理"
+    "agent": "代理",
+    "more": "更多",
+    "tabs": "浏览器标签页",
+    "page": "页面"
   },
   "localLoad": {
     "title": "加载本地模型",

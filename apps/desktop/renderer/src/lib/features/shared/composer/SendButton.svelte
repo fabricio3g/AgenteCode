@@ -38,15 +38,15 @@
   {#if running}
     <Square class="size-3 fill-current stroke-[2.75]" />
   {:else}
-    <ArrowUp class="size-4 stroke-[2.75]" />
+    <ArrowUp class="size-3.5 stroke-[2.75]" />
   {/if}
 </button>
 
 <style>
   .composer-send {
     display: inline-flex;
-    width: 2rem;
-    height: 2rem;
+    width: 1.75rem;
+    height: 1.75rem;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;

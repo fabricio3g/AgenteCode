@@ -66,7 +66,7 @@
       </div>
       <button
         type="button"
-        class="aui-icon-button size-8"
+        class="aui-icon-button"
         onclick={() => requestClose()}
         aria-label="Close prompt settings"
       >

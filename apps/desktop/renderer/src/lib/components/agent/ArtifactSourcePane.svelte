@@ -14,7 +14,7 @@
 
 <div class="flex h-full min-h-0 flex-col">
   <div class="flex h-10 shrink-0 items-center justify-between border-b border-border px-3">
-    <span class="truncate font-mono text-[11px] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
+    <span class="truncate text-[11px] text-muted-foreground">{path || $t('artifacts.studio.noFile')}</span>
     <Button variant="ghost" size="icon-sm" onclick={ondownload} disabled={!path} aria-label={$t('artifacts.studio.downloadFile')}><FileDown /></Button>
   </div>
   {#if !path}

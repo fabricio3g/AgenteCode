@@ -166,12 +166,12 @@
     {/if}
 
     {#if onjournal}
-      <button type="button" class="aui-icon-button size-7" title="Scene journal" aria-label="Scene journal" onclick={onjournal}>
+      <button type="button" class="aui-icon-button is-sm" title="Scene journal" aria-label="Scene journal" onclick={onjournal}>
         <BookOpen class="size-3.5" />
       </button>
     {/if}
 
-    <button type="button" class="aui-icon-button size-7" aria-label="Roleplay settings" title="Customize this conversation" disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
+    <button type="button" class="aui-icon-button is-sm" aria-label="Roleplay settings" title="Customize this conversation" disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
 
     <div class="persona-group">
       {#if personas.length && onpersona}
@@ -187,7 +187,7 @@
         {#if onpersonaedit}
           <button
             type="button"
-            class="aui-icon-button size-7"
+            class="aui-icon-button is-sm"
             aria-label="Edit persona"
             title={activePersonaId ? 'Edit persona' : 'New persona'}
             onclick={editActivePersona}

@@ -128,7 +128,7 @@
         </Field>
         {#if bot}
           <Field label={$t('bots.memory')} description={$t('bots.memoryHint')} htmlFor="bot-memory">
-            <textarea id="bot-memory" class="aui-input min-h-24 font-mono text-[12px]" bind:value={memory}></textarea>
+            <textarea id="bot-memory" class="aui-input min-h-24 text-[12px]" bind:value={memory}></textarea>
           </Field>
         {/if}
         <Field

@@ -119,7 +119,7 @@
     </div>
     <button
       type="button"
-      class="aui-icon-button size-8"
+      class="aui-icon-button"
       onclick={() => (appStore.llmDrawerOpen = false)}
       aria-label="Close"
     >
@@ -161,7 +161,7 @@
           </div>
           <button
             type="button"
-            class="aui-icon-button size-8 shrink-0"
+            class="aui-icon-button shrink-0"
             onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
             title="Configure"
           ><ExternalLink class="size-3.5" /></button>

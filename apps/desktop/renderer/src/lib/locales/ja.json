@@ -521,7 +521,10 @@
     "takeControl": "操作を引き継ぐ",
     "youHaveControl": "操作中 — エージェントは一時停止中",
     "handBack": "返す",
-    "agent": "エージェント"
+    "agent": "エージェント",
+    "more": "その他",
+    "tabs": "ブラウザーのタブ",
+    "page": "ページ"
   },
   "localLoad": {
     "title": "ローカルモデルを読み込む",

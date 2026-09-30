@@ -37,7 +37,7 @@
     <Tooltip label={tab.label} position="bottom">
       <button type="button" class="space-tab aui-segmented-item" class:is-active={appStore.activeTab === tab.id} role="tab" id={`space-tab-${tab.id}`}
         tabindex={appStore.activeTab === tab.id ? 0 : -1} aria-selected={appStore.activeTab === tab.id} aria-label={tab.label} onclick={() => activate(tab.id)}>
-        <Icon class="size-4" />
+        <Icon class="size-3.5" />
       </button>
     </Tooltip>
   {/each}
@@ -45,7 +45,7 @@
 
 <style>
   .space-tabs { -webkit-app-region: no-drag; pointer-events: auto; }
-  .space-tab { width: 2rem; height: 1.75rem; }
+  .space-tab { width: 1.75rem; height: 1.5rem; }
   .space-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
   @media (prefers-reduced-motion: reduce) { .space-tab { transition: none; } }
 </style>

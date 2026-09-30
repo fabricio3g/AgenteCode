@@ -107,7 +107,7 @@
         class="new-chat-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1.5 text-sm font-medium transition-colors"
         onclick={createForActiveSpace}
       >
-        <Plus class="size-4 shrink-0" />
+        <Plus class="size-3.5 shrink-0" />
         <span class="btn-label">{newButtonLabel}</span>
       </button>
 
@@ -121,7 +121,7 @@
           onclick={() => appStore.showArtifactLibrary()}
           title={$t('sidebar.artifacts')}
         >
-          <Puzzle class="size-4 shrink-0" />
+          <Puzzle class="size-3.5 shrink-0" />
           <span class="btn-label">{$t('sidebar.artifacts')}</span>
         </button>
         <SidebarInstances />
@@ -130,7 +130,7 @@
 
     {#if inBots}
       <label class="sidebar-btn bot-filter flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px]">
-        <Search class="size-4 shrink-0" />
+        <Search class="size-3.5 shrink-0" />
         <input bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
@@ -140,7 +140,7 @@
       onclick={() => { appStore.chatSearchOpen = true; }}
       title={`${searchLabel} (${formatShortcut('mod+shift+k')})`}
     >
-      <Search class="size-4 shrink-0" />
+      <Search class="size-3.5 shrink-0" />
       <span class="btn-label btn-label-truncate">{searchLabel}</span>
     </button>
     {/if}
@@ -206,7 +206,7 @@
         onclick={() => { appStore.modelManagerOpenSection = 'models'; appStore.modelManagerOpen = true; }}
         title={$t('sidebar.models')}
       >
-        <Boxes class="size-4 shrink-0" />
+        <Boxes class="size-3.5 shrink-0" />
         <span class="btn-label">{$t('sidebar.models')}</span>
       </button>
       <button
@@ -214,7 +214,7 @@
         onclick={() => { appStore.modelManagerOpenSection = 'general'; appStore.modelManagerOpen = true; }}
         title={$t('sidebar.settings')}
       >
-        <Settings class="size-4 shrink-0" />
+        <Settings class="size-3.5 shrink-0" />
         <span class="btn-label">{$t('sidebar.settings')}</span>
       </button>
     </div>

@@ -87,7 +87,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--muted-foreground);
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 0.68rem;
   }
 

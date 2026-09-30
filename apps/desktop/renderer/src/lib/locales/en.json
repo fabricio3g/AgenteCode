@@ -521,7 +521,10 @@
     "takeControl": "Take control",
     "youHaveControl": "You have control — the agent is paused",
     "handBack": "Hand back",
-    "agent": "Agent"
+    "agent": "Agent",
+    "more": "More",
+    "tabs": "Browser tabs",
+    "page": "Page"
   },
   "localLoad": {
     "title": "Load local model",

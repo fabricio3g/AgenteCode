@@ -521,7 +521,10 @@
     "takeControl": "Tomar el control",
     "youHaveControl": "Tienes el control — el agente está en pausa",
     "handBack": "Devolver",
-    "agent": "Agente"
+    "agent": "Agente",
+    "more": "Más",
+    "tabs": "Pestañas del navegador",
+    "page": "Página"
   },
   "localLoad": {
     "title": "Cargar modelo local",

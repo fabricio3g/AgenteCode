@@ -123,7 +123,7 @@
           {world ? ' · world canon active' : ''}
         </div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>

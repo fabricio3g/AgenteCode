@@ -45,7 +45,7 @@
       title={copy.composer.attach}
       {...props}
     >
-      <Plus class="size-[18px]" />
+      <Plus class="size-4" />
     </button>
   {/snippet}
 
@@ -105,8 +105,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 2rem;
-    width: 2rem;
+    height: 1.75rem;
+    width: 1.75rem;
     border: 1px solid transparent;
     border-radius: var(--radius-full);
     background: transparent;

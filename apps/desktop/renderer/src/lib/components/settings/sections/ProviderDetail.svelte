@@ -415,7 +415,7 @@
               <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {isDefault ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
                 {#if isDefault}<Check class="size-2.5" />{/if}
               </span>
-              <span class="min-w-0 flex-1 truncate font-mono text-[12px] {isDefault ? 'font-semibold text-foreground' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
+              <span class="min-w-0 flex-1 truncate text-[12px] {isDefault ? 'font-semibold text-foreground' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
               {#if isDefault}<span class="shrink-0 text-[11px] text-muted-foreground">{$t('providers.default')}</span>{/if}
               {#if entry.added}<Badge class="shrink-0">{$t('providers.added')}</Badge>{/if}
             </button>

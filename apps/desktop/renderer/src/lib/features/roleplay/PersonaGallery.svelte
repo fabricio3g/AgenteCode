@@ -67,7 +67,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-2 top-2 size-7 opacity-0 transition group-hover:opacity-100"
+            class="edit-btn aui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => onedit(persona)}
             aria-label="Edit persona"
           >
@@ -75,7 +75,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-10 top-2 size-7 opacity-0 transition group-hover:opacity-100"
+            class="edit-btn aui-icon-button absolute right-10 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => confirmRemove(persona)}
             aria-label="Delete persona"
           >

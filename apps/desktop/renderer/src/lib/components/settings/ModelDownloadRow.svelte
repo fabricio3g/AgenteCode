@@ -83,7 +83,7 @@
     {#if running}
       <button
         type="button"
-        class="aui-icon-button size-7"
+        class="aui-icon-button is-sm"
         onclick={() => void downloadsStore.pauseJob(job.id).then(() => downloadsStore.refresh())}
         aria-label={$t('modelHub.pause')}
         title={$t('modelHub.pauseHint')}
@@ -92,7 +92,7 @@
       </button>
       <button
         type="button"
-        class="aui-icon-button size-7"
+        class="aui-icon-button is-sm"
         onclick={() => void downloadsStore.cancelJob(job.id)}
         aria-label={$t('modelHub.cancelDownload')}
         title={$t('modelHub.cancelHint')}
@@ -102,7 +102,7 @@
     {:else if resumable}
       <button
         type="button"
-        class="aui-icon-button size-7"
+        class="aui-icon-button is-sm"
         onclick={() => void downloadsStore.resumeJob(job)}
         aria-label={$t('modelHub.resume')}
         title={$t('modelHub.resumeHint')}
@@ -111,7 +111,7 @@
       </button>
       <button
         type="button"
-        class="aui-icon-button size-7"
+        class="aui-icon-button is-sm"
         onclick={() => void downloadsStore.removeJob(job.id)}
         aria-label={$t('modelHub.dismiss')}
         title={$t('modelHub.dismiss')}

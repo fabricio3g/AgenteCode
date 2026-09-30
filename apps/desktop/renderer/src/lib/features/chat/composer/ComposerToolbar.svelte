@@ -62,7 +62,7 @@
   {#if !generating}
     <button
       type="button"
-      class="aui-icon-button mic-btn size-8"
+      class="aui-icon-button mic-btn"
       class:is-listening={dictation.uiActive}
       class:unavailable={!dictation.supported}
       onclick={dictation.supported ? () => dictation.toggle(false) : undefined}

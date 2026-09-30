@@ -124,7 +124,7 @@
               <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {chosen ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
                 {#if chosen}<Check class="size-2.5" />{/if}
               </span>
-              <span class="w-16 shrink-0 font-mono text-[11px] text-foreground">{file.quantization || 'GGUF'}</span>
+              <span class="w-16 shrink-0 text-[11px] text-foreground">{file.quantization || 'GGUF'}</span>
               <span class="flex-1 text-[11px] tabular-nums text-muted-foreground">{file.sizeHuman}</span>
               <Badge tone={file.fitTone}>{file.fitLabel}</Badge>
             </button>

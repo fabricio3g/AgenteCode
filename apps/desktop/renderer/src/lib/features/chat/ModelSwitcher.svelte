@@ -425,7 +425,7 @@
        >
     <header class="picker-heading">
       <div><h2 id={`${dialogId}-title`}>{$t('modelPicker.title')}</h2><p>{$t('modelPicker.subtitle')}</p></div>
-      <button type="button" class="aui-icon-button size-8" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
+      <button type="button" class="aui-icon-button" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
     </header>
     <div class="picker-source">
       {#if isElectron()}

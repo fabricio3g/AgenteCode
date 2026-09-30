@@ -29,7 +29,7 @@
       <span class="text-[13px] font-medium leading-none text-foreground">{toast.message}</span>
       <button
         type="button"
-        class="aui-icon-button size-6 shrink-0"
+        class="aui-icon-button is-xs shrink-0"
         onclick={() => toastStore.dismiss(toast.id)}
         aria-label="Dismiss"
       >

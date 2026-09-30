@@ -234,7 +234,7 @@
       {#if query}
         <button
           type="button"
-          class="aui-icon-button size-7"
+          class="aui-icon-button is-sm"
           onclick={() => (query = '')}
           aria-label={$t('search.clear')}
         >

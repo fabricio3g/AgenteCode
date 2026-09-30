@@ -203,7 +203,7 @@
     display: flex;
     gap: 0.25rem;
     flex-shrink: 0;
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 0.68rem;
     font-weight: 600;
   }

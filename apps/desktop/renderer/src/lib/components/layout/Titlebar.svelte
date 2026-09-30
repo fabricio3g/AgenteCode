@@ -52,7 +52,7 @@
   <div class="titlebar-app-tools flex items-center">
   <Tooltip label={$t('titlebar.browser')} position="bottom">
     <button
-      class="aui-icon-button size-8"
+      class="aui-icon-button"
       class:is-active={browserPanelStore.open}
       onclick={() => void browserPanelStore.toggle()}
       aria-label={$t('titlebar.browser')}
@@ -65,7 +65,7 @@
   <DownloadsButton />
   <Tooltip label={$t('titlebar.theme')} position="bottom">
     <button
-      class="aui-icon-button size-8"
+      class="aui-icon-button"
       onclick={(e) => {
         const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
         themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
@@ -91,7 +91,7 @@
   <div class="titlebar-left flex min-w-0 flex-1 items-center gap-0.5 pl-1.5" style="{isMac ? 'padding-left: 78px;' : ''}">
     <Tooltip label={appStore.sidebarOpen ? $t('titlebar.hideSidebar') : $t('titlebar.showSidebar')}>
       <button
-        class="aui-icon-button size-8 titlebar-no-drag"
+        class="aui-icon-button titlebar-no-drag"
         data-sidebar-toggle
         onclick={onSidebarToggle}
         onpointerenter={onSidebarEnter}
@@ -110,7 +110,7 @@
     </Tooltip>
     <Tooltip label={$t('titlebar.search')}>
       <button
-        class="aui-icon-button size-8 titlebar-no-drag titlebar-secondary"
+        class="aui-icon-button titlebar-no-drag titlebar-secondary"
         onclick={() => (appStore.chatSearchOpen = true)}
         aria-label={$t('titlebar.search')}
       >
@@ -119,7 +119,7 @@
     </Tooltip>
     <Tooltip label={$t('titlebar.llmSettings')}>
       <button
-        class="aui-icon-button size-8 titlebar-no-drag titlebar-secondary"
+        class="aui-icon-button titlebar-no-drag titlebar-secondary"
         onclick={() => (appStore.llmDrawerOpen = true)}
         aria-label={$t('titlebar.llmSettings')}
       >

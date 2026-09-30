@@ -105,11 +105,11 @@
     <span class="min-w-0 flex-1 truncate text-left">
       <span class="font-medium text-foreground">{step.label}</span>
       {#if step.detail && !isApproval}
-        <span class="ml-1.5 {isCommand ? 'font-mono text-[11.5px]' : ''} text-muted-foreground">{step.detail.split('\n')[0]}</span>
+        <span class="ml-1.5 {isCommand ? 'text-[11.5px]' : ''} text-muted-foreground">{step.detail.split('\n')[0]}</span>
       {/if}
     </span>
     {#if adds || dels}
-      <span class="shrink-0 font-mono text-[11px] tabular-nums">
+      <span class="shrink-0 text-[11px] tabular-nums">
         {#if adds}<span class="text-success">+{adds}</span>{/if}
         {#if dels}<span class="ml-1 text-error">−{dels}</span>{/if}
       </span>

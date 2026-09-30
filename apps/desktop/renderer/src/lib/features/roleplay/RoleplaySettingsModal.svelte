@@ -27,7 +27,7 @@
 
 <div class="aui-modal-backdrop" role="presentation" use:modalLayer={{ onclose }} transition:motionFade={{ duration: 150 }} onclick={(event) => { if (event.target === event.currentTarget) onclose(); }}>
   <div class="aui-modal-surface max-w-3xl" role="dialog" aria-modal="true" aria-label="Roleplay settings" tabindex="-1" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}>
-    <div class="aui-modal-header"><div><div class="aui-modal-title">Roleplay settings</div><p class="text-xs text-muted-foreground">Shape this conversation. Both modes use your typed turns.</p></div><button type="button" class="aui-icon-button size-8" aria-label="Close settings" onclick={onclose}><X class="size-4" /></button></div>
+    <div class="aui-modal-header"><div><div class="aui-modal-title">Roleplay settings</div><p class="text-xs text-muted-foreground">Shape this conversation. Both modes use your typed turns.</p></div><button type="button" class="aui-icon-button" aria-label="Close settings" onclick={onclose}><X class="size-4" /></button></div>
     <div class="aui-modal-body max-h-[65vh] space-y-5 overflow-y-auto">
       <RoleplaySettingsEditor value={settings} {inherited} onchange={(next) => (settings = next)} />
       <details>

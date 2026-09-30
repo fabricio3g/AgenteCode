@@ -44,7 +44,7 @@
   >
     <header class="flex shrink-0 items-center justify-between px-4 py-3">
       <h2 class="text-sm font-semibold text-foreground">Source Search</h2>
-      <button type="button" class="aui-icon-button size-8" onclick={closeSidebar} aria-label="Close">
+      <button type="button" class="aui-icon-button" onclick={closeSidebar} aria-label="Close">
         <X class="size-4" />
       </button>
     </header>

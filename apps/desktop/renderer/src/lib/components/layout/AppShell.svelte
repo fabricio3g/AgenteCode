@@ -229,7 +229,7 @@
         <div class="preview-bar" style:padding-left={isMac ? '78px' : '6px'}>
           <button
             type="button"
-            class="aui-icon-button size-8"
+            class="aui-icon-button"
             data-sidebar-toggle
             onclick={toggleSidebar}
             aria-controls="app-sidebar"
@@ -333,7 +333,7 @@
         {#each shortcutRows as [combo, label] (combo)}
           <div class="flex items-center justify-between gap-4">
             <span class="text-muted-foreground">{label}</span>
-            <kbd class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">{formatShortcut(combo)}</kbd>
+            <kbd class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">{formatShortcut(combo)}</kbd>
           </div>
         {/each}
       </dl>

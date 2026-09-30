@@ -67,7 +67,7 @@
         </Field>
       {:else if form.every === 'cron'}
         <Field label={$t('bots.cron')} description={$t('bots.cronHint')} htmlFor="routine-cron">
-          <input id="routine-cron" class="aui-input w-56 font-mono" bind:value={form.expr} />
+          <input id="routine-cron" class="aui-input w-56 " bind:value={form.expr} />
         </Field>
       {:else}
         {#if form.every === 'week'}

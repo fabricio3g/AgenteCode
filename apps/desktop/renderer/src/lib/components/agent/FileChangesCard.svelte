@@ -105,7 +105,7 @@
   .card { margin-top: 0.5rem; width: var(--inline-block-width); max-width: 100%; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--muted) 45%, transparent); overflow: hidden; }
   .hdr { display: flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.6rem; font-size: 0.72rem; font-weight: 680; color: var(--muted-foreground); }
   .title { flex: 1; }
-  .cnt { display: inline-flex; gap: 0.25rem; font-family: var(--font-mono); font-size: 0.68rem; font-weight: 720; }
+  .cnt { display: inline-flex; gap: 0.25rem; font-variant-numeric: tabular-nums; font-size: 0.68rem; font-weight: 700; }
   .a { color: var(--success); }
   .d { color: var(--error); }
   .list { max-height: 28rem; overflow-y: auto; }
@@ -115,7 +115,7 @@
   .tr { display: flex; align-items: center; gap: 0.3rem; width: 100%; border: 0; background: transparent; color: var(--muted-foreground); padding: 0.3rem 0.5rem; text-align: left; font-size: 0.74rem; cursor: pointer; transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease); }
   .tr:hover { background: var(--surface-hover); color: var(--foreground); }
   .ci { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
-  .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 0.74rem; flex: 1; }
+  .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; flex: 1; }
   .kind { border-radius: var(--radius-full); background: var(--muted); padding: 0.1rem 0.35rem; font-size: 0.625rem; font-weight: 650; letter-spacing: 0.01em; }
   .kind.created { color: var(--success); }
   .kind.modified { color: var(--primary); }

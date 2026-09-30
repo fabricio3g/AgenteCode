@@ -105,7 +105,7 @@
     {:else if section === 'skills' && info}
       {#each [...info.skills, ...info.commands] as item (item.name)}
         <button type="button" class="row w-full text-left" onclick={() => insert(item.name)}>
-          <span class="font-mono text-[12.5px] text-foreground">/{item.name}</span>
+          <span class="text-[12.5px] text-foreground">/{item.name}</span>
           <span class="row-detail">{item.description}</span>
         </button>
       {:else}

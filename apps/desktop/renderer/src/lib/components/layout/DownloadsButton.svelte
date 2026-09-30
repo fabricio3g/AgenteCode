@@ -64,7 +64,7 @@
   {#snippet trigger(props)}
     <button
       type="button"
-      class="aui-icon-button download-btn relative size-8 {className}"
+      class="aui-icon-button download-btn relative {className}"
       class:is-active={downloadsStore.hasActive}
       aria-label={$t('downloads.title')}
       title={downloadsStore.activeCount ? $t('downloads.active', { values: { n: downloadsStore.activeCount } }) : $t('downloads.title')}

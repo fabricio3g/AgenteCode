@@ -236,7 +236,7 @@
       <div class="flex items-center gap-0.5">
         <button
           type="button"
-          class="aui-icon-button size-8 hover:text-[var(--error)]"
+          class="aui-icon-button hover:text-[var(--error)]"
           onclick={close}
           aria-label={$t('settingsNav.close')}
         >

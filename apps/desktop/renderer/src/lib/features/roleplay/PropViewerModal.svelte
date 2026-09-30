@@ -72,7 +72,7 @@
         <div class="aui-modal-title">{prop.title}</div>
         <div class="text-xs text-muted-foreground">{prop.kind}</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copyText.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
         <X class="size-4" />
       </button>
     </div>

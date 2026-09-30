@@ -56,7 +56,7 @@
           {parts.speaker ? `${parts.speaker.name}'s turn` : 'Scene prompt'} · ~{estimatedTokens} tokens
         </div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -111,7 +111,7 @@
     border-radius: var(--radius-md);
     background: var(--surface-sunken, var(--card));
     color: var(--foreground);
-    font-family: var(--font-mono, ui-monospace, monospace);
+    font-variant-numeric: tabular-nums;
     font-size: 0.6875rem;
     line-height: 1.5;
     white-space: pre-wrap;

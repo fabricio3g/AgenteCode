@@ -447,7 +447,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--font-mono, ui-monospace, monospace);
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
   }
   .find {

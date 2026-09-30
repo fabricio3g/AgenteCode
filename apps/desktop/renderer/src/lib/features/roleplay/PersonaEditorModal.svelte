@@ -93,7 +93,7 @@
         <div class="aui-modal-title">{isNew ? 'New persona' : draft.name || 'Edit persona'}</div>
         <div class="text-xs text-muted-foreground">Who you are inside the story.</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>

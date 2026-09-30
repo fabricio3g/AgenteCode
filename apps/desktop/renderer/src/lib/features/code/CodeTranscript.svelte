@@ -105,7 +105,7 @@
 </script>
 
 <div bind:this={viewport} class="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6" onscroll={onScroll}>
-  <div class="mx-auto flex min-w-0 flex-col gap-5" style="max-width: var(--thread-width);">
+  <div class="mx-auto flex min-w-0 flex-col gap-3" style="max-width: var(--thread-width);">
     {#each messages as message (message.id)}
       {#if message.role === 'user'}
         <div class="group flex flex-col items-end gap-1">

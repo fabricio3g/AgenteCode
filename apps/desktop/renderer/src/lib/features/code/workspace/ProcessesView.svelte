@@ -75,7 +75,7 @@
   <div class="flex w-56 shrink-0 flex-col border-r border-[var(--border-subtle)]">
     <form class="flex items-center gap-1 border-b border-[var(--border-subtle)] px-2 py-1.5" onsubmit={(e) => { e.preventDefault(); void run(); }}>
       <input
-        class="min-w-0 flex-1 bg-transparent px-1 font-mono text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
+        class="min-w-0 flex-1 bg-transparent px-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground"
         bind:value={command}
         placeholder={$t('codeWs.runPlaceholder')}
         spellcheck="false"
@@ -94,7 +94,7 @@
           >
             <span class="flex items-center gap-2">
               <span class="size-1.5 shrink-0 rounded-full {p.status === 'running' ? 'bg-success' : p.status === 'exited' && p.exitCode ? 'bg-error' : 'bg-[var(--text-muted)] opacity-60'}"></span>
-              <span class="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground" title={p.command}>{p.command}</span>
+              <span class="min-w-0 flex-1 truncate text-[12px] text-foreground" title={p.command}>{p.command}</span>
             </span>
             <span class="pl-3.5 text-[11px] text-muted-foreground">{status(p)} · {elapsed(p)}</span>
           </button>
@@ -116,7 +116,7 @@
   <div class="flex min-w-0 flex-1 flex-col">
     {#if selected}
       <div class="flex items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-1.5">
-        <span class="min-w-0 flex-1 truncate font-mono text-[12px] text-foreground" title={selected.command}>{selected.command}</span>
+        <span class="min-w-0 flex-1 truncate text-[12px] text-foreground" title={selected.command}>{selected.command}</span>
         {#each selected.urls as url (url)}
           <Button variant="outline" size="xs" onclick={() => openUrl(url)} title={$t('codeWs.openInBrowser')}>
             <ExternalLink /> {url.replace(/^https?:\/\//, '')}

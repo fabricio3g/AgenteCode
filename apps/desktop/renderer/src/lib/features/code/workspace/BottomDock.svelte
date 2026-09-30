@@ -82,6 +82,7 @@
     border-radius: 0.875rem;
     border: 1px solid var(--border-hover);
     background: var(--card);
+    box-shadow: var(--panel-shadow);
   }
 
   .tab {

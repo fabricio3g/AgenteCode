@@ -47,10 +47,10 @@
   <div class="flex h-10 shrink-0 items-center justify-between pl-3.5 pr-1.5">
     <p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>
     <div class="flex items-center">
-      <button type="button" class="icon-btn" onclick={() => (creating = true)} title={$t('bots.newRoutine')} aria-label={$t('bots.newRoutine')}>
+      <button type="button" class="aui-icon-button" onclick={() => (creating = true)} title={$t('bots.newRoutine')} aria-label={$t('bots.newRoutine')}>
         <Plus class="size-3.5" />
       </button>
-      <button type="button" class="icon-btn" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
+      <button type="button" class="aui-icon-button" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
         <X class="size-3.5" />
       </button>
     </div>
@@ -108,16 +108,6 @@
 {/if}
 
 <style>
-  .icon-btn {
-    display: inline-flex;
-    height: 1.625rem;
-    width: 1.625rem;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    color: var(--muted-foreground);
-  }
-  .icon-btn:hover { background: var(--surface-hover); color: var(--foreground); }
   .empty {
     display: flex;
     flex-direction: column;

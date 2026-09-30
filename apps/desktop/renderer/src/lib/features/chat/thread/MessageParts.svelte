@@ -169,7 +169,7 @@
       {/if}
     </div>
   {:else if part.kind === 'preface'}
-    <p class="mb-2 text-[15px] leading-relaxed text-foreground">{part.content}</p>
+    <p class="mb-2 text-[14px] leading-relaxed text-foreground">{part.content}</p>
   {:else if part.kind === 'content'}
     {#if ctx.contextMode === 'roleplay'}
       <RoleplayResponse content={part.content} status={ctx.message.status} snapshot={ctx.displayMetadata?.roleplay} speakerId={ctx.message.speakerId} messageId={ctx.message.id} />

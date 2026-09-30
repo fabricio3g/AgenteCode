@@ -144,7 +144,7 @@
         <div class="aui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
         <div class="text-xs text-muted-foreground">Setting, canon and cast shared by every scene started here.</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -224,13 +224,13 @@
                   <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
-                <button type="button" class="aui-icon-button size-7" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
+                <button type="button" class="aui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
                   <ArrowUp class="size-3.5" />
                 </button>
-                <button type="button" class="aui-icon-button size-7" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
+                <button type="button" class="aui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
                   <ArrowDown class="size-3.5" />
                 </button>
-                <button type="button" class="aui-icon-button size-7 text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
+                <button type="button" class="aui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
                   <X class="size-3.5" />
                 </button>
               </div>
@@ -277,7 +277,7 @@
                   oninput={(e) => updateStarter(index, e.currentTarget.value)}
                   placeholder="The lanterns rise over the harbor as…"
                 ></textarea>
-                <button type="button" class="aui-icon-button size-8 mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
+                <button type="button" class="aui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
                   <Trash2 class="size-4" />
                 </button>
               </div>

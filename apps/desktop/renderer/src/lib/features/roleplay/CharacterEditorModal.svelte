@@ -128,7 +128,7 @@
         <div class="aui-modal-title">{isNew ? 'New character' : draft.name || 'Edit character'}</div>
         <div class="text-xs text-muted-foreground">Character card fields follow the V2/V3 spec.</div>
       </div>
-      <button type="button" class="aui-icon-button size-8" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <button type="button" class="aui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -237,7 +237,7 @@
                 oninput={(e) => updateGreeting(index, e.currentTarget.value)}
                 placeholder="Another opening scene…"
               ></textarea>
-              <button type="button" class="aui-icon-button size-8 mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
+              <button type="button" class="aui-icon-button mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
                 <Trash2 class="size-4" />
               </button>
             </div>

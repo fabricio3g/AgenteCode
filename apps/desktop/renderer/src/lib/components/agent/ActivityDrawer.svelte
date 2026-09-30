@@ -108,7 +108,7 @@
           {countOf(sourceCount, 'Source')}
         </button>
       </div>
-      <button type="button" class="aui-icon-button size-8 shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
+      <button type="button" class="aui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
         <X class="size-3.5" />
       </button>
     </div>

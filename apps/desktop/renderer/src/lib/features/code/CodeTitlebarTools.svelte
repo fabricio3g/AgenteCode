@@ -71,7 +71,7 @@
   {@const Icon = icon}
   <Tooltip {label} position="bottom">
     <button type="button" class="pane-toggle" class:is-on={pressed} aria-pressed={pressed} aria-label={label} {onclick}>
-      <Icon class="size-4" />
+      <Icon class="size-3.5" />
       {#if badge}{@render badge()}{/if}
     </button>
   </Tooltip>
@@ -79,7 +79,7 @@
 
 {#snippet changesBadge()}
   {#if changes?.files.length}
-    <span class="whitespace-nowrap font-mono text-[11px] tabular-nums"><span class="text-success">+{changeTotals.add}</span> <span class="text-error">−{changeTotals.del}</span></span>
+    <span class="whitespace-nowrap text-[11px] tabular-nums"><span class="text-success">+{changeTotals.add}</span> <span class="text-error">−{changeTotals.del}</span></span>
   {/if}
 {/snippet}
 
@@ -95,7 +95,7 @@
     <Menu bind:open={historyOpen} placement="bottom-end" minWidth="16rem" label={$t('code.history')}>
       {#snippet trigger(props)}
         <button type="button" class="pane-toggle" aria-label={$t('code.history')} title={$t('code.history')} {...props}>
-          <History class="size-4" />
+          <History class="size-3.5" />
         </button>
       {/snippet}
       <p class="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold text-muted-foreground">{$t('code.historyTitle')}</p>
@@ -105,7 +105,7 @@
             <span class="font-medium text-foreground">{timeLabel(checkpoint.createdAt)}</span>
             <span class="text-muted-foreground"> · {say.files(checkpoint.fileCount)}</span>
           </span>
-          <span class="font-mono tabular-nums">
+          <span class="tabular-nums">
             <span class="text-success">+{checkpoint.additions}</span>
             <span class="text-error">−{checkpoint.deletions}</span>
           </span>
@@ -121,11 +121,11 @@
     white-space: nowrap;
     align-items: center;
     gap: 0.375rem;
-    height: 2rem;
-    min-width: 2rem;
+    height: var(--icon-btn);
+    min-width: var(--icon-btn);
     justify-content: center;
-    padding: 0 0.5rem;
-    border-radius: 0.5rem;
+    padding: 0 0.375rem;
+    border-radius: var(--radius-full);
     color: var(--muted-foreground);
     transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
   }

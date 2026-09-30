@@ -45,7 +45,7 @@
         <div class="aui-modal-body !pt-0">
           <p id="confirm-message" class="m-0 text-sm leading-6 text-muted-foreground">{options.message}</p>
           {#if options.details?.length}
-            <ul class="mt-3 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-[11.5px] leading-5 text-foreground">
+            <ul class="mt-3 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-muted/60 px-3 py-2 text-[11.5px] leading-5 text-foreground">
               {#each options.details as line (line)}
                 <li class="truncate" title={line}>{line}</li>
               {/each}

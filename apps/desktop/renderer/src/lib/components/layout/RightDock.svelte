@@ -76,11 +76,11 @@
     border-radius: 0.875rem;
     border: 1px solid var(--border-hover);
     background: var(--card);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--panel-shadow);
     transition: border-color var(--motion-fast) var(--motion-ease);
   }
   .dock-card.accent {
     border-color: var(--brand-accent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-accent) 35%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-accent) 35%, transparent), var(--panel-shadow);
   }
 </style>

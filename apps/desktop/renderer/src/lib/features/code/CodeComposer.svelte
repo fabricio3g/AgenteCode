@@ -485,7 +485,7 @@
     {#if fileOpen}
       <div class="slash-menu" role="listbox" aria-label={$t('code.projectFiles')}>
         {#each fileMatches as file, index (file)}
-          <button type="button" role="option" aria-selected={index === fileIndex} class="slash-item" class:is-active={index === fileIndex} onmouseenter={() => (fileIndex = index)} onmousedown={(event) => event.preventDefault()} onclick={() => chooseFile(file)}><FileIcon class="size-4 shrink-0 text-muted-foreground" /><span class="truncate font-mono text-xs">{file}</span></button>
+          <button type="button" role="option" aria-selected={index === fileIndex} class="slash-item" class:is-active={index === fileIndex} onmouseenter={() => (fileIndex = index)} onmousedown={(event) => event.preventDefault()} onclick={() => chooseFile(file)}><FileIcon class="size-4 shrink-0 text-muted-foreground" /><span class="truncate text-xs">{file}</span></button>
         {/each}
       </div>
     {:else if slashOpen}
@@ -505,7 +505,7 @@
             onclick={() => void runCommand(command)}
           >
             <Icon class="size-4 shrink-0 text-muted-foreground" />
-            <span class="font-mono text-[12.5px] text-foreground">/{command.name}</span>
+            <span class="text-[12.5px] text-foreground">/{command.name}</span>
             <span class="min-w-0 flex-1 truncate text-xs text-muted-foreground">{command.hint}</span>
           </button>
         {/each}
@@ -536,7 +536,7 @@
         <div class="composer-bar">
           <div class="composer-bar-leading">
             <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-            <button type="button" class="aui-icon-button size-8" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
+            <button type="button" class="aui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
 
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
@@ -593,7 +593,7 @@
             {/if}
 
             <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<button type="button" class="aui-icon-button size-8" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+              {#snippet trigger(props)}<button type="button" class="aui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="aui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}

@@ -101,7 +101,7 @@
       {$t('codeWs.changes')}
       {#if files.length}
         <span class="ml-1 text-xs font-normal text-muted-foreground">{$t('codeWs.fileCount', { values: { n: files.length } })}</span>
-        <span class="ml-1 font-mono text-[11px]"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
+        <span class="ml-1 text-[11px]"><span class="text-success">+{totals.add}</span> <span class="text-error">−{totals.del}</span></span>
       {/if}
     </p>
     <Button variant="ghost" size="icon-sm" onclick={refresh} disabled={codeWorkspace.changesLoading} aria-label={$t('codeWs.refresh')} title={$t('codeWs.refresh')}>
@@ -134,12 +134,12 @@
             onclick={() => (selectedPath = file.path)}
             title={file.path}
           >
-            <span class="w-3 shrink-0 text-center font-mono text-[11px] font-semibold {mark.tone}">{mark.letter}</span>
+            <span class="w-3 shrink-0 text-center text-[11px] font-semibold {mark.tone}">{mark.letter}</span>
             <span class="min-w-0 flex-1 truncate text-[12px]">
               <span class="text-foreground">{parts.name}</span>
               {#if parts.dir}<span class="ml-1.5 text-muted-foreground">{parts.dir}</span>{/if}
             </span>
-            <span class="shrink-0 font-mono text-[11px] tabular-nums">
+            <span class="shrink-0 text-[11px] tabular-nums">
               {#if file.additions}<span class="text-success">+{file.additions}</span>{/if}
               {#if file.deletions}<span class="ml-1 text-error">−{file.deletions}</span>{/if}
             </span>
@@ -151,7 +151,7 @@
     {#if selectedPath}
       {@const file = files.find((f) => f.path === selectedPath)}
       <div class="flex h-9 shrink-0 items-center gap-1 border-b border-[var(--border-subtle)] px-3">
-        <span class="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground" title={selectedPath}>{selectedPath}</span>
+        <span class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={selectedPath}>{selectedPath}</span>
         {#if file && file.kind !== 'deleted'}
           <Button variant="ghost" size="xs" onclick={() => openFile(file.path)} title={$t('codeWs.openFile')}><FolderOpen /> {$t('codeWs.open')}</Button>
         {/if}

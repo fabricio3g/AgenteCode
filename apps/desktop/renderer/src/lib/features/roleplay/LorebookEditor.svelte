@@ -143,7 +143,7 @@
         <span class="text-xs font-medium text-muted-foreground">
           Entries {draft.entries.length ? `(${draft.entries.length})` : ''}
         </span>
-        <button type="button" class="aui-icon-button size-6" onclick={addEntry} aria-label="Add entry">
+        <button type="button" class="aui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
           <Plus class="size-3.5" />
         </button>
       </div>
@@ -191,7 +191,7 @@
             <div class="flex items-center gap-1 pt-6">
               <button
                 type="button"
-                class="aui-icon-button size-8"
+                class="aui-icon-button"
                 onclick={() => duplicateEntry(selected.id)}
                 aria-label="Duplicate entry"
                 title="Duplicate entry"
@@ -200,7 +200,7 @@
               </button>
               <button
                 type="button"
-                class="aui-icon-button size-8 text-error"
+                class="aui-icon-button text-error"
                 onclick={() => removeEntry(selected.id)}
                 aria-label="Delete entry"
                 title="Delete entry"

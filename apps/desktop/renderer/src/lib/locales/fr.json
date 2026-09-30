@@ -521,7 +521,10 @@
     "takeControl": "Prendre la main",
     "youHaveControl": "Vous avez la main — l’agent est en pause",
     "handBack": "Rendre la main",
-    "agent": "Agent"
+    "agent": "Agent",
+    "more": "Plus",
+    "tabs": "Onglets du navigateur",
+    "page": "Page"
   },
   "localLoad": {
     "title": "Charger un modèle local",

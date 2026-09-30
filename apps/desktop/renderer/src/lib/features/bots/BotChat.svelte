@@ -106,19 +106,19 @@
 </script>
 
 <section class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={bot.title}>
-  <header class="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] px-4">
-    <BotAvatar {bot} />
+  <header class="flex h-12 shrink-0 items-center gap-2.5 border-b border-[var(--border-subtle)] px-4">
+    <BotAvatar {bot} size="sm" />
     <div class="min-w-0 flex-1">
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
       <p class="truncate text-[11.5px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
-    <button type="button" class="head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
+    <button type="button" class="aui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
     </button>
-    <button type="button" class="head-btn" onclick={onedit} title={$t('bots.edit')} aria-label={$t('bots.edit')}>
+    <button type="button" class="aui-icon-button head-btn" onclick={onedit} title={$t('bots.edit')} aria-label={$t('bots.edit')}>
       <Pencil class="size-4" />
     </button>
-    <button type="button" class="head-btn" class:on={routinesOpen} onclick={ontoggleroutines} title={$t('bots.routines')} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
+    <button type="button" class="aui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} title={$t('bots.routines')} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
       <CalendarClock class="size-4" />
     </button>
   </header>
@@ -226,17 +226,7 @@
 </section>
 
 <style>
-  .head-btn {
-    display: inline-flex;
-    height: 2rem;
-    width: 2rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    color: var(--muted-foreground);
-  }
-  .head-btn:hover:not(:disabled), .head-btn.on { background: var(--surface-hover); color: var(--foreground); }
+  .head-btn.on { background: var(--surface-hover); color: var(--foreground); }
   .head-btn:disabled { opacity: 0.45; }
   .empty {
     display: flex;

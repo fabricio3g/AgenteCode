@@ -42,8 +42,8 @@
 
   const SIZE_CLASS = {
     xs: 'size-6 [&_svg]:size-3',
-    sm: 'size-8 [&_svg]:size-3.5',
-    md: 'size-9 [&_svg]:size-4',
+    sm: 'size-[1.625rem] [&_svg]:size-3.5',
+    md: 'size-7 [&_svg]:size-3.5',
     lg: 'size-10 [&_svg]:size-4'
   } as const;
 </script>
@@ -53,7 +53,7 @@
   class={cn(
     buttonVariants({ variant, size: 'icon-sm' }),
     SIZE_CLASS[size],
-    'shrink-0 rounded-md',
+    'shrink-0 rounded-full',
     quiet && 'text-muted-foreground hover:text-foreground',
     className
   )}

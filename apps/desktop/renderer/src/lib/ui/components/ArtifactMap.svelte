@@ -565,7 +565,7 @@
 
   .map-popup-title { font-weight: 650; }
   .map-popup-body { color: var(--text-secondary); }
-  .map-popup-coords { color: var(--text-muted); font-size: 0.7rem; font-family: var(--font-mono); }
+  .map-popup-coords { color: var(--text-muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 
   .map-legend {
     display: flex;

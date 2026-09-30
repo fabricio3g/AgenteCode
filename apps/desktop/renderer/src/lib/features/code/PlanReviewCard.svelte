@@ -37,7 +37,7 @@
   <header class="flex items-center gap-2">
     <ClipboardList class="size-4 text-muted-foreground" />
     <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{plan.title}</p>
-    {#if plan.path}<span class="truncate font-mono text-[11px] text-muted-foreground">{plan.path}</span>{/if}
+    {#if plan.path}<span class="truncate text-[11px] text-muted-foreground">{plan.path}</span>{/if}
   </header>
   <div class="plan-body text-sm leading-relaxed text-foreground">
     <RichContent content={plan.body} />

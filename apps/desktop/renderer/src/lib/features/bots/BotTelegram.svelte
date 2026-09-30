@@ -214,7 +214,7 @@
     padding: 0.75rem 0.9rem;
   }
   .code {
-    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 18px;
     font-weight: 500;
     letter-spacing: 0.06em;
