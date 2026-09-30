@@ -161,13 +161,13 @@
   .meter span:nth-child(2) { height: 6px; }
   .meter span:nth-child(3) { height: 8px; }
   .meter span:nth-child(4) { height: 10px; }
-  .meter span.is-on { opacity: 1; }
+  .meter span.is-on { opacity: 1; background: var(--brand-accent); }
   .meter.is-auto span { opacity: 0.5; }
 
   .effort { display: grid; width: 17rem; gap: 0.5rem; }
   .effort-head { display: flex; align-items: baseline; justify-content: space-between; }
   .effort-title { color: var(--muted-foreground); font-size: 11.5px; font-weight: 500; }
-  .effort-name { color: var(--foreground); font-size: 12.5px; font-weight: 600; }
+  .effort-name { color: var(--brand-accent-strong); font-size: 12.5px; font-weight: 600; }
 
   .effort-bar {
     position: relative;
@@ -184,10 +184,13 @@
 
   .effort-bar:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
+  /* One hue, the app's accent, deepening toward the chosen level. */
   .fill {
     position: absolute;
     inset: 0 auto 0 0;
-    background: var(--foreground);
+    border-radius: inherit;
+    background: linear-gradient(to right, color-mix(in srgb, var(--brand-accent) 72%, var(--popover)), var(--brand-accent));
+    box-shadow: 0 0 12px -2px color-mix(in srgb, var(--brand-accent) 55%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.18);
     transition: width 160ms var(--motion-ease);
   }
 
@@ -214,8 +217,8 @@
     background: var(--border-hover);
   }
 
-  .segment.is-on { color: var(--background); }
-  .segment.is-on + .segment.is-on::before { background: color-mix(in srgb, var(--background) 25%, transparent); }
+  .segment.is-on { color: #fff; text-shadow: 0 1px 1px rgb(0 0 0 / 0.18); }
+  .segment.is-on + .segment.is-on::before { background: rgb(255 255 255 / 0.3); }
 
   @media (prefers-reduced-motion: reduce) { .fill, .segment { transition: none; } }
   .effort-hint { margin: 0.125rem 0 0; padding-top: 0.5rem; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11.5px; line-height: 1.4; }
