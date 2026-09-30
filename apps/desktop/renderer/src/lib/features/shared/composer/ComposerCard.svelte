@@ -26,7 +26,7 @@
       }, placement);
     };
     reposition();
-    if (!tooltip) panel.querySelector('input')?.focus();
+    if (!tooltip) panel.querySelector<HTMLElement>('input, [role="slider"]')?.focus();
     const observer = new ResizeObserver(reposition);
     observer.observe(anchor);
     observer.observe(panel);
