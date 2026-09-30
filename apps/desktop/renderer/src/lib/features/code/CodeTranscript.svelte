@@ -12,11 +12,13 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
-  import { AlertCircle, ArrowDown, CircleCheck, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
+  import { ArrowDown, CircleCheck, Copy, GitFork, History, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import ReasoningBlock from '$lib/ui/components/ReasoningBlock.svelte';
   import CodeActivityGroup from './CodeActivityGroup.svelte';
+  import CodeErrorNotice from './CodeErrorNotice.svelte';
+  import { withoutCodeErrorText } from './code-error';
   import { t } from 'svelte-i18n';
   import { copy, say } from '$lib/copy';
   import { formatDuration } from '$lib/utils/format';
@@ -84,7 +86,17 @@
   function entriesFor(message: ChatMessage) {
     const live = message.status === 'streaming' && run?.assistantMessageId === message.id ? run.timeline : undefined;
     const children = live ? run?.children : message.metadata?.codeChildren;
-    return orderedEntries(message, live).filter((entry) => !(children?.length && entry.step?.toolName === 'task' && entry.step.status !== 'error'));
+    return withoutCodeErrorText(orderedEntries(message, live), diagnosticFor(message))
+      .filter((entry) => showEntry(entry, Boolean(children?.length)));
+  }
+
+  function diagnosticFor(message: ChatMessage): string | undefined {
+    if (message.status !== 'error') return undefined;
+    return message.metadata?.errorMessage || message.content;
+  }
+
+  function showEntry(entry: ReturnType<typeof orderedEntries>[number], hasChildren: boolean): boolean {
+    return !(hasChildren && entry.step?.toolName === 'task' && entry.step.status !== 'error');
   }
 
   function noteText(note: string): string {
@@ -190,10 +202,7 @@
 
           {#if message.status === 'error'}
             {@const reason = message.metadata?.errorMessage || message.content || copy.tool.failed}
-            <div class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <AlertCircle class="mt-0.5 size-3.5 shrink-0" />
-              <span class="min-w-0 break-words">{reason}</span>
-            </div>
+            <CodeErrorNotice detail={reason} />
           {:else if message.done && !streaming}
             {@const reason = message.metadata?.codeStopReason}
             {@const elapsed = elapsedLabel(message)}

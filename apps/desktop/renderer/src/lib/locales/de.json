@@ -271,6 +271,13 @@
     "refresh": "Aktualisieren"
   },
   "code": {
+    "errors": {
+      "providerUnavailable": "Der Anbieter ist vorübergehend nicht verfügbar. Versuche es gleich erneut.",
+      "internetUnavailable": "Keine Verbindung zum Internet möglich. Prüfe deine Verbindung.",
+      "providerRejected": "Der Anbieter hat diese Anfrage abgelehnt. Prüfe die Modell- und Anbietereinstellungen.",
+      "failed": "Die Anfrage konnte nicht abgeschlossen werden. Versuche es erneut.",
+      "details": "Details"
+    },
     "runtimeNoModel": "Es ist kein Modell konfiguriert. Wähle vor dem Senden einer Nachricht ein Modell im Modell-Hub aus.",
     "runtimeLocalModelNotRunning": "Das lokale Modell läuft nicht — lade es unter Modelle.",
     "projects": "Projekte",

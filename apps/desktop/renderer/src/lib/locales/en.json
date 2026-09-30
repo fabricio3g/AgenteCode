@@ -271,6 +271,13 @@
     "refresh": "Refresh"
   },
   "code": {
+    "errors": {
+      "providerUnavailable": "The provider is temporarily unavailable. Try again shortly.",
+      "internetUnavailable": "Unable to connect to the internet. Check your connection.",
+      "providerRejected": "The provider rejected this request. Check your model and provider settings.",
+      "failed": "The request could not be completed. Try again.",
+      "details": "Details"
+    },
     "runtimeNoModel": "No model is configured. Select a model in the Model Hub before sending a message.",
     "runtimeLocalModelNotRunning": "The local model isn't running — load it from Models.",
     "projects": "Projects",

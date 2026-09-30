@@ -271,6 +271,13 @@
     "refresh": "刷新"
   },
   "code": {
+    "errors": {
+      "providerUnavailable": "提供商暂时不可用。请稍后重试。",
+      "internetUnavailable": "无法连接到互联网。请检查网络连接。",
+      "providerRejected": "提供商拒绝了此请求。请检查模型和提供商设置。",
+      "failed": "无法完成请求。请重试。",
+      "details": "详情"
+    },
     "runtimeNoModel": "尚未配置模型。请先在模型中心选择模型，再发送消息。",
     "runtimeLocalModelNotRunning": "本地模型尚未运行，请从“模型”中加载。",
     "projects": "项目",

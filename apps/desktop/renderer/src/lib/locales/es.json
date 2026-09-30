@@ -271,6 +271,13 @@
     "refresh": "Actualizar"
   },
   "code": {
+    "errors": {
+      "providerUnavailable": "El proveedor no está disponible temporalmente. Inténtalo de nuevo en unos instantes.",
+      "internetUnavailable": "No se pudo conectar a internet. Comprueba tu conexión.",
+      "providerRejected": "El proveedor rechazó esta solicitud. Revisa la configuración del modelo y del proveedor.",
+      "failed": "No se pudo completar la solicitud. Inténtalo de nuevo.",
+      "details": "Detalles"
+    },
     "runtimeNoModel": "No hay ningún modelo configurado. Selecciona un modelo en el centro de modelos antes de enviar un mensaje.",
     "runtimeLocalModelNotRunning": "El modelo local no está en ejecución — cárgalo desde Modelos.",
     "projects": "Proyectos",
