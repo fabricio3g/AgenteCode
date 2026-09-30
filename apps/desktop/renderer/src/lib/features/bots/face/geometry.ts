@@ -62,15 +62,19 @@ export function seededRandom(text: string): () => number {
 
 export const CX = 50, CY = 49, R = 36.5, FLOOR = 90, PIVOT = 88;
 
+function bezierSegment(p0: Point, p1: Point, p2: Point, p3: Point): string {
+  return 'C' + f2(p1[0] + (p2[0] - p0[0]) / 6) + ',' + f2(p1[1] + (p2[1] - p0[1]) / 6)
+    + ' ' + f2(p2[0] - (p3[0] - p1[0]) / 6) + ',' + f2(p2[1] - (p3[1] - p1[1]) / 6)
+    + ' ' + f2(p2[0]) + ',' + f2(p2[1]);
+}
+
 export function closedBezier(pts: Point[]): string {
   const n = pts.length;
   let d = 'M' + f2(pts[0][0]) + ',' + f2(pts[0][1]);
   for (let i = 0; i < n; i++) {
     const p0 = pts[(i - 1 + n) % n], p1 = pts[i];
     const p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
-    d += 'C' + f2(p1[0] + (p2[0] - p0[0]) / 6) + ',' + f2(p1[1] + (p2[1] - p0[1]) / 6)
-      + ' ' + f2(p2[0] - (p3[0] - p1[0]) / 6) + ',' + f2(p2[1] - (p3[1] - p1[1]) / 6)
-      + ' ' + f2(p2[0]) + ',' + f2(p2[1]);
+    d += bezierSegment(p0, p1, p2, p3);
   }
   return d + 'Z';
 }
@@ -81,9 +85,7 @@ function openBezier(pts: Point[]): string {
   for (let i = 0; i < n - 1; i++) {
     const p0 = pts[Math.max(0, i - 1)], p1 = pts[i];
     const p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
-    d += 'C' + f2(p1[0] + (p2[0] - p0[0]) / 6) + ',' + f2(p1[1] + (p2[1] - p0[1]) / 6)
-      + ' ' + f2(p2[0] - (p3[0] - p1[0]) / 6) + ',' + f2(p2[1] - (p3[1] - p1[1]) / 6)
-      + ' ' + f2(p2[0]) + ',' + f2(p2[1]);
+    d += bezierSegment(p0, p1, p2, p3);
   }
   return d;
 }

@@ -1,6 +1,7 @@
 import { WebContentsView, session, shell } from 'electron';
 import { getMainWindow } from './window-manager.ts';
 import { BROWSER_VIEWPORTS, type BrowserViewportPreset } from '../shared/browser-viewports.ts';
+import { debuggerConsoleMessage, type BrowserConsoleMessage } from './browser-console.ts';
 
 export const AGENT_BROWSER_PARTITION = 'persist:agent-browser';
 export const AGENT_BROWSER_MAX_TABS = 5;
@@ -8,11 +9,8 @@ export const AGENT_BROWSER_MAX_TABS = 5;
 export type AgentBrowserViewportPreset = BrowserViewportPreset;
 
 /** One console line, uncaught exception or failed request seen in a tab. */
-export interface PanelConsoleEntry {
+export interface PanelConsoleEntry extends BrowserConsoleMessage {
   seq: number;
-  level: 'log' | 'info' | 'warning' | 'error' | 'debug';
-  source: 'console' | 'exception' | 'network';
-  text: string;
   at: number;
 }
 
@@ -123,6 +121,15 @@ function applyBounds() {
   } catch { /* ignore */ }
 }
 
+function allowWebNavigation(event: { preventDefault(): void }, url: string): void {
+  try {
+    const protocol = new URL(url).protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') event.preventDefault();
+  } catch {
+    event.preventDefault();
+  }
+}
+
 function wireGuestEvents(tab: PanelTab) {
   const wc = tab.view.webContents;
   const refresh = () => pushState();
@@ -141,22 +148,8 @@ function wireGuestEvents(tab: PanelTab) {
     } catch { /* ignore */ }
     return { action: 'deny' };
   });
-  wc.on('will-navigate', (event, url) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') event.preventDefault();
-    } catch {
-      event.preventDefault();
-    }
-  });
-  wc.on('will-frame-navigate', (event, url) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') event.preventDefault();
-    } catch {
-      event.preventDefault();
-    }
-  });
+  wc.on('will-navigate', allowWebNavigation);
+  wc.on('will-frame-navigate', allowWebNavigation);
 }
 
 function createTab(url?: string): PanelTab {
@@ -209,24 +202,8 @@ function pushConsole(tab: PanelTab, entry: Omit<PanelConsoleEntry, 'seq' | 'at'>
 type CdpParams = Record<string, unknown>;
 
 function onDebuggerMessage(tab: PanelTab, method: string, params: CdpParams) {
-  if (method === 'Runtime.consoleAPICalled') {
-    const args = (params.args as Array<{ value?: unknown; description?: string }> | undefined) ?? [];
-    const text = args.map((arg) => (arg.value !== undefined ? String(arg.value) : arg.description ?? '')).join(' ');
-    const type = String(params.type ?? 'log');
-    const level = type === 'error' || type === 'assert' ? 'error' : type === 'warning' ? 'warning' : type === 'debug' ? 'debug' : type === 'info' ? 'info' : 'log';
-    pushConsole(tab, { level, source: 'console', text });
-  } else if (method === 'Runtime.exceptionThrown') {
-    const details = params.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;
-    pushConsole(tab, { level: 'error', source: 'exception', text: details?.exception?.description ?? details?.text ?? 'Uncaught exception' });
-  } else if (method === 'Network.loadingFailed') {
-    if (params.canceled) return;
-    pushConsole(tab, { level: 'error', source: 'network', text: `${String(params.errorText ?? 'Request failed')} (${String(params.type ?? 'request')})` });
-  } else if (method === 'Network.responseReceived') {
-    const response = params.response as { status?: number; url?: string } | undefined;
-    if (response?.status && response.status >= 400) {
-      pushConsole(tab, { level: 'error', source: 'network', text: `HTTP ${response.status} ${response.url ?? ''}` });
-    }
-  }
+  const message = debuggerConsoleMessage(method, params);
+  if (message) pushConsole(tab, message);
 }
 
 async function ensureDebugger(tab: PanelTab) {
@@ -359,25 +336,37 @@ export function panelSetActive(tabId: string) {
   return { id: tabId };
 }
 
-function closeTabEntry(tabId: string) {
-  const tab = tabs.get(tabId);
-  if (!tab) return;
+function tryRelease(action: () => void): void {
   try {
-    if (tab.debuggerAttached) tab.view.webContents.debugger.detach();
+    action();
   } catch { /* ignore */ }
+}
+
+function removeTabView(tab: PanelTab): void {
+  const win = getMainWindow();
+  const contentView = win as unknown as { contentView?: { removeChildView?: (v: unknown) => void } } | null;
+  contentView?.contentView?.removeChildView?.(tab.view);
+}
+
+function releaseTab(tab: PanelTab): void {
+  tryRelease(() => { if (tab.debuggerAttached) tab.view.webContents.debugger.detach(); });
   tab.debuggerAttached = false;
-  try {
-    const win = getMainWindow();
-    const contentView = win as unknown as { contentView?: { removeChildView?: (v: unknown) => void } } | null;
-    contentView?.contentView?.removeChildView?.(tab.view);
-  } catch { /* ignore */ }
-  try {
-    tab.view.webContents.close();
-  } catch { /* ignore */ }
-  tabs.delete(tabId);
+  tryRelease(() => removeTabView(tab));
+  tryRelease(() => tab.view.webContents.close());
+}
+
+function selectAfterClose(tabId: string): void {
   if (activeTabId === tabId) {
     activeTabId = [...tabs.keys()].pop() || null;
   }
+}
+
+function closeTabEntry(tabId: string) {
+  const tab = tabs.get(tabId);
+  if (!tab) return;
+  releaseTab(tab);
+  tabs.delete(tabId);
+  selectAfterClose(tabId);
   if (!tabs.size) panelVisible = false;
 }
 

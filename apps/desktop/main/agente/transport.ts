@@ -6,7 +6,7 @@
 
 import path from 'node:path';
 import { loadConfigFromDisk } from '../config.ts';
-import { resolveApiKey } from '../chat-ipc.ts';
+import { resolveApiKey } from '../provider-auth.ts';
 import { resolveProvider } from '../providers/registry.ts';
 import { isVisionModel } from '../../shared/model-capabilities.ts';
 import { DEFAULT_PROVIDER_BASE_URL } from '../../shared/providers.ts';

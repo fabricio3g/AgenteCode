@@ -58,7 +58,8 @@ import {
 import {
   generateDocx, generateXlsx, generatePdf
 } from './generated-documents.ts';
-import { completeChatRequest, startChatStream, cancelChatStream, resolveApiKey } from './chat-ipc.ts';
+import { completeChatRequest, startChatStream, cancelChatStream } from './chat-ipc.ts';
+import { resolveApiKey } from './provider-auth.ts';
 import { resolveProvider } from './providers/registry.ts';
 import { saveChatSession, loadAllChats, searchChatContent, deleteChat as deleteChatFromDb, migrateFromLocalStorage, loadAllFolders, saveFolder, deleteFolder, loadAllCodeProjects, saveCodeProject, deleteCodeProject, loadAllCharacters, saveCharacter, deleteCharacter, loadAllPersonas, savePersona, deletePersona, loadAllWorlds, saveWorld, deleteWorld } from './chat-db.ts';
 import { countTokens, buildContextBudget, truncateMessages } from './token-counter.ts';

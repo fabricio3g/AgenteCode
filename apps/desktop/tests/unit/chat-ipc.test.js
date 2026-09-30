@@ -2,11 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import {
-  resolveApiKeyFromConfig,
   accumulateToolCallDelta,
   finalizeToolCalls
 } from '../../main/chat-ipc.ts';
-import { resolveApiKey } from '../../main/chat-ipc.ts';
+import { resolveApiKey, resolveApiKeyFromConfig } from '../../main/provider-auth.ts';
 import { startLlamaSession, endLlamaSession, resolveLlamaSessionKey } from '../../main/llama-session.ts';
 
 describe('chat-ipc local session auth', () => {

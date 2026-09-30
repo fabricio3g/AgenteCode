@@ -28,58 +28,32 @@ type ToolingHandlerDeps = {
   generatePdf: (data: unknown) => unknown;
 };
 
-export function registerToolingHandlers({
-  ipcMain,
-  sandboxExec,
-  panelOpenTab,
-  panelListTabs,
-  panelSetActive,
-  panelCloseTab,
-  panelCloseAll,
-  panelSetVisible,
-  panelSetOccluded,
-  panelSetBounds,
-  panelSetViewport,
-  browserNavigate,
-  browserSnapshot,
-  browserClick,
-  browserTypeText,
-  browserEvaluate,
-  browserScreenshot,
-  browserGetCurrentUrl,
-  browserClose,
-  generatePptx,
-  parseSlidesFromMarkdown,
-  slidesToMarkdown,
-  generateDocx,
-  generateXlsx,
-  generatePdf,
-}: ToolingHandlerDeps): void {
-  ipcMain.handle('sandbox_exec', (_e, args) => sandboxExec(args));
+export function registerToolingHandlers(deps: ToolingHandlerDeps): void {
+  deps.ipcMain.handle('sandbox_exec', (_e, args) => deps.sandboxExec(args));
 
-  ipcMain.handle('browser_open_tab', (_e, { url } = {}) => panelOpenTab(url));
-  ipcMain.handle('browser_list_tabs', () => panelListTabs());
-  ipcMain.handle('browser_set_active', (_e, { tabId }) => panelSetActive(tabId));
-  ipcMain.handle('browser_close_tab', (_e, { tabId } = {}) => panelCloseTab(tabId));
-  ipcMain.handle('browser_close_all', () => panelCloseAll());
-  ipcMain.handle('browser_panel_visible', (_e, { visible }) => panelSetVisible(visible));
-  ipcMain.handle('browser_panel_occluded', (_e, { occluded }) => panelSetOccluded(!!occluded));
-  ipcMain.handle('browser_panel_bounds', (_e, rect) => panelSetBounds(rect));
-  ipcMain.handle('browser_viewport', (_e, { preset, tabId } = {}) => panelSetViewport(preset, tabId));
+  deps.ipcMain.handle('browser_open_tab', (_e, { url } = {}) => deps.panelOpenTab(url));
+  deps.ipcMain.handle('browser_list_tabs', () => deps.panelListTabs());
+  deps.ipcMain.handle('browser_set_active', (_e, { tabId }) => deps.panelSetActive(tabId));
+  deps.ipcMain.handle('browser_close_tab', (_e, { tabId } = {}) => deps.panelCloseTab(tabId));
+  deps.ipcMain.handle('browser_close_all', () => deps.panelCloseAll());
+  deps.ipcMain.handle('browser_panel_visible', (_e, { visible }) => deps.panelSetVisible(visible));
+  deps.ipcMain.handle('browser_panel_occluded', (_e, { occluded }) => deps.panelSetOccluded(!!occluded));
+  deps.ipcMain.handle('browser_panel_bounds', (_e, rect) => deps.panelSetBounds(rect));
+  deps.ipcMain.handle('browser_viewport', (_e, { preset, tabId } = {}) => deps.panelSetViewport(preset, tabId));
 
-  ipcMain.handle('browser_navigate', (_e, { url, tabId }) => browserNavigate(url, tabId));
-  ipcMain.handle('browser_snapshot', (_e, { tabId } = {}) => browserSnapshot(tabId));
-  ipcMain.handle('browser_click', (_e, { text, tabId }) => browserClick(text, tabId));
-  ipcMain.handle('browser_type_text', (_e, { selector, text, tabId }) => browserTypeText(selector, text, tabId));
-  ipcMain.handle('browser_evaluate', (_e, { script, tabId }) => browserEvaluate(script, tabId));
-  ipcMain.handle('browser_screenshot', (_e, { tabId } = {}) => browserScreenshot(tabId));
-  ipcMain.handle('browser_get_current_url', (_e, { tabId } = {}) => browserGetCurrentUrl(tabId));
-  ipcMain.handle('browser_close', (_e, { tabId } = {}) => browserClose(tabId));
+  deps.ipcMain.handle('browser_navigate', (_e, { url, tabId }) => deps.browserNavigate(url, tabId));
+  deps.ipcMain.handle('browser_snapshot', (_e, { tabId } = {}) => deps.browserSnapshot(tabId));
+  deps.ipcMain.handle('browser_click', (_e, { text, tabId }) => deps.browserClick(text, tabId));
+  deps.ipcMain.handle('browser_type_text', (_e, { selector, text, tabId }) => deps.browserTypeText(selector, text, tabId));
+  deps.ipcMain.handle('browser_evaluate', (_e, { script, tabId }) => deps.browserEvaluate(script, tabId));
+  deps.ipcMain.handle('browser_screenshot', (_e, { tabId } = {}) => deps.browserScreenshot(tabId));
+  deps.ipcMain.handle('browser_get_current_url', (_e, { tabId } = {}) => deps.browserGetCurrentUrl(tabId));
+  deps.ipcMain.handle('browser_close', (_e, { tabId } = {}) => deps.browserClose(tabId));
 
-  ipcMain.handle('generate_pptx', (_e, { data }) => generatePptx(data));
-  ipcMain.handle('parse_slides_from_markdown', (_e, { markdown }) => parseSlidesFromMarkdown(markdown));
-  ipcMain.handle('slides_to_markdown', (_e, { slides }) => slidesToMarkdown(slides));
-  ipcMain.handle('generate_docx', (_e, { data }) => generateDocx(data));
-  ipcMain.handle('generate_xlsx', (_e, { data }) => generateXlsx(data));
-  ipcMain.handle('generate_pdf', (_e, { data }) => generatePdf(data));
+  deps.ipcMain.handle('generate_pptx', (_e, { data }) => deps.generatePptx(data));
+  deps.ipcMain.handle('parse_slides_from_markdown', (_e, { markdown }) => deps.parseSlidesFromMarkdown(markdown));
+  deps.ipcMain.handle('slides_to_markdown', (_e, { slides }) => deps.slidesToMarkdown(slides));
+  deps.ipcMain.handle('generate_docx', (_e, { data }) => deps.generateDocx(data));
+  deps.ipcMain.handle('generate_xlsx', (_e, { data }) => deps.generateXlsx(data));
+  deps.ipcMain.handle('generate_pdf', (_e, { data }) => deps.generatePdf(data));
 }

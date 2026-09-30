@@ -35,59 +35,46 @@ const baseParams = {
   messages: [{ role: 'user', content: 'ping' }]
 };
 
+async function localRequestBody(params = {}) {
+  const { fakeFetch, getBody } = captureBody();
+  await withFetch(fakeFetch, () => resolveProvider('local', baseParams.baseUrl).complete({ ...baseParams, ...params }));
+  return getBody();
+}
+
 describe('local thinking wire format', () => {
   it("forwards the core's 'off' fields as enable_thinking:false (never disable_thinking)", async () => {
-    const { fakeFetch, getBody } = captureBody();
-    await withFetch(fakeFetch, async () => {
-      await resolveProvider('local', baseParams.baseUrl).complete({
-        ...baseParams,
-        reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } }
-      });
+    const body = await localRequestBody({
+      reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } }
     });
-    const body = getBody();
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
     assert.equal(body.reasoning_format, 'auto');
     assert.ok(!('disable_thinking' in body), 'dead disable_thinking field must not be sent');
   });
 
   it("forwards the core's 'on' fields as enable_thinking:true", async () => {
-    const { fakeFetch, getBody } = captureBody();
-    await withFetch(fakeFetch, async () => {
-      await resolveProvider('local', baseParams.baseUrl).complete({
-        ...baseParams,
-        reasoning: { level: 'on', body: { chat_template_kwargs: { enable_thinking: true } } }
-      });
+    const body = await localRequestBody({
+      reasoning: { level: 'on', body: { chat_template_kwargs: { enable_thinking: true } } }
     });
-    const body = getBody();
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
     assert.equal(body.reasoning_format, 'auto');
   });
 
   it('omits the kwarg when no level is chosen so the server default applies', async () => {
-    const { fakeFetch, getBody } = captureBody();
-    await withFetch(fakeFetch, async () => {
-      await resolveProvider('local', baseParams.baseUrl).complete({ ...baseParams });
-    });
-    const body = getBody();
+    const body = await localRequestBody();
     assert.ok(!('chat_template_kwargs' in body), 'no explicit choice must not pin thinking');
     assert.equal(body.reasoning_format, 'auto');
   });
 
   it('still sends tool definitions alongside the thinking controls', async () => {
-    const { fakeFetch, getBody } = captureBody();
     const tools = [{
       type: 'function',
       function: { name: 'calculator', description: 'math', parameters: { type: 'object', properties: {} } }
     }];
-    await withFetch(fakeFetch, async () => {
-      await resolveProvider('local', baseParams.baseUrl).complete({
-        ...baseParams,
-        reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } },
-        tools,
-        tool_choice: 'auto'
-      });
+    const body = await localRequestBody({
+      reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } },
+      tools,
+      tool_choice: 'auto'
     });
-    const body = getBody();
     assert.equal(body.tools.length, 1);
     assert.equal(body.tool_choice, 'auto');
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });

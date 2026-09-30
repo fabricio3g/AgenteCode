@@ -1,53 +1,10 @@
 import crypto from 'node:crypto';
-import { loadConfigFromDisk } from './config.ts';
+import { getCachedConfig, resolveApiKey } from './provider-auth.ts';
 import { resolveProvider } from './providers/registry.ts';
-import { normalizeBaseUrl } from './providers/helpers.ts';
 import { safeParseJson } from './providers/helpers.ts';
-import { resolveLlamaSessionKey } from './llama-session.ts';
 import { classifyError, LlmStreamError } from './providers/protocol.ts';
 
 const activeStreams = new Map();
-
-const _configCache = { data: null, ts: 0 };
-const CONFIG_CACHE_TTL = 30_000;
-
-function getCachedConfig() {
-  const now = Date.now();
-  if (_configCache.data && now - _configCache.ts < CONFIG_CACHE_TTL) {
-    return _configCache.data;
-  }
-  _configCache.data = loadConfigFromDisk();
-  _configCache.ts = now;
-  return _configCache.data;
-}
-
-export function resolveApiKeyFromConfig(cfg, apiKey, baseUrl, providerName) {
-  if (apiKey) return apiKey;
-  const providers = cfg?.llm?.providers || {};
-  const defaultProvider = cfg?.llm?.provider;
-
-  if (providerName && providers[providerName]?.api_key) {
-    return providers[providerName].api_key;
-  }
-  const normalizedBase = normalizeBaseUrl(baseUrl);
-  for (const provider of Object.values(providers)) {
-    if (normalizeBaseUrl(provider.base_url) === normalizedBase && provider.api_key) {
-      return provider.api_key;
-    }
-  }
-  if (!providerName && defaultProvider && providers[defaultProvider]?.api_key) {
-    return providers[defaultProvider].api_key;
-  }
-  return '';
-}
-
-export function resolveApiKey(apiKey, baseUrl, providerName) {
-  // The local llama-server is launched with a generated per-run --api-key that
-  // is never written to config, so it has to be resolved from the live session.
-  const sessionKey = resolveLlamaSessionKey(baseUrl);
-  if (sessionKey) return sessionKey;
-  return resolveApiKeyFromConfig(getCachedConfig(), apiKey, baseUrl, providerName);
-}
 
 function mergeToolCallText(currentValue, nextValue, { append = false } = {}) {
   const current = String(currentValue || '');
@@ -83,15 +40,19 @@ export function finalizeToolCalls(toolCallAccumulator) {
 
 // ── Public API ──
 
+function authenticationError(provider: { name: string }, apiKey: string, providerName: string): string | null {
+  if (apiKey || ['local', 'lmstudio', 'ollama', 'custom'].includes(provider.name)) return null;
+  const cfg = getCachedConfig();
+  const defaultProvider = cfg?.llm?.provider || 'none';
+  const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
+  return `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > API.`;
+}
+
 export async function completeChatRequest({ baseUrl, apiKey, providerName, body }) {
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey && !['local', 'lmstudio', 'ollama', 'custom'].includes(provider.name)) {
-    const cfg = getCachedConfig();
-    const defaultProvider = cfg?.llm?.provider || 'none';
-    const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
-    throw new Error(`No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > API.`);
-  }
+  const error = authenticationError(provider, realKey, providerName);
+  if (error) throw new Error(error);
 
   const params = Object.fromEntries(
     Object.entries({
@@ -137,12 +98,8 @@ async function thinkingFor(providerName: string, body: { model?: string; reasoni
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
   const provider = resolveProvider(providerName, baseUrl);
   const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-  if (!realKey && !['local', 'lmstudio', 'ollama', 'custom'].includes(provider.name)) {
-    const cfg = getCachedConfig();
-    const defaultProvider = cfg?.llm?.provider || 'none';
-    const availableProviders = Object.keys(cfg?.llm?.providers || {}).join(', ') || 'none';
-    const errorMsg = `No API key configured for "${providerName || defaultProvider}". Available providers: ${availableProviders}. Please add your API key in Settings > API.`;
-
+  const errorMsg = authenticationError(provider, realKey, providerName);
+  if (errorMsg) {
     const streamId = crypto.randomUUID();
     const emit = (payload) => {
       try {

@@ -44,9 +44,23 @@ function chatIdOf(handle: string): string {
 }
 
 /** A bot's face: its mood and the last thing it reacted to. */
-export interface BotMood {
+interface BotMood {
   state: FaceState;
   cue: FaceCue | null;
+}
+
+const EVENT_MOODS: Partial<Record<CodeAgentEvent['type'], { state: FaceState; event?: FaceEvent }>> = {
+  agent_start: { state: 'thinking' },
+  thinking_delta: { state: 'thinking' },
+  text_delta: { state: 'working' },
+  approval_resolved: { state: 'working' },
+  approval_request: { state: 'waiting' },
+  error: { state: 'waiting', event: 'error' },
+  agent_end: { state: 'done', event: 'done' }
+};
+
+function sameMood(previous: BotMood, state: FaceState, cue: FaceCue | null): boolean {
+  return previous.state === state && previous.cue === cue;
 }
 
 /** How long a finished bot looks pleased before it settles back to idle. */
@@ -81,7 +95,7 @@ class BotsStore {
   #mood(handle: string, state: FaceState, event?: FaceEvent): void {
     const previous = this.moodOf(handle);
     const cue = event ? { event, seq: ++cueSeq } : previous.cue;
-    if (previous.state === state && cue === previous.cue) return;
+    if (sameMood(previous, state, cue)) return;
     this.moods = { ...this.moods, [handle]: { state, cue } };
     clearTimeout(this.#settle.get(handle));
     this.#settle.delete(handle);
@@ -92,26 +106,25 @@ class BotsStore {
 
   /** What an event says about how the bot looks right now. */
   #feel(handle: string, event: CodeAgentEvent): void {
-    switch (event.type) {
-      case 'agent_start':
-      case 'thinking_delta':
-        return this.#mood(handle, 'thinking');
-      case 'text_delta':
-      case 'approval_resolved':
-        return this.#mood(handle, 'working');
-      case 'tool_start': {
-        const kind = eventForTool(event.toolName);
-        return this.#mood(handle, kind === 'read' || kind === 'search' ? 'thinking' : 'working', kind);
-      }
-      case 'tool_end':
-        return event.isError ? this.#mood(handle, 'waiting', 'error') : undefined;
-      case 'approval_request':
-        return this.#mood(handle, 'waiting');
-      case 'error':
-        return this.#mood(handle, 'waiting', 'error');
-      case 'agent_end':
-        return this.#mood(handle, 'done', 'done');
+    if (event.type === 'tool_start') {
+      this.#toolMood(handle, event.toolName);
+      return;
     }
+    if (event.type === 'tool_end') {
+      this.#toolResultMood(handle, event.isError);
+      return;
+    }
+    const mood = EVENT_MOODS[event.type];
+    if (mood) this.#mood(handle, mood.state, mood.event);
+  }
+
+  #toolMood(handle: string, toolName: string): void {
+    const kind = eventForTool(toolName);
+    this.#mood(handle, kind === 'read' || kind === 'search' ? 'thinking' : 'working', kind);
+  }
+
+  #toolResultMood(handle: string, isError?: boolean): void {
+    if (isError) this.#mood(handle, 'waiting', 'error');
   }
 
   get current(): Bot | null {

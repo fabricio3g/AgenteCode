@@ -1,11 +1,10 @@
 import { invoke, listen, isElectron } from '$lib/services/bridge';
-import { createStreamIdleWatchdog, streamIdleTimeoutMessage } from '$lib/services/chat-stream-idle';
 import { ensureLocalRuntime, resolveLocalBaseUrl } from '$lib/services/runtime';
 import { createBufferedStreamDispatcher } from '$lib/services/streaming';
 import { loadAppConfig } from '$lib/utils/storage';
-import { buildReasoningRequest, hasConfiguredVisionModel, toRequestMessages } from '$lib/services/chat-api';
+import { buildReasoningRequest, createChatStreamWatchdog, hasConfiguredVisionModel, readCompletionWithTools, toRequestMessages } from '$lib/services/chat-api';
 import type { AppConfig, ReasoningLevel } from '$lib/types/chat';
-import type { RequestMessage, ToolDefinition, NativeToolCall, CompletionResult } from '$lib/services/chat-api';
+import type { RequestMessage, ToolDefinition, CompletionResult } from '$lib/services/chat-api';
 import { toErrorMessage } from '$lib/utils/errors';
 import { samplingParams } from '$shared/llm-params';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
@@ -158,12 +157,7 @@ export async function agentStreamComplete(options: {
 
   // A stream that emits nothing at all (stalled connection, provider ignoring
   // the abort signal) would otherwise leave this promise pending forever.
-  const idle = createStreamIdleWatchdog({
-    onStall: () => {
-      void invoke('chat_stream_cancel', { streamId }).catch(() => {});
-      rejectStream?.(new Error(streamIdleTimeoutMessage()));
-    }
-  });
+  const idle = createChatStreamWatchdog(() => streamId, (error) => rejectStream?.(error));
 
   const off = await listen<Record<string, unknown>>('chat-stream-event', (event) => {
     if (!event || event.streamId !== streamId) return;
@@ -263,50 +257,6 @@ export async function agentStreamComplete(options: {
       options.signal.removeEventListener('abort', abortListener);
     }
   }
-}
-
-function readCompletionWithTools(payload: Record<string, unknown>): CompletionResult {
-  if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
-    const toolCalls: NativeToolCall[] = (Array.isArray(payload.toolCalls) ? payload.toolCalls : []).map((tc) => {
-      const call = (tc || {}) as Record<string, unknown>;
-      const fn = (call.function as Record<string, unknown> | undefined) || {};
-      return {
-        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-        name: String(fn.name || call.name || ''),
-        arguments: (() => {
-          if (call.arguments && typeof call.arguments === 'object') return call.arguments as Record<string, unknown>;
-          try { return JSON.parse(String(fn.arguments || call.arguments || '{}')); } catch { return {}; }
-        })()
-      };
-    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
-
-    return {
-      content: payload.content,
-      reasoning: String(payload.reasoning || ''),
-      providerState: payload.providerState as CompletionResult['providerState'],
-      usage: payload.usage || null,
-      toolCalls: toolCalls.length ? toolCalls : undefined
-    };
-  }
-
-  const choices = Array.isArray(payload?.choices) ? payload.choices as Array<Record<string, unknown>> : [];
-  const message = (choices[0]?.message as Record<string, unknown> | undefined) || {};
-  const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc) => {
-    const call = (tc || {}) as Record<string, unknown>;
-    const fn = (call.function as Record<string, unknown> | undefined) || {};
-    return {
-      id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-      name: String(fn.name || ''),
-      arguments: (() => { try { return JSON.parse(String(fn.arguments || '{}')); } catch { return {}; } })()
-    };
-  }).filter((toolCall: NativeToolCall) => !!toolCall.name);
-
-  return {
-    content: String(message.content || ''),
-    reasoning: String(message.reasoning_content ?? message.reasoning ?? message.thinking ?? ''),
-    usage: payload?.usage || null,
-    toolCalls: toolCalls.length ? toolCalls : undefined
-  };
 }
 
 export { supportsNativeTools } from '$lib/services/chat-api';

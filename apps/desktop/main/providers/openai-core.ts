@@ -266,6 +266,27 @@ function toolCallsFromOpenAi(message: Record<string, any>): CompletionResult['to
   }));
 }
 
+function completionResult(dialect: Dialect, response: Record<string, any>): CompletionResult {
+  const choice = response?.choices?.[0] ?? {};
+  const message = choice.message ?? {};
+  const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+  const finishReason = mapOpenAiFinishReason(
+    choice.finishReason ?? choice.finish_reason,
+    providerErrorDetail(choice, response)
+  ) ?? undefined;
+  // An error finish is a provider failure, not an empty answer.
+  if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
+  return {
+    content: message.content || '',
+    reasoning: reasoning ? String(reasoning) : '',
+    ...(dialect.id === 'openrouter' && Array.isArray(message.reasoning_details)
+      ? { providerState: { provider: 'openrouter', blocks: message.reasoning_details } } : {}),
+    usage: dialect.id === 'local' ? preserveLocalUsage(response) : normalizeOpenAiUsage(response?.usage),
+    toolCalls: toolCallsFromOpenAi(message),
+    finishReason: finishReason as FinishReason | undefined
+  };
+}
+
 async function completeSdk(dialect: Dialect, params: StreamParams): Promise<CompletionResult> {
   const client = sdkClient(dialect, params.apiKey, params.baseUrl);
   try {
@@ -273,25 +294,7 @@ async function completeSdk(dialect: Dialect, params: StreamParams): Promise<Comp
       buildBody(dialect, params, false) as Parameters<typeof client.chat.completions.create>[0],
       { signal: params.signal }
     ) as Record<string, any>;
-    const choice = response?.choices?.[0] ?? {};
-    const message = choice.message ?? {};
-    const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
-    const finishReason = mapOpenAiFinishReason(
-      choice.finishReason ?? choice.finish_reason,
-      providerErrorDetail(choice, response)
-    ) ?? undefined;
-    // An error finish is a failure, not an empty answer — returning it as one
-    // mislabels provider outages as "Empty response" downstream.
-    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
-    return {
-      content: message.content || '',
-      reasoning: reasoning ? String(reasoning) : '',
-      ...(dialect.id === 'openrouter' && Array.isArray(message.reasoning_details)
-        ? { providerState: { provider: 'openrouter', blocks: message.reasoning_details } } : {}),
-      usage: normalizeOpenAiUsage(response?.usage),
-      toolCalls: toolCallsFromOpenAi(message),
-      finishReason: finishReason as FinishReason | undefined
-    };
+    return completionResult(dialect, response);
   } catch (err: unknown) {
     throw new LlmStreamError(classifyError(err));
   }
@@ -316,21 +319,7 @@ async function completeFetchSse(dialect: Dialect, params: StreamParams): Promise
       throw new LlmStreamError(classifyError(new Error(detail || `HTTP ${response.status}`)));
     }
     const data = await response.json() as Record<string, any>;
-    const choice = data?.choices?.[0] ?? {};
-    const message = choice.message ?? {};
-    const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
-    const finishReason = mapOpenAiFinishReason(
-      choice.finishReason ?? choice.finish_reason,
-      providerErrorDetail(choice, data)
-    ) ?? undefined;
-    if (finishReason?.kind === 'error') throw new LlmStreamError(finishReason.failure);
-    return {
-      content: message.content || '',
-      reasoning: reasoning ? String(reasoning) : '',
-      usage: preserveLocalUsage(data),
-      toolCalls: toolCallsFromOpenAi(message),
-      finishReason: finishReason as FinishReason | undefined
-    };
+    return completionResult(dialect, data);
   } catch (err: unknown) {
     if (err instanceof LlmStreamError) throw err;
     throw new LlmStreamError(classifyError(err));

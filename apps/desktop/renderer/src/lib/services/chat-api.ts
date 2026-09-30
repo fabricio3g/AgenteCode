@@ -544,6 +544,102 @@ function mergeSampling(
   };
 }
 
+async function localRequestContext(config: AppConfig) {
+  const baseUrl = resolveLocalBaseUrl({
+    llm: { local: { base_url: await ensureLocalRuntime(config) } }
+  } as AppConfig);
+  return { baseUrl, hasVisionModel: await hasLocalVisionModel(config), model: resolveLocalModelName(config) };
+}
+
+type ProviderSampling = { temperature?: number; max_tokens?: number; top_p?: number };
+
+function providerStreamParams(provider: ProviderSampling, overrides?: RoleplaySampling, stop?: string[]) {
+  return {
+    ...mergeSampling(overrides, { temperature: provider.temperature, maxTokens: provider.max_tokens, topP: provider.top_p }),
+    ...(stop?.length ? { stop } : {})
+  };
+}
+
+export function createChatStreamWatchdog(getStreamId: () => string, fail: (error: Error) => void) {
+  return createStreamIdleWatchdog({
+    onStall: () => {
+      void invoke('chat_stream_cancel', { streamId: getStreamId() }).catch(() => {});
+      fail(new Error(streamIdleTimeoutMessage()));
+    }
+  });
+}
+
+type ChatStreamCallbacks = {
+  signal?: AbortSignal;
+  onChunk: (value: string) => void;
+  onReasoning?: (value: string) => void;
+  onUsage?: (usage: CompletionResult['usage']) => void;
+};
+type StreamSettlement = { resolve: () => void; reject: (error: Error) => void };
+
+function deliverChatDelta(event: ChatStreamEvent, callbacks: ChatStreamCallbacks, local: boolean): void {
+  if (event.reasoning) callbacks.onReasoning?.(local ? normalizeStreamingReasoningDelta(String(event.reasoning)) : String(event.reasoning));
+  if (event.content) callbacks.onChunk(local ? normalizeStreamingContentDelta(String(event.content)) : String(event.content));
+}
+
+function finishChatStream(event: ChatStreamEvent, callbacks: ChatStreamCallbacks, settlement: StreamSettlement): void {
+  if (event.usage) callbacks.onUsage?.(event.usage);
+  settlement.resolve();
+}
+
+function isChatStreamFinished(event: ChatStreamEvent): boolean {
+  return event.type === 'done' || event.type === 'cancelled';
+}
+
+function chatStreamError(event: ChatStreamEvent): Error {
+  return new Error(event.error || 'Streaming request failed');
+}
+
+function deliverChatEvent(
+  event: ChatStreamEvent, callbacks: ChatStreamCallbacks, settlement: StreamSettlement, local: boolean
+): void {
+  if (event.type === 'delta') deliverChatDelta(event, callbacks, local);
+  else if (isChatStreamFinished(event)) finishChatStream(event, callbacks, settlement);
+  else if (event.type === 'error') settlement.reject(chatStreamError(event));
+}
+
+async function streamChatRequest(request: UnknownRecord, callbacks: ChatStreamCallbacks, local: boolean): Promise<void> {
+  let streamId = '';
+  let resolve!: () => void;
+  let reject!: (error: Error) => void;
+  const streamPromise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+  const settlement = { resolve, reject };
+  const idle = createChatStreamWatchdog(() => streamId, reject);
+  const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
+    if (event?.streamId !== streamId) return;
+    idle.arm();
+    deliverChatEvent(event, callbacks, settlement, local);
+  });
+  try {
+    const started = await invoke<{ streamId: string }>('chat_stream_start', request);
+    streamId = started?.streamId || '';
+    await waitChatStream(streamId, callbacks.signal, streamPromise, idle);
+  } finally {
+    idle.clear();
+    off();
+  }
+}
+
+async function waitChatStream(
+  streamId: string, signal: AbortSignal | undefined, streamPromise: Promise<void>,
+  idle: ReturnType<typeof createStreamIdleWatchdog>
+): Promise<void> {
+  if (!streamId) throw new Error('Failed to start chat stream');
+  idle.arm();
+  const abort = () => { void invoke('chat_stream_cancel', { streamId }).catch(() => {}); };
+  signal?.addEventListener('abort', abort, { once: true });
+  try {
+    await streamPromise;
+  } finally {
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
 async function streamLocalReply(args: {
   messages: RequestMessage[];
   signal?: AbortSignal;
@@ -560,88 +656,23 @@ async function streamLocalReply(args: {
   // knows (see main/llama-session.ts — it deliberately never reaches the
   // renderer, so a stray web page cannot drive the local model). A direct
   // fetch cannot authenticate and llama.cpp answers 401 "Invalid API Key".
-  const baseUrl = resolveLocalBaseUrl({
-    llm: { local: { base_url: await ensureLocalRuntime(config) } }
-  } as AppConfig);
-  const hasVisionModel = await hasLocalVisionModel(config);
-  const model = resolveLocalModelName(config);
+  const { baseUrl, hasVisionModel, model } = await localRequestContext(config);
 
-  let streamId = '';
-  let resolveStream: (() => void) | null = null;
-  let rejectStream: ((error: Error) => void) | null = null;
-  const streamPromise = new Promise<void>((resolve, reject) => {
-    resolveStream = resolve;
-    rejectStream = reject;
-  });
-
-  const idle = createStreamIdleWatchdog({
-    onStall: () => {
-      void invoke('chat_stream_cancel', { streamId }).catch(() => {});
-      rejectStream?.(new Error(streamIdleTimeoutMessage()));
+  await streamChatRequest({
+    baseUrl,
+    apiKey: '',
+    providerName: 'local',
+    body: {
+      model,
+      stream: true,
+      messages: toRequestMessages(args.messages, model, hasVisionModel),
+      ...(args.reasoning ? { reasoning: args.reasoning } : {}),
+      ...mergeSampling(args.sampling, {
+        temperature: config.llm?.local?.temperature, maxTokens: config.llm?.local?.max_tokens
+      }),
+      ...(args.stop?.length ? { stop: args.stop } : {})
     }
-  });
-
-  const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
-    if (!event || event.streamId !== streamId) return;
-    idle.arm();
-
-    if (event.type === 'delta') {
-      if (event.reasoning) args.onReasoning?.(normalizeStreamingReasoningDelta(String(event.reasoning)));
-      if (event.content) args.onChunk(normalizeStreamingContentDelta(String(event.content)));
-      return;
-    }
-
-    if (event.type === 'done' || event.type === 'cancelled') {
-      if (event.usage) args.onUsage?.(event.usage);
-      resolveStream?.();
-      return;
-    }
-
-    if (event.type === 'error') {
-      rejectStream?.(new Error(event.error || 'Streaming request failed'));
-    }
-  });
-
-  let abortListener: (() => void) | null = null;
-
-  try {
-    const started = await invoke<{ streamId: string }>('chat_stream_start', {
-      baseUrl,
-      apiKey: '',
-      providerName: 'local',
-      body: {
-        model,
-        stream: true,
-        messages: toRequestMessages(args.messages, model, hasVisionModel),
-        ...(args.reasoning ? { reasoning: args.reasoning } : {}),
-        ...mergeSampling(args.sampling, {
-          temperature: config.llm?.local?.temperature,
-          maxTokens: config.llm?.local?.max_tokens
-        }),
-        ...(args.stop?.length ? { stop: args.stop } : {})
-      }
-    });
-
-    streamId = started?.streamId || '';
-    if (!streamId) throw new Error('Failed to start chat stream');
-    idle.arm();
-
-    if (args.signal) {
-      abortListener = () => {
-        void invoke('chat_stream_cancel', { streamId }).catch(() => {});
-      };
-      args.signal.addEventListener('abort', abortListener, { once: true });
-    }
-
-    await streamPromise;
-    return;
-  } finally {
-    idle.clear();
-    off();
-    if (args.signal && abortListener) {
-      args.signal.removeEventListener('abort', abortListener);
-    }
-  }
+  }, args, true);
 }
 
 export async function streamAssistantReply(args: {
@@ -664,83 +695,15 @@ export async function streamAssistantReply(args: {
   const apiKey = (args.apiKey ?? provider.api_key) || '';
 
   if (isElectron()) {
-    let streamId = '';
-    let resolveStream: (() => void) | null = null;
-    let rejectStream: ((error: Error) => void) | null = null;
-    const streamPromise = new Promise<void>((resolve, reject) => {
-      resolveStream = resolve;
-      rejectStream = reject;
-    });
-
-    const idle = createStreamIdleWatchdog({
-      onStall: () => {
-        void invoke('chat_stream_cancel', { streamId }).catch(() => {});
-        rejectStream?.(new Error(streamIdleTimeoutMessage()));
+    return streamChatRequest({
+      baseUrl: provider.base_url, apiKey, providerName,
+      body: {
+        model: provider.model, stream: true,
+        messages: toRequestMessages(args.messages, provider.model),
+        ...(reasoning ? { reasoning } : {}),
+        ...providerStreamParams(provider, args.sampling, args.stop)
       }
-    });
-
-    const off = await listen<ChatStreamEvent>('chat-stream-event', (event) => {
-      if (!event || event.streamId !== streamId) return;
-      idle.arm();
-
-      if (event.type === 'delta') {
-        if (event.reasoning) args.onReasoning?.(String(event.reasoning));
-        if (event.content) args.onChunk(String(event.content));
-        return;
-      }
-
-      if (event.type === 'done' || event.type === 'cancelled') {
-        if (event.usage) args.onUsage?.(event.usage);
-        resolveStream?.();
-        return;
-      }
-
-      if (event.type === 'error') {
-        rejectStream?.(new Error(event.error || 'Streaming request failed'));
-      }
-    });
-
-    let abortListener: (() => void) | null = null;
-
-    try {
-      const started = await invoke<{ streamId: string }>('chat_stream_start', {
-        baseUrl: provider.base_url,
-        apiKey,
-        providerName,
-        body: {
-          model: provider.model,
-          stream: true,
-          messages: toRequestMessages(args.messages, provider.model),
-          ...(reasoning ? { reasoning } : {}),
-          ...mergeSampling(args.sampling, {
-            temperature: provider.temperature,
-            maxTokens: provider.max_tokens,
-            topP: provider.top_p
-          }),
-          ...(args.stop?.length ? { stop: args.stop } : {})
-        }
-      });
-
-      streamId = started?.streamId || '';
-      if (!streamId) throw new Error('Failed to start chat stream');
-      idle.arm();
-
-      if (args.signal) {
-        abortListener = () => {
-          void invoke('chat_stream_cancel', { streamId }).catch(() => {});
-        };
-        args.signal.addEventListener('abort', abortListener, { once: true });
-      }
-
-      await streamPromise;
-      return;
-    } finally {
-      idle.clear();
-      off();
-      if (args.signal && abortListener) {
-        args.signal.removeEventListener('abort', abortListener);
-      }
-    }
+    }, args, false);
   }
 
   // Browser path (no Electron IPC): use OpenAI SDK directly
@@ -750,12 +713,7 @@ export async function streamAssistantReply(args: {
     model: provider.model,
     stream: true,
     messages: toRequestMessages(args.messages, provider.model) as any,
-    ...mergeSampling(args.sampling, {
-      temperature: provider.temperature,
-      maxTokens: provider.max_tokens,
-      topP: provider.top_p
-    }),
-    ...(args.stop?.length ? { stop: args.stop } : {}),
+    ...providerStreamParams(provider, args.sampling, args.stop),
   });
 
   for await (const chunk of stream) {
@@ -767,25 +725,33 @@ export async function streamAssistantReply(args: {
   }
 }
 
-function readCompletionPayload(payload: UnknownRecord): CompletionResult {
-  // Flat format from main-process providers: { content: "...", reasoning: "..." }
-  if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
-    return {
-      content: payload.content,
-      reasoning: String(payload.reasoning || ''),
-      usage: payload.usage || null
-    };
-  }
-  // Raw OpenAI API format: { choices: [{ message: { content: "..." } }] }
+function firstCompletionMessage(payload: UnknownRecord): UnknownRecord {
   const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
-  const message = (choices[0]?.message as UnknownRecord | undefined) || {};
-  const rawContent = message.content;
-  const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
+  return (choices[0]?.message as UnknownRecord | undefined) || {};
+}
+
+function readCompletionPayload(payload: UnknownRecord): CompletionResult {
+  const flat = typeof payload?.content === 'string';
+  const message = flat ? payload : firstCompletionMessage(payload);
+  const reasoning = flat ? message.reasoning : message.reasoning_content ?? message.reasoning ?? message.thinking;
   return {
-    content: rawContent != null ? String(rawContent) : '',
-    reasoning: rawReasoning != null ? String(rawReasoning) : '',
+    content: message.content != null ? String(message.content) : '',
+    reasoning: reasoning != null ? String(reasoning) : '',
     usage: payload?.usage || null
   };
+}
+
+async function invokeProviderCompletion(
+  route: ReturnType<typeof resolveProvider>, apiKey: string, body: UnknownRecord
+): Promise<UnknownRecord> {
+  return invoke<UnknownRecord>('chat_complete', {
+    baseUrl: route.provider.base_url, apiKey, providerName: route.providerName, body
+  });
+}
+
+async function fetchProviderCompletion(provider: ProviderSampling & { base_url?: string }, apiKey: string, body: UnknownRecord) {
+  const client = getOpenAIClient(apiKey, provider.base_url || '');
+  return client.chat.completions.create(body as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming);
 }
 
 export async function completeAssistantReply(args: {
@@ -808,11 +774,7 @@ export async function completeAssistantReply(args: {
     // Proxied through main (chat_complete) for the same reason as
     // streamLocalReply: the llama-server `--api-key` session credential never
     // reaches the renderer.
-    const baseUrl = resolveLocalBaseUrl({
-      llm: { local: { base_url: await ensureLocalRuntime(config) } }
-    } as AppConfig);
-    const hasVisionModel = await hasLocalVisionModel(config);
-    const model = resolveLocalModelName(config);
+    const { baseUrl, hasVisionModel, model } = await localRequestContext(config);
     const payload = await invoke<UnknownRecord>('chat_complete', {
       baseUrl,
       apiKey: '',
@@ -831,53 +793,29 @@ export async function completeAssistantReply(args: {
     return result;
   }
 
-  const { provider, providerName } = resolveProvider(config);
+  const route = resolveProvider(config);
+  const { provider } = route;
   const apiKey = (args.apiKey ?? provider.api_key) || '';
-
-  const genParams = {
+  const body = {
+    model: provider.model,
+    stream: false,
+    messages: toRequestMessages(args.messages),
     ...(Number.isFinite(provider.temperature) ? { temperature: provider.temperature } : {}),
     ...(!omitMaxTokens && provider.max_tokens ? { max_tokens: provider.max_tokens } : {}),
     ...(Number.isFinite(provider.top_p) ? { top_p: provider.top_p } : {})
   };
-
   if (isElectron()) {
-    const payload = await invoke<UnknownRecord>('chat_complete', {
-      baseUrl: provider.base_url,
-      apiKey,
-      providerName,
-      body: {
-        model: provider.model,
-        stream: false,
-        messages: toRequestMessages(args.messages),
-        ...(reasoning ? { reasoning } : {}),
-        ...genParams
-      }
-    });
-    const result = readCompletionPayload(payload);
-    result.usage = payload?.usage || result.usage || null;
-    return result;
+    const payload = await invokeProviderCompletion(route, apiKey, { ...body, ...(reasoning ? { reasoning } : {}) });
+    return readCompletionPayload(payload);
   }
-
-  const client = getOpenAIClient(apiKey, provider.base_url || '');
-  const response = await client.chat.completions.create({
-    model: provider.model,
-    stream: false,
-    messages: toRequestMessages(args.messages) as any,
-    ...genParams
-  });
-
-  const message = (response?.choices?.[0]?.message || {}) as unknown as UnknownRecord;
-  const rawContent = message.content;
-  const rawReasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
-  return {
-    content: rawContent != null ? String(rawContent) : '',
-    reasoning: rawReasoning != null ? String(rawReasoning) : '',
-    usage: response?.usage ? {
-      input_tokens: response.usage.prompt_tokens,
-      output_tokens: response.usage.completion_tokens,
-      total_tokens: response.usage.total_tokens
-    } : null
-  };
+  const response = await fetchProviderCompletion(provider, apiKey, body);
+  const result = readCompletionPayload(response as unknown as UnknownRecord);
+  result.usage = response.usage ? {
+    input_tokens: response.usage.prompt_tokens,
+    output_tokens: response.usage.completion_tokens,
+    total_tokens: response.usage.total_tokens
+  } : null;
+  return result;
 }
 
 function tryParseJsonObject(value: unknown): Record<string, unknown> {
@@ -897,44 +835,28 @@ function tryParseJsonValue<T>(value: unknown): T | null {
   }
 }
 
-export function readCompletionWithTools(payload: UnknownRecord): CompletionResult {
-  // Flat format from main-process providers: { content: "...", reasoning: "...", toolCalls: [...] }
-  if (payload && typeof payload === 'object' && typeof payload.content === 'string') {
-    const toolCalls: NativeToolCall[] = (Array.isArray(payload.toolCalls) ? payload.toolCalls : []).map((tc: unknown) => {
-      const call = (tc || {}) as UnknownRecord;
-      const fn = (call.function as UnknownRecord | undefined) || {};
-      return {
-        id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-        name: String(fn.name || call.name || ''),
-        arguments: call.arguments && typeof call.arguments === 'object'
-          ? call.arguments as Record<string, unknown>
-          : tryParseJsonObject(fn.arguments || call.arguments || '{}')
-      };
-    }).filter((toolCall: NativeToolCall) => !!toolCall.name);
-    return {
-      content: payload.content,
-      reasoning: String(payload.reasoning || ''),
-      usage: payload.usage || null,
-      toolCalls: toolCalls.length ? toolCalls : undefined
-    };
-  }
-  // Raw OpenAI API format: { choices: [{ message: { content: "...", tool_calls: [...] } }] }
-  const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
-  const message = (choices[0]?.message as UnknownRecord | undefined) || {};
-  const toolCalls: NativeToolCall[] = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((tc: unknown) => {
-    const call = (tc || {}) as UnknownRecord;
-    const fn = (call.function as UnknownRecord | undefined) || {};
-    return {
-      id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
-      name: String(fn.name || ''),
-      arguments: tryParseJsonObject(fn.arguments || '{}')
-    };
-  }).filter((toolCall: NativeToolCall) => !!toolCall.name);
-
+function readToolCall(value: unknown, flat: boolean): NativeToolCall {
+  const call = (value || {}) as UnknownRecord;
+  const fn = (call.function as UnknownRecord | undefined) || {};
+  const args = flat ? call.arguments : undefined;
   return {
-    content: String(message.content || ''),
-    reasoning: String(message.reasoning_content || message.reasoning || message.thinking || ''),
-    usage: payload?.usage || null,
+    id: String(call.id || `call_${Math.random().toString(36).slice(2, 9)}`),
+    name: String(fn.name || (flat ? call.name : '') || ''),
+    arguments: args && typeof args === 'object'
+      ? args as UnknownRecord
+      : tryParseJsonObject(fn.arguments || args || '{}')
+  };
+}
+
+export function readCompletionWithTools(payload: UnknownRecord): CompletionResult {
+  const flat = typeof payload?.content === 'string';
+  const message = flat ? payload : firstCompletionMessage(payload);
+  const rawCalls = flat ? payload.toolCalls : message.tool_calls;
+  const toolCalls = (Array.isArray(rawCalls) ? rawCalls : [])
+    .map((call) => readToolCall(call, flat)).filter((call) => !!call.name);
+  return {
+    ...readCompletionPayload(payload),
+    ...(flat && payload.providerState ? { providerState: payload.providerState as CompletionResult['providerState'] } : {}),
     toolCalls: toolCalls.length ? toolCalls : undefined
   };
 }
@@ -1242,46 +1164,24 @@ export async function completeStructuredOutput<T>(
   config?: AppConfig
 ): Promise<T | null> {
   const cfg = config || await loadChatConfig();
-  const { providerName, provider } = resolveProvider(cfg);
+  const route = resolveProvider(cfg);
+  const { provider } = route;
   const apiKey = provider.api_key || '';
-
+  const body = {
+    model: provider.model,
+    stream: false,
+    messages: toRequestMessages(args.messages, provider.model),
+    response_format: { type: 'json_schema', json_schema: args.schema }
+  };
   if (isElectron()) {
-    const payload = await invoke<UnknownRecord>('chat_complete', {
-      baseUrl: provider.base_url,
-      apiKey,
-      providerName,
-      body: {
-        model: provider.model,
-        stream: false,
-        messages: toRequestMessages(args.messages, provider.model),
-        response_format: {
-          type: 'json_schema',
-          json_schema: args.schema
-        }
-      }
-    });
-    const choices = Array.isArray(payload?.choices) ? payload.choices as UnknownRecord[] : [];
-    const message = (choices[0]?.message || {}) as UnknownRecord;
-    const content = message.content;
-    if (!content) return null;
-    return tryParseJsonValue<T>(content);
+    const payload = await invokeProviderCompletion(route, apiKey, body);
+    const content = firstCompletionMessage(payload).content;
+    return content ? tryParseJsonValue<T>(content) : null;
   }
-
   try {
-    const client = getOpenAIClient(apiKey, provider.base_url || '');
-    const response = await client.chat.completions.create({
-      model: provider.model,
-      stream: false,
-      messages: toRequestMessages(args.messages, provider.model) as any,
-      response_format: {
-        type: 'json_schema',
-        json_schema: args.schema,
-      } as any,
-    } as any);
-
+    const response = await fetchProviderCompletion(provider, apiKey, body);
     const content = response?.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return tryParseJsonValue<T>(content);
+    return content ? tryParseJsonValue<T>(content) : null;
   } catch {
     return null;
   }

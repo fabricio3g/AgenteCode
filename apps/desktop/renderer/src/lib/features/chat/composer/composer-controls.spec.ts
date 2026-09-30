@@ -29,6 +29,11 @@ function fractionOf(style: string | null): number {
   return Number(/calc\([^)]*?([\d.]+)\s*\*\s*\(/.exec(style ?? '')?.[1]);
 }
 
+function mockRailBounds(rail: HTMLElement): void {
+  const box = rail.getBoundingClientRect();
+  vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ ...box, left: 0, width: 400 });
+}
+
 describe('context details', () => {
   it('shows exact usage, remaining and pricing on hover, then closes on leave', async () => {
     const view = render(ContextUsageRing, { props: { usedTokens: 800, maxTokens: 1000, remaining: 150, estimatedInputCostUsd: 0.02 } });
@@ -136,8 +141,7 @@ describe('thinking level', () => {
     const rail = view.getByRole('slider');
 
     // Three gaps across 400px: 300px is three quarters, so the next level up.
-    const box = rail.getBoundingClientRect();
-    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ ...box, left: 0, width: 400 });
+    mockRailBounds(rail);
     await fireEvent.pointerDown(rail, { clientX: 300, pointerId: 1 });
     expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
 
@@ -201,8 +205,7 @@ describe('thinking level', () => {
     expect(sheen.classList.contains('is-live')).toBe(false);
 
     const rail = view.getByRole('slider');
-    const box = rail.getBoundingClientRect();
-    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ ...box, left: 0, width: 400 });
+    mockRailBounds(rail);
 
     // A pointer landing on the level in effect changes nothing, so nothing plays.
     await fireEvent.pointerDown(rail, { clientX: 100, pointerId: 1 });

@@ -14,9 +14,13 @@ export type ThinkingProfile = {
 
 export const UNKNOWN_CAPABILITIES: ReasoningCapabilities = { supported: false, levels: [], source: 'unknown' };
 
+function offersThinking(profile: ThinkingProfile): boolean {
+  return profile.source !== 'none' && (profile.levels.length > 0 || profile.mandatory);
+}
+
 export function capabilitiesFromProfile(profile: ThinkingProfile): ReasoningCapabilities {
   const levels = profile.levels.map((level) => level.id as ReasoningLevel);
-  if (profile.source === 'none' || (levels.length === 0 && !profile.mandatory)) return UNKNOWN_CAPABILITIES;
+  if (!offersThinking(profile)) return UNKNOWN_CAPABILITIES;
   return {
     // Auto plus at least one level makes a choice.
     supported: levels.length > 0,

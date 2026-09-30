@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfig } from '$lib/types/chat';
-import { buildReasoningRequest, isVisionModel, normalizeRuntimeUsage, reasoningRouteIdentity, supportsNativeTools, toRequestMessages } from './chat-api';
+import { buildReasoningRequest, isVisionModel, normalizeRuntimeUsage, readCompletionWithTools, reasoningRouteIdentity, supportsNativeTools, toRequestMessages } from './chat-api';
 
 describe('chat-api vision message conversion', () => {
   it('preserves reasoning, opaque signed state and paired tool identities across IPC conversion', () => {
@@ -141,5 +141,31 @@ describe('reasoning route identity', () => {
     const before = reasoningRouteIdentity(config);
     config.llm!.providers!['openrouter']!.temperature = 0.9;
     expect(reasoningRouteIdentity(config)).toBe(before);
+  });
+});
+
+
+describe('completion tool decoding', () => {
+  it('preserves flat provider state, object arguments and tool identities', () => {
+    const state = { provider: 'openrouter', blocks: [{ signature: 'opaque' }] };
+    const result = readCompletionWithTools({ content: '', reasoning: 'plan', providerState: state,
+      toolCalls: [{ id: 'tool-1', name: 'read_file', arguments: { path: 'a.rs' } }] });
+    expect(result.providerState).toBe(state);
+    expect(result.toolCalls).toEqual([{ id: 'tool-1', name: 'read_file', arguments: { path: 'a.rs' } }]);
+    expect(result.reasoning).toBe('plan');
+  });
+
+  it('decodes OpenAI function calls while keeping an explicitly empty reasoning field', () => {
+    const result = readCompletionWithTools({ choices: [{ message: { content: 'answer', reasoning_content: '', thinking: 'fallback',
+      tool_calls: [{ id: 'tool-2', function: { name: 'search', arguments: '{"query":"rust"}' } }] } }], usage: { total_tokens: 9 } });
+    expect(result).toMatchObject({ content: 'answer', reasoning: '', usage: { total_tokens: 9 },
+      toolCalls: [{ id: 'tool-2', name: 'search', arguments: { query: 'rust' } }] });
+  });
+
+  it('discards unnamed calls and handles malformed arguments without dropping the named call', () => {
+    const result = readCompletionWithTools({ content: 'ok', toolCalls: [{ name: '' }, { name: 'write_file', arguments: '{broken' }] });
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls?.[0]).toMatchObject({ name: 'write_file', arguments: {} });
+    expect(result.toolCalls?.[0].id).toMatch(/^call_/);
   });
 });

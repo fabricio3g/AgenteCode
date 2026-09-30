@@ -25,51 +25,28 @@ type ChatDbHandlerDeps = {
   deleteWorld: (worldId: string) => unknown;
 };
 
-export function registerChatDbHandlers({
-  ipcMain,
-  saveChatSession,
-  loadAllChats,
-  searchChatContent,
-  deleteChatFromDb,
-  clearRagDocuments,
-  migrateFromLocalStorage,
-  loadAllFolders,
-  saveFolder,
-  deleteFolder,
-  loadAllCodeProjects,
-  saveCodeProject,
-  deleteCodeProject,
-  loadAllCharacters,
-  saveCharacter,
-  deleteCharacter,
-  loadAllPersonas,
-  savePersona,
-  deletePersona,
-  loadAllWorlds,
-  saveWorld,
-  deleteWorld,
-}: ChatDbHandlerDeps): void {
-  ipcMain.handle('chat_db_save_session', (_e, { session }) => saveChatSession(session));
-  ipcMain.handle('chat_db_load_all', () => loadAllChats());
-  ipcMain.handle('chat_db_search_content', (_e, { query, limit }) => searchChatContent(String(query ?? ''), Number(limit) || 30));
-  ipcMain.handle('chat_db_delete', async (_e, { chatId }) => {
-    await deleteChatFromDb(chatId);
-    clearRagDocuments(chatId).catch(() => {});
+export function registerChatDbHandlers(deps: ChatDbHandlerDeps): void {
+  deps.ipcMain.handle('chat_db_save_session', (_e, { session }) => deps.saveChatSession(session));
+  deps.ipcMain.handle('chat_db_load_all', () => deps.loadAllChats());
+  deps.ipcMain.handle('chat_db_search_content', (_e, { query, limit }) => deps.searchChatContent(String(query ?? ''), Number(limit) || 30));
+  deps.ipcMain.handle('chat_db_delete', async (_e, { chatId }) => {
+    await deps.deleteChatFromDb(chatId);
+    deps.clearRagDocuments(chatId).catch(() => {});
   });
-  ipcMain.handle('chat_db_migrate', (_e, { persistedState }) => migrateFromLocalStorage(persistedState));
-  ipcMain.handle('chat_db_load_folders', () => loadAllFolders());
-  ipcMain.handle('chat_db_save_folder', (_e, { folder }) => saveFolder(folder));
-  ipcMain.handle('chat_db_delete_folder', (_e, { folderId }) => deleteFolder(folderId));
-  ipcMain.handle('chat_db_load_code_projects', () => loadAllCodeProjects());
-  ipcMain.handle('chat_db_save_code_project', (_e, { project }) => saveCodeProject(project));
-  ipcMain.handle('chat_db_delete_code_project', (_e, { projectId }) => deleteCodeProject(projectId));
-  ipcMain.handle('chat_db_load_characters', () => loadAllCharacters());
-  ipcMain.handle('chat_db_save_character', (_e, { character }) => saveCharacter(character));
-  ipcMain.handle('chat_db_delete_character', (_e, { characterId }) => deleteCharacter(characterId));
-  ipcMain.handle('chat_db_load_personas', () => loadAllPersonas());
-  ipcMain.handle('chat_db_save_persona', (_e, { persona }) => savePersona(persona));
-  ipcMain.handle('chat_db_delete_persona', (_e, { personaId }) => deletePersona(personaId));
-  ipcMain.handle('chat_db_load_worlds', () => loadAllWorlds());
-  ipcMain.handle('chat_db_save_world', (_e, { world }) => saveWorld(world));
-  ipcMain.handle('chat_db_delete_world', (_e, { worldId }) => deleteWorld(worldId));
+  deps.ipcMain.handle('chat_db_migrate', (_e, { persistedState }) => deps.migrateFromLocalStorage(persistedState));
+  deps.ipcMain.handle('chat_db_load_folders', () => deps.loadAllFolders());
+  deps.ipcMain.handle('chat_db_save_folder', (_e, { folder }) => deps.saveFolder(folder));
+  deps.ipcMain.handle('chat_db_delete_folder', (_e, { folderId }) => deps.deleteFolder(folderId));
+  deps.ipcMain.handle('chat_db_load_code_projects', () => deps.loadAllCodeProjects());
+  deps.ipcMain.handle('chat_db_save_code_project', (_e, { project }) => deps.saveCodeProject(project));
+  deps.ipcMain.handle('chat_db_delete_code_project', (_e, { projectId }) => deps.deleteCodeProject(projectId));
+  deps.ipcMain.handle('chat_db_load_characters', () => deps.loadAllCharacters());
+  deps.ipcMain.handle('chat_db_save_character', (_e, { character }) => deps.saveCharacter(character));
+  deps.ipcMain.handle('chat_db_delete_character', (_e, { characterId }) => deps.deleteCharacter(characterId));
+  deps.ipcMain.handle('chat_db_load_personas', () => deps.loadAllPersonas());
+  deps.ipcMain.handle('chat_db_save_persona', (_e, { persona }) => deps.savePersona(persona));
+  deps.ipcMain.handle('chat_db_delete_persona', (_e, { personaId }) => deps.deletePersona(personaId));
+  deps.ipcMain.handle('chat_db_load_worlds', () => deps.loadAllWorlds());
+  deps.ipcMain.handle('chat_db_save_world', (_e, { world }) => deps.saveWorld(world));
+  deps.ipcMain.handle('chat_db_delete_world', (_e, { worldId }) => deps.deleteWorld(worldId));
 }

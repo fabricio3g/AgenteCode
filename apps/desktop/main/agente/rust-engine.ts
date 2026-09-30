@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
-import { resolveApiKey } from '../chat-ipc.ts';
+import { resolveApiKey } from '../provider-auth.ts';
 import { getAppPaths } from '../paths.ts';
 import { loadConfig, saveConfig } from '../config.ts';
 import { getLlamaStatus, getPendingMainLaunch, getRecommendedSettings, startLlama } from '../llm-runner.ts';
@@ -367,7 +367,7 @@ function failedPrompt(error: unknown, message: string): { ok: false; error: stri
 async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false };
-  if (!chat.turnId) return followUp(chatId, text, attachments);
+  if (!chat.turnId) return queueFollowUp(chat, text, attachments);
   const client = await connect();
   const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
   return client.request('turn.steer', { turn_id: chat.turnId, content: expanded.text, attachments });
@@ -375,9 +375,12 @@ async function steer(chatId: string, text: string, attachments: Attachment[] = [
 
 async function followUp(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {
   const chat = chats.get(chatId);
-  if (!chat) return { ok: false };
-  if (chat.turnId) chat.followUps.push({ text, attachments });
-  else return prompt(chatId, text, undefined, attachments);
+  return chat ? queueFollowUp(chat, text, attachments) : { ok: false };
+}
+
+async function queueFollowUp(chat: ChatState, text: string, attachments: Attachment[]): Promise<{ ok: boolean }> {
+  if (!chat.turnId) return prompt(chat.chatId, text, undefined, attachments);
+  chat.followUps.push({ text, attachments });
   return { ok: true };
 }
 

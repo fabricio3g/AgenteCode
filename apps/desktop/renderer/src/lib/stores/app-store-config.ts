@@ -2,19 +2,21 @@ import type { AppConfig, LocalThinkingMode, ModelOption, ProviderConfig } from '
 
 const DEFAULT_LOCAL_BASE_URL = 'http://127.0.0.1:11435/v1';
 
+export type ProviderUpdate = {
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  system_prompt?: string;
+  extra_models?: string[];
+};
+
 export function mergeProviderConfig(
   config: AppConfig,
-  partial: {
-    provider: string;
-    base_url?: string;
-    api_key?: string;
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    top_p?: number;
-    system_prompt?: string;
-    extra_models?: string[];
-  },
+  partial: ProviderUpdate,
   opts: { activate?: boolean } = {}
 ): AppConfig {
   const existing: ProviderConfig = config.llm?.providers?.[partial.provider] || { base_url: '', model: '' };
@@ -79,36 +81,38 @@ export function setLocalModelConfig(config: AppConfig, model: ModelOption): AppC
   };
 }
 
+export type LocalSettingsUpdate = {
+  base_url?: string;
+  runtime_path?: string;
+  context_length?: number;
+  gpu_layers?: number;
+  cpu_threads?: number;
+  batch_size?: number;
+  flash_attention?: boolean;
+  offload_kv_cache?: boolean;
+  keep_in_memory?: boolean;
+  mmap?: boolean;
+  seed?: number | null;
+  rope_freq_base?: number | null;
+  rope_freq_scale?: number | null;
+  parallel?: number | null;
+  cache_type_k?: string;
+  cache_type_v?: string;
+  mmproj_path?: string;
+  thinking_mode?: LocalThinkingMode;
+  /** Legacy equivalent of thinking_mode 'off'; cleared on write. */
+  disable_thinking?: boolean;
+  mtp?: boolean;
+  mtp_draft_path?: string | null;
+  mtp_draft_n_max?: number | null;
+  system_prompt?: string;
+  temperature?: number;
+  max_tokens?: number;
+};
+
 export function mergeLocalSettingsConfig(
   config: AppConfig,
-  partial: {
-    base_url?: string;
-    runtime_path?: string;
-    context_length?: number;
-    gpu_layers?: number;
-    cpu_threads?: number;
-    batch_size?: number;
-    flash_attention?: boolean;
-    offload_kv_cache?: boolean;
-    keep_in_memory?: boolean;
-    mmap?: boolean;
-    seed?: number | null;
-    rope_freq_base?: number | null;
-    rope_freq_scale?: number | null;
-    parallel?: number | null;
-    cache_type_k?: string;
-    cache_type_v?: string;
-    mmproj_path?: string;
-    thinking_mode?: LocalThinkingMode;
-    /** Legacy equivalent of thinking_mode 'off'; cleared on write. */
-    disable_thinking?: boolean;
-    mtp?: boolean;
-    mtp_draft_path?: string | null;
-    mtp_draft_n_max?: number | null;
-    system_prompt?: string;
-    temperature?: number;
-    max_tokens?: number;
-  }
+  partial: LocalSettingsUpdate
 ): AppConfig {
   return {
     ...config,

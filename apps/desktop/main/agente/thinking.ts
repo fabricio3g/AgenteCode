@@ -38,6 +38,10 @@ const routes = new Map<string, { at: number; route: Promise<{ id: string; model:
 const discovered = new Map<string, Promise<void>>();
 let specs: Promise<ProviderSpec[]> | null = null;
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Register Desktop's provider with the runtime; reused for a minute. */
 function route(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
   const key = `${providerName}\u0000${model}`;
@@ -68,16 +72,21 @@ function providerSpecs(client: AgenteClient): Promise<ProviderSpec[]> {
 async function ensureDiscovered(client: AgenteClient, providerId: string): Promise<void> {
   const canonical = providerId.replace(/^desktop-/, '');
   const spec = (await providerSpecs(client)).find((s) => s.id === canonical || s.aliases?.includes(canonical));
-  if (!spec || spec.models === 'catalog') return;
+  const source = spec?.models ?? 'catalog';
+  await discoverModels(client, providerId, source);
+}
+
+async function discoverModels(client: AgenteClient, providerId: string, source: ProviderSpec['models']): Promise<void> {
+  if (source === 'catalog') return;
   // A llama-server can load another model at any time; /props is local and cheap.
-  if (spec.models === 'llamacpp') discovered.delete(providerId);
+  if (source === 'llamacpp') discovered.delete(providerId);
   let pending = discovered.get(providerId);
   if (!pending) {
     pending = client.request('models.discover', { provider: providerId }).then(
       () => undefined,
       (error: unknown) => {
         discovered.delete(providerId);
-        console.warn(`[thinking] ${providerId} model list unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(`[thinking] ${providerId} model list unavailable: ${errorText(error)}`);
       }
     );
     discovered.set(providerId, pending);
@@ -110,15 +119,24 @@ async function resolved(providerName: string, model: string): Promise<{ client: 
  * process-manager passes it) without launching it just to draw a selector.
  */
 async function localTemplateCapabilities(client: AgenteClient): Promise<ReasoningCapabilities> {
-  const local = (loadConfig().llm?.local ?? {}) as { selected_model_path?: string };
-  const modelPath = local.selected_model_path;
+  const modelPath = selectedLocalModelPath();
   if (!modelPath) return UNKNOWN_CAPABILITIES;
+  const template = await localTemplate(modelPath);
+  if (!template) return UNKNOWN_CAPABILITIES;
+  return capabilitiesFromProfile(await client.request<ThinkingProfile>('thinking.template', { template }));
+}
+
+function selectedLocalModelPath(): string | undefined {
+  const local = loadConfig().llm?.local as { selected_model_path?: string } | undefined;
+  return local?.selected_model_path;
+}
+
+async function localTemplate(modelPath: string): Promise<string | null> {
   const { readGgufMetadataFields } = await import('../runtime-config-resolver.ts');
   const { resolveEffectiveTemplate } = await import('../chat-templates.ts');
   const fields = readGgufMetadataFields(modelPath);
   const { template } = resolveEffectiveTemplate({ modelPath, fields, ggufTemplate: fields?.chat_template ?? null });
-  if (!template) return UNKNOWN_CAPABILITIES;
-  return capabilitiesFromProfile(await client.request<ThinkingProfile>('thinking.template', { template }));
+  return template;
 }
 
 function llamaServing(): boolean {
@@ -136,7 +154,7 @@ export async function reasoningCapabilities(providerName: string, model: string)
     const profile = await client.request<ThinkingProfile>('models.thinking', { provider: id, model: modelId });
     return capabilitiesFromProfile(profile);
   } catch (error) {
-    console.warn(`[thinking] no profile for ${providerName}/${model}: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[thinking] no profile for ${providerName}/${model}: ${errorText(error)}`);
     return UNKNOWN_CAPABILITIES;
   }
 }
@@ -146,12 +164,16 @@ export async function reasoningCapabilities(providerName: string, model: string)
  * Auto (no level) sends nothing; a core that cannot be reached sends nothing
  * rather than a guess.
  */
+function explicitThinking(reasoning: ReasoningRequest | null | undefined): reasoning is ReasoningRequest {
+  return !!reasoning?.level && reasoning.level !== ('auto' as ReasoningLevel);
+}
+
 export async function withThinkingBody(
   providerName: string,
   model: string | undefined,
   reasoning: ReasoningRequest | null | undefined
 ): Promise<ReasoningRequest | undefined> {
-  if (!reasoning?.level || reasoning.level === ('auto' as ReasoningLevel) || !model) return undefined;
+  if (!model || !explicitThinking(reasoning)) return undefined;
   try {
     const { client, id, model: modelId } = await resolved(providerName, model);
     const { body } = await client.request<{ body: Record<string, unknown> }>('thinking.request', {
@@ -161,7 +183,7 @@ export async function withThinkingBody(
     });
     return { ...reasoning, body };
   } catch (error) {
-    console.warn(`[thinking] ${providerName}/${model} ${reasoning.level} not applied: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[thinking] ${providerName}/${model} ${reasoning.level} not applied: ${errorText(error)}`);
     return { ...reasoning, body: {} };
   }
 }

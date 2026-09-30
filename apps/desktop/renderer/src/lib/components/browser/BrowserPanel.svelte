@@ -17,6 +17,7 @@
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import { setBrowserPanelOccluded, syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
+  import { overlapsViewport } from './browser-occlusion';
 
   const VIEWPORT_ICON: Record<BrowserViewportPreset, typeof Monitor> = {
     fit: PanelRight,
@@ -40,12 +41,8 @@
     if (!viewportEl) return false;
     const box = viewportEl.getBoundingClientRect();
     if (box.width < 10 || box.height < 10) return false;
-    for (const node of document.querySelectorAll<HTMLElement>(OVERLAYS)) {
-      const r = node.getBoundingClientRect();
-      if (!r.width || !r.height) continue;
-      if (r.right > box.left && r.left < box.right && r.bottom > box.top && r.top < box.bottom) return true;
-    }
-    return false;
+    return Array.from(document.querySelectorAll<HTMLElement>(OVERLAYS))
+      .some((node) => overlapsViewport(box, node.getBoundingClientRect()));
   }
 
   /**
@@ -57,13 +54,8 @@
     const next = covered();
     if (next === occluded) return;
     occluded = next;
-    if (next) {
-      const image = await setBrowserPanelOccluded(true).catch(() => null);
-      if (occluded) still = image;
-    } else {
-      await setBrowserPanelOccluded(false).catch(() => null);
-      if (!occluded) still = null;
-    }
+    const image = await setBrowserPanelOccluded(next).catch(() => null);
+    if (occluded === next) still = next ? image : null;
   }
 
   async function syncBounds() {
@@ -89,14 +81,23 @@
     }
   }
 
+  function observeElement(observer: ResizeObserver | null, element: HTMLElement | undefined) {
+    if (observer && element) observer.observe(element);
+  }
+
+  function observeBounds(onResize: () => void): () => void {
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
+    observeElement(observer, viewportEl);
+    observeElement(observer, panelEl);
+    return () => observer?.disconnect();
+  }
+
   onMount(() => {
     browserPanelStore.init();
     void tick().then(() => void syncBounds());
     const onResize = () => void syncBounds();
     window.addEventListener('resize', onResize);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => void syncBounds());
-    if (viewportEl && observer) observer.observe(viewportEl);
-    if (panelEl && observer) observer.observe(panelEl);
+    const stopBounds = observeBounds(onResize);
     // Overlays come and go anywhere in the document; check once per frame at most.
     let pending = 0;
     const scheduleCheck = () => {
@@ -110,7 +111,7 @@
     overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'role'] });
     return () => {
       window.removeEventListener('resize', onResize);
-      observer?.disconnect();
+      stopBounds();
       overlays.disconnect();
       cancelAnimationFrame(pending);
       if (occluded) void setBrowserPanelOccluded(false).catch(() => null);

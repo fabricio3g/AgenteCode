@@ -69,6 +69,10 @@ function el<K extends keyof SVGElementTagNameMap>(name: K, attrs?: Record<string
   return node;
 }
 
+function appendOptional(parent: SVGElement, child: SVGElement | null): void {
+  if (child) parent.appendChild(child);
+}
+
 // ── per-bot, per-size pieces that never change with the pose ──────────
 
 interface Variant { eyeL: string; eyeR: string; happyL: string; happyR: string }
@@ -205,16 +209,10 @@ export class Face {
     const ribbon = el('path', { d: '', class: 'ribbon', opacity: 0.22 });
     const ink2 = this.#lite ? null : el('path', { d: '', class: 'ink2', fill: 'none', stroke: 'currentColor', 'stroke-width': f2(sw * 1.15), 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.13 });
     const ink = el('path', { d: '', class: 'ink', fill: 'none', stroke: 'currentColor', 'stroke-width': f2(sw), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
-    art.append(...layers, rim, ribbon, ...(ink2 ? [ink2] : []), ink);
-
-    if (this.id.spark && !this.#lite) {
-      const acc = el('g', { class: 'acc' });
-      acc.append(
-        el('path', { class: 'fx', d: DOODLES.star, opacity: .8, transform: 'translate(78,15) scale(.9)' }),
-        el('path', { class: 'fx', d: DOODLES.star, opacity: .5, transform: 'translate(25,86) scale(.6)' })
-      );
-      art.appendChild(acc);
-    }
+    art.append(...layers, rim, ribbon);
+    appendOptional(art, ink2);
+    art.appendChild(ink);
+    this.#addSparkArt(art);
 
     const eyeL = el('g', { class: 'eye' }), eyeR = el('g', { class: 'eye' });
     const socketL = el('path', { class: 'socket', d: '', transform: 'translate(0,1.4)' });
@@ -243,6 +241,16 @@ export class Face {
     this.svg = svg;
     host.appendChild(svg);
     this.#applyFace();
+  }
+
+  #addSparkArt(art: SVGGElement): void {
+    if (!this.id.spark || this.#lite) return;
+    const acc = el('g', { class: 'acc' });
+    acc.append(
+      el('path', { class: 'fx', d: DOODLES.star, opacity: .8, transform: 'translate(78,15) scale(.9)' }),
+      el('path', { class: 'fx', d: DOODLES.star, opacity: .5, transform: 'translate(25,86) scale(.6)' })
+    );
+    art.appendChild(acc);
   }
 
   #gradients(defs: SVGDefsElement, s: number) {
@@ -399,8 +407,8 @@ export class Face {
     }
   }
 
-  #update(dt: number, clock: number, moving: boolean): void {
-    const t = this.id.t, st = STATES[this.#state];
+  #settleExpression(dt: number, moving: boolean): void {
+    const st = STATES[this.#state];
     const k = Math.min(1, dt * 7);
     const settle = !moving || dt === 0;
 
@@ -413,8 +421,10 @@ export class Face {
     this.#hover = moving ? lerp(this.#hover, this.#hovered ? 1 : 0, Math.min(1, dt * 6)) : 0;
     this.#gaze.x = toward(this.#gaze.x, st.gaze[0], Math.min(1, dt * 5));
     this.#gaze.y = toward(this.#gaze.y, st.gaze[1], Math.min(1, dt * 5));
+  }
 
-    // Blink.
+  #tickBlink(dt: number, moving: boolean): void {
+    const t = this.id.t, st = STATES[this.#state];
     this.#blink = 1;
     if (moving && st.blinkMul < 90) {
       this.#nextBlink -= dt * lerp(0.6, 1.6, t.blinkRate);
@@ -425,25 +435,28 @@ export class Face {
         if (this.#blinkP >= 1) this.#nextBlink = (1.6 + Math.random() * 4) * st.blinkMul;
       }
     }
+  }
 
-    // The boil: a new drawing of the same shape.
-    if (moving) {
-      this.#boilT += dt * st.boil * t.boilRate;
-      if (this.#boilT >= 1) {
-        this.#boilT %= 1;
-        this.#shape.v = (this.#shape.v + 1) % VARIANTS;
-      }
+  /** The boil: a new drawing of the same shape. */
+  #tickBoil(dt: number): void {
+    this.#boilT += dt * STATES[this.#state].boil * this.id.t.boilRate;
+    if (this.#boilT >= 1) {
+      this.#boilT %= 1;
+      this.#shape.v = (this.#shape.v + 1) % VARIANTS;
     }
+  }
 
-    // Idle habits: rare, and never more than a couple on screen at once.
-    if (moving && this.#state === 'idle') {
-      this.#nextTic -= dt;
-      if (this.#nextTic <= 0) {
-        this.#nextTic = 7 + Math.random() * 7;
-        if (live < MAX_LIVE) this.play(t.tics[Math.floor(Math.random() * t.tics.length)]);
-      }
-    }
+  /** Idle habits: rare, and never more than a couple on screen at once. */
+  #tickIdleHabit(dt: number): void {
+    if (this.#state !== 'idle') return;
+    this.#nextTic -= dt;
+    if (this.#nextTic > 0) return;
+    this.#nextTic = 7 + Math.random() * 7;
+    const tics = this.id.t.tics;
+    if (live < MAX_LIVE) this.play(tics[Math.floor(Math.random() * tics.length)]);
+  }
 
+  #advanceBehaviours(dt: number): void {
     for (let i = this.#behaviours.length - 1; i >= 0; i--) {
       const b = this.#behaviours[i];
       b.t += dt / (b.dur / b.scale);
@@ -452,6 +465,16 @@ export class Face {
         live--;
       }
     }
+  }
+
+  #update(dt: number, clock: number, moving: boolean): void {
+    this.#settleExpression(dt, moving);
+    this.#tickBlink(dt, moving);
+    if (moving) {
+      this.#tickBoil(dt);
+      this.#tickIdleHabit(dt);
+    }
+    this.#advanceBehaviours(dt);
     this.#tickParticles(dt);
 
     const p = this.#compose(dt, clock, moving);
@@ -492,14 +515,7 @@ export class Face {
     }
 
     // The head turns toward the pointer; eyes lead, the body follows on a spring.
-    let wantYaw = 0, wantPitch = 0;
-    if (moving && pointer && this.#box.ok) {
-      const dx = pointer.x - this.#box.x, dy = pointer.y - this.#box.y;
-      const dist = Math.hypot(dx, dy) || 1;
-      const attention = clamp(1 - dist / 640, 0, 1) * lerp(.85, 1, t.curiosity);
-      wantYaw = clamp(dx / Math.max(65, dist), -1, 1) * attention;
-      wantPitch = clamp(dy / Math.max(65, dist), -1, 1) * attention;
-    }
+    const [wantYaw, wantPitch] = moving ? this.#pointerTarget() : [0, 0];
     if (moving) {
       const follow = 1 - Math.exp(-dt * 19);
       this.#lookX = lerp(this.#lookX, wantYaw, follow);
@@ -518,6 +534,14 @@ export class Face {
     p.eyeDy = clamp(p.eyeDy + this.#lookY * 3.1, -6, 6);
     p.rot += this.#yaw * 1.1;
     return p;
+  }
+
+  #pointerTarget(): [number, number] {
+    if (!pointer || !this.#box.ok) return [0, 0];
+    const dx = pointer.x - this.#box.x, dy = pointer.y - this.#box.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const attention = clamp(1 - dist / 640, 0, 1) * lerp(.85, 1, this.id.t.curiosity);
+    return [clamp(dx / Math.max(65, dist), -1, 1) * attention, clamp(dy / Math.max(65, dist), -1, 1) * attention];
   }
 
   /** The specular drifts in busy states and barely follows the turn: the light is in the room. */
@@ -616,11 +640,7 @@ function frame(now: number): void {
   const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
   last = now;
   clock += dt;
-  // Boxes are cached; reading layout every frame would reflow on every tick.
-  if (pointer && (boxAge += dt) > 0.4) {
-    boxAge = 0;
-    for (const face of faces) if (face.visible) face.refreshBox();
-  }
+  refreshVisibleBoxes(dt);
   let visible = false;
   for (const face of faces) {
     if (!face.visible) continue;
@@ -628,6 +648,13 @@ function frame(now: number): void {
     face.tick(dt, clock, true);
   }
   if (visible) raf = requestAnimationFrame(frame);
+}
+
+/** Boxes are cached; reading layout every frame would reflow on every tick. */
+function refreshVisibleBoxes(dt: number): void {
+  if (!pointer || (boxAge += dt) <= 0.4) return;
+  boxAge = 0;
+  for (const face of faces) if (face.visible) face.refreshBox();
 }
 
 /** Under reduced motion a face is drawn once, as a still, and on each change. */

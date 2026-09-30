@@ -51,7 +51,9 @@ import {
   mergeTtsSettingsConfig,
   mergeUiSettingsConfig,
   setBackendModeConfig,
-  setLocalModelConfig
+  setLocalModelConfig,
+  type ProviderUpdate,
+  type LocalSettingsUpdate,
 } from '$lib/stores/app-store-config';
 import { findLatestArtifactMessage, resolveArtifactForMessage, upsertArtifactOnMessage } from '$lib/stores/app-store-artifacts';
 import {
@@ -2077,55 +2079,50 @@ class AppStore {
     }
   }
 
+  private requireCurrentWorkspace(): { chatId: string; rootPath: string } {
+    const chatId = this.currentChatId || '';
+    const rootPath = this.findChat(chatId)?.workspace?.rootPath;
+    if (!rootPath) throw new Error('No workspace attached');
+    return { chatId, rootPath };
+  }
+
   /** Create a file inside the workspace from the UI */
   async createWorkspaceFile(relativePath: string, docType: string, content: string): Promise<string> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { chatId, rootPath } = this.requireCurrentWorkspace();
     const fullPath = await createWorkspaceDocument(rootPath, relativePath, docType, content);
-    await this.refreshWorkspace(targetChatId);
+    await this.refreshWorkspace(chatId);
     return fullPath;
   }
 
   async renameWorkspaceFile(oldRelPath: string, newRelPath: string): Promise<void> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { chatId, rootPath } = this.requireCurrentWorkspace();
     await renameWorkspaceFile(rootPath, oldRelPath, newRelPath);
-    await this.refreshWorkspace(targetChatId);
+    await this.refreshWorkspace(chatId);
     toastStore.info(`Renamed to ${newRelPath.split('/').pop()}`, 2000);
   }
 
   async deleteWorkspaceFile(relativePath: string): Promise<void> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { chatId, rootPath } = this.requireCurrentWorkspace();
     await deleteWorkspaceFile(rootPath, relativePath);
-    await this.refreshWorkspace(targetChatId);
+    await this.refreshWorkspace(chatId);
     toastStore.info(`Deleted ${relativePath.split('/').pop()}`, 2000);
   }
 
   async readWorkspaceFile(relativePath: string): Promise<string> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { rootPath } = this.requireCurrentWorkspace();
     return readWorkspaceFile(rootPath, relativePath);
   }
 
   async openWorkspaceFile(relativePath: string): Promise<void> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { rootPath } = this.requireCurrentWorkspace();
     const fullPath = `${rootPath}/${relativePath}`;
     await openWorkspaceFile(fullPath, rootPath);
   }
 
   async createWorkspaceFolder(relativePath: string): Promise<void> {
-    const targetChatId = this.currentChatId || '';
-    const rootPath = this.findChat(targetChatId)?.workspace?.rootPath;
-    if (!rootPath) throw new Error('No workspace attached');
+    const { chatId, rootPath } = this.requireCurrentWorkspace();
     await createWorkspaceFolder(rootPath, relativePath);
-    await this.refreshWorkspace(targetChatId);
+    await this.refreshWorkspace(chatId);
     toastStore.info(`Folder created`, 2000);
   }
 
@@ -3142,17 +3139,7 @@ class AppStore {
     }
   }
 
-  async updateProvider(partial: {
-    provider: string;
-    base_url?: string;
-    api_key?: string;
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    top_p?: number;
-    system_prompt?: string;
-    extra_models?: string[];
-  }, opts: { activate?: boolean } = {}) {
+  async updateProvider(partial: ProviderUpdate, opts: { activate?: boolean } = {}) {
     const next = mergeProviderConfig(this.config, partial, opts);
     await this.commitConfig(next, {
       refreshModels: true,
@@ -3225,31 +3212,7 @@ class AppStore {
     });
   }
 
-  async updateLocalSettings(partial: {
-    base_url?: string;
-    runtime_path?: string;
-    context_length?: number;
-    gpu_layers?: number;
-    cpu_threads?: number;
-    batch_size?: number;
-    flash_attention?: boolean;
-    offload_kv_cache?: boolean;
-    keep_in_memory?: boolean;
-    mmap?: boolean;
-    seed?: number | null;
-    rope_freq_base?: number | null;
-    rope_freq_scale?: number | null;
-    parallel?: number | null;
-    cache_type_k?: string;
-    cache_type_v?: string;
-    mmproj_path?: string;
-    system_prompt?: string;
-    temperature?: number;
-    max_tokens?: number;
-    thinking_mode?: LocalThinkingMode;
-    /** Legacy equivalent of thinking_mode 'off'; cleared on write. */
-    disable_thinking?: boolean;
-  }) {
+  async updateLocalSettings(partial: LocalSettingsUpdate) {
     await this.commitConfig(mergeLocalSettingsConfig(this.config, partial), {
       refreshLocalStatus: true
     });
