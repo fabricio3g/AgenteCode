@@ -22,6 +22,7 @@ pub(crate) fn wants_breakpoints(
     provider_id: &str,
     model: &ModelInfo,
 ) -> bool {
+    let provider_id = super::canonical_provider_id(provider_id);
     if let Some(forced) = model.options.get("cache_control").and_then(Value::as_bool) {
         return forced;
     }
@@ -44,6 +45,7 @@ pub(crate) fn prompt_cache_key(
     model: &ModelInfo,
     session_id: uuid::Uuid,
 ) -> Option<String> {
+    let provider_id = super::canonical_provider_id(provider_id);
     (provider_id == "opencode-go" && !model.options.contains_key("prompt_cache_key"))
         .then(|| session_id.to_string())
 }

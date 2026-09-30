@@ -5,6 +5,23 @@ use crate::types::{Message, Role};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+/// OpenCode uses the same conversation routing contract for Go and Zen.
+/// Discovery has no conversation, so it shares one process-scoped identity.
+pub(crate) fn session_header(provider_id: &str, context: Option<RequestContext>) -> Option<String> {
+    static PROCESS_SESSION: std::sync::OnceLock<uuid::Uuid> = std::sync::OnceLock::new();
+    matches!(
+        super::canonical_provider_id(provider_id),
+        "opencode-go" | "opencode" | "opencode-zen"
+    )
+    .then(|| {
+        context
+            .map(|context| context.session_id)
+            .filter(|id| !id.is_nil())
+            .unwrap_or_else(|| *PROCESS_SESSION.get_or_init(uuid::Uuid::new_v4))
+            .to_string()
+    })
+}
+
 pub(crate) fn model_options(options: &HashMap<String, Value>) -> HashMap<String, Value> {
     let mut result = HashMap::new();
     if let Some(nested) = options.get("options").and_then(Value::as_object) {
@@ -58,13 +75,13 @@ pub(super) fn stream_error(provider: &str, value: &Value) -> LlmError {
     LlmError::StreamError(raw.chars().take(1500).collect())
 }
 
-pub(super) async fn send_request(
+pub(super) fn completion_request(
     info: &ProviderInfo,
     model: &ModelInfo,
     path: &str,
     body: &Value,
     context: RequestContext,
-) -> Result<reqwest::Response, LlmError> {
+) -> Result<reqwest::RequestBuilder, LlmError> {
     let base_url = if crate::config::provider_is_supported(&info.id, &Default::default()) {
         info.resolve_base_url()
     } else {
@@ -74,7 +91,8 @@ pub(super) async fn send_request(
             .clone()
             .unwrap_or_else(|| info.resolve_base_url())
     };
-    if info.id == "opencode-go" && base_url.trim_end_matches('/') != "https://opencode.ai/zen/go/v1"
+    if super::canonical_provider_id(&info.id) == "opencode-go"
+        && base_url.trim_end_matches('/') != "https://opencode.ai/zen/go/v1"
     {
         return Err(LlmError::HttpError(
             "OpenCode Go requires its official Go endpoint".into(),
@@ -82,12 +100,11 @@ pub(super) async fn send_request(
     }
     let url = super::join_url(&crate::util::expand_env_templates(&base_url), path);
     tracing::info!(provider = %info.id, model = %model.api_id, session_id = %context.session_id, format = ?model.api.format.unwrap_or(info.api_format), path, "Sending provider HTTP request");
-    let started = std::time::Instant::now();
     let mut request = crate::util::http_client()
         .post(url)
         .header("Content-Type", "application/json");
-    if info.id == "opencode-go" {
-        request = request.header("x-opencode-session", context.session_id.to_string());
+    if let Some(session) = session_header(&info.id, Some(context)) {
+        request = request.header("x-opencode-session", session);
     }
     let format = model.api.format.unwrap_or(info.api_format);
     if let Some(key) = info.resolve_api_key() {
@@ -107,11 +124,13 @@ pub(super) async fn send_request(
     }
     let mut headers = reqwest::header::HeaderMap::new();
     for (key, value) in info.headers.iter().chain(model.headers.iter()) {
-        if crate::config::provider_is_supported(&info.id, &Default::default())
-            && (key.eq_ignore_ascii_case("authorization")
-                || key.eq_ignore_ascii_case("x-api-key")
-                || key.eq_ignore_ascii_case("x-opencode-session")
-                || key.eq_ignore_ascii_case("host"))
+        if crate::config::provider_is_supported(
+            super::canonical_provider_id(&info.id),
+            &Default::default(),
+        ) && (key.eq_ignore_ascii_case("authorization")
+            || key.eq_ignore_ascii_case("x-api-key")
+            || key.eq_ignore_ascii_case("x-opencode-session")
+            || key.eq_ignore_ascii_case("host"))
         {
             return Err(LlmError::HttpError(format!(
                 "{}: authentication and session headers cannot be overridden",
@@ -125,8 +144,19 @@ pub(super) async fn send_request(
         headers.insert(name, value);
     }
     request = request.headers(headers);
+    Ok(request.json(body))
+}
+
+pub(super) async fn send_request(
+    info: &ProviderInfo,
+    model: &ModelInfo,
+    path: &str,
+    body: &Value,
+    context: RequestContext,
+) -> Result<reqwest::Response, LlmError> {
+    let request = completion_request(info, model, path, body, context)?;
+    let started = std::time::Instant::now();
     let response = request
-        .json(body)
         .send()
         .await
         .map_err(|e| LlmError::HttpError(format!("{}: {e}", info.name)))?;

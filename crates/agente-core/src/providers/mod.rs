@@ -31,6 +31,12 @@ mod transport_tests;
 pub use summarizer::ProviderSummarizer;
 pub use title::generate_session_title;
 
+/// Desktop wraps built-in providers in runtime-scoped configuration entries.
+/// Their transport contracts still belong to the underlying provider.
+pub(crate) fn canonical_provider_id(id: &str) -> &str {
+    id.strip_prefix("desktop-").unwrap_or(id)
+}
+
 /// Stable per-conversation identity, shared by turns and auxiliary completions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RequestContext {

@@ -61,6 +61,48 @@ fn info(url: String) -> ProviderInfo {
 }
 
 #[test]
+fn opencode_requests_have_stable_session_headers_only_on_opencode() {
+    let session = uuid::Uuid::new_v4();
+    for provider in [
+        "opencode-go",
+        "opencode",
+        "opencode-zen",
+        "desktop-opencode-go",
+        "desktop-opencode",
+        "desktop-opencode-zen",
+        "openrouter",
+        "desktop-openrouter",
+        "openai",
+    ] {
+        let mut info = info(if super::canonical_provider_id(provider) == "opencode-go" {
+            "https://opencode.ai/zen/go/v1".into()
+        } else {
+            "http://localhost/v1".into()
+        });
+        info.id = provider.into();
+        let request = super::wire::completion_request(
+            &info,
+            &model(ApiFormat::OpenAI),
+            "chat/completions",
+            &json!({}),
+            RequestContext::new(session),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        let header = request.headers().get("x-opencode-session");
+        if super::canonical_provider_id(provider).starts_with("opencode") {
+            assert_eq!(header.unwrap().to_str().unwrap(), session.to_string());
+            let fallback = super::wire::session_header(provider, None).unwrap();
+            assert!(!uuid::Uuid::parse_str(&fallback).unwrap().is_nil());
+            assert_eq!(Some(fallback), super::wire::session_header(provider, None));
+        } else {
+            assert!(header.is_none());
+        }
+    }
+}
+
+#[test]
 fn partial_provider_config_keeps_native_format_and_model_overrides_survive_cache() {
     let overrides: crate::config::AppConfig = serde_json::from_value(json!({
         "provider":{"minimax":{"options":{"timeout":30000}}}
@@ -508,6 +550,15 @@ fn opencode_go_gets_a_session_cache_key_and_breakpoints() {
         Some(session.to_string())
     );
     assert!(super::cache::wants_breakpoints(false, "opencode-go", &go));
+    assert_eq!(
+        super::cache::prompt_cache_key("desktop-opencode-go", &go, session),
+        Some(session.to_string())
+    );
+    assert!(super::cache::wants_breakpoints(
+        false,
+        "desktop-opencode-go",
+        &go
+    ));
     assert_eq!(
         super::cache::prompt_cache_key("deepseek", &go, session),
         None

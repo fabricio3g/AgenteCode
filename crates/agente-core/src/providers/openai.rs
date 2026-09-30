@@ -502,7 +502,7 @@ impl Provider for OpenAIProvider {
         }
 
         let base_url = self.resolve_base_url();
-        if self.info.id == "opencode-go"
+        if super::canonical_provider_id(&self.info.id) == "opencode-go"
             && base_url.trim_end_matches('/') != "https://opencode.ai/zen/go/v1"
         {
             return Err(LlmError::HttpError(
@@ -522,6 +522,9 @@ impl Provider for OpenAIProvider {
             let mut request = self.client.get(url.clone());
             for (key, value) in &self.info.headers {
                 request = request.header(key.as_str(), value.as_str());
+            }
+            if let Some(session) = super::wire::session_header(&self.info.id, None) {
+                request = request.header("x-opencode-session", session);
             }
             if let Some(api_key) = &api_key {
                 request = if self.info.api_format == ApiFormat::Anthropic {
