@@ -617,7 +617,18 @@ const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     : { ok: true, models: ['deepseek/deepseek-v4-flash', 'moonshotai/kimi-k3', 'qwen/qwen3.8-max', 'z-ai/glm-5.3'] },
   get_whisper_runtimes: () => [{ variant: 'vulkan', path: '/mock/bin/whisper-cli', is_active: true }],
   detect_tool_support: () => ({ supportsTools: true, source: 'mock' }),
-  get_reasoning_capabilities: () => ({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'mock' }),
+  list_provider_specs: () => [
+    { id: 'opencode-go', name: 'OpenCode Go', group: 'cloud', base_url: 'https://opencode.ai/zen/go/v1', api_format: 'openai', order: 10, models: 'openai_models', key_url: 'https://opencode.ai/auth', docs_url: 'https://opencode.ai/docs/go/' },
+    { id: 'openrouter', name: 'OpenRouter', group: 'cloud', base_url: 'https://openrouter.ai/api/v1', api_format: 'openai', order: 20, models: 'openrouter', key_url: 'https://openrouter.ai/settings/keys', docs_url: 'https://openrouter.ai/docs/quickstart' },
+    { id: 'deepseek', name: 'DeepSeek', group: 'cloud', base_url: 'https://api.deepseek.com', api_format: 'openai', order: 30, models: 'catalog', key_url: 'https://platform.deepseek.com/api_keys' },
+    { id: 'minimax', name: 'MiniMax', group: 'cloud', base_url: 'https://api.minimax.io/anthropic/v1', api_format: 'anthropic', openai_compatible_url: 'https://api.minimax.io/v1', order: 40, models: 'catalog', key_url: 'https://platform.minimax.io/user-center/basic-information/interface-key' },
+    { id: 'glm', name: 'GLM (Z.AI API)', group: 'cloud', base_url: 'https://api.z.ai/api/paas/v4', api_format: 'openai', order: 50, models: 'catalog', key_url: 'https://z.ai/manage-apikey/apikey-list' },
+    { id: 'lmstudio', name: 'LM Studio (local)', group: 'local', base_url: 'http://localhost:1234/v1', api_format: 'openai', order: 60, models: 'openai_models' },
+    { id: 'ollama', name: 'Ollama (local)', group: 'local', base_url: 'http://localhost:11434/v1', api_format: 'openai', order: 70, models: 'openai_models' },
+    { id: 'llamacpp', name: 'llama.cpp (local)', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', aliases: ['local'], order: 80, models: 'llamacpp' },
+    { id: 'custom', name: 'Custom / Other', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai', order: 90, models: 'openai_models' }
+  ],
+  get_reasoning_capabilities: () => ({ supported: true, levels: ['off', 'low', 'medium', 'high', 'max'], source: 'catalog', default: 'medium', budgets: { low: 2048, medium: 8192, high: 24576 } }),
   count_tokens: () => 0,
   build_context_budget: () => ({}),
 

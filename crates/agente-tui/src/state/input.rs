@@ -106,6 +106,11 @@ pub struct InputState {
     /// the cursor while the dialog is up and the widget never depends on a
     /// live catalog fetch mid-render.
     pub thinking_selector_levels: Vec<String>,
+    /// Thinking-token budget per level (parallel to the levels; empty when the
+    /// core reports none). `None` = the provider decides or no limit.
+    pub thinking_selector_budgets: Vec<Option<u32>>,
+    /// What `auto` resolves to, when the provider says.
+    pub thinking_selector_default: Option<String>,
 
     // Terminal Doctor (/doctor)
     /// Show the /doctor environment diagnostics modal
@@ -261,6 +266,8 @@ impl InputState {
         self.show_thinking_selector = false;
         self.thinking_selector_selected = 0;
         self.thinking_selector_levels.clear();
+        self.thinking_selector_budgets.clear();
+        self.thinking_selector_default = None;
     }
 
     /// Close @ file picker

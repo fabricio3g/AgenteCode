@@ -1,0 +1,10 @@
+id = "lmstudio"
+name = "LM Studio (local)"
+group = "local"
+base_url = "http://localhost:1234/v1"
+api_format = "openai"
+models = "openai_models"
+thinking = "default"
+offered = false
+order = 60
+docs_url = "https://lmstudio.ai/docs/developer/openai-compat/tools"

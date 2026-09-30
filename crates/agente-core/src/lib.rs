@@ -9,6 +9,7 @@ pub mod llm;
 pub mod lsp;
 pub mod mcp;
 pub mod media;
+pub mod models;
 pub mod permissions;
 pub mod providers;
 pub mod session;

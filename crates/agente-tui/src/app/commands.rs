@@ -251,9 +251,23 @@ impl App {
         // value behind (for example an OpenRouter model with a narrower
         // supported_efforts list).
         self.state.clamp_thinking_level_for_current_model();
-        let levels = self.state.thinking_levels_for_current_model();
+        let profile = self.state.thinking_profile_for_current_model();
+        // `auto` (send nothing, provider default) is the first stop whenever
+        // there is anything to choose.
+        let mut levels = Vec::new();
+        let mut budgets = Vec::new();
+        if !profile.levels.is_empty() {
+            levels.push(agente_core::thinking::THINKING_AUTO.to_string());
+            budgets.push(None);
+        }
+        for level in &profile.levels {
+            levels.push(level.id.clone());
+            budgets.push(level.budget_tokens);
+        }
         let current = self.state.agent.thinking_level.clone();
         self.state.input.open_thinking_selector(&levels, &current);
+        self.state.input.thinking_selector_budgets = budgets;
+        self.state.input.thinking_selector_default = profile.default;
         self.state.ui.needs_render = true;
     }
 }

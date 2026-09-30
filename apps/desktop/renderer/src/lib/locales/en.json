@@ -196,8 +196,11 @@
         "medium": "Balanced speed and depth",
         "high": "Thinks longer on hard problems",
         "xhigh": "Very thorough; slower and uses more tokens",
-        "max": "The most thorough; slowest and costliest"
-      }
+        "max": "The most thorough; slowest and costliest",
+        "always": "This model always thinks; its provider offers no levels to choose"
+      },
+      "budget": "up to {tokens} tokens",
+      "always": "Always thinking"
     }
   },
   "welcome": {

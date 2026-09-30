@@ -2,36 +2,73 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { getDialect } from '../../main/providers/dialects.ts';
+import { buildBody } from '../../main/providers/openai-core.ts';
+import { capabilitiesFromProfile } from '../../main/agente/thinking-profile.ts';
 
-const reasoningBody = (id, level, modelId) => getDialect(id).reasoningBody(level, modelId);
+const params = (reasoning) => ({ apiKey: 'k', model: 'm', messages: [], reasoning });
 
-describe('OpenRouter reasoning body', () => {
-  it('uses unified reasoning.effort object', () => {
-    assert.deepEqual(reasoningBody('openrouter', 'high'), {
-      reasoning: { effort: 'high' }
-    });
-    assert.deepEqual(reasoningBody('openrouter', 'none'), {
-      reasoning: { effort: 'none' }
-    });
+describe('thinking fields come from the shared core', () => {
+  it('merges the core-built fields as is', () => {
+    const body = buildBody(getDialect('openrouter'), params({ level: 'high', body: { reasoning: { effort: 'high' } } }), true);
+    assert.deepEqual(body.reasoning, { effort: 'high' });
   });
 
-  it('disables for off, preserves Auto, and maps enabled to medium', () => {
-    assert.deepEqual(reasoningBody('openrouter', 'off'), { reasoning: { effort: 'none' } });
-    assert.deepEqual(reasoningBody('openrouter', undefined), {});
-    assert.deepEqual(reasoningBody('openrouter', 'enabled'), {
-      reasoning: { effort: 'medium' }
-    });
+  it('sends nothing for Auto or a level the core did not shape', () => {
+    for (const reasoning of [undefined, null, { level: 'high' }]) {
+      const body = buildBody(getDialect('deepseek'), params(reasoning), false);
+      assert.equal(body.reasoning, undefined);
+      assert.equal(body.reasoning_effort, undefined);
+      assert.equal(body.thinking, undefined);
+    }
+  });
+
+  it('keeps llama-server thoughts out of the answer on every request', () => {
+    const plain = buildBody(getDialect('local'), params(undefined), true);
+    assert.equal(plain.reasoning_format, 'auto');
+    const off = buildBody(
+      getDialect('local'),
+      params({ level: 'off', body: { reasoning_format: 'auto', chat_template_kwargs: { enable_thinking: false } } }),
+      true
+    );
+    assert.deepEqual(off.chat_template_kwargs, { enable_thinking: false });
+  });
+
+  it('no dialect carries its own level list or body builder', () => {
+    for (const id of ['openrouter', 'deepseek', 'opencode-go', 'local', 'ollama', 'lmstudio', 'custom']) {
+      const dialect = getDialect(id);
+      assert.equal(dialect.reasoningBody, undefined, id);
+      assert.equal(dialect.reasoningCapabilities, undefined, id);
+    }
   });
 });
 
-describe('DeepSeek thinking body (official thinking_mode docs)', () => {
-  it('disables and enables with high/max', () => {
-    assert.deepEqual(reasoningBody('deepseek', 'off'), {
-      thinking: { type: 'disabled' }
+describe('core thinking profile → renderer capabilities', () => {
+  it('keeps levels low → high with budgets and the provider default', () => {
+    const caps = capabilitiesFromProfile({
+      levels: [{ id: 'off' }, { id: 'low', budget_tokens: 512 }, { id: 'max' }],
+      default: 'low',
+      mandatory: false,
+      source: 'template'
     });
-    assert.deepEqual(reasoningBody('deepseek', 'max'), {
-      thinking: { type: 'enabled' },
-      reasoning_effort: 'max'
+    assert.deepEqual(caps, {
+      supported: true,
+      levels: ['off', 'low', 'max'],
+      source: 'template',
+      default: 'low',
+      mandatory: false,
+      budgets: { low: 512 }
     });
+  });
+
+  it('hides the selector when the core offers nothing', () => {
+    assert.equal(capabilitiesFromProfile({ levels: [], mandatory: false, source: 'none' }).supported, false);
+    assert.equal(capabilitiesFromProfile({ levels: [], mandatory: false, source: 'catalog' }).source, 'unknown');
+  });
+
+  it('marks an always-thinking model without choices', () => {
+    const caps = capabilitiesFromProfile({ levels: [], mandatory: true, source: 'live' });
+    assert.equal(caps.supported, false);
+    assert.equal(caps.mandatory, true);
+    assert.equal(caps.source, 'live');
   });
 });

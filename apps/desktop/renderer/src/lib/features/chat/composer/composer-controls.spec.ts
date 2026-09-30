@@ -7,7 +7,7 @@ import ReasoningLevelSelector from './ReasoningLevelSelector.svelte';
 import type { ReasoningCapabilities, ReasoningLevel } from '$lib/types/chat';
 
 const store = vi.hoisted(() => ({
-  reasoningCapabilities: { supported: true, source: 'api', levels: ['low', 'medium', 'high'], paramShape: 'openai_reasoning_effort' } as ReasoningCapabilities,
+  reasoningCapabilities: { supported: true, source: 'catalog', levels: ['low', 'medium', 'high'] } as ReasoningCapabilities,
   reasoningLevel: null as ReasoningLevel | null,
   backendMode: 'api',
   config: {},
@@ -17,14 +17,14 @@ vi.mock('$lib/stores/app.svelte', () => ({ appStore: store }));
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
-  store.reasoningCapabilities = { supported: true, source: 'api', levels: ['low', 'medium', 'high'], paramShape: 'openai_reasoning_effort' };
+  store.reasoningCapabilities = { supported: true, source: 'catalog', levels: ['low', 'medium', 'high'] };
   store.reasoningLevel = null;
   // The real store keeps the choice, so the arrows read their own result.
   store.setReasoningLevel = vi.fn((level: ReasoningLevel | null) => { store.reasoningLevel = level; });
 });
 afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-/** The rail positions a thumb as `calc(7px + <fraction> * (100% - 14px))`. */
+/** The rail places a stop as `calc(7px + <fraction> * (100% - 14px))`. */
 function fractionOf(style: string | null): number {
   return Number(/calc\([^)]*?([\d.]+)\s*\*\s*\(/.exec(style ?? '')?.[1]);
 }
@@ -80,12 +80,11 @@ describe('context details', () => {
 });
 
 describe('thinking level', () => {
-  it('marks one tick per level and names the ends of the scale instead of crowding labels on the rail', async () => {
+  it('marks one stop per level between the named ends of the scale', async () => {
     store.reasoningCapabilities = {
       supported: true,
-      source: 'api',
-      levels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-      paramShape: 'openai_reasoning_effort'
+      source: 'catalog',
+      levels: ['minimal', 'low', 'medium', 'high', 'xhigh']
     };
     const view = render(ReasoningLevelSelector);
     await fireEvent.click(view.getByRole('button', { name: 'Thinking: Auto' }));
@@ -93,7 +92,7 @@ describe('thinking level', () => {
     const rail = view.getByRole('slider', { name: 'Thinking' });
     // Auto plus the five levels, evenly spread from one end to the other.
     const ticks = [...rail.querySelectorAll('.tick')];
-    // Each tick names its level and what it means, so the bar can stay wordless.
+    // Each stop names its level and what it means, so the bar can stay wordless.
     expect(ticks.map((tick) => tick.getAttribute('title'))).toEqual([
       'Auto — The model decides how long to think',
       'Minimal — A quick glance before answering',
@@ -102,10 +101,10 @@ describe('thinking level', () => {
       'High — Thinks longer on hard problems',
       'Extra high — Very thorough; slower and uses more tokens'
     ]);
-    // Ticks land on sixths of the bar, so the reading is a position, not a smear of text.
     expect(ticks.map((tick) => fractionOf(tick.getAttribute('style')))).toEqual([0, 0.2, 0.4, 0.6, 0.8, 1]);
-    expect(view.getByRole('dialog').textContent).toContain('Faster');
-    expect(view.getByRole('dialog').textContent).toContain('Deeper');
+        const card = view.getByRole('dialog');
+    expect(card.textContent).toContain('Faster');
+    expect(card.textContent).toContain('Deeper');
     expect(rail.getAttribute('aria-valuenow')).toBe('0');
     expect(rail.getAttribute('aria-valuemax')).toBe('5');
   });
@@ -147,7 +146,7 @@ describe('thinking level', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('fills to the chosen level, names it in the header, and keeps the bar wordless', async () => {
+  it('fills to the chosen level and leaves naming it to the trigger', async () => {
     store.reasoningLevel = 'high';
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: High' });
@@ -157,9 +156,39 @@ describe('thinking level', () => {
     const rail = view.getByRole('slider');
     expect(rail.getAttribute('aria-valuetext')).toBe('High');
     expect(rail.querySelectorAll('.tick.is-on')).toHaveLength(4);
-    // The level's meaning moved to the tick tooltip rather than a line of prose.
-    expect(view.getByRole('dialog').textContent).toContain('High');
-    expect(view.getByRole('dialog').textContent).not.toContain('Thinks longer on hard problems');
+    // The card does not repeat what the trigger already shows.
+    const card = view.getByRole('dialog');
+    expect(card.textContent).not.toContain('High');
+    expect(card.querySelector('.meter')).toBeNull();
+    // A level without a budget adds nothing between the ends.
+    expect(card.querySelector('.effort-budget')).toBeNull();
+  });
+
+  it('shows a budget only for levels that have one', async () => {
+    store.reasoningCapabilities = {
+      supported: true,
+      source: 'template',
+      levels: ['off', 'low', 'max'],
+      budgets: { low: 512 }
+    };
+    store.reasoningLevel = 'low';
+    let view = render(ReasoningLevelSelector);
+    await fireEvent.click(view.getByRole('button'));
+    expect(view.getByRole('dialog').querySelector('.effort-budget')?.textContent).toBe('up to 512 tokens');
+    cleanup();
+
+    // Max is sized by the provider: nothing claims it is unlimited.
+    store.reasoningLevel = 'max';
+    view = render(ReasoningLevelSelector);
+    await fireEvent.click(view.getByRole('button'));
+    expect(view.getByRole('dialog').querySelector('.effort-budget')).toBeNull();
+    expect(view.getByRole('dialog').textContent).not.toContain('limit');
+  });
+
+  it('names what Auto resolves to when the provider says', () => {
+    store.reasoningCapabilities = { supported: true, source: 'live', levels: ['low', 'high'], default: 'high' };
+    const view = render(ReasoningLevelSelector);
+    expect(view.getByRole('button', { name: 'Thinking: Auto · High' })).toBeTruthy();
   });
 
   it('sends the fill sheen once, on a change, and not on open or on the level already chosen', async () => {
@@ -187,8 +216,16 @@ describe('thinking level', () => {
   });
 
   it('hides the control for models without reported reasoning levels', () => {
-    store.reasoningCapabilities = { supported: false, source: 'unknown', levels: [], paramShape: 'openai_reasoning_effort' };
+    store.reasoningCapabilities = { supported: false, source: 'unknown', levels: [] };
     const view = render(ReasoningLevelSelector);
     expect(view.queryByRole('button')).toBeNull();
+    expect(view.container.textContent).not.toContain('Always thinking');
+  });
+
+  it('says a model always thinks when its provider offers nothing to pick', () => {
+    store.reasoningCapabilities = { supported: false, source: 'live', levels: [], mandatory: true };
+    const view = render(ReasoningLevelSelector);
+    expect(view.queryByRole('button')).toBeNull();
+    expect(view.container.textContent).toContain('Always thinking');
   });
 });

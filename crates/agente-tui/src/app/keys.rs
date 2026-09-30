@@ -2398,13 +2398,14 @@ impl App {
                 self.state.input.close_thinking_selector();
                 self.state.ui.needs_render = true;
             }
-            KeyCode::Up => {
+            // A horizontal scale: right and down climb, left and up drop.
+            KeyCode::Left | KeyCode::Up => {
                 if self.state.input.thinking_selector_selected > 0 {
                     self.state.input.thinking_selector_selected -= 1;
                 }
                 self.state.ui.needs_render = true;
             }
-            KeyCode::Down => {
+            KeyCode::Right | KeyCode::Down => {
                 if self.state.input.thinking_selector_selected + 1 < levels.len() {
                     self.state.input.thinking_selector_selected += 1;
                 }

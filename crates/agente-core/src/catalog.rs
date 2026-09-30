@@ -65,6 +65,18 @@ pub enum ReasoningOption {
         #[serde(default)]
         supports_max_tokens: bool,
     },
+    /// A llama-server's chat template, read from `/props`.
+    LlamaCpp {
+        /// The server takes per-request thinking control
+        /// (`chat_template_kwargs.enable_thinking`, `thinking_budget_tokens`);
+        /// older servers only switch thinking on or off.
+        #[serde(default)]
+        per_request: bool,
+        /// The template reads `reasoning_effort`
+        /// (`chat_template_caps.supports_reasoning_effort`).
+        #[serde(default)]
+        effort_kwarg: bool,
+    },
 }
 
 /// Deserialize `Option<u32>`, mapping null / missing / negative → `None`.
@@ -696,6 +708,7 @@ impl ModelCatalog {
 
     /// Look up a model by provider + id (and common id variants).
     pub fn find_model(&self, provider_id: &str, model_id: &str) -> Option<&CatalogModel> {
+        let provider_id = crate::providers::spec::catalog_id(provider_id);
         if let Some(provider) = self
             .providers
             .get(provider_id)
@@ -750,6 +763,48 @@ impl ModelCatalog {
         }
         let prefixed = format!("{}/{}", provider.id, model_id);
         provider.models.get(&prefixed)
+    }
+
+    /// How long the on-disk catalog is trusted before a background refresh.
+    pub const CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+    /// Age of the on-disk catalog, `None` when there is none.
+    pub fn cache_age() -> Option<std::time::Duration> {
+        let modified = std::fs::metadata(Self::cache_path()?).ok()?.modified().ok()?;
+        Some(modified.elapsed().unwrap_or_default())
+    }
+
+    /// Refresh the on-disk catalog in the background when it is older than
+    /// [`Self::CACHE_MAX_AGE`]. The running process keeps the copy it loaded;
+    /// the next launch (or Ctrl+R) sees the fresh one. At most once per process.
+    pub fn refresh_cache_if_stale() {
+        static STARTED: std::sync::Once = std::sync::Once::new();
+        if cfg!(test) || Self::cache_age().is_some_and(|age| age < Self::CACHE_MAX_AGE) {
+            return;
+        }
+        STARTED.call_once(|| {
+            let spawned = std::thread::Builder::new()
+                .name("models-dev-refresh".into())
+                .spawn(|| {
+                    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    else {
+                        return;
+                    };
+                    match runtime.block_on(Self::fetch()) {
+                        Ok(catalog) => {
+                            if let Err(error) = catalog.save_to_cache() {
+                                tracing::warn!(%error, "models.dev refresh not cached");
+                            }
+                        }
+                        Err(error) => tracing::warn!(%error, "models.dev refresh failed"),
+                    }
+                });
+            if let Err(error) = spawned {
+                tracing::warn!(%error, "models.dev refresh thread not started");
+            }
+        });
     }
 
     pub fn load_from_cache() -> Option<Self> {

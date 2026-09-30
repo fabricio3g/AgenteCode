@@ -5,7 +5,6 @@
 // normalized, one place an error is classified.
 
 import OpenAI from 'openai';
-import type { ReasoningCapabilities } from './base.ts';
 import {
   LlmStreamError,
   classifyError,
@@ -22,8 +21,6 @@ import { probeToolSupport, type ToolProbeArgs } from './tool-probe.ts';
 
 /** Known request extras passed through to the wire, in one place. */
 const PASSTHROUGH_PARAMS = ['temperature', 'max_tokens', 'top_p', 'stop'] as const;
-
-const EFFORT_LEVELS = ['off', 'low', 'medium', 'high'] as const;
 
 const clients = new Map<string, { client: unknown }>();
 
@@ -146,7 +143,10 @@ export function buildBody(dialect: Dialect, params: StreamParams, stream: boolea
     })),
     ...(params.tools?.length ? { tools: params.tools } : {}),
     ...(params.tool_choice !== undefined && dialect.id !== 'ollama' ? { tool_choice: params.tool_choice } : {}),
-    ...dialect.reasoningBody?.(params.reasoning?.level ?? undefined, params.model),
+    ...dialect.baseBody,
+    // Thinking fields come from the shared core (agente/thinking.ts), already
+    // shaped for this provider and model; Auto sends none.
+    ...params.reasoning?.body,
     ...(stream && dialect.streamUsage ? { stream_options: { include_usage: true } } : {}),
     stream
   };
@@ -438,83 +438,6 @@ async function fetchModelMetadataByTransport(
   }
 }
 
-// ── Capabilities ───────────────────────────────────────────────────────
-
-function supportedParametersCaps(record: unknown, levels: readonly string[]): ReasoningCapabilities {
-  const r = (record ?? {}) as Record<string, unknown>;
-  const params = Array.isArray(r.supported_parameters) ? r.supported_parameters as string[] : [];
-  const accepts = params.includes('reasoning_effort') || params.includes('reasoning')
-    || !!(r.reasoning && typeof r.reasoning === 'object');
-  return {
-    supported: accepts,
-    levels: accepts ? [...levels] as ReasoningCapabilities['levels'] : [],
-    paramShape: 'openai_reasoning_effort',
-    source: 'api'
-  };
-}
-
-async function getReasoningCapabilities(
-  dialect: Dialect,
-  apiKey: string,
-  baseUrl: string | undefined,
-  modelId?: string,
-  modelPath?: string
-): Promise<ReasoningCapabilities> {
-  const UNKNOWN = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' } as const;
-
-  // 1. Family/static knowledge wins — no network.
-  const known = dialect.reasoningCapabilities?.(modelId, modelPath);
-  if (known) return known;
-
-  // 2. Local models: report what the template the server will actually
-  // render with grants. Embedded GGUF template first, then the same
-  // sidecar/family/generic fallback that process-manager passes to
-  // llama-server — so the UI can never disagree with rendering (the old
-  // path read only the GGUF and wiped the user's level when a re-quant had
-  // no template).
-  if (dialect.id === 'local') {
-    const LOCAL_UNKNOWN = { supported: false, levels: [], paramShape: 'local_enable_thinking', source: 'unknown' } as const;
-    if (!modelPath) return LOCAL_UNKNOWN;
-    try {
-      const { readGgufMetadataFields } = await import('../runtime-config-resolver.ts');
-      const { resolveEffectiveTemplate, detectTemplateThinkingSupport } = await import('../chat-templates.ts');
-      const fields = readGgufMetadataFields(modelPath);
-      const effective = resolveEffectiveTemplate({
-        modelPath,
-        fields,
-        ggufTemplate: fields?.chat_template ?? null
-      });
-      const supportsThinking = detectTemplateThinkingSupport(effective.template);
-      return {
-        supported: supportsThinking,
-        levels: supportsThinking ? ['off', 'on'] as ReasoningCapabilities['levels'] : [],
-        paramShape: 'local_enable_thinking',
-        // The UI treats any non-'unknown' source as trustworthy; the template
-        // origin (embedded file, sidecar, or built-in fallback) is what the
-        // support verdict is actually made from.
-        source: 'metadata'
-      };
-    } catch {
-      return LOCAL_UNKNOWN;
-    }
-  }
-
-  // 3. Endpoint probing.
-  try {
-    const client = sdkClient(dialect, apiKey, baseUrl);
-    try {
-      return supportedParametersCaps(await client.models.retrieve(modelId ?? ''), EFFORT_LEVELS);
-    } catch {
-      const response = await client.models.list();
-      const list = response?.data ?? [];
-      const found = list.find((entry) => String(entry?.id || '') === String(modelId));
-      return supportedParametersCaps(found, EFFORT_LEVELS);
-    }
-  } catch {
-    return { ...UNKNOWN };
-  }
-}
-
 // ── Assembly ───────────────────────────────────────────────────────────
 
 export interface ProviderObject {
@@ -525,7 +448,6 @@ export interface ProviderObject {
   complete(params: StreamParams): Promise<CompletionResult>;
   fetchModels(apiKey: string, baseUrl?: string): Promise<string[]>;
   fetchModelMetadata(apiKey: string, baseUrl: string | undefined, modelId: string): Promise<unknown>;
-  getReasoningCapabilities(apiKey: string, baseUrl: string | undefined, modelId?: string, modelPath?: string): Promise<ReasoningCapabilities>;
   checkToolSupport(args: { baseUrl?: string; apiKey: string; model?: string; modelPath?: string; providerName?: string }): Promise<{ supportsTools: boolean; source: string }>;
 }
 
@@ -555,9 +477,6 @@ export function createOpenAiProvider(dialect: Dialect): ProviderObject {
     },
     fetchModelMetadata(apiKey: string, baseUrl: string | undefined, modelId: string) {
       return fetchModelMetadataByTransport(dialect, apiKey, baseUrl, modelId);
-    },
-    getReasoningCapabilities(apiKey: string, baseUrl: string | undefined, modelId?: string, modelPath?: string) {
-      return getReasoningCapabilities(dialect, apiKey, baseUrl, modelId, modelPath);
     },
     checkToolSupport(args: ToolProbeArgs) {
       // A positive read of the *effective* template (embedded, sidecar, or

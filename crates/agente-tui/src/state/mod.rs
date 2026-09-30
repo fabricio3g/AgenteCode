@@ -197,6 +197,16 @@ impl AppState {
     /// Empty when the model has no `reasoning_options` in models.dev, which the
     /// picker shows as an explanation rather than pushing a system message into
     /// the transcript.
+    /// The core's thinking profile for the current model (empty when none).
+    pub fn thinking_profile_for_current_model(&self) -> agente_core::thinking::ThinkingProfile {
+        let provider = self.config.current_provider.clone();
+        let model_id = self.config.current_model.clone();
+        self.resolve_model(&provider, &model_id)
+            .filter(|_| !model_id.is_empty())
+            .map(|model| agente_core::thinking::profile(&model))
+            .unwrap_or_else(|| agente_core::thinking::profile(&agente_core::providers::fallback_model_info("", "")))
+    }
+
     pub fn thinking_levels_for_current_model(&self) -> Vec<String> {
         let provider = self.config.current_provider.clone();
         let model_id = self.config.current_model.clone();
@@ -286,7 +296,7 @@ impl AppState {
             .default_thinking_level
             .clone()
             .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| agente_core::thinking::THINKING_OFF.to_string());
+            .unwrap_or_else(|| agente_core::thinking::THINKING_AUTO.to_string());
         let permission_engine =
             shared_permission_engine_with_config(mode, &app_config.auto_approve, &project_dir);
 

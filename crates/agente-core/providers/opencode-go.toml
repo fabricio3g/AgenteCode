@@ -1,0 +1,21 @@
+# OpenCode Go — a flat subscription to open models (opencode.ai/docs/go).
+# Its /models lists ids only; levels and prices come from models.dev.
+id = "opencode-go"
+name = "OpenCode Go"
+group = "cloud"
+base_url = "https://opencode.ai/zen/go/v1"
+api_format = "openai"
+env = ["OPENCODE_GO_API_KEY", "OPENCODE_API_KEY"]
+match_hosts = ["opencode.ai"]
+models = "openai_models"
+thinking = "default"
+stream_usage = true
+offered = true
+order = 10
+key_url = "https://opencode.ai/auth"
+docs_url = "https://opencode.ai/docs/go/"
+
+[models_seed]
+"deepseek-v4.1-flash" = { name = "DeepSeek V4.1 Flash", context = 128000 }
+"minimax-m3" = { name = "MiniMax M3", context = 1000000 }
+"gpt-6-luna" = { name = "GPT 6 Luna", context = 272000 }

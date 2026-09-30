@@ -92,6 +92,19 @@ where
         }
         match rpc::classify(&line) {
             Ok(Incoming::Request { id, method, params }) => {
+                if method == "models.discover" {
+                    // A slow models endpoint must not hold up the connection.
+                    let connection = Arc::clone(&connection);
+                    tokio::spawn(async move {
+                        let outcome = connection.discover_models(params).await;
+                        let reply = match outcome {
+                            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+                            Err((code, message)) => error_reply(id, code, &message),
+                        };
+                        connection.send(reply).await;
+                    });
+                    continue;
+                }
                 let outcome = if method == "mcp.control" {
                     #[derive(Deserialize)]
                     struct Params {
@@ -298,6 +311,25 @@ struct ClientStateParams {
 }
 
 impl Connection {
+    /// `models.discover {provider}` → the provider's live list, enriched,
+    /// each model with its thinking profile.
+    async fn discover_models(&self, params: Value) -> Result<Value, Failure> {
+        #[derive(Deserialize)]
+        struct Params {
+            provider: String,
+        }
+        let Params { provider } = parse(params)?;
+        let models = self
+            .runtime
+            .discover_models(&provider)
+            .await
+            .map_err(runtime_failure)?;
+        Ok(json!({
+            "provider": provider,
+            "models": models.iter().map(agente_core::models::model_json).collect::<Vec<_>>(),
+        }))
+    }
+
     fn lock_subscription(&self) -> std::sync::MutexGuard<'_, Option<JoinHandle<()>>> {
         self.subscription
             .lock()
@@ -338,6 +370,40 @@ impl Connection {
                     "reasoning_options": info.reasoning_options,
                     "reasoning_stream_field": info.reasoning_stream_field,
                 }))
+            }
+            "providers.list" => Ok(json!({
+                "providers": agente_core::providers::spec::all(),
+            })),
+            "models.thinking" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    provider: String,
+                    model: String,
+                }
+                let Params { provider, model } = parse(params)?;
+                to_json(runtime.thinking_profile(&provider, &model))
+            }
+            "thinking.template" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    template: String,
+                }
+                let Params { template } = parse(params)?;
+                to_json(agente_core::providers::llamacpp::template_profile(&template))
+            }
+            "thinking.request" => {
+                #[derive(Deserialize)]
+                struct Params {
+                    provider: String,
+                    model: String,
+                    level: String,
+                }
+                let Params {
+                    provider,
+                    model,
+                    level,
+                } = parse(params)?;
+                Ok(json!({ "body": runtime.thinking_request(&provider, &model, &level) }))
             }
             "media.import" => crate::project::import_media(params),
             "children.cancel" => {

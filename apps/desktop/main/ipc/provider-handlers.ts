@@ -13,7 +13,6 @@ type Provider = {
     modelPath?: string;
     providerName?: string;
   }) => Promise<unknown>;
-  getReasoningCapabilities?: (apiKey: string, baseUrl: string, modelId: string, modelPath?: string) => Promise<unknown>;
 };
 
 type ProviderHandlerDeps = {
@@ -63,16 +62,15 @@ export function registerProviderHandlers({ ipcMain, resolveProvider, resolveApiK
     });
   });
 
-  ipcMain.handle('get_reasoning_capabilities', async (_e, { baseUrl, apiKey, providerName, model, modelPath }) => {
-    const provider = resolveProvider(providerName, baseUrl);
-    const realKey = resolveApiKey(apiKey, baseUrl, providerName);
-    if (!provider.getReasoningCapabilities) {
-      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
-    }
-    try {
-      return await provider.getReasoningCapabilities(realKey, baseUrl, model, modelPath);
-    } catch {
-      return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
-    }
+  // The provider directory is the core's TOML specs, the same list the TUI offers.
+  ipcMain.handle('list_provider_specs', async () => {
+    const { listProviderSpecs } = await import('../agente/thinking.ts');
+    return listProviderSpecs();
+  });
+
+  // Levels come from the shared core, the same profile the TUI shows.
+  ipcMain.handle('get_reasoning_capabilities', async (_e, { providerName, model }) => {
+    const { reasoningCapabilities } = await import('../agente/thinking.ts');
+    return reasoningCapabilities(String(providerName || ''), String(model || ''));
   });
 }

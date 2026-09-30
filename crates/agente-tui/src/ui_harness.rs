@@ -493,8 +493,11 @@ pub(crate) fn scenarios() -> Vec<(&'static str, Build)> {
         }),
         ("overlay_thinking_selector", |s| {
             seed_conversation(s);
-            s.input
-                .open_thinking_selector(&["off".into(), "high".into(), "max".into()], "high");
+            s.input.open_thinking_selector(
+                &["auto".into(), "off".into(), "high".into(), "max".into()],
+                "high",
+            );
+            s.input.thinking_selector_budgets = vec![None, None, None, None];
         }),
         ("composer_paste_chip", |s| {
             seed_conversation(s);
@@ -978,7 +981,7 @@ fn scenario_meta(name: &str) -> (&'static str, &'static str) {
         ),
         "overlay_thinking_selector" => (
             "Overlays & Dialogs",
-            "Reasoning-effort picker listing the model's models.dev levels",
+            "Thinking-effort scale: Auto plus the model's levels, low to high, with the current budget",
         ),
         "composer_paste_chip" => (
             "Composer & Inputs",

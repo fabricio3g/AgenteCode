@@ -123,9 +123,15 @@ export async function completeChatRequest({ baseUrl, apiKey, providerName, body 
     model: body.model,
     messages: body.messages,
     tools: body.tools,
-    reasoning: body.reasoning,
+    reasoning: await thinkingFor(providerName, body),
     ...params
   });
+}
+
+/** The request's thinking level with the core's fields for it attached. */
+async function thinkingFor(providerName: string, body: { model?: string; reasoning?: unknown }) {
+  const { withThinkingBody } = await import('./agente/thinking.ts');
+  return withThinkingBody(String(providerName || ''), body.model, body.reasoning as never);
 }
 
 export async function startChatStream({ baseUrl, apiKey, providerName, body }, win) {
@@ -176,7 +182,7 @@ export async function startChatStream({ baseUrl, apiKey, providerName, body }, w
         model: body.model,
         messages: body.messages,
         tools: body.tools,
-        reasoning: body.reasoning,
+        reasoning: await thinkingFor(providerName, body),
         signal: abortController.signal,
         ...Object.fromEntries(
           Object.entries({

@@ -4,11 +4,13 @@
   import Portal from '$lib/components/ui/Portal.svelte';
   import { placePanel, type MenuPlacement } from '$lib/components/ui/menu';
 
-  let { anchor, id, label, tooltip = false, placement = 'top-start', onclose, children }: {
+  let { anchor, id, label, tooltip = false, bright = false, placement = 'top-start', onclose, children }: {
     anchor: HTMLButtonElement | undefined;
     id: string;
     label: string;
     tooltip?: boolean;
+    /** A white, borderless card on a soft two-layer shadow (the thinking slider). */
+    bright?: boolean;
     placement?: MenuPlacement;
     onclose: () => void;
     children: Snippet;
@@ -64,7 +66,7 @@
 
 <Portal>
   <div bind:this={panel} {id} role={tooltip ? 'tooltip' : 'dialog'} aria-label={label}
-    class="composer-card" class:is-tooltip={tooltip}
+    class="composer-card" class:is-tooltip={tooltip} class:is-bright={bright}
     style:visibility={position ? 'visible' : 'hidden'}
     style:top={`${position?.top ?? 0}px`} style:left={`${position?.left ?? 0}px`}
     style:max-height={position ? `${position.maxHeight}px` : undefined}
@@ -89,4 +91,24 @@
     line-height: 1.5;
   }
   .is-tooltip { pointer-events: none; }
+
+  /* A small white card, separated from the page by a hairline and a soft
+     two-layer shadow (the thinking slider). */
+  .is-bright {
+    padding: 0.625rem 0.75rem 0.5rem;
+    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 12px;
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.05),
+      0 6px 16px -4px rgb(0 0 0 / 0.12);
+  }
+
+  :global(.dark) .is-bright {
+    background: color-mix(in srgb, var(--popover) 92%, #fff);
+    border-color: rgb(255 255 255 / 0.08);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.4),
+      0 8px 20px -4px rgb(0 0 0 / 0.55);
+  }
 </style>

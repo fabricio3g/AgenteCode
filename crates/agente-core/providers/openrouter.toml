@@ -1,0 +1,28 @@
+# OpenRouter — /api/v1/models carries a `reasoning` object per model
+# (supported_efforts, default_effort, default_enabled, mandatory,
+# supports_max_tokens); requests take `reasoning:{effort|max_tokens}`.
+id = "openrouter"
+name = "OpenRouter"
+group = "cloud"
+base_url = "https://openrouter.ai/api/v1"
+api_format = "openai"
+env = ["OPENROUTER_API_KEY"]
+match_hosts = ["openrouter.ai"]
+key_check_path = "/key"
+models = "openrouter"
+thinking = "openrouter"
+stream_usage = true
+offered = true
+order = 20
+key_url = "https://openrouter.ai/settings/keys"
+docs_url = "https://openrouter.ai/docs/quickstart"
+
+[headers]
+"HTTP-Referer" = "https://github.com/fabricio3g/AgenteCode"
+"X-Title" = "Agente"
+
+[models_seed]
+"anthropic/claude-sonnet-4" = { name = "Claude Sonnet 4 (Router)", context = 200000 }
+"openai/gpt-4o" = { name = "GPT-4o (Router)", context = 128000 }
+"deepseek/deepseek-chat" = { name = "DeepSeek V3 (Router)", context = 64000 }
+"meta-llama/llama-3.3-70b" = { name = "Llama 3.3 70B (Router)", context = 128000 }

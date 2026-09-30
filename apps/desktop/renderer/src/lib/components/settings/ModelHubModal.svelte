@@ -25,7 +25,7 @@
   import { getInstalledRuntimes } from '$lib/services/files';
   import { modelsStore } from '$lib/stores/models.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
-  import { CLOUD_PROVIDERS, isProviderConfigured } from '$lib/utils/providers';
+  import { cloudProviders, isProviderConfigured, providerMeta } from '$lib/utils/providers';
   import { DEFAULT_PROVIDER_ID } from '$shared/providers';
   import { t } from 'svelte-i18n';
   import { Button, Dialog, Input } from '$lib/components/ui';
@@ -100,9 +100,9 @@
     return { id: 'custom', label: $t('settingsNav.customEndpoint'), base_url: '' };
   });
 
-  const localProviderItems = $derived(CLOUD_PROVIDERS.filter((p) => p.group === 'local' && p.id !== 'custom'));
+  const localProviderItems = $derived(cloudProviders().filter((p) => p.group === 'local' && p.id !== 'custom'));
   const remoteProviderItems = $derived([
-    ...CLOUD_PROVIDERS.filter((p) => p.group === 'cloud'),
+    ...cloudProviders().filter((p) => p.group === 'cloud'),
     ...(legacyCustomEntry ? [legacyCustomEntry] : []),
     ...(appStore.config.llm?.custom_providers ?? [])
   ]);
@@ -113,7 +113,7 @@
   }
 
   function providerLabelOf(id: string): string {
-    return CLOUD_PROVIDERS.find((p) => p.id === id)?.label
+    return providerMeta(id)?.label
       ?? appStore.config.llm?.custom_providers?.find((p) => p.id === id)?.label
       ?? (id === 'custom' ? $t('settingsNav.customEndpoint') : id);
   }

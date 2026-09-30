@@ -171,7 +171,7 @@
       "modelDefault": "Auto · {level}",
       "ends": {
         "fast": "Plus rapide",
-        "deep": "Plus approfondi"
+        "deep": "Plus poussé"
       },
       "level": {
         "auto": "Auto",
@@ -196,8 +196,11 @@
         "medium": "Équilibre entre vitesse et profondeur",
         "high": "Réfléchit plus longtemps aux problèmes difficiles",
         "xhigh": "Très approfondi ; plus lent, plus de jetons",
-        "max": "Le plus approfondi ; le plus lent et coûteux"
-      }
+        "max": "Le plus approfondi ; le plus lent et coûteux",
+        "always": "Ce modèle réfléchit toujours ; son fournisseur ne propose pas de niveaux"
+      },
+      "budget": "jusqu’à {tokens} jetons",
+      "always": "Réfléchit toujours"
     }
   },
   "welcome": {

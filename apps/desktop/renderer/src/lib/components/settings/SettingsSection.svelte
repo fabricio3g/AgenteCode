@@ -15,6 +15,7 @@
     actions,
     tone = 'default',
     flush = false,
+    large = false,
     class: className = '',
     children
   }: {
@@ -24,6 +25,8 @@
     tone?: 'default' | 'danger';
     /** Content spans the card edge to edge (lists with their own padding). */
     flush?: boolean;
+    /** Roomier title and card padding (provider pages). */
+    large?: boolean;
     class?: string;
     children: Snippet;
   } = $props();
@@ -31,15 +34,15 @@
 
 <section class={cn('settings-section', className)}>
   {#if title || actions}
-    <div class="flex items-end justify-between gap-3 px-1 pb-2">
+    <div class="flex items-end justify-between gap-3 px-1 {large ? 'pb-3' : 'pb-2'}">
       <div class="min-w-0">
-        {#if title}<h4 class="text-[13px] font-semibold text-foreground">{title}</h4>{/if}
-        {#if description}<p class="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>{/if}
+        {#if title}<h4 class="font-semibold text-foreground {large ? 'text-[15px]' : 'text-[13px]'}">{title}</h4>{/if}
+        {#if description}<p class="mt-0.5 leading-relaxed text-muted-foreground {large ? 'text-[13px]' : 'text-xs'}">{description}</p>{/if}
       </div>
       {#if actions}<div class="flex shrink-0 items-center gap-1">{@render actions()}</div>{/if}
     </div>
   {/if}
-  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush ? 'py-1' : 'px-3.5 py-0.5')}>
+  <div class={cn('settings-card', tone === 'danger' && 'is-danger', flush ? 'py-1' : large ? 'px-5 py-1' : 'px-3.5 py-0.5', large && 'is-large')}>
     <div class="settings-rows">
       {@render children()}
     </div>
@@ -55,6 +58,8 @@
     border-radius: 0.875rem;
     background: var(--card);
   }
+
+  .settings-card.is-large { border-radius: 1rem; }
 
   .settings-card.is-danger {
     border-color: var(--error-border);

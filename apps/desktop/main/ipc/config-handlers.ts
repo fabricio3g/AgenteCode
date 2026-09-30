@@ -52,8 +52,18 @@ export function registerConfigHandlers({
     const diskConfig = loadConfigFromDisk() as AppConfigLike;
     const nextConfig = (cfg || {}) as AppConfigLike;
     mergeRedactedProviderKeys(nextConfig, diskConfig);
+    void forgetThinkingRoutes();
     return saveConfig(nextConfig);
   });
 
-  ipcMain.handle('update_config', (_e, partial) => updateConfig(partial));
+  ipcMain.handle('update_config', (_e, partial) => {
+    void forgetThinkingRoutes();
+    return updateConfig(partial);
+  });
+}
+
+/** Provider keys, URLs or models may have changed: re-resolve thinking routes. */
+async function forgetThinkingRoutes(): Promise<void> {
+  const { resetThinkingCache } = await import('../agente/thinking.ts');
+  resetThinkingCache();
 }

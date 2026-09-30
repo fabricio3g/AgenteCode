@@ -1,0 +1,16 @@
+# Local llama.cpp (llama-server). Agente Desktop launches and registers it;
+# the TUI can point it at any llama-server. Thinking comes from GET /props
+# (chat template + chat_template_caps) and is set per request.
+id = "llamacpp"
+name = "llama.cpp (local)"
+group = "local"
+base_url = "http://127.0.0.1:8080/v1"
+api_format = "openai"
+aliases = ["local"]
+match_hosts = []
+models = "llamacpp"
+thinking = "llamacpp"
+stream_usage = true
+offered = false
+order = 80
+docs_url = "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md"

@@ -1,199 +1,332 @@
-//! Thinking / reasoning levels derived **only** from model catalog metadata.
+//! Thinking / reasoning levels — one profile per model, shared by every UI.
 //!
-//! Levels come from models.dev or live provider metadata on the resolved model.
-//! Provider-specific adapters map those controls to the outgoing API.
+//! Levels come **only** from provider metadata on the resolved model:
+//! models.dev `reasoning_options`, OpenRouter's live `reasoning` object, or a
+//! llama-server's chat template. [`profile`] turns that metadata into an
+//! ordered list of choices (low → high) with their token budgets; the
+//! request body for a choice is built from the same profile, so a UI can
+//! never offer a level the wire would drop.
+//!
+//! `auto` is always a valid choice and sends nothing: the provider's own
+//! default applies.
+
+use serde::Serialize;
 
 use crate::catalog::ReasoningOption;
 use crate::providers::{ApiFormat, ModelInfo};
 
-/// Level meaning “thinking disabled” in the cycle / UI.
+/// Level meaning “thinking disabled”.
 pub const THINKING_OFF: &str = "off";
+/// Level meaning “send no thinking fields” — the provider default applies.
+pub const THINKING_AUTO: &str = "auto";
 
 const OPENROUTER_EFFORTS: &[&str] = &["minimal", "low", "medium", "high", "xhigh", "max"];
 
-/// Levels the user may cycle for this model (catalog-only).
-///
-/// - `reasoning: false` → empty (no Ctrl+T)
-/// - `toggle` → includes `"off"`
-/// - `effort.values` → each non-null string as-is (`"high"`, `"max"`, …)
-/// - `budget_tokens` only (no effort) → `"off"` + `"on"` (wire uses catalog min/max)
-/// - effort value `"none"` is treated as off-equivalent and not duplicated
-pub fn supported_thinking_levels(model: &ModelInfo) -> Vec<String> {
-    if !model.capabilities.reasoning {
-        return Vec::new();
+/// Display and cycle order. Unknown catalog values sort after these, in the
+/// order the provider listed them.
+const LEVEL_ORDER: &[&str] = &[
+    "off", "on", "minimal", "low", "medium", "high", "xhigh", "max",
+];
+
+/// Token budgets for models that take a budget instead of named efforts
+/// (Anthropic / Gemini `budget_tokens`, OpenRouter `reasoning.max_tokens`),
+/// clamped to what the model allows.
+const BUDGET_LADDER: &[(&str, u32)] = &[("low", 2048), ("medium", 8192), ("high", 24576)];
+
+/// llama.cpp WebUI's ladder: `max` is unbounded.
+const LLAMACPP_LADDER: &[(&str, Option<u32>)] = &[
+    ("low", Some(512)),
+    ("medium", Some(2048)),
+    ("high", Some(8192)),
+    ("max", None),
+];
+
+/// One choice on the thinking scale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThinkingLevel {
+    pub id: String,
+    /// Tokens the model may spend thinking at this level; `None` when the
+    /// provider decides (named effort) or the level is unbounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileSource {
+    /// models.dev.
+    Catalog,
+    /// The provider's own live model list (OpenRouter).
+    Live,
+    /// A llama-server chat template.
+    Template,
+    /// No configurable thinking.
+    None,
+}
+
+/// Everything a thinking selector needs for one model.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThinkingProfile {
+    /// Concrete choices, low → high. `auto` is implied and never listed.
+    pub levels: Vec<ThinkingLevel>,
+    /// What `auto` resolves to when the provider says (`default_effort`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    /// The model always thinks: there is no `off`.
+    pub mandatory: bool,
+    pub source: ProfileSource,
+}
+
+impl ThinkingProfile {
+    fn none() -> Self {
+        Self {
+            levels: Vec::new(),
+            default: None,
+            mandatory: false,
+            source: ProfileSource::None,
+        }
     }
 
-    let opts = &model.reasoning_options;
-    if opts.is_empty() {
-        // Reasoning support alone does not establish configurable controls.
-        // Do not invent an off switch for mandatory-reasoning models.
-        return Vec::new();
+    pub fn ids(&self) -> Vec<String> {
+        self.levels.iter().map(|l| l.id.clone()).collect()
     }
 
-    let has_toggle = opts.iter().any(|o| {
-        matches!(
-            o,
-            ReasoningOption::Toggle
-                | ReasoningOption::OpenRouter {
-                    mandatory: false,
-                    default_enabled: Some(_),
-                    ..
+    pub fn level(&self, id: &str) -> Option<&ThinkingLevel> {
+        self.levels.iter().find(|l| l.id == id)
+    }
+
+    /// `auto` or one of the listed levels.
+    pub fn accepts(&self, id: &str) -> bool {
+        id == THINKING_AUTO || self.level(id).is_some()
+    }
+}
+
+/// The wire format a model is sent in when the caller does not say:
+/// the model's own override, else its provider spec, else OpenAI.
+fn effective_format(model: &ModelInfo) -> ApiFormat {
+    model
+        .api
+        .format
+        .or_else(|| crate::providers::spec::get(&model.provider_id).map(|s| s.api_format()))
+        .unwrap_or(ApiFormat::OpenAI)
+}
+
+/// The thinking profile for a model, in its effective wire format.
+pub fn profile(model: &ModelInfo) -> ThinkingProfile {
+    profile_for(model, effective_format(model))
+}
+
+/// What the model's metadata says it accepts, gathered from every option.
+#[derive(Default)]
+struct Controls {
+    toggle: bool,
+    none_effort: bool,
+    efforts: Vec<String>,
+    budget: Option<(Option<u32>, Option<u32>)>,
+    router: bool,
+    router_mandatory: bool,
+    router_max_tokens: bool,
+    router_default: Option<String>,
+    router_default_off: bool,
+    llama: Option<(bool, bool)>,
+}
+
+impl Controls {
+    fn read(options: &[ReasoningOption]) -> Self {
+        let mut c = Self::default();
+        for option in options {
+            match option {
+                ReasoningOption::Toggle => c.toggle = true,
+                ReasoningOption::Effort { values } => {
+                    for v in values {
+                        if v.eq_ignore_ascii_case("none") {
+                            c.none_effort = true;
+                        } else if !v.is_empty() && !v.eq_ignore_ascii_case("default") {
+                            c.push_effort(v);
+                        }
+                    }
                 }
-        )
+                ReasoningOption::BudgetTokens { min, max } => c.budget = Some((*min, *max)),
+                ReasoningOption::OpenRouter {
+                    effort_selectable,
+                    supported_efforts,
+                    default_effort,
+                    default_enabled,
+                    mandatory,
+                    supports_max_tokens,
+                } => {
+                    c.router = true;
+                    c.router_mandatory |= *mandatory;
+                    c.router_max_tokens |= *supports_max_tokens;
+                    if *effort_selectable {
+                        match supported_efforts {
+                            Some(values) => {
+                                for v in values {
+                                    if v == "none" {
+                                        c.none_effort = true;
+                                    } else if !v.is_empty() {
+                                        c.push_effort(v);
+                                    }
+                                }
+                            }
+                            None => OPENROUTER_EFFORTS.iter().for_each(|v| c.push_effort(v)),
+                        }
+                    }
+                    c.router_default = default_effort
+                        .as_deref()
+                        .map(|e| if e == "none" { THINKING_OFF } else { e })
+                        .map(str::to_string);
+                    c.router_default_off = *default_enabled == Some(false);
+                }
+                ReasoningOption::LlamaCpp {
+                    per_request,
+                    effort_kwarg,
+                } => c.llama = Some((*per_request, *effort_kwarg)),
+            }
+        }
+        c
+    }
+
+    fn push_effort(&mut self, value: &str) {
+        if !self.efforts.iter().any(|e| e == value) {
+            self.efforts.push(value.to_string());
+        }
+    }
+}
+
+fn level(id: &str, budget_tokens: Option<u32>) -> ThinkingLevel {
+    ThinkingLevel {
+        id: id.to_string(),
+        budget_tokens,
+    }
+}
+
+/// The budget ladder, clamped to the model's `[min, max]` and kept below its
+/// output limit (Anthropic rejects a budget ≥ `max_tokens`). Levels that clamp
+/// to the same budget collapse; one left over becomes a plain `on`.
+fn budget_levels(model: &ModelInfo, min: Option<u32>, max: Option<u32>, floor: u32) -> Vec<ThinkingLevel> {
+    let output = match model.limits.output {
+        0 => crate::catalog::DEFAULT_OUTPUT_TOKENS,
+        n => n,
+    };
+    let low = min.unwrap_or(floor).max(floor).max(1);
+    let high = max.unwrap_or(u32::MAX).min(output.saturating_mul(3) / 4).max(low);
+    let mut levels: Vec<ThinkingLevel> = Vec::new();
+    for (id, budget) in BUDGET_LADDER {
+        let budget = (*budget).clamp(low, high);
+        if levels.last().and_then(|l| l.budget_tokens) != Some(budget) {
+            levels.push(level(id, Some(budget)));
+        }
+    }
+    if levels.len() == 1 {
+        levels[0].id = "on".into();
+    }
+    levels
+}
+
+/// The thinking profile for a model sent in `api_format`.
+pub fn profile_for(model: &ModelInfo, api_format: ApiFormat) -> ThinkingProfile {
+    if !model.capabilities.reasoning || model.reasoning_options.is_empty() {
+        // Reasoning support alone does not establish configurable controls,
+        // and must never invent an off switch for mandatory reasoning.
+        return ThinkingProfile::none();
+    }
+    let c = Controls::read(&model.reasoning_options);
+    let source = if c.llama.is_some() {
+        ProfileSource::Template
+    } else if c.router {
+        ProfileSource::Live
+    } else {
+        ProfileSource::Catalog
+    };
+
+    let mut levels: Vec<ThinkingLevel> = Vec::new();
+    let mut off = c.llama.is_some();
+    if let Some((per_request, _)) = c.llama {
+        if per_request {
+            levels.extend(LLAMACPP_LADDER.iter().map(|(id, b)| level(id, *b)));
+        } else {
+            levels.push(level("on", None));
+        }
+    } else {
+        let native_budget = matches!(api_format, ApiFormat::Anthropic | ApiFormat::Google);
+        off = c.toggle
+            || c.none_effort
+            || (c.router && !c.router_mandatory)
+            || c.budget.is_some_and(|(min, _)| min == Some(0))
+            // Anthropic thinking is opt-in: a budget model can always turn it off.
+            || (api_format == ApiFormat::Anthropic && c.budget.is_some());
+        if !c.efforts.is_empty() {
+            levels.extend(c.efforts.iter().map(|e| level(e, None)));
+        } else if let Some((min, max)) = c.budget.filter(|_| native_budget) {
+            let floor = if api_format == ApiFormat::Anthropic { 1024 } else { 1 };
+            levels.extend(budget_levels(model, min, max, floor));
+        } else if c.router_max_tokens {
+            levels.extend(budget_levels(model, None, None, 1024));
+        } else if c.budget.is_some() || c.toggle || (c.router && !c.router_mandatory) {
+            levels.push(level("on", None));
+        }
+    }
+    if c.router_mandatory {
+        off = false;
+    }
+    if levels.is_empty() && !off {
+        return ThinkingProfile::none();
+    }
+    if off {
+        levels.push(level(THINKING_OFF, None));
+    }
+    let rank = |id: &str| LEVEL_ORDER.iter().position(|l| *l == id).unwrap_or(LEVEL_ORDER.len());
+    levels.sort_by_key(|l| rank(&l.id));
+    let mut seen = Vec::new();
+    levels.retain(|l| {
+        let fresh = !seen.contains(&l.id);
+        seen.push(l.id.clone());
+        fresh
     });
-    let mut effort_values: Vec<String> = Vec::new();
-    let mut has_budget = false;
-    let mut openrouter_all_efforts = false;
-    let mut openrouter_efforts: Vec<String> = Vec::new();
-    let mut openrouter_mandatory = false;
 
-    for o in opts {
-        match o {
-            ReasoningOption::Toggle => {}
-            ReasoningOption::Effort { values } => {
-                for v in values {
-                    if v.is_empty() {
-                        continue;
-                    }
-                    if v.eq_ignore_ascii_case("none") || v.eq_ignore_ascii_case("default") {
-                        continue;
-                    }
-                    if !effort_values.iter().any(|e| e == v) {
-                        effort_values.push(v.clone());
-                    }
-                }
-            }
-            ReasoningOption::BudgetTokens { .. } => {
-                has_budget = true;
-            }
-            ReasoningOption::OpenRouter {
-                supported_efforts,
-                effort_selectable,
-                mandatory,
-                supports_max_tokens,
-                ..
-            } => {
-                openrouter_mandatory |= *mandatory;
-                if *effort_selectable {
-                    if let Some(values) = supported_efforts {
-                        openrouter_efforts.extend(values.iter().filter(|v| !v.is_empty()).cloned());
-                    } else {
-                        openrouter_all_efforts = true;
-                    }
-                } else if *supports_max_tokens {
-                    has_budget = true;
-                }
-            }
-        }
+    let default = c
+        .router_default
+        .filter(|d| levels.iter().any(|l| &l.id == d))
+        .or_else(|| (c.router_default_off && off).then(|| THINKING_OFF.to_string()));
+    ThinkingProfile {
+        mandatory: !off,
+        levels,
+        default,
+        source,
     }
+}
 
-    if openrouter_all_efforts {
-        openrouter_efforts = OPENROUTER_EFFORTS
-            .iter()
-            .map(|v| (*v).to_string())
-            .collect();
-    }
-
-    let mut levels = Vec::new();
-
-    // Off when toggle present, or when effort includes none (skipped above), or budget-only.
-    if (has_toggle || !openrouter_efforts.is_empty()) && !openrouter_mandatory
-        || opts.iter().any(|o| match o {
-            ReasoningOption::Effort { values } => values.iter().any(|v| v == "none"),
-            ReasoningOption::BudgetTokens { min, .. } => *min == Some(0),
-            _ => false,
-        })
-    {
-        levels.push(THINKING_OFF.to_string());
-    }
-
-    let has_router_efforts = !openrouter_efforts.is_empty();
-    levels.extend(openrouter_efforts.into_iter().filter(|v| v != "none"));
-    if !effort_values.is_empty() {
-        levels.extend(effort_values);
-    } else if !has_router_efforts && (has_budget || has_toggle) {
-        // No effort ladder — binary on (wire uses budget bounds if any).
-        levels.push("on".to_string());
-    }
-
-    // Dedupe while preserving order
-    let mut out = Vec::new();
-    for l in levels {
-        if openrouter_mandatory && (l == THINKING_OFF || l == "none") {
-            continue;
-        }
-        if !out.iter().any(|x: &String| x == &l) {
-            out.push(l);
-        }
-    }
-    out
+/// Levels the user may pick for this model (without the implied `auto`).
+pub fn supported_thinking_levels(model: &ModelInfo) -> Vec<String> {
+    profile(model).ids()
 }
 
 /// Whether the status bar / Ctrl+T should expose thinking for this model.
 pub fn model_supports_thinking(model: &ModelInfo) -> bool {
-    !supported_thinking_levels(model).is_empty()
+    !profile(model).levels.is_empty()
 }
 
-/// Cycle to the next catalog level. Returns the new level (unchanged if none supported).
+/// Cycle `auto` → each level → `auto`. Returns `auto` when nothing is
+/// configurable.
 pub fn cycle_thinking_level(model: &ModelInfo, current: &str) -> String {
-    let levels = supported_thinking_levels(model);
-    if levels.is_empty() {
-        return if model.capabilities.reasoning {
-            "auto"
-        } else {
-            THINKING_OFF
-        }
-        .to_string();
-    }
-    let cur = if current.is_empty() {
-        THINKING_OFF
-    } else {
-        current
+    let mut choices = vec![THINKING_AUTO.to_string()];
+    choices.extend(supported_thinking_levels(model));
+    // A stale setting recovers to the first choice rather than skipping it.
+    let next = match choices.iter().position(|l| l == current) {
+        Some(idx) => (idx + 1) % choices.len(),
+        None => 0,
     };
-    // A stale setting must recover to the first valid choice. Advancing from
-    // index zero would silently skip that choice after a model switch.
-    let Some(idx) = levels.iter().position(|l| l == cur) else {
-        return levels[0].clone();
-    };
-    let next = (idx + 1) % levels.len();
-    levels[next].clone()
+    choices[next].clone()
 }
 
-/// Clamp session level after model switch to something this model supports.
+/// Keep a session level after a model switch when the new model accepts it;
+/// otherwise fall back to `auto` (the provider's default).
 pub fn clamp_thinking_level(model: &ModelInfo, current: &str) -> String {
-    let levels = supported_thinking_levels(model);
-    if levels.is_empty() {
-        return if model.capabilities.reasoning {
-            "auto"
-        } else {
-            THINKING_OFF
-        }
-        .to_string();
-    }
-    if levels.iter().any(|l| l == current) {
-        return current.to_string();
-    }
-    for option in &model.reasoning_options {
-        if let ReasoningOption::OpenRouter {
-            default_effort: Some(effort),
-            ..
-        } = option
-        {
-            let effort = if effort == "none" {
-                THINKING_OFF
-            } else {
-                effort.as_str()
-            };
-            if levels.iter().any(|level| level == effort) {
-                return effort.to_string();
-            }
-        }
-    }
-    // Prefer off when available, else first catalog level.
-    if levels.iter().any(|l| l == THINKING_OFF) {
-        THINKING_OFF.to_string()
+    if profile(model).accepts(current) {
+        current.to_string()
     } else {
-        levels[0].clone()
+        THINKING_AUTO.to_string()
     }
 }
 
@@ -202,7 +335,8 @@ pub fn clamp_thinking_level(model: &ModelInfo, current: &str) -> String {
 /// Different OpenAI-compatible gateways accept different thinking params:
 /// DeepSeek/Z.AI use `thinking:{type}` + `reasoning_effort`, Qwen uses
 /// `enable_thinking`, OpenRouter/Ant-Ling use `reasoning:{effort}`, Together
-/// uses `reasoning:{enabled}` + `reasoning_effort`, most others accept a bare
+/// uses `reasoning:{enabled}` + `reasoning_effort`, llama-server takes
+/// `chat_template_kwargs` + `thinking_budget_tokens`, most others accept a bare
 /// `reasoning_effort`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThinkingFormat {
@@ -213,17 +347,31 @@ pub enum ThinkingFormat {
     DeepSeek,
     /// Qwen / Alibaba: `enable_thinking: bool`.
     Qwen,
-    /// OpenRouter: `reasoning:{effort}`.
+    /// OpenRouter: `reasoning:{effort|max_tokens|enabled}`.
     OpenRouter,
     /// Together: `reasoning:{enabled}` + `reasoning_effort`.
     Together,
     /// Ant-Ling: `reasoning:{effort}`.
     AntLing,
+    /// llama-server: `chat_template_kwargs.enable_thinking` +
+    /// `thinking_budget_tokens` (+ `reasoning_effort` when the template takes it).
+    LlamaCpp,
 }
 
-/// Infer the request thinking format from provider id / base URL.
-/// Mirrors pi's `detectCompat` thinkingFormat branches — no model-id allowlists.
+/// The request thinking format for a provider: its spec's declared shape,
+/// else the spec matching the base URL's host, else a guess from the id / URL
+/// (custom endpoints). No model-id allowlists.
 pub fn detect_thinking_format(provider_id: &str, base_url: &str) -> ThinkingFormat {
+    let spec = crate::providers::spec::get(provider_id)
+        .and_then(|spec| spec.thinking_format())
+        .or_else(|| {
+            crate::providers::spec::for_base_url(base_url).and_then(|spec| spec.thinking_format())
+        });
+    spec.unwrap_or_else(|| guess_thinking_format(provider_id, base_url))
+}
+
+/// pi's `detectCompat` thinkingFormat branches, for endpoints no spec covers.
+fn guess_thinking_format(provider_id: &str, base_url: &str) -> ThinkingFormat {
     let hay = format!("{} {}", provider_id.to_lowercase(), base_url.to_lowercase());
     // zai / bigmodel / glm speak the same `reasoning_content` shape DeepSeek does.
     if hay.contains("deepseek")
@@ -245,57 +393,68 @@ pub fn detect_thinking_format(provider_id: &str, base_url: &str) -> ThinkingForm
     }
 }
 
-/// Apply selected thinking level onto `model.options` for the outgoing request.
-///
-/// Branches on **API format** + **this model’s reasoning_options** +
-/// `model.compat` only. Sends catalog effort strings verbatim (e.g. `"max"`).
+/// The thinking fields a request for `level` carries — what
+/// [`apply_thinking_level`] merges into `model.options`. Empty for `auto` and
+/// for levels the model does not offer.
+pub fn request_patch(
+    model: &ModelInfo,
+    api_format: ApiFormat,
+    level: &str,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut bare = model.clone();
+    bare.options.clear();
+    apply_thinking_level(&mut bare, api_format, level);
+    bare.options.into_iter().collect()
+}
+
+/// Apply the selected thinking level onto `model.options` for the outgoing
+/// request. Branches on **API format** + the model's profile + `model.compat`
+/// only; effort strings go out verbatim (e.g. `"max"`).
 pub fn apply_thinking_level(model: &mut ModelInfo, api_format: ApiFormat, level: &str) {
     model.options = crate::providers::model_options(&model.options);
     let api_format = model.api.format.unwrap_or(api_format);
-    if !supported_thinking_levels(model)
-        .iter()
-        .any(|value| value == level)
-    {
-        // Preserve explicitly configured defaults and always-on reasoning.
-        // Absence of a control is not a request to disable reasoning.
+    let profile = profile_for(model, api_format);
+    let Some(choice) = profile.level(level).cloned() else {
+        // `auto`, or a level this model does not offer: keep explicitly
+        // configured defaults and always-on reasoning untouched.
+        return;
+    };
+    clear_thinking_options(model);
+    let budget = choice.budget_tokens;
+    let off = choice.id == THINKING_OFF;
+    let on = choice.id == "on";
+
+    if model.compat == ThinkingFormat::LlamaCpp && api_format != ApiFormat::Anthropic {
+        apply_llamacpp(model, &choice);
         return;
     }
-    if api_format == ApiFormat::Google {
-        model.options.retain(|key, _| !is_thinking_option(key));
-        let config = if level == THINKING_OFF {
-            serde_json::json!({"thinkingBudget": 0, "includeThoughts": true})
-        } else if level == "on" {
-            let budget = model.reasoning_options.iter().find_map(|o| match o {
-                ReasoningOption::BudgetTokens { min, max } => min
-                    .filter(|value| *value > 0)
-                    .or(max.filter(|value| *value > 0)),
-                _ => None,
-            });
-            match budget {
-                Some(budget) => {
-                    serde_json::json!({"thinkingBudget": budget, "includeThoughts": true})
-                }
-                None => serde_json::json!({"includeThoughts": true}),
-            }
-        } else {
-            serde_json::json!({"thinkingLevel": level.to_ascii_uppercase(), "includeThoughts": true})
-        };
-        model.options.insert("thinkingConfig".into(), config);
-        return;
-    }
-    if api_format == ApiFormat::Responses {
-        let compat = model.compat;
-        model.compat = ThinkingFormat::Default;
-        apply_compatible_thinking(model, ApiFormat::OpenAI, level);
-        model.compat = compat;
-        if let Some(effort) = model.options.remove("reasoning_effort") {
-            model
-                .options
-                .insert("reasoning".into(), serde_json::json!({"effort": effort}));
+    match api_format {
+        ApiFormat::Google => {
+            let config = if off {
+                serde_json::json!({"thinkingBudget": 0, "includeThoughts": true})
+            } else if let Some(budget) = budget {
+                serde_json::json!({"thinkingBudget": budget, "includeThoughts": true})
+            } else if on {
+                serde_json::json!({"includeThoughts": true})
+            } else {
+                serde_json::json!({"thinkingLevel": level.to_ascii_uppercase(), "includeThoughts": true})
+            };
+            model.options.insert("thinkingConfig".into(), config);
         }
-        return;
+        ApiFormat::Anthropic => apply_anthropic(model, &choice),
+        ApiFormat::Responses => {
+            let compat = model.compat;
+            model.compat = ThinkingFormat::Default;
+            apply_compatible(model, &choice);
+            model.compat = compat;
+            if let Some(effort) = model.options.remove("reasoning_effort") {
+                model
+                    .options
+                    .insert("reasoning".into(), serde_json::json!({"effort": effort}));
+            }
+        }
+        ApiFormat::OpenAI => apply_compatible(model, &choice),
     }
-    apply_compatible_thinking(model, api_format, level);
 }
 
 pub(crate) fn is_thinking_option(key: &str) -> bool {
@@ -307,35 +466,121 @@ pub(crate) fn is_thinking_option(key: &str) -> bool {
             | "output_config"
             | "enable_thinking"
             | "thinkingConfig"
+            | "reasoning_format"
+            | "thinking_budget_tokens"
     )
 }
 
-fn apply_compatible_thinking(model: &mut ModelInfo, api_format: ApiFormat, level: &str) {
-    model.options.remove("thinking");
-    model.options.remove("reasoning_effort");
-    model.options.remove("reasoning");
-    model.options.remove("output_config");
-    model.options.remove("enable_thinking");
-    model.options.remove("thinkingConfig");
-
-    if !model.capabilities.reasoning {
-        return;
-    }
-
-    let level = if level.is_empty() {
-        THINKING_OFF
-    } else {
-        level
-    };
-    let opts = model.reasoning_options.clone();
-    if opts.is_empty()
-        || !supported_thinking_levels(model)
-            .iter()
-            .any(|value| value == level)
+fn clear_thinking_options(model: &mut ModelInfo) {
+    model.options.retain(|key, _| !is_thinking_option(key));
+    // Other template kwargs a user configured stay; only ours goes.
+    if let Some(kwargs) = model
+        .options
+        .get_mut("chat_template_kwargs")
+        .and_then(serde_json::Value::as_object_mut)
     {
+        kwargs.remove("enable_thinking");
+        if kwargs.is_empty() {
+            model.options.remove("chat_template_kwargs");
+        }
+    }
+}
+
+fn set(model: &mut ModelInfo, key: &str, value: serde_json::Value) {
+    model.options.insert(key.to_string(), value);
+}
+
+/// llama-server: thinking goes through the chat template kwargs; a budget is
+/// enforced by the server's sampler for any thinking model.
+fn apply_llamacpp(model: &mut ModelInfo, choice: &ThinkingLevel) {
+    let off = choice.id == THINKING_OFF;
+    set(model, "reasoning_format", serde_json::json!("auto"));
+    let kwargs = model
+        .options
+        .entry("chat_template_kwargs".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    if let Some(kwargs) = kwargs.as_object_mut() {
+        kwargs.insert("enable_thinking".into(), serde_json::json!(!off));
+    }
+    if off || choice.id == "on" {
         return;
     }
-    let has_toggle = opts.iter().any(|o| {
+    if let Some(budget) = choice.budget_tokens {
+        set(model, "thinking_budget_tokens", serde_json::json!(budget));
+    }
+    let effort_kwarg = model.reasoning_options.iter().any(|o| {
+        matches!(
+            o,
+            ReasoningOption::LlamaCpp {
+                effort_kwarg: true,
+                ..
+            }
+        )
+    });
+    if effort_kwarg {
+        set(model, "reasoning_effort", serde_json::json!(choice.id));
+    }
+}
+
+fn apply_anthropic(model: &mut ModelInfo, choice: &ThinkingLevel) {
+    let adaptive = is_anthropic_adaptive_model(model);
+    if choice.id == THINKING_OFF {
+        set(model, "thinking", serde_json::json!({"type": "disabled"}));
+        return;
+    }
+    model.options.remove("temperature");
+    if let Some(budget) = choice.budget_tokens {
+        set(
+            model,
+            "thinking",
+            serde_json::json!({"type": "enabled", "budget_tokens": budget}),
+        );
+        return;
+    }
+    let catalog_budget = model.reasoning_options.iter().find_map(|o| match o {
+        ReasoningOption::BudgetTokens { min, max } => Some(
+            min.or(*max)
+                .unwrap_or(1024)
+                .max(1)
+                .min(max.unwrap_or(u32::MAX)),
+        ),
+        _ => None,
+    });
+    if choice.id == "on" {
+        let thinking = match catalog_budget {
+            Some(n) => serde_json::json!({"type": "enabled", "budget_tokens": n}),
+            None if adaptive => serde_json::json!({"type": "adaptive"}),
+            None => serde_json::json!({"type": "enabled"}),
+        };
+        set(model, "thinking", thinking);
+        return;
+    }
+    // A named effort.
+    let effort = serde_json::json!({"effort": choice.id});
+    if adaptive {
+        set(
+            model,
+            "thinking",
+            serde_json::json!({"type": "adaptive", "display": "summarized"}),
+        );
+    } else if let Some(n) = catalog_budget {
+        set(
+            model,
+            "thinking",
+            serde_json::json!({"type": "enabled", "budget_tokens": n}),
+        );
+    } else {
+        // Anthropic-format gateways such as DeepSeek still need enabled
+        // thinking plus their effort option; do not leak Claude's adaptive
+        // mode across hosts.
+        set(model, "thinking", serde_json::json!({"type": "enabled"}));
+    }
+    set(model, "output_config", effort);
+}
+
+/// OpenAI-compatible chat completions, by gateway dialect.
+fn apply_compatible(model: &mut ModelInfo, choice: &ThinkingLevel) {
+    let toggle = model.reasoning_options.iter().any(|o| {
         matches!(
             o,
             ReasoningOption::Toggle
@@ -345,244 +590,78 @@ fn apply_compatible_thinking(model: &mut ModelInfo, api_format: ApiFormat, level
                 }
         )
     });
-    let has_effort = opts.iter().any(|o| {
-        matches!(
-            o,
-            ReasoningOption::Effort { .. } | ReasoningOption::OpenRouter { .. }
-        )
+    let none_effort = model.reasoning_options.iter().any(|o| {
+        matches!(o, ReasoningOption::Effort { values } if values.iter().any(|v| v.eq_ignore_ascii_case("none")))
     });
-    let effort_match = opts.iter().find_map(|o| match o {
-        ReasoningOption::Effort { values } if values.iter().any(|v| v == level) => {
-            Some(level.to_string())
-        }
-        ReasoningOption::OpenRouter {
-            effort_selectable: true,
-            supported_efforts: Some(values),
-            ..
-        } if values.iter().any(|v| v == level) => Some(level.to_string()),
-        ReasoningOption::OpenRouter {
-            effort_selectable: true,
-            supported_efforts: None,
-            ..
-        } if OPENROUTER_EFFORTS.contains(&level) => Some(level.to_string()),
-        _ => None,
-    });
-    let budget = opts.iter().find_map(|o| match o {
-        ReasoningOption::BudgetTokens { min, max } => Some((*min, *max)),
-        _ => None,
-    });
-    let format = model.compat;
-    let anthropic_adaptive = is_anthropic_adaptive_model(model);
-    let enableable = has_toggle || has_effort || opts.is_empty();
+    let enabled = |on: bool| serde_json::json!({"type": if on { "enabled" } else { "disabled" }});
+    let id = choice.id.as_str();
 
-    if level == THINKING_OFF {
-        if !enableable {
-            return;
-        }
-        match api_format {
-            ApiFormat::Anthropic => {
-                if budget.is_some() || has_toggle || anthropic_adaptive {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "disabled" }),
-                    );
-                }
+    if id == THINKING_OFF {
+        match model.compat {
+            ThinkingFormat::DeepSeek => set(model, "thinking", enabled(false)),
+            ThinkingFormat::Qwen => set(model, "enable_thinking", serde_json::json!(false)),
+            ThinkingFormat::Together | ThinkingFormat::OpenRouter => {
+                set(model, "reasoning", serde_json::json!({"enabled": false}))
             }
-            ApiFormat::OpenAI | ApiFormat::Responses | ApiFormat::Google => match format {
-                ThinkingFormat::DeepSeek => {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "disabled" }),
-                    );
+            ThinkingFormat::Default | ThinkingFormat::AntLing | ThinkingFormat::LlamaCpp => {
+                if toggle {
+                    set(model, "thinking", enabled(false));
                 }
-                ThinkingFormat::Qwen => {
-                    model
-                        .options
-                        .insert("enable_thinking".to_string(), serde_json::json!(false));
-                }
-                ThinkingFormat::Together => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "enabled": false }),
-                    );
-                }
-                ThinkingFormat::OpenRouter => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "enabled": false }),
-                    );
-                }
-                // OpenAI's `none` is a valid off wire value only when the
-                // model metadata advertised it.
-                _ => {
-                    if has_toggle {
-                        model
-                            .options
-                            .insert("thinking".into(), serde_json::json!({"type": "disabled"}));
-                    }
-                    if opts.iter().any(|o| matches!(o, ReasoningOption::Effort { values } if values.iter().any(|v| v.eq_ignore_ascii_case("none")))) {
-                        model.options.insert("reasoning_effort".to_string(), serde_json::json!("none"));
-                    }
-                }
-            },
-        }
-        return;
-    }
-
-    if let Some(effort) = effort_match {
-        match api_format {
-            ApiFormat::OpenAI | ApiFormat::Responses | ApiFormat::Google => match format {
-                ThinkingFormat::DeepSeek => {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled" }),
-                    );
-                    model
-                        .options
-                        .insert("reasoning_effort".to_string(), serde_json::json!(effort));
-                }
-                ThinkingFormat::Qwen => {
-                    model
-                        .options
-                        .insert("enable_thinking".to_string(), serde_json::json!(true));
-                }
-                ThinkingFormat::OpenRouter | ThinkingFormat::AntLing => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "effort": effort }),
-                    );
-                }
-                ThinkingFormat::Together => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "enabled": true }),
-                    );
-                    model
-                        .options
-                        .insert("reasoning_effort".to_string(), serde_json::json!(effort));
-                }
-                ThinkingFormat::Default => {
-                    if has_toggle {
-                        model
-                            .options
-                            .insert("thinking".into(), serde_json::json!({"type": "enabled"}));
-                    }
-                    model
-                        .options
-                        .insert("reasoning_effort".to_string(), serde_json::json!(effort));
-                }
-            },
-            ApiFormat::Anthropic => {
-                model.options.remove("temperature");
-                if anthropic_adaptive {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "adaptive", "display": "summarized" }),
-                    );
-                    model.options.insert(
-                        "output_config".to_string(),
-                        serde_json::json!({ "effort": effort }),
-                    );
-                } else if let Some((min, max)) = budget {
-                    let n = min
-                        .or(max)
-                        .unwrap_or(1024)
-                        .max(1)
-                        .min(max.unwrap_or(u32::MAX));
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled", "budget_tokens": n }),
-                    );
-                    if has_effort {
-                        model.options.insert(
-                            "output_config".to_string(),
-                            serde_json::json!({ "effort": effort }),
-                        );
-                    }
-                } else {
-                    // Anthropic-format gateways such as DeepSeek still need
-                    // enabled thinking plus their effort option; do not leak
-                    // Claude's adaptive mode across hosts.
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled" }),
-                    );
-                    model.options.insert(
-                        "output_config".to_string(),
-                        serde_json::json!({ "effort": effort }),
-                    );
+                // OpenAI's `none` is a valid off value only when advertised.
+                if none_effort {
+                    set(model, "reasoning_effort", serde_json::json!("none"));
                 }
             }
         }
         return;
     }
 
-    // Binary "on" (toggle/budget only) — enable thinking without inventing effort.
-    if level == "on" {
-        match api_format {
-            ApiFormat::Anthropic => {
-                model.options.remove("temperature");
-                if let Some((min, max)) = budget {
-                    let n = min
-                        .or(max)
-                        .unwrap_or(1024)
-                        .max(1)
-                        .min(max.unwrap_or(u32::MAX));
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled", "budget_tokens": n }),
-                    );
-                } else if anthropic_adaptive {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "adaptive" }),
-                    );
-                } else {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled" }),
-                    );
+    if id == "on" || choice.budget_tokens.is_some() {
+        match model.compat {
+            ThinkingFormat::DeepSeek => set(model, "thinking", enabled(true)),
+            ThinkingFormat::Qwen => set(model, "enable_thinking", serde_json::json!(true)),
+            ThinkingFormat::Together => {
+                set(model, "reasoning", serde_json::json!({"enabled": true}))
+            }
+            ThinkingFormat::OpenRouter => {
+                let reasoning = match choice.budget_tokens {
+                    Some(budget) => serde_json::json!({"max_tokens": budget}),
+                    None => serde_json::json!({"enabled": true}),
+                };
+                set(model, "reasoning", reasoning);
+            }
+            ThinkingFormat::AntLing => {
+                set(model, "reasoning", serde_json::json!({"effort": "medium"}))
+            }
+            ThinkingFormat::Default | ThinkingFormat::LlamaCpp => {
+                if toggle {
+                    set(model, "thinking", enabled(true));
                 }
             }
-            ApiFormat::OpenAI | ApiFormat::Responses | ApiFormat::Google => match format {
-                ThinkingFormat::DeepSeek => {
-                    model.options.insert(
-                        "thinking".to_string(),
-                        serde_json::json!({ "type": "enabled" }),
-                    );
-                }
-                ThinkingFormat::Qwen => {
-                    model
-                        .options
-                        .insert("enable_thinking".to_string(), serde_json::json!(true));
-                }
-                ThinkingFormat::Together => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "enabled": true }),
-                    );
-                }
-                ThinkingFormat::OpenRouter => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "enabled": true }),
-                    );
-                }
-                ThinkingFormat::AntLing => {
-                    model.options.insert(
-                        "reasoning".to_string(),
-                        serde_json::json!({ "effort": "medium" }),
-                    );
-                }
-                ThinkingFormat::Default => {
-                    if has_toggle {
-                        model.options.insert(
-                            "thinking".to_string(),
-                            serde_json::json!({ "type": "enabled" }),
-                        );
-                    }
-                }
-            },
+        }
+        return;
+    }
+
+    // A named effort, sent verbatim.
+    let effort = serde_json::json!(id);
+    match model.compat {
+        ThinkingFormat::DeepSeek => {
+            set(model, "thinking", enabled(true));
+            set(model, "reasoning_effort", effort);
+        }
+        ThinkingFormat::Qwen => set(model, "enable_thinking", serde_json::json!(true)),
+        ThinkingFormat::OpenRouter | ThinkingFormat::AntLing => {
+            set(model, "reasoning", serde_json::json!({"effort": effort}))
+        }
+        ThinkingFormat::Together => {
+            set(model, "reasoning", serde_json::json!({"enabled": true}));
+            set(model, "reasoning_effort", effort);
+        }
+        ThinkingFormat::Default | ThinkingFormat::LlamaCpp => {
+            if toggle {
+                set(model, "thinking", enabled(true));
+            }
+            set(model, "reasoning_effort", effort);
         }
     }
 }
@@ -673,14 +752,15 @@ mod tests {
         assert_eq!(supported_thinking_levels(&m), vec!["off", "high", "max"]);
         assert_eq!(cycle_thinking_level(&m, "off"), "high");
         assert_eq!(cycle_thinking_level(&m, "high"), "max");
-        assert_eq!(cycle_thinking_level(&m, "max"), "off");
+        assert_eq!(cycle_thinking_level(&m, "max"), "auto");
+        assert_eq!(cycle_thinking_level(&m, "auto"), "off");
     }
 
     #[test]
     fn no_reasoning_no_levels() {
         let m = model_with(false, vec![]);
         assert!(supported_thinking_levels(&m).is_empty());
-        assert_eq!(cycle_thinking_level(&m, "high"), "off");
+        assert_eq!(cycle_thinking_level(&m, "high"), "auto");
     }
 
     #[test]
@@ -968,12 +1048,159 @@ mod tests {
             }],
         );
         model.compat = ThinkingFormat::OpenRouter;
-        assert_eq!(supported_thinking_levels(&model), vec!["high", "low"]);
-        assert_eq!(clamp_thinking_level(&model, "stale"), "low");
+        // OpenRouter lists efforts highest-first; the profile runs low → high.
+        assert_eq!(supported_thinking_levels(&model), vec!["low", "high"]);
+        let profile = profile(&model);
+        assert!(profile.mandatory);
+        assert_eq!(profile.default.as_deref(), Some("low"));
+        assert_eq!(profile.source, ProfileSource::Live);
+        assert_eq!(clamp_thinking_level(&model, "stale"), THINKING_AUTO);
+        assert_eq!(clamp_thinking_level(&model, "high"), "high");
         for unsupported in ["none", "off", "on", "max"] {
             apply_thinking_level(&mut model, ApiFormat::OpenAI, unsupported);
             assert!(model.options.is_empty(), "{unsupported}");
         }
+    }
+
+    #[test]
+    fn openrouter_descending_efforts_sort_low_to_high_with_off_when_optional() {
+        let mut model = model_with(
+            true,
+            vec![ReasoningOption::OpenRouter {
+                effort_selectable: true,
+                supported_efforts: Some(
+                    ["max", "xhigh", "high", "medium", "low", "none"]
+                        .map(String::from)
+                        .to_vec(),
+                ),
+                default_effort: Some("medium".into()),
+                default_enabled: Some(true),
+                mandatory: false,
+                supports_max_tokens: false,
+            }],
+        );
+        model.compat = ThinkingFormat::OpenRouter;
+        assert_eq!(
+            supported_thinking_levels(&model),
+            vec!["off", "low", "medium", "high", "xhigh", "max"]
+        );
+        assert_eq!(profile(&model).default.as_deref(), Some("medium"));
+        let patch = request_patch(&model, ApiFormat::OpenAI, "xhigh");
+        assert_eq!(patch["reasoning"], serde_json::json!({"effort": "xhigh"}));
+        assert!(request_patch(&model, ApiFormat::OpenAI, THINKING_AUTO).is_empty());
+    }
+
+    #[test]
+    fn openrouter_budget_models_send_max_tokens() {
+        let mut model = model_with(
+            true,
+            vec![ReasoningOption::OpenRouter {
+                effort_selectable: false,
+                supported_efforts: None,
+                default_effort: None,
+                default_enabled: Some(true),
+                mandatory: false,
+                supports_max_tokens: true,
+            }],
+        );
+        model.limits.output = 64_000;
+        model.compat = ThinkingFormat::OpenRouter;
+        assert_eq!(
+            supported_thinking_levels(&model),
+            vec!["off", "low", "medium", "high"]
+        );
+        let patch = request_patch(&model, ApiFormat::OpenAI, "medium");
+        assert_eq!(patch["reasoning"], serde_json::json!({"max_tokens": 8192}));
+    }
+
+    #[test]
+    fn anthropic_budget_models_can_turn_off_and_pick_a_budget() {
+        let mut model = model_with(
+            true,
+            vec![ReasoningOption::BudgetTokens {
+                min: Some(1024),
+                max: None,
+            }],
+        );
+        model.provider_id = "anthropic".into();
+        model.api_id = "claude-sonnet-4-5".into();
+        model.limits.output = 64_000;
+        let profile = profile_for(&model, ApiFormat::Anthropic);
+        assert_eq!(profile.ids(), vec!["off", "low", "medium", "high"]);
+        assert_eq!(profile.level("high").unwrap().budget_tokens, Some(24576));
+        apply_thinking_level(&mut model, ApiFormat::Anthropic, "low");
+        assert_eq!(
+            model.options["thinking"],
+            serde_json::json!({"type": "enabled", "budget_tokens": 2048})
+        );
+        apply_thinking_level(&mut model, ApiFormat::Anthropic, THINKING_OFF);
+        assert_eq!(model.options["thinking"], serde_json::json!({"type": "disabled"}));
+
+        // A small output limit keeps every budget below max_tokens.
+        model.limits.output = 4096;
+        let small = profile_for(&model, ApiFormat::Anthropic);
+        assert!(small
+            .levels
+            .iter()
+            .filter_map(|l| l.budget_tokens)
+            .all(|b| b < 4096));
+    }
+
+    #[test]
+    fn llamacpp_per_request_ladder_matches_the_webui() {
+        let mut model = model_with(
+            true,
+            vec![ReasoningOption::LlamaCpp {
+                per_request: true,
+                effort_kwarg: false,
+            }],
+        );
+        model.compat = ThinkingFormat::LlamaCpp;
+        let profile = profile(&model);
+        assert_eq!(profile.ids(), vec!["off", "low", "medium", "high", "max"]);
+        assert_eq!(profile.source, ProfileSource::Template);
+        assert_eq!(profile.level("medium").unwrap().budget_tokens, Some(2048));
+        assert_eq!(profile.level("max").unwrap().budget_tokens, None);
+
+        model
+            .options
+            .insert("chat_template_kwargs".into(), serde_json::json!({"custom": 1}));
+        apply_thinking_level(&mut model, ApiFormat::OpenAI, "medium");
+        assert_eq!(model.options["reasoning_format"], "auto");
+        assert_eq!(
+            model.options["chat_template_kwargs"],
+            serde_json::json!({"custom": 1, "enable_thinking": true})
+        );
+        assert_eq!(model.options["thinking_budget_tokens"], 2048);
+        assert!(!model.options.contains_key("reasoning_effort"));
+
+        apply_thinking_level(&mut model, ApiFormat::OpenAI, THINKING_OFF);
+        assert_eq!(
+            model.options["chat_template_kwargs"],
+            serde_json::json!({"custom": 1, "enable_thinking": false})
+        );
+        assert!(!model.options.contains_key("thinking_budget_tokens"));
+    }
+
+    #[test]
+    fn llamacpp_effort_templates_and_old_servers() {
+        let mut model = model_with(
+            true,
+            vec![ReasoningOption::LlamaCpp {
+                per_request: true,
+                effort_kwarg: true,
+            }],
+        );
+        model.compat = ThinkingFormat::LlamaCpp;
+        let patch = request_patch(&model, ApiFormat::OpenAI, "max");
+        assert_eq!(patch["reasoning_effort"], "max");
+        assert!(!patch.contains_key("thinking_budget_tokens"));
+
+        model.reasoning_options = vec![ReasoningOption::LlamaCpp {
+            per_request: false,
+            effort_kwarg: false,
+        }];
+        assert_eq!(supported_thinking_levels(&model), vec!["off", "on"]);
     }
 
     #[test]

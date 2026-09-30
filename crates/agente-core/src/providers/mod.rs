@@ -15,10 +15,12 @@ use crate::types::{Message, ToolDefinition};
 mod cache;
 mod go;
 pub mod google;
+pub mod llamacpp;
 pub mod messages;
 pub mod openai;
 pub mod responses;
 mod routed;
+pub mod spec;
 mod wire;
 pub(crate) use wire::{model_options, wire_options};
 use wire::{replay_blocks, send_request, stream_error};
@@ -495,6 +497,11 @@ impl ProviderRegistry {
             .insert(provider.to_string(), models);
     }
 
+    /// Every provider's live snapshot, to carry across a registry rebuild.
+    pub fn runtime_snapshot(&self) -> HashMap<String, Vec<ModelInfo>> {
+        self.runtime_models.read().clone()
+    }
+
     /// Resolve a model from the live discovery snapshot, if present.
     pub fn runtime_model(&self, provider: &str, model_id: &str) -> Option<ModelInfo> {
         self.runtime_models
@@ -605,6 +612,40 @@ pub fn resolve_model_info(
     provider_id: &str,
     model_id: &str,
 ) -> ModelInfo {
+    let mut model = resolve_known_model_info(registry, catalog, provider_id, model_id);
+    adopt_served_thinking(registry, provider_id, &mut model);
+    spec::apply_fallback_reasoning(&mut model);
+    model
+}
+
+/// A llama-server serves one model, under whatever id it chose. Whatever the
+/// client calls it, it gets the thinking controls discovery read from `/props`.
+fn adopt_served_thinking(registry: &ProviderRegistry, provider_id: &str, model: &mut ModelInfo) {
+    if !model.reasoning_options.is_empty()
+        || !spec::get(provider_id).is_some_and(|s| s.models == spec::ModelSource::Llamacpp)
+    {
+        return;
+    }
+    let served = registry
+        .runtime_models
+        .read()
+        .get(provider_id)
+        .and_then(|models| models.first().cloned());
+    if let Some(served) = served {
+        model.compat = served.compat;
+        if !served.reasoning_options.is_empty() {
+            model.reasoning_options = served.reasoning_options;
+            model.capabilities.reasoning = true;
+        }
+    }
+}
+
+fn resolve_known_model_info(
+    registry: &ProviderRegistry,
+    catalog: Option<&ModelCatalog>,
+    provider_id: &str,
+    model_id: &str,
+) -> ModelInfo {
     if provider_id.is_empty() || model_id.is_empty() {
         return fallback_model_info(provider_id, model_id);
     }
@@ -661,7 +702,12 @@ fn apply_catalog_thinking(
     let has_live_openrouter_metadata = m
         .reasoning_options
         .iter()
-        .any(|option| matches!(option, ReasoningOption::OpenRouter { .. }));
+        .any(|option| {
+            matches!(
+                option,
+                ReasoningOption::OpenRouter { .. } | ReasoningOption::LlamaCpp { .. }
+            )
+        });
     if !cm.reasoning_options.is_empty() && !has_live_openrouter_metadata {
         m.reasoning_options = cm.reasoning_options.clone();
     }

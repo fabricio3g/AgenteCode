@@ -196,8 +196,11 @@
         "medium": "Equilíbrio entre rapidez e profundidade",
         "high": "Pensa mais em problemas difíceis",
         "xhigh": "Muito minucioso; mais lento e usa mais tokens",
-        "max": "O mais minucioso; mais lento e caro"
-      }
+        "max": "O mais minucioso; mais lento e caro",
+        "always": "Este modelo sempre raciocina; o provedor não oferece níveis para escolher"
+      },
+      "budget": "até {tokens} tokens",
+      "always": "Sempre raciocina"
     }
   },
   "welcome": {

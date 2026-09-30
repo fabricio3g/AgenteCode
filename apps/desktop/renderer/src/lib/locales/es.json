@@ -196,8 +196,11 @@
         "medium": "Equilibrio entre rapidez y profundidad",
         "high": "Piensa más en problemas difíciles",
         "xhigh": "Muy a fondo; más lento y usa más tokens",
-        "max": "Lo más a fondo; lo más lento y caro"
-      }
+        "max": "Lo más a fondo; lo más lento y caro",
+        "always": "Este modelo siempre razona; su proveedor no ofrece niveles para elegir"
+      },
+      "budget": "hasta {tokens} tokens",
+      "always": "Siempre razona"
     }
   },
   "welcome": {

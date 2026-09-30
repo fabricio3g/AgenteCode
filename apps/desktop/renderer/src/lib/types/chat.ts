@@ -404,9 +404,9 @@ export interface ChatMessage {
 }
 
 // ── Reasoning levels ───────────────────────────────────────────────────
-// Surfaced by each provider's getReasoningCapabilities() — never guessed
-// from model names in shared code. The UI only shows the selector when a
-// provider returns `supported: true` with a known `source`.
+// One profile per model from the shared Rust core (agente_core::thinking),
+// the same one Agente Code's TUI shows — never guessed from model names here.
+// The UI only shows the selector when `supported: true` with a known `source`.
 
 export type ReasoningLevel =
   | 'off'
@@ -422,18 +422,18 @@ export type ReasoningLevel =
   | 'none'
   | 'default'; // Groq Qwen reasoning_effort
 
-export type ReasoningParamShape =
-  | 'openai_reasoning_effort'
-  | 'anthropic_thinking'
-  | 'gemini_thinking_budget'
-  | 'mistral_reasoning_effort'
-  | 'local_enable_thinking';
-
 export interface ReasoningCapabilities {
+  /** Auto plus at least one level to choose. */
   supported: boolean;
+  /** Concrete choices, low → high; Auto is implied. */
   levels: ReasoningLevel[];
-  paramShape: ReasoningParamShape;
-  source: 'sdk' | 'api' | 'metadata' | 'unknown';
+  source: 'catalog' | 'live' | 'template' | 'unknown';
+  /** What Auto resolves to, when the provider says. */
+  default?: ReasoningLevel;
+  /** The model always thinks — there is no Off. */
+  mandatory?: boolean;
+  /** Thinking-token budget of the levels that have one (the rest are sized by the provider). */
+  budgets?: Partial<Record<ReasoningLevel, number>>;
 }
 
 export interface ReasoningRequest {

@@ -215,7 +215,7 @@ export async function fetchReasoningCapabilities(args: {
   modelPath?: string;
 }): Promise<ReasoningCapabilities> {
   if (!isElectron()) {
-    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    return { supported: false, levels: [], source: 'unknown' };
   }
   try {
     const result = await invoke<ReasoningCapabilities>('get_reasoning_capabilities', {
@@ -225,9 +225,9 @@ export async function fetchReasoningCapabilities(args: {
       model: args.model,
       modelPath: args.modelPath || ''
     });
-    return result || { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    return result || { supported: false, levels: [], source: 'unknown' };
   } catch {
-    return { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+    return { supported: false, levels: [], source: 'unknown' };
   }
 }
 

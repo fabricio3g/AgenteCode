@@ -1,0 +1,11 @@
+id = "ollama"
+name = "Ollama (local)"
+group = "local"
+base_url = "http://localhost:11434/v1"
+api_format = "openai"
+models = "openai_models"
+thinking = "default"
+stream_usage = true
+offered = false
+order = 70
+docs_url = "https://docs.ollama.com/api/openai-compatibility"

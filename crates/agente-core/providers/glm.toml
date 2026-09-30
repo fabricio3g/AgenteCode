@@ -1,0 +1,19 @@
+# GLM through the Z.AI API. Thinking uses the DeepSeek shape.
+id = "glm"
+name = "GLM (Z.AI API)"
+group = "cloud"
+base_url = "https://api.z.ai/api/paas/v4"
+api_format = "openai"
+env = ["ZAI_API_KEY", "ZHIPU_API_KEY"]
+match_hosts = ["api.z.ai"]
+catalog_id = "zai"
+models = "catalog"
+thinking = "deepseek"
+offered = true
+order = 50
+key_url = "https://z.ai/manage-apikey/apikey-list"
+docs_url = "https://docs.z.ai/guides/overview/quick-start"
+
+[models_seed]
+"glm-5.3" = { name = "GLM 5.3", context = 200000 }
+"glm-5.3-flash" = { name = "GLM 5.3 Flash", context = 200000 }

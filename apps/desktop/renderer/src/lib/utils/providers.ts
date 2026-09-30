@@ -1,47 +1,28 @@
 import type { AppConfig } from '$lib/types/chat';
 import { DEFAULT_PROVIDER_BASE_URL, DEFAULT_PROVIDER_ID } from '$shared/providers';
+import { providerDirectory, type CloudProviderMeta } from './provider-directory.svelte';
 
-export type CloudProviderMeta = {
-  id: string;
-  label: string;
-  defaultBaseUrl: string;
-  group: 'cloud' | 'local';
-  /** Where to create an API key; local servers need none. */
-  keyUrl?: string;
-};
+export type { CloudProviderMeta } from './provider-directory.svelte';
 
-/** Supported providers (see shared/providers.ts for why the list is short). */
-export const CLOUD_PROVIDERS: CloudProviderMeta[] = [
-  { id: 'opencode-go', label: 'OpenCode Go', defaultBaseUrl: 'https://opencode.ai/zen/go/v1', group: 'cloud', keyUrl: 'https://opencode.ai/auth' },
-  { id: 'openrouter', label: 'OpenRouter', defaultBaseUrl: 'https://openrouter.ai/api/v1', group: 'cloud', keyUrl: 'https://openrouter.ai/settings/keys' },
-  { id: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', group: 'cloud', keyUrl: 'https://platform.deepseek.com/api_keys' },
-  { id: 'lmstudio', label: 'LM Studio', defaultBaseUrl: 'http://localhost:1234/v1', group: 'local' },
-  { id: 'ollama', label: 'Ollama', defaultBaseUrl: 'http://localhost:11434/v1', group: 'local' },
-  { id: 'custom', label: 'Custom / Other', defaultBaseUrl: '', group: 'local' }
-];
+/**
+ * Supported providers: the core's TOML specs, loaded through the daemon (see
+ * provider-directory.svelte.ts; shared/providers.ts for why some services are
+ * absent). Read inside a `$derived` to redraw when the directory arrives.
+ */
+export function cloudProviders(): CloudProviderMeta[] {
+  return providerDirectory.providers;
+}
 
-export const PROVIDER_URLS: Record<string, string> = Object.fromEntries(
-  CLOUD_PROVIDERS.map((p) => [p.id, p.defaultBaseUrl])
-);
-
-export const PROVIDER_DOCS: Record<string, string> = {
-  'opencode-go': 'https://opencode.ai/docs/go/',
-  openrouter: 'https://openrouter.ai/docs/quickstart',
-  deepseek: 'https://api-docs.deepseek.com/',
-  lmstudio: 'https://lmstudio.ai/docs/developer/openai-compat/tools',
-  ollama: 'https://docs.ollama.com/api/openai-compatibility'
-};
-
-export const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
-  CLOUD_PROVIDERS.map((p) => [p.id, p.label])
-);
+export function providerMeta(id: string): CloudProviderMeta | undefined {
+  return providerDirectory.providers.find((p) => p.id === id);
+}
 
 export function providerLabel(id: string): string {
-  return PROVIDER_LABELS[id] || id;
+  return providerMeta(id)?.label || id;
 }
 
 export function defaultBaseUrl(id: string): string {
-  return PROVIDER_URLS[id] || DEFAULT_PROVIDER_BASE_URL;
+  return providerMeta(id)?.defaultBaseUrl || DEFAULT_PROVIDER_BASE_URL;
 }
 
 export type ProviderSaved = {
@@ -119,7 +100,7 @@ export function configuredProviders(
   };
 
   // Catalog order first
-  for (const meta of CLOUD_PROVIDERS) {
+  for (const meta of cloudProviders()) {
     consider(meta.id);
   }
   // Any extra provider keys not in the catalog

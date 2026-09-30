@@ -2,16 +2,13 @@
 
 <!--
   How hard the model thinks. The trigger is a tiny effort meter and the level's
-  name; it opens a card with the value on the right of the title, the two ends
-  of the scale named ("faster" / "deeper"), and a filled bar with one tick per
-  level this model supports and a thumb at the choice.
+  name; it opens a small card: the title with the chosen level (and its
+  thinking-token budget) on one line, a thin gradient bar with a dot per level
+  and a thumb at the choice, and the two ends of the scale as captions.
 
-  A bar, not a track of labelled segments: levels are read from the tick under
-  the thumb, not from text squeezed between the dividers, which is what made a
-  five- or six-level model print "AutoOffLowMediumHigh" as one smear. The name of
-  the level lives in the header, where there is room for it, and what a level
-  means lives on its tick's tooltip, so the card itself is a title, two words and
-  a bar.
+  The levels, their order (low → high), the provider default Auto resolves to
+  and each budget all come from the shared Rust core — the same profile Agente
+  Code's TUI shows. What a level means lives on its stop's tooltip.
 -->
 
 <script lang="ts">
@@ -20,7 +17,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import type { ReasoningLevel } from '$lib/types/chat';
   import { normalizeThinkingMode } from '$lib/stores/app-store-local-model';
-  import { effortBars } from './reasoning-effort';
+  import { effortBars, formatBudget } from './reasoning-effort';
 
   let open = $state(false);
   let anchor = $state<HTMLButtonElement>();
@@ -32,15 +29,20 @@
   let changed = $state(false);
   const id = $props.id();
   const capabilities = $derived(appStore.reasoningCapabilities);
-  const visible = $derived(capabilities.supported && capabilities.source !== 'unknown' && capabilities.levels.length > 1);
-  const modelDefault = $derived(appStore.backendMode === 'local'
+  const known = $derived(capabilities.source !== 'unknown');
+  // Auto plus at least one level is a choice.
+  const visible = $derived(known && capabilities.supported && capabilities.levels.length > 0);
+  // A model that always thinks and offers nothing to pick: say so, quietly.
+  const alwaysThinking = $derived(known && !visible && capabilities.mandatory === true);
+  const modelDefault = $derived<ReasoningLevel | 'auto'>(appStore.backendMode === 'local'
     ? normalizeThinkingMode(appStore.config.llm?.local?.thinking_mode, appStore.config.llm?.local?.disable_thinking)
-    : 'auto');
+    : capabilities.default ?? 'auto');
   const levels = $derived<Array<ReasoningLevel | null>>([null, ...capabilities.levels]);
   const current = $derived(levels.includes(appStore.reasoningLevel) ? appStore.reasoningLevel : null);
   const index = $derived(levels.indexOf(current));
-  // 0 at the first level, 1 at the last; a two-level model is a plain switch.
+  // 0 at the first level, 1 at the last.
   const position = $derived(levels.length > 1 ? index / (levels.length - 1) : 0);
+  const budget = $derived(current ? capabilities.budgets?.[current] : undefined);
 
   function pick(step: number) {
     const next = levels[Math.max(0, Math.min(levels.length - 1, step))];
@@ -97,8 +99,16 @@
     return $t(`composer.thinking.hint.${level ?? 'auto'}`, { default: '' });
   }
 
-  /** A tick's distance from the rail's left edge, as a fraction of its length. */
-  function tickAt(step: number): number {
+  function budgetFor(value: number): string {
+    return $t('composer.thinking.budget', { values: { tokens: formatBudget(value) } });
+  }
+
+  /** A stop's place along the rail, inset by the thumb's radius at both ends. */
+  function at(fraction: number): string {
+    return `calc(7px + ${fraction} * (100% - 14px))`;
+  }
+
+  function stopAt(step: number): number {
     return levels.length > 1 ? step / (levels.length - 1) : 0;
   }
 </script>
@@ -119,18 +129,8 @@
     <span>{labelFor(current)}</span>
   </button>
   {#if open}
-    <ComposerCard {anchor} {id} label={$t('composer.thinking.title')} onclose={() => (open = false)}>
+    <ComposerCard {anchor} {id} bright label={$t('composer.thinking.title')} onclose={() => (open = false)}>
       <div class="effort">
-        <div class="effort-head">
-          <span class="effort-title">{$t('composer.thinking.title')}</span>
-          <span class="effort-name">{labelFor(current)}</span>
-        </div>
-        <div class="effort-scale">
-          <span class="effort-end">{$t('composer.thinking.ends.fast')}</span>
-          <span class="effort-end">{$t('composer.thinking.ends.deep')}</span>
-        </div>
-        <!-- A bar with a tick per level: the level's name is read from the header,
-             where there is room for it, not from text crushed between dividers. -->
         <div
           bind:this={rail}
           class="rail"
@@ -146,22 +146,33 @@
           onpointerdown={startDrag}
           onkeydown={onKey}
         >
+          <span class="track" aria-hidden="true"></span>
           <!-- Keyed on the level so each change remounts the sheen and replays it;
                the class holds it still until the first move. -->
-          <span class="fill" style:width={`calc(10px + (100% - 20px) * ${position})`}>
+          <span class="fill" style:width={at(position)}>
             {#key sheenKey}<span class="sheen" class:is-live={changed} aria-hidden="true"></span>{/key}
           </span>
           {#each levels as level, step (level)}
-            <!-- The level's meaning lives on the tick, not in the card: hover for
-                 it, and the layout stays a bar with two words on it. -->
-            <span class="tick" class:is-on={step <= index} style:left={`calc(10px + (100% - 20px) * ${tickAt(step)})`}
+            <span class="tick" class:is-on={step <= index} style:left={at(stopAt(step))}
               title={hintFor(level) ? `${labelFor(level)} — ${hintFor(level)}` : labelFor(level)}></span>
           {/each}
-          <span class="thumb" style:left={`calc(10px + (100% - 20px) * ${position})`}></span>
+          <span class="thumb" style:left={at(position)}></span>
+        </div>
+        <!-- The trigger already names the level; the card adds only what it
+             cannot show: the ends of the scale and the level's budget. -->
+        <div class="effort-scale">
+          <span>{$t('composer.thinking.ends.fast')}</span>
+          {#if typeof budget === 'number'}<span class="effort-budget">{budgetFor(budget)}</span>{/if}
+          <span>{$t('composer.thinking.ends.deep')}</span>
         </div>
       </div>
     </ComposerCard>
   {/if}
+{:else if alwaysThinking}
+  <span class="thinking-trigger is-static" title={$t('composer.thinking.hint.always')}>
+    {@render meter('high')}
+    <span>{$t('composer.thinking.always')}</span>
+  </span>
 {/if}
 
 <style>
@@ -178,7 +189,7 @@
     white-space: nowrap;
   }
 
-  .thinking-trigger:hover,
+  .thinking-trigger:not(.is-static):hover,
   .thinking-trigger.is-open {
     background: var(--surface-hover);
     color: var(--foreground);
@@ -188,6 +199,8 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+
+  .is-static { cursor: default; }
 
   /* Four rising bars, filled to the level: reads as "effort" at a glance. */
   .meter {
@@ -212,72 +225,71 @@
   .meter span.is-on { opacity: 1; background: var(--brand-accent); }
   .meter.is-auto span { opacity: 0.5; }
 
-  .effort { display: grid; width: 18rem; gap: 0.375rem; }
-  .effort-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
-  .effort-title { color: var(--muted-foreground); font-size: 11.5px; font-weight: 500; }
-  .effort-name { color: var(--brand-accent-strong); font-size: 13px; font-weight: 600; }
+  .effort { display: grid; width: 13rem; gap: 0.375rem; }
 
-  .effort-scale { display: flex; justify-content: space-between; }
-  .effort-end { color: var(--muted-foreground); font-size: 10.5px; }
+  .effort-budget { color: var(--foreground); }
 
-  /* A rectangle, not a hairline: a bar with room for a tick to sit inside it
-     and for the fill to read as a solid quantity. */
+  /* The ends of the scale, as quiet captions under the bar. */
+  .effort-scale {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted-foreground);
+    font-size: 10.5px;
+  }
+
+  /* A thin bar; the whole scale is a light-to-accent gradient, so the ends
+     read as "quick" and "deep" before the captions do. */
   .rail {
     position: relative;
-    height: 16px;
-    margin: 0.25rem 0 0.5rem;
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--muted) 70%, var(--border-subtle));
-    box-shadow: inset 0 0 0 1px var(--border-subtle);
+    height: 14px;
     cursor: pointer;
     touch-action: none;
     user-select: none;
   }
 
-  /* The bar is already a comfortable target; this widens it for the pointer
-     without changing what is drawn. */
+  /* Widen the target for the pointer without changing what is drawn. */
   .rail::before {
     content: '';
     position: absolute;
     inset: -6px 0;
   }
 
-  .rail:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  .rail:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 8px; }
   .rail.is-dragging { cursor: grabbing; }
 
-  /* One hue, the app's accent, deepening toward the chosen level, with a lit
-     top edge so the bar reads as raised rather than painted. */
+  .track,
   .fill {
     position: absolute;
-    inset: 0 auto 0 0;
+    top: 50%;
+    left: 0;
+    height: 6px;
+    border-radius: 3px;
+    transform: translateY(-50%);
+  }
+
+  .track {
+    right: 0;
+    background: color-mix(in srgb, var(--muted) 70%, var(--border));
+  }
+
+  .fill {
     overflow: hidden;
-    border-radius: inherit;
     background: linear-gradient(
-      100deg,
-      color-mix(in srgb, var(--brand-accent) 62%, var(--popover)) 0%,
-      var(--brand-accent) 62%,
-      color-mix(in srgb, var(--brand-accent) 88%, #000) 100%
+      90deg,
+      color-mix(in srgb, var(--brand-accent) 35%, #fff) 0%,
+      var(--brand-accent) 100%
     );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.28),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12);
     transition: width 200ms var(--motion-ease);
   }
 
   .rail.is-dragging .fill { transition: none; }
 
   /* A highlight travelling along the fill, so a change of level is felt and not
-     only seen. Slow enough to read as a sheen, not a spinner. */
+     only seen. */
   .sheen {
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      100deg,
-      transparent 0%,
-      rgb(255 255 255 / 0.34) 46%,
-      rgb(255 255 255 / 0.08) 56%,
-      transparent 100%
-    );
+    background: linear-gradient(100deg, transparent 0%, rgb(255 255 255 / 0.45) 50%, transparent 100%);
     transform: translateX(-100%);
   }
 
@@ -286,36 +298,36 @@
     to { transform: translateX(100%); }
   }
 
-  .sheen.is-live { animation: effortSheen 720ms var(--motion-ease); }
+  .sheen.is-live { animation: effortSheen 600ms var(--motion-ease); }
 
   @media (prefers-reduced-motion: reduce) {
     .sheen.is-live { animation: none; }
+    .fill, .thumb { transition: none; }
   }
 
   .tick {
     position: absolute;
     top: 50%;
-    width: 3px;
-    height: 3px;
-    border-radius: 1px;
-    background: var(--border-hover);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
     transform: translate(-50%, -50%);
     transition: background-color 200ms var(--motion-ease);
   }
 
-  .tick.is-on { background: rgb(255 255 255 / 0.62); }
+  .tick.is-on { background: rgb(255 255 255 / 0.85); }
 
   .thumb {
     position: absolute;
     top: 50%;
-    width: 20px;
-    height: 20px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    background: var(--popover);
+    background: #fff;
     box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.3),
-      0 0 0 1px rgb(0 0 0 / 0.08),
-      0 2px 6px rgb(0 0 0 / 0.14);
+      0 0 0 1.5px var(--brand-accent),
+      0 1px 3px rgb(0 0 0 / 0.2);
     transform: translate(-50%, -50%);
     transition: left 200ms var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
   }
@@ -323,13 +335,12 @@
   .rail:hover .thumb,
   .rail:focus-visible .thumb {
     box-shadow:
-      0 1px 2px rgb(0 0 0 / 0.3),
-      0 0 0 1px rgb(0 0 0 / 0.08),
-      0 0 0 5px color-mix(in srgb, var(--brand-accent) 16%, transparent);
+      0 0 0 1.5px var(--brand-accent),
+      0 0 0 5px color-mix(in srgb, var(--brand-accent) 18%, transparent),
+      0 1px 3px rgb(0 0 0 / 0.2);
   }
 
   .rail.is-dragging .thumb { transition: box-shadow var(--motion-fast) var(--motion-ease); }
 
-  /* On a dark panel a white thumb needs a lit rim, not a dark one, to read. */
-  :global(.dark) .thumb { box-shadow: 0 1px 3px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.22); }
+  :global(.dark) .thumb { background: color-mix(in srgb, var(--popover) 70%, #fff); }
 </style>

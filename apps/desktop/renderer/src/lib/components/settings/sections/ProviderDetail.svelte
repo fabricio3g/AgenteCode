@@ -18,7 +18,7 @@
   import { confirmStore } from '$lib/stores/confirm.svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { invoke, isElectron } from '$lib/services/bridge';
-  import { CLOUD_PROVIDERS, PROVIDER_DOCS, defaultBaseUrl, isProviderConfigured } from '$lib/utils/providers';
+  import { defaultBaseUrl, isProviderConfigured, providerMeta } from '$lib/utils/providers';
   import { Badge, Button, Disclosure, Input } from '$lib/components/ui';
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SettingsPage from '../SettingsPage.svelte';
@@ -31,7 +31,7 @@
     | { ok: false; reason: 'no_key' | 'auth' | 'not_found' | 'rate_limited' | 'server' | 'unreachable' | 'bad_response'; status?: number; detail?: string };
 
   // ── Directory ────────────────────────────────────────────────────────
-  const builtIn = $derived(CLOUD_PROVIDERS.find((p) => p.id === providerId));
+  const builtIn = $derived(providerMeta(providerId));
   const customEntry = $derived(appStore.config.llm?.custom_providers?.find((p) => p.id === providerId));
   const label = $derived(builtIn?.label ?? customEntry?.label ?? providerId);
   const isCustom = $derived(!!(customEntry ?? providerId.startsWith('custom')));
@@ -59,7 +59,7 @@
   function savedBaseUrl(id: string): string {
     return appStore.config.llm?.providers?.[id]?.base_url
       || appStore.config.llm?.custom_providers?.find((p) => p.id === id)?.base_url
-      || CLOUD_PROVIDERS.find((p) => p.id === id)?.defaultBaseUrl
+      || providerMeta(id)?.defaultBaseUrl
       || defaultBaseUrl(id);
   }
 
@@ -282,29 +282,30 @@
 </script>
 
 <SettingsPage
+  large
   title={label}
   description={isCustom ? $t('providers.customDescription') : builtIn?.group === 'local' ? $t('providers.localDescription') : $t('providers.cloudDescription')}
 >
-  {#snippet icon()}<ProviderIcon provider={providerId} size={22} />{/snippet}
+  {#snippet icon()}<ProviderIcon provider={providerId} size={26} />{/snippet}
   {#snippet actions()}
     {#if inUse}
-      <Badge tone="success" class="gap-1 px-2.5 py-1 text-[11px]"><CircleCheck class="size-3" /> {$t('providers.inUse')}</Badge>
+      <Badge tone="success" class="gap-1.5 px-3 py-1.5 text-[12.5px]"><CircleCheck class="size-3.5" /> {$t('providers.inUse')}</Badge>
     {:else}
-      <Button size="sm" onclick={() => void useForChats()} disabled={!canUse} title={canUse ? '' : $t('providers.needsKey')}>
+      <Button size="lg" onclick={() => void useForChats()} disabled={!canUse} title={canUse ? '' : $t('providers.needsKey')}>
         {$t('providers.useForChats')}
       </Button>
     {/if}
   {/snippet}
 
   <!-- Connection -->
-  <SettingsSection title={$t('providers.connection')} description={keyOptional ? $t('providers.connectionLocalHint') : $t('providers.connectionHint', { values: { name: label } })}>
-    <div class="space-y-1.5 py-3">
+  <SettingsSection large title={$t('providers.connection')} description={keyOptional ? $t('providers.connectionLocalHint') : $t('providers.connectionHint', { values: { name: label } })}>
+    <div class="space-y-2 py-4">
       <div class="flex items-center justify-between gap-2">
-        <label for="provider-key" class="text-sm font-medium text-foreground">
+        <label for="provider-key" class="text-[14px] font-medium text-foreground">
           {$t('providers.apiKey')}{#if keyOptional}<span class="font-normal text-muted-foreground"> · {$t('providers.optional')}</span>{/if}
         </label>
         {#if builtIn?.keyUrl}
-          <a href={builtIn.keyUrl} target="_blank" rel="noreferrer" class="text-xs text-muted-foreground hover:text-foreground hover:underline">{$t('providers.getKey')} ↗</a>
+          <a href={builtIn.keyUrl} target="_blank" rel="noreferrer" class="text-[12.5px] text-muted-foreground hover:text-foreground hover:underline">{$t('providers.getKey')} ↗</a>
         {/if}
       </div>
       <div class="flex gap-2">
@@ -315,29 +316,30 @@
             bind:value={draft.apiKey}
             autocomplete="off"
             spellcheck="false"
-            class="pr-9"
+            class="h-10 pr-10 text-[13.5px]"
             placeholder={hasKey ? $t('providers.keySavedPlaceholder') : $t('providers.keyPlaceholder')}
             onkeydown={(e) => { if (e.key === 'Enter') void saveConnection(); }}
           />
           <button
             type="button"
-            class="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+            class="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
             aria-label={showKey ? $t('providers.hideKey') : $t('providers.showKey')}
             onclick={() => (showKey = !showKey)}
           >
-            {#if showKey}<EyeOff class="size-3.5" />{:else}<Eye class="size-3.5" />{/if}
+            {#if showKey}<EyeOff class="size-4" />{:else}<Eye class="size-4" />{/if}
           </button>
         </div>
       </div>
       {#if hasKey && !keyDirty}
-        <p class="flex items-center gap-1.5 text-xs text-muted-foreground"><Check class="size-3 text-success" /> {$t('providers.keySaved')}</p>
+        <p class="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"><Check class="size-3.5 text-success" /> {$t('providers.keySaved')}</p>
       {/if}
     </div>
 
-    <div class="space-y-1.5 py-3">
-      <label for="provider-url" class="text-sm font-medium text-foreground">{$t('providers.baseUrl')}</label>
+    <div class="space-y-2 py-4">
+      <label for="provider-url" class="text-[14px] font-medium text-foreground">{$t('providers.baseUrl')}</label>
       <Input
         id="provider-url"
+        class="h-10 text-[13.5px]"
         bind:value={draft.baseUrl}
         spellcheck="false"
         placeholder={builtIn?.defaultBaseUrl || 'https://api.example.com/v1'}
@@ -345,8 +347,8 @@
       />
     </div>
 
-    <div class="flex flex-wrap items-center justify-between gap-2 py-3">
-      <div class="min-w-0 text-xs" role="status">
+    <div class="flex flex-wrap items-center justify-between gap-2 py-4">
+      <div class="min-w-0 text-[12.5px]" role="status">
         {#if testing}
           <span class="inline-flex items-center gap-1.5 text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" /> {$t('providers.testing')}</span>
         {:else if connection}
@@ -357,72 +359,73 @@
         {/if}
       </div>
       <div class="flex items-center gap-1.5">
-        <Button variant="ghost" size="sm" onclick={() => void testConnection()} disabled={testing}>{$t('providers.test')}</Button>
-        <Button variant="outline" size="sm" onclick={() => void saveConnection()} disabled={!keyDirty && !baseDirty}>{$t('providers.save')}</Button>
+        <Button variant="ghost" onclick={() => void testConnection()} disabled={testing}>{$t('providers.test')}</Button>
+        <Button variant="outline" onclick={() => void saveConnection()} disabled={!keyDirty && !baseDirty}>{$t('providers.save')}</Button>
       </div>
     </div>
   </SettingsSection>
 
   <!-- Models -->
-  <SettingsSection title={$t('providers.models')} description={$t('providers.modelsHint')} flush>
+  <SettingsSection large title={$t('providers.models')} description={$t('providers.modelsHint')} flush>
     {#snippet actions()}
-      <Button variant="ghost" size="icon-sm" onclick={() => void loadModels(true)} disabled={modelFetch.loading} aria-label={$t('providers.refreshModels')} title={$t('providers.refreshModels')}>
+      <Button variant="ghost" size="icon-lg" onclick={() => void loadModels(true)} disabled={modelFetch.loading} aria-label={$t('providers.refreshModels')} title={$t('providers.refreshModels')}>
         {#if modelFetch.loading}<LoaderCircle class="animate-spin" />{:else}<RefreshCw />{/if}
       </Button>
-      <Button variant="ghost" size="icon-sm" onclick={() => (addingModel = !addingModel)} aria-label={$t('providers.addModel')} title={$t('providers.addModel')}>
+      <Button variant="ghost" size="icon-lg" onclick={() => (addingModel = !addingModel)} aria-label={$t('providers.addModel')} title={$t('providers.addModel')}>
         {#if addingModel}<X />{:else}<Plus />{/if}
       </Button>
     {/snippet}
 
-    <div class="space-y-2 px-4 pb-2 pt-1">
+    <div class="space-y-2 px-4 pb-2 pt-2">
       {#if addingModel}
         <div class="flex gap-2">
           <Input
             bind:value={newModelId}
+            class="h-10 text-[13.5px]"
             placeholder={$t('providers.modelIdPlaceholder')}
             onkeydown={(e) => { if (e.key === 'Enter') void addExtraModel(); }}
           />
-          <Button size="sm" class="h-9" onclick={() => void addExtraModel()} disabled={!newModelId.trim()}>{$t('providers.add')}</Button>
+          <Button size="lg" class="h-10" onclick={() => void addExtraModel()} disabled={!newModelId.trim()}>{$t('providers.add')}</Button>
         </div>
       {/if}
       {#if roster.length > 8}
         <div class="relative">
-          <Search class="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input bind:value={modelQuery} class="pl-8" placeholder={$t('providers.searchModels', { values: { n: roster.length } })} />
+          <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input bind:value={modelQuery} class="h-10 pl-10 text-[13.5px]" placeholder={$t('providers.searchModels', { values: { n: roster.length } })} />
         </div>
       {/if}
       {#if modelFetch.error}
-        <p class="rounded-lg bg-error-bg px-3 py-2 text-xs text-error">{modelFetch.error}</p>
+        <p class="rounded-lg bg-error-bg px-3 py-2 text-[12.5px] text-error">{modelFetch.error}</p>
       {/if}
     </div>
 
     {#if roster.length === 0 && !modelFetch.loading}
-      <p class="px-4 pb-3 text-xs text-muted-foreground">
+      <p class="px-5 pb-4 text-[13px] text-muted-foreground">
         {keyOptional || hasKey ? $t('providers.noModelsYet') : $t('providers.noModelsNeedKey')}
       </p>
     {:else}
-      <ul class="max-h-80 overflow-y-auto px-2 pb-1" role="radiogroup" aria-label={$t('providers.models')}>
+      <ul class="max-h-[28rem] overflow-y-auto px-2 pb-2" role="radiogroup" aria-label={$t('providers.models')}>
         {#each visibleRoster as entry (entry.id)}
           {@const isDefault = saved?.model === entry.id}
-          <li class="group flex items-center gap-1 rounded-lg pr-1 hover:bg-[var(--surface-hover)]">
+          <li class="group flex items-center gap-1 rounded-[10px] pr-1.5 hover:bg-[var(--surface-hover)] {isDefault ? 'bg-[var(--surface-hover)]' : ''}">
             <button
               type="button"
               role="radio"
               aria-checked={isDefault}
-              class="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left"
+              class="flex min-w-0 flex-1 items-center gap-3 px-2.5 py-2.5 text-left"
               onclick={() => void setDefaultModel(entry.id)}
             >
-              <span class="flex size-4 shrink-0 items-center justify-center rounded-full border {isDefault ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
-                {#if isDefault}<Check class="size-2.5" />{/if}
+              <span class="flex size-[18px] shrink-0 items-center justify-center rounded-full border {isDefault ? 'border-primary bg-primary text-primary-fg' : 'border-border'}">
+                {#if isDefault}<Check class="size-3" />{/if}
               </span>
-              <span class="min-w-0 flex-1 truncate text-[12px] {isDefault ? 'font-semibold text-foreground' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
-              {#if isDefault}<span class="shrink-0 text-[11px] text-muted-foreground">{$t('providers.default')}</span>{/if}
+              <span class="min-w-0 flex-1 truncate text-[13.5px] {isDefault ? 'font-semibold text-foreground' : 'text-[var(--text-secondary)]'}" title={entry.id}>{entry.id}</span>
+              {#if isDefault}<span class="shrink-0 text-[12px] text-muted-foreground">{$t('providers.default')}</span>{/if}
               {#if entry.added}<Badge class="shrink-0">{$t('providers.added')}</Badge>{/if}
             </button>
             {#if entry.added}
               <button
                 type="button"
-                class="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
+                class="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-0 transition hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
                 aria-label={$t('providers.removeModel', { values: { model: entry.id } })}
                 onclick={() => void removeExtraModel(entry.id)}
               >
@@ -431,14 +434,14 @@
             {/if}
           </li>
         {:else}
-          <li class="px-2 py-2 text-xs text-muted-foreground">{$t('providers.noMatches')}</li>
+          <li class="px-2.5 py-2.5 text-[13px] text-muted-foreground">{$t('providers.noMatches')}</li>
         {/each}
       </ul>
     {/if}
   </SettingsSection>
 
   <!-- Generation defaults for this provider -->
-  <Disclosure title={$t('providers.generation')} description={$t('providers.generationHint')} class="rounded-[0.875rem] border border-[var(--border)] bg-[var(--card)]">
+  <Disclosure title={$t('providers.generation')} description={$t('providers.generationHint')} class="rounded-2xl border border-[var(--border)] bg-[var(--card)]">
     <div class="space-y-4 text-sm">
       <label class="block space-y-1.5">
         <span class="text-xs font-medium text-muted-foreground">{$t('providers.systemPrompt')}</span>
@@ -466,15 +469,15 @@
     </div>
   </Disclosure>
 
-  {#if PROVIDER_DOCS[providerId]}
-    <p class="px-1 text-xs text-muted-foreground">
-      <a href={PROVIDER_DOCS[providerId]} target="_blank" rel="noreferrer" class="hover:text-foreground hover:underline">{$t('providers.docs', { values: { name: label } })} ↗</a>
+  {#if builtIn?.docsUrl}
+    <p class="px-1 text-[12.5px] text-muted-foreground">
+      <a href={builtIn.docsUrl} target="_blank" rel="noreferrer" class="hover:text-foreground hover:underline">{$t('providers.docs', { values: { name: label } })} ↗</a>
     </p>
   {/if}
 
   {#if isCustom}
-    <SettingsSection tone="danger">
-      <div class="flex items-center justify-between gap-3 py-3">
+    <SettingsSection large tone="danger">
+      <div class="flex items-center justify-between gap-3 py-4">
         <div class="min-w-0">
           <p class="text-sm font-medium text-foreground">{$t('providers.removeEndpoint')}</p>
           <p class="text-xs text-muted-foreground">{$t('providers.removeMessage')}</p>

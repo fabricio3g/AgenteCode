@@ -467,7 +467,7 @@ impl Default for AgentRuntimeState {
             reasoning_text: String::new(),
             preparing_tool: None,
             turn_started_at: None,
-            thinking_level: THINKING_OFF.to_string(),
+            thinking_level: agente_core::thinking::THINKING_AUTO.to_string(),
             approval_queue: ApprovalQueue::default(),
             auto_approve_persistent: false,
             auto_approve_runtime: false,

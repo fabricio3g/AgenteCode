@@ -111,7 +111,11 @@ pub fn composer_title(state: &AppState, width: usize) -> Vec<Span<'static>> {
         .resolve_model(&state.config.current_provider, &state.config.current_model)
         .filter(agente_core::thinking::model_supports_thinking)
         .map(|_| state.agent.thinking_level.trim().to_string())
-        .filter(|level| !level.is_empty() && level != agente_core::thinking::THINKING_OFF);
+        .filter(|level| {
+            !level.is_empty()
+                && level != agente_core::thinking::THINKING_OFF
+                && level != agente_core::thinking::THINKING_AUTO
+        });
 
     // Padding (` name · level `) and one border dash before the corner.
     let room = width.saturating_sub(3);

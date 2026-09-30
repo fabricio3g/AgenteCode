@@ -1,8 +1,8 @@
 // ── Reasoning capability vocabulary ─────────────────────────────────────
-// Each provider declares what reasoning levels it supports and how they are
-// wired into its native API body (see dialects.ts and the adapters). The
-// renderer asks via IPC and only shows the selector when `supported: true`
-// with a known `source`. We never guess from model names in shared code.
+// Levels come from the shared Rust core (agente_core::thinking) through the
+// daemon — the same profile Agente Code's TUI shows (see ../agente/thinking.ts).
+// The renderer only shows the selector when `supported: true` with a known
+// `source`. Nothing is guessed from model names in shared code.
 
 export type ReasoningLevel =
   | 'off'
@@ -18,21 +18,26 @@ export type ReasoningLevel =
   | 'none'
   | 'default'; // Groq Qwen reasoning_effort
 
-export type ReasoningParamShape =
-  | 'openai_reasoning_effort'   // { reasoning_effort: 'low' }
-  | 'anthropic_thinking'        // { thinking: { type, budget_tokens?, effort? } }
-  | 'gemini_thinking_budget'    // { generationConfig: { thinkingConfig: { thinkingBudget } } }
-  | 'mistral_reasoning_effort'  // { reasoningEffort: 'high' | 'none' }
-  | 'local_enable_thinking';    // { chat_template_kwargs: { enable_thinking: bool } }
+/** How a model's thinking levels were learned (see agente_core::thinking). */
+export type ReasoningSource = 'catalog' | 'live' | 'template' | 'unknown';
 
 export type ReasoningCapabilities = {
+  /** The selector has at least two choices (Auto plus one level). */
   supported: boolean;
+  /** Concrete choices, low → high; Auto is implied. */
   levels: ReasoningLevel[];
-  paramShape: ReasoningParamShape;
-  source: 'sdk' | 'api' | 'metadata' | 'unknown';
+  source: ReasoningSource;
+  /** What Auto resolves to, when the provider says. */
+  default?: ReasoningLevel;
+  /** The model always thinks — there is no Off. */
+  mandatory?: boolean;
+  /** Thinking-token budget of the levels that have one (the rest are sized by the provider). */
+  budgets?: Partial<Record<ReasoningLevel, number>>;
 };
 
 export type ReasoningRequest = {
   level: ReasoningLevel;
   budgetTokens?: number;
+  /** Request fields the core built for this level (merged as is). */
+  body?: Record<string, unknown>;
 };

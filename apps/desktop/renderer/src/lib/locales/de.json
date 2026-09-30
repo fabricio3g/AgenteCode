@@ -171,7 +171,7 @@
       "modelDefault": "Auto · {level}",
       "ends": {
         "fast": "Schneller",
-        "deep": "Gründlicher"
+        "deep": "Tiefer"
       },
       "level": {
         "auto": "Auto",
@@ -196,8 +196,11 @@
         "medium": "Ausgewogen zwischen Tempo und Tiefe",
         "high": "Denkt bei schwierigen Aufgaben länger nach",
         "xhigh": "Sehr gründlich; langsamer, mehr Tokens",
-        "max": "Am gründlichsten; am langsamsten und teuersten"
-      }
+        "max": "Am gründlichsten; am langsamsten und teuersten",
+        "always": "Dieses Modell denkt immer; sein Anbieter bietet keine Stufen zur Auswahl"
+      },
+      "budget": "bis zu {tokens} Tokens",
+      "always": "Denkt immer"
     }
   },
   "welcome": {

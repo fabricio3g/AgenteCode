@@ -73,7 +73,11 @@ export interface StreamParams {
   messages: Array<Record<string, unknown>>;
   tools?: Array<Record<string, unknown>>;
   tool_choice?: unknown;
-  reasoning?: { level: string; budgetTokens?: number } | null;
+  /**
+   * The chosen thinking level and the request fields the shared core built
+   * for it (`thinking.request`); `body` is merged into the request as is.
+   */
+  reasoning?: { level: string; budgetTokens?: number; body?: Record<string, unknown> } | null;
   /**
    * Sequences that end generation early. Every adapter maps these to its own
    * wire name (`stop`, `stop_sequences`, `stopSequences`); the count is capped

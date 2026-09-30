@@ -11,9 +11,7 @@ use std::sync::Arc;
 
 use agente_core::config::{AppConfig, ProviderEntry};
 use agente_core::mcp::client::McpManager;
-use agente_core::providers::{
-    enrich_discovered_model, resolve_model_info, ModelInfo, ProviderRegistry,
-};
+use agente_core::providers::{resolve_model_info, ModelInfo, ProviderRegistry};
 
 /// Turn raw model ids into short readable labels (e.g. `deepseek-v4-flash` → `DeepSeek V4 Flash`).
 fn humanize_model_id(model_id: &str) -> String {
@@ -219,12 +217,13 @@ impl ConfigState {
         self.rebuild_provider_registry();
         for (provider, models) in &mut discovered {
             for model in models.iter_mut() {
-                // Only the OpenRouter variant originates in a live API response.
-                // Other reasoning controls came from the old catalog.
+                // Only OpenRouter's and llama-server's variants originate in a
+                // live response. Other reasoning controls came from the old catalog.
                 model.reasoning_options.retain(|option| {
                     matches!(
                         option,
                         agente_core::catalog::ReasoningOption::OpenRouter { .. }
+                            | agente_core::catalog::ReasoningOption::LlamaCpp { .. }
                     )
                 });
             }
@@ -518,10 +517,7 @@ impl ConfigState {
         // Never enrich against the previous runtime snapshot: metadata omitted
         // by a fresh response must not inherit stale live reasoning controls.
         let baseline = ProviderRegistry::from_config(&self.config);
-        let enriched: Vec<ModelInfo> = models
-            .iter()
-            .map(|m| enrich_discovered_model(m, &baseline, catalog))
-            .collect();
+        let enriched = agente_core::models::enrich_discovered(&models, &baseline, catalog);
         self.provider_registry
             .replace_runtime_models(provider, enriched.clone());
         self.discovered_models
@@ -737,7 +733,7 @@ mod tests {
         let mut resolved = resolve_model_info(&turn_registry, None, "openrouter", id);
         assert_eq!(
             agente_core::thinking::supported_thinking_levels(&resolved),
-            vec!["high", "low"]
+            vec!["low", "high"]
         );
         apply_thinking_level(&mut resolved, ApiFormat::OpenAI, "low");
         assert_eq!(

@@ -1,0 +1,11 @@
+# Any OpenAI-compatible endpoint the user brings. The thinking shape is
+# guessed from the base URL when it names a known gateway.
+id = "custom"
+name = "Custom / Other"
+group = "local"
+base_url = "http://127.0.0.1:8080/v1"
+api_format = "openai"
+models = "openai_models"
+thinking = "auto"
+offered = false
+order = 90

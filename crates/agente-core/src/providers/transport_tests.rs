@@ -165,14 +165,21 @@ fn model(format: ApiFormat) -> ModelInfo {
 }
 
 #[test]
-fn google_on_uses_positive_budget_and_off_uses_zero() {
+fn google_budget_ladder_is_positive_and_off_uses_zero() {
     let mut model = model(ApiFormat::Google);
     model.reasoning_options = vec![ReasoningOption::BudgetTokens {
         min: Some(0),
         max: Some(8192),
     }];
-    crate::thinking::apply_thinking_level(&mut model, ApiFormat::Google, "on");
-    assert_eq!(model.options["thinkingConfig"]["thinkingBudget"], 8192);
+    let profile = crate::thinking::profile_for(&model, ApiFormat::Google);
+    assert_eq!(profile.levels[0].id, "off");
+    let top = profile.levels.last().unwrap();
+    assert!(top.budget_tokens.is_some_and(|b| b > 0 && b <= 8192));
+    crate::thinking::apply_thinking_level(&mut model, ApiFormat::Google, &top.id);
+    assert_eq!(
+        model.options["thinkingConfig"]["thinkingBudget"],
+        top.budget_tokens.unwrap()
+    );
     crate::thinking::apply_thinking_level(&mut model, ApiFormat::Google, "off");
     assert_eq!(model.options["thinkingConfig"]["thinkingBudget"], 0);
 }

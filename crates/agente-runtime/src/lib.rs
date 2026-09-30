@@ -131,7 +131,7 @@ impl RuntimeConfig {
             default_thinking_level: app_config
                 .default_thinking_level
                 .clone()
-                .unwrap_or_else(|| agente_core::thinking::THINKING_OFF.to_string()),
+                .unwrap_or_else(|| agente_core::thinking::THINKING_AUTO.to_string()),
             max_iterations: app_config.max_iterations(),
             provider_registry: Arc::new(ProviderRegistry::from_config(app_config)),
             catalog: app_config.catalog.clone(),
@@ -309,6 +309,14 @@ impl LiveSettings {
                 rebuilt
                     .provider_registry
                     .register_client_provider(id, provider, &app_config);
+            }
+        }
+        // Live model lists outlive a reconfigure; the next discovery replaces them.
+        for (provider, models) in previous.provider_registry.runtime_snapshot() {
+            if rebuilt.provider_registry.get(&provider).is_some() {
+                rebuilt
+                    .provider_registry
+                    .replace_runtime_models(&provider, models);
             }
         }
         Self {
@@ -1061,6 +1069,68 @@ impl RuntimeHandle {
             provider,
             model,
         )
+    }
+
+    /// List a provider's models live and keep them as the snapshot turns and
+    /// [`Self::model_info`] resolve against.
+    pub async fn discover_models(
+        &self,
+        provider: &str,
+    ) -> Result<Vec<agente_core::providers::ModelInfo>, RuntimeError> {
+        let live = self.inner.live();
+        let baseline = ProviderRegistry::from_config(&live.app_config);
+        agente_core::models::discover(
+            &live.provider_registry,
+            &baseline,
+            live.catalog.as_ref(),
+            provider,
+        )
+        .await
+        .map_err(RuntimeError::Config)
+    }
+
+    /// The thinking choices a model offers (see `agente_core::thinking`).
+    pub fn thinking_profile(
+        &self,
+        provider: &str,
+        model: &str,
+    ) -> agente_core::thinking::ThinkingProfile {
+        let (info, format) = self.request_model(provider, model);
+        agente_core::thinking::profile_for(&info, format)
+    }
+
+    /// The thinking fields a request for `level` carries on this model —
+    /// what a client merges into a request it sends itself.
+    pub fn thinking_request(
+        &self,
+        provider: &str,
+        model: &str,
+        level: &str,
+    ) -> serde_json::Map<String, serde_json::Value> {
+        let (info, format) = self.request_model(provider, model);
+        agente_core::thinking::request_patch(&info, format, level)
+    }
+
+    /// A model as a request resolves it, with the wire format it goes out in.
+    fn request_model(
+        &self,
+        provider: &str,
+        model: &str,
+    ) -> (
+        agente_core::providers::ModelInfo,
+        agente_core::providers::ApiFormat,
+    ) {
+        use agente_core::providers::Provider as _;
+        let live = self.inner.live();
+        let mut info = self.model_info(provider, model);
+        let format = match live.provider_registry.get(provider) {
+            Some(registered) => {
+                info.options = registered.get_request_options(&info);
+                registered.request_api_format(&info)
+            }
+            None => info.api.format.unwrap_or_default(),
+        };
+        (info, format)
     }
 
     pub fn cancel_child(&self, run_id: RunId) -> bool {

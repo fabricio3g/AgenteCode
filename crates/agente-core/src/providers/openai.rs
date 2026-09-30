@@ -565,6 +565,15 @@ impl Provider for OpenAIProvider {
                 Some(self.model_info_from_service_id(id, raw))
             }));
             if self.info.api_format != ApiFormat::Anthropic || json["has_more"] != true {
+                if super::llamacpp::is_llamacpp(&self.info) {
+                    super::llamacpp::attach_props(
+                        &self.client,
+                        &base_url,
+                        api_key.as_deref(),
+                        &mut models,
+                    )
+                    .await;
+                }
                 return Ok(models);
             }
             let next = json["last_id"]
@@ -1029,7 +1038,11 @@ mod discovery_tests {
             "reasoning": { "supported_efforts": { "high": true } }
         });
         let info = provider.model_info_from_service_id("vendor/malformed", &raw);
-        assert!(crate::thinking::supported_thinking_levels(&info).is_empty());
+        // Not mandatory, so reasoning can still be switched — but no efforts.
+        assert_eq!(
+            crate::thinking::supported_thinking_levels(&info),
+            vec!["off", "on"]
+        );
     }
 
     #[test]

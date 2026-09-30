@@ -1,15 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { CLOUD_PROVIDERS, configuredProviders, isProviderConfigured, providerLabel } from '$lib/utils/providers';
+import { cloudProviders, configuredProviders, defaultBaseUrl, isProviderConfigured, providerLabel } from '$lib/utils/providers';
+import { metaFromSpec, providerDirectory } from '$lib/utils/provider-directory.svelte';
 import type { AppConfig } from '$lib/types/chat';
 
 describe('providers utils', () => {
-  it('has cloud and local catalog entries', () => {
-    expect(CLOUD_PROVIDERS.some((p) => p.id === 'opencode-go')).toBe(true);
-    for (const removed of ['openai', 'anthropic', 'gemini', 'groq', 'mistral']) {
-      expect(CLOUD_PROVIDERS.some((p) => p.id === removed)).toBe(false);
-    }
-    expect(CLOUD_PROVIDERS.some((p) => p.id === 'ollama')).toBe(true);
-    expect(providerLabel('deepseek')).toBe('DeepSeek');
+  it('builds the directory from the core specs', () => {
+    // As `providers.list` sends them (crates/agente-core/providers/*.toml).
+    const specs = [
+      { id: 'opencode-go', name: 'OpenCode Go', group: 'cloud', base_url: 'https://opencode.ai/zen/go/v1', api_format: 'openai', key_url: 'https://opencode.ai/auth' },
+      { id: 'minimax', name: 'MiniMax', group: 'cloud', base_url: 'https://api.minimax.io/anthropic/v1', api_format: 'anthropic', openai_compatible_url: 'https://api.minimax.io/v1' },
+      { id: 'deepseek', name: 'DeepSeek', group: 'cloud', base_url: 'https://api.deepseek.com', api_format: 'anthropic' },
+      { id: 'ollama', name: 'Ollama (local)', group: 'local', base_url: 'http://localhost:11434/v1', api_format: 'openai' },
+      { id: 'llamacpp', name: 'llama.cpp (local)', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai' },
+      { id: 'custom', name: 'Custom / Other', group: 'local', base_url: 'http://127.0.0.1:8080/v1', api_format: 'openai' }
+    ] as const;
+    providerDirectory.providers = specs.map((s) => metaFromSpec({ ...s })).filter((m) => m !== null);
+
+    const ids = cloudProviders().map((p) => p.id);
+    // llama.cpp has its own section; an endpoint Desktop cannot speak to is left out.
+    expect(ids).toEqual(['opencode-go', 'minimax', 'ollama', 'custom']);
+    expect(providerLabel('ollama')).toBe('Ollama');
+    expect(providerLabel('opencode-go')).toBe('OpenCode Go');
+    // Desktop talks OpenAI chat, so an Anthropic-format spec uses its OpenAI endpoint.
+    expect(defaultBaseUrl('minimax')).toBe('https://api.minimax.io/v1');
+    expect(cloudProviders().find((p) => p.id === 'opencode-go')?.keyUrl).toBe('https://opencode.ai/auth');
+    expect(cloudProviders().find((p) => p.id === 'custom')?.defaultBaseUrl).toBe('');
   });
 
   it('lists providers with has_api_key (redacted config)', () => {

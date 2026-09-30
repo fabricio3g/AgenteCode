@@ -125,6 +125,7 @@ import {
   type ElectronApi
 } from '$lib/stores/app-store-helpers';
 import { DEFAULT_PROVIDER_ID } from '$shared/providers';
+import { loadProviderDirectory } from '$lib/utils/provider-directory.svelte';
 
 class AppStore {
   ready = $state(false);
@@ -179,7 +180,7 @@ class AppStore {
   editingMessageContent = $state('');
   searchMode = $state<'chat' | 'search' | 'deep' | 'max'>('chat');
   reasoningLevel = $state<ReasoningLevel | null>(null);
-  reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' });
+  reasoningCapabilities = $state<ReasoningCapabilities>({ supported: false, levels: [], source: 'unknown' });
   composerMode = $state<'chat' | 'instant' | 'agent'>('agent');
   pendingAttachments = $state<Attachment[]>([]);
   workspaceIndexing = $state(false);
@@ -1009,6 +1010,8 @@ class AppStore {
   async init() {
     this.ready = false;
     this.error = null;
+    // The provider directory comes from the core; nothing waits on it.
+    void loadProviderDirectory();
 
     try {
       const CONFIG_TIMEOUT_SENTINEL = Symbol('timeout');
@@ -1604,7 +1607,7 @@ class AppStore {
 
   async refreshReasoningCapabilities(force = false) {
     if (!isElectron()) {
-      this.reasoningCapabilities = { supported: false, levels: [], paramShape: 'openai_reasoning_effort', source: 'unknown' };
+      this.reasoningCapabilities = { supported: false, levels: [], source: 'unknown' };
       return;
     }
     const seq = ++this.reasoningCapabilitiesSeq;
