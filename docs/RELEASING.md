@@ -4,7 +4,7 @@ The next coordinated desktop and Code release is planned in
 [Agente 0.2.2 release plan](RELEASE_PLAN_0.2.2.md), including the desktop
 packaging failures that must be resolved before tagging.
 
-One version tag publishes one GitHub release with everything in it:
+One version tag builds both products into a shared draft GitHub release:
 
 | Workflow | Builds |
 |---|---|
@@ -27,13 +27,31 @@ One version tag publishes one GitHub release with everything in it:
 3. Tag and push the tag:
 
    ```bash
-    git tag v0.2.2
+    git tag -a v0.2.2 -m "Agente 0.2.2"
     git push origin v0.2.2
    ```
 
 Both workflows refuse a tag that doesn't match the versions in step 1.
 The release notes are generated from the commits since the previous tag;
 edit them on the Releases page if needed.
+
+4. Wait for both release workflows to succeed and verify that the draft has
+   all three Code binaries, both Linux desktop installers, and the Windows
+   desktop installer with `latest.yml` and its blockmap. Each workflow writes
+   checksums for its own assets; combine them before publishing:
+
+   ```bash
+   mkdir -p release-checksums
+   gh release download v0.2.2 --pattern SHA256SUMS --pattern DESKTOP_SHA256SUMS --dir release-checksums
+   cat release-checksums/SHA256SUMS release-checksums/DESKTOP_SHA256SUMS > release-checksums/ALL_SHA256SUMS
+   mv release-checksums/ALL_SHA256SUMS release-checksums/SHA256SUMS
+   gh release upload v0.2.2 release-checksums/SHA256SUMS --clobber
+   gh release edit v0.2.2 --draft=false --latest
+   ```
+
+   Publish after the artifact checks and available packaged-app smoke tests;
+   a failed build stays a draft. Drafts are visible to repository maintainers,
+   but do not appear in the public Releases list or count.
 
 ## Notes
 

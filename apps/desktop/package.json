@@ -3,6 +3,11 @@
   "version": "0.2.2",
   "private": true,
   "description": "Agente Desktop \u2013 local AI workspace (Electron)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabricio3g/AgenteCode.git",
+    "directory": "apps/desktop"
+  },
   "type": "module",
   "main": "dist-electron/main/index.cjs",
   "scripts": {
@@ -91,6 +96,11 @@
   "build": {
     "appId": "dev.agente.desktop",
     "productName": "Agente",
+    "publish": {
+      "provider": "github",
+      "owner": "fabricio3g",
+      "repo": "AgenteCode"
+    },
     "artifactName": "Agente-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",

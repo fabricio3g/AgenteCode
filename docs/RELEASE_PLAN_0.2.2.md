@@ -45,19 +45,23 @@ failed before its publication job:
 
 Additional publication preparation:
 
+The retry preparation now adds explicit repository/publish metadata, reclaims
+Linux runner space (including compiler output after the runtime is bundled),
+and checks required installer files before upload. Both workflows stage assets
+in a draft release. These changes still need a successful packaging run.
+
 1. Pin and record the llama.cpp, whisper.cpp, and audio.cpp runtime versions.
    Current script defaults are `b11146`, `b5130`, and `v0.8.2`, respectively.
    Confirm any repository-variable overrides and expose the audio tag override
    in CI if it is needed. Download runtime binaries in CI; model weights are
    not release-build prerequisites.
-2. Treat missing required assets as a failed build: desktop upload currently
-   uses `if-no-files-found: warn`.
-3. Make checksums cover desktop assets as well as CLI assets. The current CLI
-   workflow's `SHA256SUMS` includes only the CLI executables.
-4. Stage both workflows' assets before marking the release public. The current
-   independent tag-triggered publishers can expose a CLI-only release when
-   desktop packaging fails. Use a coordinated publication gate or a draft
-   release that is finalized only after both products pass verification.
+2. Keep missing required assets fatal. Desktop checks each platform's required
+   installer and Windows update metadata, and uses `if-no-files-found: error`.
+3. Combine the CLI workflow's `SHA256SUMS` with Desktop's
+   `DESKTOP_SHA256SUMS` before publication, following `RELEASING.md`.
+4. Finalize the shared draft only after both tag-triggered workflows pass and
+   all required assets are verified, so a failed desktop build cannot expose
+   a new CLI-only release as Latest.
 5. Confirm and disclose the signing status of the installers. Previous Windows
    packaging logs reported that signing was skipped.
 
@@ -152,7 +156,8 @@ git tag -a v0.2.2 -m "Agente 0.2.2"
 git push origin v0.2.2
 ```
 
-Finish coordinated publication only when every required asset is available.
+Combine the two checksum manifests and finish coordinated publication only
+when every required asset is available (see `RELEASING.md`).
 Verify the release page and anonymous `releases/latest/download/…` URLs,
 download the published files, and compare their SHA-256 checksums. Include
 clear installation instructions for each platform and the packaging/signing

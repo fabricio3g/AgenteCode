@@ -31,6 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Free Linux runner disk space
+        if: matrix.name == 'linux'
+        run: |
+          df -h .
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h .
+
       - name: Tag matches the version in package.json
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -71,6 +78,7 @@ jobs:
           NATIVE_RUNTIME_BACKENDS: ${{ vars.NATIVE_RUNTIME_BACKENDS }}
           LLAMA_CPP_TAG: ${{ vars.LLAMA_CPP_TAG }}
           WHISPER_CPP_TAG: ${{ vars.WHISPER_CPP_TAG }}
+          AUDIO_CPP_TAG: ${{ vars.AUDIO_CPP_TAG }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Rust
@@ -82,6 +90,13 @@ jobs:
       - name: Build and bundle the Agente runtime
         run: npm run build:agente
 
+      - name: Remove Linux compiler output after bundling
+        if: matrix.name == 'linux'
+        run: |
+          test -x resources/bin/agente
+          rm -rf ../../target
+          df -h .
+
       - name: Build Electron app
         run: npm run build:main && npm run build:renderer && npx electron-builder --publish=never
         env:
@@ -90,18 +105,35 @@ jobs:
           # ~1 GB of bundled llama.cpp builds is more than Node's default heap.
           NODE_OPTIONS: --max-old-space-size=8192
 
+      - name: Check required installers and write checksums
+        shell: bash
+        run: |
+          cd release
+          if [ "${{ matrix.name }}" = linux ]; then
+            test -s Agente-linux-x86_64.AppImage
+            test -s Agente-linux-amd64.deb
+          else
+            test -s Agente-win-x64.exe
+            test -s Agente-win-x64.exe.blockmap
+            test -s latest.yml
+          fi
+          shopt -s nullglob
+          files=( *.AppImage *.deb *.exe *.zip *.yml *.blockmap )
+          sha256sum "${files[@]}" > "SHA256SUMS-${{ matrix.name }}"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            apps/desktop/release/**/*.AppImage
-            apps/desktop/release/**/*.deb
-            apps/desktop/release/**/*.exe
-            apps/desktop/release/**/*.zip
-            apps/desktop/release/**/*.yml
-            apps/desktop/release/**/*.blockmap
-          if-no-files-found: warn
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.yml
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/SHA256SUMS-*
+          if-no-files-found: error
 
   publish:
     name: Publish GitHub Release
@@ -116,14 +148,19 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Desktop checksums
+        run: cat release-assets/SHA256SUMS-* > release-assets/DESKTOP_SHA256SUMS
+
       - name: Create GitHub release and upload assets
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
-            release-assets/**/*.AppImage
-            release-assets/**/*.deb
-            release-assets/**/*.exe
-            release-assets/**/*.zip
-            release-assets/**/*.yml
-            release-assets/**/*.blockmap
+            release-assets/*.AppImage
+            release-assets/*.deb
+            release-assets/*.exe
+            release-assets/*.zip
+            release-assets/*.yml
+            release-assets/*.blockmap
+            release-assets/DESKTOP_SHA256SUMS
           generate_release_notes: true
