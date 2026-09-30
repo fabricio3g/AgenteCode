@@ -271,6 +271,8 @@
     "refresh": "Actualiser"
   },
   "code": {
+    "runtimeNoModel": "Aucun modèle n’est configuré. Sélectionnez un modèle dans le centre de modèles avant d’envoyer un message.",
+    "runtimeLocalModelNotRunning": "Le modèle local ne fonctionne pas — chargez-le depuis Modèles.",
     "projects": "Projets",
     "addProject": "Ajouter un projet",
     "newConversation": "Nouvelle conversation",

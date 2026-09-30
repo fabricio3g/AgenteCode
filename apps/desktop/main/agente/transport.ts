@@ -4,6 +4,7 @@
 // the questions the UI asks about it (does it see images, how big is its
 // context window).
 
+import path from 'node:path';
 import { loadConfigFromDisk } from '../config.ts';
 import { resolveApiKey } from '../chat-ipc.ts';
 import { resolveProvider } from '../providers/registry.ts';
@@ -25,9 +26,16 @@ function llmConfig(): LlmConfig {
   return (loadConfigFromDisk() as { llm?: LlmConfig }).llm ?? {};
 }
 
-function localTransport(local: Record<string, any>, model?: string): AgenteTransport {
+function localBaseUrl(local: Record<string, any>): string {
   const port = Number(local.port) || 11435;
-  return { providerName: 'local', baseUrl: `http://127.0.0.1:${port}/v1`, model: model || local.model || 'local-model' };
+  const url = new URL(local.base_url || `http://127.0.0.1:${port}/v1`);
+  if (url.hostname === '0.0.0.0') url.hostname = '127.0.0.1';
+  return url.toString().replace(/\/+$/, '').replace(/(?:\/v1)?$/, '/v1');
+}
+
+function localTransport(local: Record<string, any>, model?: string): AgenteTransport {
+  const selected = local.selected_model_path ? path.basename(local.selected_model_path) : '';
+  return { providerName: 'local', baseUrl: localBaseUrl(local), model: model || local.model || selected };
 }
 
 function apiTransport(providerName: string, provider: Record<string, any>, model?: string): AgenteTransport {

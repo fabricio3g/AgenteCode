@@ -7,14 +7,16 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { app } from 'electron';
 import { resolveApiKey } from '../chat-ipc.ts';
 import { getAppPaths } from '../paths.ts';
 import { loadConfig, saveConfig } from '../config.ts';
-import { getLlamaStatus } from '../llm-runner.ts';
+import { getLlamaStatus, getPendingMainLaunch, getRecommendedSettings, startLlama } from '../llm-runner.ts';
 import { moduleDirname } from '../module-env.ts';
 import { AgenteDaemon, resolveAgenteBinary } from '../agente-daemon.ts';
 import type { AgenteClient } from '../agente-client.ts';
-import { emitCodeAgentEvent } from './event-bridge.ts';
+import { emitCodeAgentEvent, getCodeMainWindow } from './event-bridge.ts';
+import { createProviderPreflight, RuntimeNoModelError } from './provider-preflight.ts';
 import { resolveContextWindow, resolveTransport, transportSeesImages } from './transport.ts';
 import { createBrowserTools } from './tools/browser.ts';
 import { serveDesktopTools, type DesktopToolServer } from './desktop-tools-mcp.ts';
@@ -48,6 +50,19 @@ let daemon: AgenteDaemon | null = null;
 let listening: AgenteClient | null = null;
 let desktopTools: Promise<DesktopToolServer> | null = null;
 let connectionPromise: Promise<AgenteClient> | null = null;
+
+const ensureProvider = createProviderPreflight({
+  localConfig: () => (loadConfig().llm?.local ?? {}) as Record<string, unknown>,
+  status: getLlamaStatus,
+  pendingLaunch: getPendingMainLaunch,
+  recommended: getRecommendedSettings,
+  start: (config) => startLlama(config, getCodeMainWindow()),
+  locale: desktopLocale
+});
+
+function desktopLocale(): string {
+  return app?.getLocale?.() || 'en';
+}
 
 /** Dev servers the runtime runs for Rust-engine chats, for the Processes pane. */
 export const rustProcesses = new RustProcessBridge(
@@ -152,20 +167,26 @@ async function openConnection(): Promise<AgenteClient> {
  * and return the id and model a turn should name.
  */
 export async function useProvider(client: AgenteClient, providerName: string, model: string): Promise<{ id: string; model: string }> {
+  const resolved = resolveTransport(providerName, model);
+  await ensureProvider(resolved);
+  if (resolved.providerName === 'local' && !resolved.model) model = String(getLlamaStatus().model_id || '');
   const provider = providerEntry(providerName, model);
-  if (provider.model) {
-    const transport = resolveTransport(providerName, model);
-    const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string }>('models.info', { provider: transport.providerName, model: provider.model });
-    const capabilities = { ...info.capabilities };
-    if (transport.providerName === 'local') {
-      const modalities = getLlamaStatus().modalities;
-      capabilities.vision = transportSeesImages(transport);
-      capabilities.input_modalities = Array.isArray(modalities) ? modalities : capabilities.vision ? ['text', 'image'] : ['text'];
-    }
-    provider.config.models = { [provider.model]: { name: provider.model, capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
-    await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
-  }
+  if (!provider.model) throw new RuntimeNoModelError(desktopLocale());
+  const transport = resolveTransport(providerName, model);
+  const info = await client.request<{ capabilities: Record<string, unknown>; cost: unknown; limits: unknown; reasoning_options?: unknown; reasoning_stream_field?: string }>('models.info', { provider: transport.providerName, model: provider.model });
+  const capabilities = providerCapabilities(transport, info.capabilities);
+  provider.config.models = { [provider.model]: { name: provider.model, capabilities, cost: info.cost, limit: info.limits, reasoning_options: info.reasoning_options, reasoning_stream_field: info.reasoning_stream_field } };
+  await client.request('runtime.configure', { provider: { [provider.id]: provider.config } });
   return { id: provider.id, model: provider.model };
+}
+
+function providerCapabilities(transport: ReturnType<typeof resolveTransport>, source: Record<string, unknown>): Record<string, unknown> {
+  const capabilities = { ...source };
+  if (transport.providerName !== 'local') return capabilities;
+  const modalities = getLlamaStatus().modalities;
+  capabilities.vision = transportSeesImages(transport);
+  capabilities.input_modalities = Array.isArray(modalities) ? modalities : capabilities.vision ? ['text', 'image'] : ['text'];
+  return capabilities;
 }
 
 type RuntimeEventListener = (envelope: RuntimeEventEnvelope) => void;
@@ -279,6 +300,7 @@ function turnParams(chat: ChatState, provider: { id: string; model: string }, me
 }
 
 async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: string; resumed: boolean; conversationIndex: number }> {
+  await ensureProvider(resolveTransport(args.provider, args.model));
   const live = chats.get(args.chatId);
   if (live) {
     Object.assign(live, { provider: args.provider, model: args.model, mode: args.runtimeMode, thinkingLevel: args.thinkingLevel });
@@ -310,14 +332,14 @@ async function startSession(args: AgenteStartSessionArgs): Promise<{ sessionId: 
   return { sessionId, resumed, conversationIndex: existing.snapshot.conversation.length };
 }
 
-async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>, attachments: Attachment[] = []): Promise<{ ok: boolean; error?: string; conversationIndex?: number }> {
+async function prompt(chatId: string, text: string, images?: Array<{ data: string; mimeType: string }>, attachments: Attachment[] = []): Promise<{ ok: boolean; error?: string; errorKey?: string; conversationIndex?: number }> {
   const chat = chats.get(chatId);
   if (!chat) return { ok: false, error: 'No active agente session for this chat' };
   try {
+    await ensureProvider(resolveTransport(chat.provider, chat.model));
     const client = await connect();
     activeChat = chat;
     const provider = await useProvider(client, chat.provider, chat.model);
-    if (!provider.model) return { ok: false, error: 'No model selected — pick one in the Model Hub first.' };
     const expanded = await client.request<{ text: string }>('project.expand_prompt', { project_dir: chat.projectRoot, text });
     const media = [...attachments, ...storeImages(images)];
     if (media.length) {
@@ -334,8 +356,12 @@ async function prompt(chatId: string, text: string, images?: Array<{ data: strin
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     emit({ type: 'error', chatId, message });
-    return { ok: false, error: message };
+    return failedPrompt(error, message);
   }
+}
+
+function failedPrompt(error: unknown, message: string): { ok: false; error: string; errorKey?: string } {
+  return { ok: false, error: message, ...(error instanceof RuntimeNoModelError ? { errorKey: error.errorKey } : {}) };
 }
 
 async function steer(chatId: string, text: string, attachments: Attachment[] = []): Promise<{ ok: boolean }> {

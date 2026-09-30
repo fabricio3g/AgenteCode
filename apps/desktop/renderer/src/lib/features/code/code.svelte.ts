@@ -644,21 +644,17 @@ class CodeStore {
   /** Make sure the chat has an engine session on the model the picker shows; an error message if not. */
   async #ensureSession(chat: ChatSession, project: { rootPath: string }): Promise<string | null> {
     const chatId = chat.id;
-    if (this.#sessionIds.has(chatId)) {
-      // The picker may have changed since the session started (possibly while
-      // another conversation was on screen): run with what it shows now.
-      const { provider, model } = await currentProviderModel();
-      if (model) await setAgenteModel(chatId, provider, model, chat.reasoningLevel || undefined).catch(() => {});
-      const sessionId = this.#sessionIds.get(chatId)!;
-      const snapshot = await invoke<{ snapshot: SessionSnapshot }>('agente_session_snapshot', { sessionId }).catch(() => undefined);
-      if (snapshot) this.#conversationIndices.set(chatId, snapshot.snapshot.conversation.length);
-      return null;
-    }
     try {
-      const { provider, model } = await currentProviderModel();
-      if (!model) {
-        throw new Error('No model selected — pick one in the Model Hub first.');
+      if (this.#sessionIds.has(chatId)) {
+        // The picker may have changed since the session started (possibly while
+        // another conversation was on screen): run with what it shows now.
+        await this.#syncSelectedModel(chat);
+        const sessionId = this.#sessionIds.get(chatId)!;
+        const snapshot = await invoke<{ snapshot: SessionSnapshot }>('agente_session_snapshot', { sessionId }).catch(() => undefined);
+        if (snapshot) this.#conversationIndices.set(chatId, snapshot.snapshot.conversation.length);
+        return null;
       }
+      const { provider, model } = await currentProviderModel();
       const runtimeMode = chat.codeAgent?.runtimeMode || this.defaultMode;
       const resumeSessionId = chat.codeAgent?.sessionId || undefined;
       const { sessionId, conversationIndex } = await startCodeAgentSession({
@@ -680,6 +676,11 @@ class CodeStore {
     } catch (err: unknown) {
       return err instanceof Error ? err.message : String(err);
     }
+  }
+
+  async #syncSelectedModel(chat: ChatSession): Promise<void> {
+    const { provider, model } = await currentProviderModel();
+    if (model || provider === 'local') await setAgenteModel(chat.id, provider, model, chat.reasoningLevel || undefined);
   }
 
   /**

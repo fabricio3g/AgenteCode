@@ -271,6 +271,8 @@
     "refresh": "刷新"
   },
   "code": {
+    "runtimeNoModel": "尚未配置模型。请先在模型中心选择模型，再发送消息。",
+    "runtimeLocalModelNotRunning": "本地模型尚未运行，请从“模型”中加载。",
     "projects": "项目",
     "addProject": "添加项目",
     "newConversation": "新对话",

@@ -32,7 +32,12 @@ let llamaStatus = llama.status;
 /** What the main instance was last started with, for restarts (sharing). */
 let lastMainConfig: Record<string, unknown> | null = null;
 let launchGeneration = 0;
-let mainLaunch: { signature: string; promise: Promise<string> } | null = null;
+let mainLaunch: { signature: string; promise: Promise<string>; config: Record<string, unknown>; settled: boolean } | null = null;
+
+/** Includes preparation before the supervisor has emitted its starting status. */
+export function getPendingMainLaunch(): { config: Record<string, unknown>; promise: Promise<string> } | null {
+  return mainLaunch?.settled ? null : mainLaunch;
+}
 
 export function getMainLaunchConfig(): Record<string, unknown> | null {
   return lastMainConfig;
@@ -201,9 +206,9 @@ export function startLlama(config: Record<string, unknown>, win: BrowserWindow |
       throw err;
     }
   })();
-  const request = { signature, promise };
+  const request = { signature, promise, config: { ...config }, settled: false };
   mainLaunch = request;
-  void promise.catch(() => { if (mainLaunch === request) mainLaunch = null; });
+  void promise.then(() => { request.settled = true; }, () => { if (mainLaunch === request) mainLaunch = null; });
   return promise;
 }
 

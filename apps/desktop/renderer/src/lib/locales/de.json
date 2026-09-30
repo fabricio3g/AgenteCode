@@ -271,6 +271,8 @@
     "refresh": "Aktualisieren"
   },
   "code": {
+    "runtimeNoModel": "Es ist kein Modell konfiguriert. Wähle vor dem Senden einer Nachricht ein Modell im Modell-Hub aus.",
+    "runtimeLocalModelNotRunning": "Das lokale Modell läuft nicht — lade es unter Modelle.",
     "projects": "Projekte",
     "addProject": "Projekt hinzufügen",
     "newConversation": "Neue Unterhaltung",

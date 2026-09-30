@@ -271,6 +271,8 @@
     "refresh": "Refresh"
   },
   "code": {
+    "runtimeNoModel": "No model is configured. Select a model in the Model Hub before sending a message.",
+    "runtimeLocalModelNotRunning": "The local model isn't running — load it from Models.",
     "projects": "Projects",
     "addProject": "Add project",
     "newConversation": "New conversation",
