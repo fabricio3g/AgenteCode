@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agente-acp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-core",
  "agente-protocol",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "agente-bot"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "cron",
@@ -38,7 +38,7 @@ dependencies = [
 
 [[package]]
 name = "agente-cli"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-acp",
  "agente-bot",
@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "agente-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-protocol",
  "anyhow",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "agente-daemon"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-acp",
  "agente-bot",
@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "agente-node"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-core",
  "napi",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "agente-protocol"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "chrono",
  "schemars",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "agente-runtime"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-core",
  "agente-protocol",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "agente-session"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-protocol",
  "chrono",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "agente-tui"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "agente-core",
  "anyhow",

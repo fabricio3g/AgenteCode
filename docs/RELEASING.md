@@ -1,5 +1,9 @@
 # Releasing
 
+The next coordinated desktop and Code release is planned in
+[Agente 0.2.2 release plan](RELEASE_PLAN_0.2.2.md), including the desktop
+packaging failures that must be resolved before tagging.
+
 One version tag publishes one GitHub release with everything in it:
 
 | Workflow | Builds |
@@ -9,7 +13,7 @@ One version tag publishes one GitHub release with everything in it:
 
 ## Steps
 
-1. Pick the version, e.g. `0.3.0`, and set it in all three places:
+1. Pick the version, e.g. `0.2.2`, and set it in all three places:
    - `Cargo.toml` → `[workspace.package] version`
    - `apps/desktop/package.json` → `version`
    - `apps/desktop/package-lock.json` → top-level `version` and `packages[""].version`
@@ -17,14 +21,14 @@ One version tag publishes one GitHub release with everything in it:
 
    ```bash
    CARGO_BUILD_JOBS=2 cargo check -j 2 --workspace
-   git commit -am "Release v0.3.0"
+    git commit -am "Release v0.2.2"
    git push
    ```
 3. Tag and push the tag:
 
    ```bash
-   git tag v0.3.0
-   git push origin v0.3.0
+    git tag v0.2.2
+    git push origin v0.2.2
    ```
 
 Both workflows refuse a tag that doesn't match the versions in step 1.

@@ -169,6 +169,10 @@
       "title": "Réflexion",
       "trigger": "Réflexion : {level}",
       "modelDefault": "Auto · {level}",
+      "ends": {
+        "fast": "Plus rapide",
+        "deep": "Plus approfondi"
+      },
       "level": {
         "auto": "Auto",
         "off": "Désactivé",

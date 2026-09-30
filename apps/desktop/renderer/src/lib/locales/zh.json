@@ -169,6 +169,10 @@
       "title": "思考",
       "trigger": "思考：{level}",
       "modelDefault": "自动 · {level}",
+      "ends": {
+        "fast": "更快",
+        "deep": "更深"
+      },
       "level": {
         "auto": "自动",
         "off": "关闭",

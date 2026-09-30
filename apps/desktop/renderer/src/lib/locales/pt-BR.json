@@ -169,6 +169,10 @@
       "title": "Raciocínio",
       "trigger": "Raciocínio: {level}",
       "modelDefault": "Auto · {level}",
+      "ends": {
+        "fast": "Mais rápido",
+        "deep": "Mais profundo"
+      },
       "level": {
         "auto": "Auto",
         "off": "Desativado",

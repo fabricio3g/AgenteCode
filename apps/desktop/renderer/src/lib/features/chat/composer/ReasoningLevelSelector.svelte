@@ -1,10 +1,17 @@
 <svelte:options runes={true} />
 
 <!--
-  How hard the model thinks. The trigger is a tiny effort meter and the
-  level's name; it opens a card with a rectangular slider split into the
-  levels this model supports, filled up to the choice, and one line on what
-  the chosen level means.
+  How hard the model thinks. The trigger is a tiny effort meter and the level's
+  name; it opens a card with the value on the right of the title, the two ends
+  of the scale named ("faster" / "deeper"), and a filled bar with one tick per
+  level this model supports and a thumb at the choice.
+
+  A bar, not a track of labelled segments: levels are read from the tick under
+  the thumb, not from text squeezed between the dividers, which is what made a
+  five- or six-level model print "AutoOffLowMediumHigh" as one smear. The name of
+  the level lives in the header, where there is room for it, and what a level
+  means lives on its tick's tooltip, so the card itself is a title, two words and
+  a bar.
 -->
 
 <script lang="ts">
@@ -17,6 +24,12 @@
 
   let open = $state(false);
   let anchor = $state<HTMLButtonElement>();
+  let rail = $state<HTMLDivElement>();
+  let dragging = $state(false);
+  // Bumped on every level change, which remounts the fill's sheen and replays it.
+  // `changed` keeps the sheen still until the first move, so opening the card is quiet.
+  let sheenKey = $state(0);
+  let changed = $state(false);
   const id = $props.id();
   const capabilities = $derived(appStore.reasoningCapabilities);
   const visible = $derived(capabilities.supported && capabilities.source !== 'unknown' && capabilities.levels.length > 1);
@@ -26,30 +39,46 @@
   const levels = $derived<Array<ReasoningLevel | null>>([null, ...capabilities.levels]);
   const current = $derived(levels.includes(appStore.reasoningLevel) ? appStore.reasoningLevel : null);
   const index = $derived(levels.indexOf(current));
-  let bar = $state<HTMLDivElement>();
+  // 0 at the first level, 1 at the last; a two-level model is a plain switch.
+  const position = $derived(levels.length > 1 ? index / (levels.length - 1) : 0);
 
   function pick(step: number) {
     const next = levels[Math.max(0, Math.min(levels.length - 1, step))];
-    if (next !== current) appStore.setReasoningLevel(next);
+    // Same level, no call and no sheen: the bar should react to a change, not to
+    // a pointer passing over the level already chosen.
+    if (next === current) return;
+    appStore.setReasoningLevel(next);
+    changed = true;
+    sheenKey += 1;
   }
 
+  /** Where along the rail a pointer sits, snapped to the nearest level. */
   function stepAt(clientX: number): number {
-    const rect = bar!.getBoundingClientRect();
-    return Math.floor(((clientX - rect.left) / Math.max(1, rect.width)) * levels.length);
+    const rect = rail!.getBoundingClientRect();
+    const span = Math.max(1, rect.width);
+    return Math.round(((clientX - rect.left) / span) * (levels.length - 1));
   }
 
   function startDrag(event: PointerEvent) {
-    if (!bar) return;
-    bar.setPointerCapture?.(event.pointerId);
+    if (!rail) return;
+    dragging = true;
+    rail.setPointerCapture?.(event.pointerId);
     pick(stepAt(event.clientX));
     const move = (next: PointerEvent) => pick(stepAt(next.clientX));
-    const up = () => { bar?.removeEventListener('pointermove', move); bar?.removeEventListener('pointerup', up); };
-    bar.addEventListener('pointermove', move);
-    bar.addEventListener('pointerup', up);
+    const up = () => {
+      dragging = false;
+      rail?.removeEventListener('pointermove', move);
+      rail?.removeEventListener('pointerup', up);
+      rail?.removeEventListener('pointercancel', up);
+    };
+    rail.addEventListener('pointermove', move);
+    rail.addEventListener('pointerup', up);
+    rail.addEventListener('pointercancel', up);
   }
 
   function onKey(event: KeyboardEvent) {
-    const moves: Record<string, number> = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 };
+    // A horizontal rail: right and down climb, left and up drop.
+    const moves: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
     if (event.key in moves) pick(index + moves[event.key]);
     else if (event.key === 'Home') pick(0);
     else if (event.key === 'End') pick(levels.length - 1);
@@ -66,6 +95,11 @@
 
   function hintFor(level: ReasoningLevel | null): string {
     return $t(`composer.thinking.hint.${level ?? 'auto'}`, { default: '' });
+  }
+
+  /** A tick's distance from the rail's left edge, as a fraction of its length. */
+  function tickAt(step: number): number {
+    return levels.length > 1 ? step / (levels.length - 1) : 0;
   }
 </script>
 
@@ -91,13 +125,20 @@
           <span class="effort-title">{$t('composer.thinking.title')}</span>
           <span class="effort-name">{labelFor(current)}</span>
         </div>
-        <!-- A rectangle split into one segment per level, filled up to the choice. -->
+        <div class="effort-scale">
+          <span class="effort-end">{$t('composer.thinking.ends.fast')}</span>
+          <span class="effort-end">{$t('composer.thinking.ends.deep')}</span>
+        </div>
+        <!-- A bar with a tick per level: the level's name is read from the header,
+             where there is room for it, not from text crushed between dividers. -->
         <div
-          bind:this={bar}
-          class="effort-bar"
+          bind:this={rail}
+          class="rail"
+          class:is-dragging={dragging}
           role="slider"
           tabindex="0"
           aria-label={$t('composer.thinking.title')}
+          aria-orientation="horizontal"
           aria-valuemin={0}
           aria-valuemax={levels.length - 1}
           aria-valuenow={index}
@@ -105,12 +146,19 @@
           onpointerdown={startDrag}
           onkeydown={onKey}
         >
-          <span class="fill" style:width={`${((index + 1) / levels.length) * 100}%`}></span>
+          <!-- Keyed on the level so each change remounts the sheen and replays it;
+               the class holds it still until the first move. -->
+          <span class="fill" style:width={`calc(10px + (100% - 20px) * ${position})`}>
+            {#key sheenKey}<span class="sheen" class:is-live={changed} aria-hidden="true"></span>{/key}
+          </span>
           {#each levels as level, step (level)}
-            <span class="segment" class:is-on={step <= index}>{labelFor(level)}</span>
+            <!-- The level's meaning lives on the tick, not in the card: hover for
+                 it, and the layout stays a bar with two words on it. -->
+            <span class="tick" class:is-on={step <= index} style:left={`calc(10px + (100% - 20px) * ${tickAt(step)})`}
+              title={hintFor(level) ? `${labelFor(level)} — ${hintFor(level)}` : labelFor(level)}></span>
           {/each}
+          <span class="thumb" style:left={`calc(10px + (100% - 20px) * ${position})`}></span>
         </div>
-        {#if hintFor(current)}<p class="effort-hint">{hintFor(current)}</p>{/if}
       </div>
     </ComposerCard>
   {/if}
@@ -164,62 +212,124 @@
   .meter span.is-on { opacity: 1; background: var(--brand-accent); }
   .meter.is-auto span { opacity: 0.5; }
 
-  .effort { display: grid; width: 17rem; gap: 0.5rem; }
-  .effort-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .effort { display: grid; width: 18rem; gap: 0.375rem; }
+  .effort-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
   .effort-title { color: var(--muted-foreground); font-size: 11.5px; font-weight: 500; }
-  .effort-name { color: var(--brand-accent-strong); font-size: 12.5px; font-weight: 600; }
+  .effort-name { color: var(--brand-accent-strong); font-size: 13px; font-weight: 600; }
 
-  .effort-bar {
+  .effort-scale { display: flex; justify-content: space-between; }
+  .effort-end { color: var(--muted-foreground); font-size: 10.5px; }
+
+  /* A rectangle, not a hairline: a bar with room for a tick to sit inside it
+     and for the fill to read as a solid quantity. */
+  .rail {
     position: relative;
-    display: flex;
-    height: 1.875rem;
-    overflow: hidden;
-    border-radius: 0.5rem;
-    background: var(--muted);
-    box-shadow: inset 0 0 0 1px var(--border);
+    height: 16px;
+    margin: 0.25rem 0 0.5rem;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--muted) 70%, var(--border-subtle));
+    box-shadow: inset 0 0 0 1px var(--border-subtle);
     cursor: pointer;
     touch-action: none;
     user-select: none;
   }
 
-  .effort-bar:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  /* The bar is already a comfortable target; this widens it for the pointer
+     without changing what is drawn. */
+  .rail::before {
+    content: '';
+    position: absolute;
+    inset: -6px 0;
+  }
 
-  /* One hue, the app's accent, deepening toward the chosen level. */
+  .rail:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  .rail.is-dragging { cursor: grabbing; }
+
+  /* One hue, the app's accent, deepening toward the chosen level, with a lit
+     top edge so the bar reads as raised rather than painted. */
   .fill {
     position: absolute;
     inset: 0 auto 0 0;
+    overflow: hidden;
     border-radius: inherit;
-    background: linear-gradient(to right, color-mix(in srgb, var(--brand-accent) 72%, var(--popover)), var(--brand-accent));
-    box-shadow: 0 0 12px -2px color-mix(in srgb, var(--brand-accent) 55%, transparent), inset 0 1px 0 rgb(255 255 255 / 0.18);
-    transition: width 160ms var(--motion-ease);
+    background: linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--brand-accent) 62%, var(--popover)) 0%,
+      var(--brand-accent) 62%,
+      color-mix(in srgb, var(--brand-accent) 88%, #000) 100%
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      inset 0 -1px 0 rgb(0 0 0 / 0.12);
+    transition: width 200ms var(--motion-ease);
   }
 
-  /* Segment labels sit inside the bar and invert where the fill covers them. */
-  .segment {
-    position: relative;
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted-foreground);
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
-    transition: color 160ms var(--motion-ease);
-  }
+  .rail.is-dragging .fill { transition: none; }
 
-  .segment + .segment::before {
-    content: '';
+  /* A highlight travelling along the fill, so a change of level is felt and not
+     only seen. Slow enough to read as a sheen, not a spinner. */
+  .sheen {
     position: absolute;
-    inset: 25% auto 25% 0;
-    width: 1px;
-    background: var(--border-hover);
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      rgb(255 255 255 / 0.34) 46%,
+      rgb(255 255 255 / 0.08) 56%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
   }
 
-  .segment.is-on { color: #fff; text-shadow: 0 1px 1px rgb(0 0 0 / 0.18); }
-  .segment.is-on + .segment.is-on::before { background: rgb(255 255 255 / 0.3); }
+  @keyframes effortSheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
 
-  @media (prefers-reduced-motion: reduce) { .fill, .segment { transition: none; } }
-  .effort-hint { margin: 0.125rem 0 0; padding-top: 0.5rem; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 11.5px; line-height: 1.4; }
+  .sheen.is-live { animation: effortSheen 720ms var(--motion-ease); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sheen.is-live { animation: none; }
+  }
+
+  .tick {
+    position: absolute;
+    top: 50%;
+    width: 3px;
+    height: 3px;
+    border-radius: 1px;
+    background: var(--border-hover);
+    transform: translate(-50%, -50%);
+    transition: background-color 200ms var(--motion-ease);
+  }
+
+  .tick.is-on { background: rgb(255 255 255 / 0.62); }
+
+  .thumb {
+    position: absolute;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--popover);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 0 0 1px rgb(0 0 0 / 0.08),
+      0 2px 6px rgb(0 0 0 / 0.14);
+    transform: translate(-50%, -50%);
+    transition: left 200ms var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+  }
+
+  .rail:hover .thumb,
+  .rail:focus-visible .thumb {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 0 0 1px rgb(0 0 0 / 0.08),
+      0 0 0 5px color-mix(in srgb, var(--brand-accent) 16%, transparent);
+  }
+
+  .rail.is-dragging .thumb { transition: box-shadow var(--motion-fast) var(--motion-ease); }
+
+  /* On a dark panel a white thumb needs a lit rim, not a dark one, to read. */
+  :global(.dark) .thumb { box-shadow: 0 1px 3px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.22); }
 </style>

@@ -1,6 +1,6 @@
 {
   "name": "agente-desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Agente Desktop \u2013 local AI workspace (Electron)",
   "type": "module",

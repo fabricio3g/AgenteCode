@@ -169,6 +169,10 @@
       "title": "Denken",
       "trigger": "Denken: {level}",
       "modelDefault": "Auto · {level}",
+      "ends": {
+        "fast": "Schneller",
+        "deep": "Gründlicher"
+      },
       "level": {
         "auto": "Auto",
         "off": "Aus",

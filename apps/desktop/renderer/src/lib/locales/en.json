@@ -169,6 +169,10 @@
       "title": "Thinking",
       "trigger": "Thinking: {level}",
       "modelDefault": "Auto · {level}",
+      "ends": {
+        "fast": "Faster",
+        "deep": "Deeper"
+      },
       "level": {
         "auto": "Auto",
         "off": "Off",

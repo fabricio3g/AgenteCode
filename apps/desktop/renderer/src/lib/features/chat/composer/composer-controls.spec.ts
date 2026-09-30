@@ -19,9 +19,15 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   store.reasoningCapabilities = { supported: true, source: 'api', levels: ['low', 'medium', 'high'], paramShape: 'openai_reasoning_effort' };
   store.reasoningLevel = null;
-  store.setReasoningLevel.mockReset();
+  // The real store keeps the choice, so the arrows read their own result.
+  store.setReasoningLevel = vi.fn((level: ReasoningLevel | null) => { store.reasoningLevel = level; });
 });
-afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+/** The rail positions a thumb as `calc(7px + <fraction> * (100% - 14px))`. */
+function fractionOf(style: string | null): number {
+  return Number(/calc\([^)]*?([\d.]+)\s*\*\s*\(/.exec(style ?? '')?.[1]);
+}
 
 describe('context details', () => {
   it('shows exact usage, remaining and pricing on hover, then closes on leave', async () => {
@@ -73,34 +79,111 @@ describe('context details', () => {
   });
 });
 
-describe('thinking slider', () => {
-  it('shows Auto plus the supported levels as segments, moves by key and closes on Escape', async () => {
+describe('thinking level', () => {
+  it('marks one tick per level and names the ends of the scale instead of crowding labels on the rail', async () => {
+    store.reasoningCapabilities = {
+      supported: true,
+      source: 'api',
+      levels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+      paramShape: 'openai_reasoning_effort'
+    };
     const view = render(ReasoningLevelSelector);
-    const button = view.getByRole('button', { name: 'Thinking: Auto' });
+    await fireEvent.click(view.getByRole('button', { name: 'Thinking: Auto' }));
+
+    const rail = view.getByRole('slider', { name: 'Thinking' });
+    // Auto plus the five levels, evenly spread from one end to the other.
+    const ticks = [...rail.querySelectorAll('.tick')];
+    // Each tick names its level and what it means, so the bar can stay wordless.
+    expect(ticks.map((tick) => tick.getAttribute('title'))).toEqual([
+      'Auto — The model decides how long to think',
+      'Minimal — A quick glance before answering',
+      'Low — Quick answers for simple questions',
+      'Medium — Balanced speed and depth',
+      'High — Thinks longer on hard problems',
+      'Extra high — Very thorough; slower and uses more tokens'
+    ]);
+    // Ticks land on sixths of the bar, so the reading is a position, not a smear of text.
+    expect(ticks.map((tick) => fractionOf(tick.getAttribute('style')))).toEqual([0, 0.2, 0.4, 0.6, 0.8, 1]);
+    expect(view.getByRole('dialog').textContent).toContain('Faster');
+    expect(view.getByRole('dialog').textContent).toContain('Deeper');
+    expect(rail.getAttribute('aria-valuenow')).toBe('0');
+    expect(rail.getAttribute('aria-valuemax')).toBe('5');
+  });
+
+  // The store mock is a plain object, not a rune, so derived values only settle
+  // on render. Each key gets a fresh mount at the level it should start from.
+  it.each([
+    ['ArrowRight', null, 'low'],
+    ['ArrowDown', null, 'low'],
+    ['ArrowLeft', 'medium', 'low'],
+    ['ArrowUp', 'medium', 'low'],
+    ['Home', 'medium', null],
+    ['End', 'low', 'high']
+  ])('%s from the level in effect moves one step', async (key, from, to) => {
+    store.reasoningLevel = from as ReasoningLevel | null;
+    const view = render(ReasoningLevelSelector);
+    await fireEvent.click(view.getByRole('button'));
+    const rail = view.getByRole('slider');
+    expect(document.activeElement).toBe(rail);
+    await fireEvent.keyDown(rail, { key });
+    expect(store.setReasoningLevel).toHaveBeenLastCalledWith(to);
+  });
+
+  it('snaps a pointer to the level under it and closes on Escape', async () => {
+    store.reasoningLevel = 'low';
+    const view = render(ReasoningLevelSelector);
+    const button = view.getByRole('button', { name: 'Thinking: Low' });
     await fireEvent.click(button);
-    const slider = view.getByRole('slider', { name: 'Thinking' });
-    expect(slider.getAttribute('aria-valuemax')).toBe('3');
-    expect([...slider.querySelectorAll('.segment')].map((segment) => segment.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High']);
-    expect(document.activeElement).toBe(slider);
-    await fireEvent.keyDown(slider, { key: 'ArrowRight' });
-    expect(store.setReasoningLevel).toHaveBeenLastCalledWith('low');
-    await fireEvent.keyDown(slider, { key: 'End' });
-    expect(store.setReasoningLevel).toHaveBeenLastCalledWith('high');
-    await fireEvent.keyDown(slider, { key: 'Escape' });
+    const rail = view.getByRole('slider');
+
+    // Three gaps across 400px: 300px is three quarters, so the next level up.
+    const box = rail.getBoundingClientRect();
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ ...box, left: 0, width: 400 });
+    await fireEvent.pointerDown(rail, { clientX: 300, pointerId: 1 });
+    expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
+
+    await fireEvent.keyDown(rail, { key: 'Escape' });
     expect(view.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(button);
   });
 
-  it('fills up to the chosen level and says what it means', async () => {
+  it('fills to the chosen level, names it in the header, and keeps the bar wordless', async () => {
     store.reasoningLevel = 'high';
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: High' });
     expect(button.querySelectorAll('.meter .is-on')).toHaveLength(3);
+
     await fireEvent.click(button);
-    const slider = view.getByRole('slider');
-    expect(slider.querySelectorAll('.segment.is-on')).toHaveLength(4);
-    expect(slider.getAttribute('aria-valuetext')).toBe('High');
-    expect(view.getByRole('dialog').textContent).toContain('Thinks longer on hard problems');
+    const rail = view.getByRole('slider');
+    expect(rail.getAttribute('aria-valuetext')).toBe('High');
+    expect(rail.querySelectorAll('.tick.is-on')).toHaveLength(4);
+    // The level's meaning moved to the tick tooltip rather than a line of prose.
+    expect(view.getByRole('dialog').textContent).toContain('High');
+    expect(view.getByRole('dialog').textContent).not.toContain('Thinks longer on hard problems');
+  });
+
+  it('sends the fill sheen once, on a change, and not on open or on the level already chosen', async () => {
+    store.reasoningLevel = 'low';
+    const view = render(ReasoningLevelSelector);
+    await fireEvent.click(view.getByRole('button'));
+
+    // Opening is quiet: the sheen sits at its start with no animation.
+    let sheen = view.getByRole('slider').querySelector('.sheen')!;
+    expect(sheen.classList.contains('is-live')).toBe(false);
+
+    const rail = view.getByRole('slider');
+    const box = rail.getBoundingClientRect();
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ ...box, left: 0, width: 400 });
+
+    // A pointer landing on the level in effect changes nothing, so nothing plays.
+    await fireEvent.pointerDown(rail, { clientX: 100, pointerId: 1 });
+    expect(store.setReasoningLevel).not.toHaveBeenCalled();
+    expect(view.getByRole('slider').querySelector('.sheen')!.classList.contains('is-live')).toBe(false);
+
+    await fireEvent.pointerDown(rail, { clientX: 300, pointerId: 2 });
+    expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
+    sheen = view.getByRole('slider').querySelector('.sheen')!;
+    expect(sheen.classList.contains('is-live')).toBe(true);
   });
 
   it('hides the control for models without reported reasoning levels', () => {
