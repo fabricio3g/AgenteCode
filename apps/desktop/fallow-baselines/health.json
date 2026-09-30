@@ -6,8 +6,11 @@
       }
     },
     "main/agente-daemon.ts": {
+      "crap_high": {
+        "count": 1
+      },
       "crap_moderate": {
-        "count": 2
+        "count": 3
       }
     },
     "main/agente/bot-history.ts": {
@@ -46,7 +49,18 @@
         "count": 2
       }
     },
+    "main/agente/project-files.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
     "main/agente/rust-engine.ts": {
+      "crap_high": {
+        "count": 6
+      },
       "crap_moderate": {
         "count": 5
       }
@@ -359,7 +373,7 @@
         "count": 2
       },
       "crap_moderate": {
-        "count": 3
+        "count": 5
       }
     },
     "main/model-download.ts": {
@@ -408,10 +422,13 @@
         "count": 1
       },
       "crap_critical": {
-        "count": 1
+        "count": 2
       },
       "crap_high": {
-        "count": 2
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 3
       }
     },
     "main/providers/connection-test.ts": {
@@ -659,11 +676,17 @@
       }
     },
     "main/voice/audiocpp-tts.ts": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
       "crap_high": {
-        "count": 3
+        "count": 1
       },
       "crap_moderate": {
-        "count": 3
+        "count": 6
       }
     },
     "main/web-crawler.ts": {
@@ -1111,6 +1134,11 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/chat/composer/ModeSelector.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/features/chat/composer/ReasoningLevelSelector.svelte": {
       "crap_high": {
         "count": 1
@@ -1118,6 +1146,11 @@
     },
     "renderer/src/lib/features/chat/composer/VoiceModeOverlay.svelte": {
       "crap_high": {
+        "count": 1
+      }
+    },
+    "renderer/src/lib/features/chat/composer/reply-stats.ts": {
+      "crap_critical": {
         "count": 1
       }
     },
@@ -1164,9 +1197,6 @@
       }
     },
     "renderer/src/lib/features/chat/thread/MessageFooter.svelte": {
-      "crap_critical": {
-        "count": 1
-      },
       "crap_high": {
         "count": 2
       }
@@ -1269,12 +1299,17 @@
       }
     },
     "renderer/src/lib/features/code/CodeComposer.svelte": {
-      "crap_critical": {
+      "complexity_critical": {
         "count": 1
       },
-      "crap_high": {
-        "count": 4
+      "crap_critical": {
+        "count": 6
       },
+      "crap_high": {
+        "count": 3
+      }
+    },
+    "renderer/src/lib/features/code/CodeProjectDialog.svelte": {
       "crap_moderate": {
         "count": 1
       }
@@ -1292,7 +1327,7 @@
         "count": 1
       },
       "crap_moderate": {
-        "count": 3
+        "count": 2
       }
     },
     "renderer/src/lib/features/code/CodeSurface.svelte": {
@@ -1304,18 +1339,24 @@
       }
     },
     "renderer/src/lib/features/code/CodeTranscript.svelte": {
-      "crap_moderate": {
+      "crap_high": {
         "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
       }
     },
     "renderer/src/lib/features/code/code-run.ts": {
       "complexity_critical": {
-        "count": 2
+        "count": 3
+      },
+      "complexity_high": {
+        "count": 1
       },
       "crap_critical": {
-        "count": 2
+        "count": 3
       },
-      "crap_moderate": {
+      "crap_high": {
         "count": 1
       }
     },
@@ -1324,7 +1365,7 @@
         "count": 1
       },
       "complexity_high": {
-        "count": 2
+        "count": 1
       },
       "complexity_moderate": {
         "count": 1
@@ -1333,10 +1374,10 @@
         "count": 1
       },
       "crap_high": {
-        "count": 2
+        "count": 3
       },
       "crap_moderate": {
-        "count": 3
+        "count": 4
       }
     },
     "renderer/src/lib/features/code/workspace.svelte.ts": {
@@ -1420,11 +1461,6 @@
       },
       "crap_moderate": {
         "count": 2
-      }
-    },
-    "renderer/src/lib/features/shared/export-session.ts": {
-      "crap_moderate": {
-        "count": 1
       }
     },
     "renderer/src/lib/i18n/index.ts": {
@@ -1802,7 +1838,7 @@
         "count": 6
       },
       "crap_moderate": {
-        "count": 6
+        "count": 7
       }
     },
     "renderer/src/lib/stores/capabilities.svelte.ts": {
@@ -1837,8 +1873,14 @@
       }
     },
     "renderer/src/lib/stores/tts.svelte.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
+      },
       "crap_moderate": {
-        "count": 3
+        "count": 1
       }
     },
     "renderer/src/lib/ui/components/AgentBlock.svelte": {
@@ -2140,28 +2182,27 @@
     "renderer/src/lib/services/agent-llm.ts:high impact",
     "renderer/src/lib/services/agent-artifact.ts:high impact",
     "renderer/src/lib/utils/preview-builder.ts:high impact",
-    "renderer/src/lib/services/runtime.ts:high impact",
     "renderer/src/lib/services/chat-api.ts:high impact",
+    "renderer/src/lib/services/runtime.ts:high impact",
     "renderer/src/lib/services/agent-tool-artifacts.ts:high impact",
     "renderer/src/lib/stores/app-store-helpers.ts:high impact",
     "renderer/src/lib/models/model-fit.ts:high impact",
     "main/runtime-resolver.ts:high impact",
-    "renderer/src/lib/features/code/code-run.ts:high impact",
     "renderer/src/lib/services/agent-message-context.ts:high impact",
     "main/whisper-resolver.ts:high impact",
     "shared/deck.ts:high impact",
     "renderer/src/lib/ui/message-utils.ts:high impact",
     "renderer/src/lib/services/agent-flow.ts:high impact",
+    "renderer/src/lib/stores/app.svelte.ts:complexity",
     "main/search-providers/providers.ts:high impact",
     "renderer/src/lib/services/character-card.ts:high impact",
-    "renderer/src/lib/stores/app.svelte.ts:complexity",
     "renderer/src/lib/features/chat/thread/message-parts.ts:high impact",
     "renderer/src/lib/ui/components/Chart.svelte:untested risk",
     "main/providers/helpers.ts:high impact",
     "renderer/src/lib/stores/app-store-artifacts.ts:high impact",
+    "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "renderer/src/lib/services/agent-provider.ts:dead code",
     "renderer/src/lib/services/artifact-model.ts:high impact",
-    "renderer/src/lib/features/code/code.svelte.ts:high impact",
     "main/search-providers/shared.ts:high impact",
     "renderer/src/lib/services/generated-documents.ts:high impact",
     "renderer/src/lib/features/code/code-events.svelte.ts:dead code",
@@ -2174,11 +2215,11 @@
     "renderer/src/lib/services/agent-tool-dispatch.ts:complexity",
     "renderer/src/lib/stores/app-context-budget.ts:high impact",
     "renderer/src/lib/stores/hardware.svelte.ts:high impact",
+    "main/chat-ipc.ts:high impact",
     "shared/work-product.ts:high impact",
     "renderer/src/lib/services/research-artifacts.ts:high impact",
-    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "renderer/src/lib/features/roleplay/roleplay.svelte.ts:high impact",
-    "main/chat-ipc.ts:high impact",
+    "renderer/src/lib/stores/app-store-local-model.ts:high impact",
     "renderer/src/lib/services/agent-evidence.ts:high impact",
     "renderer/src/lib/features/chat/document-surface.ts:high impact",
     "renderer/src/lib/services/agent-run-plan.ts:complexity",
@@ -2186,8 +2227,11 @@
     "renderer/src/lib/services/agent-evidence-pack.ts:complexity",
     "renderer/src/lib/services/agent-home-stream.ts:complexity",
     "renderer/src/lib/features/chat/composer/mic-probe.ts:high impact",
+    "renderer/src/lib/features/code/code-run.ts:high impact",
+    "renderer/src/lib/stores/tts.svelte.ts:high impact",
     "main/llama-runtime.ts:high impact",
     "main/sandbox.ts:dead code",
+    "main/voice/audiocpp-tts.ts:high impact",
     "renderer/src/lib/utils/storage.ts:high impact",
     "main/document-markdown.ts:untested risk",
     "main/agente/changes.ts:untested risk",
@@ -2196,23 +2240,23 @@
     "renderer/src/lib/services/agent-tool-result.ts:high impact",
     "main/providers/connection-test.ts:untested risk",
     "renderer/src/lib/services/agent-content.ts:high impact",
+    "renderer/src/lib/features/code/activity.ts:high impact",
     "renderer/src/lib/utils/markdown.ts:complexity",
     "renderer/src/lib/ui/context.ts:high impact",
-    "main/process-manager.ts:complexity",
     "renderer/src/lib/ui/prompt.ts:untested risk",
     "main/stt-engine.ts:untested risk",
+    "renderer/src/lib/features/code/slash-commands.ts:high impact",
     "main/browser-actions.ts:high impact",
-    "main/voice/audiocpp-tts.ts:high impact",
     "renderer/src/lib/stores/models.svelte.ts:high impact",
+    "renderer/src/lib/services/agent-model-call.ts:complexity",
     "main/web-scraper.ts:high impact",
     "main/search-providers/aggregator/options.ts:untested risk",
+    "main/agente/rust-events.ts:high impact",
     "main/instances.ts:untested risk",
     "renderer/src/lib/i18n/index.ts:high impact",
     "main/agente/transport.ts:untested risk",
     "main/generated-documents.ts:complexity",
     "renderer/src/lib/utils/id.ts:high impact",
-    "main/agente/rust-events.ts:high impact",
-    "renderer/src/lib/services/agent-model-call.ts:complexity",
     "renderer/src/lib/services/agent-tool-diagnostics.ts:complexity",
     "renderer/src/lib/stores/deep-research.svelte.ts:complexity",
     "main/providers/openai-core.ts:high impact",
@@ -2221,6 +2265,8 @@
     "renderer/src/lib/utils/errors.ts:high impact",
     "main/browser-format.ts:high impact",
     "main/system-info.ts:high impact",
+    "renderer/src/lib/features/code/plan-review.ts:high impact",
+    "main/agente/bot-history.ts:high impact",
     "renderer/src/lib/features/chat/viewers/xlsx-model.ts:high impact",
     "main/search-engine.ts:complexity",
     "main/utils/logger.ts:high impact",
@@ -2229,15 +2275,16 @@
     "renderer/src/lib/components/ui/Select.svelte:complexity",
     "main/agente/rust-processes.ts:high impact",
     "main/model-download.ts:complexity",
+    "main/agente/rust-engine.ts:high impact",
     "main/whisper-server.ts:high impact",
     "main/rag-engine.ts:high impact",
     "main/link-scorer.ts:untested risk",
-    "main/agente/bot-history.ts:untested risk",
     "renderer/src/lib/ui/components/AgentBlock.svelte:complexity",
+    "main/process-manager.ts:high impact",
     "renderer/src/lib/features/chat/viewers/xlsx-formula.ts:high impact",
     "main/runtime-config-resolver.ts:high impact",
-    "main/web-crawler.ts:complexity",
     "main/agente-daemon.ts:untested risk",
+    "main/web-crawler.ts:complexity",
     "main/data-folder.ts:high impact",
     "scripts/smoke-search-scrape.mjs:untested risk",
     "main/agente/desktop-tools-mcp.ts:untested risk",

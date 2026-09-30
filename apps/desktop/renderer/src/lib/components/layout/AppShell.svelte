@@ -28,6 +28,7 @@
   import BrowserPanel from '$lib/components/browser/BrowserPanel.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
   import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
+  import { SidebarPeek } from './sidebar-peek.svelte';
   import ResizeHandle from '$lib/components/ui/ResizeHandle.svelte';
   import RightDock, { type DockPanel } from './RightDock.svelte';
   import ChangesPane from '$lib/features/code/workspace/ChangesPane.svelte';
@@ -131,7 +132,7 @@
     }
     return () => {
       document.removeEventListener('keydown', handleKeydown);
-      clearPeekTimers();
+      peek.clearTimers();
     };
   });
 
@@ -161,115 +162,22 @@
   let sidebarResizing = $state(false);
   let sidebarStart = 0;
 
-  // One mounted sidebar: pinned participates in layout; preview floats below
-  // the topbar. Hover state never changes the user's pinned choice.
-  let sidebarPanel = $state<HTMLDivElement>();
-  let sidebarPeek = $state(false);
-  let peekOpenTimer: ReturnType<typeof setTimeout> | undefined;
-  let peekCloseTimer: ReturnType<typeof setTimeout> | undefined;
-  let pointerTarget: Node | null = null;
-  let keyboardNavigation = false;
-  let suppressPeekUntil = 0;
-
-  function clearPeekTimers() {
-    clearTimeout(peekOpenTimer);
-    clearTimeout(peekCloseTimer);
-    peekOpenTimer = peekCloseTimer = undefined;
-  }
-
-  function closeSidebarPeek() {
-    clearPeekTimers();
-    sidebarPeek = false;
-  }
+  // One mounted sidebar: pinned takes layout space; the preview floats over
+  // the content below the title bar (sidebar-peek.svelte.ts).
+  const peek = new SidebarPeek(() => appStore.sidebarOpen);
 
   function toggleSidebar() {
-    closeSidebarPeek();
-    suppressPeekUntil = performance.now() + 250;
+    peek.toggled();
     appStore.sidebarOpen = !appStore.sidebarOpen;
   }
 
-  function isSidebarTarget(target: Node | null): boolean {
-    if (!target) return false;
-    if (sidebarPanel?.contains(target)) return true;
-    if (target instanceof Element && target.closest('[data-sidebar-toggle]')) return true;
-    // Menus are portalled: their trigger's aria-controls keeps the preview
-    // alive while the pointer or keyboard moves into their floating panel.
-    return [...(sidebarPanel?.querySelectorAll('[aria-expanded="true"][aria-controls]') ?? [])].some((trigger) => {
-      const controlled = document.getElementById(trigger.getAttribute('aria-controls')!);
-      return !!controlled?.contains(target);
-    });
-  }
-
-  function keepSidebarPeek() {
-    clearTimeout(peekCloseTimer);
-    peekCloseTimer = undefined;
-  }
-
-  function showSidebarPeek() {
-    if (appStore.sidebarOpen || performance.now() < suppressPeekUntil) return;
-    keepSidebarPeek();
-    if (peekOpenTimer || sidebarPeek) return;
-    peekOpenTimer = setTimeout(() => {
-      peekOpenTimer = undefined;
-      sidebarPeek = true;
-    }, 120);
-  }
-
-  function schedulePeekClose() {
-    clearTimeout(peekOpenTimer);
-    peekOpenTimer = undefined;
-    if (peekCloseTimer) return;
-    peekCloseTimer = setTimeout(() => {
-      peekCloseTimer = undefined;
-      if (isSidebarTarget(pointerTarget) || (keyboardNavigation && isSidebarTarget(document.activeElement))) return;
-      sidebarPeek = false;
-    }, 180);
-  }
-
-  function leaveSidebar(event: PointerEvent) {
-    pointerTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-    if (!isSidebarTarget(pointerTarget)) schedulePeekClose();
-  }
-
   $effect(() => {
-    if (appStore.sidebarOpen) closeSidebarPeek();
+    if (appStore.sidebarOpen) peek.close();
   });
 
   $effect(() => {
-    if (!sidebarPeek) return;
-    const move = (event: PointerEvent) => {
-      keyboardNavigation = false;
-      pointerTarget = event.target instanceof Node ? event.target : null;
-      if (isSidebarTarget(pointerTarget)) keepSidebarPeek();
-      else schedulePeekClose();
-    };
-    const press = (event: PointerEvent) => {
-      keyboardNavigation = false;
-      if (!isSidebarTarget(event.target instanceof Node ? event.target : null)) closeSidebarPeek();
-    };
-    const key = (event: KeyboardEvent) => {
-      keyboardNavigation = true;
-      if (event.key === 'Escape' && !document.querySelector('[role="menu"], [aria-modal="true"]')) {
-        closeSidebarPeek();
-        document.querySelector<HTMLButtonElement>('[data-sidebar-toggle]')?.focus();
-      }
-    };
-    const focus = (event: FocusEvent) => {
-      if (isSidebarTarget(event.target instanceof Node ? event.target : null)) keepSidebarPeek();
-      else schedulePeekClose();
-    };
-    document.addEventListener('pointermove', move);
-    document.addEventListener('pointerdown', press, true);
-    document.addEventListener('keydown', key);
-    document.addEventListener('focusin', focus);
-    window.addEventListener('blur', closeSidebarPeek);
-    return () => {
-      document.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerdown', press, true);
-      document.removeEventListener('keydown', key);
-      document.removeEventListener('focusin', focus);
-      window.removeEventListener('blur', closeSidebarPeek);
-    };
+    if (!peek.open) return;
+    return peek.listen(() => document.querySelector<HTMLButtonElement>('[data-sidebar-toggle]')?.focus());
   });
 
   function resizeSidebar(delta: number) {
@@ -295,11 +203,11 @@
     style="--sidebar-w: {sidebarWidth}px"
   >
     <div
-      bind:this={sidebarPanel}
+      bind:this={peek.panel}
       id="app-sidebar"
       class="sidebar-view-full absolute inset-0 flex flex-col"
-      class:preview={!appStore.sidebarOpen && sidebarPeek}
-      inert={!appStore.sidebarOpen && !sidebarPeek}
+      class:preview={!appStore.sidebarOpen && peek.open}
+      inert={!appStore.sidebarOpen && !peek.open}
     >
       <Sidebar />
     </div>
@@ -317,7 +225,7 @@
 
   <!-- No overflow-hidden on this column: titlebar fade hangs below h-9. -->
   <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-sidebar">
-    <Titlebar sidebarPreview={sidebarPeek} onSidebarEnter={showSidebarPeek} onSidebarLeave={leaveSidebar} onSidebarToggle={toggleSidebar} />
+    <Titlebar sidebarPreview={peek.open} onSidebarEnter={() => peek.show()} onSidebarLeave={(event) => peek.leave(event)} onSidebarToggle={toggleSidebar} />
 
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <!-- The one branch point between the spaces:
@@ -408,7 +316,7 @@
      dots; dragging the edge sets --sidebar-w. */
   .sidebar-outer.expanded {
     width: var(--sidebar-w, 15rem);
-    border-right: 1px solid var(--sidebar-border);
+    border-right: 1px solid var(--border-hover);
   }
   .sidebar-outer.resizing {
     transition: none;
@@ -430,17 +338,21 @@
     transition-delay: 40ms, 0s;
   }
 
+  /* The preview is the same sidebar, floating: same colour, square, full
+     height below the title bar (so its toggle stays reachable), with the
+     same edge as the pinned one and a shadow over the content. */
   .sidebar-view-full.preview {
-    --sidebar: var(--popover);
     position: fixed;
     z-index: var(--z-float);
     top: 2.25rem;
-    bottom: 0.5rem;
+    bottom: 0;
     left: 0;
     right: auto;
     max-width: calc(100vw - 1rem);
-    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
-    box-shadow: var(--shadow-lg);
+    background: var(--sidebar);
+    border-top: 1px solid var(--border-hover);
+    border-right: 1px solid var(--border-hover);
+    box-shadow: var(--shadow-xl);
   }
 
   @media (prefers-reduced-motion: reduce) {

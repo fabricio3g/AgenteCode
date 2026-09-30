@@ -113,10 +113,13 @@
   {#if !list && codeWorkspace.changesLoading}
     <div class="flex flex-1 items-center justify-center"><LoaderCircle class="size-4 animate-spin text-muted-foreground" /></div>
   {:else if !files.length}
-    <div class="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center">
-      <FileCode2 class="size-5 text-muted-foreground" />
-      <p class="text-sm font-medium text-foreground">{$t('codeWs.noChanges')}</p>
-      <p class="text-xs leading-relaxed text-muted-foreground">{list?.source === 'git' ? $t('codeWs.noChangesGit') : $t('codeWs.noChangesHint')}</p>
+    <!-- Empty: a quiet note at the top, not a poster in the middle. -->
+    <div class="flex items-start gap-2 px-4 py-3">
+      <FileCode2 class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div class="min-w-0">
+        <p class="text-[13px] font-medium text-foreground">{$t('codeWs.noChanges')}</p>
+        <p class="text-xs leading-relaxed text-muted-foreground">{list?.source === 'git' ? $t('codeWs.noChangesGit') : $t('codeWs.noChangesHint')}</p>
+      </div>
     </div>
   {:else}
     <ul class="max-h-[40%] shrink-0 overflow-y-auto border-b border-[var(--border-subtle)] py-1" role="listbox" aria-label={$t('codeWs.changes')}>

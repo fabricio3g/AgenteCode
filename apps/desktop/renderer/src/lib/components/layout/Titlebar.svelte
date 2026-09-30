@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import DownloadsButton from './DownloadsButton.svelte';
   import { onMount } from 'svelte';
   import { appWindow } from '$lib/services/window';
@@ -44,6 +45,41 @@
   });
 </script>
 
+<!-- The app's own buttons, the same on every platform: the agent browser
+     (a dock pane, beside the Code pane toggles), then downloads and theme. -->
+{#snippet appTools()}
+  <Tooltip label={$t('titlebar.browser')} position="bottom">
+    <button
+      class="aui-icon-button size-8"
+      class:is-active={browserPanelStore.open}
+      onclick={() => void browserPanelStore.toggle()}
+      aria-label={$t('titlebar.browser')}
+      aria-pressed={browserPanelStore.open}
+    >
+      <Globe class="size-4" />
+    </button>
+  </Tooltip>
+  <span class="mx-1.5 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
+  <DownloadsButton />
+  <Tooltip label={$t('titlebar.theme')} position="bottom">
+    <button
+      class="aui-icon-button size-8"
+      onclick={(e) => {
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      }}
+      aria-label={$t('titlebar.theme')}
+    >
+      {#if themeStore.current === 'dark'}
+        <SunMedium class="size-4" />
+      {:else}
+        <MoonStar class="size-4" />
+      {/if}
+    </button>
+  </Tooltip>
+{/snippet}
+
+
 <div
   class="titlebar-row titlebar-drag relative z-20 flex h-9 shrink-0 select-none bg-sidebar"
   ondblclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }}
@@ -60,7 +96,7 @@
         aria-controls="app-sidebar"
         aria-expanded={appStore.sidebarOpen || sidebarPreview}
         aria-pressed={appStore.sidebarOpen}
-        aria-label={appStore.sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+        aria-label={appStore.sidebarOpen ? $t('titlebar.hideSidebar') : $t('titlebar.showSidebar')}
       >
         {#if appStore.sidebarOpen}
           <PanelLeftClose class="size-4" />
@@ -69,20 +105,20 @@
         {/if}
       </button>
     </Tooltip>
-    <Tooltip label="Search conversations">
+    <Tooltip label={$t('titlebar.search')}>
       <button
         class="aui-icon-button size-8 titlebar-no-drag"
         onclick={() => (appStore.chatSearchOpen = true)}
-        aria-label="Search chats"
+        aria-label={$t('titlebar.search')}
       >
         <Search class="size-4" />
       </button>
     </Tooltip>
-    <Tooltip label="LLM settings">
+    <Tooltip label={$t('titlebar.llmSettings')}>
       <button
         class="aui-icon-button size-8 titlebar-no-drag"
         onclick={() => (appStore.llmDrawerOpen = true)}
-        aria-label="LLM settings"
+        aria-label={$t('titlebar.llmSettings')}
       >
         <SlidersHorizontal class="size-4" />
       </button>
@@ -105,69 +141,18 @@
     {/if}
     {#if isMac}
       <div class="traffic-lights titlebar-no-drag flex items-center gap-1.5 pl-3">
-        <DownloadsButton />
-        <Tooltip label="Toggle theme" position="left">
-          <button
-            class="aui-icon-button size-8"
-            onclick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              themeStore.toggle({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-            }}
-            aria-label="Toggle theme"
-          >
-            {#if themeStore.current === 'dark'}
-              <SunMedium class="size-4" />
-            {:else}
-              <MoonStar class="size-4" />
-            {/if}
-          </button>
-        </Tooltip>
-        <Tooltip label="Agent browser" position="left">
-          <button
-            class="aui-icon-button size-8"
-            class:is-active={browserPanelStore.open}
-            onclick={() => void browserPanelStore.toggle()}
-            aria-label="Agent browser"
-            aria-pressed={browserPanelStore.open}
-          >
-            <Globe class="size-4" />
-          </button>
-        </Tooltip>
-        <button class="dot dot-close" onclick={() => appWindow.close()} aria-label="Close" title="Close"></button>
-        <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize"></button>
-        <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}></button>
+        {@render appTools()}
+        <button class="dot dot-close" onclick={() => appWindow.close()} aria-label={$t('titlebar.close')} title={$t('titlebar.close')}></button>
+        <button class="dot dot-minimize" onclick={() => appWindow.minimize()} aria-label={$t('titlebar.minimize')} title={$t('titlebar.minimize')}></button>
+        <button class="dot dot-maximize" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? $t('titlebar.restore') : $t('titlebar.maximize')} title={isMaximized ? $t('titlebar.restore') : $t('titlebar.maximize')}></button>
       </div>
     {:else}
       <div class="win-controls titlebar-no-drag flex h-full items-center">
-        <DownloadsButton class="mr-0.5" />
-        <Tooltip label="Toggle theme" position="left">
-          <button
-            class="aui-icon-button mr-0.5 size-8"
-            onclick={() => themeStore.toggle()}
-            aria-label="Toggle theme"
-          >
-            {#if themeStore.current === 'dark'}
-              <SunMedium class="size-4" />
-            {:else}
-              <MoonStar class="size-4" />
-            {/if}
-          </button>
-        </Tooltip>
-        <Tooltip label="Agent browser" position="left">
-          <button
-            class="aui-icon-button mr-0.5 size-8"
-            class:is-active={browserPanelStore.open}
-            onclick={() => void browserPanelStore.toggle()}
-            aria-label="Agent browser"
-            aria-pressed={browserPanelStore.open}
-          >
-            <Globe class="size-4" />
-          </button>
-        </Tooltip>
-        <button class="win-btn" onclick={() => appWindow.minimize()} aria-label="Minimize" title="Minimize">
+        {@render appTools()}
+        <button class="win-btn" onclick={() => appWindow.minimize()} aria-label={$t('titlebar.minimize')} title={$t('titlebar.minimize')}>
           <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
         </button>
-        <button class="win-btn" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? 'Restore' : 'Maximize'} title={isMaximized ? 'Restore' : 'Maximize'}>
+        <button class="win-btn" onclick={() => { void appWindow.toggleMaximize().then(checkMaximized); }} aria-label={isMaximized ? $t('titlebar.restore') : $t('titlebar.maximize')} title={isMaximized ? $t('titlebar.restore') : $t('titlebar.maximize')}>
           {#if isMaximized}
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.1">
               <rect x="0.5" y="2.5" width="7" height="7" rx="0.5"/>
@@ -179,7 +164,7 @@
             </svg>
           {/if}
         </button>
-        <button class="win-btn win-btn-close" onclick={() => appWindow.close()} aria-label="Close" title="Close">
+        <button class="win-btn win-btn-close" onclick={() => appWindow.close()} aria-label={$t('titlebar.close')} title={$t('titlebar.close')}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
             <line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/>
           </svg>

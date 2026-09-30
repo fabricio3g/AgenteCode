@@ -27,7 +27,8 @@
   }
 </script>
 
-<section class="flex h-full min-h-0 flex-col border-t border-[var(--border-subtle)] bg-background" aria-label={$t('codeWs.bottomDock')}>
+<!-- A rounded card like the right dock's, inset from the window edges. -->
+<section class="dock-card flex h-full min-h-0 flex-col" aria-label={$t('codeWs.bottomDock')}>
   <div class="flex h-9 shrink-0 items-center gap-0.5 px-2" role="tablist" aria-label={$t('codeWs.bottomDock')}>
     <button
       type="button"
@@ -76,6 +77,13 @@
 </section>
 
 <style>
+  .dock-card {
+    overflow: hidden;
+    border-radius: 0.875rem;
+    border: 1px solid var(--border-hover);
+    background: var(--card);
+  }
+
   .tab {
     display: inline-flex;
     align-items: center;

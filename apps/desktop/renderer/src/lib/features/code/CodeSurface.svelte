@@ -152,7 +152,7 @@
             onstart={() => (startSize = codeWorkspace.layout.bottomHeight)}
             onresize={resizeBottom}
           />
-          <div class="shrink-0" style="height: {codeWorkspace.layout.bottomHeight}px">
+          <div class="shrink-0 px-2 pb-2" style="height: {codeWorkspace.layout.bottomHeight}px">
             <BottomDock chatId={chat.id} cwd={chatProject.rootPath} />
           </div>
         {/if}

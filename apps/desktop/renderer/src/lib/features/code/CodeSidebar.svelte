@@ -357,6 +357,13 @@
     color: var(--foreground);
   }
 
+  /* One highlight at a time: the conversation carries the fill; its project
+     only reads as current (stronger text), so the two never stack. */
+  .project-row.is-active:not(:hover) {
+    background: transparent;
+    font-weight: 500;
+  }
+
   .tree-row:focus-visible {
     outline: 2px solid var(--sidebar-ring);
     outline-offset: -2px;

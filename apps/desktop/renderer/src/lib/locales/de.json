@@ -1615,5 +1615,17 @@
     "showActivity": "Aktivität zeigen",
     "hideActivity": "Aktivität ausblenden",
     "viewFullActivity": "Gesamte Aktivität ansehen ↗"
+  },
+  "titlebar": {
+    "hideSidebar": "Seitenleiste ausblenden",
+    "showSidebar": "Seitenleiste einblenden",
+    "search": "Unterhaltungen durchsuchen",
+    "llmSettings": "Modelleinstellungen",
+    "browser": "Agent-Browser",
+    "theme": "Helles oder dunkles Design",
+    "close": "Schließen",
+    "minimize": "Minimieren",
+    "maximize": "Maximieren",
+    "restore": "Wiederherstellen"
   }
 }

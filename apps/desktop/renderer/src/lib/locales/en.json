@@ -1615,5 +1615,17 @@
     "showActivity": "Show activity",
     "hideActivity": "Hide activity",
     "viewFullActivity": "View full activity ↗"
+  },
+  "titlebar": {
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "search": "Search conversations",
+    "llmSettings": "Model settings",
+    "browser": "Agent browser",
+    "theme": "Light or dark theme",
+    "close": "Close",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore"
   }
 }

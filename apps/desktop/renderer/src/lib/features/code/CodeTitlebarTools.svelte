@@ -113,7 +113,6 @@
       {/each}
     </Menu>
   {/if}
-  <span class="mx-1.5 h-4 w-px bg-[var(--border)]" aria-hidden="true"></span>
 </div>
 
 <style>

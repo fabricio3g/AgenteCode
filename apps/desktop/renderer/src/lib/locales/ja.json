@@ -1615,5 +1615,17 @@
     "showActivity": "アクティビティを表示",
     "hideActivity": "アクティビティを隠す",
     "viewFullActivity": "すべてのアクティビティを見る ↗"
+  },
+  "titlebar": {
+    "hideSidebar": "サイドバーを隠す",
+    "showSidebar": "サイドバーを表示",
+    "search": "会話を検索",
+    "llmSettings": "モデル設定",
+    "browser": "エージェントブラウザ",
+    "theme": "ライト／ダークテーマ",
+    "close": "閉じる",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "元に戻す"
   }
 }

@@ -1615,5 +1615,17 @@
     "showActivity": "Mostrar atividade",
     "hideActivity": "Ocultar atividade",
     "viewFullActivity": "Ver toda a atividade ↗"
+  },
+  "titlebar": {
+    "hideSidebar": "Ocultar barra lateral",
+    "showSidebar": "Mostrar barra lateral",
+    "search": "Buscar conversas",
+    "llmSettings": "Ajustes do modelo",
+    "browser": "Navegador do agente",
+    "theme": "Tema claro ou escuro",
+    "close": "Fechar",
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "restore": "Restaurar"
   }
 }
