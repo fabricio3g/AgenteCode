@@ -10,9 +10,11 @@
   import { flip } from 'svelte/animate';
   import { smoothEase } from '$lib/utils/transitions';
   import { formatShortcut } from '$lib/utils/shortcuts';
-  import { Bot, Boxes, Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
+  import { Boxes, Drama, MessageSquare, Plus, Puzzle, Search, Settings } from 'lucide-svelte';
   import { copy } from '$lib/copy';
   import SessionRow from '$lib/features/shared/SessionRow.svelte';
+  import BotRoster from '$lib/features/bots/BotRoster.svelte';
+  import { botsStore } from '$lib/features/bots/bots.svelte';
 
   let collapsedGroups = $state<Set<number>>(new Set([4]));
 
@@ -62,8 +64,11 @@
   });
 
   const sidebarIconColor = $derived('currentColor');
+  const inBots = $derived(appStore.activeTab === 'bots');
   const newButtonLabel = $derived(
-    appStore.activeSpace === 'code'
+    inBots
+      ? $t('bots.new')
+      : appStore.activeSpace === 'code'
       ? $t('code.addProject')
       : appStore.activeSpace === 'roleplay'
         ? copy.roleplay.newRoleplay
@@ -82,6 +87,10 @@
   }
 
   function createForActiveSpace() {
+    if (inBots) {
+      botsStore.editor = 'new';
+      return;
+    }
     if (appStore.activeSpace === 'code') {
       void codeStore.addProject();
       return;
@@ -104,7 +113,7 @@
 
       <!-- The Code agent does not produce artifacts; the toggle list only
            concerns Home and Roleplay. -->
-      {#if appStore.activeSpace !== 'code'}
+      {#if appStore.activeSpace !== 'code' && !inBots}
         <button
           class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
           class:is-current={appStore.homeView === 'artifacts'}
@@ -115,20 +124,16 @@
           <Puzzle class="size-4 shrink-0" />
           <span class="btn-label">{$t('sidebar.artifacts')}</span>
         </button>
-        <button
-          class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
-          class:is-current={appStore.homeView === 'bots'}
-          aria-current={appStore.homeView === 'bots' ? 'page' : undefined}
-          onclick={() => appStore.showBots()}
-          title={$t('sidebar.bots')}
-        >
-          <Bot class="size-4 shrink-0" />
-          <span class="btn-label">{$t('sidebar.bots')}</span>
-        </button>
         <SidebarInstances />
       {/if}
     </div>
 
+    {#if inBots}
+      <label class="sidebar-btn bot-filter flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px]">
+        <Search class="size-4 shrink-0" />
+        <input bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
+      </label>
+    {:else}
     <button
       type="button"
       class="sidebar-btn flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px] transition-colors"
@@ -138,11 +143,14 @@
       <Search class="size-4 shrink-0" />
       <span class="btn-label btn-label-truncate">{searchLabel}</span>
     </button>
+    {/if}
 
     <div class="chat-list flex-1 overflow-y-auto">
       <!-- Code tab: the sidebar is a project-folder tree; each folder holds
            that project's agent conversations. -->
-      {#if appStore.activeSpace === 'code'}
+      {#if inBots}
+        <BotRoster />
+      {:else if appStore.activeSpace === 'code'}
         <CodeSidebar />
       {:else if groupedChats.length}
         {#each groupedChats as group (group.key)}
@@ -221,6 +229,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: left;
+  }
+
+  .bot-filter input {
+    min-width: 0;
+    flex: 1;
+    background: transparent;
+    color: var(--sidebar-foreground);
+    outline: none;
+  }
+
+  .bot-filter input::placeholder {
+    color: inherit;
   }
 
   .new-chat-btn {

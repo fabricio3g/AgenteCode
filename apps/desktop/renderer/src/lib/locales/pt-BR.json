@@ -1630,7 +1630,9 @@
       "theBot": "o bot",
       "readOnlyHint": "Somente leitura: conversa e pesquisa; não muda arquivos nem roda comandos.",
       "fullHint": "Acesso total: para você. Ferramentas podem rodar, com botões Permitir/Negar no Telegram."
-    }
+    },
+    "none": "Ainda não há bots",
+    "noneHint": "Um bot tem seu próprio modelo, memória e rotinas, e continua trabalhando com esta aba fechada."
   },
   "accessibility": {
     "title": "Acessibilidade",

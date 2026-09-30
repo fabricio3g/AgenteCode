@@ -1630,7 +1630,9 @@
       "theBot": "le bot",
       "readOnlyHint": "Lecture seule : discute et cherche des informations ; ne modifie pas de fichiers, n'exécute pas de commandes.",
       "fullHint": "Accès complet : pour vous. Les outils peuvent s'exécuter, avec des boutons Autoriser/Refuser dans Telegram."
-    }
+    },
+    "none": "Aucun bot pour l'instant",
+    "noneHint": "Un bot a son propre modèle, sa mémoire et ses routines, et continue de travailler quand cet onglet est fermé."
   },
   "accessibility": {
     "title": "Accessibilité",

@@ -10,6 +10,8 @@
   import CodeSurface from '$lib/features/code/CodeSurface.svelte';
   import ArtifactsScreen from '$lib/features/artifacts/ArtifactsScreen.svelte';
   import BotsScreen from '$lib/features/bots/BotsScreen.svelte';
+  import BotRoutines from '$lib/features/bots/BotRoutines.svelte';
+  import { botsStore } from '$lib/features/bots/bots.svelte';
   import ArtifactPanel from '$lib/features/artifacts/ArtifactPanel.svelte';
   import RoleplaySurface from '$lib/features/roleplay/RoleplaySurface.svelte';
   import { charactersStore } from '$lib/features/roleplay/characters.svelte';
@@ -44,22 +46,28 @@
   import { formatShortcut, isMacPlatform } from '$lib/utils/shortcuts';
 
   let showShortcutsHelp = $state(false);
-  const inCodeSpace = $derived(appStore.activeSpace === 'code');
+  // The top-bar tab decides the main view; Bots sits beside the three spaces.
+  const inBots = $derived(appStore.activeTab === 'bots');
+  const inCodeSpace = $derived(appStore.activeTab === 'code');
 
   // The right dock: Changes (Code), the open artifact (Home chat) and the
   // agent browser, stacked when more than one is open.
   const changesTarget = $derived(codeWorkspace.changesTarget);
+  const showChanges = $derived(inCodeSpace && codeWorkspace.layout.changesOpen && !!changesTarget);
+  const showArtifact = $derived(!inCodeSpace && !inBots && appStore.homeView === 'chat' && !!appStore.artifactPanel);
+  const showRoutines = $derived(inBots && !!botsStore.current && botsStore.routinesOpen);
   const dockPanels = $derived.by(() => {
     const panels: DockPanel[] = [];
-    if (inCodeSpace && codeWorkspace.layout.changesOpen && changesTarget) panels.push({ id: 'changes', content: changesPanel });
-    if (!inCodeSpace && appStore.homeView === 'chat' && appStore.artifactPanel) panels.push({ id: 'artifact', content: artifactPanel });
+    if (showChanges) panels.push({ id: 'changes', content: changesPanel });
+    if (showArtifact) panels.push({ id: 'artifact', content: artifactPanel });
+    if (showRoutines) panels.push({ id: 'routines', content: routinesPanel });
     if (browserPanelStore.open) panels.push({ id: 'browser', content: browserPanel, accent: browserPanelStore.agentDriving });
     return panels;
   });
-  const inRoleplaySpace = $derived(appStore.activeSpace === 'roleplay');
+  const inRoleplaySpace = $derived(appStore.activeTab === 'roleplay');
   /** Ctrl/⌘+K means "new" in every space — a chat, a roleplay, or a project. */
   const shortcutRows = $derived<Array<[string, string]>>([
-    ['mod+k', inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')],
+    ['mod+k', inBots ? $t('bots.new') : inCodeSpace ? $t('shortcuts.addProject') : inRoleplaySpace ? copy.roleplay.newRoleplay : $t('shortcuts.newChat')],
     ['mod+shift+k', $t('shortcuts.search')],
     ['mod+,', $t('shortcuts.settings')],
     ['mod+b', $t('shortcuts.sidebar')],
@@ -71,6 +79,10 @@
   ]);
 
   function startNewSession() {
+    if (inBots) {
+      botsStore.editor = 'new';
+      return;
+    }
     if (inCodeSpace) {
       void codeStore.addProject();
       return;
@@ -251,12 +263,12 @@
            Code hosts the coding agent surface; Roleplay the character surface;
            Home keeps the general chat panel. -->
       <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {#if inCodeSpace}
+        {#if inBots}
+          <BotsScreen />
+        {:else if inCodeSpace}
           <CodeSurface />
         {:else if appStore.homeView === 'artifacts'}
           <ArtifactsScreen />
-        {:else if appStore.homeView === 'bots'}
-          <BotsScreen />
         {:else if inRoleplaySpace}
           <RoleplaySurface />
         {:else}
@@ -273,6 +285,9 @@
 {/snippet}
 {#snippet artifactPanel()}<ArtifactPanel />{/snippet}
 {#snippet browserPanel()}<BrowserPanel />{/snippet}
+{#snippet routinesPanel()}
+  {#if botsStore.current}<BotRoutines bot={botsStore.current} onclose={() => (botsStore.routinesOpen = false)} />{/if}
+{/snippet}
 
 {#if appStore.promptConfigOpen}
   <SystemPromptModal />

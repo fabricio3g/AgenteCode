@@ -148,7 +148,17 @@ class AppStore {
   agentWorkspaceOpen = $state(false);
   artifactStudioOpen = $state(false);
   /** What the Home surface shows: the chat, or the Artifacts screen. */
-  homeView = $state<'chat' | 'artifacts' | 'bots'>('chat');
+  homeView = $state<'chat' | 'artifacts'>('chat');
+  /**
+   * The Bots tab is showing. Bots aren't chats, so it sits beside the spaces
+   * instead of being one: opening any chat or space closes it.
+   */
+  botsOpen = $state(false);
+
+  /** The top-bar tab that is showing: a space, or Bots. */
+  get activeTab(): ChatContextMode | 'bots' {
+    return this.botsOpen ? 'bots' : this.activeSpace;
+  }
   /** The artifact open on the Artifacts screen (`chatId:messageId:index`), or the library. */
   artifactScreenKey = $state<string | null>(null);
   /** Opened from a chat: Back returns there instead of to the library. */
@@ -614,7 +624,8 @@ class AppStore {
 
   /** Show the Bots screen (the roster, a bot's chat and its routines). */
   showBots() {
-    this.homeView = 'bots';
+    this.botsOpen = true;
+    this.persist();
   }
 
   /** Show the Artifacts library. */
@@ -1045,6 +1056,8 @@ class AppStore {
       this.activeSpace = normalizeContextMode(this.currentChat?.contextMode || this.activeSpace);
       this.rebuildChatIdBySpace();
       this.hydrateUiFromChat(this.currentChat);
+      // Restored last: making the space's chat above closes the tab.
+      this.botsOpen = !!loadChatState<PersistedState>({ chats: [], folders: [], currentChatId: null }).botsOpen;
     } catch (error) {
       this.error = toErrorMessage(error) || 'Failed to initialize application';
       if (!this.chats.length) {
@@ -1102,7 +1115,8 @@ class AppStore {
       folders: this.folders,
       currentChatId: this.currentChatId,
       activeSpace: this.activeSpace,
-      currentChatIdBySpace: this.currentChatIdBySpace
+      currentChatIdBySpace: this.currentChatIdBySpace,
+      botsOpen: this.botsOpen
     });
     // Flush current, generating, and any explicitly dirty chats to SQLite.
     const chatIds = new Set<string>(this.dirtyChatIds);
@@ -1240,6 +1254,7 @@ class AppStore {
 
   setActiveSpace(mode: ChatContextMode) {
     this.homeView = 'chat';
+    this.botsOpen = false;
     const nextMode = normalizeContextMode(mode);
     if (this.currentChat) {
       const currentMode = normalizeContextMode(this.currentChat.contextMode);
@@ -1256,6 +1271,7 @@ class AppStore {
 
   createChat(mode: ChatContextMode = this.activeSpace, options: { workspace?: ChatSession['workspace'] } = {}) {
     this.homeView = 'chat';
+    this.botsOpen = false;
     const contextMode = normalizeContextMode(mode);
     const now = Date.now();
     const composerMode = this.defaultComposerModeFor(contextMode);
@@ -1296,6 +1312,7 @@ class AppStore {
 
   selectChat(chatId: string) {
     this.homeView = 'chat';
+    this.botsOpen = false;
     const match = this.chats.find((chat) => chat.id === chatId);
     if (!match) return;
     const mode = normalizeContextMode(match.contextMode);

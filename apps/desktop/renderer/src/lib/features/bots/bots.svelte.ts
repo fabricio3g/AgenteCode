@@ -50,6 +50,12 @@ class BotsStore {
   detail = $state<BotDetail | null>(null);
   turns = $state<Record<string, BotTurnView[]>>({});
   routines = $state<Record<string, Routine[]>>({});
+  /** The bot editor: a new bot, the open one, or closed. */
+  editor = $state<'new' | 'edit' | null>(null);
+  /** The sidebar's filter over the roster. */
+  query = $state('');
+  /** The open bot's routines, as a card in the right dock. Wide windows start with it open. */
+  routinesOpen = $state(typeof window !== 'undefined' && window.innerWidth >= 1280);
   /** Turns started from this window, by bot, so Stop can cancel them. */
   #turnIds = new Map<string, string>();
   #listening = false;
@@ -60,6 +66,14 @@ class BotsStore {
 
   get working(): Bot[] {
     return this.bots.filter((bot) => bot.working);
+  }
+
+  /** The roster, filtered by the sidebar's search. */
+  get matches(): Bot[] {
+    const needle = this.query.trim().toLowerCase();
+    return needle
+      ? this.bots.filter((bot) => bot.title.toLowerCase().includes(needle) || bot.handle.includes(needle) || bot.role.toLowerCase().includes(needle))
+      : this.bots;
   }
 
   turnsFor(handle: string | null): BotTurnView[] {

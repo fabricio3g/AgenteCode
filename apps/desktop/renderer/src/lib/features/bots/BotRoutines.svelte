@@ -43,15 +43,15 @@
   }
 </script>
 
-<aside class="routines-card flex w-[17rem] shrink-0 flex-col" aria-label={$t('bots.routines')}>
-  <div class="flex h-14 shrink-0 items-center justify-between px-4">
+<div class="flex h-full min-h-0 flex-col" role="region" aria-label={$t('bots.routines')}>
+  <div class="flex h-10 shrink-0 items-center justify-between pl-3.5 pr-1.5">
     <p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>
     <div class="flex items-center">
       <button type="button" class="icon-btn" onclick={() => (creating = true)} title={$t('bots.newRoutine')} aria-label={$t('bots.newRoutine')}>
-        <Plus class="size-4" />
+        <Plus class="size-3.5" />
       </button>
       <button type="button" class="icon-btn" onclick={onclose} title={$t('bots.close')} aria-label={$t('bots.close')}>
-        <X class="size-4" />
+        <X class="size-3.5" />
       </button>
     </div>
   </div>
@@ -94,7 +94,7 @@
       </div>
     {/each}
   </div>
-</aside>
+</div>
 
 {#if creating || editing}
   <RoutineEditor
@@ -108,18 +108,10 @@
 {/if}
 
 <style>
-  /* A right-side panel: the same rounded, bordered box as the dock. */
-  .routines-card {
-    overflow: hidden;
-    border-radius: 0.875rem;
-    border: 1px solid var(--border-hover);
-    background: var(--card);
-  }
-
   .icon-btn {
     display: inline-flex;
-    height: 1.9rem;
-    width: 1.9rem;
+    height: 1.625rem;
+    width: 1.625rem;
     align-items: center;
     justify-content: center;
     border-radius: 9999px;

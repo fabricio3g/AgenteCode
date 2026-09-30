@@ -26,7 +26,7 @@
   /** The open Code conversation, when there is one: its pane toggles live here. */
   const codeChat = $derived.by(() => {
     const chat = appStore.currentChat;
-    return appStore.activeSpace === 'code' && chat && chat.projectId && isCodeSession(chat) ? chat : null;
+    return appStore.activeTab === 'code' && chat && chat.projectId && isCodeSession(chat) ? chat : null;
   });
   const codeProject = $derived(codeStore.projectById(codeChat?.projectId ?? null));
 

@@ -1,28 +1,23 @@
 <svelte:options runes={true} />
 
 <!--
-  The roster: who is working right now, then every bot. One row per bot,
-  in the sidebar's 13px rhythm.
+  The roster, in the app sidebar when the Bots tab is open: who is working
+  right now, then every bot. One row per bot, in the sidebar's 13px rhythm.
 -->
 
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { Plus, Search } from 'lucide-svelte';
+  import { Bot as BotIcon } from 'lucide-svelte';
   import BotAvatar from './BotAvatar.svelte';
   import { botsStore } from './bots.svelte';
   import type { Bot } from './bots-ipc';
 
-  let { oncreate }: { oncreate: () => void } = $props();
+  const working = $derived(botsStore.matches.filter((bot) => bot.working));
 
-  let query = $state('');
-
-  const matches = $derived(
-    botsStore.bots.filter((bot) => {
-      const needle = query.trim().toLowerCase();
-      return !needle || bot.title.toLowerCase().includes(needle) || bot.handle.includes(needle) || bot.role.toLowerCase().includes(needle);
-    })
-  );
-  const working = $derived(matches.filter((bot) => bot.working));
+  onMount(() => {
+    if (!botsStore.loaded) void botsStore.load();
+  });
 </script>
 
 {#snippet row(bot: Bot)}
@@ -31,84 +26,86 @@
     class="bot-row"
     class:is-current={botsStore.selected === bot.handle}
     aria-current={botsStore.selected === bot.handle ? 'true' : undefined}
+    title={bot.role || `@${bot.handle}`}
     onclick={() => void botsStore.select(bot.handle)}
   >
-    <BotAvatar {bot} />
-    <span class="min-w-0 flex-1 text-left">
-      <span class="block truncate text-[13px] font-medium text-foreground">{bot.title}</span>
-      <span class="block truncate text-[11.5px] text-muted-foreground">
-        {bot.working ? $t('bots.working') : bot.role || `@${bot.handle}`}
-      </span>
-    </span>
+    <BotAvatar {bot} size="sm" />
+    <span class="bot-name">{bot.title}</span>
+    {#if bot.working}<span class="working-dot" aria-label={$t('bots.working')}></span>{/if}
   </button>
 {/snippet}
 
-<aside class="flex w-60 shrink-0 flex-col border-r border-[var(--border-subtle)]" aria-label={$t('bots.roster')}>
-  <div class="flex items-center gap-2 px-3 pb-2 pt-3">
-    <label class="search">
-      <Search class="size-3.5 shrink-0 text-muted-foreground" />
-      <input bind:value={query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
-    </label>
-    <button type="button" class="new-btn" onclick={oncreate} title={$t('bots.new')} aria-label={$t('bots.new')}>
-      <Plus class="size-4" />
-    </button>
-  </div>
-
-  <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-    {#if working.length}
-      <p class="section">{$t('bots.activeNow')}</p>
-      {#each working as bot (bot.handle)}{@render row(bot)}{/each}
-    {/if}
+<nav aria-label={$t('bots.roster')}>
+  {#if working.length}
+    <p class="section">{$t('bots.activeNow')}</p>
+    <div class="space-y-0.5">{#each working as bot (bot.handle)}{@render row(bot)}{/each}</div>
+  {/if}
+  {#if botsStore.matches.length}
     <p class="section">{$t('bots.all')}</p>
-    {#each matches as bot (bot.handle)}{@render row(bot)}{/each}
-    {#if botsStore.loaded && !matches.length}
-      <p class="px-2 py-3 text-[12px] text-muted-foreground">{$t('bots.noMatch')}</p>
-    {/if}
-  </div>
-</aside>
+    <div class="space-y-0.5">{#each botsStore.matches as bot (bot.handle)}{@render row(bot)}{/each}</div>
+  {:else if botsStore.loaded}
+    <div class="empty">
+      <BotIcon class="size-4" />
+      <p>{botsStore.query.trim() ? $t('bots.noMatch') : $t('bots.none')}</p>
+    </div>
+  {/if}
+</nav>
 
 <style>
-  .search {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    align-items: center;
-    gap: 0.4rem;
-    border-radius: 9999px;
-    border: 1px solid var(--border-subtle);
-    padding: 0.3rem 0.65rem;
-  }
-  .search input {
-    min-width: 0;
-    flex: 1;
-    background: transparent;
-    font-size: 12.5px;
-    outline: none;
-  }
-  .new-btn {
-    display: inline-flex;
-    height: 1.9rem;
-    width: 1.9rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    color: var(--muted-foreground);
-  }
-  .new-btn:hover { background: var(--surface-hover); color: var(--foreground); }
   .section {
-    padding: 0.75rem 0.5rem 0.3rem;
+    padding: 0.75rem 0.5rem 0.25rem;
+    color: var(--text-muted);
     font-size: 11px;
-    color: var(--muted-foreground);
+    font-weight: 600;
   }
+
   .bot-row {
     display: flex;
     width: 100%;
     align-items: center;
-    gap: 0.6rem;
-    border-radius: 0.6rem;
-    padding: 0.4rem 0.5rem;
+    gap: 0.5rem;
+    border-radius: var(--radius-full);
+    padding: 0.25rem 0.5rem 0.25rem 0.3rem;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: left;
   }
-  .bot-row:hover { background: var(--surface-hover); }
-  .bot-row.is-current { background: var(--surface-active); }
+
+  .bot-row:hover {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-foreground);
+  }
+
+  .bot-row.is-current {
+    background: var(--sidebar-accent);
+    color: var(--sidebar-foreground);
+    font-weight: 500;
+  }
+
+  .bot-name {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .working-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background: var(--success);
+  }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2.5rem 0.5rem;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    text-align: center;
+  }
 </style>

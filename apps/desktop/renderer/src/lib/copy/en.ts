@@ -159,11 +159,13 @@ export const COPY_EN = {
     roleplay: 'New roleplay'
   },
 
-  /** The workspaces the sidebar switches between. Keys mirror SpaceId. */
+  /** The top-bar tabs: the three spaces (keys mirror SpaceId), then Bots. */
   spaces: {
+    label: 'Sections',
     home: 'Home',
     code: 'Code',
-    roleplay: 'Roleplay'
+    roleplay: 'Roleplay',
+    bots: 'Bots'
   },
 
   /** Roleplay space: character library, personas, scenes. */

@@ -1630,7 +1630,9 @@
       "theBot": "the bot",
       "readOnlyHint": "Read-only: chats and looks things up; doesn't change files or run commands.",
       "fullHint": "Full access: for you. Tools can run, with Allow/Deny buttons in Telegram."
-    }
+    },
+    "none": "No bots yet",
+    "noneHint": "A bot has its own model, memory and routines, and keeps working when this tab is closed."
   },
   "accessibility": {
     "title": "Accessibility",
