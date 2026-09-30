@@ -14,7 +14,7 @@
   import { writeToClipboard } from '$lib/utils/clipboard';
   import FileChangesCard from '$lib/components/agent/FileChangesCard.svelte';
   import { charactersStore, greetingsFor } from '$lib/features/roleplay/characters.svelte';
-  import GreetingPager from '$lib/features/roleplay/GreetingPager.svelte';
+  import SwipePager from '$lib/features/roleplay/SwipePager.svelte';
   import ChoicePanel from '$lib/features/roleplay/ChoicePanel.svelte';
   import PropCard from '$lib/features/roleplay/PropCard.svelte';
   import PromptInspectorModal from '$lib/features/roleplay/PromptInspectorModal.svelte';
@@ -54,6 +54,11 @@
   const separateSpeakers = $derived(ctx.contextMode === 'roleplay');
   const isGreetingMessage = $derived(
     chat?.contextMode === 'roleplay' && chat.messages?.[0]?.id === ctx.message.id
+  );
+  /** Roleplay: the latest reply can be swiped to another version, or a new one. */
+  const swipeable = $derived(
+    chat?.contextMode === 'roleplay' && !isGreetingMessage && !ctx.isStreaming
+      && chat.messages.at(-1)?.id === ctx.message.id
   );
   const greetingCharacter = $derived(
     isGreetingMessage ? charactersStore.getById(chat?.characterId) : null
@@ -220,10 +225,21 @@
     {/each}
 
     {#if greetingCharacter && greetingCount > 1}
-      <GreetingPager
+      <SwipePager
+        label={$t('roleplay.swipe.greeting')}
+        wrap
         count={greetingCount}
         index={chat?.greetingIndex ?? 0}
         onchange={(index) => roleplayStore.setGreeting(greetingCharacter, index)}
+      />
+    {:else if swipeable}
+      <SwipePager
+        label={$t('roleplay.swipe.label')}
+        count={ctx.versionCount}
+        index={ctx.activeVersionIndex}
+        disabled={appStore.currentChatGenerating || appStore.currentChatBlockedByOtherLocalRun}
+        onchange={(index) => appStore.setMessageActiveVersion(ctx.message.id, index > ctx.activeVersionIndex ? 1 : -1)}
+        oncreate={() => void appStore.regenerateMessage(ctx.message.id)}
       />
     {/if}
 

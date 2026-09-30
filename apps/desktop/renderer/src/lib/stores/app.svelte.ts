@@ -8,6 +8,7 @@ import { runAgentTask } from '$lib/services/agent';
 import { applyHomeAgentResult, homeAgentCallbacks, initialHomeActivity, planHomeAgentRun, settleAgentSteps } from '$lib/features/home/home-turn';
 import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
 import { messageSpeechParts } from '$lib/features/roleplay/roleplay-voice';
+import { CONTINUE_INSTRUCTION, joinContinuation } from '$lib/features/roleplay/roleplay-steer';
 import { charactersStore } from '$lib/features/roleplay/characters.svelte';
 import { resolveComposerRoute, shouldUseToolLoop } from '$lib/services/composer-route';
 import { parseSlidesFromMarkdown } from '$lib/services/slides';
@@ -2564,6 +2565,7 @@ class AppStore {
       // Group auto mode: queue the next character turn once this one settles.
       // A stopped or failed turn ends the chain instead of retrying.
       roleplayStore.continueAuto(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
+      roleplayStore.afterTurn(targetChatId, controller.signal.aborted || assistantMessage.status === 'error');
     }
   }
 
@@ -2657,6 +2659,73 @@ class AppStore {
     }
   }
 
+  /** One non-streamed completion on the active model (roleplay drafts and summaries). */
+  async completeText(messages: RequestMessage[]): Promise<string> {
+    const result = await completeAssistantReply({ apiKey: this.activeProvider?.api_key, messages });
+    return result.content || '';
+  }
+
+  get contextRatio(): number {
+    return (this.contextBudget?.usagePercent ?? 0) / 100;
+  }
+
+  /** Roleplay "Continue": the last reply keeps going, streamed onto the same message. */
+  /** The reply "Continue" can extend: the last one in the current roleplay scene, with text. */
+  private continuable(messageId: string) {
+    const chat = this.currentChat;
+    const message = chat?.messages.at(-1);
+    const ok = chat?.contextMode === 'roleplay' && message?.id === messageId && message.role === 'assistant' && !!message.content.trim();
+    return ok && this.currentChatId ? { chat: chat!, message: message!, index: chat!.messages.length - 1, targetChatId: this.currentChatId } : null;
+  }
+
+  async continueMessage(messageId: string) {
+    const target = this.continuable(messageId);
+    if (!target) return;
+    const { chat, message, index, targetChatId } = target;
+    const activeBackendMode = this.backendMode as GenerationBackendMode;
+    const activeProvider = this.activeProvider;
+    if (!this.canStartGeneration({ backendMode: activeBackendMode, targetChatId, activeProvider, localBusyActionText: 'continuing here' })) return;
+
+    const snapshot = message.versions?.[message.activeVersion ?? 0]?.metadata?.roleplay ?? message.metadata?.roleplay;
+    const turn = roleplayStore.prepareTurn(chat, { speakerId: message.speakerId, snapshot, historyEnd: index });
+    const history = buildRequestMessagesFromHistory(chat.messages, index, roleplayStore.attribution(chat, message.speakerId));
+    const prefix = message.content;
+    const version = message.versions?.[message.activeVersion ?? 0];
+    const controller = new AbortController();
+    let added = '';
+    message.done = false;
+    message.status = 'streaming';
+    this.touchChats();
+    try {
+      this.beginGenerationRun(targetChatId, { controller, messageId: message.id, backendMode: activeBackendMode, mode: 'chat', startedAt: Date.now() });
+      const systemPrompt = this.buildSystemPromptForMode({ backendMode: activeBackendMode, providerPrompt: activeProvider?.system_prompt, chat, speakerId: turn.speakerId, roleplaySnapshot: { roleplay: snapshot } });
+      await streamAssistantReply({
+        messages: [...turn.decorate(buildOutboundMessages({ messages: history, systemPrompt })), { role: 'system', content: CONTINUE_INSTRUCTION }],
+        signal: controller.signal,
+        apiKey: activeProvider?.api_key,
+        reasoningLevel: chat.reasoningLevel ?? this.reasoningLevel,
+        sampling: turn.sampling,
+        stop: turn.stop,
+        onChunk: (value) => {
+          added += value;
+          const tail = turn.sanitize ? turn.sanitize(added) : added;
+          message.content = joinContinuation(prefix, tail);
+          if (version) version.content = message.content;
+          this.touchChats();
+        }
+      });
+    } catch (error) {
+      const failure = toErrorMessage(error) || 'Request failed';
+      if (!isAbortLikeError(failure)) this.error = failure;
+    } finally {
+      message.done = true;
+      message.status = 'idle';
+      this.endGenerationRun(targetChatId, controller);
+      this.touchChats();
+      this.persist();
+    }
+  }
+
   async regenerateMessage(messageId: string, options: { reroll?: boolean } = {}) {
     const chat = this.currentChat;
     const targetChatId = this.currentChatId;
@@ -2731,6 +2800,10 @@ class AppStore {
       if (currentActivity) nextVersion.metadata = { ...(nextVersion.metadata || {}), currentActivity, activityLabel: label };
     };
 
+    // A reply that never recorded its first version keeps it as version 1.
+    if (!message.versions?.length && message.content) {
+      message.versions = [{ content: message.content, reasoning: message.reasoning || '', createdAt: message.createdAt, metadata: message.metadata }];
+    }
     message.versions = [...(message.versions || []), nextVersion];
     message.activeVersion = message.versions.length - 1;
     // Same optimistic ack as a fresh send: intent confirmation now, replaced

@@ -10,6 +10,7 @@
 -->
 
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { onDestroy, tick } from 'svelte';
   import { ArrowDown, Paperclip } from 'lucide-svelte';
   import { t } from 'svelte-i18n';
@@ -38,9 +39,11 @@
   import NameCompletion from '$lib/features/shared/NameCompletion.svelte';
   import type { NameCandidate } from '$lib/features/shared/name-completion';
 
-  let { placeholder: customPlaceholder, nameCompletion }: {
+  let { placeholder: customPlaceholder, nameCompletion, above }: {
     placeholder?: string;
     nameCompletion?: { candidates: NameCandidate[]; automatic?: boolean; nickname?: boolean };
+    /** A row above the input, inside the composer's width (roleplay steering). */
+    above?: Snippet;
   } = $props();
 
   /** Textarea grows with content up to this height, then scrolls. */
@@ -347,6 +350,7 @@
     style="max-width: var(--thread-width);"
   >
     <ComposerModelNotice />
+    {@render above?.()}
 
     {#if appStore.activeSpace === 'home'}
       <!-- The mode tab lives above the input shell on Home: Instant for fast

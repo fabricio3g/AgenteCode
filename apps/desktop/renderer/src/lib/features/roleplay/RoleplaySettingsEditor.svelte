@@ -59,6 +59,7 @@
     { section: 'suggestions', key: 'choiceMin', label: 'Minimum suggestions', min: 1, max: 6 },
     { section: 'suggestions', key: 'choiceMax', label: 'Maximum suggestions', min: 1, max: 6 },
     { section: 'memory', key: 'memoryBudget', label: 'Memory budget (approximate tokens)', min: 100, max: 4000, step: 100 },
+    { section: 'memory', key: 'summaryEvery', label: 'Update the story summary every N replies (0 = off)', min: 0, max: 50 },
     { section: 'advanced', key: 'choiceTimerSeconds', label: 'Suggestion timer (seconds; empty = off)', min: 0, max: 600, nullable: true },
     { section: 'advanced', key: 'autoModeMaxTurns', label: 'NPC continuation limit', min: 1, max: 12 },
     { section: 'advanced', key: 'autoModeDelayMs', label: 'NPC continuation delay (ms)', min: 1000, max: 20000, step: 1000 },

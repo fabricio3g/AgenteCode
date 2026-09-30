@@ -39,6 +39,8 @@ import { createRoleplayTurn, PASSTHROUGH_TURN, type RoleplayTurn } from './rolep
 import { ensembleEnabled, resolveRoleplaySettings, sceneOverrides, sceneState } from './roleplay-settings';
 import { copyScene, decideTurn, sceneForChat, seededRandom, stripSceneBlock, turnSnapshot, restrictContributions } from './roleplay-scene';
 import { roleplayPreferences } from './roleplay-presets.svelte';
+import { cleanDraft, impersonationMessages, summaryDue, summaryMessages, transcript, unsummarized } from './roleplay-steer';
+import type { RequestMessage } from '$lib/services/chat-api';
 
 /** What the roleplay store needs from the app store. */
 interface RoleplayHost {
@@ -53,6 +55,10 @@ interface RoleplayHost {
   touchChats(): void;
   persist(): void;
   sendCurrentMessage(options?: { silent?: boolean }): Promise<void>;
+  /** One non-streamed completion on the active model; the reply text. */
+  completeText(messages: RequestMessage[]): Promise<string>;
+  /** How full the current context is, 0–1. */
+  readonly contextRatio: number;
 }
 
 /** The journal rides on the chat's roleplay JSON, so it stays bounded. */
@@ -80,6 +86,10 @@ class RoleplayStore {
   private autoTimers: Record<string, ReturnType<typeof setTimeout>> = {};
   /** Wall-clock deadline of the pending auto turn, for the header countdown. */
   autoDeadlines = $state<Record<string, number>>({});
+  /** A draft of your next line is being written. */
+  impersonating = $state(false);
+  /** Chats whose story summary is being updated. */
+  summarizing = $state<Record<string, boolean>>({});
 
   bind(host: RoleplayHost) {
     this.host = host;
@@ -98,6 +108,78 @@ class RoleplayStore {
 
   private patchSettings(chat: ChatSession, patch: Partial<RoleplaySettings>) {
     chat.roleplay = { ...(chat.roleplay || {}), ...patch } as RoleplaySettings;
+  }
+
+  // ── Steering and memory ───────────────────────────────────────────────
+
+  /** How a turn is labelled in a transcript: your persona, the speaker, or the narrator. */
+  private transcriptName(chat: ChatSession, message: ChatMessage): string {
+    if (message.role === 'user') return charactersStore.getPersonaById(chat.personaId)?.name || this.host.userName || 'User';
+    return this.cardForId(chat, message.speakerId)?.name || 'Narrator';
+  }
+
+  /** Draft your next line in your persona's voice and put it in the composer to edit. */
+  async impersonate() {
+    const chat = this.scene;
+    if (!chat || this.impersonating || this.host.currentChatGenerating) return;
+    const persona = charactersStore.getPersonaById(chat.personaId);
+    const userName = persona?.name || this.host.userName || 'User';
+    this.impersonating = true;
+    try {
+      const draft = await this.host.completeText(impersonationMessages({
+        userName,
+        persona: persona?.description,
+        characters: this.cast(chat).map((card) => card.name),
+        transcript: transcript(chat.messages, (message) => this.transcriptName(chat, message))
+      }));
+      const line = cleanDraft(draft, userName);
+      if (line && this.host.currentChatId === chat.id) this.host.composer = line;
+    } catch (cause) {
+      toastStore.error(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      this.impersonating = false;
+    }
+  }
+
+  /** Fold the turns since the last summary into the story so far. */
+  async summarize(chatId: string) {
+    const chat = this.host.findChat(chatId);
+    if (!isRoleplay(chat) || this.summarizing[chatId]) return;
+    const previous = chat.roleplay?.storySummary;
+    const turns = unsummarized(chat.messages, previous);
+    if (!turns.length) return;
+    this.summarizing = { ...this.summarizing, [chatId]: true };
+    try {
+      const words = Math.max(60, Math.round((this.settings(chat).memoryBudget ?? 800) * 0.5));
+      const text = (await this.host.completeText(summaryMessages({
+        previous: previous?.text,
+        transcript: transcript(turns, (message) => this.transcriptName(chat, message)),
+        words
+      }))).trim();
+      if (text) this.patchSettings(chat, { storySummary: { text, throughId: turns.at(-1)!.id, updatedAt: Date.now() } });
+    } catch {
+      // Best effort: the next turn tries again.
+    } finally {
+      const { [chatId]: _done, ...rest } = this.summarizing;
+      this.summarizing = rest;
+    }
+  }
+
+  /** Edit the story so far by hand; it then continues from there. */
+  setSummary(text: string) {
+    const chat = this.scene;
+    if (!chat) return;
+    this.patchSettings(chat, { storySummary: text.trim() ? { text: text.trim(), throughId: chat.roleplay?.storySummary?.throughId ?? chat.messages.at(-1)?.id ?? null, updatedAt: Date.now() } : null });
+  }
+
+  /** After a reply settles: update the summary when it's due. */
+  afterTurn(chatId: string, failed = false) {
+    const chat = this.host.findChat(chatId);
+    if (failed || !isRoleplay(chat)) return;
+    const settings = this.settings(chat);
+    if (settings.memoryEnabled && summaryDue(chat.messages, chat.roleplay?.storySummary, settings.summaryEvery ?? 8, this.host.contextRatio)) {
+      void this.summarize(chatId);
+    }
   }
 
   // ── Cast and speakers ─────────────────────────────────────────────────
@@ -599,8 +681,9 @@ class RoleplayStore {
     for (const npc of room.npcs) characters.push(emptyCharacter({ id: npc.id, name: npc.name, description: npc.description }));
     const memoryLimit = (settings.memoryBudget ?? 800) * 4;
     const journal = (settings.journal ?? []).filter((entry) => entry.pinned && (!entry.messageId || chat?.messages.some((message) => message.id === entry.messageId)));
+    const summary = chat?.roleplay?.storySummary?.text?.trim();
     const memoryContext = settings.memoryEnabled
-      ? [...journal.map((entry) => `${entry.title}: ${entry.body}`), ...room.facts, ...room.goals.map((goal) => `Goal: ${goal}`), ...room.relationships].join('\n').slice(0, memoryLimit) : '';
+      ? [...(summary ? [`Story so far: ${summary}`] : []), ...journal.map((entry) => `${entry.title}: ${entry.body}`), ...room.facts, ...room.goals.map((goal) => `Goal: ${goal}`), ...room.relationships].join('\n').slice(0, memoryLimit) : '';
     const sceneContext = [
       `Location: ${room.location || 'as established in conversation'}`,
       ...characters.map((card) => `${card.id}: ${card.name} — ${room.presentIds.includes(card.id) || room.npcs.some((npc) => npc.id === card.id) ? settings.mutedIds?.includes(card.id) ? 'present, silent' : 'present' : 'absent'}`)

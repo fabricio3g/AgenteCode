@@ -1704,6 +1704,37 @@
       "success": "Erfolg",
       "cost": "Erfolg mit Preis",
       "setback": "Rückschlag"
+    },
+    "swipe": {
+      "label": "Antwortversionen",
+      "greeting": "Begrüßung",
+      "previous": "Vorherige Version",
+      "next": "Nächste Version",
+      "new": "Andere Version schreiben"
+    },
+    "steer": {
+      "label": "Szene lenken",
+      "continue": "Weiter",
+      "continueHint": "Letzte Antwort fortsetzen",
+      "impersonate": "Für mich schreiben",
+      "impersonateHint": "Entwirft deine nächste Zeile in der Stimme deiner Persona, zum Bearbeiten vor dem Senden",
+      "note": "Autorennotiz",
+      "noteHint": "Hinweise, die das Modell in jedem Zug beachtet",
+      "notePlaceholder": "z. B. Langsam und angespannt; Ren verbirgt, was sie weiß.",
+      "choices": "Optionen",
+      "choicesHint": "Nach jeder Antwort ein paar mögliche Handlungen anbieten",
+      "twist": "Wendung",
+      "twistHint": "Etwas Unerwartetes in die Szene werfen"
+    },
+    "placeholder": {
+      "scene": "Sag oder tu etwas…",
+      "chat": "Nachricht an {name}…",
+      "room": "den Raum"
+    },
+    "journal": {
+      "storySoFar": "Bisherige Geschichte",
+      "refreshSummary": "Zusammenfassung jetzt aktualisieren",
+      "summaryEmpty": "Wird im Laufe der Szene geschrieben, damit lange Geschichten stimmig bleiben. Du kannst sie bearbeiten."
     }
   }
 }

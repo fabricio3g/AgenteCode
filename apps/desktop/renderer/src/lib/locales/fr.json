@@ -1704,6 +1704,37 @@
       "success": "Réussite",
       "cost": "Réussite avec un prix",
       "setback": "Revers"
+    },
+    "swipe": {
+      "label": "Versions de la réponse",
+      "greeting": "Message d'ouverture",
+      "previous": "Version précédente",
+      "next": "Version suivante",
+      "new": "Écrire une autre version"
+    },
+    "steer": {
+      "label": "Orienter la scène",
+      "continue": "Continuer",
+      "continueHint": "Prolonger la dernière réponse",
+      "impersonate": "Écrire pour moi",
+      "impersonateHint": "Rédige votre prochaine réplique avec la voix de votre persona, à modifier avant l'envoi",
+      "note": "Note de l'auteur",
+      "noteHint": "Des consignes que le modèle garde en tête à chaque tour",
+      "notePlaceholder": "ex. : Rythme lent et tendu ; Ren cache ce qu'elle sait.",
+      "choices": "Choix",
+      "choicesHint": "Proposer quelques actions possibles après chaque réponse",
+      "twist": "Rebondissement",
+      "twistHint": "Introduire un imprévu dans la scène"
+    },
+    "placeholder": {
+      "scene": "Dites ou faites quelque chose…",
+      "chat": "Message à {name}…",
+      "room": "la pièce"
+    },
+    "journal": {
+      "storySoFar": "L'histoire jusqu'ici",
+      "refreshSummary": "Mettre à jour le résumé",
+      "summaryEmpty": "Rédigé au fil de la scène pour que les longues histoires restent cohérentes. Vous pouvez le modifier."
     }
   }
 }

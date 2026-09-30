@@ -671,6 +671,15 @@ export interface RoleplaySettings extends RoleplayOptions {
   sceneOrigin?: RoleplaySceneState;
   /** The turn at which the user last adjusted the room manually. */
   sceneAnchorId?: string;
+  /** The story so far, kept by the model and editable in the journal. */
+  storySummary?: RoleplayStorySummary | null;
+}
+
+export interface RoleplayStorySummary {
+  text: string;
+  /** The last message the summary covers. */
+  throughId: string | null;
+  updatedAt: number;
 }
 
 export interface RoleplayOptions {
@@ -692,6 +701,8 @@ export interface RoleplayOptions {
   memoryEnabled?: boolean;
   autoMemory?: boolean;
   memoryBudget?: number;
+  /** Update the story summary every this many replies; 0 turns it off. */
+  summaryEvery?: number;
   autocomplete?: 'off' | 'mention' | 'automatic';
   nameInsertion?: 'name' | 'nickname';
   choiceExpiry?: 'pause' | 'silence' | 'event';

@@ -1704,6 +1704,37 @@
       "success": "成功",
       "cost": "有代价的成功",
       "setback": "挫折"
+    },
+    "swipe": {
+      "label": "回复版本",
+      "greeting": "开场白",
+      "previous": "上一个版本",
+      "next": "下一个版本",
+      "new": "再写一个版本"
+    },
+    "steer": {
+      "label": "引导场景",
+      "continue": "继续",
+      "continueHint": "让上一条回复继续写下去",
+      "impersonate": "替我写",
+      "impersonateHint": "以你的人设口吻起草下一句,发送前可编辑",
+      "note": "作者注",
+      "noteHint": "模型每一回合都会参考的指引",
+      "notePlaceholder": "例如:节奏放慢、保持紧张;Ren 隐瞒她知道的事。",
+      "choices": "选项",
+      "choicesHint": "每条回复后提供几个可选行动",
+      "twist": "转折",
+      "twistHint": "给场景加点意外"
+    },
+    "placeholder": {
+      "scene": "说点什么或做点什么…",
+      "chat": "给 {name} 发消息…",
+      "room": "大家"
+    },
+    "journal": {
+      "storySoFar": "前情提要",
+      "refreshSummary": "立即更新摘要",
+      "summaryEmpty": "随场景推进自动撰写,让长篇故事保持连贯。你可以编辑。"
     }
   }
 }

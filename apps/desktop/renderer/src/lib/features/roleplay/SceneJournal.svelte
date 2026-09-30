@@ -9,7 +9,8 @@
 -->
 
 <script lang="ts">
-  import { BookMarked, Pin, Plus, Trash2, X } from 'lucide-svelte';
+  import { BookMarked, LoaderCircle, Pin, Plus, RefreshCw, Trash2, X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { flyAndScale, motionFade } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import { appStore } from '$lib/stores/app.svelte';
@@ -32,6 +33,8 @@
   ];
 
   const entries = $derived(appStore.currentChat?.roleplay?.journal ?? []);
+  const summary = $derived(appStore.currentChat?.roleplay?.storySummary?.text ?? '');
+  const summarizing = $derived(!!roleplayStore.summarizing[appStore.currentChatId || '']);
 
   const grouped = $derived(
     SECTIONS.map((section) => ({
@@ -100,6 +103,30 @@
     </div>
 
     <div class="aui-modal-body max-h-[58vh] space-y-4 overflow-y-auto">
+      <section class="section">
+        <div class="flex items-center gap-2">
+          <h3 class="section-label min-w-0 flex-1">{$t('roleplay.journal.storySoFar')}</h3>
+          <button
+            type="button"
+            class="tool"
+            disabled={summarizing || appStore.currentChatGenerating}
+            aria-label={$t('roleplay.journal.refreshSummary')}
+            title={$t('roleplay.journal.refreshSummary')}
+            onclick={() => appStore.currentChatId && void roleplayStore.summarize(appStore.currentChatId)}
+          >
+            {#if summarizing}<LoaderCircle class="size-3 animate-spin" />{:else}<RefreshCw class="size-3" />{/if}
+          </button>
+        </div>
+        <textarea
+          class="summary-input"
+          rows="4"
+          value={summary}
+          placeholder={$t('roleplay.journal.summaryEmpty')}
+          aria-label={$t('roleplay.journal.storySoFar')}
+          onchange={(event) => roleplayStore.setSummary(event.currentTarget.value)}
+        ></textarea>
+      </section>
+
       {#if !grouped.length && !adding}
         <p class="empty">
           Nothing kept yet. Props the scene hands over land here, and you can pin your own notes.
@@ -172,6 +199,23 @@
 </div>
 
 <style>
+  .summary-input {
+    width: 100%;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    padding: 0.45rem 0.6rem;
+    color: var(--foreground);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .summary-input:focus {
+    outline: none;
+    border-color: var(--border-hover);
+  }
+
   .journal-surface {
     display: flex;
     flex-direction: column;

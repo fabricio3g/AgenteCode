@@ -1704,6 +1704,37 @@
       "success": "Sucesso",
       "cost": "Sucesso com um custo",
       "setback": "Revés"
+    },
+    "swipe": {
+      "label": "Versões da resposta",
+      "greeting": "Saudação inicial",
+      "previous": "Versão anterior",
+      "next": "Próxima versão",
+      "new": "Escrever outra versão"
+    },
+    "steer": {
+      "label": "Conduzir a cena",
+      "continue": "Continuar",
+      "continueHint": "Deixar a última resposta continuar",
+      "impersonate": "Escrever por mim",
+      "impersonateHint": "Rascunha sua próxima fala na voz da sua persona, para editar antes de enviar",
+      "note": "Nota do autor",
+      "noteHint": "Orientação que o modelo considera a cada turno",
+      "notePlaceholder": "ex.: Mantenha lento e tenso; Ren esconde o que sabe.",
+      "choices": "Escolhas",
+      "choicesHint": "Oferecer algumas ações possíveis após cada resposta",
+      "twist": "Reviravolta",
+      "twistHint": "Lançar algo inesperado na cena"
+    },
+    "placeholder": {
+      "scene": "Diga ou faça algo…",
+      "chat": "Mensagem para {name}…",
+      "room": "a sala"
+    },
+    "journal": {
+      "storySoFar": "A história até aqui",
+      "refreshSummary": "Atualizar o resumo agora",
+      "summaryEmpty": "Escrito conforme a cena avança, para que histórias longas fiquem coerentes. Você pode editá-lo."
     }
   }
 }

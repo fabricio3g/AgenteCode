@@ -1704,6 +1704,37 @@
       "success": "Success",
       "cost": "Success with a cost",
       "setback": "Setback"
+    },
+    "swipe": {
+      "label": "Reply versions",
+      "greeting": "Opening greeting",
+      "previous": "Previous version",
+      "next": "Next version",
+      "new": "Write another version"
+    },
+    "steer": {
+      "label": "Steer the scene",
+      "continue": "Continue",
+      "continueHint": "Let the last reply keep going",
+      "impersonate": "Write for me",
+      "impersonateHint": "Draft your next line in your persona's voice, to edit before sending",
+      "note": "Author's note",
+      "noteHint": "Guidance the model keeps in mind every turn",
+      "notePlaceholder": "e.g. Keep it slow and tense; Ren hides what she knows.",
+      "choices": "Choices",
+      "choicesHint": "Offer a few things you could do after each reply",
+      "twist": "Twist",
+      "twistHint": "Throw something unexpected into the scene"
+    },
+    "placeholder": {
+      "scene": "Say or do something…",
+      "chat": "Message {name}…",
+      "room": "the room"
+    },
+    "journal": {
+      "storySoFar": "Story so far",
+      "refreshSummary": "Update the summary now",
+      "summaryEmpty": "Written as the scene goes on, so long stories stay consistent. You can edit it."
     }
   }
 }

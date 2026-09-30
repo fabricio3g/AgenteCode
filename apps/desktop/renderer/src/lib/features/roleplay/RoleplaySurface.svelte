@@ -29,6 +29,8 @@
   import SceneJournal from './SceneJournal.svelte';
   import RoleplaySceneHeader from './RoleplaySceneHeader.svelte';
   import RoleplaySettingsModal from './RoleplaySettingsModal.svelte';
+  import RoleplaySteerBar from './RoleplaySteerBar.svelte';
+  import { t } from 'svelte-i18n';
 
   const currentChat = $derived(appStore.currentChat);
   const character = $derived(charactersStore.getById(currentChat?.characterId));
@@ -171,7 +173,6 @@
         mutedIds={currentChat?.roleplay?.mutedIds ?? []}
         nextSpeakerId={nextSpeaker?.id ?? null}
         autoMode={settings.autoMode}
-        adventureChoices={settings.adventureChoices}
         disabled={appStore.currentChatGenerating}
         onpersona={onPersona}
         onpersonaedit={(persona) => {
@@ -182,8 +183,6 @@
         onspeak={(id) => void roleplayStore.speakNow(id)}
         onmute={(id) => roleplayStore.toggleMute(id)}
         onauto={(enabled) => roleplayStore.setAutoMode(enabled)}
-        onchoices={(enabled) => roleplayStore.setOption('adventureChoices', enabled)}
-        ontwist={() => void roleplayStore.throwTwist()}
         onjournal={() => (journalOpen = true)}
       />
       <Thread density={settings.messageDensity} />
@@ -215,7 +214,12 @@
           {/if}
         </div>
       {/if}
-      <Composer placeholder={settings.interactionMode !== 'chat' ? 'Say or do something…' : `Message ${character?.name || 'the room'}…`} nameCompletion={completion} />
+      <Composer
+        placeholder={settings.interactionMode !== 'chat' ? $t('roleplay.placeholder.scene') : $t('roleplay.placeholder.chat', { values: { name: character?.name || $t('roleplay.placeholder.room') } })}
+        nameCompletion={completion}
+      >
+        {#snippet above()}<RoleplaySteerBar />{/snippet}
+      </Composer>
     {/if}
   </div>
 </div>

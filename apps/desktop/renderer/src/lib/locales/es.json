@@ -1704,6 +1704,37 @@
       "success": "Éxito",
       "cost": "Éxito con un coste",
       "setback": "Contratiempo"
+    },
+    "swipe": {
+      "label": "Versiones de la respuesta",
+      "greeting": "Saludo inicial",
+      "previous": "Versión anterior",
+      "next": "Siguiente versión",
+      "new": "Escribir otra versión"
+    },
+    "steer": {
+      "label": "Dirigir la escena",
+      "continue": "Continuar",
+      "continueHint": "Que la última respuesta siga",
+      "impersonate": "Escribir por mí",
+      "impersonateHint": "Redacta tu próxima frase con la voz de tu persona, para editarla antes de enviar",
+      "note": "Nota del autor",
+      "noteHint": "Indicaciones que el modelo tiene en cuenta en cada turno",
+      "notePlaceholder": "p. ej. Mantén un ritmo lento y tenso; Ren oculta lo que sabe.",
+      "choices": "Opciones",
+      "choicesHint": "Ofrecer algunas acciones posibles tras cada respuesta",
+      "twist": "Giro",
+      "twistHint": "Introducir algo inesperado en la escena"
+    },
+    "placeholder": {
+      "scene": "Di o haz algo…",
+      "chat": "Mensaje para {name}…",
+      "room": "la sala"
+    },
+    "journal": {
+      "storySoFar": "La historia hasta ahora",
+      "refreshSummary": "Actualizar el resumen ahora",
+      "summaryEmpty": "Se escribe a medida que avanza la escena, para que las historias largas sean coherentes. Puedes editarlo."
     }
   }
 }

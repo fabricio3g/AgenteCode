@@ -1704,6 +1704,37 @@
       "success": "成功",
       "cost": "代償付きの成功",
       "setback": "挫折"
+    },
+    "swipe": {
+      "label": "返信のバージョン",
+      "greeting": "最初のあいさつ",
+      "previous": "前のバージョン",
+      "next": "次のバージョン",
+      "new": "別のバージョンを書く"
+    },
+    "steer": {
+      "label": "シーンを導く",
+      "continue": "続ける",
+      "continueHint": "最後の返信を続けさせる",
+      "impersonate": "代わりに書く",
+      "impersonateHint": "ペルソナの口調で次のセリフを下書きします。送信前に編集できます",
+      "note": "作者のメモ",
+      "noteHint": "毎ターン、モデルが意識する指示",
+      "notePlaceholder": "例: ゆっくり緊張感を保つ。レンは知っていることを隠す。",
+      "choices": "選択肢",
+      "choicesHint": "返信ごとにできることをいくつか提案する",
+      "twist": "急展開",
+      "twistHint": "シーンに予想外の出来事を起こす"
+    },
+    "placeholder": {
+      "scene": "何か話すか、行動する…",
+      "chat": "{name}にメッセージ…",
+      "room": "この場"
+    },
+    "journal": {
+      "storySoFar": "これまでの物語",
+      "refreshSummary": "今すぐ要約を更新",
+      "summaryEmpty": "シーンの進行に合わせて書かれ、長い物語の一貫性を保ちます。編集できます。"
     }
   }
 }

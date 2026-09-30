@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import Avatar from '$lib/components/ui/Avatar.svelte';
-  import { Ban, BookOpen, Dices, ListOrdered, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
+  import { Ban, BookOpen, Pause, Pencil, Play, Plus, Settings2 } from 'lucide-svelte';
   import { Select } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { appStore } from '$lib/stores/app.svelte';
@@ -25,7 +25,6 @@
     mutedIds?: string[];
     nextSpeakerId?: string | null;
     autoMode?: boolean;
-    adventureChoices?: boolean;
     /** Turns the scene controls off while a reply is generating. */
     disabled?: boolean;
     onpersona?: (personaId: string | null) => void;
@@ -34,8 +33,6 @@
     onspeak?: (characterId: string) => void;
     onmute?: (characterId: string) => void;
     onauto?: (enabled: boolean) => void;
-    onchoices?: (enabled: boolean) => void;
-    ontwist?: () => void;
     onjournal?: () => void;
     mode?: 'chat' | 'narrative' | 'dynamic';
     onmode?: (mode: 'chat' | 'narrative' | 'dynamic') => void;
@@ -50,7 +47,6 @@
     mutedIds = [],
     nextSpeakerId = null,
     autoMode = false,
-    adventureChoices = false,
     disabled = false,
     onpersona,
     onpersonaedit,
@@ -58,8 +54,6 @@
     onspeak,
     onmute,
     onauto,
-    onchoices,
-    ontwist,
     onjournal,
     mode = 'chat', onmode, onsettings, presentIds
   }: Props = $props();
@@ -169,30 +163,6 @@
         {/if}
         <span>Auto</span>
       </button>
-    {/if}
-
-    <button
-      type="button"
-      class="auto-pill {adventureChoices ? 'is-on' : ''}"
-      aria-pressed={adventureChoices}
-      title={adventureChoices ? 'Stop offering choices' : 'Offer choices after each reply'}
-      onclick={() => onchoices?.(!adventureChoices)}
-    >
-      <ListOrdered class="size-3" />
-      <span>Choices</span>
-    </button>
-
-    {#if mode === 'dynamic'}
-    <button
-      type="button"
-      class="auto-pill"
-      title="Throw a twist into the scene"
-      disabled={disabled}
-      onclick={() => ontwist?.()}
-    >
-      <Dices class="size-3" />
-      <span>Twist</span>
-    </button>
     {/if}
 
     {#if onjournal}

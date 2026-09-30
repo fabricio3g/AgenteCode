@@ -15,7 +15,7 @@ const CHAT: RoleplaySettings = {
   surprise: 15, twistCooldown: 3, choiceMin: 2, choiceMax: 4,
   decisionWeights: { reaction: 3, connection: 2, discovery: 1, opportunity: 1, pressure: 1, quiet: 3 },
   outcomeRolls: false, outcomeWeights: { success: 5, cost: 3, setback: 2 }, showOutcomes: true,
-  memoryEnabled: true, autoMemory: true, memoryBudget: 800,
+  memoryEnabled: true, autoMemory: true, memoryBudget: 800, summaryEvery: 8,
   autocomplete: 'mention', nameInsertion: 'name', choiceExpiry: 'pause',
   genre: '', stakes: 'balanced', rerollEnabled: true, sceneNpcs: false,
   showAvatars: true, messageDensity: 'comfortable', actionFormatting: 'emphasis', voicePlayback: true,
@@ -71,6 +71,7 @@ export function resolveRoleplaySettings(...layers: Array<Partial<RoleplaySetting
   merged.choiceMin = bounded(merged.choiceMin, 2, 1, 6);
   merged.choiceMax = bounded(merged.choiceMax, 4, merged.choiceMin, 6);
   merged.memoryBudget = bounded(merged.memoryBudget, 800, 100, 4000);
+  merged.summaryEvery = bounded(merged.summaryEvery, 8, 0, 50);
   merged.autoModeMaxTurns = bounded(merged.autoModeMaxTurns, 4, 1, 12);
   merged.autoModeDelayMs = bounded(merged.autoModeDelayMs, 8000, 1000, 20000);
   merged.choiceTimerSeconds = merged.choiceTimerSeconds == null ? null : bounded(merged.choiceTimerSeconds, 0, 0, 600);
