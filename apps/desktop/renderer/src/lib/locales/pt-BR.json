@@ -56,7 +56,12 @@
       "reserved": "{n} tokens reservados para a resposta",
       "priceIn": "Entrada ${price}/1M",
       "priceOut": "Saída ${price}/1M",
-      "estimate": "Custo estimado de entrada: ${cost}"
+      "estimate": "Custo estimado de entrada: ${cost}",
+      "remaining": "{n} tokens restantes",
+      "spend": "Custo da conversa: {cost}",
+      "estimatedSpend": "Custo estimado da conversa: {cost}",
+      "unpriced": "Algumas chamadas não têm preço informado",
+      "cached": "{percent}% do cache"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "Enter para enviar · Shift+Enter para nova linha · Modo e configurações de busca se aplicam por mensagem",
     "thinking": {
       "title": "Raciocínio",
-      "auto": "Padrão do modelo",
-      "off": "Responde na hora",
-      "on": "Raciocina antes de responder"
+      "trigger": "Raciocínio: {level}",
+      "modelDefault": "Auto · {level}",
+      "level": {
+        "auto": "Auto",
+        "off": "Desativado",
+        "disabled": "Desativado",
+        "none": "Nenhum",
+        "default": "Padrão",
+        "minimal": "Mínimo",
+        "low": "Baixo",
+        "medium": "Médio",
+        "high": "Alto",
+        "max": "Máximo",
+        "xhigh": "Muito alto",
+        "enabled": "Ativado",
+        "on": "Ativado"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "Mais ações",
     "attach": "Anexar arquivos",
-    "spendDetail": "Quanto esta conversa custou e quanto do prompt veio do cache",
     "projectFiles": "Arquivos do projeto",
     "media": {
       "title": "Anexar mídia",

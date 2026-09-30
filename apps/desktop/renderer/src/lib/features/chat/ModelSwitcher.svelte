@@ -16,11 +16,10 @@
   import ProviderIcon from '$lib/components/ui/ProviderIcon.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import type { ModelOption } from '$lib/types/chat';
-  import ReasoningLevelSelector from './composer/ReasoningLevelSelector.svelte';
   import { buildLocalModelSecondaryText, formatContextLength, localModelMatchesSearch } from '$lib/utils/local-models';
   import { configuredProviders, defaultBaseUrl, providerLabel } from '$lib/utils/providers';
 
-  let { compact = false, showReasoning = false }: { compact?: boolean; showReasoning?: boolean } = $props();
+  let { compact = false }: { compact?: boolean } = $props();
 
   const isAnyModelLoaded = $derived(!!appStore.localModelActive);
   const loadedModelName = $derived(appStore.localModelActive?.name || '');
@@ -505,8 +504,6 @@
         </Tooltip>
       {/if}
     </div>
-
-    {#if showReasoning}<div class="px-3 pb-2"><ReasoningLevelSelector /></div>{/if}
 
     <!-- Runtime busy -->
     {#if appStore.backendMode === 'local' && localLoading}

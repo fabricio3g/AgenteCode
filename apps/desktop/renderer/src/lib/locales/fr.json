@@ -56,7 +56,12 @@
       "reserved": "{n} jetons réservés à la réponse",
       "priceIn": "Entrée {price} $/1M",
       "priceOut": "Sortie {price} $/1M",
-      "estimate": "Coût estimé en entrée : {cost} $"
+      "estimate": "Coût estimé en entrée : {cost} $",
+      "remaining": "{n} tokens restants",
+      "spend": "Coût de la conversation : {cost}",
+      "estimatedSpend": "Coût estimé de la conversation : {cost}",
+      "unpriced": "Certains appels n’ont pas de prix indiqué",
+      "cached": "{percent}% depuis le cache"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "Entrée pour envoyer · Shift+Entrée pour nouvelle ligne · Le mode et les paramètres de recherche s'appliquent par message",
     "thinking": {
       "title": "Réflexion",
-      "auto": "Par défaut du modèle",
-      "off": "Répond tout de suite",
-      "on": "Réfléchit avant de répondre"
+      "trigger": "Réflexion : {level}",
+      "modelDefault": "Auto · {level}",
+      "level": {
+        "auto": "Auto",
+        "off": "Désactivé",
+        "disabled": "Désactivé",
+        "none": "Aucun",
+        "default": "Par défaut",
+        "minimal": "Minimal",
+        "low": "Faible",
+        "medium": "Moyen",
+        "high": "Élevé",
+        "max": "Maximum",
+        "xhigh": "Très élevé",
+        "enabled": "Activé",
+        "on": "Activé"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "Plus d'actions",
     "attach": "Joindre des fichiers",
-    "spendDetail": "Ce qu'a coûté cette conversation, et la part du prompt venue du cache",
     "projectFiles": "Fichiers du projet",
     "media": {
       "title": "Joindre des médias",

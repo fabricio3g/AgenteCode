@@ -56,7 +56,12 @@
       "reserved": "{n} tokens kept for the reply",
       "priceIn": "In ${price}/1M",
       "priceOut": "Out ${price}/1M",
-      "estimate": "Estimated input cost: ${cost}"
+      "estimate": "Estimated input cost: ${cost}",
+      "remaining": "{n} tokens remaining",
+      "spend": "Conversation cost: {cost}",
+      "estimatedSpend": "Estimated conversation cost: {cost}",
+      "unpriced": "Some calls have no reported price",
+      "cached": "{percent}% from cache"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "Enter to send · Shift+Enter for newline · Mode and search settings apply per message",
     "thinking": {
       "title": "Thinking",
-      "auto": "Model default",
-      "off": "Answer right away",
-      "on": "Reason before answering"
+      "trigger": "Thinking: {level}",
+      "modelDefault": "Auto · {level}",
+      "level": {
+        "auto": "Auto",
+        "off": "Off",
+        "disabled": "Off",
+        "none": "None",
+        "default": "Default",
+        "minimal": "Minimal",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "max": "Max",
+        "xhigh": "Extra high",
+        "enabled": "On",
+        "on": "On"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "More actions",
     "attach": "Attach files",
-    "spendDetail": "What this conversation cost, and how much of the prompt came from cache",
     "projectFiles": "Project files",
     "media": {
       "title": "Attach media",

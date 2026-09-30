@@ -668,7 +668,7 @@ textarea {
 }
 
 .composer-bar-leading { flex: 1 1 auto; }
-.composer-bar-trailing { flex: 0 1 auto; justify-content: flex-end; }
+.composer-bar-trailing { flex: 0 0 auto; justify-content: flex-end; }
 
 /* A secondary action beside send ("Continue", "Choose a model"). */
 .composer-chip {

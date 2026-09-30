@@ -56,7 +56,12 @@
       "reserved": "{n} tokens reservados para la respuesta",
       "priceIn": "Entrada ${price}/1M",
       "priceOut": "Salida ${price}/1M",
-      "estimate": "Coste estimado de entrada: ${cost}"
+      "estimate": "Coste estimado de entrada: ${cost}",
+      "remaining": "{n} tokens restantes",
+      "spend": "Coste de la conversación: {cost}",
+      "estimatedSpend": "Coste estimado de la conversación: {cost}",
+      "unpriced": "Algunas llamadas no tienen precio informado",
+      "cached": "{percent}% de caché"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "Intro para enviar · Shift+Intro para nueva línea · La configuración de modo y búsqueda se aplica por mensaje",
     "thinking": {
       "title": "Razonamiento",
-      "auto": "Lo que use el modelo",
-      "off": "Responde al instante",
-      "on": "Razona antes de responder"
+      "trigger": "Razonamiento: {level}",
+      "modelDefault": "Auto · {level}",
+      "level": {
+        "auto": "Auto",
+        "off": "Desactivado",
+        "disabled": "Desactivado",
+        "none": "Ninguno",
+        "default": "Predeterminado",
+        "minimal": "Mínimo",
+        "low": "Bajo",
+        "medium": "Medio",
+        "high": "Alto",
+        "max": "Máximo",
+        "xhigh": "Muy alto",
+        "enabled": "Activado",
+        "on": "Activado"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "Más acciones",
     "attach": "Adjuntar archivos",
-    "spendDetail": "Lo que costó esta conversación y cuánto del prompt vino de la caché",
     "projectFiles": "Archivos del proyecto",
     "media": {
       "title": "Adjuntar archivos multimedia",

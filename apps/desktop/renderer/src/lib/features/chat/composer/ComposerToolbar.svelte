@@ -2,7 +2,7 @@
 
 <!--
   Home composer's right-hand cluster, the same shape as Code's: the status
-  line (the last reply's tokens and speed, and the context ring), dictation,
+  context ring with its details card, dictation,
   and the shared send/stop button.
 -->
 
@@ -12,7 +12,6 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';
   import ContextUsageRing from './ContextUsageRing.svelte';
-  import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import type { Dictation } from './use-dictation.svelte';
 
@@ -43,8 +42,8 @@
   );
 </script>
 
-{#snippet contextRing()}
-  {#if contextBudget}
+<div class="composer-bar-trailing">
+  {#if showContextRing && contextBudget}
     <ContextUsageRing
       usedTokens={contextBudget.usedTokens ?? 0}
       maxTokens={contextBudget.maxContext ?? Number(appStore.config.llm?.local?.context_length || 4096)}
@@ -52,12 +51,10 @@
       promptCostPerMillionUsd={contextBudget.promptCostPerMillionUsd}
       completionCostPerMillionUsd={contextBudget.completionCostPerMillionUsd}
       estimatedInputCostUsd={contextBudget.estimatedInputCostUsd}
+      remaining={contextBudget.remaining}
+      usagePercent={contextBudget.usagePercent}
     />
   {/if}
-{/snippet}
-
-<div class="composer-bar-trailing">
-  <ComposerStatus ring={showContextRing ? contextRing : undefined} />
 
   {#if !generating}
     <button
@@ -77,7 +74,7 @@
           {/each}
         </span>
       {:else}
-        <Mic class="size-4" />
+        <Mic class="size-3.5" />
       {/if}
     </button>
   {/if}

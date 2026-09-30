@@ -56,7 +56,12 @@
       "reserved": "返信用に {n} トークンを確保",
       "priceIn": "入力 ${price}/1M",
       "priceOut": "出力 ${price}/1M",
-      "estimate": "推定入力コスト: ${cost}"
+      "estimate": "推定入力コスト: ${cost}",
+      "remaining": "残り {n} トークン",
+      "spend": "会話の費用: {cost}",
+      "estimatedSpend": "会話の推定費用: {cost}",
+      "unpriced": "一部の呼び出しは料金が報告されていません",
+      "cached": "{percent}% がキャッシュから"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "Enterで送信 · Shift+Enterで改行 · モードと検索設定は各メッセージに適用されます",
     "thinking": {
       "title": "思考",
-      "auto": "モデルの既定",
-      "off": "すぐに回答",
-      "on": "回答前に考える"
+      "trigger": "思考: {level}",
+      "modelDefault": "自動 · {level}",
+      "level": {
+        "auto": "自動",
+        "off": "オフ",
+        "disabled": "オフ",
+        "none": "なし",
+        "default": "既定",
+        "minimal": "最小",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "max": "最大",
+        "xhigh": "非常に高",
+        "enabled": "オン",
+        "on": "オン"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "その他の操作",
     "attach": "ファイルを添付",
-    "spendDetail": "この会話のコストと、プロンプトのうちキャッシュから来た割合",
     "projectFiles": "プロジェクトのファイル",
     "media": {
       "title": "メディアを添付",

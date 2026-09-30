@@ -33,11 +33,11 @@
 </script>
 
 {#if modes.length > 1}
-  <div class="ui-segmented" role="tablist" aria-label={copy.composer.selectMode}>
+  <div class="mode-tabs ui-segmented" role="tablist" aria-label={copy.composer.selectMode}>
     {#each modes as mode, index (mode)}
       <button
         type="button"
-        class="ui-segmented-item px-3 py-1"
+        class="mode-tab ui-segmented-item"
         class:is-active={appStore.composerMode === mode}
         onclick={() => appStore.setComposerMode(mode)}
         onkeydown={(event) => handleKeydown(event, index)}
@@ -51,3 +51,9 @@
     {/each}
   </div>
 {/if}
+
+<style>
+  .mode-tabs { height: 26px; padding: 2px; }
+  .mode-tab { height: 22px; padding: 0 0.625rem; font-size: 12.5px; }
+  .mode-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+</style>

@@ -1,167 +1,63 @@
 <svelte:options runes={true} />
-
 <script lang="ts">
-  import { t } from 'svelte-i18n';
-  interface Props {
+  import { t, locale } from 'svelte-i18n';
+  import type { CodeSpend } from '$shared/agente-protocol';
+  import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
+  import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
+
+  let { usedTokens, maxTokens, remaining, usagePercent, reservedTokens = 0,
+    promptCostPerMillionUsd, completionCostPerMillionUsd, estimatedInputCostUsd, spend }: {
     usedTokens: number;
     maxTokens: number;
+    remaining?: number;
+    usagePercent?: number;
     reservedTokens?: number;
     promptCostPerMillionUsd?: number;
     completionCostPerMillionUsd?: number;
     estimatedInputCostUsd?: number;
-    size?: number;
-    strokeWidth?: number;
-  }
-
-  let {
-    usedTokens,
-    maxTokens,
-    reservedTokens = 0,
-    promptCostPerMillionUsd,
-    completionCostPerMillionUsd,
-    estimatedInputCostUsd,
-    size = 14,
-    strokeWidth = 2.5
-  }: Props = $props();
-  let hover = $state(false);
-
-  const safeMax = $derived.by(() => {
-    const value = Number(maxTokens);
-    if (!Number.isFinite(value) || value <= 0) return 1;
-    return Math.floor(value);
-  });
-
-  const safeUsed = $derived.by(() => {
-    const value = Number(usedTokens);
-    if (!Number.isFinite(value) || value < 0) return 0;
-    return Math.floor(value);
-  });
-
-  const usagePercent = $derived.by(() => {
-    if (!safeMax) return 0;
-    return Math.min(100, safeUsed / safeMax * 100);
-  });
-  const percentLabel = $derived(usagePercent > 0 && usagePercent < 1 ? '<1' : Math.floor(usagePercent).toString());
-
-  const radius = $derived.by(() => (size - strokeWidth) / 2);
-  const circumference = $derived.by(() => 2 * Math.PI * radius);
-  const dashOffset = $derived.by(() => circumference * (1 - usagePercent / 100));
-
-  // A gauge, not a spinner: the percentage sits beside it, and it warms as the context fills.
-  const accentColor = $derived(usagePercent >= 95 ? 'var(--error)' : usagePercent >= 80 ? 'var(--warning)' : 'var(--muted-foreground)');
-
-  const usageLabel = $derived.by(() => $t('chat.context.usage', { values: { used: formatTokenCount(safeUsed), max: formatTokenCount(safeMax), percent: percentLabel } }));
-  const reserveLabel = $derived.by(() => reservedTokens > 0 ? $t('chat.context.reserved', { values: { n: formatTokenCount(reservedTokens) } }) : '');
-  const pricingLabel = $derived.by(() => {
-    const parts: string[] = [];
-    if (promptCostPerMillionUsd && promptCostPerMillionUsd > 0) {
-      parts.push($t('chat.context.priceIn', { values: { price: formatUsd(promptCostPerMillionUsd) } }));
-    }
-    if (completionCostPerMillionUsd && completionCostPerMillionUsd > 0) {
-      parts.push($t('chat.context.priceOut', { values: { price: formatUsd(completionCostPerMillionUsd) } }));
-    }
-    return parts.join(' · ');
-  });
-  const estimatedCostLabel = $derived.by(() => {
-    if (!estimatedInputCostUsd || estimatedInputCostUsd <= 0) return '';
-    return $t('chat.context.estimate', { values: { cost: formatUsd(estimatedInputCostUsd) } });
-  });
-
-  function formatTokenCount(value: number) {
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-    return String(value);
-  }
-
-  function formatUsd(value: number) {
-    if (value >= 1) return value.toFixed(2);
-    if (value >= 0.01) return value.toFixed(4);
-    return value.toFixed(6);
-  }
+    spend?: CodeSpend;
+  } = $props();
+  let anchor = $state<HTMLButtonElement>();
+  let open = $state(false);
+  const id = $props.id();
+  const max = $derived(Number.isFinite(maxTokens) ? Math.max(1, Math.floor(maxTokens)) : 1);
+  const used = $derived(Number.isFinite(usedTokens) ? Math.max(0, Math.floor(usedTokens)) : 0);
+  const percent = $derived(Math.max(0, Math.min(100, usagePercent ?? used / max * 100)));
+  const percentLabel = $derived(percent > 0 && percent < 1 ? '<1' : Math.floor(percent).toString());
+  const color = $derived(percent >= 95 ? 'var(--destructive)' : percent >= 80 ? 'var(--warning)' : 'var(--ring)');
+  const circumference = 2 * Math.PI * 5.75;
+  const label = $derived($t('chat.context.usage', { values: { used: count(used), max: count(max), percent: percentLabel } }));
+  function count(value: number) { return new Intl.NumberFormat($locale || 'en').format(Math.floor(value)); }
+  function usd(value: number) { return value.toFixed(value >= 1 ? 2 : value >= 0.01 ? 4 : 6); }
 </script>
 
-<div
-  class="context-ring"
-  role="img"
-  aria-label={usageLabel}
-  onmouseenter={() => (hover = true)}
-  onmouseleave={() => (hover = false)}
->
-  <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-    <circle
-      class="context-ring-track"
-      cx={size / 2}
-      cy={size / 2}
-      r={radius}
-      stroke-width={strokeWidth}
-    ></circle>
-    <circle
-      class="context-ring-progress"
-      cx={size / 2}
-      cy={size / 2}
-      r={radius}
-      stroke-width={strokeWidth}
-      style={`stroke:${accentColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
-    ></circle>
+<button bind:this={anchor} type="button" class="ui-icon-button context-ring" aria-label={label}
+  aria-describedby={open ? id : undefined}
+  onmouseenter={() => (open = true)} onmouseleave={() => (open = false)}
+  onfocus={() => (open = true)} onblur={() => (open = false)} onclick={() => (open = true)}>
+  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+    <circle class="track" cx="7" cy="7" r="5.75" stroke-width="2.5"></circle>
+    <circle class="progress" cx="7" cy="7" r="5.75" stroke-width="2.5"
+      style:stroke={color} style:stroke-dasharray={circumference}
+      style:stroke-dashoffset={circumference * (1 - percent / 100)}></circle>
   </svg>
-  <span class="context-ring-label">Context {percentLabel}%</span>
-
-  {#if hover}
-    <div class="context-tooltip">
-      <div>{usageLabel}</div>
-      {#if reserveLabel}<div>{reserveLabel}</div>{/if}
-      {#if pricingLabel}<div>{pricingLabel}</div>{/if}
-      {#if estimatedCostLabel}<div>{estimatedCostLabel}</div>{/if}
-    </div>
-  {/if}
-</div>
+</button>
+{#if open}
+  <ComposerCard {anchor} {id} label={label} tooltip placement="top-end" onclose={() => (open = false)}>
+    <div>{label}</div>
+    <div>{$t('chat.context.remaining', { values: { n: count(Math.max(0, remaining ?? max - used)) } })}</div>
+    {#if reservedTokens > 0}<div>{$t('chat.context.reserved', { values: { n: count(reservedTokens) } })}</div>{/if}
+    {#if promptCostPerMillionUsd != null}<div>{$t('chat.context.priceIn', { values: { price: usd(promptCostPerMillionUsd) } })}</div>{/if}
+    {#if completionCostPerMillionUsd != null}<div>{$t('chat.context.priceOut', { values: { price: usd(completionCostPerMillionUsd) } })}</div>{/if}
+    {#if estimatedInputCostUsd != null}<div>{$t('chat.context.estimate', { values: { cost: usd(estimatedInputCostUsd) } })}</div>{/if}
+    {#if spend}<ComposerStatus {spend} />{/if}
+  </ComposerCard>
+{/if}
 
 <style>
-  .context-ring {
-    display: inline-flex;
-    height: 2rem;
-    position: relative;
-    align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    padding-inline: 0.25rem;
-  }
-
-  .context-ring-label {
-    color: var(--muted-foreground);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .context-ring-track {
-    fill: none;
-    stroke: color-mix(in srgb, var(--text-muted) 36%, transparent);
-  }
-
-  .context-ring-progress {
-    fill: none;
-    stroke-linecap: round;
-    transform: rotate(-90deg);
-    transform-origin: center;
-    transition: stroke-dashoffset 140ms ease, stroke 140ms ease;
-  }
-
-  .context-tooltip {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 8px);
-    display: grid;
-    gap: 2px;
-    white-space: nowrap;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-secondary);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-sm);
-    padding: 6px 8px;
-    font-size: 11px;
-    line-height: 1.35;
-    z-index: 60;
-    pointer-events: none;
-  }
+  .context-ring { flex-shrink: 0; }
+  .context-ring:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .track { fill: none; stroke: color-mix(in srgb, var(--muted-foreground) 20%, transparent); }
+  .progress { fill: none; stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 140ms ease, stroke 140ms ease; }
+  @media (prefers-reduced-motion: reduce) { .progress { transition: none; } }
 </style>

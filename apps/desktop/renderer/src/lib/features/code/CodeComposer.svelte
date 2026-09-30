@@ -25,7 +25,7 @@
   import { codeStore } from './code.svelte';
   import { codeEdits, initProject, projectFiles, setAgenteModel } from './code-ipc';
   import CodeProjectDialog from './CodeProjectDialog.svelte';
-  import { conversationSpend, spendLabel } from './accounting';
+  import { conversationSpend } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
   import { Button, Dialog } from '$lib/components/ui';
@@ -35,7 +35,7 @@
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import SendButton from '$lib/features/shared/composer/SendButton.svelte';
-  import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
+  import ReasoningLevelSelector from '$lib/features/chat/composer/ReasoningLevelSelector.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
@@ -71,7 +71,7 @@
   // context footprint. Hidden until the first report, like Home's ring.
   const usage = $derived(run?.usage ?? [...chat.messages].reverse().find((message) => message.metadata?.codeUsage)?.metadata?.codeUsage);
   const showContextRing = $derived(!!usage && usage.promptTokens > 0 && (usage.contextWindow ?? 0) > 0);
-  const accountingLabel = $derived(spendLabel(conversationSpend(chat.messages, run ?? undefined)));
+  const spend = $derived(conversationSpend(chat.messages, run ?? undefined));
   /** Input handed off but not yet consumed by a turn. */
   const queuedCount = $derived(run?.queuedCount ?? 0);
   /**
@@ -461,10 +461,6 @@
   onDestroy(() => appStore.persist());
 </script>
 
-{#snippet contextRing()}
-  {#if usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} />{/if}
-{/snippet}
-
 {#if dialog && project}<CodeProjectDialog chatId={chat.id} projectRoot={project.rootPath} section={dialog} onclose={() => (dialog = null)} />{/if}
 {#if pendingMedia.length}
   <Dialog title={$t('code.media.title')} onclose={() => (pendingMedia = [])} size="sm">
@@ -536,7 +532,7 @@
         <div class="composer-bar">
           <div class="composer-bar-leading">
             <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-            <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
+            <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-3.5" /></button>
 
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
@@ -567,16 +563,13 @@
               {/each}
             </Menu>
 
-            <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
+            <div class="model-slot"><ModelSwitcher compact /></div>
+            <ReasoningLevelSelector />
           </div>
 
           <div class="composer-bar-trailing">
-            <ComposerStatus
-              text={accountingLabel || undefined}
-              detail={$t('code.spendDetail')}
-              queued={running && queuedCount > 0 ? $t('code.queued', { values: { n: queuedCount } }) : undefined}
-              ring={showContextRing && usage ? contextRing : undefined}
-            />
+            {#if running && queuedCount > 0}<span class="queued-status" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
+            {#if showContextRing && usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} {spend} />{/if}
 
             {#if !modelReady}
               <!-- The one honest interruption: point at the fix. -->
@@ -593,7 +586,7 @@
             {/if}
 
             <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<button type="button" class="ui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+              {#snippet trigger(props)}<button type="button" class="ui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-3.5" /></button>{/snippet}
               {#each menuGroups as group, index (index)}
                 {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
@@ -650,10 +643,11 @@
     min-width: 0;
   }
   .model-slot {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     max-width: 18rem;
   }
+  .queued-status { color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
   .slash-menu {
     max-height: min(20rem, 40vh);
     overflow-y: auto;

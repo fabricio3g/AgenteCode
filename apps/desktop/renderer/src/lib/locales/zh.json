@@ -56,7 +56,12 @@
       "reserved": "为回复预留 {n} 个 token",
       "priceIn": "输入 ${price}/1M",
       "priceOut": "输出 ${price}/1M",
-      "estimate": "预估输入费用：${cost}"
+      "estimate": "预估输入费用：${cost}",
+      "remaining": "剩余 {n} 个令牌",
+      "spend": "对话费用：{cost}",
+      "estimatedSpend": "预计对话费用：{cost}",
+      "unpriced": "部分调用未报告价格",
+      "cached": "{percent}% 来自缓存"
     }
   },
   "sidebar": {
@@ -162,9 +167,23 @@
     "hintText": "回车发送 · Shift+Enter 换行 · 模式和搜索设置应用于每条消息",
     "thinking": {
       "title": "思考",
-      "auto": "模型默认",
-      "off": "立即回答",
-      "on": "先思考再回答"
+      "trigger": "思考：{level}",
+      "modelDefault": "自动 · {level}",
+      "level": {
+        "auto": "自动",
+        "off": "关闭",
+        "disabled": "关闭",
+        "none": "无",
+        "default": "默认",
+        "minimal": "最低",
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "max": "最大",
+        "xhigh": "极高",
+        "enabled": "开启",
+        "on": "开启"
+      }
     }
   },
   "welcome": {
@@ -409,7 +428,6 @@
     },
     "toolsMenu": "更多操作",
     "attach": "附加文件",
-    "spendDetail": "这个对话的花费，以及提示词中来自缓存的比例",
     "projectFiles": "项目文件",
     "media": {
       "title": "附加媒体",

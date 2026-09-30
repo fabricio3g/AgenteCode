@@ -494,7 +494,7 @@
   .mode-tab-row {
     display: flex;
     justify-content: flex-start;
-    padding: 0 0.35rem 0.35rem;
+    padding: 0 0 0.35rem;
     pointer-events: auto;
   }
   /* Level with the Agent / Instant tabs, flush with the input's right edge. */
@@ -544,9 +544,8 @@
     background: var(--surface-hover);
   }
 
-  .model-slot { min-width: 0; max-width: 18rem; }
+  .model-slot { min-width: 0; max-width: 18rem; flex: 0 1 auto; }
   @container composer (max-width: 620px) {
-    :global(.composer-bar-leading) { flex-wrap: wrap; }
     .model-slot { max-width: 12rem; }
   }
 </style>
