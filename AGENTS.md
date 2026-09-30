@@ -13,6 +13,7 @@ Build a development-engineer tool: a keyboard-first terminal coding agent (Rust)
 - Keep the UI clean and minimal
 - Keyboard-first design
 - Every change compiles with zero warnings; tests stay green
+- Never add AI tools or services as commit authors or coauthors; commits use the user's Git identity
 
 ## Design decisions
 

@@ -770,7 +770,10 @@ impl ModelCatalog {
 
     /// Age of the on-disk catalog, `None` when there is none.
     pub fn cache_age() -> Option<std::time::Duration> {
-        let modified = std::fs::metadata(Self::cache_path()?).ok()?.modified().ok()?;
+        let modified = std::fs::metadata(Self::cache_path()?)
+            .ok()?
+            .modified()
+            .ok()?;
         Some(modified.elapsed().unwrap_or_default())
     }
 

@@ -24,8 +24,14 @@ const SOURCES: &[(&str, &str)] = &[
     ("lmstudio", include_str!("../../providers/lmstudio.toml")),
     ("minimax", include_str!("../../providers/minimax.toml")),
     ("ollama", include_str!("../../providers/ollama.toml")),
-    ("opencode-go", include_str!("../../providers/opencode-go.toml")),
-    ("openrouter", include_str!("../../providers/openrouter.toml")),
+    (
+        "opencode-go",
+        include_str!("../../providers/opencode-go.toml"),
+    ),
+    (
+        "openrouter",
+        include_str!("../../providers/openrouter.toml"),
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -326,7 +332,9 @@ mod tests {
         assert_eq!(specs.len(), SOURCES.len());
         let mut names: Vec<&str> = specs
             .iter()
-            .flat_map(|s| std::iter::once(s.id.as_str()).chain(s.aliases.iter().map(String::as_str)))
+            .flat_map(|s| {
+                std::iter::once(s.id.as_str()).chain(s.aliases.iter().map(String::as_str))
+            })
             .collect();
         let before = names.len();
         names.sort_unstable();
@@ -366,7 +374,10 @@ mod tests {
             for_base_url("https://openrouter.ai/api/v1").unwrap().id,
             "openrouter"
         );
-        assert_eq!(for_base_url("https://api.deepseek.com").unwrap().id, "deepseek");
+        assert_eq!(
+            for_base_url("https://api.deepseek.com").unwrap().id,
+            "deepseek"
+        );
         assert!(for_base_url("http://127.0.0.1:8080/v1").is_none());
         assert_eq!(catalog_id("glm"), "zai");
         assert_eq!(catalog_id("unknown-gateway"), "unknown-gateway");
@@ -448,8 +459,14 @@ mod tests {
 
     #[test]
     fn host_parsing_handles_ports_userinfo_and_ipv6() {
-        assert_eq!(host_of("http://user@Example.com:8080/x").as_deref(), Some("example.com"));
+        assert_eq!(
+            host_of("http://user@Example.com:8080/x").as_deref(),
+            Some("example.com")
+        );
         assert_eq!(host_of("http://[::1]:8080").as_deref(), Some("::1"));
-        assert_eq!(host_of("api.deepseek.com").as_deref(), Some("api.deepseek.com"));
+        assert_eq!(
+            host_of("api.deepseek.com").as_deref(),
+            Some("api.deepseek.com")
+        );
     }
 }

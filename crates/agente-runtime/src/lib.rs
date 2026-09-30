@@ -1120,7 +1120,6 @@ impl RuntimeHandle {
         agente_core::providers::ModelInfo,
         agente_core::providers::ApiFormat,
     ) {
-        use agente_core::providers::Provider as _;
         let live = self.inner.live();
         let mut info = self.model_info(provider, model);
         let format = match live.provider_registry.get(provider) {

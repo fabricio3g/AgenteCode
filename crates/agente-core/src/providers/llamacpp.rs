@@ -18,8 +18,7 @@ use crate::thinking::ThinkingFormat;
 /// Whether a provider is a llama-server: its spec says so, or its thinking
 /// shape resolves to llama.cpp.
 pub(crate) fn is_llamacpp(info: &ProviderInfo) -> bool {
-    super::spec::get(&info.id)
-        .is_some_and(|spec| spec.models == super::spec::ModelSource::Llamacpp)
+    super::spec::get(&info.id).is_some_and(|spec| spec.models == super::spec::ModelSource::Llamacpp)
         || crate::thinking::detect_thinking_format(&info.id, &info.base_url)
             == ThinkingFormat::LlamaCpp
 }
@@ -67,9 +66,9 @@ pub fn template_supports_thinking(template: &str) -> bool {
         return false;
     }
     patterns().iter().any(|re| re.is_match(template))
-        || THINKING_TAGS
-            .iter()
-            .any(|(start, end)| template.contains(start) && end.is_none_or(|e| template.contains(e)))
+        || THINKING_TAGS.iter().any(|(start, end)| {
+            template.contains(start) && end.is_none_or(|e| template.contains(e))
+        })
 }
 
 /// The thinking option a `/props` response grants, `None` when the loaded

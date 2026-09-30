@@ -204,13 +204,21 @@ fn level(id: &str, budget_tokens: Option<u32>) -> ThinkingLevel {
 /// The budget ladder, clamped to the model's `[min, max]` and kept below its
 /// output limit (Anthropic rejects a budget ≥ `max_tokens`). Levels that clamp
 /// to the same budget collapse; one left over becomes a plain `on`.
-fn budget_levels(model: &ModelInfo, min: Option<u32>, max: Option<u32>, floor: u32) -> Vec<ThinkingLevel> {
+fn budget_levels(
+    model: &ModelInfo,
+    min: Option<u32>,
+    max: Option<u32>,
+    floor: u32,
+) -> Vec<ThinkingLevel> {
     let output = match model.limits.output {
         0 => crate::catalog::DEFAULT_OUTPUT_TOKENS,
         n => n,
     };
     let low = min.unwrap_or(floor).max(floor).max(1);
-    let high = max.unwrap_or(u32::MAX).min(output.saturating_mul(3) / 4).max(low);
+    let high = max
+        .unwrap_or(u32::MAX)
+        .min(output.saturating_mul(3) / 4)
+        .max(low);
     let mut levels: Vec<ThinkingLevel> = Vec::new();
     for (id, budget) in BUDGET_LADDER {
         let budget = (*budget).clamp(low, high);
@@ -259,7 +267,11 @@ pub fn profile_for(model: &ModelInfo, api_format: ApiFormat) -> ThinkingProfile 
         if !c.efforts.is_empty() {
             levels.extend(c.efforts.iter().map(|e| level(e, None)));
         } else if let Some((min, max)) = c.budget.filter(|_| native_budget) {
-            let floor = if api_format == ApiFormat::Anthropic { 1024 } else { 1 };
+            let floor = if api_format == ApiFormat::Anthropic {
+                1024
+            } else {
+                1
+            };
             levels.extend(budget_levels(model, min, max, floor));
         } else if c.router_max_tokens {
             levels.extend(budget_levels(model, None, None, 1024));
@@ -276,7 +288,12 @@ pub fn profile_for(model: &ModelInfo, api_format: ApiFormat) -> ThinkingProfile 
     if off {
         levels.push(level(THINKING_OFF, None));
     }
-    let rank = |id: &str| LEVEL_ORDER.iter().position(|l| *l == id).unwrap_or(LEVEL_ORDER.len());
+    let rank = |id: &str| {
+        LEVEL_ORDER
+            .iter()
+            .position(|l| *l == id)
+            .unwrap_or(LEVEL_ORDER.len())
+    };
     levels.sort_by_key(|l| rank(&l.id));
     let mut seen = Vec::new();
     levels.retain(|l| {
@@ -1134,7 +1151,10 @@ mod tests {
             serde_json::json!({"type": "enabled", "budget_tokens": 2048})
         );
         apply_thinking_level(&mut model, ApiFormat::Anthropic, THINKING_OFF);
-        assert_eq!(model.options["thinking"], serde_json::json!({"type": "disabled"}));
+        assert_eq!(
+            model.options["thinking"],
+            serde_json::json!({"type": "disabled"})
+        );
 
         // A small output limit keeps every budget below max_tokens.
         model.limits.output = 4096;
@@ -1162,9 +1182,10 @@ mod tests {
         assert_eq!(profile.level("medium").unwrap().budget_tokens, Some(2048));
         assert_eq!(profile.level("max").unwrap().budget_tokens, None);
 
-        model
-            .options
-            .insert("chat_template_kwargs".into(), serde_json::json!({"custom": 1}));
+        model.options.insert(
+            "chat_template_kwargs".into(),
+            serde_json::json!({"custom": 1}),
+        );
         apply_thinking_level(&mut model, ApiFormat::OpenAI, "medium");
         assert_eq!(model.options["reasoning_format"], "auto");
         assert_eq!(

@@ -56,7 +56,7 @@ describe('provider endpoint contracts', () => {
   });
 
   it('does not send llama.cpp or unsupported tool_choice fields to Ollama', () => {
-    const body = buildBody(getDialect('ollama'), { model: 'qwen3', messages: [], tool_choice: 'auto', reasoning: { level: 'off' } }, true);
+    const body = buildBody(getDialect('ollama'), { model: 'qwen3', messages: [], tool_choice: 'auto', reasoning: { level: 'off', body: { reasoning_effort: 'none' } } }, true);
     assert.equal(body.reasoning_effort, 'none');
     assert.equal(body.tool_choice, undefined);
     assert.equal(body.chat_template_kwargs, undefined);

@@ -36,12 +36,12 @@ const baseParams = {
 };
 
 describe('local thinking wire format', () => {
-  it("maps reasoning 'off' to enable_thinking:false (never disable_thinking)", async () => {
+  it("forwards the core's 'off' fields as enable_thinking:false (never disable_thinking)", async () => {
     const { fakeFetch, getBody } = captureBody();
     await withFetch(fakeFetch, async () => {
       await resolveProvider('local', baseParams.baseUrl).complete({
         ...baseParams,
-        reasoning: { level: 'off' }
+        reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } }
       });
     });
     const body = getBody();
@@ -50,12 +50,12 @@ describe('local thinking wire format', () => {
     assert.ok(!('disable_thinking' in body), 'dead disable_thinking field must not be sent');
   });
 
-  it("maps reasoning 'on' to enable_thinking:true", async () => {
+  it("forwards the core's 'on' fields as enable_thinking:true", async () => {
     const { fakeFetch, getBody } = captureBody();
     await withFetch(fakeFetch, async () => {
       await resolveProvider('local', baseParams.baseUrl).complete({
         ...baseParams,
-        reasoning: { level: 'on' }
+        reasoning: { level: 'on', body: { chat_template_kwargs: { enable_thinking: true } } }
       });
     });
     const body = getBody();
@@ -82,7 +82,7 @@ describe('local thinking wire format', () => {
     await withFetch(fakeFetch, async () => {
       await resolveProvider('local', baseParams.baseUrl).complete({
         ...baseParams,
-        reasoning: { level: 'off' },
+        reasoning: { level: 'off', body: { chat_template_kwargs: { enable_thinking: false } } },
         tools,
         tool_choice: 'auto'
       });

@@ -53,7 +53,7 @@ fn effort_bars(level: &str) -> usize {
 fn budget_text(tokens: u32) -> String {
     if tokens < 1000 {
         format!("up to {tokens} tokens")
-    } else if tokens % 1024 == 0 {
+    } else if tokens.is_multiple_of(1024) {
         format!("up to {}k tokens", tokens / 1024)
     } else {
         format!("up to {:.1}k tokens", f64::from(tokens) / 1024.0)
@@ -190,7 +190,10 @@ fn render_scale(frame: &mut Frame, body: Rect, state: &AppState) {
     let rail_spans: Vec<Span<'static>> = (0..rail.width)
         .map(|x| {
             if x == thumb {
-                s("●", Style::default().fg(PRIMARY()).add_modifier(Modifier::BOLD))
+                s(
+                    "●",
+                    Style::default().fg(PRIMARY()).add_modifier(Modifier::BOLD),
+                )
             } else if let Some(i) = stops.iter().position(|&stop| stop == x) {
                 if i < selected {
                     s("•", Style::default().fg(PRIMARY()))
@@ -214,13 +217,15 @@ fn render_scale(frame: &mut Frame, body: Rect, state: &AppState) {
             .map(|(i, level)| {
                 let label = level.clone();
                 let half = (label.chars().count() as u16) / 2;
-                let x = stops[i].saturating_sub(half).min(row.width.saturating_sub(label.chars().count() as u16));
+                let x = stops[i]
+                    .saturating_sub(half)
+                    .min(row.width.saturating_sub(label.chars().count() as u16));
                 (x, label)
             })
             .collect();
-        let fits = placed.windows(2).all(|pair| {
-            pair[0].0 + pair[0].1.chars().count() as u16 + 1 <= pair[1].0
-        });
+        let fits = placed
+            .windows(2)
+            .all(|pair| pair[0].0 + (pair[0].1.chars().count() as u16) < pair[1].0);
         let mut line = vec![' '; row.width as usize];
         let mut styles = vec![None::<usize>; row.width as usize];
         for (i, (x, label)) in placed.iter().enumerate() {
@@ -248,7 +253,9 @@ fn render_scale(frame: &mut Frame, body: Rect, state: &AppState) {
             .zip(&styles)
             .map(|(ch, owner)| {
                 let style = match owner {
-                    Some(i) if *i == selected => Style::default().fg(PRIMARY()).add_modifier(Modifier::BOLD),
+                    Some(i) if *i == selected => {
+                        Style::default().fg(PRIMARY()).add_modifier(Modifier::BOLD)
+                    }
                     Some(i) if levels[*i] == active => Style::default().fg(FG()),
                     _ => style::dim(),
                 };
@@ -390,7 +397,16 @@ mod tests {
         state.input.thinking_selector_budgets =
             vec![None, None, Some(512), Some(2048), Some(8192), None];
         let text = shot(&mut state, 80, 14);
-        for word in ["Faster", "Thinking mode", "Deeper", "auto", "off", "low", "high", "max"] {
+        for word in [
+            "Faster",
+            "Thinking mode",
+            "Deeper",
+            "auto",
+            "off",
+            "low",
+            "high",
+            "max",
+        ] {
             assert!(text.contains(word), "{word}: {text}");
         }
         assert!(text.contains("●"), "{text}");

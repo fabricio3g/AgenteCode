@@ -389,7 +389,9 @@ impl Connection {
                     template: String,
                 }
                 let Params { template } = parse(params)?;
-                to_json(agente_core::providers::llamacpp::template_profile(&template))
+                to_json(agente_core::providers::llamacpp::template_profile(
+                    &template,
+                ))
             }
             "thinking.request" => {
                 #[derive(Deserialize)]

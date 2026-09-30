@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agente — your models, your workspace</title>
+  <meta name="description" content="Agente is an open-source Rust agent platform: a calm desktop, a keyboard-first terminal coding agent, persistent bots, and a runtime you can host yourself." />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="theme-color" content="#161616" />
+  <meta property="og:title" content="Agente — your models, your workspace" />
+  <meta property="og:description" content="One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host." />
+  <meta property="og:image" content="assets/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="assets/favicon.ico" />
+  <link rel="icon" type="image/svg+xml" href="assets/agente-code-icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Resolve the theme before first paint so there is no flash.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("agente-theme"); } catch (e) {}
+      document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      document.documentElement.classList.add("js");
+    })();
+  </script>
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="wordmark" href="#top" aria-label="Agente home"><svg class="wordmark-a" viewBox="22 22 76 76" aria-hidden="true"><path class="wm-a" d="M22 98 50 22h20l28 76H79L60 44 41 98Z"/><path class="wm-tilde" d="M36 77c8-10 16-10 24-4s16 6 24-4"/></svg><span>gente</span></a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#product">Product</a>
+        <a href="#get-started">Get started</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch light or dark theme">
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41M17.66 6.34l1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
+        <a class="icon-btn" href="https://github.com/fabricio3g/AgenteCode" aria-label="Agente on GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- 1 · Hero -->
+    <section class="hero" id="top">
+      <div class="hero-bg" aria-hidden="true">
+        <canvas class="ascii" id="ascii-hero"></canvas>
+      </div>
+      <div class="wrap hero-inner">
+        <h1 class="enter" style="--d:0ms">Your models.<br />Your <span class="shimmer">workspace.</span></h1>
+        <p class="lede enter" style="--d:80ms">One Rust agent core behind a desktop, a terminal, a team of bots, and a server you host.</p>
+        <div class="actions enter" style="--d:160ms">
+          <a class="btn btn-primary" href="#get-started">Get Agente
+            <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/fabricio3g/AgenteCode">View on GitHub</a>
+        </div>
+
+        <div class="install enter" style="--d:240ms" id="install">
+          <div class="install-head">
+            <div class="segmented seg-sm" role="radiogroup" aria-label="What to install" data-pick="product">
+              <span class="seg-thumb" aria-hidden="true"></span>
+              <button role="radio" aria-checked="true" data-value="desktop">Desktop app</button>
+              <button role="radio" aria-checked="false" data-value="cli" tabindex="-1">CLI</button>
+            </div>
+            <div class="segmented seg-sm seg-quiet" role="radiogroup" aria-label="Operating system" data-pick="os">
+              <span class="seg-thumb" aria-hidden="true"></span>
+              <button role="radio" aria-checked="false" data-value="windows" tabindex="-1">Windows</button>
+              <button role="radio" aria-checked="true" data-value="linux">Linux</button>
+              <button role="radio" aria-checked="false" data-value="arm" tabindex="-1">Linux ARM</button>
+              <button role="radio" aria-checked="false" data-value="macos" tabindex="-1">macOS</button>
+            </div>
+          </div>
+          <div class="install-body" id="install-body" aria-live="polite">
+            <!-- Filled by js/install.js; this is the no-JS default. -->
+            <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage">
+              <span class="dl-name">Agente-linux-x86_64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 · Product -->
+    <section class="product" id="product" aria-label="Product">
+      <div class="wrap">
+        <div class="seg-wrap enter" style="--d:320ms">
+          <div class="segmented" role="tablist" aria-label="Surfaces" data-auto="6000">
+            <span class="seg-thumb" aria-hidden="true"></span>
+            <button role="tab" id="t-desktop" aria-controls="p-desktop" aria-selected="true">Desktop</button>
+            <button role="tab" id="t-code" aria-controls="p-code" aria-selected="false" tabindex="-1">Code</button>
+            <button role="tab" id="t-bots" aria-controls="p-bots" aria-selected="false" tabindex="-1">Bots</button>
+            <button role="tab" id="t-server" aria-controls="p-server" aria-selected="false" tabindex="-1">Server</button>
+          </div>
+        </div>
+
+        <div class="stage enter" style="--d:400ms">
+          <article class="panel is-active" role="tabpanel" id="p-desktop" aria-labelledby="t-desktop">
+            <figure class="frame"><img src="assets/desktop.webp" width="1400" height="920" alt="Agente Desktop: a conversation with a web-page artifact previewed in the right dock" /></figure>
+            <p class="caption"><strong>Desktop.</strong> Chat, research and artifacts beside the conversation, with local models and voice.</p>
+            <ul class="facts"><li>Artifacts in the dock</li><li>llama.cpp models, CPU or GPU</li><li>Voice in and out</li><li>Seven languages</li></ul>
+          </article>
+          <article class="panel" role="tabpanel" id="p-code" aria-labelledby="t-code">
+            <figure class="frame frame-term"><img src="assets/terminal.webp" width="940" height="628" alt="Agente Code in a terminal: a plan, code, task progress and tool rows" loading="lazy" /></figure>
+            <p class="caption"><strong>Code.</strong> A keyboard-first terminal agent. It plans, asks before acting, and stays in your repository.</p>
+            <ul class="facts"><li>Plan → build → auto</li><li>Parallel subagents in worktrees</li><li>Revert or fork any message</li><li>ACP for editors</li></ul>
+          </article>
+          <article class="panel" role="tabpanel" id="p-bots" aria-labelledby="t-bots">
+            <figure class="frame"><img src="assets/bots.webp" width="1400" height="920" alt="Agente Bots: Colina hands a task to Scout, with scheduled routines in the dock" loading="lazy" /></figure>
+            <p class="caption"><strong>Bots.</strong> A team that remembers, each with its own persona, memory, model and routines.</p>
+            <ul class="facts"><li>Handoffs between bots</li><li>Scheduled routines</li><li>Daily budgets</li><li>Telegram</li></ul>
+          </article>
+          <article class="panel" role="tabpanel" id="p-server" aria-labelledby="t-server">
+            <figure class="frame frame-code">
+              <pre><code><span class="c-d"># keep sessions, bots and routines running</span>
+<span class="c-p">$</span> agente serve
+<span class="c-p">$</span> agente serve --status
+
+<span class="c-d"># join from any terminal</span>
+<span class="c-p">$</span> agente attach
+<span class="c-p">$</span> agente attach @colina
+
+<span class="c-d"># or host it yourself</span>
+<span class="c-p">$</span> docker run -d --name agente \
+    -p 127.0.0.1:7420:7420 -e AGENTE_TOKEN \
+    -v agente-data:/home/agente/.agente \
+    ghcr.io/fabricio3g/agente-server</code></pre>
+            </figure>
+            <p class="caption"><strong>Server.</strong> The runtime behind Desktop, running headless on a machine you control. <span class="tag">Preview</span></p>
+            <ul class="facts"><li>Persistent sessions</li><li>Bots and routines</li><li>Token-authenticated</li><li>Docker image</li></ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 · Principles -->
+    <section class="section section-quiet">
+      <div class="wrap">
+        <div class="principles">
+          <div data-reveal style="--d:0ms">
+            <h3>Your models</h3>
+            <p>Bring your own keys, or run GGUF models locally with llama.cpp, Ollama or LM Studio. Spend is shown per call, and estimates are labeled as estimates.</p>
+          </div>
+          <div data-reveal style="--d:80ms">
+            <h3>Your control</h3>
+            <p>Start with a read-only plan, approve each tool as you build, or go auto. Review every diff, and revert or fork from any message.</p>
+          </div>
+          <div data-reveal style="--d:160ms">
+            <h3>Your machine</h3>
+            <p>Sessions, bots and memory are plain files on your disk. Keep them running on your own server with <code>agente serve</code>.</p>
+          </div>
+        </div>
+        <p class="providers" data-reveal>OpenRouter · Anthropic · OpenAI · Gemini · DeepSeek · GLM · MiniMax · Kimi · Qwen · Mistral · xAI · Groq · Ollama · LM Studio · any compatible endpoint</p>
+      </div>
+    </section>
+
+    <!-- 4 · Get started -->
+    <section class="section" id="get-started">
+      <div class="wrap narrow">
+        <div class="section-head center" data-reveal>
+          <h2>Get started</h2>
+        </div>
+        <div class="seg-wrap" data-reveal>
+          <div class="segmented" role="tablist" aria-label="Install">
+            <span class="seg-thumb" aria-hidden="true"></span>
+            <button role="tab" id="g-code" aria-controls="gp-code" aria-selected="true">Code</button>
+            <button role="tab" id="g-desktop" aria-controls="gp-desktop" aria-selected="false" tabindex="-1">Desktop</button>
+            <button role="tab" id="g-server" aria-controls="gp-server" aria-selected="false" tabindex="-1">Server</button>
+          </div>
+        </div>
+        <div class="stage stage-plain" data-reveal>
+          <div class="panel is-active" role="tabpanel" id="gp-code" aria-labelledby="g-code">
+            <div class="block">
+              <pre><code id="cmd-code">mkdir -p ~/.local/bin
+curl -fL -o ~/.local/bin/agente \
+  https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-x86_64
+chmod +x ~/.local/bin/agente
+agente</code></pre>
+              <button class="copy" type="button" data-copy-from="cmd-code"><span class="copy-label">Copy</span></button>
+            </div>
+            <p class="note">Other builds:
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-linux-arm64">Linux arm64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/agente-windows-x86_64.exe">Windows x64</a> ·
+              <a href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
+              Then run <code>/provider</code> and <code>/model</code>.</p>
+          </div>
+          <div class="panel" role="tabpanel" id="gp-desktop" aria-labelledby="g-desktop">
+            <div class="dl-list">
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-win-x64.exe"><span class="dl-name">Agente-win-x64.exe</span><span class="dl-meta">Windows x64 installer</span><span class="dl-go">Download</span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-x86_64.AppImage"><span class="dl-name">Agente-linux-x86_64.AppImage</span><span class="dl-meta">Linux x64 · runs on most distributions</span><span class="dl-go">Download</span></a>
+              <a class="dl-row" href="https://github.com/fabricio3g/AgenteCode/releases/latest/download/Agente-linux-amd64.deb"><span class="dl-name">Agente-linux-amd64.deb</span><span class="dl-meta">Debian and Ubuntu</span><span class="dl-go">Download</span></a>
+            </div>
+            <p class="note">On macOS, build it from source (see the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/apps/desktop/README.md">Desktop guide</a>).</p>
+          </div>
+          <div class="panel" role="tabpanel" id="gp-server" aria-labelledby="g-server">
+            <div class="block">
+              <pre><code id="cmd-server">export AGENTE_TOKEN=$(openssl rand -hex 32)
+docker run -d --name agente \
+  -p 127.0.0.1:7420:7420 \
+  -e AGENTE_TOKEN -e OPENROUTER_API_KEY \
+  -v agente-data:/home/agente/.agente \
+  -v "$PWD/workspace:/workspace" \
+  ghcr.io/fabricio3g/agente-server:latest</code></pre>
+              <button class="copy" type="button" data-copy-from="cmd-server"><span class="copy-label">Copy</span></button>
+            </div>
+            <p class="note">Preview image. Keep the token, because clients need it. See the <a href="https://github.com/fabricio3g/AgenteCode/blob/main/docs/SERVER.md">Server guide</a>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 5 · Footer -->
+  <footer class="footer">
+    <div class="footer-bg" aria-hidden="true"><canvas class="ascii" id="ascii-foot"></canvas></div>
+    <div class="wrap footer-inner">
+      <a class="wordmark wordmark-sm" href="#top" aria-label="Agente home"><svg class="wordmark-a" viewBox="22 22 76 76" aria-hidden="true"><path class="wm-a" d="M22 98 50 22h20l28 76H79L60 44 41 98Z"/><path class="wm-tilde" d="M36 77c8-10 16-10 24-4s16 6 24-4"/></svg><span>gente</span></a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/fabricio3g/AgenteCode">GitHub</a>
+        <a href="https://github.com/fabricio3g/AgenteCode/releases">Releases</a>
+        <a href="https://github.com/fabricio3g/AgenteCode/blob/main/docs/SERVER.md">Server guide</a>
+        <a href="https://github.com/fabricio3g/AgenteCode/blob/main/LICENSE">MIT</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

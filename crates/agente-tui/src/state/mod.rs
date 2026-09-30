@@ -204,7 +204,9 @@ impl AppState {
         self.resolve_model(&provider, &model_id)
             .filter(|_| !model_id.is_empty())
             .map(|model| agente_core::thinking::profile(&model))
-            .unwrap_or_else(|| agente_core::thinking::profile(&agente_core::providers::fallback_model_info("", "")))
+            .unwrap_or_else(|| {
+                agente_core::thinking::profile(&agente_core::providers::fallback_model_info("", ""))
+            })
     }
 
     pub fn thinking_levels_for_current_model(&self) -> Vec<String> {

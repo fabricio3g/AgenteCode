@@ -699,15 +699,12 @@ fn apply_catalog_thinking(
     if m.api.base_url.is_none() {
         m.api.base_url = catalog_api.base_url;
     }
-    let has_live_openrouter_metadata = m
-        .reasoning_options
-        .iter()
-        .any(|option| {
-            matches!(
-                option,
-                ReasoningOption::OpenRouter { .. } | ReasoningOption::LlamaCpp { .. }
-            )
-        });
+    let has_live_openrouter_metadata = m.reasoning_options.iter().any(|option| {
+        matches!(
+            option,
+            ReasoningOption::OpenRouter { .. } | ReasoningOption::LlamaCpp { .. }
+        )
+    });
     if !cm.reasoning_options.is_empty() && !has_live_openrouter_metadata {
         m.reasoning_options = cm.reasoning_options.clone();
     }
