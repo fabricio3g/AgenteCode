@@ -1671,7 +1671,12 @@
   "thread": {
     "showActivity": "Mostrar actividad",
     "hideActivity": "Ocultar actividad",
-    "viewFullActivity": "Ver toda la actividad ↗"
+    "viewFullActivity": "Ver toda la actividad ↗",
+    "reasoning": {
+      "thinking": "Pensando…",
+      "thoughtFor": "Pensó durante {s} s",
+      "thought": "Razonamiento"
+    }
   },
   "titlebar": {
     "hideSidebar": "Ocultar barra lateral",

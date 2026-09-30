@@ -1671,7 +1671,12 @@
   "thread": {
     "showActivity": "アクティビティを表示",
     "hideActivity": "アクティビティを隠す",
-    "viewFullActivity": "すべてのアクティビティを見る ↗"
+    "viewFullActivity": "すべてのアクティビティを見る ↗",
+    "reasoning": {
+      "thinking": "考え中…",
+      "thoughtFor": "{s} 秒考えました",
+      "thought": "推論"
+    }
   },
   "titlebar": {
     "hideSidebar": "サイドバーを隠す",

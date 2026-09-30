@@ -135,7 +135,7 @@
     </p>
     <button
       type="button"
-      class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[14px]"
+      class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[13px]"
       onclick={() => void codeStore.addProject()}
     >
       <Plus class="size-3.5 shrink-0" />
@@ -200,7 +200,7 @@
               onblur={commitRename}
             />
           {:else}
-            <span class="min-w-0 flex-1 truncate text-[14px]" class:line-through={missing}>{project.rootName}</span>
+            <span class="min-w-0 flex-1 truncate text-[13px]" class:line-through={missing}>{project.rootName}</span>
             {#if projectRunning(project.id) && !expanded}
               <span class="running-dot shrink-0" aria-hidden="true"></span>
             {/if}
@@ -282,7 +282,7 @@
             {#if !missing}
               <button
                 type="button"
-                class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[14px] text-[var(--text-muted)]"
+                class="tree-row flex w-full items-center gap-2 px-2.5 py-[5px] text-left text-[13px] text-[var(--text-secondary)]"
                 onclick={() => codeStore.newConversation(project)}
               >
                 <Plus class="size-3.5 shrink-0" />
@@ -338,7 +338,7 @@
 
 <style>
   .tree-row {
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
     background: transparent;
     border: none;
     border-radius: var(--radius-full);

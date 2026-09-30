@@ -128,7 +128,7 @@
         onblur={commitRename}
       />
     {:else}
-      <div class="truncate text-[14px]">{title}</div>
+      <div class="truncate text-[13px]">{title}</div>
     {/if}
   </div>
 
@@ -164,7 +164,7 @@
 
 <style>
   .session-row {
-    color: var(--muted-foreground);
+    color: var(--text-secondary);
     border-radius: var(--radius-full);
     transition:
       background-color var(--motion-fast) var(--motion-ease),
@@ -191,7 +191,7 @@
     border: 1px solid var(--sidebar-ring);
     border-radius: var(--radius-sm);
     color: var(--foreground);
-    font-size: 14px;
+    font-size: 13px;
     padding: 0 0.35rem;
     outline: none;
   }

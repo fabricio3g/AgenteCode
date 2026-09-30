@@ -1671,7 +1671,12 @@
   "thread": {
     "showActivity": "显示活动",
     "hideActivity": "隐藏活动",
-    "viewFullActivity": "查看全部活动 ↗"
+    "viewFullActivity": "查看全部活动 ↗",
+    "reasoning": {
+      "thinking": "思考中…",
+      "thoughtFor": "思考了 {s} 秒",
+      "thought": "推理"
+    }
   },
   "titlebar": {
     "hideSidebar": "隐藏侧边栏",
