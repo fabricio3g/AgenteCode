@@ -1735,6 +1735,20 @@
       "storySoFar": "前情提要",
       "refreshSummary": "立即更新摘要",
       "summaryEmpty": "随场景推进自动撰写,让长篇故事保持连贯。你可以编辑。"
+    },
+    "narration": "旁白",
+    "voice": {
+      "play": "听 {name} 说",
+      "stop": "停止"
+    },
+    "decisionHint": "本回合随机选定(动态模式)",
+    "direction": {
+      "reaction": "反应",
+      "connection": "关系",
+      "discovery": "发现",
+      "opportunity": "机会",
+      "pressure": "压力",
+      "quiet": "平静"
     }
   }
 }

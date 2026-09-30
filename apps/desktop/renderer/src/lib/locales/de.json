@@ -1735,6 +1735,20 @@
       "storySoFar": "Bisherige Geschichte",
       "refreshSummary": "Zusammenfassung jetzt aktualisieren",
       "summaryEmpty": "Wird im Laufe der Szene geschrieben, damit lange Geschichten stimmig bleiben. Du kannst sie bearbeiten."
+    },
+    "narration": "Erzählung",
+    "voice": {
+      "play": "{name} anhören",
+      "stop": "Stopp"
+    },
+    "decisionHint": "Für diesen Zug zufällig gewählt (Dynamisch)",
+    "direction": {
+      "reaction": "Reaktion",
+      "connection": "Verbindung",
+      "discovery": "Entdeckung",
+      "opportunity": "Gelegenheit",
+      "pressure": "Druck",
+      "quiet": "Ruhe"
     }
   }
 }

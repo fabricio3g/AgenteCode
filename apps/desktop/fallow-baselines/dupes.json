@@ -31,7 +31,7 @@
     "renderer/src/lib/components/ui/Portal.svelte:7-26|renderer/src/lib/ui/components/Portal.svelte:13-26",
     "renderer/src/lib/features/chat/ChartBlock.svelte:136-143|renderer/src/lib/features/chat/ChartBlock.svelte:146-153",
     "renderer/src/lib/features/chat/ChartBlock.svelte:171-175|renderer/src/lib/features/chat/ChartBlock.svelte:196-200",
-    "renderer/src/lib/features/chat/thread/AssistantMessage.svelte:157-179|renderer/src/lib/features/chat/thread/UserMessage.svelte:97-117",
+    "renderer/src/lib/features/chat/thread/AssistantMessage.svelte:164-186|renderer/src/lib/features/chat/thread/UserMessage.svelte:97-117",
     "renderer/src/lib/features/code/code-store.spec.ts:11-20|renderer/src/lib/services/agent-llm.spec.ts:4-12",
     "renderer/src/lib/features/code/code-store.spec.ts:270-278|renderer/src/lib/features/code/code-store.spec.ts:290-298",
     "renderer/src/lib/features/roleplay/CharacterEditorModal.svelte:71-84|renderer/src/lib/features/roleplay/PersonaEditorModal.svelte:46-59",

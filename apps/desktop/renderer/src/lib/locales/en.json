@@ -1735,6 +1735,20 @@
       "storySoFar": "Story so far",
       "refreshSummary": "Update the summary now",
       "summaryEmpty": "Written as the scene goes on, so long stories stay consistent. You can edit it."
+    },
+    "narration": "Narration",
+    "voice": {
+      "play": "Hear {name}",
+      "stop": "Stop"
+    },
+    "decisionHint": "Chosen at random for this turn (Dynamic mode)",
+    "direction": {
+      "reaction": "Reaction",
+      "connection": "Connection",
+      "discovery": "Discovery",
+      "opportunity": "Opportunity",
+      "pressure": "Pressure",
+      "quiet": "Quiet"
     }
   }
 }

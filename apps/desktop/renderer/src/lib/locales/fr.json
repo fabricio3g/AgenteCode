@@ -1735,6 +1735,20 @@
       "storySoFar": "L'histoire jusqu'ici",
       "refreshSummary": "Mettre à jour le résumé",
       "summaryEmpty": "Rédigé au fil de la scène pour que les longues histoires restent cohérentes. Vous pouvez le modifier."
+    },
+    "narration": "Narration",
+    "voice": {
+      "play": "Écouter {name}",
+      "stop": "Arrêter"
+    },
+    "decisionHint": "Tiré au hasard pour ce tour (mode Dynamique)",
+    "direction": {
+      "reaction": "Réaction",
+      "connection": "Lien",
+      "discovery": "Découverte",
+      "opportunity": "Opportunité",
+      "pressure": "Pression",
+      "quiet": "Calme"
     }
   }
 }

@@ -1,9 +1,26 @@
+/** One compiled pattern per cast: replies re-render on every streamed chunk. */
+const patterns = new Map<string, RegExp | null>();
+
+function mentionPattern(names: string[]): RegExp | null {
+  const key = names.join('\u0000');
+  if (!patterns.has(key)) {
+    const candidates = [...new Set(names.map((name) => name.trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+    const escaped = candidates.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    if (patterns.size > 32) patterns.clear();
+    patterns.set(key, candidates.length ? new RegExp(`(^|[^\\p{L}\\p{N}\\p{M}_])(@?(?:${escaped}))(?=$|[^\\p{L}\\p{N}\\p{M}_])`, 'giu') : null);
+  }
+  return patterns.get(key)!;
+}
+
 /** Decorate rendered text only: never touch links, code or HTML attributes. */
 export function highlightRoleplayMentions(html: string, names: string[]): string {
-  const candidates = [...new Set(names.map((name) => name.trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
-  if (!candidates.length || !html || typeof document === 'undefined') return html;
-  const escaped = candidates.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}\\p{M}_])(@?(?:${escaped}))(?=$|[^\\p{L}\\p{N}\\p{M}_])`, 'giu');
+  if (!names.length || !html || typeof document === 'undefined') return html;
+  const pattern = mentionPattern(names);
+  if (!pattern) return html;
+  // No name anywhere in the markup: nothing to decorate, skip the DOM work.
+  pattern.lastIndex = 0;
+  if (!pattern.test(html)) return html;
+  pattern.lastIndex = 0;
   const template = document.createElement('template');
   template.innerHTML = html;
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);

@@ -1735,6 +1735,20 @@
       "storySoFar": "La historia hasta ahora",
       "refreshSummary": "Actualizar el resumen ahora",
       "summaryEmpty": "Se escribe a medida que avanza la escena, para que las historias largas sean coherentes. Puedes editarlo."
+    },
+    "narration": "Narración",
+    "voice": {
+      "play": "Escuchar a {name}",
+      "stop": "Detener"
+    },
+    "decisionHint": "Elegido al azar para este turno (modo Dinámico)",
+    "direction": {
+      "reaction": "Reacción",
+      "connection": "Vínculo",
+      "discovery": "Descubrimiento",
+      "opportunity": "Oportunidad",
+      "pressure": "Presión",
+      "quiet": "Calma"
     }
   }
 }

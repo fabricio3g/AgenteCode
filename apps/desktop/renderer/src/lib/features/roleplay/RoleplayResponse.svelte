@@ -7,7 +7,9 @@
   import { charactersStore } from './characters.svelte';
   import { roleplayStore } from './roleplay.svelte';
   import { characterBubbles, voiceConfig } from './roleplay-voice';
-  import TtsAudioPlayer from '$lib/features/chat/TtsAudioPlayer.svelte';
+  import { ttsStore } from '$lib/stores/tts.svelte';
+  import { Square, Volume2 } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { stripSpeakerPrefix } from './roleplay-output';
   import type { ChatMessage, RoleplayTurnSnapshot } from '$lib/types/chat';
 
@@ -32,43 +34,130 @@
       ...npcs.map((npc) => ({ id: npc.id, name: npc.name, avatar: undefined, voice: undefined, aliases: [] as string[] }))];
   });
   const mentionNames = $derived([...cast.flatMap((card) => [card.name, ...card.aliases]), snapshot?.persona?.name ?? ''].filter(Boolean));
+  /** A per-bubble voice once the reply is done and voices are on. */
+  const canSpeak = $derived(!!messageId && status !== 'streaming' && !!appStore.config.tts?.enable_voice_output && settings.voicePlayback !== false);
   const parts = $derived(characterBubbles(content, new Map(cast.map((card) => [card.id, card.name])), speakerId ?? null));
 </script>
 
-<div class="narrative-response">
+<!--
+  One roleplay turn: narration as quiet italic prose between the bubbles, and
+  one bubble per character (avatar and name on one line, then what they said).
+  Hovering a bubble offers its own voice; the turn's Listen action reads them
+  all in order.
+-->
+<div class="rp-turn">
   {#each parts as part, index (index)}
     {@const character = cast.find((card) => card.id === part.speakerId)}
     {@const spoken = character ? stripSpeakerPrefix(part.content, [character.name, ...character.aliases]) : part.content}
     {@const audioId = `${messageId}:voice:${part.speakerId ?? `narrator-${index}`}`}
-    {@const audioConfig = voiceConfig(appStore.config, part.speakerId === null ? appStore.config.tts?.narrator : character?.voice)}
     {#if part.speakerId === null}
-      <div class="narrator-passage" aria-label="Narration" data-roleplay-narration>
+      <div class="narration" aria-label={$t('roleplay.narration')} data-roleplay-narration>
         <RichContent content={part.content} {status} {mentionNames} />
-        {#if messageId && status !== 'streaming' && appStore.config.tts?.enable_voice_output && settings.voicePlayback !== false}
-          <TtsAudioPlayer message={{ id: audioId, role: 'assistant', content: spoken, createdAt: 0 }} config={audioConfig} showIdle />
-        {/if}
       </div>
     {:else}
-      <div class="character-contribution" data-roleplay-speaker={part.speakerId}>
-        {#if character && settings.showAvatars !== false}
-          <span class="contribution-avatar"><Avatar size="fill" name={character.name} image={character.avatar} /></span>
+      <div class="bubble" data-roleplay-speaker={part.speakerId}>
+        {#if character}
+          <div class="bubble-head">
+            {#if settings.showAvatars !== false}
+              <span class="bubble-avatar"><Avatar size="fill" name={character.name} image={character.avatar} /></span>
+            {/if}
+            <span class="bubble-name">{character.name}</span>
+            {#if canSpeak}
+              <button
+                type="button"
+                class="bubble-play"
+                class:is-on={ttsStore.isSpeaking(audioId)}
+                aria-label={ttsStore.isSpeaking(audioId) ? $t('roleplay.voice.stop') : $t('roleplay.voice.play', { values: { name: character.name } })}
+                title={ttsStore.isSpeaking(audioId) ? $t('roleplay.voice.stop') : $t('roleplay.voice.play', { values: { name: character.name } })}
+                onclick={() => (ttsStore.isSpeaking(audioId) ? ttsStore.stop() : void ttsStore.speak(audioId, spoken, voiceConfig(appStore.config, character.voice)))}
+              >
+                {#if ttsStore.isSpeaking(audioId)}<Square class="size-2.5" />{:else}<Volume2 class="size-3" />{/if}
+              </button>
+            {/if}
+          </div>
         {/if}
-        <div class="min-w-0 flex-1">
-          {#if character}<div class="mb-1 text-xs font-semibold text-[var(--text-secondary)]">{character.name}</div>{/if}
-          <RichContent content={spoken} {status} {mentionNames} />
-          {#if messageId && status !== 'streaming' && appStore.config.tts?.enable_voice_output && settings.voicePlayback !== false}
-            <TtsAudioPlayer message={{ id: audioId, role: 'assistant', content: spoken, createdAt: 0 }} config={audioConfig} showIdle />
-          {/if}
-        </div>
+        <RichContent content={spoken} {status} {mentionNames} />
       </div>
     {/if}
   {/each}
 </div>
 
 <style>
-  .narrative-response { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-  .narrator-passage { padding: 0.25rem 0.5rem; color: var(--text-secondary); }
-  .narrator-passage :global(.markdown-body) { color: inherit; }
-  .character-contribution { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; padding: 0.625rem 0.75rem; border-radius: var(--radius-xl); background: color-mix(in srgb, var(--foreground) 3%, transparent); }
-  .contribution-avatar { display: block; width: 1.75rem; height: 1.75rem; flex-shrink: 0; overflow: hidden; border-radius: var(--radius-full); }
+  .rp-turn {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .narration {
+    padding: 0 0.625rem;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .narration :global(.markdown-body) {
+    color: inherit;
+  }
+
+  .bubble {
+    min-width: 0;
+    padding: 0.5rem 0.625rem;
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
+  }
+
+  .bubble-head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .bubble-avatar {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    overflow: hidden;
+    border-radius: var(--radius-full);
+    background: var(--muted);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .bubble-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bubble-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-left: auto;
+    border-radius: var(--radius-full);
+    color: var(--muted-foreground);
+    opacity: 0;
+    transition: opacity var(--motion-fast), background-color var(--motion-fast), color var(--motion-fast);
+  }
+
+  .bubble:hover .bubble-play,
+  .bubble-play:focus-visible,
+  .bubble-play.is-on {
+    opacity: 1;
+  }
+
+  .bubble-play:hover {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
 </style>

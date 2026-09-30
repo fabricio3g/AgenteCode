@@ -1735,6 +1735,20 @@
       "storySoFar": "これまでの物語",
       "refreshSummary": "今すぐ要約を更新",
       "summaryEmpty": "シーンの進行に合わせて書かれ、長い物語の一貫性を保ちます。編集できます。"
+    },
+    "narration": "ナレーション",
+    "voice": {
+      "play": "{name}の声を聞く",
+      "stop": "停止"
+    },
+    "decisionHint": "このターンのためにランダムに選ばれました(ダイナミック)",
+    "direction": {
+      "reaction": "反応",
+      "connection": "つながり",
+      "discovery": "発見",
+      "opportunity": "好機",
+      "pressure": "緊迫",
+      "quiet": "静けさ"
     }
   }
 }

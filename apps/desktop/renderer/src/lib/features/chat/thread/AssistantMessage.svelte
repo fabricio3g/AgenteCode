@@ -55,6 +55,13 @@
   const isGreetingMessage = $derived(
     chat?.contextMode === 'roleplay' && chat.messages?.[0]?.id === ctx.message.id
   );
+  /** Dynamic scenes: what the dice chose for this turn, as one quiet line. */
+  const decision = $derived.by(() => {
+    if (snapshot?.mode !== 'dynamic' || !snapshot.settled) return '';
+    const outcome = snapshot.outcomeApplied && snapshot.outcome && snapshot.settings.showOutcomes ? $t(`roleplay.outcome.${snapshot.outcome}`) : '';
+    const direction = snapshot.direction && snapshot.direction !== 'quiet' ? $t(`roleplay.direction.${snapshot.direction}`) : '';
+    return [direction, outcome].filter(Boolean).join(' · ');
+  });
   /** Roleplay: the latest reply can be swiped to another version, or a new one. */
   const swipeable = $derived(
     chat?.contextMode === 'roleplay' && !isGreetingMessage && !ctx.isStreaming
@@ -213,11 +220,14 @@
     {#if speaker && !separateSpeakers}
       <div class="speaker-name">{speaker.name}</div>
     {/if}
+    {#if decision}
+      <div class="decision" title={$t('roleplay.decisionHint')}>
+        <Dices class="size-3 shrink-0" />
+        <span>{decision}</span>
+      </div>
+    {/if}
     <div data-chat-message-content data-chat-message-id={ctx.message.id}>
       <MessageParts />
-      {#if snapshot?.settled && snapshot.outcomeApplied && snapshot.outcome && snapshot.settings.showOutcomes}
-        <div class="mt-2 text-[11px] text-muted-foreground">{$t(`roleplay.outcome.${snapshot.outcome}`)}</div>
-      {/if}
     </div>
 
     {#each handedProps as prop, index (index)}
@@ -267,7 +277,7 @@
     {#if !hasActiveDeepResearch && !ctx.isStreaming}
       <MessageActionBar {actions} visible={hovering || ctx.actionsPinned} {onmenutoggle}>
         {#snippet menuHeader()}
-          {#if ctx.versionCount > 1}
+          {#if ctx.versionCount > 1 && !swipeable}
             <BranchPicker />
           {/if}
         {/snippet}
@@ -299,6 +309,15 @@
     font-weight: 600;
   }
 
+
+  .decision {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0 0 0.35rem 0.625rem;
+    color: var(--muted-foreground);
+    font-size: 11.5px;
+  }
 
   .speaker-name {
     margin-bottom: 0.25rem;

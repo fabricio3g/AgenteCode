@@ -68,8 +68,13 @@
 
   .chips {
     display: flex;
-    flex-wrap: wrap;
     gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .chip {
+    flex-shrink: 0;
   }
 
   .chip {

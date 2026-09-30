@@ -1138,6 +1138,11 @@
         "count": 1
       }
     },
+    "renderer/src/lib/features/chat/TtsAudioPlayer.svelte": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "renderer/src/lib/features/chat/composer/ComposerModelNotice.svelte": {
       "crap_high": {
         "count": 1
@@ -1199,6 +1204,9 @@
     },
     "renderer/src/lib/features/chat/thread/AssistantMessage.svelte": {
       "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       },
       "crap_moderate": {

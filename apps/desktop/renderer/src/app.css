@@ -1079,11 +1079,8 @@ textarea {
 }
 
 .roleplay-mention {
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  color: var(--foreground);
+  color: var(--brand-accent-strong);
   font-weight: 600;
-  padding: 0.02em 0.15em;
 }
 
 .aui-field {
