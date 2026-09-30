@@ -33,6 +33,13 @@ describe('locale completeness', () => {
     });
   }
 
+  it('has an English message for every key the app asks for', () => {
+    const sources = import.meta.glob<string>(['../**/*.svelte', '../**/*.ts', '!../**/*.spec.ts'], { query: '?raw', import: 'default', eager: true });
+    const used = new Set(Object.values(sources).flatMap((source) => [...source.matchAll(/\$t\('([\w.]+)'/g)].map((match) => match[1])));
+    expect(used.size).toBeGreaterThan(500);
+    expect([...used].filter((key) => !englishKeys.has(key)).sort()).toEqual([]);
+  });
+
   it('falls back to English for unknown locales', () => {
     expect(resolveCopy('xx').actions.save).toBe('Save');
     expect(resolveCopy('es').actions.save).toBe('Guardar');

@@ -15,6 +15,7 @@
 
 <script lang="ts">
   import { X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { appStore } from '$lib/stores/app.svelte';
 
   interface Props {
@@ -117,7 +118,7 @@
 <div
   class="panel"
   role="group"
-  aria-label="Suggested actions"
+  aria-label={$t('roleplay.settings.field.adventureChoices')}
   onmouseenter={() => { hovering = true; holdClock(true); }}
   onmouseleave={() => { hovering = false; holdClock(false); }}
 >
@@ -143,9 +144,9 @@
   </div>
 
   <div class="foot">
-    <span class="hint">Select to draft, or type below{choices.length ? ` · press ${choices.length > 1 ? `1–${choices.length}` : '1'}` : ''}</span>
+    <span class="hint">{$t('roleplay.choices.hint', { values: { keys: choices.length > 1 ? `1–${choices.length}` : '1' } })}</span>
     {#if ondismiss}
-      <button type="button" class="dismiss" aria-label="Dismiss suggestions" onclick={ondismiss}>
+      <button type="button" class="dismiss" aria-label={$t('roleplay.choices.dismiss')} onclick={ondismiss}>
         <X class="size-3" />
       </button>
     {/if}

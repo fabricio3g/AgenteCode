@@ -21,6 +21,7 @@
   import { toastStore } from '$lib/stores/toast.svelte';
   import { copy } from '$lib/copy';
   import VoiceAssignmentEditor from '$lib/components/settings/voice/VoiceAssignmentEditor.svelte';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     /** null = create a new character. */
@@ -95,14 +96,9 @@
     }
   }
 
-  const sections: Array<{ id: typeof section; label: string }> = [
-    { id: 'basics', label: 'Basics' },
-    { id: 'prompt', label: 'Prompt' },
-    { id: 'greetings', label: 'Greetings' },
-    { id: 'lore', label: 'Lore' },
-    { id: 'voice', label: 'Voice' },
-    { id: 'advanced', label: 'Advanced' }
-  ];
+  const sections = $derived<Array<{ id: typeof section; label: string }>>(
+    (['basics', 'prompt', 'greetings', 'lore', 'voice', 'advanced'] as const).map((id) => ({ id, label: $t(`roleplay.character.tab.${id}`) }))
+  );
 </script>
 
 <div
@@ -249,7 +245,7 @@
         <LorebookEditor book={draft.book} onchange={(book) => set('book', book)} />
       {/if}
       {#if section === 'voice'}
-        <VoiceAssignmentEditor value={draft.voice ?? (draft.voiceId ? { voice: draft.voiceId, backend: 'local' } : null)} label="Character voice" previewText={draft.firstMessage || `Hello. I'm ${draft.name || 'here'}.`} onchange={(voice) => { set('voice', voice); set('voiceId', null); }} />
+        <VoiceAssignmentEditor value={draft.voice ?? (draft.voiceId ? { voice: draft.voiceId, backend: 'local' } : null)} label={$t('roleplay.voice.character')} previewText={draft.firstMessage || $t('roleplay.voice.preview', { values: { name: draft.name || '…' } })} onchange={(voice) => { set('voice', voice); set('voiceId', null); }} />
       {/if}
 
       {#if section === 'advanced'}

@@ -11,6 +11,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
+  import { t } from 'svelte-i18n';
   import { motionFade, flyAndScale } from '$lib/utils/transitions';
   import { modalLayer } from '$lib/components/ui/modal-layer';
   import Portal from '$lib/components/ui/Portal.svelte';
@@ -43,7 +44,7 @@
   <div
     class="aui-modal-surface max-w-2xl"
      role="dialog"
-     aria-label="What the model saw"
+     aria-label={$t('roleplay.inspector.title')}
     aria-modal="true"
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
@@ -51,9 +52,9 @@
   >
     <div class="aui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">What the model saw</div>
+        <div class="aui-modal-title">{$t('roleplay.inspector.title')}</div>
         <div class="text-xs text-muted-foreground">
-          {parts.speaker ? `${parts.speaker.name}'s turn` : 'Scene prompt'} · ~{estimatedTokens} tokens
+          {parts.speaker ? $t('roleplay.inspector.turn', { values: { name: parts.speaker.name } }) : $t('roleplay.inspector.scene')} · {$t('roleplay.inspector.tokens', { values: { n: estimatedTokens } })}
         </div>
       </div>
       <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
@@ -64,10 +65,10 @@
     <div class="aui-modal-body space-y-4">
       <div class="space-y-1.5">
         <div class="text-xs font-medium text-muted-foreground">
-          Lore entries ({parts.loreEntries.length})
+          {$t('roleplay.inspector.lore', { values: { n: parts.loreEntries.length } })}
         </div>
         {#if !parts.loreEntries.length}
-          <p class="text-xs text-muted-foreground">No lorebook entries matched this turn.</p>
+          <p class="text-xs text-muted-foreground">{$t('roleplay.inspector.noLore')}</p>
         {:else}
           <div class="flex flex-wrap gap-1.5">
             {#each parts.loreEntries as entry (entry.id)}
@@ -78,7 +79,7 @@
       </div>
 
       <div class="space-y-1.5">
-        <div class="text-xs font-medium text-muted-foreground">System prompt</div>
+        <div class="text-xs font-medium text-muted-foreground">{$t('roleplay.inspector.system')}</div>
         {#if parts.systemPrompt}
           <pre class="prompt-block">{parts.systemPrompt}</pre>
         {:else}

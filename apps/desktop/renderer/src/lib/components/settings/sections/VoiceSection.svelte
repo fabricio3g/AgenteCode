@@ -409,7 +409,7 @@
 
        <SpeechServiceSettings kind="tts" />
        {#if !tts.backend_mode || tts.backend_mode === 'local'}<SpeakVoicePicker />{/if}
-       <div class="py-3"><VoiceAssignmentEditor label="Narrator voice" value={tts.narrator} previewText="Rain taps against the window. The room settles into a comfortable silence." onchange={(narrator) => void appStore.updateTtsSettings({ narrator: narrator ?? undefined })} /></div>
+       <div class="py-3"><VoiceAssignmentEditor label={$t('roleplay.voice.narrator')} value={tts.narrator} previewText={$t('roleplay.voice.narratorPreview')} onchange={(narrator) => void appStore.updateTtsSettings({ narrator: narrator ?? undefined })} /></div>
 
       <div class="contents">
         {#snippet speedSlider()}

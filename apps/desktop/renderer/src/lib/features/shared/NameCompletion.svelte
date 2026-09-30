@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 <script lang="ts">
   import { tick } from 'svelte';
+  import { t } from 'svelte-i18n';
   import Avatar from '$lib/components/ui/Avatar.svelte';
   import { completionAt, matchNames, replaceCompletion, type NameCandidate } from './name-completion';
 
@@ -77,7 +78,7 @@
 </script>
 
 {#if matches.length}
-  <div class="name-completion" role="listbox" aria-label="Characters in the room">
+  <div class="name-completion" role="listbox" aria-label={$t('completion.label')}>
     {#each matches as candidate, row (candidate.id)}
       <button type="button" role="option" aria-selected={row === index} class="completion-row" class:is-selected={row === index}
         onpointerdown={(event) => event.preventDefault()} onclick={() => void complete(candidate)}>
@@ -85,7 +86,7 @@
         <span class="min-w-0 flex-1 truncate">{candidate.name}<small>{candidate.description || candidate.nickname || candidate.id.slice(-8)}</small></span>
       </button>
     {/each}
-    <div class="completion-hint">↑↓ select · Tab / Enter complete · Esc close</div>
+    <div class="completion-hint">{$t('completion.hint')}</div>
   </div>
 {/if}
 

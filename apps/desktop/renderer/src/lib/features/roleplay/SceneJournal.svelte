@@ -25,12 +25,7 @@
 
   let { onclose }: Props = $props();
 
-  const SECTIONS: Array<{ kind: RoleplayJournalEntry['kind']; label: string }> = [
-    { kind: 'prop', label: 'Handouts' },
-    { kind: 'quest', label: 'Leads' },
-    { kind: 'bond', label: 'Bonds' },
-    { kind: 'note', label: 'Notes' }
-  ];
+  const SECTIONS: Array<{ kind: RoleplayJournalEntry['kind'] }> = [{ kind: 'prop' }, { kind: 'quest' }, { kind: 'bond' }, { kind: 'note' }];
 
   const entries = $derived(appStore.currentChat?.roleplay?.journal ?? []);
   const summary = $derived(appStore.currentChat?.roleplay?.storySummary?.text ?? '');
@@ -54,7 +49,7 @@
     const title = draftTitle.trim();
     const body = draftBody.trim();
     if (!title && !body) return;
-    roleplayStore.addJournalEntry({ kind: draftKind, title: title || 'Untitled', body });
+    roleplayStore.addJournalEntry({ kind: draftKind, title: title || $t('roleplay.journal.untitled'), body });
     draftTitle = '';
     draftBody = '';
     adding = false;
@@ -62,9 +57,9 @@
 
   function remove(entry: RoleplayJournalEntry) {
     confirmStore.show({
-      title: 'Remove from journal?',
-      message: `"${entry.title}" will be gone from this scene.`,
-      confirmLabel: 'Remove',
+      title: $t('roleplay.journal.removeTitle'),
+      message: $t('roleplay.journal.removeMessage', { values: { title: entry.title } }),
+      confirmLabel: $t('roleplay.journal.remove'),
       danger: true,
       onConfirm: () => roleplayStore.removeJournalEntry(entry.id)
     });
@@ -85,16 +80,16 @@
     class="aui-modal-surface max-w-lg journal-surface"
     role="dialog"
     aria-modal="true"
-    aria-label="Scene journal"
+    aria-label={$t('roleplay.journal.title')}
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
     <div class="aui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">Scene journal</div>
+        <div class="aui-modal-title">{$t('roleplay.journal.title')}</div>
         <div class="text-xs text-muted-foreground">
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+          {$t('roleplay.journal.count', { values: { n: entries.length } })}
         </div>
       </div>
       <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
@@ -129,13 +124,13 @@
 
       {#if !grouped.length && !adding}
         <p class="empty">
-          Nothing kept yet. Props the scene hands over land here, and you can pin your own notes.
+          {$t('roleplay.journal.empty')}
         </p>
       {/if}
 
       {#each grouped as section (section.kind)}
         <section class="section">
-          <h3 class="section-label">{section.label}</h3>
+          <h3 class="section-label">{$t(`roleplay.journal.section.${section.kind}`)}</h3>
           <div class="entries">
             {#each section.entries as entry (entry.id)}
               <article class="entry {entry.pinned ? 'is-pinned' : ''}">
@@ -145,12 +140,12 @@
                     <button
                       type="button"
                       class="tool"
-                      aria-label={entry.pinned ? 'Unpin' : 'Pin to the top'}
+                      aria-label={entry.pinned ? $t('roleplay.journal.unpin') : $t('roleplay.journal.pin')}
                       onclick={() => roleplayStore.pinJournalEntry(entry.id, !entry.pinned)}
                     >
                       <Pin class="size-3" />
                     </button>
-                    <button type="button" class="tool" aria-label="Remove" onclick={() => remove(entry)}>
+                    <button type="button" class="tool" aria-label={$t('roleplay.journal.remove')} onclick={() => remove(entry)}>
                       <Trash2 class="size-3" />
                     </button>
                   </span>
@@ -173,15 +168,15 @@
                 class="kind-pill {draftKind === section.kind ? 'is-on' : ''}"
                 onclick={() => (draftKind = section.kind)}
               >
-                {section.label.replace(/s$/, '')}
+                {$t(`roleplay.journal.kind.${section.kind}`)}
               </button>
             {/each}
           </div>
-          <input class="aui-input" bind:value={draftTitle} placeholder="What it is" />
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draftBody} placeholder="What it says, or what it means"></textarea>
+          <input class="aui-input" bind:value={draftTitle} placeholder={$t('roleplay.journal.titlePlaceholder')} />
+          <textarea class="aui-input min-h-20 resize-y" bind:value={draftBody} placeholder={$t('roleplay.journal.bodyPlaceholder')}></textarea>
           <div class="composer-row composer-actions">
-            <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (adding = false)}>Cancel</button>
-            <button type="button" class="aui-btn aui-btn-primary" onclick={add}>Add</button>
+            <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (adding = false)}>{$t('roleplay.settings.cancel')}</button>
+            <button type="button" class="aui-btn aui-btn-primary" onclick={add}>{$t('roleplay.journal.add')}</button>
           </div>
         </div>
       {/if}
@@ -191,7 +186,7 @@
       <div class="journal-actions">
         <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (adding = true)}>
           <Plus class="size-3.5" />
-          <span>Add to journal</span>
+          <span>{$t('roleplay.journal.addEntry')}</span>
         </button>
       </div>
     {/if}

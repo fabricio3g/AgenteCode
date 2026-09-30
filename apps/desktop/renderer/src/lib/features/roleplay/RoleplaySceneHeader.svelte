@@ -17,6 +17,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { roleplayStore } from '$lib/features/roleplay/roleplay.svelte';
   import type { CharacterCard, UserPersona } from '$lib/types/chat';
+  import { t } from 'svelte-i18n';
 
   interface Props {
     characters?: CharacterCard[];
@@ -62,7 +63,7 @@
   const showBar = $derived(characters.length > 0 || (personas.length > 0 && !!onpersona) || !!onpersonaedit);
 
   const personaOptions = $derived([
-    { value: '', label: 'No persona' },
+    { value: '', label: $t('roleplay.header.noPersona') },
     ...personas.map((persona) => ({ value: persona.id, label: persona.name }))
   ]);
 
@@ -104,16 +105,16 @@
 
 {#if showBar}
   <div class="scene-header">
-    <SegmentedControl value={mode} options={['chat', 'narrative', 'dynamic'].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1), disabled }))} label="Roleplay mode" variant="tabs" class="shrink-0" onchange={(value) => onmode?.(value as 'chat' | 'narrative' | 'dynamic')} />
+    <SegmentedControl value={mode} options={['chat', 'narrative', 'dynamic'].map((value) => ({ value, label: $t(`roleplay.settings.option.${value}`), disabled }))} label={$t('roleplay.settings.field.interactionMode')} variant="tabs" class="shrink-0" onchange={(value) => onmode?.(value as 'chat' | 'narrative' | 'dynamic')} />
     {#if characters.length}
-      <div class="cast-strip" role="group" aria-label="Cast">
+      <div class="cast-strip" role="group" aria-label={$t('roleplay.header.cast')}>
         {#each characters as character (character.id)}
           <div class="cast-member {character.id === nextSpeakerId ? 'is-next' : ''} {isMuted(character.id) || (presentIds && !presentIds.includes(character.id)) ? 'is-muted' : ''}">
             <button
               type="button"
               class="cast-avatar"
-              title={isMuted(character.id) ? `${character.name} (muted)` : `${character.name} — speak now`}
-              aria-label={isMuted(character.id) ? `${character.name} is muted` : `Have ${character.name} speak now`}
+              title={isMuted(character.id) ? $t('roleplay.header.muted', { values: { name: character.name } }) : $t('roleplay.header.speakNow', { values: { name: character.name } })}
+              aria-label={isMuted(character.id) ? $t('roleplay.header.muted', { values: { name: character.name } }) : $t('roleplay.header.speakNow', { values: { name: character.name } })}
               onclick={() => onspeak?.(character.id)}
               disabled={disabled || (presentIds && !presentIds.includes(character.id))}
             >
@@ -136,8 +137,8 @@
           <button
             type="button"
             class="cast-add"
-            aria-label="Edit the scene cast"
-            title="Add or remove characters"
+            aria-label={$t('roleplay.header.editCast')}
+            title={$t('roleplay.header.editCast')}
             onclick={oncastedit}
           >
             <Plus class="size-3.5" />
@@ -151,7 +152,7 @@
         type="button"
         class="auto-pill {autoMode || deadline ? 'is-on' : ''}"
         aria-pressed={autoMode || !!deadline}
-        title={deadline ? 'Stop the pending turn' : autoMode ? 'Pause auto mode' : 'Let characters keep talking'}
+        title={deadline ? $t('roleplay.header.stopPending') : autoMode ? $t('roleplay.header.pauseAuto') : $t('roleplay.header.startAuto')}
         onclick={toggleAuto}
       >
         {#if autoMode && !deadline}
@@ -161,17 +162,17 @@
         {:else}
           <Play class="size-3" />
         {/if}
-        <span>Auto</span>
+        <span>{$t('roleplay.header.auto')}</span>
       </button>
     {/if}
 
     {#if onjournal}
-      <button type="button" class="aui-icon-button is-sm" title="Scene journal" aria-label="Scene journal" onclick={onjournal}>
+      <button type="button" class="aui-icon-button is-sm" title={$t('roleplay.journal.title')} aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
         <BookOpen class="size-3.5" />
       </button>
     {/if}
 
-    <button type="button" class="aui-icon-button is-sm" aria-label="Roleplay settings" title="Customize this conversation" disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
+    <button type="button" class="aui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} title={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
 
     <div class="persona-group">
       {#if personas.length && onpersona}
@@ -180,7 +181,7 @@
             variant="surface"
             value={activePersonaId || ''}
             options={personaOptions}
-            aria-label="User persona"
+            aria-label={$t('roleplay.header.persona')}
             onchange={(value) => onpersona?.(value || null)}
           />
         </div>
@@ -188,8 +189,8 @@
           <button
             type="button"
             class="aui-icon-button is-sm"
-            aria-label="Edit persona"
-            title={activePersonaId ? 'Edit persona' : 'New persona'}
+            aria-label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
+            title={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
             onclick={editActivePersona}
           >
             <Pencil class="size-3.5" />
@@ -198,7 +199,7 @@
       {:else if onpersonaedit}
         <button type="button" class="persona-add" onclick={() => onpersonaedit?.(null)}>
           <Plus class="size-3" />
-          <span>New persona</span>
+          <span>{$t('roleplay.header.newPersona')}</span>
         </button>
       {/if}
     </div>

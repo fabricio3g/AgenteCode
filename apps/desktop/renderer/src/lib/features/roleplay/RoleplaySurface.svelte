@@ -188,28 +188,26 @@
       <Thread density={settings.messageDensity} />
       {#if threadIsEmpty && castNames}
         <div class="scene-hint">
-          <span><span class="scene-hint-strong">{castNames}</span> {cast.length > 1 ? 'are' : 'is'} ready.</span>
-          <span>Say something to begin{persona ? ` as ${persona.name}` : ''}.</span>
+          <span><span class="scene-hint-strong">{castNames}</span></span>
+          <span>{persona ? $t('roleplay.hint.beginAs', { values: { name: persona.name } }) : $t('roleplay.hint.begin')}</span>
         </div>
       {/if}
       {#if missingCharacter || missingPersona}
         <div class="scene-banner">
           <AlertTriangle class="size-3.5 shrink-0" />
           <span class="min-w-0 flex-1">
-            {missingCharacter
-              ? "This scene's character is missing."
-              : "This scene's persona is missing."}
+            {missingCharacter ? $t('roleplay.hint.missingCharacter') : $t('roleplay.hint.missingPersona')}
           </span>
           {#if missingCharacter}
             <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (castEditorOpen = true)}>
-              Choose character
+              {$t('roleplay.hint.chooseCharacter')}
             </button>
             <button type="button" class="aui-btn aui-btn-ghost text-error" onclick={confirmDeleteScene}>
-              Delete scene
+              {$t('roleplay.hint.deleteScene')}
             </button>
           {:else}
             <button type="button" class="aui-btn aui-btn-ghost" onclick={() => onPersona(null)}>
-              Clear persona
+              {$t('roleplay.hint.clearPersona')}
             </button>
           {/if}
         </div>

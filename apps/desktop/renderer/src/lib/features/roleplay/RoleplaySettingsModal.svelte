@@ -12,6 +12,7 @@
   import { roleplayPreferences } from './roleplay-presets.svelte';
   import { resolveRoleplaySettings } from './roleplay-settings';
   import RoleplaySettingsEditor from './RoleplaySettingsEditor.svelte';
+  import { t } from 'svelte-i18n';
 
   let { onclose }: { onclose: () => void } = $props();
   let settings = $state(untrack(() => ({ ...appStore.currentChat?.roleplay })));
@@ -26,29 +27,29 @@
 </script>
 
 <div class="aui-modal-backdrop" role="presentation" use:modalLayer={{ onclose }} transition:motionFade={{ duration: 150 }} onclick={(event) => { if (event.target === event.currentTarget) onclose(); }}>
-  <div class="aui-modal-surface max-w-3xl" role="dialog" aria-modal="true" aria-label="Roleplay settings" tabindex="-1" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}>
-    <div class="aui-modal-header"><div><div class="aui-modal-title">Roleplay settings</div><p class="text-xs text-muted-foreground">Shape this conversation. Both modes use your typed turns.</p></div><button type="button" class="aui-icon-button" aria-label="Close settings" onclick={onclose}><X class="size-4" /></button></div>
+  <div class="aui-modal-surface max-w-3xl" role="dialog" aria-modal="true" aria-label={$t('roleplay.settings.title')} tabindex="-1" transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}>
+    <div class="aui-modal-header"><div><div class="aui-modal-title">{$t('roleplay.settings.title')}</div><p class="text-xs text-muted-foreground">{$t('roleplay.settings.subtitle')}</p></div><button type="button" class="aui-icon-button" aria-label={$t('roleplay.settings.close')} onclick={onclose}><X /></button></div>
     <div class="aui-modal-body max-h-[65vh] space-y-5 overflow-y-auto">
       <RoleplaySettingsEditor value={settings} {inherited} onchange={(next) => (settings = next)} />
       <details>
-        <summary class="cursor-pointer text-sm text-muted-foreground">Room and editable memory</summary>
+        <summary class="cursor-pointer text-sm text-muted-foreground">{$t('roleplay.room.title')}</summary>
         <div class="space-y-4 pt-4">
-          <label class="block space-y-1"><span class="text-xs text-muted-foreground">Location</span><input class="aui-input" bind:value={room.location} placeholder="Where this conversation takes place" /></label>
-          <div class="flex flex-wrap gap-2" role="group" aria-label="Characters present">
+          <label class="block space-y-1"><span class="text-xs text-muted-foreground">{$t('roleplay.room.location')}</span><input class="aui-input" bind:value={room.location} placeholder={$t('roleplay.room.locationPlaceholder')} /></label>
+          <div class="flex flex-wrap gap-2" role="group" aria-label={$t('roleplay.room.present')}>
             {#each cast as card (card.id)}
               <button type="button" class="aui-btn aui-btn-ghost" aria-pressed={room.presentIds.includes(card.id)} onclick={() => { room.presentIds = room.presentIds.includes(card.id) ? room.presentIds.filter((id) => id !== card.id) : [...room.presentIds, card.id]; }}>{#if room.presentIds.includes(card.id)}<Check class="size-3.5" />{/if}{card.name}</button>
             {/each}
           </div>
           {#each ['facts', 'goals', 'relationships'] as key}
-            <label class="block space-y-1"><span class="text-xs text-muted-foreground">{key[0].toUpperCase() + key.slice(1)} · one per line</span><textarea class="aui-input min-h-20 resize-y" value={room[key as 'facts' | 'goals' | 'relationships'].join('\n')} oninput={(event) => { room[key as 'facts' | 'goals' | 'relationships'] = event.currentTarget.value.split('\n').filter((line) => line.trim()).slice(0, 24); }}></textarea></label>
+            <label class="block space-y-1"><span class="text-xs text-muted-foreground">{$t(`roleplay.room.${key}`)}</span><textarea class="aui-input min-h-20 resize-y" value={room[key as 'facts' | 'goals' | 'relationships'].join('\n')} oninput={(event) => { room[key as 'facts' | 'goals' | 'relationships'] = event.currentTarget.value.split('\n').filter((line) => line.trim()).slice(0, 24); }}></textarea></label>
           {/each}
           {#each room.npcs as npc (npc.id)}
-            <div class="space-y-1"><label class="text-xs text-muted-foreground">Scene NPC <input class="aui-input" bind:value={npc.name} /></label><textarea class="aui-input" aria-label={`${npc.name} description`} bind:value={npc.description}></textarea><div class="flex gap-2"><button type="button" class="aui-btn aui-btn-ghost" onclick={() => (room.npcs = room.npcs.filter((entry) => entry.id !== npc.id))}>Remove {npc.name}</button><button type="button" class="aui-btn aui-btn-ghost" onclick={async () => { await charactersStore.save(emptyCharacter({ name: npc.name, description: npc.description })); toastStore.info(`${npc.name} saved to the character library.`); }}>Save to library</button></div></div>
+            <div class="space-y-1"><label class="text-xs text-muted-foreground">{$t('roleplay.room.npc')} <input class="aui-input" bind:value={npc.name} /></label><textarea class="aui-input" aria-label={$t('roleplay.room.npcDescription', { values: { name: npc.name } })} bind:value={npc.description}></textarea><div class="flex gap-2"><button type="button" class="aui-btn aui-btn-ghost" onclick={() => (room.npcs = room.npcs.filter((entry) => entry.id !== npc.id))}>{$t('roleplay.room.removeNpc', { values: { name: npc.name } })}</button><button type="button" class="aui-btn aui-btn-ghost" onclick={async () => { await charactersStore.save(emptyCharacter({ name: npc.name, description: npc.description })); toastStore.info($t('roleplay.room.savedToLibrary', { values: { name: npc.name } })); }}>{$t('roleplay.room.saveToLibrary')}</button></div></div>
           {/each}
-          <p class="text-xs text-muted-foreground">Automatic memory comes from completed response versions. Pinned journal entries are also recalled. Manual room changes apply from this point forward.</p>
+          <p class="text-xs text-muted-foreground">{$t('roleplay.room.hint')}</p>
         </div>
       </details>
     </div>
-    <div class="aui-modal-footer"><button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>Cancel</button><button type="button" class="aui-btn aui-btn-primary" disabled={appStore.currentChatGenerating} onclick={save}>Save</button></div>
+    <div class="aui-modal-footer"><button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{$t('roleplay.settings.cancel')}</button><button type="button" class="aui-btn aui-btn-primary" disabled={appStore.currentChatGenerating} onclick={save}>{$t('roleplay.settings.save')}</button></div>
   </div>
 </div>

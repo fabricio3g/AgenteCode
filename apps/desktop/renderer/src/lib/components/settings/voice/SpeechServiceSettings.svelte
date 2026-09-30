@@ -5,6 +5,7 @@
   import { appStore } from '$lib/stores/app.svelte';
   import { SPEECH_DEFAULTS, type SpeechProviderConfig } from '$shared/speech';
   import { toastStore } from '$lib/stores/toast.svelte';
+  import { t } from 'svelte-i18n';
   let { kind }: { kind: 'tts' | 'stt' } = $props();
   const settings = $derived(appStore.config[kind]);
   const mode = $derived(kind === 'tts' ? appStore.config.tts?.backend_mode ?? 'local' : appStore.config.stt?.provider === 'api' ? 'api' : 'local');
@@ -27,22 +28,22 @@
       if (kind === 'tts') await appStore.updateTtsSettings({ backend_mode: 'api', api_provider: selected, providers });
       else await appStore.updateSttSettings({ provider: 'api', api_provider: selected, providers });
       draft.api_key = '';
-      toastStore.success('Speech service saved.');
+      toastStore.success($t('speech.saved'));
     } catch (error) { toastStore.error(error instanceof Error ? error.message : String(error)); }
     finally { saving = false; }
   }
 </script>
 
 <div class="space-y-4 py-3">
-  <SegmentedControl label={kind === 'tts' ? 'Speech output backend' : 'Transcription backend'} value={mode} options={[{ value: 'local', label: 'Local' }, { value: 'api', label: 'API' }, ...(kind === 'tts' ? [{ value: 'browser', label: 'System' }] : [])]} onchange={(value) => void backend(value)} />
+  <SegmentedControl label={kind === 'tts' ? $t('speech.outputBackend') : $t('speech.inputBackend')} value={mode} options={[{ value: 'local', label: $t('speech.local') }, { value: 'api', label: $t('speech.api') }, ...(kind === 'tts' ? [{ value: 'browser', label: $t('speech.system') }] : [])]} onchange={(value) => void backend(value)} />
   {#if mode === 'api'}
-    <Select aria-label="Speech service" value={selected} options={[{ value: 'openai', label: 'OpenAI' }, { value: 'compatible', label: 'OpenAI-compatible' }, kind === 'tts' ? { value: 'elevenlabs', label: 'ElevenLabs' } : { value: 'deepgram', label: 'Deepgram' }]} onchange={(value) => { selected = value; draft = loadDraft(value); }} />
+    <Select aria-label={$t('speech.service')} value={selected} options={[{ value: 'openai', label: 'OpenAI' }, { value: 'compatible', label: $t('speech.compatible') }, kind === 'tts' ? { value: 'elevenlabs', label: 'ElevenLabs' } : { value: 'deepgram', label: 'Deepgram' }]} onchange={(value) => { selected = value; draft = loadDraft(value); }} />
     <div class="grid gap-3 sm:grid-cols-2">
-      <label class="text-xs text-muted-foreground sm:col-span-2">Endpoint<input class="aui-input mt-1" bind:value={draft.base_url} placeholder="https://service.example/v1" /></label>
-      <label class="text-xs text-muted-foreground">API key<input class="aui-input mt-1" type="password" autocomplete="off" bind:value={draft.api_key} placeholder={settings?.providers?.[selected]?.has_api_key ? 'Key saved · enter to replace' : 'API key'} /></label>
-      <label class="text-xs text-muted-foreground">Model<input class="aui-input mt-1" bind:value={draft.model} /></label>
-      {#if kind === 'tts'}<label class="text-xs text-muted-foreground">Default voice ID<input class="aui-input mt-1" value={draft.voice ?? ''} oninput={(event) => draft.voice = event.currentTarget.value} /></label>{/if}
+      <label class="text-xs text-muted-foreground sm:col-span-2">{$t('speech.endpoint')}<input class="aui-input mt-1" bind:value={draft.base_url} placeholder="https://service.example/v1" /></label>
+      <label class="text-xs text-muted-foreground">{$t('speech.apiKey')}<input class="aui-input mt-1" type="password" autocomplete="off" bind:value={draft.api_key} placeholder={settings?.providers?.[selected]?.has_api_key ? $t('speech.keySaved') : $t('speech.apiKey')} /></label>
+      <label class="text-xs text-muted-foreground">{$t('speech.model')}<input class="aui-input mt-1" bind:value={draft.model} /></label>
+      {#if kind === 'tts'}<label class="text-xs text-muted-foreground">{$t('speech.defaultVoice')}<input class="aui-input mt-1" value={draft.voice ?? ''} oninput={(event) => draft.voice = event.currentTarget.value} /></label>{/if}
     </div>
-    <Button size="sm" disabled={saving || !draft.base_url.trim() || !draft.model.trim()} onclick={() => void save()}>{saving ? 'Saving…' : 'Save service'}</Button>
+    <Button size="sm" disabled={saving || !draft.base_url.trim() || !draft.model.trim()} onclick={() => void save()}>{saving ? $t('speech.saving') : $t('speech.save')}</Button>
   {/if}
 </div>
