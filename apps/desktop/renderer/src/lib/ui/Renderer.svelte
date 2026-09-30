@@ -188,23 +188,23 @@
   :global(.ui-button:active) {
     transform: scale(0.98);
   }
-  :global(.ui-button-primary) {
+  :global(.ui-artifact-button-primary) {
     background: var(--primary);
     color: var(--primary-fg);
   }
-  :global(.ui-button-secondary), :global(.ui-button-tertiary) {
+  :global(.ui-artifact-button-secondary), :global(.ui-button-tertiary) {
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
   }
-  :global(.ui-button-secondary:hover), :global(.ui-button-tertiary:hover) {
+  :global(.ui-artifact-button-secondary:hover), :global(.ui-button-tertiary:hover) {
     background: var(--surface-hover);
     border-color: var(--fg-tertiary);
   }
   :global(.dark .ui-button) {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.2);
   }
-  :global(.ui-form), :global(.ui-field) {
+  :global(.ui-form), :global(.ui-artifact-field) {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -214,7 +214,7 @@
     font-weight: 600;
     color: var(--text);
   }
-  :global(.ui-input), :global(.ui-textarea) {
+  :global(.ui-artifact-input), :global(.ui-textarea) {
     width: 100%;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
@@ -224,7 +224,7 @@
     font: inherit;
     transition: border-color 0.15s ease;
   }
-  :global(.ui-input:focus), :global(.ui-textarea:focus) {
+  :global(.ui-artifact-input:focus), :global(.ui-textarea:focus) {
     outline: none;
     border-color: var(--border-hover);
   }

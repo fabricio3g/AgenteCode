@@ -67,7 +67,7 @@
 </script>
 
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
@@ -77,7 +77,7 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-lg journal-surface"
+    class="ui-modal-surface max-w-lg journal-surface"
     role="dialog"
     aria-modal="true"
     aria-label={$t('roleplay.journal.title')}
@@ -85,19 +85,19 @@
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{$t('roleplay.journal.title')}</div>
+        <div class="ui-modal-title">{$t('roleplay.journal.title')}</div>
         <div class="text-xs text-muted-foreground">
           {$t('roleplay.journal.count', { values: { n: entries.length } })}
         </div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
         <X class="size-4" />
       </button>
     </div>
 
-    <div class="aui-modal-body max-h-[58vh] space-y-4 overflow-y-auto">
+    <div class="ui-modal-body max-h-[58vh] space-y-4 overflow-y-auto">
       <section class="section">
         <div class="flex items-center gap-2">
           <h3 class="section-label min-w-0 flex-1">{$t('roleplay.journal.storySoFar')}</h3>
@@ -172,11 +172,11 @@
               </button>
             {/each}
           </div>
-          <input class="aui-input" bind:value={draftTitle} placeholder={$t('roleplay.journal.titlePlaceholder')} />
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draftBody} placeholder={$t('roleplay.journal.bodyPlaceholder')}></textarea>
+          <input class="ui-input" bind:value={draftTitle} placeholder={$t('roleplay.journal.titlePlaceholder')} />
+          <textarea class="ui-input min-h-20 resize-y" bind:value={draftBody} placeholder={$t('roleplay.journal.bodyPlaceholder')}></textarea>
           <div class="composer-row composer-actions">
-            <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (adding = false)}>{$t('roleplay.settings.cancel')}</button>
-            <button type="button" class="aui-btn aui-btn-primary" onclick={add}>{$t('roleplay.journal.add')}</button>
+            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (adding = false)}>{$t('roleplay.settings.cancel')}</button>
+            <button type="button" class="ui-btn ui-btn-primary" onclick={add}>{$t('roleplay.journal.add')}</button>
           </div>
         </div>
       {/if}
@@ -184,7 +184,7 @@
 
     {#if !adding}
       <div class="journal-actions">
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (adding = true)}>
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (adding = true)}>
           <Plus class="size-3.5" />
           <span>{$t('roleplay.journal.addEntry')}</span>
         </button>
@@ -349,7 +349,7 @@
     border-top: 1px solid var(--border-subtle);
   }
 
-  .journal-actions :global(.aui-btn) {
+  .journal-actions :global(.ui-btn) {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;

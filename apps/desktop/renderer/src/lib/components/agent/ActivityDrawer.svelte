@@ -91,24 +91,24 @@
       <div class="drawer-mode">{modeLabel}</div>
     {/if}
     <div class="flex items-center gap-2">
-      <div class="aui-segmented min-w-0 flex-1">
+      <div class="ui-segmented min-w-0 flex-1">
         <button
           type="button"
-          class="aui-segmented-item flex-1 py-1.5 {activeTab === 'activity' ? 'is-active' : ''}"
+          class="ui-segmented-item flex-1 py-1.5 {activeTab === 'activity' ? 'is-active' : ''}"
           onclick={() => (appStore.activityDrawerTab = 'activity')}
         >
           {copy.thread.activity}
         </button>
         <button
           type="button"
-          class="aui-segmented-item flex-1 py-1.5 {activeTab === 'sources' ? 'is-active' : ''}"
+          class="ui-segmented-item flex-1 py-1.5 {activeTab === 'sources' ? 'is-active' : ''}"
           onclick={() => (appStore.activityDrawerTab = 'sources')}
           disabled={!sourceCount}
         >
           {countOf(sourceCount, 'Source')}
         </button>
       </div>
-      <button type="button" class="aui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
+      <button type="button" class="ui-icon-button shrink-0" onclick={close} aria-label={copy.actions.close} title={copy.actions.close}>
         <X class="size-3.5" />
       </button>
     </div>

@@ -167,12 +167,12 @@
     {/if}
 
     {#if onjournal}
-      <button type="button" class="aui-icon-button is-sm" title={$t('roleplay.journal.title')} aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
+      <button type="button" class="ui-icon-button is-sm" title={$t('roleplay.journal.title')} aria-label={$t('roleplay.journal.title')} onclick={onjournal}>
         <BookOpen class="size-3.5" />
       </button>
     {/if}
 
-    <button type="button" class="aui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} title={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
+    <button type="button" class="ui-icon-button is-sm" aria-label={$t('roleplay.settings.title')} title={$t('roleplay.settings.title')} disabled={disabled} onclick={() => onsettings?.()}><Settings2 class="size-3.5" /></button>
 
     <div class="persona-group">
       {#if personas.length && onpersona}
@@ -188,7 +188,7 @@
         {#if onpersonaedit}
           <button
             type="button"
-            class="aui-icon-button is-sm"
+            class="ui-icon-button is-sm"
             aria-label={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
             title={activePersonaId ? $t('roleplay.header.editPersona') : $t('roleplay.header.newPersona')}
             onclick={editActivePersona}

@@ -98,7 +98,7 @@
   }</script>
 
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
@@ -108,27 +108,27 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-2xl"
+    class="ui-modal-surface max-w-2xl"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{world ? world.name : 'New scene'}</div>
+        <div class="ui-modal-title">{world ? world.name : 'New scene'}</div>
         <div class="text-xs text-muted-foreground">
           {group ? `Group scene · ${cast.length} characters` : 'One-on-one scene'}
           {world ? ' · world canon active' : ''}
         </div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
 
-    <div class="aui-modal-body max-h-[64vh] space-y-5 overflow-y-auto">
+    <div class="ui-modal-body max-h-[64vh] space-y-5 overflow-y-auto">
       <details><summary class="cursor-pointer text-sm text-muted-foreground">Conversation settings · Chat / Dynamic</summary><div class="pt-4"><RoleplaySettingsEditor value={sceneSettings} {inherited} onchange={(next) => (sceneSettings = next)} /></div></details>
       <div class="space-y-2">
         <div class="flex items-center justify-between">
@@ -197,8 +197,8 @@
       </div>
     </div>
 
-    <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
+    <div class="ui-modal-footer">
+      <button type="button" class="ui-btn ui-btn-ghost" onclick={onclose}>{copy.actions.cancel}</button>
       <Button onclick={start} disabled={!primary}>{group ? 'Start group scene' : 'Start scene'}</Button>
     </div>
   </div>

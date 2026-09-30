@@ -207,13 +207,13 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="chat-search-backdrop aui-modal-backdrop items-start px-4 pt-[8vh]"
+  class="chat-search-backdrop ui-modal-backdrop items-start px-4 pt-[8vh]"
   use:modalLayer={{ onclose: close }}
   onclick={close}
   onkeydown={handleKeydown}
 >
   <div
-    class="chat-search-dialog aui-menu flex w-full max-w-5xl flex-col overflow-hidden !p-0"
+    class="chat-search-dialog ui-menu flex w-full max-w-5xl flex-col overflow-hidden !p-0"
     role="dialog"
     aria-modal="true"
     aria-label={$t('shortcuts.search')}
@@ -234,7 +234,7 @@
       {#if query}
         <button
           type="button"
-          class="aui-icon-button is-sm"
+          class="ui-icon-button is-sm"
           onclick={() => (query = '')}
           aria-label={$t('search.clear')}
         >

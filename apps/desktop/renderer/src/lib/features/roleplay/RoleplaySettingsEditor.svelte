@@ -108,7 +108,7 @@
 <div class="space-y-4">
   <div class="flex flex-wrap items-center gap-2">
     <div class="min-w-40 flex-1"><Select variant="surface" value={selectedPreset} options={[{ value: '', label: $t('roleplay.settings.custom') }, ...roleplayPreferences.presets.map((preset) => ({ value: preset.id, label: presetLabel(preset) }))]} aria-label={$t('roleplay.settings.preset')} onchange={applyPreset} /></div>
-    <button type="button" class="aui-btn aui-btn-ghost" onclick={reset}>{$t('roleplay.settings.resetOverrides')}</button>
+    <button type="button" class="ui-btn ui-btn-ghost" onclick={reset}>{$t('roleplay.settings.resetOverrides')}</button>
   </div>
   <div class="overflow-x-auto py-1">
     <SegmentedControl value={section} options={tabs.map((value) => ({ value, label: $t(`roleplay.settings.tab.${value}`) }))} label={$t('roleplay.settings.sections')} variant="tabs" class="whitespace-nowrap" onchange={(value) => (section = value)} />
@@ -121,7 +121,7 @@
     {/each}
     {#each numbers.filter((entry) => entry.section === section) as item (item.key)}
       <label class="space-y-1.5"><span class="text-xs text-muted-foreground">{field(item.key)}</span>
-        <input class="aui-input" type="number" min={item.min} max={item.max} step={item.step ?? 1} value={settings[item.key] as number ?? ''} oninput={(event) => set(item.key, event.currentTarget.value === '' && item.nullable ? null : Number(event.currentTarget.value))} />
+        <input class="ui-input" type="number" min={item.min} max={item.max} step={item.step ?? 1} value={settings[item.key] as number ?? ''} oninput={(event) => set(item.key, event.currentTarget.value === '' && item.nullable ? null : Number(event.currentTarget.value))} />
       </label>
     {/each}
   </div>
@@ -132,30 +132,30 @@
   {/each}
   {#if section === 'conversation'}
     <p class="text-xs text-muted-foreground">{$t('roleplay.settings.modesHint')}</p>
-    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.genre')}</span><input class="aui-input" value={settings.genre ?? ''} placeholder={$t('roleplay.settings.genrePlaceholder')} oninput={(event) => set('genre', event.currentTarget.value)} /></label>
-    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.authorNote')}</span><textarea class="aui-input min-h-24 resize-y" value={settings.authorNote ?? ''} oninput={(event) => set('authorNote', event.currentTarget.value)}></textarea></label>
+    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.genre')}</span><input class="ui-input" value={settings.genre ?? ''} placeholder={$t('roleplay.settings.genrePlaceholder')} oninput={(event) => set('genre', event.currentTarget.value)} /></label>
+    <label class="block space-y-1.5"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.authorNote')}</span><textarea class="ui-input min-h-24 resize-y" value={settings.authorNote ?? ''} oninput={(event) => set('authorNote', event.currentTarget.value)}></textarea></label>
   {:else if section === 'decisions'}
     <p class="text-xs text-muted-foreground">{$t('roleplay.settings.decisionsHint')}</p>
     <div class="grid gap-3 sm:grid-cols-2">
       {#each Object.entries(DECISION_DIRECTIONS) as [key, description]}
-        <label class="space-y-1"><span class="text-xs text-muted-foreground" title={description}>{$t('roleplay.settings.directionWeight', { values: { name: $t(`roleplay.direction.${key}`) } })}</span><input class="aui-input" type="number" min="0" max="100" value={settings.decisionWeights?.[key] ?? 0} oninput={(event) => set('decisionWeights', { ...settings.decisionWeights, [key]: Number(event.currentTarget.value) })} /></label>
+        <label class="space-y-1"><span class="text-xs text-muted-foreground" title={description}>{$t('roleplay.settings.directionWeight', { values: { name: $t(`roleplay.direction.${key}`) } })}</span><input class="ui-input" type="number" min="0" max="100" value={settings.decisionWeights?.[key] ?? 0} oninput={(event) => set('decisionWeights', { ...settings.decisionWeights, [key]: Number(event.currentTarget.value) })} /></label>
       {/each}
       {#each ['success', 'cost', 'setback'] as key}
-        <label class="space-y-1"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.outcomeWeight', { values: { name: $t(`roleplay.outcome.${key}`) } })}</span><input class="aui-input" type="number" min="0" max="100" value={settings.outcomeWeights?.[key as 'success' | 'cost' | 'setback'] ?? 0} oninput={(event) => set('outcomeWeights', { ...settings.outcomeWeights, [key]: Number(event.currentTarget.value) })} /></label>
+        <label class="space-y-1"><span class="text-xs text-muted-foreground">{$t('roleplay.settings.outcomeWeight', { values: { name: $t(`roleplay.outcome.${key}`) } })}</span><input class="ui-input" type="number" min="0" max="100" value={settings.outcomeWeights?.[key as 'success' | 'cost' | 'setback'] ?? 0} oninput={(event) => set('outcomeWeights', { ...settings.outcomeWeights, [key]: Number(event.currentTarget.value) })} /></label>
       {/each}
     </div>
   {/if}
   <details class="text-xs text-muted-foreground">
     <summary class="cursor-pointer py-2">{$t('roleplay.settings.presets')}</summary>
     <div class="space-y-2 pt-2">
-      <input class="aui-input" aria-label={$t('roleplay.settings.presetName')} placeholder={$t('roleplay.settings.presetNamePlaceholder')} bind:value={presetName} />
+      <input class="ui-input" aria-label={$t('roleplay.settings.presetName')} placeholder={$t('roleplay.settings.presetNamePlaceholder')} bind:value={presetName} />
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={savePreset}>{$t('roleplay.settings.saveNew')}</button>
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={exportPreset}>{$t('roleplay.settings.export')}</button>
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={() => importInput.click()}>{$t('roleplay.settings.import')}</button>
-        {#if roleplayPreferences.saved.some((entry) => entry.id === selectedPreset)}<button type="button" class="aui-btn aui-btn-ghost" onclick={() => { roleplayPreferences.remove(selectedPreset); selectedPreset = ''; }}>{$t('roleplay.settings.deletePreset')}</button>{/if}
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={() => { roleplayPreferences.setDefaults(settings); toastStore.info($t('roleplay.settings.defaultsSaved')); }}>{$t('roleplay.settings.useDefaults')}</button>
-        <button type="button" class="aui-btn aui-btn-ghost" onclick={() => roleplayPreferences.resetDefaults()}>{$t('roleplay.settings.resetDefaults')}</button>
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={savePreset}>{$t('roleplay.settings.saveNew')}</button>
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={exportPreset}>{$t('roleplay.settings.export')}</button>
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => importInput.click()}>{$t('roleplay.settings.import')}</button>
+        {#if roleplayPreferences.saved.some((entry) => entry.id === selectedPreset)}<button type="button" class="ui-btn ui-btn-ghost" onclick={() => { roleplayPreferences.remove(selectedPreset); selectedPreset = ''; }}>{$t('roleplay.settings.deletePreset')}</button>{/if}
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => { roleplayPreferences.setDefaults(settings); toastStore.info($t('roleplay.settings.defaultsSaved')); }}>{$t('roleplay.settings.useDefaults')}</button>
+        <button type="button" class="ui-btn ui-btn-ghost" onclick={() => roleplayPreferences.resetDefaults()}>{$t('roleplay.settings.resetDefaults')}</button>
       </div>
       <input class="hidden" type="file" accept="application/json,.json" bind:this={importInput} onchange={importPreset} />
       <p>{$t('roleplay.settings.inheritHint')}</p>

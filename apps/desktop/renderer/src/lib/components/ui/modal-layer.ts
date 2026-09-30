@@ -5,7 +5,7 @@
  * not; none trapped focus or gave it back; each picked its own z-index. This
  * action is the single implementation. Put it on the backdrop element:
  *
- *   <div class="aui-modal-backdrop" use:modalLayer={{ onclose }}> … </div>
+ *   <div class="ui-modal-backdrop" use:modalLayer={{ onclose }}> … </div>
  *
  * - Layers stack: only the topmost handles Escape, and each layer's z-index is
  *   `--z-modal` plus its depth, so a dialog opened from a dialog sits on top.

@@ -21,7 +21,7 @@
 </script>
 
 <ProductSelect
-  class="ui-input"
+  class="ui-artifact-input"
   value={String(value)}
   options={normalizedOptions}
   disabled={Boolean(props.disabled)}

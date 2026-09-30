@@ -386,9 +386,9 @@
       audioLevels={dictation.audioLevels}
     />
 
-    <!-- Radius comes from --composer-radius on .aui-composer; the rounded-*
+    <!-- Radius comes from --composer-radius on .ui-composer; the rounded-*
          utilities that used to sit here fought it at equal specificity. -->
-    <div class="composer-shell aui-composer pointer-events-auto transition">
+    <div class="composer-shell ui-composer pointer-events-auto transition">
       {#if nameCompletion}
         <NameCompletion {textarea} text={appStore.composer} {...nameCompletion} onchange={(text) => appStore.updateComposer(text)} />
       {/if}

@@ -1,7 +1,7 @@
 <svelte:options runes={true} />
 
 <!--
-  The Code composer: the same shell as Home's composer (aui-composer pill,
+  The Code composer: the same shell as Home's composer (ui-composer pill,
   two-row body, dock fade) so both spaces read as one product.
 
   Grammar follows the same bar split — scope on the left (runtime-mode gate),
@@ -512,7 +512,7 @@
         <p class="slash-foot">{$t('code.slash.keys')}</p>
       </div>
     {/if}
-    <div class="composer-shell aui-composer pointer-events-auto transition">
+    <div class="composer-shell ui-composer pointer-events-auto transition">
       <div class="composer-body">
         {#if attachments.length}
           <div class="mb-2 flex flex-wrap gap-1.5">
@@ -536,7 +536,7 @@
         <div class="composer-bar">
           <div class="composer-bar-leading">
             <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-            <button type="button" class="aui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
+            <button type="button" class="ui-icon-button" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
 
             <!-- Runtime mode gate — plan / supervised / full-auto. -->
             <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
@@ -593,9 +593,9 @@
             {/if}
 
             <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-              {#snippet trigger(props)}<button type="button" class="aui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+              {#snippet trigger(props)}<button type="button" class="ui-icon-button" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
               {#each menuGroups as group, index (index)}
-                {#if index > 0}<div class="aui-menu-separator" role="separator"></div>{/if}
+                {#if index > 0}<div class="ui-menu-separator" role="separator"></div>{/if}
                 {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
               {/each}
             </Menu>

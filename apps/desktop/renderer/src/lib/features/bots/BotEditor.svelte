@@ -108,10 +108,10 @@
       </div>
     </div>
     <Field label={$t('bots.name')} htmlFor="bot-name">
-      <input id="bot-name" class="aui-input" bind:value={title} placeholder={$t('bots.namePlaceholder')} />
+      <input id="bot-name" class="ui-input" bind:value={title} placeholder={$t('bots.namePlaceholder')} />
     </Field>
     <Field label={$t('bots.role')} htmlFor="bot-role">
-      <input id="bot-role" class="aui-input" bind:value={role} placeholder={$t('bots.rolePlaceholder')} />
+      <input id="bot-role" class="ui-input" bind:value={role} placeholder={$t('bots.rolePlaceholder')} />
     </Field>
 
     <Field label={$t('bots.model')} description={$t('bots.modelHint')}>
@@ -121,14 +121,14 @@
     <Disclosure bind:open={advanced} title={$t('bots.advanced')} description={$t('bots.advancedHint')}>
       <div class="space-y-4 pt-2">
         <Field label={$t('bots.soul')} description={$t('bots.soulHint')} htmlFor="bot-soul">
-          <textarea id="bot-soul" class="aui-input min-h-28" bind:value={soul}></textarea>
+          <textarea id="bot-soul" class="ui-input min-h-28" bind:value={soul}></textarea>
         </Field>
         <Field label={$t('bots.aboutYou')} description={$t('bots.aboutYouHint')} htmlFor="bot-user">
-          <textarea id="bot-user" class="aui-input min-h-20" bind:value={user}></textarea>
+          <textarea id="bot-user" class="ui-input min-h-20" bind:value={user}></textarea>
         </Field>
         {#if bot}
           <Field label={$t('bots.memory')} description={$t('bots.memoryHint')} htmlFor="bot-memory">
-            <textarea id="bot-memory" class="aui-input min-h-24 text-[12px]" bind:value={memory}></textarea>
+            <textarea id="bot-memory" class="ui-input min-h-24 text-[12px]" bind:value={memory}></textarea>
           </Field>
         {/if}
         <Field
@@ -139,7 +139,7 @@
         >
           <div class="flex items-center gap-2">
             <span class="text-[13px] text-muted-foreground">$</span>
-            <input id="bot-budget" class="aui-input budget-input" type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
+            <input id="bot-budget" class="ui-input budget-input" type="text" inputmode="decimal" bind:value={budget} placeholder={$t('bots.noLimit')} />
             <span class="whitespace-nowrap text-[12px] text-muted-foreground">{$t('bots.perDay')}</span>
           </div>
         </Field>

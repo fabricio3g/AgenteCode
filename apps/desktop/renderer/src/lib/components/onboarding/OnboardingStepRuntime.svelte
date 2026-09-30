@@ -95,7 +95,7 @@
       <LoaderCircle class="size-5 animate-spin" />
     </div>
   {:else if hasInstalledRuntime}
-    <div class="aui-card-quiet space-y-3 p-4">
+    <div class="ui-card-quiet space-y-3 p-4">
       <div class="flex items-center gap-2 text-sm text-muted-foreground">
         <CheckCircle2 class="size-4 text-success" />
         <span>{$t('onboarding.runtimeInstalledReady')}</span>
@@ -147,13 +147,13 @@
   {/if}
 
   <div class="mt-auto flex items-center justify-between pt-4">
-    <button type="button" class="aui-btn aui-btn-ghost gap-1.5 px-4" onclick={onBack}>
+    <button type="button" class="ui-btn ui-btn-ghost gap-1.5 px-4" onclick={onBack}>
       <ArrowLeft class="size-4" />
       {$t('onboarding.back')}
     </button>
     <button
       type="button"
-      class="aui-btn aui-btn-primary gap-1.5 px-5"
+      class="ui-btn ui-btn-primary gap-1.5 px-5"
       onclick={() => {
         onNext(selectedRuntimePath);
       }}

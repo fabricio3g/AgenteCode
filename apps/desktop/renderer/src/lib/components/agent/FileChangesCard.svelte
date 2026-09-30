@@ -120,7 +120,7 @@
   .kind.created { color: var(--success); }
   .kind.modified { color: var(--primary); }
   .kind.deleted { color: var(--error); }
-  /* Matches .aui-tool-fallback-args-value so agent code blocks read the same
+  /* Matches .ui-tool-fallback-args-value so agent code blocks read the same
      inline as they do in the activity drawer. */
   .diff { margin: 0; max-height: 16rem; overflow: auto; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--muted) 50%, transparent); color: color-mix(in srgb, var(--foreground) 90%, transparent); border-radius: 0; padding: 0.45rem 0.6rem; font-family: var(--font-mono); font-size: 0.68rem; line-height: 1.5; white-space: pre-wrap; }
   .depth-1 { padding-left: 1rem; }

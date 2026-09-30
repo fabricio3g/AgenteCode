@@ -120,7 +120,7 @@
   {#if part.kind === 'deep-research'}
     <DeepResearchWidget messageId={ctx.message.id} />
   {:else if part.kind === 'reasoning'}
-    <div class="aui-cot-stack mb-1 w-full">
+    <div class="ui-cot-stack mb-1 w-full">
       <ReasoningBlock
         reasoning={part.reasoning}
         status={ctx.message.status}
@@ -130,7 +130,7 @@
       />
     </div>
   {:else if part.kind === 'tool-status'}
-    <div class="aui-cot-stack mb-1 w-full">
+    <div class="ui-cot-stack mb-1 w-full">
       <AgentBlock
         steps={(ctx.message.agentSteps || []).filter((step) => !step.preface)}
         reasoning={appStore.config.ui?.enable_thinking ? ctx.displayReasoning : ''}

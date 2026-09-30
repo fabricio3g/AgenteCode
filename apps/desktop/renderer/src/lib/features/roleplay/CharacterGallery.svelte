@@ -63,13 +63,13 @@
     <div class="search-field">
       <Search class="search-icon" />
       <input
-        class="aui-input search-input w-full"
+        class="ui-input search-input w-full"
         bind:value={query}
         placeholder={copy.roleplay.characters}
         aria-label={copy.roleplay.characters}
       />
     </div>
-    <button type="button" class="aui-btn shrink-0" disabled={importing} onclick={() => importInput?.click()}>
+    <button type="button" class="ui-btn shrink-0" disabled={importing} onclick={() => importInput?.click()}>
       <Upload class="size-4" />
       <span>{importing ? 'Importing…' : copy.roleplay.importCharacter}</span>
     </button>
@@ -80,7 +80,7 @@
       accept=".json,.png,application/json,image/png"
       onchange={onImportFile}
     />
-    <button type="button" class="aui-btn aui-btn-primary shrink-0" onclick={onnew}>
+    <button type="button" class="ui-btn ui-btn-primary shrink-0" onclick={onnew}>
       <Plus class="size-4" />
       <span>{copy.roleplay.newCharacter}</span>
     </button>
@@ -121,7 +121,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
+            class="edit-btn ui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => onedit(card)}
             aria-label="Edit character"
           >
@@ -156,7 +156,7 @@
     pointer-events: none;
   }
 
-  /* Scoped rule beats .aui-input's shorthand padding; a Tailwind pl-* utility
+  /* Scoped rule beats .ui-input's shorthand padding; a Tailwind pl-* utility
      loses to it because both are single-class specificity. */
   .search-input {
     padding-left: 2.5rem;

@@ -102,7 +102,7 @@
 </script>
 
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: () => guard.close(onclose) }}
   transition:motionFade={{ duration: 150 }}
@@ -112,19 +112,19 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-3xl"
+    class="ui-modal-surface max-w-3xl"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{isNew ? 'New character' : draft.name || 'Edit character'}</div>
+        <div class="ui-modal-title">{isNew ? 'New character' : draft.name || 'Edit character'}</div>
         <div class="text-xs text-muted-foreground">Character card fields follow the V2/V3 spec.</div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -143,7 +143,7 @@
       {/each}
     </div>
 
-    <div class="aui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
+    <div class="ui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
       {#if section === 'basics'}
         <div class="flex items-start gap-4">
           <div class="flex flex-col items-center gap-2">
@@ -164,13 +164,13 @@
           <div class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
             <label class="block space-y-1.5 text-sm sm:col-span-2">
               <span class="font-medium text-muted-foreground">Name</span>
-              <input class="aui-input" bind:value={draft.name} placeholder="e.g. Aiko" />
+              <input class="ui-input" bind:value={draft.name} placeholder="e.g. Aiko" />
             </label>
             <label class="block space-y-1.5 text-sm sm:col-span-2">
               <span class="font-medium text-muted-foreground">Nickname</span>
               <span class="block text-xs text-muted-foreground">How the cast may address them in group scenes.</span>
               <input
-                class="aui-input"
+                class="ui-input"
                 value={draft.nickname || ''}
                 oninput={(e) => set('nickname', e.currentTarget.value)}
                 placeholder="Optional"
@@ -178,16 +178,16 @@
             </label>
             <label class="block space-y-1.5 text-sm sm:col-span-2">
               <span class="font-medium text-muted-foreground">Tagline</span>
-              <input class="aui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
+              <input class="ui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
             </label>
-            <label class="block space-y-1.5 text-sm sm:col-span-2"><span class="font-medium text-muted-foreground">Aliases</span><input class="aui-input" value={(draft.aliases ?? []).join(', ')} placeholder="Alternative names, separated by commas" oninput={(event) => set('aliases', event.currentTarget.value.split(',').map((name) => name.trim()).filter(Boolean))} /></label>
+            <label class="block space-y-1.5 text-sm sm:col-span-2"><span class="font-medium text-muted-foreground">Aliases</span><input class="ui-input" value={(draft.aliases ?? []).join(', ')} placeholder="Alternative names, separated by commas" oninput={(event) => set('aliases', event.currentTarget.value.split(',').map((name) => name.trim()).filter(Boolean))} /></label>
             <label class="block space-y-1.5 text-sm">
               <span class="font-medium text-muted-foreground">Tags</span>
-              <input class="aui-input" value={tagsToText(draft.tags)} oninput={(e) => updateTags(e.currentTarget.value)} placeholder="fantasy, slice-of-life" />
+              <input class="ui-input" value={tagsToText(draft.tags)} oninput={(e) => updateTags(e.currentTarget.value)} placeholder="fantasy, slice-of-life" />
             </label>
             <label class="block space-y-1.5 text-sm">
               <span class="font-medium text-muted-foreground">Creator</span>
-              <input class="aui-input" bind:value={draft.creator} placeholder="Your name" />
+              <input class="ui-input" bind:value={draft.creator} placeholder="Your name" />
             </label>
           </div>
         </div>
@@ -197,17 +197,17 @@
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Description</span>
           <span class="block text-xs text-muted-foreground">Background, appearance, facts. Always sent.</span>
-          <textarea class="aui-input min-h-28 resize-y" bind:value={draft.description} placeholder="&#123;&#123;char&#125;&#125; is a 24-year-old barista…"></textarea>
+          <textarea class="ui-input min-h-28 resize-y" bind:value={draft.description} placeholder="&#123;&#123;char&#125;&#125; is a 24-year-old barista…"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Personality</span>
           <span class="block text-xs text-muted-foreground">How the character behaves and speaks.</span>
-          <textarea class="aui-input min-h-24 resize-y" bind:value={draft.personality} placeholder="Sarcastic but quietly protective…"></textarea>
+          <textarea class="ui-input min-h-24 resize-y" bind:value={draft.personality} placeholder="Sarcastic but quietly protective…"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Scenario</span>
           <span class="block text-xs text-muted-foreground">The situation the scene starts in.</span>
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draft.scenario} placeholder="&#123;&#123;user&#125;&#125; is a regular customer…"></textarea>
+          <textarea class="ui-input min-h-20 resize-y" bind:value={draft.scenario} placeholder="&#123;&#123;user&#125;&#125; is a regular customer…"></textarea>
         </label>
       {/if}
 
@@ -215,25 +215,25 @@
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">First message</span>
           <span class="block text-xs text-muted-foreground">The character's opening line in a new chat.</span>
-          <textarea class="aui-input min-h-24 resize-y" bind:value={draft.firstMessage} placeholder="&quot;You again? We close in twenty minutes.&quot;"></textarea>
+          <textarea class="ui-input min-h-24 resize-y" bind:value={draft.firstMessage} placeholder="&quot;You again? We close in twenty minutes.&quot;"></textarea>
         </label>
 
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium text-muted-foreground">Alternate greetings</span>
-            <button type="button" class="aui-btn aui-btn-ghost" onclick={addGreeting}>
+            <button type="button" class="ui-btn ui-btn-ghost" onclick={addGreeting}>
               <Plus class="size-3.5" /> Add
             </button>
           </div>
           {#each draft.alternateGreetings as greeting, index (index)}
             <div class="flex items-start gap-2">
               <textarea
-                class="aui-input min-h-16 flex-1 resize-y"
+                class="ui-input min-h-16 flex-1 resize-y"
                 value={greeting}
                 oninput={(e) => updateGreeting(index, e.currentTarget.value)}
                 placeholder="Another opening scene…"
               ></textarea>
-              <button type="button" class="aui-icon-button mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
+              <button type="button" class="ui-icon-button mt-1" onclick={() => removeGreeting(index)} aria-label="Remove greeting">
                 <Trash2 class="size-4" />
               </button>
             </div>
@@ -252,23 +252,23 @@
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Example dialogue</span>
           <span class="block text-xs text-muted-foreground">Teach the voice. Separate blocks with &lt;START&gt;.</span>
-          <textarea class="aui-input min-h-28 resize-y" bind:value={draft.exampleDialogue} placeholder="<START>&#10;&#123;&#123;user&#125;&#125;: Rough day?&#10;&#123;&#123;char&#125;&#125;: &quot;Define rough.&quot;"></textarea>
+          <textarea class="ui-input min-h-28 resize-y" bind:value={draft.exampleDialogue} placeholder="<START>&#10;&#123;&#123;user&#125;&#125;: Rough day?&#10;&#123;&#123;char&#125;&#125;: &quot;Define rough.&quot;"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Character system prompt</span>
           <span class="block text-xs text-muted-foreground">Overrides the default roleplay instructions for this character.</span>
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draft.systemPrompt} placeholder="Optional"></textarea>
+          <textarea class="ui-input min-h-20 resize-y" bind:value={draft.systemPrompt} placeholder="Optional"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Post-history instructions</span>
           <span class="block text-xs text-muted-foreground">Final, high-priority instructions sent after the chat history.</span>
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draft.postHistoryInstructions} placeholder="Optional"></textarea>
+          <textarea class="ui-input min-h-20 resize-y" bind:value={draft.postHistoryInstructions} placeholder="Optional"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Group talkativeness</span>
           <span class="block text-xs text-muted-foreground">How often this character speaks when nobody mentions them (0–100).</span>
           <input
-            class="aui-input max-w-32"
+            class="ui-input max-w-32"
             type="number"
             min="0"
             max="100"
@@ -282,8 +282,8 @@
       {/if}
     </div>
 
-    <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+    <div class="ui-modal-footer">
+      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

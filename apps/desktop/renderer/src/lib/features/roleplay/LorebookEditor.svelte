@@ -108,7 +108,7 @@
     <label class="block min-w-0 flex-1 space-y-1.5 text-sm">
       <span class="text-xs font-medium text-muted-foreground">Book name</span>
       <input
-        class="aui-input"
+        class="ui-input"
         value={draft.name || ''}
         oninput={(event) => updateBook({ name: event.currentTarget.value })}
         placeholder="Optional"
@@ -117,7 +117,7 @@
     <label class="block w-28 space-y-1.5 text-sm">
       <span class="text-xs font-medium text-muted-foreground">Scan depth</span>
       <input
-        class="aui-input"
+        class="ui-input"
         type="number"
         min="1"
         value={draft.scanDepth ?? 4}
@@ -127,7 +127,7 @@
     <label class="block w-32 space-y-1.5 text-sm">
       <span class="text-xs font-medium text-muted-foreground">Token budget</span>
       <input
-        class="aui-input"
+        class="ui-input"
         type="number"
         min="0"
         value={draft.tokenBudget ?? 1024}
@@ -143,7 +143,7 @@
         <span class="text-xs font-medium text-muted-foreground">
           Entries {draft.entries.length ? `(${draft.entries.length})` : ''}
         </span>
-        <button type="button" class="aui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
+        <button type="button" class="ui-icon-button is-xs" onclick={addEntry} aria-label="Add entry">
           <Plus class="size-3.5" />
         </button>
       </div>
@@ -182,7 +182,7 @@
             <label class="block min-w-0 flex-1 space-y-1.5 text-sm">
               <span class="text-xs font-medium text-muted-foreground">Title</span>
               <input
-                class="aui-input"
+                class="ui-input"
                 value={selected.comment || ''}
                 oninput={(event) => updateEntry(selected.id, { comment: event.currentTarget.value })}
                 placeholder="What is this entry about?"
@@ -191,7 +191,7 @@
             <div class="flex items-center gap-1 pt-6">
               <button
                 type="button"
-                class="aui-icon-button"
+                class="ui-icon-button"
                 onclick={() => duplicateEntry(selected.id)}
                 aria-label="Duplicate entry"
                 title="Duplicate entry"
@@ -200,7 +200,7 @@
               </button>
               <button
                 type="button"
-                class="aui-icon-button text-error"
+                class="ui-icon-button text-error"
                 onclick={() => removeEntry(selected.id)}
                 aria-label="Delete entry"
                 title="Delete entry"
@@ -213,7 +213,7 @@
           <label class="block space-y-1.5 text-sm">
             <span class="text-xs font-medium text-muted-foreground">Keys</span>
             <input
-              class="aui-input"
+              class="ui-input"
               value={keysToText(selected.keys)}
               oninput={(event) => updateEntry(selected.id, { keys: parseKeys(event.currentTarget.value) })}
               placeholder="comma, separated, words"
@@ -224,7 +224,7 @@
           <label class="block space-y-1.5 text-sm">
             <span class="text-xs font-medium text-muted-foreground">Content</span>
             <textarea
-              class="aui-input min-h-28 resize-y"
+              class="ui-input min-h-28 resize-y"
               value={selected.content}
               oninput={(event) => updateEntry(selected.id, { content: event.currentTarget.value })}
               placeholder="The fact to inject into the prompt."
@@ -235,7 +235,7 @@
             <label class="block space-y-1.5 text-sm">
               <span class="text-xs font-medium text-muted-foreground">Insertion order</span>
               <input
-                class="aui-input"
+                class="ui-input"
                 type="number"
                 value={selected.insertionOrder ?? 100}
                 oninput={(event) => updateEntry(selected.id, { insertionOrder: numberValue(event) ?? 100 })}
@@ -278,7 +278,7 @@
               <label class="block space-y-1.5 text-sm">
                 <span class="text-xs font-medium text-muted-foreground">Secondary keys</span>
                 <input
-                  class="aui-input"
+                  class="ui-input"
                   value={keysToText(selected.secondaryKeys)}
                   oninput={(event) => updateEntry(selected.id, { secondaryKeys: parseKeys(event.currentTarget.value) })}
                   placeholder="comma, separated, words"

@@ -45,9 +45,9 @@
   <div class="mb-4 flex items-center gap-2">
     <div class="search-field">
       <Search class="search-icon" />
-      <input class="aui-input search-input w-full" bind:value={query} placeholder="Search worlds" aria-label="Search worlds" />
+      <input class="ui-input search-input w-full" bind:value={query} placeholder="Search worlds" aria-label="Search worlds" />
     </div>
-    <button type="button" class="aui-btn aui-btn-primary shrink-0" onclick={onnew}>
+    <button type="button" class="ui-btn ui-btn-primary shrink-0" onclick={onnew}>
       <Plus class="size-4" />
       <span>New world</span>
     </button>
@@ -88,7 +88,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
+            class="edit-btn ui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => onedit(world)}
             aria-label="Edit world"
           >

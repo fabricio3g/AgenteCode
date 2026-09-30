@@ -44,7 +44,7 @@
   >
     <header class="flex shrink-0 items-center justify-between px-4 py-3">
       <h2 class="text-sm font-semibold text-foreground">Source Search</h2>
-      <button type="button" class="aui-icon-button" onclick={closeSidebar} aria-label="Close">
+      <button type="button" class="ui-icon-button" onclick={closeSidebar} aria-label="Close">
         <X class="size-4" />
       </button>
     </header>
@@ -53,7 +53,7 @@
       <div class="flex items-center gap-2">
         <input
           type="text"
-          class="aui-input flex-1"
+          class="ui-input flex-1"
           placeholder="Search the web sources..."
           bind:value={query}
           onkeydown={(event) => {
@@ -62,7 +62,7 @@
         />
         <button
           type="button"
-          class="aui-btn aui-btn-primary size-9 shrink-0 !p-0"
+          class="ui-btn ui-btn-primary size-9 shrink-0 !p-0"
           onclick={runSearch}
           disabled={currentSearchState.loading}
           aria-label="Run source search"

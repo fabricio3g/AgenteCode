@@ -242,7 +242,7 @@
 {#if pathMode}
   <Dialog title={pathMode === 'create' ? $t('artifacts.studio.createTitle') : $t('artifacts.studio.renameTitle')} description={$t('artifacts.studio.pathHint')} size="sm" onclose={() => (pathMode = null)}>
     <div class="space-y-4 p-4">
-      <input class="aui-input" aria-label={$t('artifacts.studio.path')} bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
+      <input class="ui-input" aria-label={$t('artifacts.studio.path')} bind:value={pathValue} placeholder={pathMode === 'create' ? 'src/file.ext' : 'new/path.ext'} onkeydown={(event) => { if (event.key === 'Enter') applyPathDialog(); }} />
       <div class="flex justify-end gap-2">
         <Button variant="ghost" onclick={() => (pathMode = null)}>{$t('artifacts.studio.cancel')}</Button>
         <Button onclick={applyPathDialog}>{pathMode === 'create' ? $t('artifacts.studio.create') : $t('artifacts.studio.rename')}</Button>

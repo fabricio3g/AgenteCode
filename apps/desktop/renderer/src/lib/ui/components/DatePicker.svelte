@@ -7,4 +7,4 @@
   const value = $derived(getFieldValue(formName, String(props.name || '')) ?? '');
 </script>
 
-<input class="ui-input" type="date" value={String(value)} onchange={(event) => setFieldValue(formName, 'DatePicker', String(props.name || ''), (event.currentTarget as HTMLInputElement).value)} />
+<input class="ui-artifact-input" type="date" value={String(value)} onchange={(event) => setFieldValue(formName, 'DatePicker', String(props.name || ''), (event.currentTarget as HTMLInputElement).value)} />

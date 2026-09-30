@@ -47,7 +47,7 @@
 
   <button
     type="button"
-    class="aui-btn aui-btn-primary mt-2 gap-1.5 px-6 py-3 text-sm"
+    class="ui-btn ui-btn-primary mt-2 gap-1.5 px-6 py-3 text-sm"
     onclick={onNext}
   >
     {$t('onboarding.startChatting')}

@@ -111,15 +111,15 @@
   }
 </script>
 
-<div class="aui-tool-row" data-awaiting-approval={isApproval} class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
+<div class="ui-tool-row" data-awaiting-approval={isApproval} class:has-body={hasBody || showApproval} class:is-resting={step.status === 'done' && !expanded}>
   <button
     type="button"
-    class="aui-tool-fallback-trigger w-full max-w-none"
+    class="ui-tool-fallback-trigger w-full max-w-none"
     onclick={toggle}
     aria-expanded={hasBody || showApproval ? expanded : undefined}
     disabled={!hasBody && !showApproval}
   >
-    <Icon class="aui-tool-fallback-trigger-icon {isRunning ? 'is-running' : ''}" />
+    <Icon class="ui-tool-fallback-trigger-icon {isRunning ? 'is-running' : ''}" />
     <span class="min-w-0 flex-1 text-left">
       <span class="block truncate">
         {#if statusLabel}<span class="opacity-70">{statusLabel} · </span>{/if}<b>{heading}</b>
@@ -135,39 +135,39 @@
       </span>
     {/if}
     {#if durationText}
-      <span class="aui-tool-fallback-duration">{durationText}</span>
+      <span class="ui-tool-fallback-duration">{durationText}</span>
     {/if}
     {#if hasBody || showApproval}
-      <ChevronDown class={`aui-tool-fallback-chevron ${expanded ? '' : 'is-closed'}`} />
+      <ChevronDown class={`ui-tool-fallback-chevron ${expanded ? '' : 'is-closed'}`} />
     {/if}
   </button>
 
   {#if expanded && (hasBody || showApproval)}
     <div
-      class="aui-tool-fallback-content"
+      class="ui-tool-fallback-content"
       transition:slide={{ duration: 160, easing: quintOut }}
     >
       {#if isError && (step.output || step.detail)}
         <div>
-          <p class="aui-tool-fallback-error-header">{copy.tool.error}:</p>
-          <p class="aui-tool-fallback-error-reason">{(step.output || step.detail || '').slice(0, OUTPUT_LIMIT)}</p>
+          <p class="ui-tool-fallback-error-header">{copy.tool.error}:</p>
+          <p class="ui-tool-fallback-error-reason">{(step.output || step.detail || '').slice(0, OUTPUT_LIMIT)}</p>
         </div>
       {:else}
         {#if step.detail}
-          <pre class="aui-tool-fallback-args-value">{step.detail}</pre>
+          <pre class="ui-tool-fallback-args-value">{step.detail}</pre>
         {/if}
         {#if step.output}
           <div>
-            <p class="aui-tool-fallback-result-header">{copy.tool.result}:</p>
-            <pre class="aui-tool-fallback-result-content">{step.output.slice(0, OUTPUT_LIMIT)}{step.output.length > OUTPUT_LIMIT ? `\n${copy.tool.truncated}` : ''}</pre>
+            <p class="ui-tool-fallback-result-header">{copy.tool.result}:</p>
+            <pre class="ui-tool-fallback-result-content">{step.output.slice(0, OUTPUT_LIMIT)}{step.output.length > OUTPUT_LIMIT ? `\n${copy.tool.truncated}` : ''}</pre>
           </div>
         {/if}
       {/if}
 
       {#if showApproval}
-        <div class="aui-tool-fallback-approval">
-          <button type="button" class="aui-tool-fallback-approval-btn" onclick={deny}>{copy.tool.deny}</button>
-          <button type="button" class="aui-tool-fallback-approval-btn primary" onclick={allow}>{copy.tool.allow}</button>
+        <div class="ui-tool-fallback-approval">
+          <button type="button" class="ui-tool-fallback-approval-btn" onclick={deny}>{copy.tool.deny}</button>
+          <button type="button" class="ui-tool-fallback-approval-btn primary" onclick={allow}>{copy.tool.allow}</button>
         </div>
       {/if}
     </div>
@@ -175,27 +175,27 @@
 </div>
 
 <style>
-  .aui-tool-row {
+  .ui-tool-row {
     border-radius: var(--radius-md);
     overflow: hidden;
   }
 
-  .aui-tool-row :global(.aui-tool-fallback-trigger) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
-  .aui-tool-row :global(.aui-tool-fallback-trigger:hover) { background: var(--muted); }
-  .aui-tool-row :global(.aui-tool-fallback-content) { margin: 0 0.625rem 0.5rem; border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; background: transparent; }
-  .aui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: 0.6875rem; }
+  .ui-tool-row :global(.ui-tool-fallback-trigger) { border-radius: var(--radius-md); background: transparent; padding: 0.5rem 0.625rem; font-size: 0.75rem; }
+  .ui-tool-row :global(.ui-tool-fallback-trigger:hover) { background: var(--muted); }
+  .ui-tool-row :global(.ui-tool-fallback-content) { margin: 0 0.625rem 0.5rem; border-left: 1px solid var(--border); padding: 0.5rem 0.75rem; background: transparent; }
+  .ui-tool-row :global(pre) { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow-y: auto; font-size: 0.6875rem; }
 
   /* Completed, collapsed work steps back so the answer leads; hover restores
      full contrast. Running / error / expanded rows stay at full weight. */
-  .aui-tool-row.is-resting :global(.aui-tool-fallback-trigger) {
+  .ui-tool-row.is-resting :global(.ui-tool-fallback-trigger) {
     opacity: 0.72;
   }
 
-  .aui-tool-row.is-resting:hover :global(.aui-tool-fallback-trigger) {
+  .ui-tool-row.is-resting:hover :global(.ui-tool-fallback-trigger) {
     opacity: 1;
   }
 
-  .aui-tool-row :global(.aui-tool-fallback-trigger:disabled) {
+  .ui-tool-row :global(.ui-tool-fallback-trigger:disabled) {
     cursor: default;
   }
 

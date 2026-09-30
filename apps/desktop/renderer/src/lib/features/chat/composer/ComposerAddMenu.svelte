@@ -52,31 +52,31 @@
   <button
     type="button"
     role="menuitem"
-    class="aui-menu-item"
+    class="ui-menu-item"
     onclick={() => { open = false; onattach(); }}
   >
     <Paperclip class="size-4" />
-    <span class="aui-menu-item-text">{copy.composer.attach}</span>
+    <span class="ui-menu-item-text">{copy.composer.attach}</span>
   </button>
 
   {#if availableModes.length > 1}
-    <div class="aui-menu-divider" role="separator"></div>
+    <div class="ui-menu-divider" role="separator"></div>
     {#each availableModes as id (id)}
       {@const Icon = MODE_ICONS[id]}
       <button
         type="button"
         role="menuitemradio"
         aria-checked={searchMode === id}
-        class="aui-menu-item"
+        class="ui-menu-item"
         class:is-active={searchMode === id}
         onclick={() => { appStore.setSearchMode(id); open = false; }}
       >
         <Icon class="size-4" />
-        <span class="aui-menu-item-text">
+        <span class="ui-menu-item-text">
           <span>{copy.searchModes[id].label}</span>
-          <span class="aui-menu-item-hint">{copy.searchModes[id].description}</span>
+          <span class="ui-menu-item-hint">{copy.searchModes[id].description}</span>
         </span>
-        {#if searchMode === id}<Check class="aui-menu-check size-3.5" />{/if}
+        {#if searchMode === id}<Check class="ui-menu-check size-3.5" />{/if}
       </button>
     {/each}
   {/if}

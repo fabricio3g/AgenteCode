@@ -122,7 +122,7 @@
 </script>
 
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: () => guard.close(onclose) }}
   transition:motionFade={{ duration: 150 }}
@@ -132,19 +132,19 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-3xl"
+    class="ui-modal-surface max-w-3xl"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
+        <div class="ui-modal-title">{isNew ? 'New world' : draft.name || 'Edit world'}</div>
         <div class="text-xs text-muted-foreground">Setting, canon and cast shared by every scene started here.</div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={() => guard.close(onclose)} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
@@ -163,7 +163,7 @@
       {/each}
     </div>
 
-    <div class="aui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
+    <div class="ui-modal-body max-h-[62vh] space-y-4 overflow-y-auto">
       {#if section === 'overview'}
         <div class="flex items-start gap-4">
           <div class="flex flex-col items-center gap-2">
@@ -184,11 +184,11 @@
           <div class="grid min-w-0 flex-1 gap-3">
             <label class="block space-y-1.5 text-sm">
               <span class="font-medium text-muted-foreground">Name</span>
-              <input class="aui-input" bind:value={draft.name} placeholder="e.g. Eldoria" />
+              <input class="ui-input" bind:value={draft.name} placeholder="e.g. Eldoria" />
             </label>
             <label class="block space-y-1.5 text-sm">
               <span class="font-medium text-muted-foreground">Tagline</span>
-              <input class="aui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
+              <input class="ui-input" bind:value={draft.tagline} placeholder="One line shown in the gallery" />
             </label>
           </div>
         </div>
@@ -196,12 +196,12 @@
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Overview</span>
           <span class="block text-xs text-muted-foreground">Always present in the prompt: setting, rules, tone.</span>
-          <textarea class="aui-input min-h-28 resize-y" bind:value={draft.overview} placeholder="A floating city above a drowned world…"></textarea>
+          <textarea class="ui-input min-h-28 resize-y" bind:value={draft.overview} placeholder="A floating city above a drowned world…"></textarea>
         </label>
         <label class="block space-y-1.5 text-sm">
           <span class="font-medium text-muted-foreground">Scenario</span>
           <span class="block text-xs text-muted-foreground">Used when the primary character defines no scenario of their own.</span>
-          <textarea class="aui-input min-h-20 resize-y" bind:value={draft.scenario} placeholder="The festival of lanterns begins tonight…"></textarea>
+          <textarea class="ui-input min-h-20 resize-y" bind:value={draft.scenario} placeholder="The festival of lanterns begins tonight…"></textarea>
         </label>
       {/if}
 
@@ -224,13 +224,13 @@
                   <Avatar size="fill" name={card.name ?? ''} image={card.avatar} />
                 </span>
                 <span class="min-w-0 flex-1 truncate text-[13px] text-foreground">{card.name}</span>
-                <button type="button" class="aui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
+                <button type="button" class="ui-icon-button is-sm" disabled={index === 0} onclick={() => moveCast(index, -1)} aria-label="Move up">
                   <ArrowUp class="size-3.5" />
                 </button>
-                <button type="button" class="aui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
+                <button type="button" class="ui-icon-button is-sm" disabled={index === cast.length - 1} onclick={() => moveCast(index, 1)} aria-label="Move down">
                   <ArrowDown class="size-3.5" />
                 </button>
-                <button type="button" class="aui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
+                <button type="button" class="ui-icon-button is-sm text-error" onclick={() => removeFromCast(card.id)} aria-label="Remove from cast">
                   <X class="size-3.5" />
                 </button>
               </div>
@@ -260,7 +260,7 @@
               <div class="text-sm font-medium text-muted-foreground">Openings</div>
               <div class="text-xs text-muted-foreground">Scenes can start with one of these instead of a character greeting.</div>
             </div>
-            <button type="button" class="aui-btn aui-btn-ghost shrink-0" onclick={addStarter}>
+            <button type="button" class="ui-btn ui-btn-ghost shrink-0" onclick={addStarter}>
               <Plus class="size-3.5" /> Add
             </button>
           </div>
@@ -272,12 +272,12 @@
             {#each draft.starters as starter, index (index)}
               <div class="flex items-start gap-2">
                 <textarea
-                  class="aui-input min-h-16 flex-1 resize-y"
+                  class="ui-input min-h-16 flex-1 resize-y"
                   value={starter}
                   oninput={(e) => updateStarter(index, e.currentTarget.value)}
                   placeholder="The lanterns rise over the harbor as…"
                 ></textarea>
-                <button type="button" class="aui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
+                <button type="button" class="ui-icon-button mt-1 text-error" onclick={() => removeStarter(index)} aria-label="Remove opening">
                   <Trash2 class="size-4" />
                 </button>
               </div>
@@ -291,8 +291,8 @@
       {/if}
     </div>
 
-    <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
+    <div class="ui-modal-footer">
+      <button type="button" class="ui-btn ui-btn-ghost" onclick={() => guard.close(onclose)}>{copy.actions.cancel}</button>
       <Button onclick={() => void save()} disabled={saving}>{saving ? 'Saving…' : copy.actions.save}</Button>
     </div>
   </div>

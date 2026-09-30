@@ -49,7 +49,7 @@
 </script>
 
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
@@ -59,7 +59,7 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-xl prop-surface"
+    class="ui-modal-surface max-w-xl prop-surface"
     role="dialog"
     aria-modal="true"
     aria-label={prop.title}
@@ -67,26 +67,26 @@
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{prop.title}</div>
+        <div class="ui-modal-title">{prop.title}</div>
         <div class="text-xs text-muted-foreground">{prop.kind}</div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copyText.actions.close}>
         <X class="size-4" />
       </button>
     </div>
 
-    <div class="aui-modal-body max-h-[58vh] overflow-y-auto">
+    <div class="ui-modal-body max-h-[58vh] overflow-y-auto">
       <div class="prop-body">{prop.body}</div>
     </div>
 
     <div class="prop-actions">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={copyBody}>
+      <button type="button" class="ui-btn ui-btn-ghost" onclick={copyBody}>
         <Copy class="size-3.5" />
         <span>Copy</span>
       </button>
-      <button type="button" class="aui-btn aui-btn-ghost" disabled={kept} onclick={keep}>
+      <button type="button" class="ui-btn ui-btn-ghost" disabled={kept} onclick={keep}>
         <BookMarked class="size-3.5" />
         <span>{kept ? 'In journal' : 'Keep in journal'}</span>
       </button>

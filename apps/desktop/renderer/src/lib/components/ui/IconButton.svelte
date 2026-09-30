@@ -3,7 +3,7 @@
 <!--
   Square icon-only button with a required accessible label.
 
-  Consolidates four competing idioms: `.aui-icon-button`, `.chateaui-icon-button`,
+  Consolidates four competing idioms: `.ui-icon-button`, `.ui-legacy-icon-button`,
   the scoped `.msg-action-btn` in the message action bar, and raw
   `<Button variant="ghost" size="icon-sm">`. The `label` prop is not optional —
   every one of those idioms had sites with no accessible name.

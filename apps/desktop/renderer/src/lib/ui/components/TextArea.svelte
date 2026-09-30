@@ -8,7 +8,7 @@
 </script>
 
 <textarea
-  class="ui-input ui-textarea"
+  class="ui-artifact-input ui-textarea"
   name={String(props.name || '')}
   rows={Number(props.rows || 4)}
   placeholder={String(props.placeholder || '')}

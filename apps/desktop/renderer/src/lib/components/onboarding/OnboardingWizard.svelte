@@ -62,15 +62,15 @@
 </script>
 
 <!-- First-run setup: no Escape — the wizard owns its own Skip/Next. -->
-<div class="aui-modal-backdrop" use:modalLayer={{}} transition:motionFade={{ duration: 150 }}>
+<div class="ui-modal-backdrop" use:modalLayer={{}} transition:motionFade={{ duration: 150 }}>
   <div
-    class="aui-modal-surface h-full max-h-[580px] max-w-lg"
+    class="ui-modal-surface h-full max-h-[580px] max-w-lg"
     transition:motionFly={{ y: 20, duration: 200 }}
     role="dialog"
     aria-modal="true"
   >
     <!-- Header with step indicator -->
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-1.5">
           {#each STEPS as s, i}
@@ -83,7 +83,7 @@
       </div>
       <button
         type="button"
-        class="aui-icon-button"
+        class="ui-icon-button"
         onclick={handleSkip}
         title={$t('onboarding.skipSetup')}
       >

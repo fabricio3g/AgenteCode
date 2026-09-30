@@ -22,14 +22,14 @@
   {@const options = confirmStore.options}
   <Portal>
     <div
-      class="aui-modal-backdrop"
+      class="ui-modal-backdrop"
       role="presentation"
       use:modalLayer={{ onclose: () => confirmStore.cancel(), zToken: '--z-confirm' }}
       onclick={() => confirmStore.cancel()}
       transition:motionFade={{ duration: 150 }}
     >
       <div
-        class="aui-modal-surface max-w-sm"
+        class="ui-modal-surface max-w-sm"
         transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
         role="alertdialog"
         aria-modal="true"
@@ -39,10 +39,10 @@
         onclick={(e) => e.stopPropagation()}
         onkeydown={onSurfaceKeydown}
       >
-        <div class="aui-modal-header">
-          <h2 id="confirm-title" class="aui-modal-title">{options.title}</h2>
+        <div class="ui-modal-header">
+          <h2 id="confirm-title" class="ui-modal-title">{options.title}</h2>
         </div>
-        <div class="aui-modal-body !pt-0">
+        <div class="ui-modal-body !pt-0">
           <p id="confirm-message" class="m-0 text-sm leading-6 text-muted-foreground">{options.message}</p>
           {#if options.details?.length}
             <ul class="mt-3 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-muted/60 px-3 py-2 text-[11.5px] leading-5 text-foreground">
@@ -52,15 +52,15 @@
             </ul>
           {/if}
         </div>
-        <div class="aui-modal-footer">
-          <button type="button" class="aui-btn aui-btn-ghost" onclick={() => confirmStore.cancel()}>
+        <div class="ui-modal-footer">
+          <button type="button" class="ui-btn ui-btn-ghost" onclick={() => confirmStore.cancel()}>
             {options.cancelLabel || copy.actions.cancel}
           </button>
           <button
             type="button"
             data-confirm
             data-autofocus
-            class="aui-btn {options.danger ? 'aui-btn-danger' : 'aui-btn-primary'}"
+            class="ui-btn {options.danger ? 'ui-btn-danger' : 'ui-btn-primary'}"
             onclick={() => confirmStore.confirm()}
           >
             {options.confirmLabel || copy.actions.confirm}

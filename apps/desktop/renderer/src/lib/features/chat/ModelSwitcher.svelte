@@ -425,7 +425,7 @@
        >
     <header class="picker-heading">
       <div><h2 id={`${dialogId}-title`}>{$t('modelPicker.title')}</h2><p>{$t('modelPicker.subtitle')}</p></div>
-      <button type="button" class="aui-icon-button" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
+      <button type="button" class="ui-icon-button" onclick={() => (appStore.modelMenuOpen = false)} aria-label={$t('modelPicker.close')}><X class="size-4" /></button>
     </header>
     <div class="picker-source">
       {#if isElectron()}
@@ -809,12 +809,12 @@
   }
 
   /* Segmented track: outline instead of a filled pill track. */
-  .model-modal :global(.aui-segmented) {
+  .model-modal :global(.ui-segmented) {
     background: transparent;
     box-shadow: inset 0 0 0 1px var(--border);
   }
 
-  .model-modal :global(.aui-segmented-item.is-active) {
+  .model-modal :global(.ui-segmented-item.is-active) {
     background: var(--muted);
   }
 

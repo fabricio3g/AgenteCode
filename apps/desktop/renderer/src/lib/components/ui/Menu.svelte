@@ -4,7 +4,7 @@
   Portalled dropdown menu.
 
   Replaces the hand-rolled pattern that was copy-pasted across eight components:
-  an absolutely-positioned `.aui-menu` div plus a `fixed inset-0 z-40` scrim to
+  an absolutely-positioned `.ui-menu` div plus a `fixed inset-0 z-40` scrim to
   catch outside clicks. The scrim swallowed scroll and hover on everything behind
   it and had no keyboard support; this uses a document-level pointer listener and
   a real `role="menu"` with roving focus instead.
@@ -178,7 +178,7 @@
     <div
       bind:this={panelEl}
       id={menuId}
-      class={cn('aui-menu aui-menu-panel py-1', className)}
+      class={cn('ui-menu ui-menu-panel py-1', className)}
       role="menu"
       aria-label={label}
       tabindex="-1"
@@ -196,7 +196,7 @@
 {/if}
 
 <style>
-  .aui-menu-panel {
+  .ui-menu-panel {
     position: fixed;
     z-index: var(--z-menu);
     overflow-x: hidden;

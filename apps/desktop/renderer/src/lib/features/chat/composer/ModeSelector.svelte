@@ -33,11 +33,11 @@
 </script>
 
 {#if modes.length > 1}
-  <div class="aui-segmented" role="tablist" aria-label={copy.composer.selectMode}>
+  <div class="ui-segmented" role="tablist" aria-label={copy.composer.selectMode}>
     {#each modes as mode, index (mode)}
       <button
         type="button"
-        class="aui-segmented-item px-3 py-1"
+        class="ui-segmented-item px-3 py-1"
         class:is-active={appStore.composerMode === mode}
         onclick={() => appStore.setComposerMode(mode)}
         onkeydown={(event) => handleKeydown(event, index)}

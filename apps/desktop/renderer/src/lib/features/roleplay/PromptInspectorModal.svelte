@@ -32,7 +32,7 @@
 
 <Portal>
 <div
-  class="aui-modal-backdrop"
+  class="ui-modal-backdrop"
   role="presentation"
   use:modalLayer={{ onclose: onclose }}
   transition:motionFade={{ duration: 150 }}
@@ -42,7 +42,7 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
-    class="aui-modal-surface max-w-2xl"
+    class="ui-modal-surface max-w-2xl"
      role="dialog"
      aria-label={$t('roleplay.inspector.title')}
     aria-modal="true"
@@ -50,19 +50,19 @@
     transition:flyAndScale={{ y: -12, start: 0.96, duration: 200 }}
     onclick={(e) => e.stopPropagation()}
   >
-    <div class="aui-modal-header">
+    <div class="ui-modal-header">
       <div class="min-w-0">
-        <div class="aui-modal-title">{$t('roleplay.inspector.title')}</div>
+        <div class="ui-modal-title">{$t('roleplay.inspector.title')}</div>
         <div class="text-xs text-muted-foreground">
           {parts.speaker ? $t('roleplay.inspector.turn', { values: { name: parts.speaker.name } }) : $t('roleplay.inspector.scene')} · {$t('roleplay.inspector.tokens', { values: { n: estimatedTokens } })}
         </div>
       </div>
-      <button type="button" class="aui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
+      <button type="button" class="ui-icon-button" onclick={onclose} aria-label={copy.actions.close}>
         <X class="size-4" />
       </button>
     </div>
 
-    <div class="aui-modal-body space-y-4">
+    <div class="ui-modal-body space-y-4">
       <div class="space-y-1.5">
         <div class="text-xs font-medium text-muted-foreground">
           {$t('roleplay.inspector.lore', { values: { n: parts.loreEntries.length } })}
@@ -90,8 +90,8 @@
       </div>
     </div>
 
-    <div class="aui-modal-footer">
-      <button type="button" class="aui-btn aui-btn-ghost" onclick={onclose}>{copy.actions.close}</button>
+    <div class="ui-modal-footer">
+      <button type="button" class="ui-btn ui-btn-ghost" onclick={onclose}>{copy.actions.close}</button>
     </div>
   </div>
 </div>

@@ -82,7 +82,7 @@
 >
   <!-- One slim row: back, the address, reload, everything else in "…". -->
   <div class="browser-bar">
-    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
+    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('back')} aria-label={$t('browser.back')} title={$t('browser.back')}>
       <ArrowLeft />
     </button>
     <label class="browser-url" class:driving={browserPanelStore.agentDriving}>
@@ -109,18 +109,18 @@
         <Hand class="size-3" /> <span class="control-label">{$t('browser.takeControl')}</span>
       </button>
     {/if}
-    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
+    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.history('reload')} aria-label={$t('browser.reload')} title={$t('browser.reload')}>
       <RotateCw />
     </button>
     <Menu placement="bottom-end" label={$t('browser.more')} minWidth="12rem">
       {#snippet trigger(props)}
-        <button type="button" class="aui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
+        <button type="button" class="ui-icon-button" aria-label={$t('browser.more')} title={$t('browser.more')} {...props}>
           <MoreHorizontal />
         </button>
       {/snippet}
       <MenuItem icon={ArrowRight} label={$t('browser.forward')} onselect={() => void browserPanelStore.history('forward')} />
       <MenuItem icon={Plus} label={$t('browser.newTab')} onselect={() => void browserPanelStore.newTab().then(() => syncBounds())} />
-      <div class="aui-menu-separator" role="separator"></div>
+      <div class="ui-menu-separator" role="separator"></div>
       <MenuItem
         icon={PanelRight}
         label={$t('browser.fit')}
@@ -137,7 +137,7 @@
         />
       {/each}
     </Menu>
-    <button type="button" class="aui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
+    <button type="button" class="ui-icon-button" onclick={() => void browserPanelStore.hide()} aria-label={$t('browser.closePanel')} title={$t('browser.closePanel')}>
       <X />
     </button>
   </div>

@@ -530,8 +530,8 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
-/* ─── aui-* utilities (ported from Flaxeo) ──────────────────────────────── */
-.aui-composer {
+/* ─── ui-* utilities (ported from Flaxeo) ──────────────────────────────── */
+.ui-composer {
   /* A rounded card on its own surface, held by a hairline ring rather than a
      border so the radius stays clean at any height. Now that the controls sit
      on their own row the shell is a two-line card, not a pill. */
@@ -550,14 +550,14 @@ textarea {
  * the caret landed, so the composer was one colour at rest and another while
  * you were actually using it.
  */
-.aui-composer:focus-within {
+.ui-composer:focus-within {
   box-shadow:
     inset 0 0 0 1px var(--composer-ring-focus),
     var(--surface-shadow-focus),
     var(--panel-shadow);
 }
 
-.aui-dialog-backdrop {
+.ui-dialog-backdrop {
   background-color: var(--overlay);
 }
 
@@ -566,8 +566,8 @@ textarea {
  * Pill variant, for the controls that sit inside the composer. They read as
  * chips on the composer surface rather than as buttons on the page.
  */
-.aui-select-trigger.aui-pill,
-.aui-btn.aui-pill {
+.ui-select-trigger.ui-pill,
+.ui-btn.ui-pill {
   height: 2.25rem;
   border-radius: var(--radius-full);
   border: 0;
@@ -575,19 +575,19 @@ textarea {
   padding: 0 0.75rem;
 }
 
-.aui-select-trigger.aui-pill:hover,
-.aui-btn.aui-pill:hover {
+.ui-select-trigger.ui-pill:hover,
+.ui-btn.ui-pill:hover {
   background: var(--surface-active);
   color: var(--foreground);
 }
 
-.aui-select-trigger.aui-pill[aria-expanded='true'],
-.aui-select-trigger.aui-pill.is-active {
+.ui-select-trigger.ui-pill[aria-expanded='true'],
+.ui-select-trigger.ui-pill.is-active {
   background: var(--surface-active);
   color: var(--foreground);
 }
 
-.aui-select-trigger {
+.ui-select-trigger {
   display: inline-flex;
   height: 2rem;
   align-items: center;
@@ -605,13 +605,13 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-select-trigger:hover,
-.aui-select-trigger[aria-expanded='true'] {
+.ui-select-trigger:hover,
+.ui-select-trigger[aria-expanded='true'] {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.aui-select-trigger:focus-visible {
+.ui-select-trigger:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
 }
@@ -700,13 +700,13 @@ textarea {
 }
 
 /* A hairline between groups of items in a menu. */
-.aui-menu-separator {
+.ui-menu-separator {
   height: 1px;
   margin: 0.25rem 0.5rem;
   background: var(--border);
 }
 
-.aui-menu {
+.ui-menu {
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: 0.875rem;
@@ -720,13 +720,13 @@ textarea {
   z-index: 100;
 }
 
-.dark .aui-menu {
+.dark .ui-menu {
   border-color: var(--border);
   box-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.5);
 }
 
 /* A quiet row: foreground text, soft hover fill, a check for the current choice. */
-.aui-menu-item {
+.ui-menu-item {
   display: flex;
   width: 100%;
   align-items: center;
@@ -743,40 +743,40 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-menu-item > svg:first-child {
+.ui-menu-item > svg:first-child {
   flex-shrink: 0;
   color: var(--muted-foreground);
 }
 
-.aui-menu-item:hover,
-.aui-menu-item:focus-visible {
+.ui-menu-item:hover,
+.ui-menu-item:focus-visible {
   background: var(--muted);
   outline: none;
 }
 
-.aui-menu-item.is-danger,
-.aui-menu-item.is-danger:hover {
+.ui-menu-item.is-danger,
+.ui-menu-item.is-danger:hover {
   color: var(--error);
 }
 
-.aui-menu-item.is-danger:hover {
+.ui-menu-item.is-danger:hover {
   background: var(--error-bg);
 }
 
-.aui-menu-item:disabled {
+.ui-menu-item:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.aui-menu-item:disabled:hover {
+.ui-menu-item:disabled:hover {
   background: transparent;
 }
 
-.aui-menu-item.is-active {
+.ui-menu-item.is-active {
   font-weight: 500;
 }
 
-.aui-menu-item-text {
+.ui-menu-item-text {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -784,24 +784,24 @@ textarea {
   gap: 0.0625rem;
 }
 
-.aui-menu-item-hint {
+.ui-menu-item-hint {
   color: var(--muted-foreground);
   font-size: 0.71875rem;
   font-weight: 400;
 }
 
-.aui-menu-check {
+.ui-menu-check {
   flex-shrink: 0;
   color: var(--foreground);
 }
 
-.aui-menu-divider {
+.ui-menu-divider {
   height: 1px;
   margin: 0.3125rem 0.375rem;
   background: var(--border-subtle);
 }
 
-.aui-segmented {
+.ui-segmented {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -812,18 +812,18 @@ textarea {
   padding: 3px;
 }
 
-.aui-segmented.aui-segmented-fill {
+.ui-segmented.ui-segmented-fill {
   display: flex;
   width: 100%;
 }
 
-.aui-segmented.aui-segmented-fill .aui-segmented-item {
+.ui-segmented.ui-segmented-fill .ui-segmented-item {
   flex: 1 1 0;
   min-width: 0;
   justify-content: center;
 }
 
-.aui-segmented-item {
+.ui-segmented-item {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -838,7 +838,7 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-segmented-item:hover:not(.is-active) {
+.ui-segmented-item:hover:not(.is-active) {
   color: var(--foreground);
   background: color-mix(in srgb, var(--foreground) 6%, transparent);
 }
@@ -846,24 +846,24 @@ textarea {
 /* The selected tab is a raised pill on the track, not an inverted slab. Filling
    it with --primary made a black (or, in dark, white) block that outweighed the
    content it was labelling. */
-.aui-segmented-item.is-active {
+.ui-segmented-item.is-active {
   background: var(--segment-active-bg);
   box-shadow: var(--segment-active-shadow);
   color: var(--foreground);
 }
 
 /* Slightly more visible selects for Code composer (not transparent “missing CSS”) */
-.aui-select-trigger.aui-select-solid {
+.ui-select-trigger.ui-select-solid {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.aui-select-trigger.aui-select-solid:hover,
-.aui-select-trigger.aui-select-solid[aria-expanded='true'] {
+.ui-select-trigger.ui-select-solid:hover,
+.ui-select-trigger.ui-select-solid[aria-expanded='true'] {
   background: color-mix(in srgb, var(--muted) 70%, var(--foreground) 6%);
 }
 
-.aui-modal-backdrop {
+.ui-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
@@ -876,7 +876,7 @@ textarea {
   padding: 1rem;
 }
 
-.aui-modal-surface {
+.ui-modal-surface {
   position: relative;
   display: flex;
   max-height: min(92vh, 100%);
@@ -892,11 +892,11 @@ textarea {
   color: var(--foreground);
 }
 
-.dark .aui-modal-surface {
+.dark .ui-modal-surface {
   box-shadow: 0 16px 40px rgb(0 0 0 / 0.4);
 }
 
-.aui-modal-header {
+.ui-modal-header {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -905,7 +905,7 @@ textarea {
   padding: 0.875rem 1.25rem 0.5rem;
 }
 
-.aui-modal-title {
+.ui-modal-title {
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -913,7 +913,7 @@ textarea {
   color: var(--foreground);
 }
 
-.aui-modal-body {
+.ui-modal-body {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
@@ -922,7 +922,7 @@ textarea {
   padding: 1.25rem;
 }
 
-.aui-modal-footer {
+.ui-modal-footer {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -931,7 +931,7 @@ textarea {
   padding: 0.5rem 1.25rem 1.125rem;
 }
 
-.aui-btn {
+.ui-btn {
   display: inline-flex;
   height: 2.25rem;
   align-items: center;
@@ -946,49 +946,49 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-btn:disabled {
+.ui-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.aui-btn-primary {
+.ui-btn-primary {
   background: var(--primary);
   color: var(--primary-foreground);
 }
 
-.aui-btn-primary:hover:not(:disabled) {
+.ui-btn-primary:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.aui-btn-ghost {
+.ui-btn-ghost {
   background: transparent;
   color: var(--muted-foreground);
 }
 
-.aui-btn-ghost:hover:not(:disabled) {
+.ui-btn-ghost:hover:not(:disabled) {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.aui-btn-secondary {
+.ui-btn-secondary {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.aui-btn-secondary:hover:not(:disabled) {
+.ui-btn-secondary:hover:not(:disabled) {
   background: var(--surface-active);
 }
 
-.aui-btn-danger {
+.ui-btn-danger {
   background: var(--error);
   color: #fff;
 }
 
-.aui-btn-danger:hover:not(:disabled) {
+.ui-btn-danger:hover:not(:disabled) {
   opacity: 0.9;
 }
 
-.aui-input {
+.ui-input {
   width: 100%;
   border: 1px solid transparent;
   border-radius: var(--radius-input);
@@ -1000,40 +1000,40 @@ textarea {
   transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-input:focus,
-.aui-input:focus-within {
+.ui-input:focus,
+.ui-input:focus-within {
   border-color: var(--ring);
   background: var(--background);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
 }
 
-.aui-input::placeholder {
+.ui-input::placeholder {
   color: var(--muted-foreground);
 }
 
-.aui-card-quiet {
+.ui-card-quiet {
   border: none;
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--muted) 45%, transparent);
   transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-card-quiet:hover {
+.ui-card-quiet:hover {
   background: color-mix(in srgb, var(--muted) 70%, transparent);
 }
 
-.aui-scroll-header {
+.ui-scroll-header {
   position: relative;
   z-index: 10;
   flex-shrink: 0;
-  --aui-header-fade-from: var(--background);
+  --ui-header-fade-from: var(--background);
 }
 
-.aui-scroll-header--popover {
-  --aui-header-fade-from: var(--popover);
+.ui-scroll-header--popover {
+  --ui-header-fade-from: var(--popover);
 }
 
-.aui-scroll-header__fade {
+.ui-scroll-header__fade {
   pointer-events: none;
   position: absolute;
   inset-inline: 0;
@@ -1042,17 +1042,17 @@ textarea {
   z-index: 1;
   background: linear-gradient(
     to bottom,
-    var(--aui-header-fade-from) 0%,
-    color-mix(in srgb, var(--aui-header-fade-from) 55%, transparent) 45%,
+    var(--ui-header-fade-from) 0%,
+    color-mix(in srgb, var(--ui-header-fade-from) 55%, transparent) 45%,
     transparent 100%
   );
 }
 
-.aui-scroll-header--compact .aui-scroll-header__fade {
+.ui-scroll-header--compact .ui-scroll-header__fade {
   height: 1rem;
 }
 
-.aui-icon-button {
+.ui-icon-button {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
@@ -1068,38 +1068,38 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-icon-button:hover {
+.ui-icon-button:hover {
   background: var(--surface-hover);
   color: var(--foreground);
 }
 
-.aui-icon-button:focus,
-.aui-icon-button:focus-visible,
-.aui-icon-button:active {
+.ui-icon-button:focus,
+.ui-icon-button:focus-visible,
+.ui-icon-button:active {
   outline: none;
   box-shadow: none;
 }
 
-.aui-icon-button svg {
+.ui-icon-button svg {
   pointer-events: none;
   flex-shrink: 0;
   width: var(--icon);
   height: var(--icon);
 }
 /* One scale for icon buttons: 26px with a 14px icon; smaller in dense rows. */
-.aui-icon-button {
+.ui-icon-button {
   width: var(--icon-btn);
   height: var(--icon-btn);
 }
-.aui-icon-button.is-sm {
+.ui-icon-button.is-sm {
   width: 1.5rem;
   height: 1.5rem;
 }
-.aui-icon-button.is-xs {
+.ui-icon-button.is-xs {
   width: 1.375rem;
   height: 1.375rem;
 }
-.aui-icon-button.is-xs svg {
+.ui-icon-button.is-xs svg {
   width: 12px;
   height: 12px;
 }
@@ -1109,30 +1109,30 @@ textarea {
   font-weight: 600;
 }
 
-.aui-field {
+.ui-field {
   transition:
     border-color var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-field:focus-visible,
-.aui-field:focus-within {
+.ui-field:focus-visible,
+.ui-field:focus-within {
   border-color: var(--ring);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
 }
 
-.aui-status-badge {
+.ui-status-badge {
   font-variant-numeric: tabular-nums;
 }
 
-.aui-float-panel {
+.ui-float-panel {
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.04),
     0 8px 24px rgb(0 0 0 / 0.08);
 }
 
-.dark .aui-float-panel {
+.dark .ui-float-panel {
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.2),
     0 12px 32px rgb(0 0 0 / 0.35);
@@ -1147,14 +1147,14 @@ textarea {
 }
 
 /* ─── assistant-ui patterns (ported) ─────────────────────────────────────── */
-/* Shimmer overlay for running labels — pair with .aui-shimmer-host on the wrapper */
-.aui-shimmer-host {
+/* Shimmer overlay for running labels — pair with .ui-shimmer-host on the wrapper */
+.ui-shimmer-host {
   position: relative;
   display: inline-block;
   line-height: 1;
 }
 
-.aui-shimmer {
+.ui-shimmer {
   pointer-events: none;
   position: absolute;
   inset: 0;
@@ -1169,20 +1169,20 @@ textarea {
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: aui-shimmer-sweep 2.4s ease-in-out infinite;
+  animation: ui-shimmer-sweep 2.4s ease-in-out infinite;
 }
 
-@keyframes aui-shimmer-sweep {
+@keyframes ui-shimmer-sweep {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
 
 /* Tool call rows (ToolCallRow) */
-.aui-tool-fallback-root {
+.ui-tool-fallback-root {
   width: 100%;
 }
 
-.aui-tool-fallback-trigger {
+.ui-tool-fallback-trigger {
   display: flex;
   width: fit-content;
   max-width: 100%;
@@ -1199,47 +1199,47 @@ textarea {
   transition: color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
-.aui-tool-fallback-trigger:hover {
+.ui-tool-fallback-trigger:hover {
   color: var(--foreground);
 }
 
-.aui-tool-fallback-trigger:active {
+.ui-tool-fallback-trigger:active {
   transform: scale(0.98);
 }
 
-.aui-tool-fallback-trigger-icon {
+.ui-tool-fallback-trigger-icon {
   width: 1rem;
   height: 1rem;
   flex-shrink: 0;
 }
 
-.aui-tool-fallback-trigger-icon.is-running {
-  animation: aui-spin 0.6s linear infinite;
+.ui-tool-fallback-trigger-icon.is-running {
+  animation: ui-spin 0.6s linear infinite;
 }
 
-.aui-tool-fallback-duration {
+.ui-tool-fallback-duration {
   color: var(--muted-foreground);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
-.aui-tool-fallback-chevron {
+.ui-tool-fallback-chevron {
   width: 1rem;
   height: 1rem;
   flex-shrink: 0;
   transition: transform 200ms var(--motion-ease);
 }
 
-.aui-tool-fallback-chevron.is-closed {
+.ui-tool-fallback-chevron.is-closed {
   transform: rotate(-90deg);
 }
 
-.aui-tool-fallback-label-cancelled {
+.ui-tool-fallback-label-cancelled {
   color: var(--muted-foreground);
   text-decoration: line-through;
 }
 
-.aui-tool-fallback-content {
+.ui-tool-fallback-content {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1247,8 +1247,8 @@ textarea {
   font-size: 0.875rem;
 }
 
-.aui-tool-fallback-args-value,
-.aui-tool-fallback-result-content {
+.ui-tool-fallback-args-value,
+.ui-tool-fallback-result-content {
   margin: 0;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--muted) 50%, transparent);
@@ -1263,25 +1263,25 @@ textarea {
   overflow: auto;
 }
 
-.aui-tool-fallback-result-header,
-.aui-tool-fallback-error-header {
+.ui-tool-fallback-result-header,
+.ui-tool-fallback-error-header {
   margin: 0 0 0.25rem;
   color: var(--muted-foreground);
   font-size: 0.75rem;
   font-weight: 500;
 }
 
-.aui-tool-fallback-error-header {
+.ui-tool-fallback-error-header {
   font-weight: 600;
 }
 
-.aui-tool-fallback-error-reason {
+.ui-tool-fallback-error-reason {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
 }
 
-.aui-tool-fallback-approval {
+.ui-tool-fallback-approval {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1289,7 +1289,7 @@ textarea {
   padding-top: 0.25rem;
 }
 
-.aui-tool-fallback-approval-btn {
+.ui-tool-fallback-approval-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1305,21 +1305,21 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), opacity var(--motion-fast) var(--motion-ease);
 }
 
-.aui-tool-fallback-approval-btn:hover {
+.ui-tool-fallback-approval-btn:hover {
   background: var(--muted);
 }
 
-.aui-tool-fallback-approval-btn.primary {
+.ui-tool-fallback-approval-btn.primary {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: transparent;
 }
 
-.aui-tool-fallback-approval-btn.primary:hover {
+.ui-tool-fallback-approval-btn.primary:hover {
   opacity: 0.9;
 }
 
-.aui-tool-fallback-terminal {
+.ui-tool-fallback-terminal {
   margin: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -1336,25 +1336,25 @@ textarea {
 }
 
 /* Tool group (ActivityDrawer) */
-.aui-tool-group-root {
+.ui-tool-group-root {
   width: 100%;
   margin: 0.25rem 0;
 }
 
-.aui-tool-group-root[data-variant='outline'] {
+.ui-tool-group-root[data-variant='outline'] {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 0.75rem 0;
 }
 
-.aui-tool-group-root[data-variant='muted'] {
+.ui-tool-group-root[data-variant='muted'] {
   border: 1px solid color-mix(in srgb, var(--muted-foreground) 30%, transparent);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--muted) 30%, transparent);
   padding: 0.75rem 0;
 }
 
-.aui-tool-group-trigger {
+.ui-tool-group-trigger {
   display: flex;
   width: 100%;
   align-items: center;
@@ -1368,25 +1368,25 @@ textarea {
   transition: color var(--motion-fast) var(--motion-ease);
 }
 
-.aui-tool-group-trigger:hover {
+.ui-tool-group-trigger:hover {
   color: var(--foreground);
 }
 
-.aui-tool-group-trigger-label {
+.ui-tool-group-trigger-label {
   flex: 1;
   text-align: left;
   font-size: 0.75rem;
   font-weight: 500;
 }
 
-.aui-tool-group-content {
+.ui-tool-group-content {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
   padding: 0.5rem 0.75rem 0;
 }
 
-.aui-tool-group-summary {
+.ui-tool-group-summary {
   padding: 0.35rem 1rem 0;
   color: var(--muted-foreground);
   font-size: 0.6875rem;
@@ -1394,40 +1394,40 @@ textarea {
   opacity: 0.8;
 }
 
-@keyframes aui-spin {
+@keyframes ui-spin {
   to { transform: rotate(360deg); }
 }
 
 /* Chain-of-thought stack spacing */
-.aui-cot-stack {
+.ui-cot-stack {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .aui-shimmer {
+  .ui-shimmer {
     animation: none !important;
     display: none;
   }
-  .aui-tool-fallback-trigger-icon.is-running {
+  .ui-tool-fallback-trigger-icon.is-running {
     animation: none;
   }
-  .aui-tool-fallback-chevron {
+  .ui-tool-fallback-chevron {
     transition: none;
   }
 }
 
 /* ─── Utility classes ─────────────────────────────────── */
 
-.chateaui-card {
-  background: var(--chateaui-card-bg, var(--surface));
+.ui-legacy-card {
+  background: var(--ui-legacy-card-bg, var(--surface));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
-.chateaui-card:hover {
+.ui-legacy-card:hover {
   box-shadow: var(--shadow-md);
 }
 
@@ -1441,29 +1441,29 @@ textarea {
   will-change: transform, opacity;
 }
 
-.chateaui-card-interactive {
+.ui-legacy-card-interactive {
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
-.chateaui-card-interactive:hover {
+.ui-legacy-card-interactive:hover {
   background: var(--surface-hover);
   border-color: var(--border-hover);
 }
 
-.chateaui-pill {
-  background: var(--chateaui-pill-bg, var(--surface));
-  border: 1px solid var(--chateaui-pill-border, var(--border));
-  border-style: var(--chateaui-pill-border-style, solid);
+.ui-legacy-pill {
+  background: var(--ui-legacy-pill-bg, var(--surface));
+  border: 1px solid var(--ui-legacy-pill-border, var(--border));
+  border-style: var(--ui-legacy-pill-border-style, solid);
   border-radius: var(--radius-full);
 }
 
-.chateaui-muted-pill {
-  background: var(--chateaui-muted-pill-bg, var(--surface-hover));
-  border: 1px solid var(--chateaui-muted-pill-border, var(--border));
+.ui-legacy-muted-pill {
+  background: var(--ui-legacy-muted-pill-bg, var(--surface-hover));
+  border: 1px solid var(--ui-legacy-muted-pill-border, var(--border));
   border-radius: var(--radius-full);
 }
 
-.chateaui-segmented {
+.ui-legacy-segmented {
   display: inline-flex;
   align-items: center;
   gap: 1px;
@@ -1473,7 +1473,7 @@ textarea {
   border-radius: var(--radius-md);
 }
 
-.chateaui-segment {
+.ui-legacy-segment {
   border-radius: var(--radius-sm);
   border: none;
   background: none;
@@ -1485,18 +1485,18 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
 
-.chateaui-segment:hover {
+.ui-legacy-segment:hover {
   color: var(--text);
   background: var(--surface);
 }
 
-.chateaui-segment.is-active {
+.ui-legacy-segment.is-active {
   background: var(--background);
   color: var(--text);
   box-shadow: var(--shadow-xs);
 }
 
-.chateaui-button-primary {
+.ui-legacy-button-primary {
   background: var(--primary);
   color: var(--primary-fg);
   border: 1px solid var(--border);
@@ -1505,16 +1505,16 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), transform 0.1s ease;
 }
 
-.chateaui-button-primary:hover {
+.ui-legacy-button-primary:hover {
   background: var(--primary-hover);
   border-color: var(--border-hover);
 }
 
-.chateaui-button-primary:active {
+.ui-legacy-button-primary:active {
   transform: scale(0.98);
 }
 
-.chateaui-button-secondary {
+.ui-legacy-button-secondary {
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -1523,12 +1523,12 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
-.chateaui-button-secondary:hover {
+.ui-legacy-button-secondary:hover {
   background: var(--surface-hover);
   border-color: var(--border-hover);
 }
 
-.chateaui-icon-button {
+.ui-legacy-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1539,33 +1539,33 @@ textarea {
   transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
-.chateaui-icon-button:hover {
+.ui-legacy-icon-button:hover {
   background: var(--surface-hover);
   color: var(--text);
   border-color: var(--border);
 }
 
-.chateaui-field {
+.ui-legacy-field {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.chateaui-field:focus,
-.chateaui-field:focus-within {
+.ui-legacy-field:focus,
+.ui-legacy-field:focus-within {
   border-color: var(--ring);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 25%, transparent);
 }
 
-.chateaui-menu {
+.ui-legacy-menu {
   background: var(--surface-overlay);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 
-@keyframes chateaui-loader-dots {
+@keyframes ui-legacy-loader-dots {
   33% {
     background-size: calc(100% / 3) 0%, calc(100% / 3) 100%, calc(100% / 3) 100%;
   }
@@ -1577,7 +1577,7 @@ textarea {
   }
 }
 
-.chateaui-message-loading-container {
+.ui-legacy-message-loading-container {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -1588,16 +1588,16 @@ textarea {
   border: 1px solid var(--border);
 }
 
-.chateaui-message-loading {
+.ui-legacy-message-loading {
   width: 24px;
   aspect-ratio: 4;
   --_g: no-repeat radial-gradient(circle closest-side, var(--text-tertiary) 90%, transparent 90%);
   background: var(--_g) 0% 50%, var(--_g) 50% 50%, var(--_g) 100% 50%;
   background-size: calc(100% / 3) 100%;
-  animation: chateaui-loader-dots 750ms infinite linear;
+  animation: ui-legacy-loader-dots 750ms infinite linear;
 }
 
-.chateaui-shimmer-text {
+.ui-legacy-shimmer-text {
   display: inline-block;
   background-image:
     linear-gradient(90deg, transparent calc(50% - 44px), var(--text) 50%, transparent calc(50% + 44px)),
@@ -1607,10 +1607,10 @@ textarea {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: chateaui-loader-shimmer 2s linear infinite;
+  animation: ui-legacy-loader-shimmer 2s linear infinite;
 }
 
-@keyframes chateaui-loader-shimmer {
+@keyframes ui-legacy-loader-shimmer {
   0% { background-position: 100% center; }
   100% { background-position: 0% center; }
 }
@@ -1656,7 +1656,7 @@ textarea {
   border-color: var(--border-hover);
 }
 
-.chateaui-user-bubble {
+.ui-legacy-user-bubble {
   width: fit-content;
   min-width: 0;
   max-width: 90%;
@@ -2435,8 +2435,8 @@ input[type="range"]::-moz-range-thumb {
     -webkit-text-fill-color: var(--text-muted);
   }
   .startup-dots-layer { animation: none !important; }
-  .chateaui-shimmer-text { animation: none !important; }
-  .chateaui-message-loading { animation: none !important; }
+  .ui-legacy-shimmer-text { animation: none !important; }
+  .ui-legacy-message-loading { animation: none !important; }
   .loader-pulse { animation: none !important; }
   .scroll-animate { animation: none !important; opacity: 1; }
   .work-composer-generating { animation: none !important; }
@@ -2519,7 +2519,7 @@ html.a11y-relaxed body {
   letter-spacing: 0.01em;
 }
 html.a11y-relaxed .markdown-body,
-html.a11y-relaxed .chateaui-user-bubble,
+html.a11y-relaxed .ui-legacy-user-bubble,
 html.a11y-relaxed .composer-textarea {
   line-height: 1.9;
   letter-spacing: 0.02em;

@@ -108,7 +108,7 @@
   <div class="mt-auto flex items-center justify-between pt-4">
     <button
       type="button"
-      class="aui-btn aui-btn-ghost gap-1.5 px-4"
+      class="ui-btn ui-btn-ghost gap-1.5 px-4"
       onclick={onBack}
       disabled={loading}
     >
@@ -117,7 +117,7 @@
     </button>
     <button
       type="button"
-      class="aui-btn aui-btn-primary px-5 disabled:opacity-50"
+      class="ui-btn ui-btn-primary px-5 disabled:opacity-50"
       onclick={handleFinish}
       disabled={loading}
     >

@@ -30,7 +30,7 @@
 
     <p class="lede">{copy.tool.approvalLede}</p>
 
-    <pre class="aui-tool-fallback-args-value">{approval.command}</pre>
+    <pre class="ui-tool-fallback-args-value">{approval.command}</pre>
 
     {#if approval.cwd}
       <p class="cwd" title={approval.cwd}>{approval.cwd}</p>

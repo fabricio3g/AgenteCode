@@ -199,14 +199,14 @@
             {missingCharacter ? $t('roleplay.hint.missingCharacter') : $t('roleplay.hint.missingPersona')}
           </span>
           {#if missingCharacter}
-            <button type="button" class="aui-btn aui-btn-ghost" onclick={() => (castEditorOpen = true)}>
+            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => (castEditorOpen = true)}>
               {$t('roleplay.hint.chooseCharacter')}
             </button>
-            <button type="button" class="aui-btn aui-btn-ghost text-error" onclick={confirmDeleteScene}>
+            <button type="button" class="ui-btn ui-btn-ghost text-error" onclick={confirmDeleteScene}>
               {$t('roleplay.hint.deleteScene')}
             </button>
           {:else}
-            <button type="button" class="aui-btn aui-btn-ghost" onclick={() => onPersona(null)}>
+            <button type="button" class="ui-btn ui-btn-ghost" onclick={() => onPersona(null)}>
               {$t('roleplay.hint.clearPersona')}
             </button>
           {/if}

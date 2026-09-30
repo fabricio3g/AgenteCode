@@ -7,6 +7,6 @@
 
 <div class="ui-buttons">
   {#each items as item}
-    <button class="ui-button ui-button-secondary" onclick={() => triggerAction(String(item?.props?.text || item?.text || 'Continue'))}>{String(item?.props?.text || item?.text || '')}</button>
+    <button class="ui-button ui-artifact-button-secondary" onclick={() => triggerAction(String(item?.props?.text || item?.text || 'Continue'))}>{String(item?.props?.text || item?.text || '')}</button>
   {/each}
 </div>

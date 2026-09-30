@@ -27,11 +27,11 @@
   <SpeakVoicePicker />
 
   <div class="mt-auto flex items-center justify-between pt-4">
-    <button type="button" class="aui-btn aui-btn-ghost gap-1.5 px-4" onclick={onBack}>
+    <button type="button" class="ui-btn ui-btn-ghost gap-1.5 px-4" onclick={onBack}>
       <ArrowLeft class="size-4" />
       {$t('onboarding.back')}
     </button>
-    <button type="button" class="aui-btn aui-btn-primary gap-1.5 px-5" onclick={onNext}>
+    <button type="button" class="ui-btn ui-btn-primary gap-1.5 px-5" onclick={onNext}>
       {$t('onboarding.next')}
       <ArrowRight class="size-4" />
     </button>

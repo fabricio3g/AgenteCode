@@ -443,7 +443,7 @@
       <label class="block space-y-1.5">
         <span class="text-xs font-medium text-muted-foreground">{$t('providers.systemPrompt')}</span>
         <textarea
-          class="aui-input h-20 w-full resize-none"
+          class="ui-input h-20 w-full resize-none"
           bind:value={draft.systemPrompt}
           onchange={() => void saveSampling()}
           placeholder={$t('providers.systemPromptPlaceholder')}

@@ -39,10 +39,10 @@
   {#if mode === 'api'}
     <Select aria-label={$t('speech.service')} value={selected} options={[{ value: 'openai', label: 'OpenAI' }, { value: 'compatible', label: $t('speech.compatible') }, kind === 'tts' ? { value: 'elevenlabs', label: 'ElevenLabs' } : { value: 'deepgram', label: 'Deepgram' }]} onchange={(value) => { selected = value; draft = loadDraft(value); }} />
     <div class="grid gap-3 sm:grid-cols-2">
-      <label class="text-xs text-muted-foreground sm:col-span-2">{$t('speech.endpoint')}<input class="aui-input mt-1" bind:value={draft.base_url} placeholder="https://service.example/v1" /></label>
-      <label class="text-xs text-muted-foreground">{$t('speech.apiKey')}<input class="aui-input mt-1" type="password" autocomplete="off" bind:value={draft.api_key} placeholder={settings?.providers?.[selected]?.has_api_key ? $t('speech.keySaved') : $t('speech.apiKey')} /></label>
-      <label class="text-xs text-muted-foreground">{$t('speech.model')}<input class="aui-input mt-1" bind:value={draft.model} /></label>
-      {#if kind === 'tts'}<label class="text-xs text-muted-foreground">{$t('speech.defaultVoice')}<input class="aui-input mt-1" value={draft.voice ?? ''} oninput={(event) => draft.voice = event.currentTarget.value} /></label>{/if}
+      <label class="text-xs text-muted-foreground sm:col-span-2">{$t('speech.endpoint')}<input class="ui-input mt-1" bind:value={draft.base_url} placeholder="https://service.example/v1" /></label>
+      <label class="text-xs text-muted-foreground">{$t('speech.apiKey')}<input class="ui-input mt-1" type="password" autocomplete="off" bind:value={draft.api_key} placeholder={settings?.providers?.[selected]?.has_api_key ? $t('speech.keySaved') : $t('speech.apiKey')} /></label>
+      <label class="text-xs text-muted-foreground">{$t('speech.model')}<input class="ui-input mt-1" bind:value={draft.model} /></label>
+      {#if kind === 'tts'}<label class="text-xs text-muted-foreground">{$t('speech.defaultVoice')}<input class="ui-input mt-1" value={draft.voice ?? ''} oninput={(event) => draft.voice = event.currentTarget.value} /></label>{/if}
     </div>
     <Button size="sm" disabled={saving || !draft.base_url.trim() || !draft.model.trim()} onclick={() => void save()}>{saving ? $t('speech.saving') : $t('speech.save')}</Button>
   {/if}

@@ -36,7 +36,7 @@
 <button
   type="button"
   role="menuitem"
-  class={cn('aui-menu-item', danger && 'is-danger', active && 'is-active', className)}
+  class={cn('ui-menu-item', danger && 'is-danger', active && 'is-active', className)}
   aria-current={active ? 'true' : undefined}
   {disabled}
   onclick={onselect}
@@ -45,10 +45,10 @@
   {#if children}
     {@render children()}
   {:else}
-    <span class="aui-menu-item-text">
+    <span class="ui-menu-item-text">
       <span class="truncate">{label}</span>
-      {#if description}<span class="aui-menu-item-hint">{description}</span>{/if}
+      {#if description}<span class="ui-menu-item-hint">{description}</span>{/if}
     </span>
   {/if}
-  {#if active}<Check class="aui-menu-check size-3.5" />{/if}
+  {#if active}<Check class="ui-menu-check size-3.5" />{/if}
 </button>

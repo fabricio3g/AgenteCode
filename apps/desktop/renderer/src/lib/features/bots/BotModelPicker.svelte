@@ -96,7 +96,7 @@
   {#if provider}
     <div class="relative">
       <input
-        class="aui-input pr-8"
+        class="ui-input pr-8"
         bind:value={model}
         placeholder={$t('bots.modelPlaceholder')}
         aria-label={$t('bots.model')}

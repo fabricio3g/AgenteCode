@@ -63,7 +63,7 @@
 
 <Portal>
   <div
-    class="aui-modal-backdrop"
+    class="ui-modal-backdrop"
     role="presentation"
     use:modalLayer={{ onclose: () => void requestClose() }}
     onclick={() => {

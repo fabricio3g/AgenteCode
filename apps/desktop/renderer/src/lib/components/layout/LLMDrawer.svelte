@@ -119,7 +119,7 @@
     </div>
     <button
       type="button"
-      class="aui-icon-button"
+      class="ui-icon-button"
       onclick={() => (appStore.llmDrawerOpen = false)}
       aria-label="Close"
     >
@@ -132,16 +132,16 @@
 
     <!-- Backend pill tabs -->
     <div class="px-4 pt-2">
-      <div class="aui-segmented w-full">
+      <div class="ui-segmented w-full">
         <button
           type="button"
-          class="aui-segmented-item flex-1 py-1.5 {mode === 'api' ? 'is-active' : ''}"
+          class="ui-segmented-item flex-1 py-1.5 {mode === 'api' ? 'is-active' : ''}"
           onclick={() => { mode = 'api'; }}
         >API</button>
         {#if isElectron()}
           <button
             type="button"
-            class="aui-segmented-item flex-1 py-1.5 {mode === 'local' ? 'is-active' : ''}"
+            class="ui-segmented-item flex-1 py-1.5 {mode === 'local' ? 'is-active' : ''}"
             onclick={() => { mode = 'local'; }}
           >Local</button>
         {/if}
@@ -161,7 +161,7 @@
           </div>
           <button
             type="button"
-            class="aui-icon-button shrink-0"
+            class="ui-icon-button shrink-0"
             onclick={() => { appStore.llmDrawerOpen = false; appStore.modelManagerOpenSection = 'providers'; appStore.modelManagerOpen = true; }}
             title="Configure"
           ><ExternalLink class="size-3.5" /></button>
@@ -268,7 +268,7 @@
           id="llm-system-prompt"
           bind:value={systemPrompt}
           rows="5"
-          class="aui-input resize-none text-[12px] leading-relaxed"
+          class="ui-input resize-none text-[12px] leading-relaxed"
           placeholder="You are a helpful AI assistant."
         ></textarea>
       </div>
@@ -282,7 +282,7 @@
   <div class="shrink-0 px-4 py-3">
     <button
       type="button"
-      class="aui-btn aui-btn-primary w-full py-2.5"
+      class="ui-btn ui-btn-primary w-full py-2.5"
       onclick={save}
       disabled={saving}
     >

@@ -229,7 +229,7 @@
         <div class="preview-bar" style:padding-left={isMac ? '78px' : '6px'}>
           <button
             type="button"
-            class="aui-icon-button"
+            class="ui-icon-button"
             data-sidebar-toggle
             onclick={toggleSidebar}
             aria-controls="app-sidebar"
@@ -322,7 +322,7 @@
 {#if showShortcutsHelp}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="aui-modal-backdrop" use:modalLayer={{ onclose: () => (showShortcutsHelp = false) }} onclick={() => (showShortcutsHelp = false)}>
+  <div class="ui-modal-backdrop" use:modalLayer={{ onclose: () => (showShortcutsHelp = false) }} onclick={() => (showShortcutsHelp = false)}>
     <div
       class="w-full max-w-sm rounded-lg border border-border bg-popover p-6 shadow-lg"
       role="dialog" aria-modal="true" tabindex="-1"

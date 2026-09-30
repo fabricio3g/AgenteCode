@@ -49,10 +49,10 @@
         <Select aria-label={label} value={value.voice ?? ''} placeholder={$t('speech.chooseVoice')} options={localModel.voices.map((voice) => ({ value: voice.id, label: voice.label }))} onchange={(voice) => patch({ voice, model: localModel.id })} />
       {:else if value.backend === 'api'}
         {#if apiOptions.length}<Select aria-label={label} value={value.voice ?? ''} placeholder={$t('speech.providerDefault')} options={[{ value: '', label: $t('speech.providerDefault') }, ...apiOptions]} onchange={(voice) => patch({ voice })} />{/if}
-        <label class="text-xs text-muted-foreground">{$t('speech.voiceId')} {loading ? $t('speech.loadingVoices') : ''}<input class="aui-input mt-1" value={value.voice ?? ''} placeholder={$t('speech.providerDefault')} oninput={(event) => patch({ voice: event.currentTarget.value })} /></label>
-      {:else}<label class="text-xs text-muted-foreground">{$t('speech.systemVoiceName')}<input class="aui-input mt-1" value={value.voice ?? ''} placeholder={$t('speech.systemDefault')} oninput={(event) => patch({ voice: event.currentTarget.value })} /></label>{/if}
-      <label class="text-xs text-muted-foreground">{$t('speech.speed')}<input class="aui-input mt-1" type="number" min="0.5" max="2" step="0.05" value={value.speed ?? 1} oninput={(event) => patch({ speed: Number(event.currentTarget.value) || 1 })} /></label>
-      <label class="text-xs text-muted-foreground">{$t('speech.language')}<input class="aui-input mt-1" value={value.language ?? ''} placeholder={$t('speech.languagePlaceholder')} oninput={(event) => patch({ language: event.currentTarget.value })} /></label>
+        <label class="text-xs text-muted-foreground">{$t('speech.voiceId')} {loading ? $t('speech.loadingVoices') : ''}<input class="ui-input mt-1" value={value.voice ?? ''} placeholder={$t('speech.providerDefault')} oninput={(event) => patch({ voice: event.currentTarget.value })} /></label>
+      {:else}<label class="text-xs text-muted-foreground">{$t('speech.systemVoiceName')}<input class="ui-input mt-1" value={value.voice ?? ''} placeholder={$t('speech.systemDefault')} oninput={(event) => patch({ voice: event.currentTarget.value })} /></label>{/if}
+      <label class="text-xs text-muted-foreground">{$t('speech.speed')}<input class="ui-input mt-1" type="number" min="0.5" max="2" step="0.05" value={value.speed ?? 1} oninput={(event) => patch({ speed: Number(event.currentTarget.value) || 1 })} /></label>
+      <label class="text-xs text-muted-foreground">{$t('speech.language')}<input class="ui-input mt-1" value={value.language ?? ''} placeholder={$t('speech.languagePlaceholder')} oninput={(event) => patch({ language: event.currentTarget.value })} /></label>
     </div>
   {/if}
 </div>

@@ -8,7 +8,7 @@
 </script>
 
 <input
-  class="ui-input"
+  class="ui-artifact-input"
   type={String(props.inputType || props.type || 'text')}
   name={String(props.name || '')}
   placeholder={String(props.placeholder || '')}

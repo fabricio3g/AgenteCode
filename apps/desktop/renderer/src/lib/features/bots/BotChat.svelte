@@ -112,13 +112,13 @@
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
       <p class="truncate text-[11.5px] text-muted-foreground">@{bot.handle}{bot.role ? ` · ${bot.role}` : ''}{bot.model ? ` · ${bot.model.model}` : ''}</p>
     </div>
-    <button type="button" class="aui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
+    <button type="button" class="ui-icon-button head-btn" onclick={() => void botsStore.compact(bot.handle)} title={$t('bots.compactHint')} aria-label={$t('bots.compact')} disabled={bot.working || !turns.length}>
       <Eraser class="size-4" />
     </button>
-    <button type="button" class="aui-icon-button head-btn" onclick={onedit} title={$t('bots.edit')} aria-label={$t('bots.edit')}>
+    <button type="button" class="ui-icon-button head-btn" onclick={onedit} title={$t('bots.edit')} aria-label={$t('bots.edit')}>
       <Pencil class="size-4" />
     </button>
-    <button type="button" class="aui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} title={$t('bots.routines')} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
+    <button type="button" class="ui-icon-button head-btn" class:on={routinesOpen} onclick={ontoggleroutines} title={$t('bots.routines')} aria-label={$t('bots.routines')} aria-pressed={routinesOpen}>
       <CalendarClock class="size-4" />
     </button>
   </header>
@@ -185,7 +185,7 @@
         </ul>
       {/if}
       <!-- The same shell and send/stop button as Home and Code. -->
-      <div class="composer-shell aui-composer">
+      <div class="composer-shell ui-composer">
         <div class="composer-body">
               <textarea
                 class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"

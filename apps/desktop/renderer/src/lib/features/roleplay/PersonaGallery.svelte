@@ -34,7 +34,7 @@
 
 <div class="gallery mx-auto w-full px-6 pb-6" style="max-width: var(--thread-width);">
   <div class="mb-4 flex items-center justify-end gap-2">
-    <button type="button" class="aui-btn aui-btn-primary shrink-0" onclick={onnew}>
+    <button type="button" class="ui-btn ui-btn-primary shrink-0" onclick={onnew}>
       <Plus class="size-4" />
       <span>New persona</span>
     </button>
@@ -67,7 +67,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
+            class="edit-btn ui-icon-button absolute right-2 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => onedit(persona)}
             aria-label="Edit persona"
           >
@@ -75,7 +75,7 @@
           </button>
           <button
             type="button"
-            class="edit-btn aui-icon-button absolute right-10 top-2 is-sm opacity-0 transition group-hover:opacity-100"
+            class="edit-btn ui-icon-button absolute right-10 top-2 is-sm opacity-0 transition group-hover:opacity-100"
             onclick={() => confirmRemove(persona)}
             aria-label="Delete persona"
           >

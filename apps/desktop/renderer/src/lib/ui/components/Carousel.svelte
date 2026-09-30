@@ -10,9 +10,9 @@
     <div class="ui-panel"><RenderNode value={slides[active] || []} /></div>
     {#if slides.length > 1}
       <div class="ui-buttons">
-        <button class="ui-button ui-button-secondary" onclick={() => (active = Math.max(0, active - 1))}>Previous</button>
+        <button class="ui-button ui-artifact-button-secondary" onclick={() => (active = Math.max(0, active - 1))}>Previous</button>
         <span class="ui-muted">{active + 1} / {slides.length}</span>
-        <button class="ui-button ui-button-secondary" onclick={() => (active = Math.min(slides.length - 1, active + 1))}>Next</button>
+        <button class="ui-button ui-artifact-button-secondary" onclick={() => (active = Math.min(slides.length - 1, active + 1))}>Next</button>
       </div>
     {/if}
   {/if}

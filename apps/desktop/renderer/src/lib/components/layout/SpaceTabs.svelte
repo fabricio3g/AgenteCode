@@ -31,11 +31,11 @@
   }
 </script>
 
-<div class="space-tabs aui-segmented titlebar-no-drag" role="tablist" tabindex="-1" aria-label={copy.spaces.label} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
+<div class="space-tabs ui-segmented titlebar-no-drag" role="tablist" tabindex="-1" aria-label={copy.spaces.label} onkeydown={onKeydown} ondblclick={(event) => event.stopPropagation()}>
   {#each tabs as tab (tab.id)}
     {@const Icon = tab.icon}
     <Tooltip label={tab.label} position="bottom">
-      <button type="button" class="space-tab aui-segmented-item" class:is-active={appStore.activeTab === tab.id} role="tab" id={`space-tab-${tab.id}`}
+      <button type="button" class="space-tab ui-segmented-item" class:is-active={appStore.activeTab === tab.id} role="tab" id={`space-tab-${tab.id}`}
         tabindex={appStore.activeTab === tab.id ? 0 : -1} aria-selected={appStore.activeTab === tab.id} aria-label={tab.label} onclick={() => activate(tab.id)}>
         <Icon class="size-3.5" />
       </button>

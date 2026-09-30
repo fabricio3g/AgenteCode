@@ -35,14 +35,14 @@
 
 {#if !dismissed && (showIdle || active || hasBuffer || message.ttsAudio)}
   <div class="tts-player" role="group" aria-label={$t('tts.player.label')}>
-    <button type="button" class="tts-play aui-icon-button" onclick={() => void togglePlayback()} aria-label={playing ? $t('tts.player.pause') : active ? $t('tts.player.resume') : $t('tts.player.play')}>
+    <button type="button" class="tts-play ui-icon-button" onclick={() => void togglePlayback()} aria-label={playing ? $t('tts.player.pause') : active ? $t('tts.player.resume') : $t('tts.player.play')}>
       {#if playing}<Pause class="size-3.5" />{:else}<Play class="size-3.5" />{/if}
     </button>
     {#if active || hasBuffer || message.ttsAudio}<input class="tts-progress" type="range" min="0" max="100" step="0.1" value={progress} disabled={!hasBuffer}
       aria-label={$t('tts.player.position')} aria-valuetext={$t('tts.player.positionValue', { values: { elapsed: formatTime(elapsed), duration: formatTime(duration) } })}
       style={`--audio-progress: ${progress}%;`} onchange={(event) => void ttsStore.seek(message.id, Number(event.currentTarget.value) / 100)} />
     <span class="tts-time">{formatTime(elapsed)} <span class="tts-time-separator">/</span> {formatTime(duration)}</span>
-    <button type="button" class="aui-icon-button tts-close" onclick={dismiss} aria-label={$t('tts.player.close')}><X class="size-3" /></button>
+    <button type="button" class="ui-icon-button tts-close" onclick={dismiss} aria-label={$t('tts.player.close')}><X class="size-3" /></button>
     {:else}<span class="tts-time">{$t('tts.player.listen')}</span>{/if}
   </div>
 {/if}
