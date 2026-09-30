@@ -12,10 +12,11 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { Archive, ArrowDownToLine, ArrowUp, Bot, Check, ChevronDown, ClipboardList, File as FileIcon, FileDown, GitCompareArrows, MessageSquarePlus, MoreHorizontal, Paperclip, Play, Plug, RotateCcw, RotateCw, Settings2, ShieldCheck, Sparkles, Square, SquareTerminal, X, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, File as FileIcon, MoreHorizontal, Paperclip, Play, ShieldCheck, Square, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
-  import { exactSlashCommand, matchSlashCommands, slashQuery, type SlashCommand } from './slash-commands';
+  import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
+  import { codeCommands, type CodeCommand, type CodeDialog } from './code-commands';
   import { t } from 'svelte-i18n';
   import type { ChatSession } from '$lib/types/chat';
   import { appStore } from '$lib/stores/app.svelte';
@@ -27,7 +28,6 @@
   import { conversationSpend, spendLabel } from './accounting';
   import { fileMentionAt, insertFile, matchFiles } from './file-mention';
   import { downloadSessionMarkdown } from '$lib/features/shared/export-session';
-  import { themeStore } from '$lib/stores/theme.svelte';
   import { Button, Dialog } from '$lib/components/ui';
   import { invoke } from '$lib/services/bridge';
   import type { Attachment, AttachmentKind } from '$shared/agente-protocol.gen';
@@ -47,7 +47,7 @@
   let text = $state(untrack(() => chat.draft || ''));
   let modeMenuOpen = $state(false);
   let toolsMenuOpen = $state(false);
-  let dialog = $state<'skills' | 'agents' | 'mcp' | 'sessions' | 'settings' | null>(null);
+  let dialog = $state<CodeDialog | null>(null);
   let caret = $state(0);
   let files = $state<string[]>([]);
   let fileIndex = $state(0);
@@ -131,58 +131,45 @@
 
   /** Size the input to its content — shared helper keeps Home parity. */
 
-  // ── Slash commands ───────────────────────────────────────────────────
-  type Command = SlashCommand & { icon: typeof Archive; label: string; hint: string; disabled?: boolean; run: () => void | Promise<void> };
+  // ── Commands (slash menu and "…" menu) ──────────────────────────────
+  type Command = CodeCommand;
 
   const project = $derived(codeStore.projectById(chat.projectId ?? null));
-  const commands = $derived<Command[]>([
-    {
-      name: 'compact', icon: Archive, label: $t('code.slash.compact'), hint: $t('code.compactHint'),
+  const commands = $derived<Command[]>(codeCommands({
+    t: (key) => $t(key),
+    running,
+    hasProject: !!project,
+    mode: runtimeMode,
+    compact: async () => {
       // Session state is not reactive; check it when the command runs.
-      disabled: running,
-      run: async () => {
-        if (!codeStore.hasSession(chat.id)) {
-          toastStore.info($t('code.slash.nothingToCompact'));
-          return;
-        }
-        const result = await codeStore.compact(chat.id);
-        if (result.ok) toastStore.success($t('code.slash.compacted'));
-        else toastStore.error($t('code.compactFailed', { values: { error: result.error ?? '' } }));
+      if (!codeStore.hasSession(chat.id)) {
+        toastStore.info($t('code.slash.nothingToCompact'));
+        return;
+      }
+      const result = await codeStore.compact(chat.id);
+      if (result.ok) toastStore.success($t('code.slash.compacted'));
+      else toastStore.error($t('code.compactFailed', { values: { error: result.error ?? '' } }));
+    },
+    newConversation: () => { if (project) codeStore.newConversation(project); },
+    setMode: selectMode,
+    showChanges: () => codeWorkspace.toggleChanges(true),
+    toggleTerminal: async () => {
+      if (!project) return;
+      try {
+        await codeWorkspace.toggleBottom('terminal', project.rootPath);
+      } catch (error) {
+        toastStore.error($t('codeWs.terminalFailed', { values: { reason: (error as Error).message } }));
       }
     },
-    { name: 'new', aliases: ['tab'], icon: MessageSquarePlus, label: $t('code.newConversation'), hint: $t('code.slash.newHint'), disabled: !project, run: () => { if (project) codeStore.newConversation(project); } },
-    { name: 'plan', icon: ClipboardList, label: $t('code.modePlan'), hint: $t('code.modePlanHint'), run: () => selectMode('plan') },
-    { name: 'supervised', aliases: ['build'], icon: ShieldCheck, label: $t('code.modeSupervised'), hint: $t('code.modeSupervisedHint'), run: () => selectMode('supervised') },
-    { name: 'full', aliases: ['auto'], icon: Zap, label: $t('code.modeFull'), hint: $t('code.modeFullHint'), run: () => selectMode('full') },
-    { name: 'changes', icon: GitCompareArrows, label: $t('codeWs.changes'), hint: $t('code.slash.changesHint'), run: () => codeWorkspace.toggleChanges(true) },
-    {
-      name: 'terminal', icon: SquareTerminal, label: $t('codeWs.terminal'), hint: $t('code.slash.terminalHint'), disabled: !project,
-      run: async () => {
-        if (!project) return;
-        try {
-          await codeWorkspace.toggleBottom('terminal', project.rootPath);
-        } catch (error) {
-          toastStore.error($t('codeWs.terminalFailed', { values: { reason: (error as Error).message } }));
-        }
-      }
-    },
-    { name: 'skills', icon: Sparkles, label: 'Skills', hint: 'Project skills and custom commands', run: () => { dialog = 'skills'; } },
-    { name: 'subagents', aliases: ['agents', 'subagent-models'], icon: Bot, label: 'Subagents', hint: 'Live work, output and model overrides', run: () => { dialog = 'agents'; } },
-    { name: 'mcp', icon: Plug, label: 'MCP servers', hint: 'Tool server status and connections', run: () => { dialog = 'mcp'; } },
-    { name: 'settings', icon: Settings2, label: 'Agent settings', hint: 'Compaction and parallel subagents', run: () => { dialog = 'settings'; } },
-    { name: 'session', aliases: ['resume', 'sessions'], icon: MessageSquarePlus, label: 'Resume session', hint: 'Open a saved Rust session', run: () => { dialog = 'sessions'; } },
-    { name: 'undo', icon: RotateCcw, label: 'Undo edits', hint: 'Restore the previous file contents', disabled: running, run: () => editFiles('undo') },
-    { name: 'redo', icon: RotateCw, label: 'Redo edits', hint: 'Reapply the undone file changes', disabled: running, run: () => editFiles('redo') },
-    { name: 'init', icon: FileIcon, label: 'Initialize project', hint: 'Create AGENTS.md and agent folders', disabled: !project,
-      run: async () => { if (project) toastStore.info((await initProject(project.rootPath)).message); } },
-    { name: 'export', icon: FileDown, label: 'Export conversation', hint: 'Download conversation and tool history as Markdown', run: () => downloadSessionMarkdown(chat) },
-    { name: 'model', aliases: ['provider', 'refresh-models'], icon: Sparkles, label: 'Choose model', hint: 'Open the desktop model hub', run: openModelHub },
-    { name: 'project', icon: FileIcon, label: 'Open project', hint: 'Choose a working folder', run: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); } },
-    { name: 'stop', icon: Square, label: 'Stop run', hint: 'Interrupt the running agent', disabled: !running, run: () => codeStore.stop(chat.id) },
-    { name: 'mode', aliases: ['approve'], icon: ShieldCheck, label: 'Change mode', hint: 'Cycle plan, build and auto', run: () => selectMode(runtimeMode === 'plan' ? 'supervised' : runtimeMode === 'supervised' ? 'full' : 'plan') },
-    { name: 'theme', icon: Settings2, label: 'Toggle theme', hint: 'Switch dark and light', run: () => themeStore.toggle() },
-    { name: 'help', aliases: ['hotkeys'], icon: MoreHorizontal, label: 'Commands', hint: 'Show the Code command menu', run: () => { toolsMenuOpen = true; } }
-  ]);
+    openDialog: (next) => { dialog = next; },
+    edits: editFiles,
+    init: async () => { if (project) toastStore.info((await initProject(project.rootPath)).message); },
+    exportConversation: () => downloadSessionMarkdown(chat),
+    openModels: openModelHub,
+    openProject: async () => { const selected = await codeStore.addProject(); if (selected) codeStore.newConversation(selected); },
+    stop: () => codeStore.stop(chat.id)
+  }));
+  const menuGroups = $derived([commands.filter((command) => command.menu === 'actions'), commands.filter((command) => command.menu === 'project')]);
 
   $effect(() => {
     const root = project?.rootPath;
@@ -589,9 +576,12 @@
           <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
           <button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Attach media" disabled={attaching} onclick={() => mediaPicker?.click()}><Paperclip class="size-4" /></button>
 
-          <Menu bind:open={toolsMenuOpen} placement="top-end" label="Code tools">
-            {#snippet trigger(props)}<button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Code tools" {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
-            {#each commands as command (command.name)}<MenuItem icon={command.icon} label={command.label} description={command.hint} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+          <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
+            {#snippet trigger(props)}<button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+            {#each menuGroups as group, index (index)}
+              {#if index > 0}<div class="aui-menu-separator" role="separator"></div>{/if}
+              {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+            {/each}
           </Menu>
 
             {#if running}

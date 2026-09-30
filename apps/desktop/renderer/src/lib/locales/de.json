@@ -331,7 +331,62 @@
       "commentPrefix": "Zum Plan: ",
       "hint": "Build fragt nach Werkzeugfreigaben"
     },
-    "runtimeNotes": "Laufzeithinweise · {n}"
+    "runtimeNotes": "Laufzeithinweise · {n}",
+    "cmd": {
+      "undo": {
+        "label": "Änderungen rückgängig",
+        "hint": "Setzt die Dateien auf den Stand vor den letzten Änderungen"
+      },
+      "redo": {
+        "label": "Änderungen wiederholen",
+        "hint": "Wendet die rückgängig gemachten Änderungen erneut an"
+      },
+      "export": {
+        "label": "Unterhaltung exportieren",
+        "hint": "Als Markdown speichern, mit den genutzten Werkzeugen"
+      },
+      "session": {
+        "label": "Sitzung fortsetzen",
+        "hint": "Eine frühere Sitzung dieses Projekts öffnen"
+      },
+      "init": {
+        "label": "Projekt einrichten",
+        "hint": "Legt AGENTS.md und die .agente-Ordner an"
+      },
+      "skills": {
+        "label": "Skills",
+        "hint": "Skills und eigene Befehle, die der Agent nutzen kann"
+      },
+      "subagents": {
+        "label": "Subagenten",
+        "hint": "Eingebaute und Projekt-Subagenten und ihre Modelle"
+      },
+      "mcp": {
+        "label": "MCP-Server",
+        "hint": "Werkzeug-Server und ob sie verbunden sind"
+      },
+      "settings": {
+        "label": "Agent-Einstellungen",
+        "hint": "Verdichtung und parallele Subagenten"
+      },
+      "mode": {
+        "label": "Nächster Modus",
+        "hint": "Zwischen Planen, Überwacht und Auto wechseln"
+      },
+      "model": {
+        "label": "Modell wählen",
+        "hint": "Das Modell für diese Unterhaltung wählen"
+      },
+      "project": {
+        "label": "Projekt öffnen",
+        "hint": "Einen anderen Arbeitsordner wählen"
+      },
+      "stop": {
+        "label": "Stoppen",
+        "hint": "Die laufende Aufgabe stoppen"
+      }
+    },
+    "toolsMenu": "Weitere Aktionen"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { ChatMessage } from '$lib/types/chat';
 import { acceptMessage, parsePlan, pendingPlan } from './plan-review';
 import { fileMentionAt, insertFile, matchFiles } from './file-mention';
-import { chatToMarkdown, exportFileName } from './export-chat';
 import { activitySummary, stepKind } from './activity';
 import { conversationSpend, spendLabel } from './accounting';
 import { emptySpend } from './code-run';
@@ -42,17 +41,6 @@ describe('@ file mentions', () => {
 
   it('inserts the path and moves the caret after it', () => {
     expect(insertFile('fix @ap now', 7, { start: 4, query: 'ap' }, 'src/app.ts')).toEqual({ text: 'fix @src/app.ts now', caret: 16 });
-  });
-});
-
-describe('export', () => {
-  it('writes the conversation as markdown', () => {
-    const markdown = chatToMarkdown('Fix bug', [
-      message({ role: 'user', content: 'Fix the bug' }),
-      message({ content: 'Done.', agentSteps: [{ id: 't', type: 'tool', label: 'src/a.ts', toolName: 'edit_file', status: 'done' }] })
-    ]);
-    expect(markdown).toBe('# Fix bug\n\n## You\n\nFix the bug\n\n## Agente\n\n- `edit_file` src/a.ts\n\nDone.\n');
-    expect(exportFileName('Fix the Bug!')).toBe('fix-the-bug.md');
   });
 });
 
@@ -97,5 +85,18 @@ describe('tool kinds for UI names', () => {
   it('reads the names main gives Rust tools and the browser tools', () => {
     const kind = (toolName: string) => stepKind({ id: 'x', type: 'tool', label: '', toolName, status: 'done' });
     expect([kind('bash'), kind('ls'), kind('write'), kind('browser_navigate')]).toEqual(['command', 'list', 'edit', 'web']);
+  });
+});
+
+import { buildSessionMarkdown } from '$lib/features/shared/export-session';
+
+describe('export', () => {
+  it('lists a code run’s tools before its reply', () => {
+    const markdown = buildSessionMarkdown({ title: 'Fix bug', messages: [
+      message({ role: 'user', content: 'Fix the bug' }),
+      message({ content: 'Done.', agentSteps: [{ id: 't', type: 'tool', label: 'src/a.ts', toolName: 'edit', status: 'done' }] })
+    ] }, '2026-09-29');
+    expect(markdown).toContain('**You:**\n\nFix the bug');
+    expect(markdown).toContain('**Assistant**:\n\n- `edit` src/a.ts\n\nDone.');
   });
 });

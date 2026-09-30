@@ -331,7 +331,62 @@
       "commentPrefix": "About the plan: ",
       "hint": "Build asks for tool approvals"
     },
-    "runtimeNotes": "Runtime notes · {n}"
+    "runtimeNotes": "Runtime notes · {n}",
+    "cmd": {
+      "undo": {
+        "label": "Undo edits",
+        "hint": "Put back the files as they were before the last edits"
+      },
+      "redo": {
+        "label": "Redo edits",
+        "hint": "Apply the undone edits again"
+      },
+      "export": {
+        "label": "Export conversation",
+        "hint": "Save it as Markdown, with the tools used"
+      },
+      "session": {
+        "label": "Resume a session",
+        "hint": "Open an earlier session of this project"
+      },
+      "init": {
+        "label": "Set up this project",
+        "hint": "Write AGENTS.md and the .agente folders"
+      },
+      "skills": {
+        "label": "Skills",
+        "hint": "Skills and custom commands the agent can use"
+      },
+      "subagents": {
+        "label": "Subagents",
+        "hint": "Built-in and project subagents, and their models"
+      },
+      "mcp": {
+        "label": "MCP servers",
+        "hint": "Tool servers and whether they're connected"
+      },
+      "settings": {
+        "label": "Agent settings",
+        "hint": "Compaction and parallel subagents"
+      },
+      "mode": {
+        "label": "Next mode",
+        "hint": "Switch between Plan, Supervised and Auto"
+      },
+      "model": {
+        "label": "Choose model",
+        "hint": "Pick the model for this conversation"
+      },
+      "project": {
+        "label": "Open a project",
+        "hint": "Choose another folder to work in"
+      },
+      "stop": {
+        "label": "Stop",
+        "hint": "Stop the running task"
+      }
+    },
+    "toolsMenu": "More actions"
   },
   "searchModal": {
     "inMessages": "In messages",

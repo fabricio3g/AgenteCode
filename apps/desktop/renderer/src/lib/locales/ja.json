@@ -331,7 +331,62 @@
       "commentPrefix": "プランについて: ",
       "hint": "Build はツールの承認を求めます"
     },
-    "runtimeNotes": "実行時のメモ · {n}"
+    "runtimeNotes": "実行時のメモ · {n}",
+    "cmd": {
+      "undo": {
+        "label": "変更を元に戻す",
+        "hint": "直前の変更前の状態にファイルを戻します"
+      },
+      "redo": {
+        "label": "変更をやり直す",
+        "hint": "元に戻した変更を再適用します"
+      },
+      "export": {
+        "label": "会話をエクスポート",
+        "hint": "使用したツールを含めて Markdown で保存"
+      },
+      "session": {
+        "label": "セッションを再開",
+        "hint": "このプロジェクトの以前のセッションを開く"
+      },
+      "init": {
+        "label": "このプロジェクトを準備",
+        "hint": "AGENTS.md と .agente フォルダを作成"
+      },
+      "skills": {
+        "label": "スキル",
+        "hint": "エージェントが使えるスキルとカスタムコマンド"
+      },
+      "subagents": {
+        "label": "サブエージェント",
+        "hint": "組み込みとプロジェクトのサブエージェント、そのモデル"
+      },
+      "mcp": {
+        "label": "MCP サーバー",
+        "hint": "ツールサーバーと接続状態"
+      },
+      "settings": {
+        "label": "エージェント設定",
+        "hint": "圧縮と並列サブエージェント"
+      },
+      "mode": {
+        "label": "次のモード",
+        "hint": "計画・監督・自動を切り替え"
+      },
+      "model": {
+        "label": "モデルを選択",
+        "hint": "この会話のモデルを選ぶ"
+      },
+      "project": {
+        "label": "プロジェクトを開く",
+        "hint": "作業する別のフォルダを選ぶ"
+      },
+      "stop": {
+        "label": "停止",
+        "hint": "実行中のタスクを止める"
+      }
+    },
+    "toolsMenu": "その他の操作"
   },
   "searchModal": {
     "inMessages": "メッセージ内",

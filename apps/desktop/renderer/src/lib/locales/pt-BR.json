@@ -331,7 +331,62 @@
       "commentPrefix": "Sobre o plano: ",
       "hint": "O Build pede aprovação das ferramentas"
     },
-    "runtimeNotes": "Notas do ambiente · {n}"
+    "runtimeNotes": "Notas do ambiente · {n}",
+    "cmd": {
+      "undo": {
+        "label": "Desfazer alterações",
+        "hint": "Volta os arquivos para como estavam antes das últimas alterações"
+      },
+      "redo": {
+        "label": "Refazer alterações",
+        "hint": "Aplica de novo as alterações desfeitas"
+      },
+      "export": {
+        "label": "Exportar conversa",
+        "hint": "Salve em Markdown, com as ferramentas usadas"
+      },
+      "session": {
+        "label": "Retomar uma sessão",
+        "hint": "Abra uma sessão anterior deste projeto"
+      },
+      "init": {
+        "label": "Preparar este projeto",
+        "hint": "Cria o AGENTS.md e as pastas .agente"
+      },
+      "skills": {
+        "label": "Habilidades",
+        "hint": "Habilidades e comandos próprios que o agente pode usar"
+      },
+      "subagents": {
+        "label": "Subagentes",
+        "hint": "Subagentes incluídos e do projeto, e seus modelos"
+      },
+      "mcp": {
+        "label": "Servidores MCP",
+        "hint": "Servidores de ferramentas e se estão conectados"
+      },
+      "settings": {
+        "label": "Ajustes do agente",
+        "hint": "Compactação e subagentes em paralelo"
+      },
+      "mode": {
+        "label": "Próximo modo",
+        "hint": "Alterna entre Planejar, Supervisionado e Automático"
+      },
+      "model": {
+        "label": "Escolher modelo",
+        "hint": "Escolha o modelo desta conversa"
+      },
+      "project": {
+        "label": "Abrir um projeto",
+        "hint": "Escolha outra pasta para trabalhar"
+      },
+      "stop": {
+        "label": "Parar",
+        "hint": "Para a tarefa em andamento"
+      }
+    },
+    "toolsMenu": "Mais ações"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",

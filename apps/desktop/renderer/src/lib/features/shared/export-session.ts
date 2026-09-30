@@ -1,5 +1,4 @@
 import type { ChatSession } from '$lib/types/chat';
-import { chatToMarkdown } from '$lib/features/code/export-chat';
 
 /**
  * Shared session export.
@@ -8,14 +7,16 @@ import { chatToMarkdown } from '$lib/features/code/export-chat';
  * Replaces duplicated builders in AppShell and Sidebar.
  */
 export function buildSessionMarkdown(chat: Pick<ChatSession, 'title' | 'messages'>, dateStr: string): string {
-  if (chat.messages.some((message) => message.agentSteps?.length)) return chatToMarkdown(chat.title, chat.messages);
   const lines: string[] = [`# ${chat.title || 'Chat'}\n\n*Exported ${dateStr}*\n`];
   for (const m of chat.messages) {
     lines.push('---');
     if (m.role === 'user') {
       lines.push(`**You:**\n\n${m.content}`);
     } else {
-      lines.push(`**Assistant**${m.model ? ` (${m.model})` : ''}:\n\n${m.content}`);
+      // Code runs: the tools used, one line each, before what was said.
+      const tools = (m.agentSteps ?? []).filter((step) => step.toolName && !step.preface).map((step) => `- \`${step.toolName}\` ${step.label}`.trimEnd());
+      const body = [tools.join('\n'), m.content].filter(Boolean).join('\n\n');
+      lines.push(`**Assistant**${m.model ? ` (${m.model})` : ''}:\n\n${body}`);
     }
   }
   return lines.join('\n\n');

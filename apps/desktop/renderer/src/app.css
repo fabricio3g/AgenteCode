@@ -604,6 +604,13 @@ textarea {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
 }
 
+/* A hairline between groups of items in a menu. */
+.aui-menu-separator {
+  height: 1px;
+  margin: 0.25rem 0.5rem;
+  background: var(--border);
+}
+
 .aui-menu {
   overflow: hidden;
   border: 1px solid var(--border-subtle);

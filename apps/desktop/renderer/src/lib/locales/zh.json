@@ -331,7 +331,62 @@
       "commentPrefix": "关于计划：",
       "hint": "Build 会请求工具批准"
     },
-    "runtimeNotes": "运行说明 · {n}"
+    "runtimeNotes": "运行说明 · {n}",
+    "cmd": {
+      "undo": {
+        "label": "撤销更改",
+        "hint": "把文件恢复到最近一次更改之前"
+      },
+      "redo": {
+        "label": "重做更改",
+        "hint": "重新应用撤销的更改"
+      },
+      "export": {
+        "label": "导出对话",
+        "hint": "保存为 Markdown，包含用到的工具"
+      },
+      "session": {
+        "label": "恢复会话",
+        "hint": "打开这个项目之前的会话"
+      },
+      "init": {
+        "label": "设置此项目",
+        "hint": "创建 AGENTS.md 和 .agente 文件夹"
+      },
+      "skills": {
+        "label": "技能",
+        "hint": "代理可以使用的技能和自定义命令"
+      },
+      "subagents": {
+        "label": "子代理",
+        "hint": "内置和项目的子代理及其模型"
+      },
+      "mcp": {
+        "label": "MCP 服务器",
+        "hint": "工具服务器及其连接状态"
+      },
+      "settings": {
+        "label": "代理设置",
+        "hint": "压缩和并行子代理"
+      },
+      "mode": {
+        "label": "下一个模式",
+        "hint": "在计划、监督和自动之间切换"
+      },
+      "model": {
+        "label": "选择模型",
+        "hint": "为这个对话选择模型"
+      },
+      "project": {
+        "label": "打开项目",
+        "hint": "选择另一个工作文件夹"
+      },
+      "stop": {
+        "label": "停止",
+        "hint": "停止正在运行的任务"
+      }
+    },
+    "toolsMenu": "更多操作"
   },
   "searchModal": {
     "inMessages": "在消息中",
