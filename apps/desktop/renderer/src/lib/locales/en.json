@@ -183,6 +183,16 @@
         "xhigh": "Extra high",
         "enabled": "On",
         "on": "On"
+      },
+      "hint": {
+        "auto": "The model decides how long to think",
+        "off": "Answers right away, no thinking",
+        "minimal": "A quick glance before answering",
+        "low": "Quick answers for simple questions",
+        "medium": "Balanced speed and depth",
+        "high": "Thinks longer on hard problems",
+        "xhigh": "Very thorough; slower and uses more tokens",
+        "max": "The most thorough; slowest and costliest"
       }
     }
   },

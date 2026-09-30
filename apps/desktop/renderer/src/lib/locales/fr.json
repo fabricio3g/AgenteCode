@@ -183,6 +183,16 @@
         "xhigh": "Très élevé",
         "enabled": "Activé",
         "on": "Activé"
+      },
+      "hint": {
+        "auto": "Le modèle décide combien réfléchir",
+        "off": "Répond tout de suite, sans réfléchir",
+        "minimal": "Un coup d'œil avant de répondre",
+        "low": "Réponses rapides aux questions simples",
+        "medium": "Équilibre entre vitesse et profondeur",
+        "high": "Réfléchit plus longtemps aux problèmes difficiles",
+        "xhigh": "Très approfondi ; plus lent, plus de jetons",
+        "max": "Le plus approfondi ; le plus lent et coûteux"
       }
     }
   },

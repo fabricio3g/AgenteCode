@@ -183,6 +183,16 @@
         "xhigh": "Muito alto",
         "enabled": "Ativado",
         "on": "Ativado"
+      },
+      "hint": {
+        "auto": "O modelo decide quanto pensar",
+        "off": "Responde na hora, sem pensar",
+        "minimal": "Uma olhada rápida antes de responder",
+        "low": "Respostas rápidas para perguntas simples",
+        "medium": "Equilíbrio entre rapidez e profundidade",
+        "high": "Pensa mais em problemas difíceis",
+        "xhigh": "Muito minucioso; mais lento e usa mais tokens",
+        "max": "O mais minucioso; mais lento e caro"
       }
     }
   },

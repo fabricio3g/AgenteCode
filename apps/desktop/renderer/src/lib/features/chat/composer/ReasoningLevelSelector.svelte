@@ -1,115 +1,120 @@
 <svelte:options runes={true} />
+
+<!--
+  How hard the model thinks. The trigger is a tiny effort meter and the
+  level's name; it opens a short menu of the levels this model supports,
+  each with one line on what it means — the pattern agent apps settle on.
+-->
+
 <script lang="ts">
   import { t } from 'svelte-i18n';
+  import { Menu, MenuItem } from '$lib/components/ui';
   import { appStore } from '$lib/stores/app.svelte';
   import type { ReasoningLevel } from '$lib/types/chat';
   import { normalizeThinkingMode } from '$lib/stores/app-store-local-model';
-  import ComposerCard from '$lib/features/shared/composer/ComposerCard.svelte';
+  import { effortBars } from './reasoning-effort';
 
   let open = $state(false);
-  let anchor = $state<HTMLButtonElement>();
-  const id = $props.id();
   const capabilities = $derived(appStore.reasoningCapabilities);
   const visible = $derived(capabilities.supported && capabilities.source !== 'unknown' && capabilities.levels.length > 1);
   const modelDefault = $derived(appStore.backendMode === 'local'
     ? normalizeThinkingMode(appStore.config.llm?.local?.thinking_mode, appStore.config.llm?.local?.disable_thinking)
     : 'auto');
-  const autoLabel = $derived(modelDefault === 'auto' ? $t('composer.thinking.level.auto')
-    : $t('composer.thinking.modelDefault', { values: { level: labelFor(modelDefault) } }));
   const levels = $derived<Array<ReasoningLevel | null>>([null, ...capabilities.levels]);
-  const index = $derived(Math.max(0, levels.indexOf(appStore.reasoningLevel)));
-  const currentLabel = $derived(labelFor(levels[index]));
+  const current = $derived(levels.includes(appStore.reasoningLevel) ? appStore.reasoningLevel : null);
+
   function labelFor(level: ReasoningLevel | null): string {
-    return level === null ? autoLabel : $t(`composer.thinking.level.${level}`);
+    if (level !== null) return $t(`composer.thinking.level.${level}`);
+    return modelDefault === 'auto'
+      ? $t('composer.thinking.level.auto')
+      : $t('composer.thinking.modelDefault', { values: { level: $t(`composer.thinking.level.${modelDefault}`) } });
+  }
+
+  function hintFor(level: ReasoningLevel | null): string {
+    return $t(`composer.thinking.hint.${level ?? 'auto'}`, { default: '' });
   }
 </script>
 
+{#snippet meter(level: ReasoningLevel | null)}
+  {@const filled = effortBars(level)}
+  <span class="meter" class:is-auto={level === null} aria-hidden="true">
+    {#each [1, 2, 3, 4] as bar (bar)}<span class:is-on={bar <= filled}></span>{/each}
+  </span>
+{/snippet}
+
 {#if visible}
-  <button bind:this={anchor} type="button" class="thinking-trigger" class:is-open={open}
-    aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-    onclick={() => (open = !open)}>{$t('composer.thinking.trigger', { values: { level: currentLabel } })}</button>
-  {#if open}
-    <ComposerCard {anchor} {id} label={$t('composer.thinking.title')} onclose={() => (open = false)}>
-      <div class="thinking-card" style:--pct={`${levels.length > 1 ? (index / (levels.length - 1)) * 100 : 0}%`}>
-        <div class="head">
-          <label for={`${id}-slider`}>{$t('composer.thinking.title')}</label>
-          <span class="value">{currentLabel}</span>
-        </div>
-        <div class="track-wrap">
-          <div class="rail" aria-hidden="true"></div>
-          <div class="ticks" aria-hidden="true">
-            {#each levels as level, tick (level)}<span class:is-on={tick <= index}></span>{/each}
-          </div>
-          <input id={`${id}-slider`} type="range" min="0" max={levels.length - 1} step="1" value={index}
-            aria-valuetext={currentLabel}
-            oninput={(event) => appStore.setReasoningLevel(levels[Number(event.currentTarget.value)])} />
-        </div>
-        <div class="ends" aria-hidden="true">
-          <span>{labelFor(levels[0])}</span>
-          <span>{labelFor(levels[levels.length - 1])}</span>
-        </div>
-      </div>
-    </ComposerCard>
-  {/if}
+  <Menu bind:open placement="top-start" minWidth="14rem" label={$t('composer.thinking.title')}>
+    {#snippet trigger(props)}
+      <button type="button" class="thinking-trigger" class:is-open={open} aria-label={$t('composer.thinking.trigger', { values: { level: labelFor(current) } })} title={$t('composer.thinking.title')} {...props}>
+        {@render meter(current)}
+        <span>{labelFor(current)}</span>
+      </button>
+    {/snippet}
+    <p class="menu-title">{$t('composer.thinking.title')}</p>
+    {#each levels as level (level)}
+      <MenuItem active={current === level} onselect={() => { appStore.setReasoningLevel(level); open = false; }}>
+        {@render meter(level)}
+        <span class="ui-menu-item-text">
+          <span class="truncate">{labelFor(level)}</span>
+          {#if hintFor(level)}<span class="ui-menu-item-hint">{hintFor(level)}</span>{/if}
+        </span>
+      </MenuItem>
+    {/each}
+  </Menu>
 {/if}
 
 <style>
-  .thinking-trigger { height: 26px; flex-shrink: 0; padding: 0 0.375rem; background: transparent; border: 0; border-radius: var(--radius-full); color: var(--muted-foreground); font-size: 12px; white-space: nowrap; cursor: pointer; }
-  .thinking-trigger:hover, .thinking-trigger.is-open { background: var(--muted); color: var(--foreground); }
-  .thinking-trigger:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .thinking-trigger {
+    display: inline-flex;
+    height: 26px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-full);
+    color: var(--muted-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+  }
 
-  .thinking-card { width: 13.5rem; display: grid; gap: 0.5rem; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
-  label { color: var(--muted-foreground); font-size: 11.5px; }
-  .value { color: var(--foreground); font-size: 12px; font-weight: 500; }
+  .thinking-trigger:hover,
+  .thinking-trigger.is-open {
+    background: var(--surface-hover);
+    color: var(--foreground);
+  }
 
-  /* A slim track that fills up to the chosen level, one dot per level. */
-  .track-wrap { position: relative; height: 1rem; }
-  .rail {
-    position: absolute;
-    inset: 50% 0 auto;
-    height: 4px;
-    transform: translateY(-50%);
-    border-radius: 9999px;
-    background: linear-gradient(to right, var(--foreground) var(--pct), var(--muted) var(--pct));
+  .thinking-trigger:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
-  .ticks {
-    position: absolute;
-    inset: 50% 5px auto;
-    display: flex;
-    justify-content: space-between;
-    transform: translateY(-50%);
-    pointer-events: none;
+
+  /* Four rising bars, filled to the level: reads as "effort" at a glance. */
+  .meter {
+    display: inline-flex;
+    height: 10px;
+    flex-shrink: 0;
+    align-items: flex-end;
+    gap: 1.5px;
   }
-  .ticks span { width: 4px; height: 4px; border-radius: 9999px; background: var(--border-hover); }
-  .ticks span.is-on { background: var(--background); }
-  input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
+
+  .meter span {
+    width: 2.5px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0.25;
   }
-  input::-webkit-slider-runnable-track {
-    height: 4px;
-    background: transparent;
+
+  .meter span:nth-child(1) { height: 4px; }
+  .meter span:nth-child(2) { height: 6px; }
+  .meter span:nth-child(3) { height: 8px; }
+  .meter span:nth-child(4) { height: 10px; }
+  .meter span.is-on { opacity: 1; }
+  .meter.is-auto span { opacity: 0.5; }
+
+  .menu-title {
+    padding: 0.25rem 0.625rem 0.375rem;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 500;
   }
-  input::-webkit-slider-thumb {
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    margin-top: -5px;
-    border-radius: 9999px;
-    background: var(--popover);
-    border: 2px solid var(--foreground);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
-    position: relative;
-    z-index: 1;
-  }
-  input:focus-visible { outline: none; }
-  input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent); }
-  .ends { display: flex; justify-content: space-between; color: var(--muted-foreground); font-size: 11px; }
 </style>

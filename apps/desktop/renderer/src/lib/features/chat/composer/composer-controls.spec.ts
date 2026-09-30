@@ -73,34 +73,28 @@ describe('context details', () => {
   });
 });
 
-describe('thinking slider', () => {
-  it('offers only supported levels plus Auto, applies immediately and returns focus on Escape', async () => {
+describe('thinking menu', () => {
+  it('lists Auto plus the supported levels, each with a hint, and applies a pick', async () => {
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: Auto' });
-    expect(button.querySelector('svg')).toBeNull();
     await fireEvent.click(button);
-    const slider = view.getByRole('slider', { name: 'Thinking' }) as HTMLInputElement;
-    expect(slider.min).toBe('0');
-    expect(slider.max).toBe('3');
-    expect(slider.getAttribute('aria-valuetext')).toBe('Auto');
-    expect(document.activeElement).toBe(slider);
-    await fireEvent.input(slider, { target: { value: '2' } });
+    const items = view.getAllByRole('menuitem');
+    expect(items.map((item) => item.querySelector('.truncate')?.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High']);
+    expect(items[2].textContent).toContain('Balanced speed and depth');
+    expect(items[0].getAttribute('aria-current')).toBe('true');
+    await fireEvent.click(items[2]);
     expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
-    expect(view.getByRole('dialog')).toBeTruthy();
-    await fireEvent.input(slider, { target: { value: '0' } });
-    expect(store.setReasoningLevel).toHaveBeenLastCalledWith(null);
-    await fireEvent.keyDown(slider, { key: 'Escape' });
-    expect(view.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(button);
+    expect(view.queryByRole('menu')).toBeNull();
   });
 
-  it('uses the selected supported level and closes on an outside click', async () => {
+  it('marks the selected level and fills the meter to it', async () => {
     store.reasoningLevel = 'high';
     const view = render(ReasoningLevelSelector);
-    await fireEvent.click(view.getByRole('button', { name: 'Thinking: High' }));
-    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('High');
-    await fireEvent.pointerDown(document.body);
-    expect(view.queryByRole('dialog')).toBeNull();
+    const button = view.getByRole('button', { name: 'Thinking: High' });
+    expect(button.querySelectorAll('.meter .is-on')).toHaveLength(3);
+    await fireEvent.click(button);
+    const current = view.getAllByRole('menuitem').find((item) => item.getAttribute('aria-current') === 'true');
+    expect(current?.textContent).toContain('High');
   });
 
   it('hides the control for models without reported reasoning levels', () => {
