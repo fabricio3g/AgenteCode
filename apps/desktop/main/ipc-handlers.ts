@@ -46,7 +46,7 @@ import { downloadRuntime } from './runtime-download.ts';
 import { sandboxExec } from './sandbox.ts';
 import {
   panelOpenTab, panelListTabs, panelSetActive, panelCloseTab, panelCloseAll,
-  panelSetVisible, panelSetBounds, panelSetViewport,
+  panelSetVisible, panelSetOccluded, panelSetBounds, panelSetViewport,
   panelNavigate as browserNavigate, panelSnapshot as browserSnapshot,
   panelClick as browserClick, panelTypeText as browserTypeText,
   panelEvaluate as browserEvaluate, panelScreenshot as browserScreenshot,
@@ -353,6 +353,7 @@ export function registerIpcHandlers() {
     panelCloseTab,
     panelCloseAll,
     panelSetVisible,
+    panelSetOccluded,
     panelSetBounds,
     panelSetViewport,
     browserNavigate,

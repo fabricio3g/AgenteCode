@@ -107,7 +107,7 @@
       return;
     }
     if (ctrl && event.key === 'k' && event.shiftKey) {
-      event.preventDefault(); appStore.chatSearchOpen = !appStore.chatSearchOpen; return;
+      event.preventDefault(); appStore.openSearch(); return;
     }
     if (ctrl && event.key === ',') {
       event.preventDefault(); openModelHub('general'); return;

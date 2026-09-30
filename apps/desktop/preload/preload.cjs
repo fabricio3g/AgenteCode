@@ -42,7 +42,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 
   'sandbox_exec',
   'browser_agent_action', 'browser_takeover', 'browser_history', 'browser_open_tab', 'browser_list_tabs', 'browser_set_active', 'browser_close_tab',
-  'browser_close_all', 'browser_panel_visible', 'browser_panel_bounds', 'browser_viewport',
+  'browser_close_all', 'browser_panel_visible', 'browser_panel_occluded', 'browser_panel_bounds', 'browser_viewport',
   'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type_text',
   'browser_evaluate', 'browser_screenshot', 'browser_get_current_url', 'browser_close',
   'generate_pptx', 'parse_slides_from_markdown', 'slides_to_markdown',

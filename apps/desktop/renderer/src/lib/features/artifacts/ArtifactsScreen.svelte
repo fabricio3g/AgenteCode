@@ -77,58 +77,60 @@
       {/key}
     </div>
   {:else}
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
-        <header>
-          <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground">{$t('artifacts.title')}</h1>
-          <p class="mt-1 text-sm text-muted-foreground">{$t('artifacts.description')}</p>
-        </header>
+    <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="mx-auto w-full max-w-[1100px] px-5 pb-10 pt-8 sm:px-8">
+          <header>
+            <h1 class="text-2xl font-semibold tracking-[-0.02em] text-foreground">{$t('artifacts.title')}</h1>
+            <p class="mt-1 text-sm text-muted-foreground">{$t('artifacts.description')}</p>
+          </header>
 
-        {#if !entries.length}
-          <!-- Nothing made yet: say what this place is for and how to fill it. -->
-          <div class="mt-16 flex flex-col items-center text-center">
-            <span class="flex size-14 items-center justify-center rounded-2xl bg-[var(--muted)] text-muted-foreground"><Sparkles class="size-6" /></span>
-            <h2 class="mt-4 text-base font-semibold text-foreground">{$t('artifacts.emptyTitle')}</h2>
-            <p class="mt-1 max-w-sm text-sm text-muted-foreground">{$t('artifacts.emptyHint')}</p>
-            <Button class="mt-5" onclick={newChat}><Plus /> {$t('artifacts.newChat')}</Button>
-          </div>
-        {:else}
-          <!-- Search and filters -->
-          <div class="mt-6 flex flex-wrap items-center gap-2">
-            <div class="relative min-w-[14rem] flex-1">
-              <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                class="h-10 w-full rounded-full border border-border bg-background pl-10 pr-9 text-sm text-foreground outline-none transition focus:border-[var(--border-hover)]"
-                bind:value={query}
-                placeholder={$t('artifacts.search')}
-                aria-label={$t('artifacts.search')}
-              />
-              {#if query}
-                <button type="button" class="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--surface-hover)]" aria-label={$t('artifacts.clearSearch')} onclick={() => (query = '')}><X class="size-3.5" /></button>
-              {/if}
-            </div>
-          </div>
-          <div class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={$t('artifacts.filter')}>
-            <button type="button" class="chip" class:is-on={group === 'all'} aria-pressed={group === 'all'} onclick={() => (group = 'all')}>
-              {$t('artifacts.all')} <span class="chip-count">{entries.length}</span>
-            </button>
-            {#each groups as item (item.id)}
-              <button type="button" class="chip" class:is-on={group === item.id} aria-pressed={group === item.id} onclick={() => (group = item.id)}>
-                {$t(`artifacts.group.${item.id}`)} <span class="chip-count">{item.count}</span>
-              </button>
-            {/each}
-          </div>
-
-          {#if visible.length}
-            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {#each visible as entry (entry.key)}
-                <ArtifactCard {entry} onopen={() => appStore.openArtifactScreen(entry.chatId, entry.messageId, entry.index, null)} />
-              {/each}
+          {#if !entries.length}
+            <!-- Nothing made yet: say what this place is for and how to fill it. -->
+            <div class="mt-16 flex flex-col items-center text-center">
+              <span class="flex size-14 items-center justify-center rounded-2xl bg-[var(--muted)] text-muted-foreground"><Sparkles class="size-6" /></span>
+              <h2 class="mt-4 text-base font-semibold text-foreground">{$t('artifacts.emptyTitle')}</h2>
+              <p class="mt-1 max-w-sm text-sm text-muted-foreground">{$t('artifacts.emptyHint')}</p>
+              <Button class="mt-5" onclick={newChat}><Plus /> {$t('artifacts.newChat')}</Button>
             </div>
           {:else}
-            <p class="mt-12 text-center text-sm text-muted-foreground">{$t('artifacts.noMatches')}</p>
+            <!-- Search and filters -->
+            <div class="mt-6 flex flex-wrap items-center gap-2">
+              <div class="relative min-w-[14rem] flex-1">
+                <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  class="h-10 w-full rounded-full border border-border bg-background pl-10 pr-9 text-sm text-foreground outline-none transition focus:border-[var(--border-hover)]"
+                  bind:value={query}
+                  placeholder={$t('artifacts.search')}
+                  aria-label={$t('artifacts.search')}
+                />
+                {#if query}
+                  <button type="button" class="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-[var(--surface-hover)]" aria-label={$t('artifacts.clearSearch')} onclick={() => (query = '')}><X class="size-3.5" /></button>
+                {/if}
+              </div>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={$t('artifacts.filter')}>
+              <button type="button" class="chip" class:is-on={group === 'all'} aria-pressed={group === 'all'} onclick={() => (group = 'all')}>
+                {$t('artifacts.all')} <span class="chip-count">{entries.length}</span>
+              </button>
+              {#each groups as item (item.id)}
+                <button type="button" class="chip" class:is-on={group === item.id} aria-pressed={group === item.id} onclick={() => (group = item.id)}>
+                  {$t(`artifacts.group.${item.id}`)} <span class="chip-count">{item.count}</span>
+                </button>
+              {/each}
+            </div>
+
+            {#if visible.length}
+              <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {#each visible as entry (entry.key)}
+                  <ArtifactCard {entry} onopen={() => appStore.openArtifactScreen(entry.chatId, entry.messageId, entry.index, null)} />
+                {/each}
+              </div>
+            {:else}
+              <p class="mt-12 text-center text-sm text-muted-foreground">{$t('artifacts.noMatches')}</p>
+            {/if}
           {/if}
-        {/if}
+        </div>
       </div>
     </div>
   {/if}

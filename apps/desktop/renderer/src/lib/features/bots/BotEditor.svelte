@@ -39,7 +39,8 @@
   let saving = $state(false);
   let error = $state<string | null>(null);
 
-  const preview = $derived({ title: title || '?', avatar: { tint, initials: bot?.avatar.initials }, working: false });
+  // An existing bot keeps its own face while edited; a new one is drawn from its title.
+  const preview = $derived({ handle: bot?.handle, title: title || '?', avatar: { tint, initials: bot?.avatar.initials }, working: false });
   const tooLong = $derived([soul, user, memory].some((text) => text.length > DOC_CAP));
   const budgetValue = $derived(budget.trim() === '' ? undefined : Number(budget.trim().replace(',', '.')));
   const budgetInvalid = $derived(budgetValue !== undefined && !(Number.isFinite(budgetValue) && budgetValue > 0));
@@ -90,7 +91,7 @@
 <Dialog title={bot ? $t('bots.editTitle', { values: { name: bot.title } }) : $t('bots.new')} description={$t('bots.editorHint')} size="md" {onclose}>
   <div class="space-y-4 p-4">
     <div class="flex items-center gap-3">
-      <BotAvatar bot={preview} size="lg" />
+      <BotAvatar bot={preview} size="xl" />
       <div class="flex gap-1.5" role="radiogroup" aria-label={$t('bots.color')}>
         {#each TINTS as option (option)}
           <button

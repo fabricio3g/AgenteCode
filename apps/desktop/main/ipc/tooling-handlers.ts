@@ -9,6 +9,7 @@ type ToolingHandlerDeps = {
   panelCloseTab: (tabId?: string) => unknown;
   panelCloseAll: () => unknown;
   panelSetVisible: (visible: boolean) => unknown;
+  panelSetOccluded: (occluded: boolean) => unknown;
   panelSetBounds: (rect: unknown) => unknown;
   panelSetViewport: (preset: unknown, tabId?: string) => unknown;
   browserNavigate: (url: string, tabId?: string) => unknown;
@@ -36,6 +37,7 @@ export function registerToolingHandlers({
   panelCloseTab,
   panelCloseAll,
   panelSetVisible,
+  panelSetOccluded,
   panelSetBounds,
   panelSetViewport,
   browserNavigate,
@@ -61,6 +63,7 @@ export function registerToolingHandlers({
   ipcMain.handle('browser_close_tab', (_e, { tabId } = {}) => panelCloseTab(tabId));
   ipcMain.handle('browser_close_all', () => panelCloseAll());
   ipcMain.handle('browser_panel_visible', (_e, { visible }) => panelSetVisible(visible));
+  ipcMain.handle('browser_panel_occluded', (_e, { occluded }) => panelSetOccluded(!!occluded));
   ipcMain.handle('browser_panel_bounds', (_e, rect) => panelSetBounds(rect));
   ipcMain.handle('browser_viewport', (_e, { preset, tabId } = {}) => panelSetViewport(preset, tabId));
 

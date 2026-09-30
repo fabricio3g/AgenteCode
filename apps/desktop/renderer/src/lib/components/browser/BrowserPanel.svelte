@@ -15,7 +15,7 @@
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
   import { browserPanelStore } from '$lib/stores/browser-panel.svelte';
-  import { syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
+  import { setBrowserPanelOccluded, syncBrowserPanelBounds, type BrowserViewportPreset } from '$lib/services/browser';
   import { BROWSER_VIEWPORTS } from '$shared/browser-viewports';
 
   const VIEWPORT_ICON: Record<BrowserViewportPreset, typeof Monitor> = {
@@ -28,6 +28,43 @@
 
   let panelEl = $state<HTMLDivElement | undefined>(undefined);
   let viewportEl = $state<HTMLDivElement | undefined>(undefined);
+  /** A still of the page, shown while an overlay covers the live view. */
+  let still = $state<string | null>(null);
+  let occluded = false;
+
+  /** Anything floating: menus, dialogs, popovers, listboxes, tooltips. */
+  const OVERLAYS = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="tooltip"], .ui-modal-backdrop, [data-overlay]';
+
+  /** Whether a floating element sits over the page box. */
+  function covered(): boolean {
+    if (!viewportEl) return false;
+    const box = viewportEl.getBoundingClientRect();
+    if (box.width < 10 || box.height < 10) return false;
+    for (const node of document.querySelectorAll<HTMLElement>(OVERLAYS)) {
+      const r = node.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      if (r.right > box.left && r.left < box.right && r.bottom > box.top && r.top < box.bottom) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The page is a native view above the whole window: no z-index can put a
+   * menu or dialog over it. While one would overlap it, show a still of the
+   * page in its place and let the live view step aside.
+   */
+  async function checkOcclusion() {
+    const next = covered();
+    if (next === occluded) return;
+    occluded = next;
+    if (next) {
+      const image = await setBrowserPanelOccluded(true).catch(() => null);
+      if (occluded) still = image;
+    } else {
+      await setBrowserPanelOccluded(false).catch(() => null);
+      if (!occluded) still = null;
+    }
+  }
 
   async function syncBounds() {
     if (!viewportEl) return;
@@ -60,9 +97,23 @@
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => void syncBounds());
     if (viewportEl && observer) observer.observe(viewportEl);
     if (panelEl && observer) observer.observe(panelEl);
+    // Overlays come and go anywhere in the document; check once per frame at most.
+    let pending = 0;
+    const scheduleCheck = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        void checkOcclusion();
+      });
+    };
+    const overlays = new MutationObserver(scheduleCheck);
+    overlays.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'role'] });
     return () => {
       window.removeEventListener('resize', onResize);
       observer?.disconnect();
+      overlays.disconnect();
+      cancelAnimationFrame(pending);
+      if (occluded) void setBrowserPanelOccluded(false).catch(() => null);
     };
   });
 
@@ -163,7 +214,9 @@
     </div>
   {/if}
 
-  <div bind:this={viewportEl} class="browser-viewport-box" aria-label={$t('browser.page')}></div>
+  <div bind:this={viewportEl} class="browser-viewport-box" aria-label={$t('browser.page')}>
+    {#if still}<img class="viewport-still" src={still} alt="" />{/if}
+  </div>
 </div>
 
 <style>
@@ -306,7 +359,18 @@
 
   /* The page is a native view laid over this box; main rounds it to 8px, so
      a slim inset keeps it inside the card's rounded border. */
+  .viewport-still {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
+  }
+
   .browser-viewport-box {
+    position: relative;
+    overflow: hidden;
     flex: 1 1 auto;
     min-height: 0;
     margin: 0 4px 4px;

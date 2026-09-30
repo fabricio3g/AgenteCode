@@ -106,7 +106,7 @@
 </script>
 
 <section class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={bot.title}>
-  <header class="flex h-12 shrink-0 items-center gap-2.5 border-b border-[var(--border-subtle)] px-4">
+  <header class="flex h-12 shrink-0 items-center gap-2.5 px-4">
     <BotAvatar {bot} size="sm" />
     <div class="min-w-0 flex-1">
       <p class="truncate text-[13px] font-medium text-foreground">{bot.title}</p>
@@ -123,48 +123,50 @@
     </button>
   </header>
 
-  <div bind:this={viewport} class="min-h-0 flex-1 overflow-y-auto px-4 py-6" onscroll={onScroll}>
-    <div class="mx-auto flex max-w-3xl flex-col gap-5">
-      {#if !turns.length}
-        <div class="empty">
-          <BotAvatar {bot} size="lg" />
-          <p class="text-[13px] font-medium text-foreground">{$t('bots.emptyTitle', { values: { name: bot.title } })}</p>
-          <p class="max-w-sm text-center text-[12.5px] text-muted-foreground">{$t('bots.emptyHint')}</p>
-        </div>
-      {/if}
-
-      {#each turns as turn (turn.key)}
-        {#if turn.source.kind === 'user' && turn.prompt}
-          <div class="flex justify-end">
-            <div class="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-border bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">{turn.prompt}</div>
+  <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+    <div bind:this={viewport} class="min-h-0 flex-1 overflow-y-auto px-4 py-6" onscroll={onScroll}>
+      <div class="mx-auto flex max-w-3xl flex-col gap-5">
+        {#if !turns.length}
+          <div class="empty">
+            <BotAvatar {bot} size="xl" />
+            <p class="text-[13px] font-medium text-foreground">{$t('bots.emptyTitle', { values: { name: bot.title } })}</p>
+            <p class="max-w-sm text-center text-[12.5px] text-muted-foreground">{$t('bots.emptyHint')}</p>
           </div>
-        {:else if turn.source.kind === 'routine'}
-          <div class="source"><CalendarClock class="size-3.5" /> {$t('bots.fromRoutine', { values: { title: turn.source.title } })}</div>
-          {#if turn.prompt}<p class="quoted">{turn.prompt}</p>{/if}
-        {:else if turn.source.kind === 'handoff'}
-          <div class="source"><Users class="size-3.5" /> {$t('bots.fromBot', { values: { handle: turn.source.from } })}</div>
-          {#if turn.prompt}<p class="quoted">{turn.prompt}</p>{/if}
         {/if}
 
-        <div class="flex flex-col gap-3">
-          {#each entries(turn) as entry (entry.key)}
-            {#if entry.step}
-              <div class="-mx-2"><CodeStepRow step={entry.step} /></div>
-            {:else if entry.text}
-              <div class="text-sm leading-relaxed text-foreground"><RichContent content={entry.text} /></div>
-            {/if}
-          {/each}
-          {#if !turn.run.done && !turn.run.content && !turn.run.steps.length}
-            <span class="text-xs text-muted-foreground">{$t('bots.working')}</span>
-          {/if}
-          {#if turn.run.error}
-            <div class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <AlertCircle class="mt-0.5 size-3.5 shrink-0" />
-              <span class="min-w-0 break-words">{turn.run.error}</span>
+        {#each turns as turn (turn.key)}
+          {#if turn.source.kind === 'user' && turn.prompt}
+            <div class="flex justify-end">
+              <div class="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-border bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">{turn.prompt}</div>
             </div>
+          {:else if turn.source.kind === 'routine'}
+            <div class="source"><CalendarClock class="size-3.5" /> {$t('bots.fromRoutine', { values: { title: turn.source.title } })}</div>
+            {#if turn.prompt}<p class="quoted">{turn.prompt}</p>{/if}
+          {:else if turn.source.kind === 'handoff'}
+            <div class="source"><Users class="size-3.5" /> {$t('bots.fromBot', { values: { handle: turn.source.from } })}</div>
+            {#if turn.prompt}<p class="quoted">{turn.prompt}</p>{/if}
           {/if}
-        </div>
-      {/each}
+
+          <div class="flex flex-col gap-3">
+            {#each entries(turn) as entry (entry.key)}
+              {#if entry.step}
+                <div class="-mx-2"><CodeStepRow step={entry.step} /></div>
+              {:else if entry.text}
+                <div class="text-sm leading-relaxed text-foreground"><RichContent content={entry.text} /></div>
+              {/if}
+            {/each}
+            {#if !turn.run.done && !turn.run.content && !turn.run.steps.length}
+              <span class="text-xs text-muted-foreground">{$t('bots.working')}</span>
+            {/if}
+            {#if turn.run.error}
+              <div class="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <AlertCircle class="mt-0.5 size-3.5 shrink-0" />
+                <span class="min-w-0 break-words">{turn.run.error}</span>
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </div>
   </div>
 

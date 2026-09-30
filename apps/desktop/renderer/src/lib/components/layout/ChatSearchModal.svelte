@@ -63,8 +63,9 @@
   }
 
   // Scope search to active space only via store boundary, not inline filter.
+  // Bots hold no chats of any space: nothing from Home or Roleplay leaks in.
   const spaceChats = $derived.by(() => {
-    return appStore.getSessionsForSpace(appStore.activeSpace);
+    return appStore.botsOpen ? [] : appStore.getSessionsForSpace(appStore.activeSpace);
   });
 
   interface SearchHit {

@@ -156,6 +156,20 @@ class AppStore {
    */
   botsOpen = $state(false);
 
+  /**
+   * Search what the open tab holds. Bots aren't chats: there it filters the
+   * roster (the sidebar's box), so no space's chat history shows up in Bots.
+   */
+  openSearch(): void {
+    if (!this.botsOpen) {
+      this.chatSearchOpen = !this.chatSearchOpen;
+      return;
+    }
+    this.sidebarOpen = true;
+    // The box renders with the sidebar; focus it once it is there.
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>('[data-bot-search]')?.focus());
+  }
+
   /** The top-bar tab that is showing: a space, or Bots. */
   get activeTab(): ChatContextMode | 'bots' {
     return this.botsOpen ? 'bots' : this.activeSpace;

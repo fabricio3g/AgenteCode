@@ -45,6 +45,12 @@ export async function setBrowserPanelVisible(visible: boolean): Promise<void> {
   await invoke('browser_panel_visible', { visible });
 }
 
+/** Step the live page aside while an overlay covers it; returns a still to show meanwhile. */
+export async function setBrowserPanelOccluded(occluded: boolean): Promise<string | null> {
+  const result = await invoke<{ image: string | null }>('browser_panel_occluded', { occluded });
+  return result?.image ?? null;
+}
+
 export async function syncBrowserPanelBounds(rect: { x: number; y: number; width: number; height: number }): Promise<void> {
   await invoke('browser_panel_bounds', rect);
 }

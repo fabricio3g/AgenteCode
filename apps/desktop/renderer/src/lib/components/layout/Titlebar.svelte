@@ -111,7 +111,7 @@
     <Tooltip label={$t('titlebar.search')}>
       <button
         class="ui-icon-button titlebar-no-drag titlebar-secondary"
-        onclick={() => (appStore.chatSearchOpen = true)}
+        onclick={() => appStore.openSearch()}
         aria-label={$t('titlebar.search')}
       >
         <Search class="size-4" />

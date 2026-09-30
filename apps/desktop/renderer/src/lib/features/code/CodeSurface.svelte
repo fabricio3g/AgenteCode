@@ -134,7 +134,9 @@
               </div>
             </div>
           {:else}
-            {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
+            <div class="ui-top-fade flex min-h-0 min-w-0 flex-1 flex-col">
+              {#key chat.id}<CodeTranscript messages={chat.messages} chatId={chat.id} />{/key}
+            </div>
           {/if}
           {#if unlinked}
             <p class="mx-auto mb-4 max-w-3xl rounded-lg border border-border bg-muted/50 px-4 py-2.5 text-center text-xs text-muted-foreground">

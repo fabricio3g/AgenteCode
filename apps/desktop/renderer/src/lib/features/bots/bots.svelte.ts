@@ -9,6 +9,7 @@ import { applyCodeAgentEvent, createCodeRunState, type CodeRunState } from '$lib
 import { approvalsStore } from '$lib/stores/approvals.svelte';
 import { currentProviderModel as currentModel } from '$lib/services/current-model';
 import type { CodeAgentEvent } from '$shared/agente-protocol';
+import { eventForTool, type FaceCue, type FaceEvent, type FaceState } from './face/engine';
 import {
   botsIpc,
   onBotEvent,
@@ -42,6 +43,16 @@ function chatIdOf(handle: string): string {
   return `bot:${handle}`;
 }
 
+/** A bot's face: its mood and the last thing it reacted to. */
+export interface BotMood {
+  state: FaceState;
+  cue: FaceCue | null;
+}
+
+/** How long a finished bot looks pleased before it settles back to idle. */
+const DONE_MS = 6000;
+let cueSeq = 0;
+
 class BotsStore {
   bots = $state<Bot[]>([]);
   loaded = $state(false);
@@ -56,9 +67,52 @@ class BotsStore {
   query = $state('');
   /** The open bot's routines, as a card in the right dock. Wide windows start with it open. */
   routinesOpen = $state(typeof window !== 'undefined' && window.innerWidth >= 1280);
+  /** Each bot's face, by handle; bots missing here are idle. */
+  moods = $state<Record<string, BotMood>>({});
   /** Turns started from this window, by bot, so Stop can cancel them. */
   #turnIds = new Map<string, string>();
+  #settle = new Map<string, ReturnType<typeof setTimeout>>();
   #listening = false;
+
+  moodOf(handle: string): BotMood {
+    return this.moods[handle] ?? { state: 'idle', cue: null };
+  }
+
+  #mood(handle: string, state: FaceState, event?: FaceEvent): void {
+    const previous = this.moodOf(handle);
+    const cue = event ? { event, seq: ++cueSeq } : previous.cue;
+    if (previous.state === state && cue === previous.cue) return;
+    this.moods = { ...this.moods, [handle]: { state, cue } };
+    clearTimeout(this.#settle.get(handle));
+    this.#settle.delete(handle);
+    if (state === 'done') {
+      this.#settle.set(handle, setTimeout(() => this.#mood(handle, 'idle'), DONE_MS));
+    }
+  }
+
+  /** What an event says about how the bot looks right now. */
+  #feel(handle: string, event: CodeAgentEvent): void {
+    switch (event.type) {
+      case 'agent_start':
+      case 'thinking_delta':
+        return this.#mood(handle, 'thinking');
+      case 'text_delta':
+      case 'approval_resolved':
+        return this.#mood(handle, 'working');
+      case 'tool_start': {
+        const kind = eventForTool(event.toolName);
+        return this.#mood(handle, kind === 'read' || kind === 'search' ? 'thinking' : 'working', kind);
+      }
+      case 'tool_end':
+        return event.isError ? this.#mood(handle, 'waiting', 'error') : undefined;
+      case 'approval_request':
+        return this.#mood(handle, 'waiting');
+      case 'error':
+        return this.#mood(handle, 'waiting', 'error');
+      case 'agent_end':
+        return this.#mood(handle, 'done', 'done');
+    }
+  }
 
   get current(): Bot | null {
     return this.bots.find((bot) => bot.handle === this.selected) ?? null;
@@ -221,6 +275,7 @@ class BotsStore {
     const last = turns[turns.length - 1];
     if (!last) return;
     applyCodeAgentEvent(last.run, event);
+    this.#feel(handle, event);
     if (event.type === 'approval_request') this.#askApproval(handle, event);
     if (event.type === 'agent_end') this.#finish(handle, last);
     this.turns = { ...this.turns, [handle]: [...turns] };

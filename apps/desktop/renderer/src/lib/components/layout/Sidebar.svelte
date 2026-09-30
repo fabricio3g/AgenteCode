@@ -131,7 +131,7 @@
     {#if inBots}
       <label class="sidebar-btn bot-filter flex w-full items-center gap-2.5 rounded-full px-2.5 py-1 text-[13px]">
         <Search class="size-3.5 shrink-0" />
-        <input bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
+        <input data-bot-search bind:value={botsStore.query} placeholder={$t('bots.search')} aria-label={$t('bots.search')} />
       </label>
     {:else}
     <button

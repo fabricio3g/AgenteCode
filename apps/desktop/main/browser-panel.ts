@@ -116,7 +116,7 @@ function applyBounds() {
       tab.view.setVisible(false);
     } catch { /* ignore */ }
   }
-  if (!entry || !panelVisible || !panelBounds) return;
+  if (!entry || !panelVisible || !panelBounds || panelOccluded) return;
   try {
     entry.view.setBounds({ ...panelBounds });
     entry.view.setVisible(true);
@@ -395,6 +395,28 @@ export function panelCloseAll() {
   panelVisible = false;
   pushState();
   return { closed: true };
+}
+
+/**
+ * The page is a native view drawn above the app's DOM, so no z-index can put
+ * a menu, dialog or tooltip over it. While one would, the renderer occludes
+ * the panel: it gets a still of the page to show in its place and the live
+ * view steps aside; un-occluding brings the live page back.
+ */
+let panelOccluded = false;
+
+export async function panelSetOccluded(occluded: boolean): Promise<{ image: string | null }> {
+  if (occluded === panelOccluded) return { image: null };
+  let image: string | null = null;
+  const entry = activeTabId ? tabs.get(activeTabId) : null;
+  if (occluded && entry && panelVisible) {
+    try {
+      image = (await entry.view.webContents.capturePage()).toDataURL();
+    } catch { /* no still: the box just shows empty for a moment */ }
+  }
+  panelOccluded = occluded;
+  applyBounds();
+  return { image };
 }
 
 export function panelSetVisible(visible: boolean) {

@@ -305,7 +305,7 @@
   style="background:var(--chat-bg)"
 >
   {#if hasMessages}
-    <div class="thread-wrapper relative h-full">
+    <div class="thread-wrapper ui-top-fade h-full">
       <SelectedTextAskAction />
 
       <div
@@ -362,26 +362,8 @@
 
 <style>
   .thread-wrapper {
-    position: relative;
+    --ui-top-fade-from: var(--chat-bg);
     contain: layout style;
-  }
-
-  /* Messages dissolve under the top bar instead of being cut off, mirroring
-     the composer's fade at the bottom. */
-  .thread-wrapper::before {
-    content: '';
-    position: absolute;
-    inset-inline: 0;
-    top: 0;
-    z-index: 4;
-    height: 1.75rem;
-    pointer-events: none;
-    background: linear-gradient(
-      to top,
-      transparent,
-      color-mix(in srgb, var(--chat-bg) 62%, transparent) 65%,
-      var(--chat-bg)
-    );
   }
 
   /* No smooth scrolling here: programmatic jumps choose their own behavior and

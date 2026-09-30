@@ -1022,6 +1022,29 @@ textarea {
   background: color-mix(in srgb, var(--muted) 70%, transparent);
 }
 
+/* Content dissolves under the top bar instead of being cut off, on every
+   surface (the same look as the chat thread, mirroring the composer's fade at
+   the bottom). Put it on a non-scrolling wrapper around the scroll area. */
+.ui-top-fade {
+  position: relative;
+}
+
+.ui-top-fade::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 4;
+  height: 1.75rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    transparent,
+    color-mix(in srgb, var(--ui-top-fade-from, var(--background)) 62%, transparent) 65%,
+    var(--ui-top-fade-from, var(--background))
+  );
+}
+
 .ui-scroll-header {
   position: relative;
   z-index: 10;
