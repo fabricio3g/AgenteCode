@@ -10,11 +10,12 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { t } from 'svelte-i18n';
-  import { AlertCircle, ArrowUp, CalendarClock, Eraser, Pencil, Square, Users } from 'lucide-svelte';
+  import { AlertCircle, ArrowUp, CalendarClock, Eraser, Pencil, Users } from 'lucide-svelte';
   import RichContent from '$lib/ui/components/RichContent.svelte';
   import CodeStepRow from '$lib/features/code/CodeStepRow.svelte';
   import { orderedEntries } from '$lib/features/code/code-run';
   import BotAvatar from './BotAvatar.svelte';
+  import SendButton from '$lib/features/shared/composer/SendButton.svelte';
   import { botsStore, type BotTurnView } from './bots.svelte';
   import type { Bot } from './bots-ipc';
   import { insertMention, matchBots, mentionAt, type Mention } from './mention';
@@ -168,7 +169,7 @@
   </div>
 
   <div class="shrink-0 px-4 pb-4">
-    <div class="composer relative mx-auto max-w-3xl">
+    <div class="relative mx-auto max-w-3xl">
       {#if suggestions.length}
         <ul class="mentions" role="listbox" id="bot-mentions" aria-label={$t('bots.mentionLabel')}>
           {#each suggestions as option, index (option.handle)}
@@ -183,31 +184,43 @@
           {/each}
         </ul>
       {/if}
-      <textarea
-        bind:this={input}
-        bind:value={draft}
-        oninput={trackMention}
-        onclick={trackMention}
-        onblur={() => (mention = null)}
-        role="combobox"
-        aria-expanded={suggestions.length > 0}
-        aria-controls="bot-mentions"
-        aria-autocomplete="list"
-        aria-activedescendant={suggestions.length ? `bot-mention-${suggestions[highlighted]?.handle}` : undefined}
-        rows="1"
-        placeholder={$t('bots.placeholder', { values: { name: bot.title } })}
-        aria-label={$t('bots.placeholder', { values: { name: bot.title } })}
-        onkeydown={onKeydown}
-      ></textarea>
-      {#if bot.working}
-        <button type="button" class="send" onclick={() => botsStore.stop(bot.handle)} title={$t('bots.stop')} aria-label={$t('bots.stop')}>
-          <Square class="size-3.5" />
-        </button>
-      {:else}
-        <button type="button" class="send" onclick={send} disabled={!draft.trim()} title={$t('bots.send')} aria-label={$t('bots.send')}>
-          <ArrowUp class="size-4" />
-        </button>
-      {/if}
+      <!-- The same shell and send/stop button as Home and Code. -->
+      <div class="composer-shell aui-composer">
+        <div class="composer-body">
+              <textarea
+                class="composer-textarea w-full resize-none bg-transparent text-foreground outline-none"
+            bind:this={input}
+            bind:value={draft}
+            oninput={trackMention}
+            onclick={trackMention}
+            onblur={() => (mention = null)}
+            role="combobox"
+            aria-expanded={suggestions.length > 0}
+            aria-controls="bot-mentions"
+            aria-autocomplete="list"
+            aria-activedescendant={suggestions.length ? `bot-mention-${suggestions[highlighted]?.handle}` : undefined}
+            rows="1"
+            placeholder={$t('bots.placeholder', { values: { name: bot.title } })}
+            aria-label={$t('bots.placeholder', { values: { name: bot.title } })}
+            onkeydown={onKeydown}
+          ></textarea>
+          <div class="composer-bar">
+            <div class="composer-bar-leading">
+              <span class="truncate px-1 text-[12px] text-muted-foreground" title={$t('bots.model')}>{bot.model?.model ?? $t('bots.modelSame')}</span>
+            </div>
+            <div class="composer-bar-trailing">
+              <SendButton
+                running={bot.working}
+                disabled={!draft.trim()}
+                sendLabel={$t('bots.send')}
+                stopLabel={$t('bots.stop')}
+                onsend={send}
+                onstop={() => botsStore.stop(bot.handle)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -247,39 +260,6 @@
     color: var(--muted-foreground);
     white-space: pre-wrap;
   }
-  .composer {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.5rem;
-    border-radius: 1.25rem;
-    border: 1px solid var(--border);
-    background: var(--card);
-    padding: 0.5rem 0.5rem 0.5rem 1rem;
-    box-shadow: var(--surface-shadow);
-  }
-  .composer textarea {
-    max-height: 12rem;
-    min-height: 1.75rem;
-    flex: 1;
-    resize: none;
-    field-sizing: content;
-    background: transparent;
-    padding: 0.25rem 0;
-    font-size: 14px;
-    outline: none;
-  }
-  .send {
-    display: inline-flex;
-    height: 2rem;
-    width: 2rem;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    background: var(--foreground);
-    color: var(--background);
-  }
-  .send:disabled { opacity: 0.3; }
   .mentions {
     position: absolute;
     bottom: calc(100% + 0.4rem);

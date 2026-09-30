@@ -43,7 +43,7 @@
   }
 </script>
 
-<aside class="flex w-[17rem] shrink-0 flex-col border-l border-[var(--border-subtle)]" aria-label={$t('bots.routines')}>
+<aside class="routines-card flex w-[17rem] shrink-0 flex-col" aria-label={$t('bots.routines')}>
   <div class="flex h-14 shrink-0 items-center justify-between px-4">
     <p class="text-[13px] font-medium text-foreground">{$t('bots.routines')}</p>
     <div class="flex items-center">
@@ -108,6 +108,14 @@
 {/if}
 
 <style>
+  /* A right-side panel: the same rounded, bordered box as the dock. */
+  .routines-card {
+    overflow: hidden;
+    border-radius: 0.875rem;
+    border: 1px solid var(--border-hover);
+    background: var(--card);
+  }
+
   .icon-btn {
     display: inline-flex;
     height: 1.9rem;

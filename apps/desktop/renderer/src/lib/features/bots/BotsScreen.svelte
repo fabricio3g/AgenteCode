@@ -56,6 +56,7 @@
   .routines-slot {
     display: flex;
     min-height: 0;
+    padding: 0.5rem 0.5rem 0.5rem 0;
   }
   /* Roster + a readable chat + routines don't fit: routines slide over the chat. */
   @container (max-width: 940px) {
@@ -63,8 +64,7 @@
       position: absolute;
       inset: 0 0 0 auto;
       z-index: 10;
-      background: var(--background);
-      box-shadow: -12px 0 32px rgb(0 0 0 / 0.18);
+      padding-left: 0.5rem;
     }
   }
 </style>
