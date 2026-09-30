@@ -38,6 +38,25 @@
     "selection": {
       "add": "Zum Chat hinzufügen",
       "addLabel": "Markierten Text zum Chat hinzufügen"
+    },
+    "mode": {
+      "agent": "Agent",
+      "agentHint": "Recherchiert, nutzt Werkzeuge und erstellt Dateien",
+      "instant": "Sofort",
+      "instantHint": "Schnelle Antworten mit leichten Werkzeugen"
+    },
+    "dictation": {
+      "unavailable": "Spracherkennung ist nicht verfügbar",
+      "start": "Tippen zum Sprechen",
+      "stop": "Zuhören beenden"
+    },
+    "localBusy": "Das lokale Modell ist in einem anderen Chat beschäftigt",
+    "context": {
+      "usage": "{used} / {max} Tokens Kontext ({percent} %)",
+      "reserved": "{n} Tokens für die Antwort reserviert",
+      "priceIn": "Eingabe {price} $/1M",
+      "priceOut": "Ausgabe {price} $/1M",
+      "estimate": "Geschätzte Eingabekosten: {cost} $"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "Die laufende Aufgabe stoppen"
       }
     },
-    "toolsMenu": "Weitere Aktionen"
+    "toolsMenu": "Weitere Aktionen",
+    "attach": "Dateien anhängen",
+    "spendDetail": "Was diese Unterhaltung gekostet hat und wie viel des Prompts aus dem Cache kam",
+    "projectFiles": "Projektdateien",
+    "media": {
+      "title": "Medien anhängen",
+      "question": "Diese Dateien an das gewählte Modell senden?",
+      "attach": "Anhängen",
+      "always": "Immer erlauben",
+      "remove": "{name} entfernen"
+    }
   },
   "searchModal": {
     "inMessages": "In Nachrichten",

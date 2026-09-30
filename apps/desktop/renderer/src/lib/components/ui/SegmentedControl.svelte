@@ -115,7 +115,7 @@
     <span
       aria-hidden="true"
       class={cn(
-        'pointer-events-none absolute bottom-[3px] top-[3px] rounded-full bg-[var(--surface-active)]',
+        'pointer-events-none absolute bottom-[3px] top-[3px] rounded-full bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)]',
         indicatorReady && !reducedMotion.value && 'transition-[left,width] duration-200 ease-[var(--motion-ease)]',
       )}
       style={`left:${indicatorLeft}px;width:${indicatorWidth}px;opacity:${indicatorReady ? 1 : 0};`}
@@ -134,7 +134,7 @@
       class={cn(
         'relative z-10 rounded-full px-3 py-1 text-xs font-medium outline-none transition-[color,box-shadow,transform] duration-[var(--motion-fast)] ease-[var(--motion-ease)] focus-visible:ring-[3px] focus-visible:ring-ring/20 active:scale-[0.98] disabled:opacity-50',
         value === option.value
-          ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--surface-active)] text-foreground shadow-sm'
+          ? variant === 'tabs' ? 'text-foreground' : 'bg-[var(--segment-active-bg)] shadow-[var(--segment-active-shadow)] text-foreground'
           : 'text-muted-foreground hover:text-foreground',
       )}
       onclick={() => select(option.value)}

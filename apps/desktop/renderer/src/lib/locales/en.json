@@ -38,6 +38,25 @@
     "selection": {
       "add": "Add to chat",
       "addLabel": "Add the selected text to the chat"
+    },
+    "mode": {
+      "agent": "Agent",
+      "agentHint": "Research, use tools and create files",
+      "instant": "Instant",
+      "instantHint": "Quick answers with light tools"
+    },
+    "dictation": {
+      "unavailable": "Speech recognition isn't available",
+      "start": "Tap to speak",
+      "stop": "Stop listening"
+    },
+    "localBusy": "The local model is busy in another chat",
+    "context": {
+      "usage": "{used} / {max} tokens of context ({percent}%)",
+      "reserved": "{n} tokens kept for the reply",
+      "priceIn": "In ${price}/1M",
+      "priceOut": "Out ${price}/1M",
+      "estimate": "Estimated input cost: ${cost}"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "Stop the running task"
       }
     },
-    "toolsMenu": "More actions"
+    "toolsMenu": "More actions",
+    "attach": "Attach files",
+    "spendDetail": "What this conversation cost, and how much of the prompt came from cache",
+    "projectFiles": "Project files",
+    "media": {
+      "title": "Attach media",
+      "question": "Send these files to the selected model?",
+      "attach": "Attach",
+      "always": "Always allow",
+      "remove": "Remove {name}"
+    }
   },
   "searchModal": {
     "inMessages": "In messages",

@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   interface Props {
     usedTokens: number;
     maxTokens: number;
@@ -19,8 +20,8 @@
     promptCostPerMillionUsd,
     completionCostPerMillionUsd,
     estimatedInputCostUsd,
-    size = 22,
-    strokeWidth = 2.25
+    size = 14,
+    strokeWidth = 2.5
   }: Props = $props();
   let hover = $state(false);
 
@@ -45,23 +46,24 @@
   const circumference = $derived.by(() => 2 * Math.PI * radius);
   const dashOffset = $derived.by(() => circumference * (1 - usagePercent / 100));
 
-  const accentColor = $derived('var(--primary)');
+  // A gauge, not a spinner: the percentage sits beside it, and it warms as the context fills.
+  const accentColor = $derived(usagePercent >= 95 ? 'var(--error)' : usagePercent >= 80 ? 'var(--warning)' : 'var(--muted-foreground)');
 
-  const usageLabel = $derived.by(() => `${formatTokenCount(safeUsed)} / ${formatTokenCount(safeMax)} tokens (${usagePercent}%)`);
-  const reserveLabel = $derived.by(() => reservedTokens > 0 ? `Reserved: ${formatTokenCount(reservedTokens)} tokens` : '');
+  const usageLabel = $derived.by(() => $t('chat.context.usage', { values: { used: formatTokenCount(safeUsed), max: formatTokenCount(safeMax), percent: usagePercent } }));
+  const reserveLabel = $derived.by(() => reservedTokens > 0 ? $t('chat.context.reserved', { values: { n: formatTokenCount(reservedTokens) } }) : '');
   const pricingLabel = $derived.by(() => {
     const parts: string[] = [];
     if (promptCostPerMillionUsd && promptCostPerMillionUsd > 0) {
-      parts.push(`In $${formatUsd(promptCostPerMillionUsd)}/1M`);
+      parts.push($t('chat.context.priceIn', { values: { price: formatUsd(promptCostPerMillionUsd) } }));
     }
     if (completionCostPerMillionUsd && completionCostPerMillionUsd > 0) {
-      parts.push(`Out $${formatUsd(completionCostPerMillionUsd)}/1M`);
+      parts.push($t('chat.context.priceOut', { values: { price: formatUsd(completionCostPerMillionUsd) } }));
     }
     return parts.join(' · ');
   });
   const estimatedCostLabel = $derived.by(() => {
     if (!estimatedInputCostUsd || estimatedInputCostUsd <= 0) return '';
-    return `Est. input cost: $${formatUsd(estimatedInputCostUsd)}`;
+    return $t('chat.context.estimate', { values: { cost: formatUsd(estimatedInputCostUsd) } });
   });
 
   function formatTokenCount(value: number) {
@@ -101,6 +103,7 @@
       style={`stroke:${accentColor};stroke-dasharray:${circumference};stroke-dashoffset:${dashOffset};`}
     ></circle>
   </svg>
+  <span class="context-ring-label">{usagePercent === 0 && safeUsed > 0 ? '<1' : usagePercent}%</span>
 
   {#if hover}
     <div class="context-tooltip">
@@ -115,11 +118,18 @@
 <style>
   .context-ring {
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
     height: 2rem;
     position: relative;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding-inline: 0.25rem;
+  }
+
+  .context-ring-label {
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
 
   .context-ring-track {

@@ -10,8 +10,8 @@
   of which reported the same source count.
 
   Everything now sits on one line: work context, sources, the research brief,
-  a warning chip when something actually went wrong, exports behind a menu, and
-  the run stats. Anything with more to say opens the activity drawer or expands
+  a warning chip when something actually went wrong, and exports behind a menu.
+  The reply's tokens and speed show in the composer's status line. Anything with more to say opens the activity drawer or expands
   in place.
 -->
 
@@ -20,7 +20,6 @@
   import { slide } from 'svelte/transition';
   import { appStore } from '$lib/stores/app.svelte';
   import { copy, say } from '$lib/copy';
-  import { formatCount, formatDuration } from '$lib/utils/format';
   import { renderMarkdown } from '$lib/utils/markdown';
   import { getSearchStatus } from '$lib/ui/message-utils';
   import { Menu, MenuItem } from '$lib/components/ui';
@@ -95,27 +94,8 @@
       'Research'
   );
 
-  // Output tokens and generation speed — not total prompt tokens, and only when
-  // the provider or runtime actually reported usage rather than estimating it.
-  const stats = $derived.by(() => {
-    const meta = ctx.footerMetadata;
-    if (!meta) return null;
-    if (meta.usageSource !== 'provider' && meta.usageSource !== 'runtime') return null;
-
-    const tokens = meta.outputTokens ?? meta.tokens ?? 0;
-    const elapsed = formatDuration(meta.totalElapsedSeconds);
-    const rate = meta.tokensPerSecond ? `${meta.tokensPerSecond.toFixed(0)} tok/s` : '';
-
-    const segments = [
-      tokens ? `${formatCount(tokens)} ${copy.thread.outputTokens}` : '',
-      rate,
-      elapsed ? `${elapsed} total` : ''
-    ].filter(Boolean);
-    return segments.length ? segments.join(' · ') : null;
-  });
-
   const hasAnything = $derived(
-    !!workContext || sourceCount > 0 || !!researchBrief || !!status || !!stats
+    !!workContext || sourceCount > 0 || !!researchBrief || !!status
   );
 
   function openSources(event: Event) {
@@ -204,9 +184,6 @@
         </Menu>
       {/if}
 
-      {#if stats}
-        <span class="footer-stats">{stats}</span>
-      {/if}
     </div>
 
     {#if briefOpen && briefHtml}
@@ -286,12 +263,6 @@
     font-weight: 500;
   }
 
-  .footer-stats {
-    margin-left: auto;
-    font-size: 0.72rem;
-    font-variant-numeric: tabular-nums;
-    opacity: 0.85;
-  }
 
   .footer-brief {
     margin-top: 0.4rem;

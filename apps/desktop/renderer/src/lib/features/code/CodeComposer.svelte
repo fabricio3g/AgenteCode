@@ -12,7 +12,7 @@
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, File as FileIcon, MoreHorizontal, Paperclip, Play, ShieldCheck, Square, X, Zap } from 'lucide-svelte';
+  import { ArrowDownToLine, ArrowUp, Check, ChevronDown, ClipboardList, File as FileIcon, MoreHorizontal, Paperclip, Play, Plus, ShieldCheck, X, Zap } from 'lucide-svelte';
   import { toastStore } from '$lib/stores/toast.svelte';
   import { codeWorkspace } from './workspace.svelte';
   import { exactSlashCommand, matchSlashCommands, slashQuery } from './slash-commands';
@@ -34,6 +34,8 @@
   import { MEDIA_ACCEPT, isMediaPath, mediaData } from './code-media';
   import Menu from '$lib/components/ui/Menu.svelte';
   import MenuItem from '$lib/components/ui/MenuItem.svelte';
+  import SendButton from '$lib/features/shared/composer/SendButton.svelte';
+  import ComposerStatus from '$lib/features/shared/composer/ComposerStatus.svelte';
   import { approvalsStore } from '$lib/stores/approvals.svelte';
   import { copy } from '$lib/copy';
   import { MAX_COMPOSER_TEXTAREA_PX, autogrowTextarea } from '$lib/features/shared/composer-autogrow';
@@ -459,11 +461,15 @@
   onDestroy(() => appStore.persist());
 </script>
 
+{#snippet contextRing()}
+  {#if usage}<ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} />{/if}
+{/snippet}
+
 {#if dialog && project}<CodeProjectDialog chatId={chat.id} projectRoot={project.rootPath} section={dialog} onclose={() => (dialog = null)} />{/if}
 {#if pendingMedia.length}
-  <Dialog title="Attach media" onclose={() => (pendingMedia = [])} size="sm">
-    <div class="space-y-3 p-4 text-sm"><p class="text-muted-foreground">Send these files to the selected model?</p>{#each pendingMedia as media, index (index)}<p class="truncate">{media.name} · {media.kind}</p>{/each}
-      <div class="flex gap-2"><Button size="sm" onclick={() => acceptMedia()}>Attach</Button><Button size="sm" variant="ghost" onclick={() => acceptMedia(true)}>Always allow</Button></div>
+  <Dialog title={$t('code.media.title')} onclose={() => (pendingMedia = [])} size="sm">
+    <div class="space-y-3 p-4 text-sm"><p class="text-muted-foreground">{$t('code.media.question')}</p>{#each pendingMedia as media, index (index)}<p class="truncate">{media.name} · {media.kind}</p>{/each}
+      <div class="flex gap-2"><Button size="sm" onclick={() => acceptMedia()}>{$t('code.media.attach')}</Button><Button size="sm" variant="ghost" onclick={() => acceptMedia(true)}>{$t('code.media.always')}</Button></div>
     </div>
   </Dialog>
 {/if}
@@ -477,7 +483,7 @@
       </button>
     {/if}
     {#if fileOpen}
-      <div class="slash-menu" role="listbox" aria-label="Project files">
+      <div class="slash-menu" role="listbox" aria-label={$t('code.projectFiles')}>
         {#each fileMatches as file, index (file)}
           <button type="button" role="option" aria-selected={index === fileIndex} class="slash-item" class:is-active={index === fileIndex} onmouseenter={() => (fileIndex = index)} onmousedown={(event) => event.preventDefault()} onclick={() => chooseFile(file)}><FileIcon class="size-4 shrink-0 text-muted-foreground" /><span class="truncate font-mono text-xs">{file}</span></button>
         {/each}
@@ -510,7 +516,7 @@
       <div class="composer-body">
         {#if attachments.length}
           <div class="mb-2 flex flex-wrap gap-1.5">
-            {#each attachments as media, index (index)}<span class="flex max-w-64 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"><Paperclip class="size-3" /><span class="truncate">{media.name}</span><button type="button" aria-label={`Remove ${media.name}`} onclick={() => (attachments = attachments.filter((_, i) => i !== index))}><X class="size-3" /></button></span>{/each}
+            {#each attachments as media, index (index)}<span class="flex max-w-64 items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground"><Paperclip class="size-3" /><span class="truncate">{media.name}</span><button type="button" aria-label={$t('code.media.remove', { values: { name: media.name } })} onclick={() => (attachments = attachments.filter((_, i) => i !== index))}><X class="size-3" /></button></span>{/each}
           </div>
         {/if}
         <textarea
@@ -527,110 +533,81 @@
           onselect={() => { if (textarea) caret = textarea.selectionStart; }}
         ></textarea>
 
-        <div class="composer-actions">
-          <div class="composer-selectors">
-          <!-- Runtime mode gate — plan / supervised / full-auto. Scope lives on
-               the left of the bar; the model picker answers on the right. -->
-          <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
-            {#snippet trigger(props)}
-              <button
-                type="button"
-                class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
-                class:is-open={modeMenuOpen}
-                aria-label={$t('code.modeSelector')}
-                title={activeMode.hint}
-                {...props}
-              >
-                <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
-                <span class="trigger-label truncate">{activeMode.label}</span>
-                <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
-              </button>
-            {/snippet}
-            <p class="px-2.5 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
-            {#each modes as mode (mode.id)}
-              {@const selected = mode.id === runtimeMode}
-              <MenuItem class="mode-option !items-center !gap-3 !px-3 !py-2 {selected ? '!bg-[var(--surface-active)]' : ''}" onselect={() => selectMode(mode.id)}>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
-                  <span class="block text-[11.5px] leading-snug text-muted-foreground">{mode.hint}</span>
-                </span>
-                <Check class="size-4 shrink-0 text-foreground {selected ? '' : 'invisible'}" />
-              </MenuItem>
-            {/each}
-          </Menu>
+        <div class="composer-bar">
+          <div class="composer-bar-leading">
+            <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
+            <button type="button" class="aui-icon-button size-8" aria-label={$t('code.attach')} title={$t('code.attach')} disabled={attaching} onclick={() => mediaPicker?.click()}><Plus class="size-4" /></button>
 
-          <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
+            <!-- Runtime mode gate — plan / supervised / full-auto. -->
+            <Menu bind:open={modeMenuOpen} placement="top-start" minWidth="20rem" label={$t('code.modeSelector')} class="p-1.5">
+              {#snippet trigger(props)}
+                <button
+                  type="button"
+                  class="mode-trigger flex h-8 items-center gap-1.5 px-2.5 transition"
+                  class:is-open={modeMenuOpen}
+                  aria-label={$t('code.modeSelector')}
+                  title={activeMode.hint}
+                  {...props}
+                >
+                  <ModeIcon class="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                  <span class="trigger-label truncate">{activeMode.label}</span>
+                  <ChevronDown class={`h-3 w-3 shrink-0 text-[var(--text-muted)] transition-transform duration-150${modeMenuOpen ? ' rotate-180' : ''}`} />
+                </button>
+              {/snippet}
+              <p class="px-2.5 pb-1.5 pt-1 text-[11px] font-medium text-muted-foreground">{$t('code.modeTitle')}</p>
+              {#each modes as mode (mode.id)}
+                {@const selected = mode.id === runtimeMode}
+                <MenuItem class="mode-option !items-center !gap-3 !px-3 !py-2 {selected ? '!bg-[var(--surface-active)]' : ''}" onselect={() => selectMode(mode.id)}>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-[13px] font-medium text-foreground">{mode.label}</span>
+                    <span class="block text-[11.5px] leading-snug text-muted-foreground">{mode.hint}</span>
+                  </span>
+                  <Check class="size-4 shrink-0 text-foreground {selected ? '' : 'invisible'}" />
+                </MenuItem>
+              {/each}
+            </Menu>
+
+            <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
           </div>
 
-          {#if accountingLabel || showContextRing || (running && queuedCount > 0)}
-            <div class="composer-accounting">
-              {#if accountingLabel}<span class="spend-label" title="Conversation spend and reported prompt cache rate">{accountingLabel}</span>{/if}
-              {#if running && queuedCount > 0}<span class="queue-label" role="status">{$t('code.queued', { values: { n: queuedCount } })}</span>{/if}
-              {#if showContextRing && usage}
-                <ContextUsageRing usedTokens={usage.promptTokens} maxTokens={usage.contextWindow ?? 0} />
-              {/if}
-            </div>
-          {/if}
+          <div class="composer-bar-trailing">
+            <ComposerStatus
+              text={accountingLabel || undefined}
+              detail={$t('code.spendDetail')}
+              queued={running && queuedCount > 0 ? $t('code.queued', { values: { n: queuedCount } }) : undefined}
+              ring={showContextRing && usage ? contextRing : undefined}
+            />
 
-          <div class="trailing">
-          <input bind:this={mediaPicker} type="file" class="hidden" accept={MEDIA_ACCEPT} multiple onchange={(event) => { void attachFiles([...((event.currentTarget as HTMLInputElement).files || [])]); event.currentTarget.value = ''; }} />
-          <button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Attach media" disabled={attaching} onclick={() => mediaPicker?.click()}><Paperclip class="size-4" /></button>
-
-          <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
-            {#snippet trigger(props)}<button type="button" class="flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
-            {#each menuGroups as group, index (index)}
-              {#if index > 0}<div class="aui-menu-separator" role="separator"></div>{/if}
-              {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
-            {/each}
-          </Menu>
-
-            {#if running}
-              <!-- Stop is unambiguous and always reachable mid-run. -->
-              <button
-                type="button"
-                class="send-btn is-stop flex size-8 items-center justify-center rounded-full transition"
-                onclick={() => void codeStore.stop(chat.id)}
-                aria-label={$t('code.stop')}
-                title={$t('code.stop')}
-              >
-                <Square class="size-3 fill-current stroke-[2.75]" />
-              </button>
-            {:else if canSend}
-              <!-- Filled send appears only when there is something to ship. -->
-              <button
-                type="button"
-                class="send-btn flex size-8 items-center justify-center rounded-full transition"
-                onclick={() => void submit()}
-                aria-label={$t('code.send')}
-                title={$t('code.send')}
-              >
-                <span class="send-icon inline-flex">
-                  <ArrowUp class="size-4 stroke-[2.75]" />
-                </span>
-              </button>
-            {:else if !modelReady}
+            {#if !modelReady}
               <!-- The one honest interruption: point at the fix. -->
-              <button
-                type="button"
-                class="model-cta flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-foreground/40 hover:text-foreground"
-                onclick={openModelHub}
-                title={$t('code.selectModel')}
-              >
+              <button type="button" class="composer-chip" onclick={openModelHub} title={$t('code.selectModel')}>
                 <ArrowDownToLine class="size-3.5" />
                 {copy.model.browseAll}
               </button>
             {:else if canContinue && !text.trim()}
-              <!-- The run finished on its own: one click picks the work back up. -->
-              <button
-                type="button"
-                class="continue-btn flex h-8 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-foreground transition hover:border-foreground/40 hover:bg-muted"
-                onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))}
-                title={$t('code.continue')}
-              >
+              <!-- The run stopped short: one click picks the work back up. -->
+              <button type="button" class="composer-chip" onclick={() => void codeStore.followUp(chat.id, $t('code.continuePrompt'))} title={$t('code.continue')}>
                 <Play class="size-3.5" />
                 {$t('code.continue')}
               </button>
             {/if}
+
+            <Menu bind:open={toolsMenuOpen} placement="top-end" minWidth="14rem" label={$t('code.toolsMenu')}>
+              {#snippet trigger(props)}<button type="button" class="aui-icon-button size-8" aria-label={$t('code.toolsMenu')} title={$t('code.toolsMenu')} {...props}><MoreHorizontal class="size-4" /></button>{/snippet}
+              {#each menuGroups as group, index (index)}
+                {#if index > 0}<div class="aui-menu-separator" role="separator"></div>{/if}
+                {#each group as command (command.name)}<MenuItem icon={command.icon} label={command.label} disabled={command.disabled} onselect={() => void runCommand(command)} />{/each}
+              {/each}
+            </Menu>
+
+            <SendButton
+              {running}
+              disabled={!canSend}
+              sendLabel={$t('code.send')}
+              stopLabel={$t('code.stop')}
+              onsend={() => void submit()}
+              onstop={() => void codeStore.stop(chat.id)}
+            />
           </div>
         </div>
       </div>
@@ -650,11 +627,9 @@
     background: color-mix(in srgb, var(--warning, #d97706) 12%, var(--background));
     color: var(--foreground);
   }
-
   .composer-dock {
     background: var(--chat-bg);
   }
-
   /* Fade the transcript out into the dock rather than cutting it off. */
   .composer-dock::before {
     content: '';
@@ -670,76 +645,15 @@
       var(--chat-bg)
     );
   }
-
   .composer-frame {
     position: relative;
-    container: code-composer / inline-size;
     min-width: 0;
   }
-
-  .composer-shell {
-    position: relative;
-  }
-
-  .composer-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    padding: 0.875rem 0.875rem 0.625rem;
-  }
-
-  .composer-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 0.375rem;
-    min-height: 2rem;
-  }
-
-  .composer-selectors {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    min-width: 0;
-  }
-
   .model-slot {
     flex: 1 1 auto;
     min-width: 0;
     max-width: 18rem;
   }
-
-  .composer-accounting {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    min-width: 0;
-    color: var(--muted-foreground);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .spend-label,
-  .queue-label { white-space: nowrap; }
-
-  .trailing { grid-column: 3; }
-
-  @container code-composer (max-width: 560px) {
-    .composer-actions { grid-template-columns: minmax(0, 1fr) auto; }
-    .trailing { grid-column: 2; grid-row: 1; }
-    .composer-accounting {
-      grid-row: 2;
-      grid-column: 1 / -1;
-      justify-content: flex-start;
-      flex-wrap: wrap;
-      gap: 0.25rem 0.5rem;
-    }
-    .composer-accounting :global(.context-ring) { width: 1.5rem; height: 1.5rem; margin-left: auto; }
-    .mode-trigger { padding-inline: 0.375rem; }
-    .mode-trigger :global(svg:first-child) { display: none; }
-  }
-
   .slash-menu {
     max-height: min(20rem, 40vh);
     overflow-y: auto;
@@ -771,23 +685,6 @@
     font-size: 11px;
     color: var(--muted-foreground);
   }
-
-  .composer-textarea {
-    display: block;
-    margin: 0;
-    min-height: 1.5rem;
-    max-height: 11rem;
-    padding: 0;
-    font-size: 1rem;
-    line-height: 1.55;
-    letter-spacing: -0.005em;
-  }
-
-  .composer-textarea::placeholder {
-    color: var(--text-secondary);
-    opacity: 1;
-  }
-
   /* Same white-pill treatment as the ModelSwitcher trigger beside it. */
   .mode-trigger {
     color: var(--text-secondary);
@@ -800,124 +697,27 @@
       border-color var(--motion-fast) var(--motion-ease),
       color var(--motion-fast) var(--motion-ease);
   }
-
   .mode-trigger:hover,
   .mode-trigger.is-open {
     background: var(--muted);
     color: var(--foreground);
   }
-
   .mode-trigger:active {
     transform: scale(0.98);
   }
-
   .mode-trigger :global(svg) {
     transition: transform var(--motion-fast) var(--motion-ease);
   }
-
   .mode-trigger:hover :global(svg) {
     transform: scale(1.08);
   }
-
   .mode-trigger .trigger-label {
     color: inherit;
     font-size: 0.8125rem;
     font-weight: 500;
     letter-spacing: -0.01em;
   }
-
-  .mode-option {
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    transition:
-      background-color var(--motion-fast) var(--motion-ease);
-  }
-
   .mode-option:hover {
     background: var(--muted);
-  }
-
-  .mode-option.is-selected {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  }
-
-  /* Icons and text lean in on hover: the icon warms to full contrast and the
-     label nudges a pixel, so the row answers before the fill lands. */
-  .mode-icon {
-    color: var(--muted-foreground);
-    transition: color var(--motion-fast) var(--motion-ease);
-  }
-
-  .mode-option:hover .mode-icon,
-  .mode-option.is-selected .mode-icon {
-    color: var(--foreground);
-  }
-
-  .option-body {
-    transition: transform var(--motion-fast) var(--motion-ease);
-  }
-
-  .mode-option:hover .option-body {
-    transform: translateX(1px);
-  }
-
-  .trailing {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.375rem;
-    min-width: 0;
-  }
-
-  .send-btn {
-    border: none;
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow: none;
-    transition:
-      background-color 150ms ease,
-      opacity 150ms ease,
-      transform 150ms var(--motion-ease);
-  }
-
-  .send-btn:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  .send-btn.is-stop {
-    background: var(--surface-active);
-    color: var(--foreground);
-  }
-
-  .send-btn:active:not(:disabled) {
-    transform: scale(0.96);
-  }
-
-  .continue-btn {
-    background: transparent;
-    transition:
-      background-color var(--motion-fast) var(--motion-ease),
-      border-color var(--motion-fast) var(--motion-ease);
-  }
-
-  .continue-btn:active {
-    transform: scale(0.98);
-  }
-
-  .send-icon {
-    transform-origin: center;
-    transition: transform 200ms var(--motion-ease);
-  }
-
-  .send-btn:hover:not(:disabled) .send-icon {
-    transform: translateY(-1px);
-  }
-
-  @media (max-width: 640px) {
-    .composer-textarea {
-      max-height: 10rem;
-      font-size: 0.9375rem;
-    }
   }
 </style>

@@ -38,6 +38,25 @@
     "selection": {
       "add": "チャットに追加",
       "addLabel": "選択したテキストをチャットに追加"
+    },
+    "mode": {
+      "agent": "エージェント",
+      "agentHint": "調査し、ツールを使い、ファイルを作成",
+      "instant": "インスタント",
+      "instantHint": "軽いツールですばやく回答"
+    },
+    "dictation": {
+      "unavailable": "音声認識は利用できません",
+      "start": "タップして話す",
+      "stop": "聞き取りを停止"
+    },
+    "localBusy": "ローカルモデルは別のチャットで使用中です",
+    "context": {
+      "usage": "コンテキスト {used} / {max} トークン（{percent}%）",
+      "reserved": "返信用に {n} トークンを確保",
+      "priceIn": "入力 ${price}/1M",
+      "priceOut": "出力 ${price}/1M",
+      "estimate": "推定入力コスト: ${cost}"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "実行中のタスクを止める"
       }
     },
-    "toolsMenu": "その他の操作"
+    "toolsMenu": "その他の操作",
+    "attach": "ファイルを添付",
+    "spendDetail": "この会話のコストと、プロンプトのうちキャッシュから来た割合",
+    "projectFiles": "プロジェクトのファイル",
+    "media": {
+      "title": "メディアを添付",
+      "question": "これらのファイルを選択中のモデルに送りますか？",
+      "attach": "添付",
+      "always": "常に許可",
+      "remove": "{name} を削除"
+    }
   },
   "searchModal": {
     "inMessages": "メッセージ内",

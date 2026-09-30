@@ -21,6 +21,9 @@
   /* Radius tension: pills stay for entry points; utility inputs go
      sharp so controls read as controls, not as more chrome. */
   --radius-input: 6px;
+  /* The selected item of a segmented control: a raised pill on the track. */
+  --segment-active-bg: #ffffff;
+  --segment-active-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px rgb(0 0 0 / 0.06);
   /* One background — see the note in `.dark`. Fills are alpha overlays so they
      work on top of it rather than being separate greys. */
   --background: #ffffff;
@@ -270,6 +273,8 @@
      comma-separated box-shadow list, and `none` is only legal on its own —
      it would invalidate the whole declaration and drop the focus ring. */
   --surface-shadow-focus: 0 0 #0000;
+  --segment-active-bg: rgb(255 255 255 / 0.14);
+  --segment-active-shadow: 0 0 0 1px rgb(255 255 255 / 0.06);
 
   /* Aliases */
   --surface: var(--card);
@@ -604,6 +609,89 @@ textarea {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
 }
 
+/* ─── Composer ────────────────────────────────────────────────────────────
+   Home and Code share one shell: the text on top, then one bar — add, mode
+   and model on the left; status, extras and send on the right. The shell is
+   a size container so the bar adapts to the composer's own width (a pane
+   beside it narrows it), not the window's. */
+.composer-shell {
+  position: relative;
+  container: composer / inline-size;
+}
+
+.composer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.875rem 0.75rem 0.5rem;
+}
+
+.composer-textarea {
+  display: block;
+  margin: 0;
+  min-height: 2.25rem;
+  max-height: 13rem;
+  padding: 0 0.25rem;
+  font-size: calc(0.9375rem * var(--reading-scale, 1));
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+}
+
+/* --muted-foreground put the placeholder near 4:1 on the composer fill, which
+   is under AA and read as a disabled field. */
+.composer-textarea::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+.composer-bar {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+}
+
+.composer-bar-leading,
+.composer-bar-trailing {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.composer-bar-leading { flex: 1 1 auto; }
+.composer-bar-trailing { flex: 0 1 auto; justify-content: flex-end; }
+
+/* A secondary action beside send ("Continue", "Choose a model"). */
+.composer-chip {
+  display: inline-flex;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 0 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  transition: color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+}
+
+.composer-chip:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+
+@media (max-width: 640px) {
+  .composer-textarea {
+    max-height: 10rem;
+    font-size: calc(0.875rem * var(--reading-scale, 1));
+  }
+}
+
 /* A hairline between groups of items in a menu. */
 .aui-menu-separator {
   height: 1px;
@@ -752,7 +840,8 @@ textarea {
    it with --primary made a black (or, in dark, white) block that outweighed the
    content it was labelling. */
 .aui-segmented-item.is-active {
-  background: var(--surface-active);
+  background: var(--segment-active-bg);
+  box-shadow: var(--segment-active-shadow);
   color: var(--foreground);
 }
 

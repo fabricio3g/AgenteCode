@@ -37,8 +37,6 @@
 
   /** Textarea grows with content up to this height, then scrolls. */
   const MAX_TEXTAREA_PX = MAX_COMPOSER_TEXTAREA_PX;
-  /** Composers narrower than this switch the toolbar to its compact layout. */
-  const COMPACT_WIDTH_PX = 640;
   /** How long an error placeholder stays before reverting. */
   const ERROR_PLACEHOLDER_MS = 12_000;
   /** Debounce before recomputing the context-budget preview. */
@@ -54,7 +52,6 @@
   // leaving the input stuck at whatever height was last written to it.
   let textarea = $state<HTMLTextAreaElement | undefined>(undefined);
   let fileInput: HTMLInputElement | undefined;
-  let composerWidth = $state(0);
   let showErrorPlaceholder = $state(false);
   let errorPlaceholderTimer: ReturnType<typeof setTimeout> | null = null;
   let budgetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,7 +61,6 @@
 
   const generating = $derived(appStore.currentChatGenerating);
   const localBusyElsewhere = $derived(appStore.currentChatBlockedByOtherLocalRun);
-  const compact = $derived(composerWidth > 0 && composerWidth < COMPACT_WIDTH_PX);
   /* Starter prompts only make sense before the conversation has started. */
   const threadIsEmpty = $derived(!(appStore.currentChat?.messages?.length));
   const voiceMode = $derived(appStore.voiceModeActive);
@@ -338,7 +334,6 @@
   {/if}
 
   <div
-    bind:clientWidth={composerWidth}
     class="composer-frame mx-auto w-full"
     style="max-width: var(--thread-width);"
   >
@@ -397,7 +392,7 @@
 
       {#if localBusyElsewhere}
         <div class="px-4 pt-1 text-[11px] text-muted-foreground">
-          Local model busy in another chat
+          {$t('chat.localBusy')}
         </div>
       {/if}
 
@@ -424,23 +419,22 @@
           onkeydown={onKeydown}
         ></textarea>
 
-        <div class="composer-actions">
+        <div class="composer-bar">
           {#if dictation.uiActive && !voiceMode && dictation.phase !== 'choose'}
-            <!-- Dictation takes over the chip row: waveform, timer, cancel, done. -->
+            <!-- Dictation takes over the bar: waveform, timer, cancel, done. -->
             <ComposerRecorder {dictation} />
           {:else}
-          <ComposerAddMenu onattach={() => fileInput?.click()} />
-
-          <ModelSwitcher />
-
-          <ComposerToolbar
-            {dictation}
-            {compact}
-            {generating}
-            {sendDisabled}
-            onsubmit={() => void submit()}
-            onstop={() => appStore.stopStreaming()}
-          />
+            <div class="composer-bar-leading">
+              <ComposerAddMenu onattach={() => fileInput?.click()} />
+              <div class="model-slot"><ModelSwitcher compact showReasoning /></div>
+            </div>
+            <ComposerToolbar
+              {dictation}
+              {generating}
+              {sendDisabled}
+              onsubmit={() => void submit()}
+              onstop={() => appStore.stopStreaming()}
+            />
           {/if}
         </div>
       </div>
@@ -458,7 +452,6 @@
   .composer-dock {
     background: var(--chat-bg);
   }
-
   /* Fade the thread out into the dock rather than cutting it off. */
   .composer-dock::before {
     content: '';
@@ -474,11 +467,9 @@
       var(--chat-bg)
     );
   }
-
   .composer-frame {
     position: relative;
   }
-
   /* Instant/Agent tab above the input shell: quiet, left-aligned, attached to
      the shell rather than floating in the thread. The dock is
      pointer-events:none so the thread stays scrollable behind it — opt back
@@ -489,16 +480,6 @@
     padding: 0 0.35rem 0.35rem;
     pointer-events: auto;
   }
-
-  /* Raised white thumb on the track (iOS-style): the shared
-     .aui-segmented active state reads flat grey here, so lift it with a
-     card surface + soft shadow, scoped to this row only. */
-  .mode-tab-row :global(.aui-segmented-item.is-active) {
-    background: var(--card);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
-    font-weight: 600;
-  }
-
   /* Level with the Agent / Instant tabs, flush with the input's right edge. */
   .jump-latest {
     position: absolute;
@@ -519,26 +500,21 @@
     animation: jump-in var(--motion-fast) var(--motion-ease);
     transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
   }
-
   .jump-latest:hover {
     background: var(--muted);
     color: var(--foreground);
   }
-
   .jump-latest:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
   }
-
   @keyframes jump-in {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: none; }
   }
-
   @media (prefers-reduced-motion: reduce) {
     .jump-latest { animation: none; }
   }
-
   .drop-overlay {
     position: absolute;
     inset: 0;
@@ -551,56 +527,5 @@
     background: var(--surface-hover);
   }
 
-  /* Surface, radius, ring and focus state all live on `.aui-composer` in
-     app.css — the pill is defined once. Only layout belongs here. */
-  .composer-shell {
-    position: relative;
-  }
-
-  /* Text first, controls under it. The generous top padding is what gives the
-     shell its roominess — the input no longer shares a line with the icons. */
-  .composer-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.875rem 0.75rem 0.5rem;
-  }
-
-  /* Attach and chips left, dictate/send right, on their own line. */
-  .composer-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    min-height: 2rem;
-  }
-
-
-  /*
-   * Full width now that nothing sits beside it, so the caret starts at the
-   * shell's text margin and long prompts use the whole line before wrapping.
-   */
-  .composer-textarea {
-    display: block;
-    margin: 0;
-    min-height: 2.25rem;
-    max-height: 13rem;
-    padding: 0 0.25rem;
-    font-size: calc(0.9375rem * var(--reading-scale, 1));
-    line-height: 1.55;
-    letter-spacing: -0.005em;
-  }
-
-  /* --muted-foreground put the placeholder at ~4:1 on the composer fill, which
-     is under AA and read as a disabled field. */
-  .composer-textarea::placeholder {
-    color: var(--text-secondary);
-    opacity: 1;
-  }
-
-  @media (max-width: 640px) {
-    .composer-textarea {
-      max-height: 10rem;
-      font-size: calc(0.875rem * var(--reading-scale, 1));
-    }
-  }
+  .model-slot { min-width: 0; max-width: 18rem; }
 </style>

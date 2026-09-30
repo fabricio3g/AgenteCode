@@ -38,6 +38,25 @@
     "selection": {
       "add": "Adicionar ao chat",
       "addLabel": "Adicionar o texto selecionado ao chat"
+    },
+    "mode": {
+      "agent": "Agente",
+      "agentHint": "Pesquisa, usa ferramentas e cria arquivos",
+      "instant": "Instantâneo",
+      "instantHint": "Respostas rápidas com ferramentas leves"
+    },
+    "dictation": {
+      "unavailable": "O reconhecimento de voz não está disponível",
+      "start": "Toque para falar",
+      "stop": "Parar de ouvir"
+    },
+    "localBusy": "O modelo local está ocupado em outro chat",
+    "context": {
+      "usage": "{used} / {max} tokens de contexto ({percent}%)",
+      "reserved": "{n} tokens reservados para a resposta",
+      "priceIn": "Entrada ${price}/1M",
+      "priceOut": "Saída ${price}/1M",
+      "estimate": "Custo estimado de entrada: ${cost}"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "Para a tarefa em andamento"
       }
     },
-    "toolsMenu": "Mais ações"
+    "toolsMenu": "Mais ações",
+    "attach": "Anexar arquivos",
+    "spendDetail": "Quanto esta conversa custou e quanto do prompt veio do cache",
+    "projectFiles": "Arquivos do projeto",
+    "media": {
+      "title": "Anexar mídia",
+      "question": "Enviar estes arquivos para o modelo escolhido?",
+      "attach": "Anexar",
+      "always": "Sempre permitir",
+      "remove": "Remover {name}"
+    }
   },
   "searchModal": {
     "inMessages": "Nas mensagens",

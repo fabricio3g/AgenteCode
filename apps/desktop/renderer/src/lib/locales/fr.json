@@ -38,6 +38,25 @@
     "selection": {
       "add": "Ajouter à la discussion",
       "addLabel": "Ajouter le texte sélectionné à la discussion"
+    },
+    "mode": {
+      "agent": "Agent",
+      "agentHint": "Recherche, utilise des outils et crée des fichiers",
+      "instant": "Instantané",
+      "instantHint": "Réponses rapides avec des outils légers"
+    },
+    "dictation": {
+      "unavailable": "La reconnaissance vocale n'est pas disponible",
+      "start": "Touchez pour parler",
+      "stop": "Arrêter l'écoute"
+    },
+    "localBusy": "Le modèle local est occupé dans une autre discussion",
+    "context": {
+      "usage": "{used} / {max} jetons de contexte ({percent} %)",
+      "reserved": "{n} jetons réservés à la réponse",
+      "priceIn": "Entrée {price} $/1M",
+      "priceOut": "Sortie {price} $/1M",
+      "estimate": "Coût estimé en entrée : {cost} $"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "Arrêter la tâche en cours"
       }
     },
-    "toolsMenu": "Plus d'actions"
+    "toolsMenu": "Plus d'actions",
+    "attach": "Joindre des fichiers",
+    "spendDetail": "Ce qu'a coûté cette conversation, et la part du prompt venue du cache",
+    "projectFiles": "Fichiers du projet",
+    "media": {
+      "title": "Joindre des médias",
+      "question": "Envoyer ces fichiers au modèle choisi ?",
+      "attach": "Joindre",
+      "always": "Toujours autoriser",
+      "remove": "Retirer {name}"
+    }
   },
   "searchModal": {
     "inMessages": "Dans les messages",

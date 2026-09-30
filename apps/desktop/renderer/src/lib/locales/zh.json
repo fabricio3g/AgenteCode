@@ -38,6 +38,25 @@
     "selection": {
       "add": "添加到聊天",
       "addLabel": "将选中的文字添加到聊天"
+    },
+    "mode": {
+      "agent": "智能体",
+      "agentHint": "研究、使用工具并创建文件",
+      "instant": "即时",
+      "instantHint": "使用轻量工具快速回答"
+    },
+    "dictation": {
+      "unavailable": "语音识别不可用",
+      "start": "点按说话",
+      "stop": "停止聆听"
+    },
+    "localBusy": "本地模型正在另一个聊天中使用",
+    "context": {
+      "usage": "上下文 {used} / {max} 个 token（{percent}%）",
+      "reserved": "为回复预留 {n} 个 token",
+      "priceIn": "输入 ${price}/1M",
+      "priceOut": "输出 ${price}/1M",
+      "estimate": "预估输入费用：${cost}"
     }
   },
   "sidebar": {
@@ -386,7 +405,17 @@
         "hint": "停止正在运行的任务"
       }
     },
-    "toolsMenu": "更多操作"
+    "toolsMenu": "更多操作",
+    "attach": "附加文件",
+    "spendDetail": "这个对话的花费，以及提示词中来自缓存的比例",
+    "projectFiles": "项目文件",
+    "media": {
+      "title": "附加媒体",
+      "question": "把这些文件发送给所选模型吗？",
+      "attach": "附加",
+      "always": "始终允许",
+      "remove": "移除 {name}"
+    }
   },
   "searchModal": {
     "inMessages": "在消息中",
