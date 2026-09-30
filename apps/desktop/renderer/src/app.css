@@ -199,6 +199,10 @@
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.05);
   /* Lifts side panels and the composer off the page, like the browser card. */
   --panel-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 18px -6px rgb(0 0 0 / 0.1);
+  /* Thinking effort spectrum: quick (cool) → deep (warm). */
+  --effort-low: #2f7ff0;
+  --effort-mid: #8b5cf6;
+  --effort-high: #e8661f;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 1px 3px rgb(0 0 0 / 0.08);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 0.08);
@@ -359,6 +363,9 @@
      whole declaration. Floating things (menus, dialogs) keep a real shadow. */
   --shadow-xs: 0 0 #0000;
   --panel-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 28px -8px rgb(0 0 0 / 0.55);
+  --effort-low: #5aa2ff;
+  --effort-mid: #a57bff;
+  --effort-high: #ff8a4c;
   --shadow-sm: 0 0 #0000;
   --shadow-md: 0 0 #0000;
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);

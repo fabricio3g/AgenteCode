@@ -80,7 +80,7 @@ describe('thinking slider', () => {
     await fireEvent.click(button);
     const slider = view.getByRole('slider', { name: 'Thinking' }) as HTMLInputElement;
     expect(slider.max).toBe('3');
-    expect(view.getByRole('dialog').querySelectorAll('.bar.is-on')).toHaveLength(1);
+    expect(view.getByRole('dialog').querySelectorAll('.stops span')).toHaveLength(4);
     expect(document.activeElement).toBe(slider);
     await fireEvent.input(slider, { target: { value: '2' } });
     expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
@@ -96,7 +96,7 @@ describe('thinking slider', () => {
     expect(button.querySelectorAll('.meter .is-on')).toHaveLength(3);
     await fireEvent.click(button);
     const dialog = view.getByRole('dialog');
-    expect(dialog.querySelectorAll('.bar.is-on')).toHaveLength(24);
+    expect(dialog.querySelectorAll('.stops .is-on')).toHaveLength(4);
     expect(dialog.textContent).toContain('Thinks longer on hard problems');
     expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('High');
   });
