@@ -415,7 +415,64 @@
       "attach": "Adjuntar",
       "always": "Permitir siempre",
       "remove": "Quitar {name}"
-    }
+    },
+    "project": {
+      "loading": "Cargando…",
+      "skills": {
+        "title": "Habilidades y comandos",
+        "hint": "Elige uno para ponerlo en el cuadro de mensaje.",
+        "empty": "Este proyecto aún no tiene habilidades ni comandos propios."
+      },
+      "agents": {
+        "title": "Subagentes",
+        "hint": "Ayudantes a los que el agente puede pasar trabajo, y el modelo de cada uno.",
+        "all": "Todos los subagentes",
+        "inherit": "Usa el modelo de la conversación",
+        "useModel": "Usar el modelo actual",
+        "reset": "Restablecer"
+      },
+      "mcp": {
+        "title": "Servidores MCP",
+        "hint": "Servidores de herramientas que puede usar el agente.",
+        "tools": "{n, plural, one {# herramienta} other {# herramientas}}",
+        "approve": "Aprobar",
+        "reconnect": "Reconectar",
+        "disable": "Desactivar",
+        "refresh": "Actualizar",
+        "empty": "No hay servidores MCP configurados.",
+        "status": {
+          "disabled": "desactivado",
+          "needs_approval": "necesita aprobación",
+          "connecting": "conectando",
+          "ready": "listo",
+          "failed": "falló"
+        }
+      },
+      "sessions": {
+        "title": "Retomar una sesión",
+        "hint": "Abre una sesión anterior en esta conversación.",
+        "messages": "{n, plural, one {# mensaje} other {# mensajes}}",
+        "empty": "Aún no hay sesiones guardadas."
+      },
+      "settings": {
+        "title": "Ajustes del agente",
+        "hint": "Cómo gestiona el agente el contexto y los ayudantes.",
+        "smartCompaction": "Resumir cuando se llena el contexto",
+        "parallel": "Subagentes a la vez",
+        "media": "Adjuntar sin preguntar",
+        "image": "Imágenes",
+        "audio": "Audio",
+        "video": "Vídeo",
+        "save": "Guardar"
+      }
+    },
+    "message": {
+      "copy": "Copiar",
+      "fork": "Bifurcar",
+      "revert": "Revertir"
+    },
+    "stopSubagent": "Detener subagente",
+    "stopCommand": "Detener el comando en curso"
   },
   "searchModal": {
     "inMessages": "En los mensajes",

@@ -415,7 +415,64 @@
       "attach": "Anhängen",
       "always": "Immer erlauben",
       "remove": "{name} entfernen"
-    }
+    },
+    "project": {
+      "loading": "Wird geladen…",
+      "skills": {
+        "title": "Skills und Befehle",
+        "hint": "Wähle einen, um ihn ins Eingabefeld zu setzen.",
+        "empty": "Dieses Projekt hat noch keine Skills oder eigenen Befehle."
+      },
+      "agents": {
+        "title": "Subagenten",
+        "hint": "Helfer, an die der Agent Arbeit abgeben kann, und ihr jeweiliges Modell.",
+        "all": "Alle Subagenten",
+        "inherit": "Nutzt das Modell der Unterhaltung",
+        "useModel": "Aktuelles Modell nutzen",
+        "reset": "Zurücksetzen"
+      },
+      "mcp": {
+        "title": "MCP-Server",
+        "hint": "Werkzeug-Server, die der Agent nutzen kann.",
+        "tools": "{n, plural, one {# Werkzeug} other {# Werkzeuge}}",
+        "approve": "Freigeben",
+        "reconnect": "Neu verbinden",
+        "disable": "Ausschalten",
+        "refresh": "Aktualisieren",
+        "empty": "Keine MCP-Server eingerichtet.",
+        "status": {
+          "disabled": "aus",
+          "needs_approval": "braucht Freigabe",
+          "connecting": "verbindet",
+          "ready": "bereit",
+          "failed": "fehlgeschlagen"
+        }
+      },
+      "sessions": {
+        "title": "Sitzung fortsetzen",
+        "hint": "Eine frühere Sitzung in dieser Unterhaltung öffnen.",
+        "messages": "{n, plural, one {# Nachricht} other {# Nachrichten}}",
+        "empty": "Noch keine gespeicherten Sitzungen."
+      },
+      "settings": {
+        "title": "Agent-Einstellungen",
+        "hint": "Wie der Agent Kontext und Helfer verwaltet.",
+        "smartCompaction": "Zusammenfassen, wenn der Kontext voll ist",
+        "parallel": "Gleichzeitige Subagenten",
+        "media": "Ohne Nachfrage anhängen",
+        "image": "Bilder",
+        "audio": "Audio",
+        "video": "Video",
+        "save": "Speichern"
+      }
+    },
+    "message": {
+      "copy": "Kopieren",
+      "fork": "Abzweigen",
+      "revert": "Zurücksetzen"
+    },
+    "stopSubagent": "Subagent stoppen",
+    "stopCommand": "Laufenden Befehl stoppen"
   },
   "searchModal": {
     "inMessages": "In Nachrichten",

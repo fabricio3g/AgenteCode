@@ -415,7 +415,64 @@
       "attach": "添付",
       "always": "常に許可",
       "remove": "{name} を削除"
-    }
+    },
+    "project": {
+      "loading": "読み込み中…",
+      "skills": {
+        "title": "スキルとコマンド",
+        "hint": "選ぶと入力欄に挿入されます。",
+        "empty": "このプロジェクトにはまだスキルもカスタムコマンドもありません。"
+      },
+      "agents": {
+        "title": "サブエージェント",
+        "hint": "エージェントが作業を任せられるヘルパーと、それぞれのモデル。",
+        "all": "すべてのサブエージェント",
+        "inherit": "会話のモデルを使用",
+        "useModel": "現在のモデルを使う",
+        "reset": "リセット"
+      },
+      "mcp": {
+        "title": "MCP サーバー",
+        "hint": "エージェントが使えるツールサーバー。",
+        "tools": "{n} 個のツール",
+        "approve": "承認",
+        "reconnect": "再接続",
+        "disable": "オフにする",
+        "refresh": "更新",
+        "empty": "MCP サーバーは設定されていません。",
+        "status": {
+          "disabled": "オフ",
+          "needs_approval": "承認が必要",
+          "connecting": "接続中",
+          "ready": "準備完了",
+          "failed": "失敗"
+        }
+      },
+      "sessions": {
+        "title": "セッションを再開",
+        "hint": "この会話で以前のセッションを開きます。",
+        "messages": "{n} 件のメッセージ",
+        "empty": "保存されたセッションはまだありません。"
+      },
+      "settings": {
+        "title": "エージェント設定",
+        "hint": "エージェントがコンテキストとヘルパーを扱う方法。",
+        "smartCompaction": "コンテキストがいっぱいになったら要約",
+        "parallel": "同時に動くサブエージェント",
+        "media": "確認せずに添付",
+        "image": "画像",
+        "audio": "音声",
+        "video": "動画",
+        "save": "保存"
+      }
+    },
+    "message": {
+      "copy": "コピー",
+      "fork": "分岐",
+      "revert": "元に戻す"
+    },
+    "stopSubagent": "サブエージェントを停止",
+    "stopCommand": "実行中のコマンドを停止"
   },
   "searchModal": {
     "inMessages": "メッセージ内",

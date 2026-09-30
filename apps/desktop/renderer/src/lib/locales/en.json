@@ -415,7 +415,64 @@
       "attach": "Attach",
       "always": "Always allow",
       "remove": "Remove {name}"
-    }
+    },
+    "project": {
+      "loading": "Loading…",
+      "skills": {
+        "title": "Skills and commands",
+        "hint": "Pick one to put it in the message box.",
+        "empty": "This project has no skills or custom commands yet."
+      },
+      "agents": {
+        "title": "Subagents",
+        "hint": "Helpers the agent can hand work to, and the model each one uses.",
+        "all": "Every subagent",
+        "inherit": "Uses the conversation's model",
+        "useModel": "Use current model",
+        "reset": "Reset"
+      },
+      "mcp": {
+        "title": "MCP servers",
+        "hint": "Tool servers the agent can use.",
+        "tools": "{n, plural, one {# tool} other {# tools}}",
+        "approve": "Approve",
+        "reconnect": "Reconnect",
+        "disable": "Turn off",
+        "refresh": "Refresh",
+        "empty": "No MCP servers are set up.",
+        "status": {
+          "disabled": "off",
+          "needs_approval": "needs approval",
+          "connecting": "connecting",
+          "ready": "ready",
+          "failed": "failed"
+        }
+      },
+      "sessions": {
+        "title": "Resume a session",
+        "hint": "Open an earlier session in this conversation.",
+        "messages": "{n, plural, one {# message} other {# messages}}",
+        "empty": "No saved sessions yet."
+      },
+      "settings": {
+        "title": "Agent settings",
+        "hint": "How the agent manages context and helpers.",
+        "smartCompaction": "Summarize when the context fills up",
+        "parallel": "Subagents at once",
+        "media": "Attach without asking",
+        "image": "Images",
+        "audio": "Audio",
+        "video": "Video",
+        "save": "Save"
+      }
+    },
+    "message": {
+      "copy": "Copy",
+      "fork": "Fork",
+      "revert": "Revert"
+    },
+    "stopSubagent": "Stop subagent",
+    "stopCommand": "Stop the running command"
   },
   "searchModal": {
     "inMessages": "In messages",

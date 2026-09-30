@@ -122,7 +122,7 @@
   {#if isEdit && step.status === 'done' && (adds || dels || step.fileChanges?.length)}
     <button type="button" class="view-link shrink-0 px-2" onclick={viewChanges}>{$t('codeWs.viewChanges')}</button>
   {/if}
-  {#if isRunning && isCommand && chatId}<button type="button" class="view-link shrink-0 px-2" aria-label="Stop running command" onclick={() => { if (chatId) void codeStore.stop(chatId).catch((error) => toastStore.error(String(error))); }}><Square class="size-3" /></button>{/if}
+  {#if isRunning && isCommand && chatId}<button type="button" class="view-link shrink-0 px-2" aria-label={$t('code.stopCommand')} title={$t('code.stopCommand')} onclick={() => { if (chatId) void codeStore.stop(chatId).catch((error) => toastStore.error(String(error))); }}><Square class="size-3" /></button>{/if}
   </div>
 
   {#if expanded}

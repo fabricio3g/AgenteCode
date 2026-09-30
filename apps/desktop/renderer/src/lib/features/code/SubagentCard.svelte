@@ -1,6 +1,7 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
+  import { t } from 'svelte-i18n';
   import { ChevronRight, Square } from 'lucide-svelte';
   import type { CodeChild } from '$shared/agente-protocol';
   import { invoke } from '$lib/services/bridge';
@@ -23,7 +24,7 @@
     <span class="shrink-0">{child.status}</span>
   </summary>
   <div class="ml-3 max-h-80 space-y-3 overflow-auto px-2 py-2 text-sm">
-    {#if child.status === 'running'}<button type="button" class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted" onclick={stop}><Square class="size-3" />Stop subagent</button>{/if}
+    {#if child.status === 'running'}<button type="button" class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted" onclick={stop}><Square class="size-3" />{$t('code.stopSubagent')}</button>{/if}
     {#if child.text}<RichContent content={child.text} />{/if}
     {#each child.tools as tool (tool.id)}
       <CodeStepRow step={{ id: tool.id, type: 'tool', label: tool.name, toolName: tool.name, status: tool.status, output: tool.output }} />

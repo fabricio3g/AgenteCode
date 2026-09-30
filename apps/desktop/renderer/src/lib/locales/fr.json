@@ -415,7 +415,64 @@
       "attach": "Joindre",
       "always": "Toujours autoriser",
       "remove": "Retirer {name}"
-    }
+    },
+    "project": {
+      "loading": "Chargement…",
+      "skills": {
+        "title": "Compétences et commandes",
+        "hint": "Choisissez-en une pour la mettre dans la zone de message.",
+        "empty": "Ce projet n'a encore ni compétences ni commandes personnalisées."
+      },
+      "agents": {
+        "title": "Sous-agents",
+        "hint": "Les aides auxquelles l'agent peut confier du travail, et le modèle de chacune.",
+        "all": "Tous les sous-agents",
+        "inherit": "Utilise le modèle de la conversation",
+        "useModel": "Utiliser le modèle actuel",
+        "reset": "Réinitialiser"
+      },
+      "mcp": {
+        "title": "Serveurs MCP",
+        "hint": "Serveurs d'outils que l'agent peut utiliser.",
+        "tools": "{n, plural, one {# outil} other {# outils}}",
+        "approve": "Approuver",
+        "reconnect": "Reconnecter",
+        "disable": "Désactiver",
+        "refresh": "Actualiser",
+        "empty": "Aucun serveur MCP configuré.",
+        "status": {
+          "disabled": "désactivé",
+          "needs_approval": "à approuver",
+          "connecting": "connexion",
+          "ready": "prêt",
+          "failed": "échec"
+        }
+      },
+      "sessions": {
+        "title": "Reprendre une session",
+        "hint": "Ouvrir une session précédente dans cette conversation.",
+        "messages": "{n, plural, one {# message} other {# messages}}",
+        "empty": "Aucune session enregistrée pour l'instant."
+      },
+      "settings": {
+        "title": "Réglages de l'agent",
+        "hint": "Comment l'agent gère le contexte et ses aides.",
+        "smartCompaction": "Résumer quand le contexte est plein",
+        "parallel": "Sous-agents en même temps",
+        "media": "Joindre sans demander",
+        "image": "Images",
+        "audio": "Audio",
+        "video": "Vidéo",
+        "save": "Enregistrer"
+      }
+    },
+    "message": {
+      "copy": "Copier",
+      "fork": "Dupliquer",
+      "revert": "Revenir"
+    },
+    "stopSubagent": "Arrêter le sous-agent",
+    "stopCommand": "Arrêter la commande en cours"
   },
   "searchModal": {
     "inMessages": "Dans les messages",

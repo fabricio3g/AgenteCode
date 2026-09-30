@@ -415,7 +415,64 @@
       "attach": "Anexar",
       "always": "Sempre permitir",
       "remove": "Remover {name}"
-    }
+    },
+    "project": {
+      "loading": "Carregando…",
+      "skills": {
+        "title": "Habilidades e comandos",
+        "hint": "Escolha um para colocá-lo na caixa de mensagem.",
+        "empty": "Este projeto ainda não tem habilidades nem comandos próprios."
+      },
+      "agents": {
+        "title": "Subagentes",
+        "hint": "Ajudantes para quem o agente pode passar trabalho, e o modelo de cada um.",
+        "all": "Todos os subagentes",
+        "inherit": "Usa o modelo da conversa",
+        "useModel": "Usar o modelo atual",
+        "reset": "Redefinir"
+      },
+      "mcp": {
+        "title": "Servidores MCP",
+        "hint": "Servidores de ferramentas que o agente pode usar.",
+        "tools": "{n, plural, one {# ferramenta} other {# ferramentas}}",
+        "approve": "Aprovar",
+        "reconnect": "Reconectar",
+        "disable": "Desativar",
+        "refresh": "Atualizar",
+        "empty": "Nenhum servidor MCP configurado.",
+        "status": {
+          "disabled": "desativado",
+          "needs_approval": "precisa de aprovação",
+          "connecting": "conectando",
+          "ready": "pronto",
+          "failed": "falhou"
+        }
+      },
+      "sessions": {
+        "title": "Retomar uma sessão",
+        "hint": "Abra uma sessão anterior nesta conversa.",
+        "messages": "{n, plural, one {# mensagem} other {# mensagens}}",
+        "empty": "Ainda não há sessões salvas."
+      },
+      "settings": {
+        "title": "Ajustes do agente",
+        "hint": "Como o agente gerencia o contexto e os ajudantes.",
+        "smartCompaction": "Resumir quando o contexto encher",
+        "parallel": "Subagentes ao mesmo tempo",
+        "media": "Anexar sem perguntar",
+        "image": "Imagens",
+        "audio": "Áudio",
+        "video": "Vídeo",
+        "save": "Salvar"
+      }
+    },
+    "message": {
+      "copy": "Copiar",
+      "fork": "Ramificar",
+      "revert": "Reverter"
+    },
+    "stopSubagent": "Parar subagente",
+    "stopCommand": "Parar o comando em execução"
   },
   "searchModal": {
     "inMessages": "Nas mensagens",
