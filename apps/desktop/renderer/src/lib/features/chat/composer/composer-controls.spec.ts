@@ -73,28 +73,32 @@ describe('context details', () => {
   });
 });
 
-describe('thinking menu', () => {
-  it('lists Auto plus the supported levels, each with a hint, and applies a pick', async () => {
+describe('thinking slider', () => {
+  it('offers Auto plus the supported levels as bars, applies a step at once and closes on Escape', async () => {
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: Auto' });
     await fireEvent.click(button);
-    const items = view.getAllByRole('menuitem');
-    expect(items.map((item) => item.querySelector('.truncate')?.textContent)).toEqual(['Auto', 'Low', 'Medium', 'High']);
-    expect(items[2].textContent).toContain('Balanced speed and depth');
-    expect(items[0].getAttribute('aria-current')).toBe('true');
-    await fireEvent.click(items[2]);
+    const slider = view.getByRole('slider', { name: 'Thinking' }) as HTMLInputElement;
+    expect(slider.max).toBe('3');
+    expect(view.getByRole('dialog').querySelectorAll('.bar.is-on')).toHaveLength(1);
+    expect(document.activeElement).toBe(slider);
+    await fireEvent.input(slider, { target: { value: '2' } });
     expect(store.setReasoningLevel).toHaveBeenLastCalledWith('medium');
-    expect(view.queryByRole('menu')).toBeNull();
+    await fireEvent.keyDown(slider, { key: 'Escape' });
+    expect(view.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
-  it('marks the selected level and fills the meter to it', async () => {
+  it('fills the bars up to the chosen level and says what it means', async () => {
     store.reasoningLevel = 'high';
     const view = render(ReasoningLevelSelector);
     const button = view.getByRole('button', { name: 'Thinking: High' });
     expect(button.querySelectorAll('.meter .is-on')).toHaveLength(3);
     await fireEvent.click(button);
-    const current = view.getAllByRole('menuitem').find((item) => item.getAttribute('aria-current') === 'true');
-    expect(current?.textContent).toContain('High');
+    const dialog = view.getByRole('dialog');
+    expect(dialog.querySelectorAll('.bar.is-on')).toHaveLength(24);
+    expect(dialog.textContent).toContain('Thinks longer on hard problems');
+    expect(view.getByRole('slider').getAttribute('aria-valuetext')).toBe('High');
   });
 
   it('hides the control for models without reported reasoning levels', () => {
